@@ -93,6 +93,30 @@ the cart IS the design, not a gap. CLOSED.
 - **Curated testimonials + per-experience-type stats** [DM, editorial]: which reviews get featured
   is a decision-maker call; never invent either source (§13, filed long-standing).
 
+## Verification record — Aug 10–11, 2026 (Service Fundamentals lane, D1–D5 + dispatch v1.3)
+
+One-page state of everything that failed or was found across the day's verification passes, so the
+next lane does not have to reconstruct it from commit archaeology. Cross-machine: findings came from
+both the build bench and the Replit workspace.
+
+| # | Finding | Status | Where |
+|---|---------|--------|-------|
+| 1 | **F2 publish gate blocked experts from publishing.** `if (provForm)` passed users with NO form row before `be78a9c`; after it, every user without a *provider* form row was blocked — all experts (they use `local_expert_forms`) plus providers with no form. **Fixed in TWO phases, not one:** `92030ea` corrected the gate (shared helper, DB role lookup, role-aware branches); `726de79` corrected its PLACEMENT (see #7). Crediting `92030ea` alone implies the gate was sound after phase 1 — it was not. | FIXED | `92030ea` + `726de79`; rulings 53, 56 |
+| 2 | **Migration 193 (`short_links.frame`) not applied at boot.** Root cause is NOT a runner bug: `runMigrations()` imports `MIGRATION_FILES` once at process start, so a server already running when the commit was pulled never sees the new migration. A hot-reload is not a restart. The runner logs `[Migrations] Done — N newly applied, M already recorded` every boot; that line is the diagnostic. | FIXED (doc + restart) | `92030ea` → `server/migrations/AUTHORING.md` |
+| 3 | **Frame dedupe collapsed all variants to one code.** Pure downstream symptom of #2 — the Drizzle cache had no `frame` column, so the dedupe key ignored it. No code defect. | FIXED by restart | — |
+| 4 | **`POST /api/geocode` fabricated coordinates.** A hardcoded `FALLBACK_COORDINATES` city-centre dictionary answered Google misses, against §13 / migration-129. Removed; routes through the single geocode path; honest 404 on a miss. Both client callers already handled a non-ok response. | FIXED | `92030ea` |
+| 5 | **`suggestedFrame` open-slot branch never exercised.** No dev service had `service_route_points`, so only the `feed` branch ran live. | FIXED (coverage) | `posting-opportunities-frame.http.test.ts` (2) |
+| 6 | **Instagram publish round-trip unproven.** No connected account in any dev environment; the Graph API fetches the image from ITS servers, so reachability is untestable without a live account. The button self-gates honestly (disconnected / unapproved listing / route frame with no stops). | **OPEN** (externally gated) | needs a real connected IG account |
+| 7 | **The gate sat where experts do not publish.** `checkPublishVerificationGate` fired only on `/api/provider/services` with `status:'active'`, which the expert ServiceForm never sends (it sends `approvalStatus:'submitted'` + `status:'draft'`). Public visibility needs approved AND active, and BOTH producing paths were ungated: `approveProviderServiceListing` set approved+active in one update, and `PATCH /api/expert/services/:id/status` accepted `active` unchecked. Decision-maker ruled **option B**. | FIXED | `726de79`; ruling 56 |
+| 8 | **CI build gate failed on PR #451.** The tsc ratchet is down-only: the branch removed 7 errors (190 → 183) and the gate refuses to let an improvement survive as headroom for the next lane. | FIXED (baseline locked) | `a6938de`; ruling 54 |
+| 9 | **38 proofs ran nowhere in CI.** Five suites protecting twice-regressed work were script-only — per rulings 26/27, script-only = MISSING. Now a blocking PR-triggered workflow. | FIXED | `00ec75d`; ruling 57 |
+| 10 | **Ledger number collision.** The Stripe-only KYB ruling was written as a prose section headed "Decision #39" while 39 was already taken in the numeric table; the lint parses table rows only, so CI never saw it. Its publish-gate clause was also stale (identity AND business for every publisher — provider-only truth). | RECORDED | ruling 55 |
+| 11 | **D3 deliverable is LINK delivery, not protected delivery.** See the P1 entry below. Object Storage is now **provisioned** (bucket attached in `.replit`, wrapper at `server/infrastructure/object-storage.ts`) — but it is consumed only by `vendor-management.service.ts` for vendor CONTRACT documents. The deliverable rail is **untouched**: `ServiceForm` still renders "Deliverable File URL" as a pasted-URL input, and the entitlement endpoint still returns that raw URL verbatim. The infrastructure unblocks R4; it does not constitute R4. | **OPEN** | P1 below |
+| 12 | **No completion event exists for pdf bookings.** See the P2 entry below. | **OPEN** | P2 below |
+
+**Standing lessons worth carrying forward:** (a) a fix that closes a reported symptom may not close the class — #1 needed a second pass because the first proved the gate *correct* without proving it *reachable*; (b) duplicated branches at two call sites drifted twice, which is why the resolver is now a single shared function; (c) a guard that is not wired into CI is not a guard, and green means green-within-stated-bounds (ruling 57 states its negative space).
+
+
 ## Open — build items
 
 ~~**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
@@ -146,6 +170,19 @@ file-upload pipeline from "infrastructure decision" to the COMPLETION of D3** �
 storage + signed, expiring URLs, with the serve path proxying rather than disclosing. Until it lands,
 label the rail honestly as link-delivery in the provider UI and state that the platform cannot protect
 a pasted link. Sequenced after the D6 attribution retrofit.
+**STATUS AMENDED Aug 11, 2026 — infrastructure PROVISIONED, rail STILL OPEN.** Replit App Storage is
+attached (bucket recorded in `.replit`; wrapper at `server/infrastructure/object-storage.ts` exposing
+`uploadBuffer`). **It is consumed by exactly one caller — `vendor-management.service.ts`, for vendor
+CONTRACT documents — and is wired into the deliverable rail nowhere.** Verified against the code:
+`server/routes.ts` contains ZERO object-storage references and `GET /api/service-bookings/:id/deliverable`
+still ends `res.json({ fileUrl, deliveryMethod })` with the raw pasted string; `ServiceForm.tsx:1873`
+still renders "Deliverable File URL" as a text input, and that file's only object-storage mention is
+the comment noting no upload rail exists. So a report that "the deliverable rail is done" describes
+the BUCKET, not the RAIL. The provisioning is real progress — it removes the backend decision that was
+blocking R4 — but P1 is unchanged: an entitled buyer is still handed a permanent, shareable,
+unrevokable external URL. R4 remains to be built: upload on the ServiceForm delivery step, a proxying
+serve path that never discloses a location, an inventory of existing pasted-URL rows, and R5's
+download-log write on the same endpoint.
 
 **P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
 unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
