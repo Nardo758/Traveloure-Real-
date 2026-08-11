@@ -23,5 +23,14 @@
     "active": "公開中",
     "paused": "一時停止中",
     "loading": "読み込んでいます..."
+  },
+  "contentTranslation": {
+    "shownInEnglish": "原文（英語）",
+    "shownInEnglishHint": "この出品はまだ翻訳されていません。サービス事業者の原文を表示しています。",
+    "aiDraft": "AI下書き — 公開前に確認してください",
+    "machineDraftNotice": "機械翻訳による下書きです。旅行者に表示する前に内容を確認して承認してください。",
+    "approveDraft": "翻訳を承認する",
+    "generateDraft": "AI下書きを生成する",
+    "draftUnavailable": "AI下書きは利用できません — 翻訳プロバイダーが設定されていません。"
   }
 }

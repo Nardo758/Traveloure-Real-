@@ -16,6 +16,7 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
+import { isContentLocale } from "../services/service-translation.service";
 // Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
 // Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
 import { logDemandSignal } from "./demand.routes";
@@ -1995,6 +1996,40 @@ router.get("/api/services/:id", async (req, res) => {
     // traveler map renders LOCATED stops only; unlocated stops still list by name and the
     // client states "X of Y stops located" rather than guessing a pin (§13).
     const routePoints = await storage.getServiceRoutePoints(service.id);
+
+    // Ruling 60 Phase B — provider CONTENT translation (system B). The active locale is the
+    // client's resolved chrome locale (Phase A: account pref → localStorage → Accept-Language →
+    // en), passed as ?locale=. §13's honesty rule for CONTENT (distinct from chrome's silent
+    // fallback): serve the `approved` translation's content when one exists; otherwise serve the
+    // ORIGINAL English with an explicit fallback flag the client renders as "shown in English /
+    // 原文（英語）". NEVER on-the-fly machine-translate; NEVER return a `draft`-status row's content
+    // to a traveler; NEVER show a JA locale a half-translated listing without the label.
+    const rawLocale = typeof req.query.locale === "string" ? req.query.locale : "en";
+    const activeLocale = isContentLocale(rawLocale) ? rawLocale : "en";
+    let contentOverlay: Record<string, unknown> = {};
+    let translationMeta: { locale: string; status: "approved" | "fallback"; source?: string; shownInEnglish: boolean } | null = null;
+    if (activeLocale !== "en") {
+      const t = await storage.getServiceTranslation(service.id, activeLocale);
+      if (t && t.status === "approved") {
+        // Overlay only the fields the provider actually translated; an untranslated field falls
+        // back to the original (never blanked). status/source describe the row, not the fields.
+        if (t.serviceName) contentOverlay.serviceName = t.serviceName;
+        if (t.shortDescription) contentOverlay.shortDescription = t.shortDescription;
+        if (t.description) contentOverlay.description = t.description;
+        if (t.meetingPoint) contentOverlay.meetingPoint = t.meetingPoint;
+        translationMeta = { locale: activeLocale, status: "approved", source: t.source, shownInEnglish: false };
+      } else {
+        // No approved translation (none authored, or only a draft exists) → honest original +
+        // the "shown in English" label. A draft's content is deliberately NOT overlaid (§13).
+        translationMeta = { locale: activeLocale, status: "fallback", shownInEnglish: true };
+      }
+    }
+    const withTranslation = <T extends Record<string, unknown>>(payload: T) => ({
+      ...payload,
+      ...contentOverlay,
+      translation: translationMeta,
+    });
+
     // §17 bundles (migration 151): additive component list on the public detail. Same F2
     // read-gate per component — only components STILL approved+active are exposed; an
     // unapproved/paused component never leaks through the bundle's page.
@@ -2013,7 +2048,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(bundleComponents.position));
-      return res.json({ ...service, bundleComponents: components, away, routePoints });
+      return res.json(withTranslation({ ...service, bundleComponents: components, away, routePoints }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2034,7 +2069,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json({ ...service, rooms, away, routePoints });
+      return res.json(withTranslation({ ...service, rooms, away, routePoints }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2052,9 +2087,9 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json({ ...service, property: visibleProperty, away, routePoints });
+      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints }));
     }
-    res.json({ ...service, away, routePoints });
+    res.json(withTranslation({ ...service, away, routePoints }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
