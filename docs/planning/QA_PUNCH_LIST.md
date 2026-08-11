@@ -846,6 +846,19 @@ a ruling, or real-user validation and is therefore **not built**.
   PATCH) and **three** expert paths (the extra one being the expert `/status` toggle) — the coverage
   is complete on both because every path to `active` on each role passes a gate.
 
+- **SS-14 — [CLOSED Aug 11, 2026 by ruling 71 — 1C is now complete across ALL charge paths]** The two
+  ordered steps ratified for this fix both landed: **Step 1** repointed `POST /api/expert-booking-requests`
+  (`server/routes.ts`) AND the `GET /api/trips/:tripId/commission` earnings breakdown
+  (`server/routes/booking-actions.ts`) onto the D1 resolver via the SAME `direct-charge-rate.service.ts`
+  seam cart checkout uses (`resolveDirectProviderRate` → `pickOwnerShareRate`, §18 rule 1), so the D1
+  band outranks the per-service snapshot on every charge path and the snapshot is no longer a first
+  operand anywhere; **Step 2** retired the provider-lane derivation in `deriveServiceRevenueShareRate`
+  (`server/storage.ts`) so a new provider service carries a NULL snapshot, with the §18 input strip
+  left untouched (the client still can never SET the field). The column is NOT dropped and existing
+  rows are NOT backfilled (they are made inert by Step 1). No new migration. Proven by
+  `server/__tests__/expert-booking-request-rate.db.test.ts` **B1–B7 (7/7)** and the full §15-spine
+  battery green; ledger ruling 71. SS-12 delta reported there (unchanged 4/6). Original filing retained
+  verbatim below.
 - **SS-14 — [NEW, filed by ruling 70; SHARPENED Aug 11, 2026] `revenueShareRate` is not merely dead
   weight — it is still a LIVE first operand on a second charge-economics path 1C did not repoint.**
   [code] `resolveServiceOwnerShareRate` (`server/services/commission.ts`, the §18/MI-1
@@ -870,6 +883,13 @@ a ruling, or real-user validation and is therefore **not built**.
   NULL snapshot on the current code silently falls the expert-booking-requests path to the
   `commission` calc, which is a behavior change with no proofs.
 
+- **SS-14 — [CLOSED Aug 11, 2026 by ruling 71 — Step 2 chose option (b)]** The decision-maker ratified
+  option **(b)**: stop deriving the snapshot for provider-lane rows and leave it NULL, keeping the §18
+  input strip (option (a)/(c) not taken). `deriveServiceRevenueShareRate` now returns NULL for a
+  provider owner; expert-lane rows keep their derived stamp (no D1 provider band exists for them).
+  Existing rows NOT backfilled; column NOT dropped (vestigial nullable). Proven by
+  `expert-booking-request-rate.db.test.ts` B4 (new provider row NULL) + B5/B6 (§18 strip intact);
+  ruling 71. Original filing retained verbatim below.
 - **SS-14 — [NEW, filed by ruling 70] `revenueShareRate`'s derived snapshot is now dead weight on
   the provider lane.** [code] `resolveServiceOwnerShareRate` (`server/services/commission.ts`, the
   §18/MI-1 strip-and-derive) still computes the column from the **legacy** `resolveCommissionRates`
@@ -902,6 +922,17 @@ a ruling, or real-user validation and is therefore **not built**.
   moved it: it did not, in either direction. The two failures are the same fixture/category→band
   linkage gap on this bench, not a code regression. **STILL OPEN** — a bench where two of ruling
   42's P1–P6 cannot run is still a guard that does not run.
+  **RE-MEASURED at ruling 71: still 4/6, count UNCHANGED (verified with this pass's changes stashed —
+  the same P1/P2 fail, P3–P6 pass).** Ruling 71's Step 2 touches this suite's exact subject even more
+  directly than ruling 70 did: it retires the provider-lane `revenueShareRate` stamp, so a provider row
+  is now deliberately NULL. That **contradicts P1/P2's *"the row carries the fee_bands value"* clause** —
+  but P1/P2 were ALREADY failing at baseline on the beta_flat fixture gap (`providerBandExpertShare()`
+  reads the ruling-49-DEACTIVATED `beta_flat` band, which returns no row), so the count does not move.
+  **SHARPENED:** P1/P2 now encode SUPERSEDED behavior (ruling 42's "derive-and-stamp the provider
+  share" is retired by ruling 71 for the provider lane). When this lane is picked up, P1/P2 should be
+  updated to assert (a) the client value is still stripped [unchanged, ruling 71 keeps this] and (b) a
+  provider row is NULL / an EXPERT row carries the band value [the new ruling-71 truth] — and the
+  beta_flat fixture gap fixed so the suite runs green. **STILL OPEN.**
 
 ## Ruling 60 Phase A — chrome i18n (FILED, NOT BUILT) — Aug 11, 2026
 
