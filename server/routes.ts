@@ -1,4 +1,6 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
+import express from "express";
+import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
@@ -45,6 +47,7 @@ import {
   expertRequests,
   funnelEvents,
   bundleComponents,
+  deliverableDownloads,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -4716,6 +4719,87 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // R4 (docs/DECISIONS.md ruling 58; QA_PUNCH_LIST.md P1): `objstore:<key>` is the by-construction
+  // discriminator (the ruling-56/§15b pattern) between a platform-managed upload — proxied,
+  // revocable — and a legacy pasted URL — link delivery, unrevokable — sharing the SAME
+  // provider_services.serviceFile column. No new column, no enum change (publish-trap avoidance).
+  const DELIVERABLE_OBJSTORE_PREFIX = "objstore:";
+  const DELIVERABLE_MAX_BYTES = 20 * 1024 * 1024; // 20MB
+  const PDF_MAGIC = Buffer.from("%PDF-");
+
+  // R4 upload intake — owner-gated (same session/ownership check as the rest of
+  // POST/PATCH /api/provider/services; serviceFile is not a privileged §14/§18/§19 field, so no
+  // allowlist/omit is needed here either). No multipart plumbing exists anywhere in this codebase
+  // (no multer/busboy/formidable) — `express.raw()` reads the whole PDF into one Buffer, scoped to
+  // THIS route only so the global express.json() body parser (server/index.ts) is untouched for
+  // every other route.
+  app.post(
+    "/api/provider/services/:id/deliverable-file",
+    isAuthenticated,
+    express.raw({ type: ["application/pdf", "application/octet-stream"], limit: "20mb" }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        const service = await storage.getProviderServiceById(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({
+            message: "Send the file as a raw request body with Content-Type: application/pdf",
+            code: "DELIVERABLE_FILE_REQUIRED",
+          });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > DELIVERABLE_MAX_BYTES) {
+          return res.status(400).json({
+            message: "File exceeds the 20MB deliverable size limit",
+            code: "DELIVERABLE_TOO_LARGE",
+          });
+        }
+        // Content-Type is client-declared and not trusted on its own; the magic-byte check is
+        // the real gate for this pdf-only rail (D3 scope — shared/service-fundamentals.ts
+        // ARTIFACT_DELIVERY_METHODS = {"pdf"}).
+        if (!buffer.subarray(0, 5).equals(PDF_MAGIC)) {
+          return res.status(400).json({ message: "Only PDF files are accepted", code: "DELIVERABLE_NOT_PDF" });
+        }
+
+        // Unguessable key regardless of the bucket's actual public/private posture (see the
+        // privacy finding in server/infrastructure/object-storage.ts) — never serviceId/filename
+        // alone.
+        const key = `deliverables/${service.id}/${randomBytes(16).toString("hex")}.pdf`;
+        const { uploadBuffer, deleteObject } = await import("./infrastructure/object-storage");
+        try {
+          await uploadBuffer(key, buffer);
+        } catch (storageErr) {
+          // Honest degradation when REPLIT_OBJECT_STORAGE_BUCKET is absent (this container, any
+          // cold Replit start before a bucket is attached) — a clear error, never a crash, never
+          // a fabricated success.
+          console.error("Deliverable upload failed:", storageErr);
+          return res.status(503).json({
+            message: "Object storage is not available right now. Try again shortly.",
+            code: "OBJECT_STORAGE_UNAVAILABLE",
+          });
+        }
+
+        // Best-effort cleanup of the PREVIOUS managed object, if any — never blocks the response.
+        const previous = (service.serviceFile ?? "").trim();
+        if (previous.startsWith(DELIVERABLE_OBJSTORE_PREFIX)) {
+          deleteObject(previous.slice(DELIVERABLE_OBJSTORE_PREFIX.length)).catch(() => {});
+        }
+
+        await storage.updateProviderService(service.id, { serviceFile: `${DELIVERABLE_OBJSTORE_PREFIX}${key}` });
+
+        // Never echo the key/URL back, even to the owner — the point of the rail is that no
+        // location is ever disclosed outside the server.
+        res.json({ message: "Deliverable file uploaded", protected: true });
+      } catch (err) {
+        console.error("Deliverable upload error:", err);
+        res.status(500).json({ message: "Failed to upload deliverable file" });
+      }
+    },
+  );
+
   // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
   // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
   // state (§14 posture, extended to this non-money reveal because the asset itself is the
@@ -4725,6 +4809,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // (isArtifactDelivery — pdf only), (4) the service actually carries a serviceFile. Any one
   // condition failing is an honest, undifferentiated 404 (§13 — never leaks WHICH condition
   // failed to a caller probing booking ids that aren't theirs).
+  //
+  // R4 (ruling 58): once entitlement is granted, branch on the STORED VALUE. A
+  // `DELIVERABLE_OBJSTORE_PREFIX`-prefixed key is a platform-managed upload — the bytes are
+  // downloaded server-side and STREAMED; the storage location is never returned, redirected to,
+  // or otherwise disclosed. A legacy plain URL keeps the pre-R4 JSON-reveal shape for backward
+  // compatibility, now carrying an explicit `protected: false` honesty marker.
+  //
+  // R5: every SUCCESSFUL fetch (either shape) writes one deliverable_downloads row — the download
+  // signal a future D8 auto-complete pass would need (this endpoint implements no completion
+  // logic itself; D8 is unruled).
   app.get("/api/service-bookings/:id/deliverable", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -4742,14 +4836,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
-      const fileUrl = (service.serviceFile ?? "").trim();
-      if (!fileUrl) {
+      const fileValue = (service.serviceFile ?? "").trim();
+      if (!fileValue) {
         // §13: honest absence — the booking and service are real and qualify, but the
         // provider hasn't uploaded anything yet. Distinguishable from "not found" so the
         // client can render "not uploaded yet" instead of a generic error.
         return res.status(404).json({ message: "The provider hasn't uploaded a deliverable yet", code: "NO_DELIVERABLE_UPLOADED" });
       }
-      res.json({ fileUrl, deliveryMethod: service.deliveryMethod });
+
+      const logDownload = (isProtected: boolean) =>
+        db.insert(deliverableDownloads).values({
+          bookingId: booking.id,
+          serviceId: service.id,
+          userId,
+          protected: isProtected,
+        }).catch((logErr) => console.error("Deliverable download log failed:", logErr));
+
+      if (fileValue.startsWith(DELIVERABLE_OBJSTORE_PREFIX)) {
+        const key = fileValue.slice(DELIVERABLE_OBJSTORE_PREFIX.length);
+        let bytes: Buffer;
+        try {
+          const { downloadBytes } = await import("./infrastructure/object-storage");
+          bytes = await downloadBytes(key);
+        } catch (storageErr) {
+          console.error("Deliverable download failed:", storageErr);
+          return res.status(500).json({ message: "Failed to fetch deliverable" });
+        }
+        await logDownload(true);
+        const filename = `${(service.serviceName || "deliverable").replace(/[^a-z0-9.-]/gi, "_").slice(0, 100)}.pdf`;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Length", String(bytes.length));
+        return res.end(bytes);
+      }
+
+      await logDownload(false);
+      res.json({ fileUrl: fileValue, deliveryMethod: service.deliveryMethod, protected: false });
     } catch (err) {
       console.error("Deliverable fetch error:", err);
       res.status(500).json({ message: "Failed to fetch deliverable" });
