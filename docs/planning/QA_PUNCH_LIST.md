@@ -652,3 +652,64 @@ a ruling, or real-user validation and is therefore **not built**.
   missing). Ruling 42's P1–P6 are the proofs for the §14/§18 rate-stripping class, so a bench where two
   of them cannot run is the "a guard that does not run is MISSING" posture (rulings 26/27/43) one level
   down. Not part of ruling 64's stated keep-green list; filed so it is not rediscovered.
+
+## Ruling 60 Phase A — chrome i18n (FILED, NOT BUILT) — Aug 11, 2026
+
+Filed by the chrome-i18n lane (DECISIONS.md **ruling 65**, executing **ruling 60 Phase A**). Everything
+below is deliberately out of that phase's scope — recorded so it is not rediscovered as a defect.
+
+- **I18N-1 — [DM] Native-speaker review of the JA locale files is OWED before market launch.** The
+  Japanese strings in `client/src/locales/ja/*.json` (**269 keys**) are **machine-authored platform
+  copy**. That is acceptable for chrome under ruling 60 (which reserves the labeled-machine-draft rule
+  for *content*, system B), but Kyoto is the launch market and this copy is the first thing a Japanese
+  provider reads. Review should cover register consistency (everything is polite です/ます調) and the
+  glossary below, which is applied uniformly and should be ratified or corrected **as a set**:
+
+  | EN | JA | note |
+  |---|---|---|
+  | listing / your services | 出品 / あなたの出品 | the seller-side noun; **not** リスティング |
+  | storefront | ストアフロント | |
+  | service | サービス | |
+  | catalog | カタログ | |
+  | provider (service provider) | サービス事業者 | **not** プロバイダー |
+  | booking | 予約 | |
+  | customer | 顧客 | |
+  | payout | 出金 | payment = お支払い, kept distinct |
+  | earnings / money module | 売上 | |
+  | listing health | 健全性 | |
+  | active / paused | 公開中 / 一時停止中 | |
+  | sign in / sign up | ログイン / アカウント作成 | |
+  | trip planner / local expert | トリッププランナー / ローカルエキスパート | |
+
+  Note one JA-specific layout consequence already visible: Japanese nav labels are longer than their
+  English counterparts and the traveler navbar wraps `マーケットプレイス` to two lines at desktop width.
+  Cosmetic, not broken — but it is the kind of thing a native reviewer should be asked to judge.
+
+- **I18N-2 — Surfaces still on hardcoded English (migrate incrementally; do NOT half-wrap).** Ruling 60
+  Phase A translated: the provider sidebar + all console page titles, provider Settings chrome, the
+  Catalog page chrome (incl. health labels, the D2 "n/a" note and delivery/pin chips), the traveler
+  navbar + footer, and the auth surfaces. **Everything else keeps hardcoded English and falls back
+  silently**, which is correct chrome behavior, not a bug. Known deferred surfaces, roughly by traffic:
+  the expert and EA console sidebars/pages, the provider Dashboard/Calendar/Inbox/Workstation/Money/
+  Customers/Performance/Playbook page BODIES (their titles and shell are translated), `StatusBadge`
+  vocabulary and `ProviderStorefrontHeader` (both render inside the translated Catalog page and are
+  visibly English in the JA screenshots — shared components, deliberately left whole), the service
+  wizard/`ServiceForm`, the traveler landing/discover/cart/checkout pages, and every admin surface.
+  **Convention when migrating one:** mark the file's top with `// i18n: pending migration` while it is
+  in flight, move the WHOLE surface in one commit, and delete the marker — a surface must never be
+  committed half-wrapped, because a page mixing Japanese and English chrome reads as broken in a way a
+  fully-English page does not.
+
+- **I18N-3 — `expert/settings.tsx` offers three locales that do not exist.** Its Language select lists
+  `es`/`fr`/`de` beside `en`/`ja`. Only `en` and `ja` have locale files, so picking Spanish persists a
+  value that resolves to nothing and the UI stays English — the same no-op it was before ruling 60, so
+  this is **pre-existing, not a regression**. It is why `settingsPatchSchema.language` is an enum wider
+  than `SUPPORTED_LOCALES` (narrowing it would 400 that page's whole settings save). Retire the three
+  dead options — or ship those locales — as a small named follow-up; both halves are one edit.
+
+- **I18N-4 — Ruling 60 Phase B (provider CONTENT translation) is NOT started.** No `service_translations`
+  table, no owner-gated translation writes, no labeled AI draft, no "shown in English" fallback tag.
+  Phase A deliberately routes **zero** content strings through `t()`. Also named-not-built by ruling 60
+  and untouched here: localized share frames, PDF deliverables, and emails. Currency display is **out of
+  scope by the ruling's own words** (a separate later ruling) — the footer currency pill stays `USD ($)`
+  even under a JA locale, on purpose.

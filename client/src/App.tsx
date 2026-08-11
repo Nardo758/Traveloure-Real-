@@ -9,6 +9,7 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
@@ -1161,6 +1162,17 @@ function GuestCartMigrator() {
   return null;
 }
 
+/**
+ * Ruling 60 Phase A — applies resolution STEP 1 (the authenticated user's saved chrome locale,
+ * users.preferences.settings.language) as soon as the session resolves, and keeps <html lang>
+ * in sync. Steps 2-4 (localStorage → Accept-Language → en) already ran at i18n module load, so
+ * this only ever overrides them with a real account preference. Renders nothing.
+ */
+function LocaleSync() {
+  useLocale();
+  return null;
+}
+
 function App() {
   // S4: capture a short-link ?ref= (set by GET /r/:code) once per session; checkout relays it
   // and the server derives the attribution source.
@@ -1176,6 +1188,7 @@ function App() {
             <ActiveConsoleProvider>
               <TooltipProvider>
                 <Toaster />
+                <LocaleSync />
                 <GuestCartMigrator />
                 <AuthReturnToRestorer />
                 <MaintenanceGate>
