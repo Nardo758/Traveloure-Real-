@@ -427,16 +427,25 @@ Dr. Cash/Stripe Account        $50
    Cr. Unused Credits Liability     $50
 ```
 
-When an Expert Service Is Booked (fee-on-top + commission-deducted — F1 ruling, Jul 26 2026):
+> **Model of record** (ratified F1 ruling, Jul 26 2026, `docs/backoffice/REVENUE_MODEL.md`): expert
+> service bookings are **fee-on-top AND commission-deducted**. The buyer pays the list price
+> **plus** a platform service fee shown as its own line at checkout, and the platform **also**
+> deducts its commission from the expert's side. On a $P expert_standard item, the buyer pays
+> **1.25P**, the expert earns **0.75P**, and the platform keeps **0.50P** (~40% of gross).
 
-> **Model of record** (ratified F1 ruling, `docs/backoffice/REVENUE_MODEL.md`): the buyer pays the
-> list price **plus** a platform service fee shown as its own line at checkout, and the platform
-> **also** deducts its commission from the expert's side. On a $P expert_standard item, the buyer
-> pays **1.25P**, the expert earns **0.75P**, and the platform keeps **0.50P** (~40% of gross).
-
+When an Expert Service Is Booked with Direct Cash (cart checkout):
 ```
 Example: $10 list-price expert service (expert_standard 25/75)
 Dr. Cash/Stripe Account        $12.50  (buyer pays list + 25% service fee on top)
+   Cr. Platform Revenue              $5.00  ($2.50 fee-on-top + $2.50 commission deducted)
+   Cr. Expert Payouts Payable        $7.50  (75% of list price)
+```
+
+When Credits Are Redeemed for an Expert Service (credit redemption — same F1 economics, funded from the prepaid credit pool):
+```
+Example: $10 list-price expert service paid entirely with credits
+(the service fee is charged in credits on top of the list price, so $12.50 of credits are consumed)
+Dr. Unused Credits Liability   $12.50  (credits released: list price + 25% service fee)
    Cr. Platform Revenue              $5.00  ($2.50 fee-on-top + $2.50 commission deducted)
    Cr. Expert Payouts Payable        $7.50  (75% of list price)
 ```
@@ -455,8 +464,8 @@ Dr. Cash/Stripe Account        $100   (booking value)
 ```
 
 **Credit Purchase Example: $50**
-- Cash received: $50 (immediate; recognized as credits are consumed)
-- When spent on expert services, the fee-on-top + commission-deducted model above applies: the expert receives 75% of each item's list price, and the platform keeps the service fee plus the deducted commission (F1 ruling).
+- Cash received: $50, booked as Unused Credits Liability (revenue is recognized only as credits are redeemed — see the credit-redemption entry above)
+- When redeemed for expert services, the fee-on-top + commission-deducted model applies (F1 ruling): each item consumes list price + service fee in credits; the expert receives 75% of the list price and the platform keeps the fee plus the deducted commission.
 - Unused Credits: Future revenue recognition issue
 
 **Concierge Power-User Tier: $9/month (or annual)**
