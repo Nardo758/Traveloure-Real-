@@ -26,6 +26,15 @@ import {
   logRailsRefusal,
   type RailsItemResolution,
 } from "../services/rails-attribution.service";
+// 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6): a DIRECT provider booking
+// prices through the same D1 resolver the rails lane uses, so `fee_bands` is the single authority
+// on every provider charge path — not just the attributed one (ruling 68 §5's owed item).
+import {
+  resolveDirectProviderRate,
+  pickOwnerShareRate,
+  directRateSnapshot,
+  type DirectRateResolution,
+} from "../services/direct-charge-rate.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -930,25 +939,33 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // failure of any kind leaves an empty map, every line prices at the incumbent full rate, and
       // the traveler still buys. It can never be the reason a checkout 500s.
       const railsByItemId = new Map<string, RailsItemResolution>();
+      // Owner role, resolved ONCE per distinct owner and shared by the rails pre-pass, the 1C
+      // direct pre-pass and both charge loops below — the loops used to re-query it per item per
+      // loop, which is three chances for the same question to be answered differently.
+      const ownerRoleById = new Map<string, string | null>();
+      const ownerRoleOf = async (ownerId: string | null | undefined): Promise<string | null> => {
+        if (!ownerId) return null;
+        if (!ownerRoleById.has(ownerId)) {
+          const [ownerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, ownerId))
+            .limit(1);
+          ownerRoleById.set(ownerId, ownerRow?.role ?? null);
+        }
+        return ownerRoleById.get(ownerId) ?? null;
+      };
       try {
         const railsValidation = await validateRailsRef({ ref: refCandidate, travelerUserId: userId });
-        const railsOwnerRoleById = new Map<string, string | null>();
         for (const item of cartData) {
           if (!item.service) continue;
           const ownerId = item.service.userId ?? null;
-          if (ownerId && !railsOwnerRoleById.has(ownerId)) {
-            const [ownerRow] = await db
-              .select({ role: users.role })
-              .from(users)
-              .where(eq(users.id, ownerId))
-              .limit(1);
-            railsOwnerRoleById.set(ownerId, ownerRow?.role ?? null);
-          }
+          await ownerRoleOf(ownerId);
           const railsResolution = await resolveRailsForItem({
             ref: refCandidate,
             travelerUserId: userId,
             serviceOwnerUserId: ownerId,
-            ownerRole: ownerId ? railsOwnerRoleById.get(ownerId) ?? null : null,
+            ownerRole: ownerRoleById.get(ownerId ?? "") ?? null,
             categoryId: item.service.categoryId ?? null,
             itemSubtotal: resolveItemBaseAmount(item),
             preValidated: railsValidation,
@@ -971,6 +988,33 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         );
       }
 
+      // ── 1C DIRECT-LANE RATE (docs/DECISIONS.md ruling 69 disposition 6) ─────────────────────
+      // The SECOND pre-pass, on the SAME shape and for the same reason as the rails one: the two
+      // charge loops below resolve rates twice and two more surfaces quote the same cart, so the
+      // attribution AND the band decision are each made ONCE here and read everywhere. The amount
+      // quoted and the amount claimed cannot disagree because they are not two decisions.
+      //
+      // §18 rule 1 — nothing here computes a rate: `resolveDirectProviderRate` makes ONE call into
+      // `resolveProviderRate`, the same single resolver the rails lane calls. A refusal (expert
+      // lane, no category, breached band guard) leaves the incumbent legacy resolution standing
+      // for that line; it never throws and never fails a purchase.
+      const directRateByItemId = new Map<string, DirectRateResolution>();
+      for (const item of cartData) {
+        if (!item.service) continue;
+        // A rails-attributed line is already priced by the resolver; asking twice would only
+        // create a second answer to the same question.
+        if (railsByItemId.get(item.id)?.rate) continue;
+        directRateByItemId.set(
+          item.id,
+          await resolveDirectProviderRate({
+            serviceOwnerUserId: item.service.userId ?? null,
+            ownerRole: ownerRoleById.get(item.service.userId ?? "") ?? null,
+            categoryId: item.service.categoryId ?? null,
+            serviceId: item.service.id ?? item.serviceId,
+          }),
+        );
+      }
+
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
       let checkoutBasePlatformFeeTotal = 0;
@@ -983,19 +1027,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        let isProviderService = false;
-        if (item.service.userId) {
-          const [providerRow] = await db
-            .select({ role: users.role })
-            .from(users)
-            .where(eq(users.id, item.service.userId))
-            .limit(1);
-          // Canonical vocabulary (shared/roles.ts): stored role is "service_provider" —
-          // the old `=== "provider"` was always false, misrouting provider items to the expert band.
-          if (isProviderRole(providerRow?.role)) {
-            isProviderService = true;
-          }
-        }
+        // Canonical vocabulary (shared/roles.ts): stored role is "service_provider" — the old
+        // `=== "provider"` was always false, misrouting provider items to the expert band. The
+        // role itself comes from the ONE pre-pass map above, so this loop, the booking loop and
+        // both rate pre-passes cannot disagree about whose lane a line is on.
+        const isProviderService = isProviderRole(ownerRoleById.get(item.service.userId ?? "") ?? null);
         // Provider-role items: route through source:"provider" + providerId so the
         // early-adopter gate in resolveCommissionRates picks the correct band
         // (beta_flat vs expert_standard) from platform_settings — no literal strings.
@@ -1004,15 +1040,18 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory, expertId: item.service.userId ?? null } // EXP-OVR.P2
         );
-        // D6 (ruling 61): a rails-attributed line takes its share from the SINGLE resolver — the
-        // band-resolved min(category band, rails). It deliberately outranks the per-service
-        // `revenueShareRate` snapshot, which ruling 47 dethroned as a first operand; letting a
-        // stale snapshot survive here would defeat the band edit exactly as audit C2/Q9 described.
-        // Non-rails lines are byte-identical to before.
+        // ONE precedence, shared by every quote and charge surface (`pickOwnerShareRate`):
+        //   rails (ruling 61) → direct D1 band (ruling 69 disposition 6) → the legacy path.
+        // Both resolver lanes deliberately outrank the per-service `revenueShareRate` snapshot,
+        // which ruling 47 dethroned as a first operand; letting a stale snapshot survive here
+        // would defeat an admin band edit exactly as audit C2/Q9 described. A line neither lane
+        // can price (expert-owned, or a refusal) is byte-identical to pre-1C.
         const itemRails = railsByItemId.get(item.id);
-        const itemExpertShare = itemRails?.rate
-          ? itemRails.rate.providerShareRate
-          : safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        const { shareRate: itemExpertShare } = pickOwnerShareRate({
+          railsShareRate: itemRails?.rate?.providerShareRate ?? null,
+          direct: directRateByItemId.get(item.id) ?? null,
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate),
+        });
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
@@ -1045,30 +1084,24 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        let isProviderService2 = false;
-        if (item.service.userId) {
-          const [providerRow] = await db
-            .select({ role: users.role })
-            .from(users)
-            .where(eq(users.id, item.service.userId))
-            .limit(1);
-          // Canonical vocabulary (shared/roles.ts) — see the quote loop above.
-          if (isProviderRole(providerRow?.role)) {
-            isProviderService2 = true;
-          }
-        }
+        // Canonical vocabulary (shared/roles.ts) — from the SAME pre-pass map the quote loop read.
+        const isProviderService2 = isProviderRole(ownerRoleById.get(item.service.userId ?? "") ?? null);
         const itemCategoryRates2 = await resolveCommissionRates(
           isProviderService2
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory2, expertId: item.service.userId ?? null } // EXP-OVR.P2
         );
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
-        // D6 (ruling 61): same precedence as the quote loop above, from the SAME pre-pass decision —
-        // rails resolves through the single resolver and outranks the dethroned per-service snapshot.
+        // The SAME precedence and the SAME pre-pass decisions the quote loop above read — rails
+        // (ruling 61) then the direct D1 band (ruling 69 disposition 6), both through the single
+        // resolver, both outranking the dethroned per-service snapshot.
         const itemRails2 = railsByItemId.get(item.id);
-        const expertShareRate = itemRails2?.rate
-          ? itemRails2.rate.providerShareRate
-          : safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
+        const itemDirect2 = directRateByItemId.get(item.id) ?? null;
+        const { shareRate: expertShareRate, lane: rateLane } = pickOwnerShareRate({
+          railsShareRate: itemRails2?.rate?.providerShareRate ?? null,
+          direct: itemDirect2,
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate),
+        });
         const baseExpertEarningsAmt = price * expertShareRate;
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
@@ -1145,6 +1178,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               // it. The fee-ledger row is written from this snapshot at the authorization stamp, so
               // an admin re-pricing a band mid-checkout cannot rewrite what was charged.
               ...(itemRails2 ? { railsAttribution: railsSnapshot(itemRails2) } : {}),
+              // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
+              // posture and for the same reason — a line that fell back to the legacy lane must
+              // SAY so on the row, or a later reader would infer a D1 charge that never happened
+              // (§13). Present only for lines the direct pre-pass considered (a rails-priced line
+              // records its provenance in `railsAttribution` instead).
+              ...(itemDirect2 ? { directRateResolution: directRateSnapshot(itemDirect2, rateLane) } : {}),
               // §17 property rooms: the night range + rate SNAPSHOT into the booking (locked at
               // purchase — the same ready-made snapshot posture as bundle contents above).
               ...(stay
@@ -1272,24 +1311,37 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        let isProviderServicePreview = false;
+        let ownerRolePreview: string | null = null;
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
             .from(users)
             .where(eq(users.id, item.service.userId))
             .limit(1);
-          // Canonical vocabulary (shared/roles.ts) — mirrors the checkout loops.
-          if (isProviderRole(providerRow?.role)) {
-            isProviderServicePreview = true;
-          }
+          ownerRolePreview = providerRow?.role ?? null;
         }
+        // Canonical vocabulary (shared/roles.ts) — mirrors the checkout loops.
+        const isProviderServicePreview = isProviderRole(ownerRolePreview);
         const itemRates = await resolveCommissionRates(
           isProviderServicePreview
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory, expertId: item.service.userId ?? null }
         );
-        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate);
+        // 1C (ruling 69 disposition 6): the PREVIEW must price a direct provider line the same way
+        // the charge does, through the SAME `pickOwnerShareRate` precedence — a preview that keeps
+        // the pre-1C lane would quote a number the checkout no longer charges. Rails is absent here
+        // by construction: this surface has no ref, so it quotes the un-attributed (full) lane, as
+        // it always has.
+        const { shareRate: itemExpertShare } = pickOwnerShareRate({
+          railsShareRate: null,
+          direct: await resolveDirectProviderRate({
+            serviceOwnerUserId: item.service.userId ?? null,
+            ownerRole: ownerRolePreview,
+            categoryId: item.service.categoryId ?? null,
+            serviceId: item.service.id ?? item.serviceId,
+          }),
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate),
+        });
         previewSubtotal += itemPrice;
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
         previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;

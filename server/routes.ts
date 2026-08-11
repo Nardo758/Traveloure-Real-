@@ -180,6 +180,12 @@ import {
   resolveServiceOwnerShareRate,
   type CommissionRates,
 } from "./services/commission";
+// 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6) — the cart quote must price a
+// direct provider line through the same D1 resolver /api/checkout charges it through.
+import {
+  resolveDirectProviderRate,
+  pickOwnerShareRate,
+} from "./services/direct-charge-rate.service";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
@@ -6352,22 +6358,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      let isProviderService = false;
+      let ownerRole: string | null = null;
       if (item.service?.userId) {
         const [providerRow] = await db
           .select({ role: users.role })
           .from(users)
           .where(eq(users.id, item.service.userId))
           .limit(1);
-        // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
-        if (isProviderRole(providerRow?.role)) isProviderService = true;
+        ownerRole = providerRow?.role ?? null;
       }
+      // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
+      const isProviderService = isProviderRole(ownerRole);
       const rates = await resolveCommissionRates(
         isProviderService
           ? { source: "provider", providerId: item.service?.userId ?? null }
           : { category: feeCategory, expertId: item.service?.userId ?? null }
       );
-      const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
+      // 1C (ruling 69 disposition 6): the cart quote prices a direct provider line through the SAME
+      // `pickOwnerShareRate` precedence /api/checkout charges through, so this quote cannot silently
+      // diverge from the charged total (the same reason the §17 base-amount helper is shared).
+      // No rails here: this surface carries no ref, so it quotes the un-attributed (full) lane.
+      const { shareRate: expertShare } = pickOwnerShareRate({
+        railsShareRate: null,
+        direct: await resolveDirectProviderRate({
+          serviceOwnerUserId: item.service?.userId ?? null,
+          ownerRole,
+          categoryId: item.service?.categoryId ?? null,
+          serviceId: item.service?.id ?? item.serviceId,
+        }),
+        legacyShareRate: safeRate(item.service?.revenueShareRate, rates.expertShareRate),
+      });
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare) + calcInsuranceFee(price, rates, feeCategory);
       const isConciergeItem = item.service?.expertOfferingTypeId
