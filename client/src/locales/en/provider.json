@@ -39,5 +39,11 @@
     "Business Profile": "Business Profile",
     "New Service": "New Service",
     "Edit Service": "Edit Service"
+  },
+  "attestations": {
+    "title": "Confirmations",
+    "intro": "These are shown because of what you sell and how you deliver it. They are your own statements — Traveloure does not verify them, and they are not shown to travelers.",
+    "affirmedOn": "Confirmed on {{date}}",
+    "omitted": "Some confirmations could not be worked out for this listing yet:"
   }
 }

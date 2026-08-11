@@ -119,6 +119,7 @@ import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
 import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
+import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
@@ -965,6 +966,13 @@ export async function registerRoutes(
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
   // id="health" and 404s (live-verified), so order is load-bearing here.
   app.use(providerListingHealthRoutes);
+
+  // D9 onboarding attestations (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67;
+  // migration 197) — GET/POST /api/provider/services/:id/attestations. Mounted in the same slot
+  // rule as the health router above: ahead of the inline GET /api/provider/services/:id. The
+  // applicable SET is server-derived from the live row on every read AND every write
+  // (shared/service-attestations.ts); the body is a §19 allowlist of one field.
+  app.use(serviceAttestationsRoutes);
 
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.

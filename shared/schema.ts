@@ -7981,6 +7981,35 @@ export const serviceRoutePoints = pgTable("service_route_points", {
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
 
+// D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
+// (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE
+// CASCADE, composite UNIQUE (service_id, attestation_key). That UNIQUE is the idempotency
+// mechanism, not a nicety — the write path is INSERT … ON CONFLICT DO NOTHING, so re-affirming
+// keeps the FIRST affirmation's timestamp and never mints a second row.
+//
+// `attestationKey` carries NO DB CHECK: the vocabulary lives in shared/service-attestations.ts and
+// is app-enforced (the migration-144/195 posture — a CHECK over an app vocabulary is the
+// publish-time deploy-push failure CLAUDE.md warns about). `affirmedBy` is the SESSION user,
+// stamped server-side (§14 — never from req.body), ON DELETE SET NULL because deleting an account
+// must not erase the historical fact that the attestation was made.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes/service-attestations.routes.ts (§19/#PS18 — a denylist schema over a table whose
+// every non-key column is server-stamped would be exactly the mass-assignment shape ruling 46
+// named). Declared here per the publish-trap rule.
+export const serviceAttestations = pgTable("service_attestations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  attestationKey: varchar("attestation_key", { length: 64 }).notNull(),
+  affirmedAt: timestamp("affirmed_at").notNull().defaultNow(),
+  affirmedBy: varchar("affirmed_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_attestations_service_key_unique").on(table.serviceId, table.attestationKey),
+  index("service_attestations_service_idx").on(table.serviceId),
+]);
+export type ServiceAttestation = typeof serviceAttestations.$inferSelect;
+
 // R4/R5 (docs/DECISIONS.md ruling 58; migration 194): append-only download log for the D3
 // deliverable rail. One row per SUCCESSFUL fetch of GET /api/service-bookings/:id/deliverable —
 // the download signal D8's proposed "auto-complete after N days undownloaded" needs and does not

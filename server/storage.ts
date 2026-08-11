@@ -10,6 +10,7 @@ import {
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
+  serviceAttestations, type ServiceAttestation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
@@ -198,6 +199,8 @@ export interface IStorage {
   getAllProviderServices(): Promise<ProviderService[]>;
   getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
+  getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
+  affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -1242,6 +1245,41 @@ export class DatabaseStorage implements IStorage {
         })),
       ).returning();
     });
+  }
+
+  // ── D9 attestations (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67) ───────
+  // Read path: every affirmation on record for a service, oldest first. The APPLICABILITY of a
+  // key is never stored — it is re-derived from the live row by
+  // shared/service-attestations.ts on every read, so a listing that changes delivery method
+  // does not carry a stale "applies to you" claim (§13).
+  async getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]> {
+    return await db.select().from(serviceAttestations)
+      .where(eq(serviceAttestations.serviceId, serviceId))
+      .orderBy(serviceAttestations.affirmedAt);
+  }
+
+  // Write path: APPEND-ONLY affirmation record. `affirmedAt` and `affirmedBy` are stamped HERE,
+  // server-side, from the session user the route resolved — a client-supplied timestamp or user
+  // id never reaches a row (§14/§19), and there is no code path in this file that can update or
+  // delete one. Idempotency is structural: ON CONFLICT DO NOTHING against the
+  // (service_id, attestation_key) UNIQUE means a re-affirm keeps the FIRST affirmation's
+  // timestamp rather than silently back-dating or re-dating the record. The keys arrive already
+  // intersected with the SERVER-derived applicable set by the route; this layer is the strip
+  // that covers every other caller (the §18 two-layer placement rationale).
+  async affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]> {
+    const unique = Array.from(new Set(keys));
+    if (unique.length === 0) return await this.getServiceAttestations(serviceId);
+    await db.insert(serviceAttestations)
+      .values(unique.map((attestationKey) => ({
+        serviceId,
+        attestationKey,
+        affirmedAt: new Date(),
+        affirmedBy,
+      })))
+      .onConflictDoNothing({
+        target: [serviceAttestations.serviceId, serviceAttestations.attestationKey],
+      });
+    return await this.getServiceAttestations(serviceId);
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
