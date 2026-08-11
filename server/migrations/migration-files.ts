@@ -921,4 +921,11 @@ export const MIGRATION_FILES = [
   // shared/service-attestations.ts — NO CHECK (migration-144/195 posture, publish-trap
   // avoidance). Additive, idempotent. Declared in shared/schema.ts (publish-trap rule).
   "197_service_attestations.sql",
+  // 198: short_links.expires_at — D6 rails attribution (docs/DECISIONS.md ruling 61). ONE additive
+  // nullable timestamp; NULL = never expires, so every link already shared behaves identically and
+  // nothing is backfilled. It exists because ruling 61's "expired ref → full rate" refusal had
+  // nothing to key on — short_links carried no expiry. Enforced ONLY in the rails money decision
+  // (rails-attribution.service.ts); GET /r/:code and the S4 analytics attribution are unchanged.
+  // No CHECK, no DEFAULT. Declared in shared/schema.ts (publish-trap rule).
+  "198_short_link_expires_at.sql",
 ] as const;

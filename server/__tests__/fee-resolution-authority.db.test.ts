@@ -176,6 +176,37 @@ test("A7: a per-entity override is honored and stamped entity_override with a nu
   }
 });
 
+/**
+ * A9 — D6 (ruling 61): `isRails` SELECTS A LANE, IT DOES NOT CARRY A RATE.
+ *
+ * The attribution chain now has a caller (`rails-attribution.service.ts`), which makes the direction
+ * of authority load-bearing: the ONLY thing an attributed booking contributes is the boolean, and
+ * the number behind it must still come from `fee_bands`. Same shape as A1, one lane over — edit the
+ * `provider_rails` band and the next rails resolution must reflect it, with nothing else touched.
+ * This fails the day anyone lets an attribution input supply, cache or snapshot a rails rate.
+ */
+test("A9: the rails rate is band-resolved — an admin edit to provider_rails reaches the next rails resolution", async () => {
+  const rails = await requireBand(PROVIDER_RAILS_BAND);
+  // Category band well ABOVE rails, so min() selects rails in both resolutions below.
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${round2(rails.rate * 3)} WHERE band_key = ${bandKeyUnderTest}`);
+
+  const before = await resolveProviderRate({ categoryId, isRails: true });
+  assert.equal(before.platformRate, rails.rate, "the rails lane must resolve the rails band, not a constant");
+  assert.equal(before.rateSource, "rails");
+  assert.equal(before.bandId, rails.id, "a rails-sourced rate must name the band that produced it");
+
+  const edited = round2(rails.rate / 2);
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${edited} WHERE band_key = ${PROVIDER_RAILS_BAND}`);
+  try {
+    const after = await resolveProviderRate({ categoryId, isRails: true });
+    assert.equal(after.platformRate, edited, "the band edit must reach the next rails resolution");
+    assert.notEqual(after.platformRate, before.platformRate, "the rails rate must actually have moved");
+    assert.equal(after.travelerFeeWaived, true, "the waiver belongs to the LANE and survives a re-priced band");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${rails.rate} WHERE band_key = ${PROVIDER_RAILS_BAND}`);
+  }
+});
+
 /** A8 — FAIL-LOUD (R2/D0). No silent fallback rate, ever. */
 test("A8: a category with no band throws rather than falling back to a default rate", async () => {
   const orphan = await db.execute(sql`
