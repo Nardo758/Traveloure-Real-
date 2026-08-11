@@ -1,8 +1,18 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function PrivacyPolicyPage() {
+  useEffect(() => {
+    if (window.location.hash === "#data-deletion") {
+      const t = setTimeout(() => {
+        document.getElementById("data-deletion")?.scrollIntoView({ block: "start" });
+      }, 400);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="bg-white dark:bg-gray-900 border-b sticky top-0 z-50">
@@ -22,7 +32,7 @@ export default function PrivacyPolicyPage() {
 
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-2" data-testid="text-privacy-title">Privacy Policy</h1>
-        <p className="text-muted-foreground mb-8">Effective Date: January 25, 2026</p>
+        <p className="text-muted-foreground mb-8">Effective Date: August 10, 2026</p>
 
         <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
           <section>
@@ -102,7 +112,13 @@ export default function PrivacyPolicyPage() {
               <li>Instagram username and follower count (for influencer verification)</li>
               <li>Account type (personal, business, or creator)</li>
               <li>Linked Facebook Pages (if applicable)</li>
+          <li>Media count and profile picture URL (for influencer verification)</li>
+          <li>Your Instagram posts and media, including images, captions and timestamps (for Content Studio)</li>
+          <li>An access token that keeps the connection active, stored for up to 60 days</li>
             </ul>
+        <p className="text-muted-foreground leading-relaxed mt-4">
+          When you connect Instagram to Content Studio, we retrieve your posts and media so you can manage them within Traveloure, and we store a long-lived access token, valid for up to 60 days, so the connection stays active without asking you to sign in repeatedly. You can revoke this token at any time, and delete everything we obtained through the connection, using the steps in Section 8.5.
+        </p>
             <p className="text-muted-foreground leading-relaxed mt-4">
               We do not post to your social media accounts without your explicit permission. We comply with Meta's Platform Terms and Developer Policies.
             </p>
@@ -265,7 +281,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4">8. Your Rights and Choices</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Depending on your location and applicable law, you may have the following rights regarding your personal information:
+              Some of the rights below depend on your location and applicable law. The right to request deletion of your personal information, described in Section 8.5, is different: we grant it to every Traveloure user, in every country where our platform is accessible, regardless of where you live or which laws apply to you.
             </p>
 
             <h3 className="text-xl font-medium mb-3">8.1 GDPR Rights (EEA, UK, Switzerland)</h3>
@@ -294,7 +310,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Communication preferences:</strong> Unsubscribe from marketing emails via links in messages or account settings</li>
               <li><strong>Cookie controls:</strong> Manage cookie preferences through browser settings or our cookie consent tool</li>
               <li><strong>Location services:</strong> Disable location tracking through device settings</li>
-              <li><strong>Account closure:</strong> Request account deletion (subject to legal retention requirements)</li>
+              <li><strong>Account closure:</strong> Request deletion of your account and personal information at any time, from anywhere in the world (see Section 8.5)</li>
             </ul>
 
             <h3 className="text-xl font-medium mb-3">8.4 Exercising Your Rights</h3>
@@ -303,11 +319,24 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
               <li>Email us at admin@traveloure.com</li>
-              <li>Submit a request through your account settings</li>
             </ul>
             <p className="text-muted-foreground leading-relaxed mt-4">
               We will respond to verified requests within 30 days (or as required by applicable law). We may need to verify your identity before processing your request.
             </p>
+
+        <h3 id="data-deletion" className="text-xl font-medium mb-3 mt-8">8.5 Data Deletion - Available to All Users Worldwide</h3>
+        <p className="text-muted-foreground leading-relaxed mb-4">
+          Any Traveloure user, anywhere in the world, may request deletion of their account and personal information at any time, free of charge, without giving a reason. To make a request, email admin@traveloure.com from the email address on your account with the subject line "Data Deletion Request." We acknowledge every request within 7 days and complete deletion within 30 days. We may ask you to verify that you own the account before we proceed.
+        </p>
+        <p className="text-muted-foreground leading-relaxed mb-4">
+          If you connected a Facebook or Instagram account to Traveloure, all data we obtained through that connection is deleted as part of this process. This includes your Instagram user ID and username, follower and media counts, account type, profile picture, any linked Facebook Pages, any Instagram posts or media we retrieved, and the access tokens we stored to maintain the connection.
+        </p>
+        <p className="text-muted-foreground leading-relaxed mb-4">
+          You can also disconnect Facebook or Instagram on its own, without deleting your Traveloure account, from Facebook under Settings and Privacy, then Settings, then Apps and Websites. Removing Traveloure there automatically tells us to delete the data we obtained through that connection and the access token we stored. You do not need to contact us separately.
+        </p>
+        <p className="text-muted-foreground leading-relaxed mt-4">
+          Data we obtained from Meta is deleted on request and is not subject to the longer retention periods in Section 6. Those periods apply only to records we are independently required to keep, such as completed financial transactions and identity verification records for Experts and Providers. If any record is retained, we will tell you which one and why.
+        </p>
           </section>
 
           <section>
@@ -420,7 +449,7 @@ export default function PrivacyPolicyPage() {
 
           <div className="p-4 bg-muted/50 rounded-lg mt-8">
             <p className="text-sm text-muted-foreground text-center">
-              This Privacy Policy was last updated on January 25, 2026. Thank you for trusting Traveloure with your personal information.
+              This Privacy Policy was last updated on August 10, 2026. Thank you for trusting Traveloure with your personal information.
             </p>
           </div>
         </div>
