@@ -66,6 +66,7 @@ import {
   ARTIFACT_AUTO_COMPLETE_DAYS,
   DAY_MS,
   PROPERTY_AUTO_COMPLETE_GRACE_DAYS,
+  serviceDateCompletionDays,
 } from "../config/completion-windows.config";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
@@ -82,6 +83,8 @@ export const COMPLETION_ALLOWED_FROM_STATUSES: readonly string[] = ["confirmed"]
 export type CompletionActor =
   | "auto_complete_pdf"
   | "auto_complete_property"
+  /** Ruling 69 disposition 1 — the in_person/hybrid booked-service-date timer. */
+  | "auto_complete_service_date"
   | "provider_session_end"
   | "provider_declared"
   | "provider_bundle_components";
@@ -89,6 +92,7 @@ export type CompletionActor =
 const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
   auto_complete_pdf: "auto_complete",
   auto_complete_property: "auto_complete",
+  auto_complete_service_date: "auto_complete",
   provider_session_end: "provider",
   provider_declared: "provider",
   provider_bundle_components: "provider",
@@ -105,6 +109,8 @@ export type IneligibleReason =
   | "window_open"
   | "no_delivery_timestamp"
   | "no_checkout_date"
+  /** Ruling 69 disposition 1: an in_person/hybrid booking with no booked date at all (§13). */
+  | "no_service_date"
   | "no_booked_slot"
   | "slot_has_no_end_time"
   | "session_not_ended"
@@ -120,6 +126,14 @@ export interface CompletionEligibility {
   evidence: Record<string, unknown>;
   /** When this booking becomes eligible, when that is knowable. Diagnostic only. */
   eligibleAt?: string;
+  /**
+   * TRUE only in ruling 69 disposition 1's NARROW no-date case: an in_person/hybrid booking whose
+   * service date the server does not hold, so the timer can never fire for it. The disposition
+   * opens the owner rail's provider-declared arm for exactly that case and no other — the timer is
+   * the normal path. The SERVICE decides this, never the caller: `completeBooking` re-reads this
+   * flag and a caller that asks for the fallback on a dated booking is refused.
+   */
+  ownerDeclarableFallback?: boolean;
 }
 
 interface BookingRow {
@@ -170,6 +184,43 @@ async function loadService(serviceId: string): Promise<ServiceRow | null> {
   return (row as ServiceRow) ?? null;
 }
 
+/** `YYYY-MM-DD` in UTC from a Date/date-string, or null when the value cannot be dated honestly. */
+function toUtcDayString(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null;
+  }
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  // Already a bare calendar day (the `date` column shape, and the `checkOut` snapshot's shape).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : null;
+}
+
+/**
+ * The booked service DATE for an in_person/hybrid booking (ruling 69 disposition 1), or null.
+ *
+ * Two server-side sources, strongest first — see the `service_date_timer` case for why these two
+ * and nothing else. Returning null is a real answer: it means the platform does not know when this
+ * service happens, and a completion timer must not run on a date nobody recorded.
+ */
+async function resolveServiceDate(
+  booking: BookingRow,
+): Promise<{ date: string; source: "booked_slot" | "scheduled_date" } | null> {
+  if (booking.slotId) {
+    const [slot] = await db
+      .select({ date: vendorAvailabilitySlots.date })
+      .from(vendorAvailabilitySlots)
+      .where(eq(vendorAvailabilitySlots.id, booking.slotId));
+    const slotDay = toUtcDayString(slot?.date as unknown);
+    if (slotDay) return { date: slotDay, source: "booked_slot" };
+  }
+  const scheduled = toUtcDayString((booking.bookingDetails ?? {}).scheduledDate);
+  if (scheduled) return { date: scheduled, source: "scheduled_date" };
+  return null;
+}
+
 const no = (
   bookingId: string,
   rule: CompletionRule | null,
@@ -209,10 +260,48 @@ export async function resolveCompletionEligibility(
   const details = (booking.bookingDetails ?? {}) as Record<string, any>;
 
   switch (rule) {
-    // ── in_person / hybrid: ruling 63 leaves this EXACTLY as built. The traveler drives it via
-    // POST /api/bookings/:id/confirm-completion; no D8 caller may fire it. ────────────────────
-    case "confirm_completion":
-      return no(bookingId, rule, "rule_not_timer_driven", { deliveryMethod: service.deliveryMethod });
+    // ── in_person / hybrid: the BOOKED SERVICE DATE timer (ruling 69 disposition 1, amending
+    // ruling 63's "untouched" clause and closing ruling 66's "in-person has no writer" finding).
+    //
+    // THE DATE SOURCE IS AUDITED, NOT ASSUMED. `service_bookings` has no `booking_date` column at
+    // all; two server-side records can date this booking and they are tried in order of strength:
+    //   (1) the BOOKED SLOT (`slot_id` → `vendor_availability_slots.date`) — the same evidence the
+    //       session_end rule gates on, and the strongest because the provider published it;
+    //   (2) `bookingDetails.scheduledDate` — the purchase-time snapshot checkout writes from the
+    //       cart row. Second because a cart line can carry a date the provider never confirmed.
+    // Anything else — `createdAt`, "a few days after purchase", a duration guess — is a GUESSED
+    // date minting real money, which is precisely what §13 forbids.
+    //
+    // WHEN: N days after the service DAY has FULLY passed, N = `serviceDateCompletionDays()` =
+    // `holdWindowDays('service_booking')`. The day boundary (not the slot's end time) is used even
+    // when a slot supplies the date, so both sources answer identically and a same-day booking is
+    // never completed while the traveler could still be at the service.
+    case "service_date_timer": {
+      const dated = await resolveServiceDate(booking);
+      if (!dated) {
+        // §13 + the disposition's own words: a booking with NO service date is NOT timer-eligible.
+        // This is the ONE case that opens the owner rail's provider-declared arm for in-person.
+        return {
+          ...no(bookingId, rule, "no_service_date", {
+            slotId: booking.slotId ?? null,
+            scheduledDate: details.scheduledDate ?? null,
+          }),
+          ownerDeclarableFallback: true,
+        };
+      }
+      const windowDays = serviceDateCompletionDays();
+      const eligibleAtMs = Date.parse(`${dated.date}T00:00:00Z`) + DAY_MS + windowDays * DAY_MS;
+      const evidence = {
+        serviceDate: dated.date,
+        dateSource: dated.source,
+        windowDays,
+        eligibleAt: new Date(eligibleAtMs).toISOString(),
+      };
+      if (now.getTime() < eligibleAtMs) {
+        return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: evidence.eligibleAt };
+      }
+      return { bookingId, rule, eligible: true, evidence };
+    }
 
     // ── property: the stay's CHECKOUT DATE (snapshotted into bookingDetails at purchase). ─────
     case "checkout_date": {
@@ -383,10 +472,19 @@ export async function completeBooking(input: {
   actor: CompletionActor;
   now?: Date;
   reason?: string;
+  /**
+   * Ruling 69 disposition 1's NARROW no-date arm. The caller states which RAIL it is (only the
+   * owner rail may pass this); the SERVICE still decides whether the fallback applies, by
+   * requiring `eligibility.ownerDeclarableFallback`. A booking that HAS a service date is refused
+   * exactly as before — the timer is the normal path and this cannot short-circuit it.
+   */
+  allowOwnerDeclaredFallback?: boolean;
 }): Promise<CompleteBookingResult> {
   const now = input.now ?? new Date();
   const eligibility = await resolveCompletionEligibility(input.bookingId, now);
-  if (!eligibility.eligible) {
+  const takesNoDateFallback =
+    !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
+  if (!eligibility.eligible && !takesNoDateFallback) {
     return {
       completed: false,
       bookingId: input.bookingId,
@@ -425,6 +523,11 @@ export async function completeBooking(input: {
           actor: input.actor,
           at: now.toISOString(),
           evidence: eligibility.evidence,
+          // A completion taken on ruling 69's no-date arm must SAY it was — the row otherwise
+          // reads as a normal timer completion for a date the platform never held (§13).
+          ...(takesNoDateFallback
+            ? { fallback: "owner_declared_no_service_date", ineligibleReason: eligibility.reason }
+            : {}),
         },
       })}::jsonb`,
       updatedAt: now,
@@ -550,6 +653,16 @@ export async function findAutoCompleteCandidates(now: Date = new Date(), limit =
             AND ${serviceBookings.confirmedAt} IS NOT NULL
             AND ${serviceBookings.confirmedAt} <= ${artifactFloor}
           )
+          OR (
+            -- Ruling 69 disposition 1: in_person/hybrid. NO time floor, for the same reason the
+            -- property row has none — the service date lives in a slot row or in the
+            -- bookingDetails snapshot, not in a column this query can compare, and a same-day
+            -- in-person booking must not be stranded by a floor derived from purchase time.
+            ${providerServices.deliveryMethod} IN ('in_person', 'hybrid')
+            AND ${providerServices.productShape} IS DISTINCT FROM 'bundle'
+            AND ${providerServices.productShape} IS DISTINCT FROM 'property'
+            AND ${providerServices.productShape} IS DISTINCT FROM 'property_room'
+          )
         )`,
       ),
     )
@@ -561,7 +674,9 @@ export async function findAutoCompleteCandidates(now: Date = new Date(), limit =
 /** Which timer actor a rule belongs to. Keeps the job free of any method knowledge of its own. */
 export function timerActorFor(rule: CompletionRule): CompletionActor | null {
   if (!TIMER_DRIVEN_COMPLETION_RULES.has(rule)) return null;
-  return rule === "artifact_timer" ? "auto_complete_pdf" : "auto_complete_property";
+  if (rule === "artifact_timer") return "auto_complete_pdf";
+  if (rule === "service_date_timer") return "auto_complete_service_date";
+  return "auto_complete_property";
 }
 
 /** Which owner actor a rule belongs to, or null when the owner may not declare this rule. */
