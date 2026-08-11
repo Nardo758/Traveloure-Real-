@@ -636,7 +636,7 @@ a ruling, or real-user validation and is therefore **not built**.
   value; splitting them needs an additive column + a ruling (and touches the D7 surface just landed).
 
 - **SS-5 — D9 attestation: protected professional titles. — ADDRESSED** (DECISIONS.md **ruling 67**,
-  build commit `SS5_BUILD_SHA`; migration 197, `shared/service-attestations.ts`,
+  build commit `f0ac5a0`; migration 197, `shared/service-attestations.ts`,
   `server/routes/service-attestations.routes.ts`, 13/13 in
   `server/__tests__/service-attestations.http.test.ts`, reachability proven in the live wizard).
   Built as a **title-claim attestation, not a licensing gate**, exactly as the scope note below
