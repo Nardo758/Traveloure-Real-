@@ -202,3 +202,42 @@ test("RV-1: refund reversal still records a negative compensation row after migr
   const after = await db.execute(sql`SELECT count(*)::int AS n FROM platform_revenue WHERE source_type = 'booking_commission' AND source_id = ${id}`);
   assert.equal((after.rows[0] as any).n, 2, "re-mint after reversal must be a no-op");
 });
+
+test("FI-1: a mid-mint failure rolls back ALL mint effects, and a retry restores full consistency", async () => {
+  const id = await insertBooking({ status: "completed", pi: PAID_PI, confirmedDaysAgo: 5, completedAt: new Date() });
+  const booking = await storage.getServiceBooking(id);
+  assert.ok(booking);
+
+  // Inject a failure AFTER the ledger inserts would have happened: abort any totalRevenue
+  // update on provider_services (the last-but-one step of the mint transaction).
+  await db.execute(sql.raw(`
+    CREATE OR REPLACE FUNCTION t1091_fail() RETURNS trigger AS $$
+    BEGIN RAISE EXCEPTION 't1091 injected failure'; END;
+    $$ LANGUAGE plpgsql;
+    CREATE TRIGGER t1091_fail_trg BEFORE UPDATE OF total_revenue ON provider_services
+      FOR EACH ROW EXECUTE FUNCTION t1091_fail();`));
+
+  const revBefore = await db.execute(sql`SELECT COALESCE(total_revenue,0)::numeric AS r FROM provider_services WHERE id = ${serviceId}`);
+  try {
+    await assert.rejects(() => storage.mintCompletionEarningsForBooking(booking!), /t1091 injected failure|total_revenue/);
+
+    // The transaction must have rolled EVERYTHING back — no orphaned ledger rows or summary bump.
+    for (const [label, q] of [
+      ["provider_earnings", sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_type='booking' AND source_id=${id}`],
+      ["expert_earnings", sql`SELECT count(*)::int AS n FROM expert_earnings WHERE reference_type='service_booking' AND reference_id=${id}`],
+      ["platform_revenue", sql`SELECT count(*)::int AS n FROM platform_revenue WHERE source_type='booking_commission' AND source_id=${id}`],
+    ] as const) {
+      const r = await db.execute(q);
+      assert.equal((r.rows[0] as any).n, 0, `${label} must be rolled back`);
+    }
+  } finally {
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS t1091_fail_trg ON provider_services; DROP FUNCTION IF EXISTS t1091_fail();`));
+  }
+
+  // Retry after the fault clears: the full set (3 ledger rows + rollups) lands together.
+  assert.equal(await storage.mintCompletionEarningsForBooking(booking!), true, "retry must apply the full mint");
+  const revAfter = await db.execute(sql`SELECT COALESCE(total_revenue,0)::numeric AS r FROM provider_services WHERE id = ${serviceId}`);
+  assert.equal(Number((revAfter.rows[0] as any).r) - Number((revBefore.rows[0] as any).r), 90, "totalRevenue restored exactly once on retry");
+  const pr = await db.execute(sql`SELECT count(*)::int AS n FROM platform_revenue WHERE source_type='booking_commission' AND source_id=${id}`);
+  assert.equal((pr.rows[0] as any).n, 1);
+});

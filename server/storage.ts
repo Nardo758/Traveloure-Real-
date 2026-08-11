@@ -1890,15 +1890,18 @@ export class DatabaseStorage implements IStorage {
     const providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
     // Earnings become available after the configurable hold period (default 7 days)
     const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
+    // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
+    // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 195's partial unique
+    // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)
+    // exactly ONE caller wins each row. The whole mint — ledger rows PLUS their rollup
+    // side-effects (service totalRevenue, daily revenue summary) — runs in ONE transaction:
+    // a crash or failure mid-mint rolls everything back, so a retry re-attempts the full set and
+    // rollups can never be permanently skipped behind an already-inserted ledger row.
+    return await db.transaction(async (tx) => {
     let applied = false;
 
-    // RACE-PROOF (task 1091 review): the DB is the guard, not a SELECT. Each effect is an
-    // INSERT ... ON CONFLICT DO NOTHING against migration 195's partial unique indexes, so under
-    // concurrent callers (traveler confirm vs scheduler vs reconciliation) exactly ONE caller
-    // wins each row and the losers are clean no-ops. The service totalRevenue increment rides
-    // the WINNING provider-earning insert only — never double-counted.
     if (platformFee > 0) {
-      const inserted = await db.insert(platformRevenue).values({
+      const inserted = await tx.insert(platformRevenue).values({
         sourceType: 'booking_commission',
         sourceId: booking.id,
         trackingNumber: booking.trackingNumber || undefined,
@@ -1919,18 +1922,38 @@ export class DatabaseStorage implements IStorage {
       }).returning({ id: platformRevenue.id });
       if (inserted.length > 0) {
         applied = true;
-        // Daily summary rollup (matches recordPlatformRevenue's side-effect), only for the winner.
+        // Daily summary rollup (matches recordPlatformRevenue's side-effect), only for the
+        // winner, and inside the SAME transaction as the winning ledger insert.
         const date = new Date().toISOString().split('T')[0];
-        await this.updateDailyRevenueSummary(date, {
-          totalGross: String(grossAmount),
-          totalPlatformFee: String(platformFee),
-          totalNet: String(platformFee * (1 - PROCESSING_FEE_RATE)),
-        });
+        const addGross = grossAmount;
+        const addFee = platformFee;
+        const addNet = platformFee * (1 - PROCESSING_FEE_RATE);
+        const [existingSummary] = await tx.select().from(dailyRevenueSummary)
+          .where(eq(dailyRevenueSummary.date, date));
+        if (existingSummary) {
+          await tx.update(dailyRevenueSummary)
+            .set({
+              totalGross: String(parseFloat(existingSummary.totalGross || '0') + addGross),
+              totalPlatformFee: String(parseFloat(existingSummary.totalPlatformFee || '0') + addFee),
+              totalNet: String(parseFloat(existingSummary.totalNet || '0') + addNet),
+              transactionCount: (existingSummary.transactionCount || 0) + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(dailyRevenueSummary.date, date));
+        } else {
+          await tx.insert(dailyRevenueSummary).values({
+            date,
+            totalGross: String(addGross),
+            totalPlatformFee: String(addFee),
+            totalNet: String(addNet),
+            transactionCount: 1,
+          });
+        }
       }
     }
 
     if (providerEarningsAmount > 0) {
-      const insertedProvider = await db.insert(providerEarnings).values({
+      const insertedProvider = await tx.insert(providerEarnings).values({
         providerId,
         type: 'service_booking',
         amount: String(providerEarningsAmount),
@@ -1945,14 +1968,14 @@ export class DatabaseStorage implements IStorage {
         where: sql`source_type = 'booking'`,
       }).returning({ id: providerEarnings.id });
       if (insertedProvider.length > 0) {
-        await db.update(providerServices)
+        await tx.update(providerServices)
           .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
           .where(eq(providerServices.id, serviceId));
         applied = true;
       }
 
       // Also record in expert earnings ledger (provider may be an expert)
-      const insertedExpert = await db.insert(expertEarnings).values({
+      const insertedExpert = await tx.insert(expertEarnings).values({
         expertId: providerId,
         type: 'consulting',
         amount: String(providerEarningsAmount),
@@ -1969,6 +1992,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     return applied;
+    });
   }
 
   // Service Reviews
