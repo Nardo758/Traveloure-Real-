@@ -61,3 +61,75 @@ export const ARTIFACT_DELIVERY_METHODS: ReadonlySet<string> = new Set(["pdf"]);
 export function isArtifactDelivery(s: FundamentalsShape): boolean {
   return !!s.deliveryMethod && ARTIFACT_DELIVERY_METHODS.has(s.deliveryMethod);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// D8 — PER-METHOD COMPLETION RULES (docs/DECISIONS.md ruling 63, decision-maker ratified
+// Aug 11 2026). ONE payout machinery, no per-method money forks: every rule below names WHEN a
+// booking's completion event fires; WHAT it does is identical for all of them (the shared
+// `completeBooking` in server/services/booking-completion.service.ts → the SAME
+// `updateServiceBookingStatus('completed')` flip that mints the held earning, then the existing
+// escrow window / traveler confirm-completion release).
+//
+// This lives HERE, beside the D2 predicates, so method resolution has exactly one home — a
+// second local method list in a job or a route is the defect this placement prevents.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+export type CompletionRule =
+  /** in_person / hybrid — the traveler-driven confirm-completion flip, AS BUILT. Unchanged by D8. */
+  | "confirm_completion"
+  /** productShape property / property_room — the stay's checkout date. */
+  | "checkout_date"
+  /** pdf — delivered via entitlement; the auto-complete timer (first download, or undownloaded). */
+  | "artifact_timer"
+  /** call / video / voice_notes — session end per BOOKED SLOT, provider-confirmed. */
+  | "session_end"
+  /** async_messaging — SLA satisfied + scope delivered, provider-declared, disputable window. */
+  | "provider_declared"
+  /** productShape bundle — ALL components complete; partial routes to the refund lane. */
+  | "bundle_components";
+
+/**
+ * Ruling 63's "call/voice" row, read as the build charter resolves it: call, video AND
+ * voice_notes. NOTE the deliberate tension with D2 above, which classifies `voice_notes` as
+ * async/artifact delivery and therefore leaves it OUT of `SCHEDULED_METHODS` — so a voice_notes
+ * booking typically carries no `slot_id`, and the session-end gate refuses it with a stated
+ * reason rather than guessing a session end (§13). That gap is REPORTED, not papered over.
+ */
+export const SESSION_END_METHODS: ReadonlySet<string> = new Set(["call", "video", "voice_notes"]);
+
+/** Ruling 63's "async" row. */
+export const PROVIDER_DECLARED_METHODS: ReadonlySet<string> = new Set(["async_messaging"]);
+
+/**
+ * The completion rule for a service shape, or `null` when the row cannot be classified honestly
+ * (§13 — an unclassifiable booking is SKIPPED with a stated reason, never auto-completed).
+ *
+ * productShape is checked FIRST and deliberately outranks deliveryMethod here — ruling 63 gives
+ * bundles and properties their own completion rows, and a bundle's own deliveryMethod says
+ * nothing about whether its components were delivered. (This is the one place the D8 ordering
+ * differs from D2's fundamentals ordering, which classifies a bundle by its own deliveryMethod;
+ * the two questions are different, and the divergence is intentional.)
+ */
+export function completionRuleFor(s: FundamentalsShape): CompletionRule | null {
+  if (s.productShape === "bundle") return "bundle_components";
+  if (s.productShape === "property" || s.productShape === "property_room") return "checkout_date";
+  if (!s.deliveryMethod) return null;
+  if (ARTIFACT_DELIVERY_METHODS.has(s.deliveryMethod)) return "artifact_timer";
+  if (SESSION_END_METHODS.has(s.deliveryMethod)) return "session_end";
+  if (PROVIDER_DECLARED_METHODS.has(s.deliveryMethod)) return "provider_declared";
+  if (PLACE_ANCHORED_METHODS.has(s.deliveryMethod)) return "confirm_completion";
+  return null;
+}
+
+/** Rules a scheduled TIMER may fire on its own (no human in the loop). */
+export const TIMER_DRIVEN_COMPLETION_RULES: ReadonlySet<CompletionRule> = new Set<CompletionRule>([
+  "artifact_timer",
+  "checkout_date",
+]);
+
+/** Rules the booking OWNER (provider/expert) declares. */
+export const OWNER_DECLARED_COMPLETION_RULES: ReadonlySet<CompletionRule> = new Set<CompletionRule>([
+  "session_end",
+  "provider_declared",
+  "bundle_components",
+]);

@@ -112,7 +112,7 @@ both the build bench and the Replit workspace.
 | 9 | **38 proofs ran nowhere in CI.** Five suites protecting twice-regressed work were script-only — per rulings 26/27, script-only = MISSING. Now a blocking PR-triggered workflow. | FIXED | `00ec75d`; ruling 57 |
 | 10 | **Ledger number collision.** The Stripe-only KYB ruling was written as a prose section headed "Decision #39" while 39 was already taken in the numeric table; the lint parses table rows only, so CI never saw it. Its publish-gate clause was also stale (identity AND business for every publisher — provider-only truth). | RECORDED | ruling 55 |
 | 11 | **D3 deliverable is LINK delivery, not protected delivery.** See the P1 entry below. Object Storage is now **provisioned** (bucket attached in `.replit`, wrapper at `server/infrastructure/object-storage.ts`) — but it is consumed only by `vendor-management.service.ts` for vendor CONTRACT documents. The deliverable rail is **untouched**: `ServiceForm` still renders "Deliverable File URL" as a pasted-URL input, and the entitlement endpoint still returns that raw URL verbatim. The infrastructure unblocks R4; it does not constitute R4. | **OPEN** | P1 below |
-| 12 | **No completion event exists for pdf bookings.** See the P2 entry below. | **OPEN** | P2 below |
+| 12 | **No completion event exists for pdf bookings.** See the P2 entry below. **Wider than reported:** the only writer of `service_bookings.status='completed'` on `main` was the admin dispute-REJECT — the owner rail refuses `completed` and `confirm-completion` demands it, a closed loop — so no completion event existed for **any** delivery method. Closed for pdf/property (timer) and call/video/async/bundle (owner rail) by ruling 66; `in_person`/`hybrid` is left as ruling 63 ordered ("unchanged") and is re-filed as its own open item. | FIXED (ruling 66, `<SHA>`) — in-person half re-filed | P2 below; ruling 66 |
 
 **Standing lessons worth carrying forward:** (a) a fix that closes a reported symptom may not close the class — #1 needed a second pass because the first proved the gate *correct* without proving it *reachable*; (b) duplicated branches at two call sites drifted twice, which is why the resolver is now a single shared function; (c) a guard that is not wired into CI is not a guard, and green means green-within-stated-bounds (ruling 57 states its negative space).
 
@@ -236,7 +236,7 @@ on both. (P4) unauthenticated GET of the raw GCS URL returned **HTTP 403 Forbidd
 empirically PRIVATE; ruling 58 bucket-privacy question CLOSED. Fixtures cleaned up; no code
 changes required.
 
-**P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
+~~**P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
 unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
 ruling: D3 did **not** define completion "by accident" — it defines **nothing**. The deliverable read
 writes no row, logs no download, and touches no status. A pdf booking therefore reaches `completed`
@@ -247,7 +247,54 @@ earning held indefinitely on a product that was fully delivered the moment it wa
 Consequence for D8's proposed table: **"auto-complete after N days undownloaded" cannot be built
 today — there is no download signal to measure.** It requires D3 to start logging deliverable
 fetches (one write on the endpoint above), which should land with the P1 storage work rather than as
-a separate pass.
+a separate pass.~~
+**CLOSED by ruling 66 (commit `<SHA>`).** `deliverable_downloads` (migration 194, R5) supplied the
+download signal, so both arms of ruling 63's pdf rule are now built and proven: 7 days after the
+first download, and 7 days undownloaded post-delivery (the latter measured from the new additive
+`provider_services.deliverable_uploaded_at`, migration 196 — §13: a NULL clock skips that arm with a
+stated reason instead of guessing). The timer is `server/jobs/bookingAutoCompletion.ts`, hourly,
+driving the SHARED `completeBooking` (`server/services/booking-completion.service.ts`).
+**One clause of the entry above was WRONG and is corrected by the same ruling:** the manual path it
+describes does not exist either. `OWNER_SETTABLE_BOOKING_STATUSES` is `["confirmed","cancelled"]`
+and the owner rail answers *"Completion is confirmed by the traveler"*, while
+`POST /api/bookings/:id/confirm-completion` **requires the booking to already be `completed`** — a
+closed loop. The only writer of `service_bookings.status='completed'` on `main` was
+`admin.routes.ts`'s dispute-REJECT, so **no completion event existed for ANY delivery method**, not
+just pdf. See the new open item below for the half of that finding ruling 63 explicitly left alone.
+
+**OPEN (filed by ruling 66) — `in_person` / `hybrid` bookings still cannot reach `completed`.**
+Ruling 63's first table row is "confirm-completion flip as built (unchanged)", so the D8 lane
+deliberately did not touch it — but "as built" is the closed loop described just above: nothing can
+put an in-person booking into `completed`, and `confirm-completion` refuses anything that is not
+already there. Every other method now has a writer (timer for pdf/property, owner rail for
+call/video/async/bundle); in-person has none. Needs a decision-maker ruling on which actor opens
+that door (traveler-declares-then-confirms in one step, an owner rail with the same evidence gate
+the session-end rule uses, or a scheduled-date timer). **Not a regression** — it predates this lane
+and is unchanged by it.
+
+**OPEN (filed by ruling 66, per ruling 63's own instruction) — NO-SHOW POLICY.** Ruling 63 files
+this as its own follow-up and ruling 66 invented none of it. Today a `session_end` completion fires
+purely on the booked slot's end time: a call the traveler never joined completes exactly like one
+they did. There is no attendance signal anywhere in the schema, no no-show state, and no no-show
+refund or partial-payout path. Needs a ruling covering (a) who asserts a no-show and on what
+evidence, (b) whether it blocks completion, splits the fee, or routes to the existing refund lane,
+and (c) whether the traveler's existing 7-day dispute window is considered sufficient recourse
+(it currently IS the only recourse).
+
+**OPEN (filed by ruling 66) — `voice_notes` has no booked slot, so its completion rule cannot
+fire.** The build charter resolves ruling 63's "call/voice" row as call + video + voice_notes, and
+`SESSION_END_METHODS` reflects that — but D2 (`shared/service-fundamentals.ts`) classifies
+`voice_notes` as async/artifact delivery and therefore leaves it out of `SCHEDULED_METHODS`, so such
+a booking normally carries no `slot_id` and the evidence gate refuses it with `no_booked_slot`
+(§13 — never a guessed session end). Two honest resolutions, both needing a ruling: move
+`voice_notes` to the `provider_declared` (async) row, or give it a scheduled shape. Deliberately not
+chosen in-lane.
+
+**OPEN (filed by ruling 66) — the D8 owner-complete endpoint has NO client surface.**
+`POST /api/provider|expert/bookings/:id/complete` is live, owner-gated and proven, but no console
+screen calls it: a provider cannot yet mark a session, an async engagement or a bundle component
+complete from the UI. Server-side only by design (this lane was the machinery); the Workstation /
+Bookings surface is the natural home.
 
 **Filed (externally gated): Instagram publish round-trip unproven.** The D4 publish button self-gates
 honestly, but the real Graph API round-trip (image reachability from Instagram's servers) has never
