@@ -1830,8 +1830,18 @@ export class DatabaseStorage implements IStorage {
     //
     // NOT a compatibility break: verified at 281d355c that no caller passes this field. A booking
     // that legitimately needs a PI gets it from the claim machine, one state transition later.
-    const { stripePaymentIntentId: _clientSuppliedPi, ...safeBooking } =
-      booking as InsertServiceBooking & { stripePaymentIntentId?: unknown };
+    // Lane 7 (ruling 72): the deposit/balance PI linkage columns join stripePaymentIntentId in the
+    // §19a strip — they are written only by the shared promotion / balance-authorization paths.
+    const {
+      stripePaymentIntentId: _clientSuppliedPi,
+      stripeDepositIntentId: _clientSuppliedDepositPi,
+      stripeBalanceIntentId: _clientSuppliedBalancePi,
+      ...safeBooking
+    } = booking as InsertServiceBooking & {
+      stripePaymentIntentId?: unknown;
+      stripeDepositIntentId?: unknown;
+      stripeBalanceIntentId?: unknown;
+    };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
       // booking. Nothing downstream can distinguish that row from a real one after the fact, which

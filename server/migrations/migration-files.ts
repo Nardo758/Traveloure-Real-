@@ -936,4 +936,15 @@ export const MIGRATION_FILES = [
   // `local_expert_forms.languages` (jsonb string array); NULL means never captured and must never
   // render as a default "English" (§13). Both declared in shared/schema.ts (publish-trap rule).
   "199_pickup_radius_and_delivery_languages.sql",
+  // 200: deposits / partial payments on the cart-checkout rail — Lane 7 (docs/DECISIONS.md ruling
+  // 72). Ratified design: MANUAL BALANCE + PROVIDER OPT-IN PER LISTING. Adds deposit CONFIG to
+  // provider_services (deposit_enabled/type/percentage/flat_amount — owner listing config, not a
+  // §8/§18 fee rate) and the deposit/balance booking state to service_bookings (deposit_amount,
+  // deposit_paid, balance_amount, balance_paid, balance_due_at, stripe_deposit_intent_id,
+  // stripe_balance_intent_id — mirroring the legacy `bookings` shape additively). All
+  // additive-nullable, NO DB CHECK (app-enforced vocab), all DECLARED in shared/schema.ts
+  // (publish-trap rule). status='deposit_paid' is a plain varchar value outside every
+  // paid-equivalent set — a deposit-only booking releases no earning (D8 fires only from
+  // 'confirmed'). Deposits OFF ⇒ checkout byte-identical (§13).
+  "200_deposit_partial_payments.sql",
 ] as const;

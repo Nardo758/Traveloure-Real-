@@ -35,6 +35,14 @@ import {
   directRateSnapshot,
   type DirectRateResolution,
 } from "../services/direct-charge-rate.service";
+// Lane 7 (docs/DECISIONS.md ruling 72): deposits / partial payments. Deposit amounts are derived
+// server-side from the listing's OWN opt-in config × the server-side line total (§14/§18) — never
+// from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
+import { resolveDepositPlan, resolveBalanceDueAt } from "../services/deposit.service";
+import {
+  stampBalanceAuthorization,
+  promoteBalancePayment,
+} from "../services/checkout-claim.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -334,10 +342,20 @@ async function authorizeAndPromote(
      * `requiresAction` out). Two one-click flows in one product should not speak two dialects.
      */
     useSavedCard?: boolean;
+    /**
+     * Lane 7 (ruling 72): the amount to charge NOW when this checkout collects DEPOSITS. Server-
+     * derived (§14) as the sum of per-line deposit amounts + full non-deposit lines; each booking
+     * row already carries its own deposit_amount/balance_amount. Absent ⇒ charge the full total,
+     * byte-identical to the pre-deposit behaviour (§13).
+     */
+    chargeAmount?: number;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
-  const total = subtotal + platformFee + conciergeFee;
+  const fullTotal = subtotal + platformFee + conciergeFee;
+  // Charge the deposit sum when this is a deposit checkout, else the full total (unchanged).
+  const total = args.chargeAmount != null ? args.chargeAmount : fullTotal;
+  const isDepositCheckout = args.chargeAmount != null && args.chargeAmount < fullTotal - 0.001;
   const bookingIds = bookings.map((b: any) => b.booking.id as string);
 
   // LAYER 1 of the paid-PI protection (see checkout-claim.service.ts): stamp the pre-flight
@@ -353,7 +371,7 @@ async function authorizeAndPromote(
       userId,
       bookings.map((b: any) => b.booking),
       total,
-      false,
+      isDepositCheckout,
       'usd',
       // §15 layer (a): the deterministic Stripe idempotency key. Uses the SAME normalised
       // key the DB claim used (`checkoutKey`, not the raw body value) so the two layers can
@@ -481,6 +499,10 @@ async function authorizeAndPromote(
     paymentIntent,
     bookingType: BookingType.EXPERIENCE_CART,
     commissionRate: effectiveCommissionRate,
+    // Lane 7 (ruling 72): when this checkout collected deposits, `total` is the amount charged NOW
+    // (the deposit sum); `fullAmount` is the full cart value, and the outstanding balance is
+    // collected later per booking via POST /api/bookings/:id/pay-balance.
+    ...(isDepositCheckout ? { depositCheckout: true, amountChargedNow: total.toFixed(2), fullAmount: fullTotal.toFixed(2) } : {}),
     ...(args.redriven ? { redriven: true } : {}),
     // B2 — same three fields the optimize-fee one-click already returns, so the client can reuse
     // its existing branch shape. `oneClick && status === "succeeded"` ⇒ paid, nothing left to do,
@@ -663,6 +685,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           // and not from a re-priced cart (§14): every row's totalAmount/platformFee was derived
           // from the catalog + fee_bands when the claim was written, so this cannot drift.
           console.info(`[checkout] idempotencyKey=${checkoutKey} has an unauthorized claim — re-driving authorization`);
+          // Lane 7 (ruling 72): a re-drive charges the SAME amount the first attempt would have —
+          // the per-row deposit for a deposit line, the full line otherwise — read from the claimed
+          // rows, never recomputed from a re-priced cart (§14). No deposit rows ⇒ chargeAmount
+          // equals the full total, so this is byte-identical to the pre-deposit re-drive (§13).
+          const redriveAnyDeposit = provisional.some((r) => r.depositAmount != null);
+          const redriveChargeNow = provisional.reduce(
+            (s, r) =>
+              s +
+              (r.depositAmount != null
+                ? parseFloat(r.depositAmount)
+                : parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")),
+            0,
+          );
           return await authorizeAndPromote(res, {
             userId,
             checkoutKey,
@@ -670,6 +705,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             subtotal: provisional.reduce((s, r) => s + parseFloat(r.totalAmount || "0"), 0),
             platformFee: provisional.reduce((s, r) => s + parseFloat(r.platformFee || "0"), 0),
             conciergeFee: 0, // already folded into each row's stored platformFee
+            ...(redriveAnyDeposit ? { chargeAmount: Math.round(redriveChargeNow * 100) / 100 } : {}),
             redriven: true,
             useSavedCard: req.body?.useSavedCard === true,
           });
@@ -1074,6 +1110,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
       // Create bookings for each cart item
       const bookings = [];
+      // Lane 7 (ruling 72): the sum charged NOW. For a non-deposit cart this equals the full total,
+      // so the Stripe charge and everything downstream is byte-identical (§13). For a deposit cart
+      // it is Σ(per-line deposit) + Σ(full non-deposit line).
+      let checkoutAmountDueNow = 0;
+      let anyDepositLine = false;
       for (const item of cartData) {
         if (!item.service) continue;
 
@@ -1114,7 +1155,43 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const conciergeFeaAmt = isBookingConcierge2 ? price * conciergeBookingFlatFee : 0;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
-        
+
+        // ── Lane 7 (ruling 72): deposit split for THIS line, server-derived (§14) ──────────────
+        // The line's full charge = price + all platform fees. `resolveDepositPlan` reads the
+        // listing's OWN deposit config (provider opt-in) — no client value reaches it — and returns
+        // null when this listing takes no deposit, in which case the full line is charged now and
+        // the deposit/balance columns stay NULL (byte-identical to pre-deposit, §13).
+        const lineFullCharge = price + totalPlatformFeeAmt;
+        const depositPlan = resolveDepositPlan(
+          {
+            depositEnabled: (item.service as any).depositEnabled,
+            depositType: (item.service as any).depositType,
+            depositPercentage: (item.service as any).depositPercentage,
+            depositFlatAmount: (item.service as any).depositFlatAmount,
+          },
+          lineFullCharge,
+        );
+        let lineBalanceDueAt: Date | null = null;
+        if (depositPlan) {
+          anyDepositLine = true;
+          checkoutAmountDueNow += depositPlan.depositAmount;
+          // Cutoff derived from EXISTING listing/booking facts only (§13): the service date (room
+          // check-in, else the cart line's scheduled date) minus the change window.
+          const serviceDateStr = stay?.checkIn
+            ?? (typeof item.scheduledDate === "string"
+              ? item.scheduledDate.slice(0, 10)
+              : item.scheduledDate instanceof Date
+                ? item.scheduledDate.toISOString().slice(0, 10)
+                : null);
+          lineBalanceDueAt = resolveBalanceDueAt({
+            serviceDate: serviceDateStr,
+            changeCutoffHours: (item.service as any).changeCutoffHours,
+            leadTimeHours: (item.service as any).leadTimeHours,
+          });
+        } else {
+          checkoutAmountDueNow += lineFullCharge;
+        }
+
         // Create contract for this booking
         // Migration 157: stamp both principals. Both were already in scope here — the contract
         // row simply never recorded them, which is what left the two contract readers ungatable.
@@ -1202,6 +1279,18 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             platformFee: totalPlatformFeeAmt.toFixed(2),
             insuranceFee: insuranceFeeAmt.toFixed(2),
             providerEarnings: netExpertEarningsAmt.toFixed(2),
+            // Lane 7 (ruling 72): a deposit line is BORN with its split recorded (server-derived).
+            // `deposit_paid`/`balance_paid` stay false until each payment promotes. The PROMOTION —
+            // not the claim — lands the row in status='deposit_paid' once the deposit PI succeeds
+            // (promoteOneBooking is deposit-aware); the claim itself is an ordinary payment_pending
+            // row so the §15 spine (sweep/authorize/promote) is unchanged.
+            ...(depositPlan
+              ? {
+                  depositAmount: depositPlan.depositAmount.toFixed(2),
+                  balanceAmount: depositPlan.balanceAmount.toFixed(2),
+                  ...(lineBalanceDueAt ? { balanceDueAt: lineBalanceDueAt } : {}),
+                }
+              : {}),
             status: "payment_pending",
             // S4: first real writer of the attribution columns (source existed unwritten).
             source: acquisitionSource,
@@ -1257,6 +1346,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         subtotal,
         platformFee,
         conciergeFee,
+        // Lane 7: charge the deposit sum now when any line takes a deposit; else undefined ⇒ the
+        // full total is charged, unchanged (§13).
+        ...(anyDepositLine ? { chargeAmount: Math.round(checkoutAmountDueNow * 100) / 100 } : {}),
         useSavedCard: req.body?.useSavedCard === true,
       });
     } catch (err: any) {
@@ -1267,6 +1359,138 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return res.status(500).json({ message: err.message });
       }
       res.status(500).json({ message: "Checkout failed" });
+    }
+  });
+
+  // ══ LANE 7 — BALANCE CHECKOUT (deposits / partial payments, DECISIONS.md ruling 72) ═══════════
+  // The SECOND, separate checkout that settles the outstanding balance of a deposit-paid booking.
+  // Its own authorized PaymentIntent on the SAME booking row (carried on stripe_balance_intent_id),
+  // its own atomic promotion deposit_paid → confirmed (promoteBalancePayment). Owner-gated to the
+  // TRAVELER who owns the booking. Idempotent: the Stripe idempotency key is deterministic per
+  // booking so a retry/double-click returns the SAME PaymentIntent and the SAME single charge (§15),
+  // and the balance-authorization stamp is an atomic conditional so only one caller stamps.
+  //
+  // §14/§18 — the amount is SERVER-DERIVED from the booking row (`balance_amount`); the acting user
+  // is the session; NOTHING is read from req.body. There is no `money-derive-ok` here because there
+  // is no client-trusted read to exempt.
+  router.post("/api/bookings/:id/pay-balance", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const bookingId = req.params.id;
+      const booking = await storage.getServiceBooking(bookingId);
+      // Ownership gate: the TRAVELER owns this booking. Undifferentiated 404 (§13 posture).
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      // Only a deposit-paid booking with an outstanding balance is payable here. A payment_pending
+      // claim (§15b) and a fully-paid `confirmed` booking are both refused, by construction.
+      if (booking.status !== "deposit_paid" || (booking as any).balancePaid === true) {
+        return res.status(409).json({
+          error: "balance_not_payable",
+          message: "This booking has no outstanding balance to pay.",
+        });
+      }
+      // SERVER-DERIVED (§14) — the balance comes from the booking row, never from the request body.
+      const balanceDue = parseFloat(String((booking as any).balanceAmount ?? "0"));
+      if (!Number.isFinite(balanceDue) || balanceDue <= 0) {
+        return res.status(409).json({
+          error: "balance_not_payable",
+          message: "This booking has no outstanding balance to pay.",
+        });
+      }
+
+      const { stripePaymentService } = await import("../services/stripe-payment.service");
+
+      // Already-authorized balance: a prior call stamped the balance PI — return the SAME
+      // clientSecret, never a second PaymentIntent (idempotent).
+      if ((booking as any).stripeBalanceIntentId) {
+        const existingPi = await stripePaymentService
+          .getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId)
+          .catch(() => null);
+        return res.status(200).json({
+          success: true,
+          duplicate: true,
+          bookingId,
+          balanceAmount: balanceDue.toFixed(2),
+          ...(existingPi ? { paymentIntent: existingPi } : {}),
+          note: "Balance payment already started — completing the existing payment.",
+        });
+      }
+
+      // Deterministic idempotency key per booking: Stripe returns the SAME PaymentIntent for a
+      // retry/double-click, so the external call cannot double-charge (§15 layer a).
+      const balanceKey = `bal-${bookingId}`;
+      let paymentIntent: any;
+      try {
+        paymentIntent = await stripePaymentService.createPaymentIntent(
+          userId,
+          [{ id: bookingId }],
+          balanceDue,
+          false,
+          "usd",
+          balanceKey,
+          { isBalance: true, offSession: req.body?.useSavedCard === true },
+        );
+      } catch (stripeErr: any) {
+        console.error(`[balance] authorization failed for booking=${bookingId}:`, stripeErr?.message ?? stripeErr);
+        return res.status(503).json({
+          success: false,
+          error: "payment_unavailable",
+          message:
+            "We couldn't reach our payment provider, so nothing was charged. Please try again.",
+          retryable: true,
+        });
+      }
+      if (!paymentIntent?.paymentIntentId) {
+        return res.status(503).json({ success: false, error: "payment_unavailable", retryable: true });
+      }
+
+      // AUTHORIZE stamp — atomic conditional on the balance column (§15). Loses the race (another
+      // concurrent call stamped first) ⇒ return that call's clientSecret, never a second charge.
+      const stamped = await stampBalanceAuthorization(bookingId, paymentIntent.paymentIntentId);
+      if (!stamped) {
+        const refreshed = await storage.getServiceBooking(bookingId);
+        const existingPi = (refreshed as any)?.stripeBalanceIntentId
+          ? await stripePaymentService.getPaymentIntentClientSecret((refreshed as any).stripeBalanceIntentId).catch(() => null)
+          : null;
+        return res.status(200).json({
+          success: true,
+          duplicate: true,
+          bookingId,
+          ...(existingPi ? { paymentIntent: existingPi } : {}),
+          note: "Balance payment already started — completing the existing payment.",
+        });
+      }
+
+      // Inline promotion when the PaymentIntent already SUCCEEDED (saved-card / off-session). The
+      // interactive path relies on the webhook (isBalance → promoteBalancePayment). Both drive the
+      // SAME atomic conditional, so a double signal is exactly one flip (§15).
+      let confirmed = false;
+      if (paymentIntent?.status === "succeeded") {
+        const promo = await promoteBalancePayment({
+          bookingId,
+          paymentIntentId: paymentIntent.paymentIntentId,
+          actor: "checkout",
+          actorId: userId,
+        });
+        confirmed = promo.promoted || promo.alreadyConfirmed;
+      }
+
+      return res.status(201).json({
+        success: true,
+        bookingId,
+        balanceAmount: balanceDue.toFixed(2),
+        paymentIntent,
+        status: paymentIntent?.status,
+        confirmed,
+        message:
+          paymentIntent?.status === "succeeded"
+            ? "Balance paid. Your booking is fully confirmed."
+            : "Balance checkout started. Complete payment.",
+      });
+    } catch (err: any) {
+      console.error("Pay-balance error:", err);
+      res.status(500).json({ message: "Balance checkout failed" });
     }
   });
 

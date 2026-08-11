@@ -176,6 +176,12 @@ interface ServiceFormData {
   cancellationPolicy: string;
   // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
   cancellationPolicyType: string;
+  // Deposits / partial payments (Lane 7, ruling 72) — PROVIDER OPT-IN PER LISTING. When on, the
+  // traveler pays a deposit at checkout and the balance in a second checkout before a cutoff.
+  depositEnabled: boolean;
+  depositType: "" | "percentage" | "flat";
+  depositPercentage: string;
+  depositFlatAmount: string;
   leadTime: string;
   // Media
   serviceImage: string;
@@ -313,6 +319,10 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     partySizeMin: "",
     partySizeMax: "",
     changeCutoffHours: "",
+    depositEnabled: false,
+    depositType: "",
+    depositPercentage: "",
+    depositFlatAmount: "",
     canAnchor: "",
     cancellationPolicy: "",
     cancellationPolicyType: "",
@@ -414,6 +424,10 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     partySizeMin: s.partySizeMin == null ? "" : String(s.partySizeMin),
     partySizeMax: s.partySizeMax == null ? "" : String(s.partySizeMax),
     changeCutoffHours: s.changeCutoffHours == null ? "" : String(s.changeCutoffHours),
+    depositEnabled: !!s.depositEnabled,
+    depositType: ((s.depositType as any) === "percentage" || (s.depositType as any) === "flat") ? (s.depositType as any) : "",
+    depositPercentage: s.depositPercentage == null ? "" : String(s.depositPercentage),
+    depositFlatAmount: s.depositFlatAmount == null ? "" : String(s.depositFlatAmount),
     canAnchor: s.canAnchor === true ? "yes" : s.canAnchor === false ? "no" : "",
     cancellationPolicy: s.cancellationPolicy || "",
     cancellationPolicyType: s.cancellationPolicyType || "",
@@ -1033,6 +1047,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
         cancellationPolicyType: formData.cancellationPolicyType || null,
+        // Deposits (Lane 7, ruling 72): provider opt-in. When off, everything is cleared to null so
+        // the listing checks out at the full price (§13). The server derives the actual deposit
+        // amount at checkout from these persisted values × the line total (§14) — never from a
+        // traveler's request body.
+        depositEnabled: formData.depositEnabled,
+        depositType: formData.depositEnabled ? (formData.depositType || null) : null,
+        depositPercentage:
+          formData.depositEnabled && formData.depositType === "percentage" && formData.depositPercentage.trim() !== ""
+            ? (parseInt(formData.depositPercentage, 10) || null)
+            : null,
+        depositFlatAmount:
+          formData.depositEnabled && formData.depositType === "flat" && formData.depositFlatAmount.trim() !== ""
+            ? formData.depositFlatAmount
+            : null,
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
@@ -2882,6 +2910,79 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               className="mt-2"
               data-testid="textarea-cancellation-policy"
             />
+          </div>
+
+          {/* ── Deposits / partial payments (Lane 7, ruling 72) — PROVIDER OPT-IN ─────────────────
+              Off by default: the listing checks out at the full price, exactly as before. When on,
+              the traveler pays a deposit now and settles the balance in a second checkout before a
+              cutoff derived from your service date and change window. The deposit amount is computed
+              server-side at checkout from the values below. */}
+          <div className="rounded-md border p-4 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer" htmlFor="depositEnabled">
+              <input
+                id="depositEnabled"
+                type="checkbox"
+                checked={formData.depositEnabled}
+                onChange={(e) => set("depositEnabled", e.target.checked)}
+                data-testid="checkbox-deposit-enabled"
+              />
+              <span className="font-medium">Take a deposit for this listing</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              When on, travelers pay a deposit at checkout and the remaining balance in a second
+              checkout before a cutoff. Leave off to collect the full price up front.
+            </p>
+            {formData.depositEnabled && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="depositType">Deposit type</Label>
+                  <Select
+                    value={formData.depositType || undefined}
+                    onValueChange={(v) => set("depositType", v as "percentage" | "flat")}
+                  >
+                    <SelectTrigger id="depositType" className="mt-2" data-testid="select-deposit-type">
+                      <SelectValue placeholder="Choose percentage or flat amount" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">Percentage of the total</SelectItem>
+                      <SelectItem value="flat">Flat amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.depositType === "percentage" && (
+                  <div>
+                    <Label htmlFor="depositPercentage">Deposit percentage (%)</Label>
+                    <Input
+                      id="depositPercentage"
+                      type="number"
+                      min={1}
+                      max={100}
+                      placeholder="e.g. 30"
+                      value={formData.depositPercentage}
+                      onChange={(e) => set("depositPercentage", e.target.value)}
+                      className="mt-2"
+                      data-testid="input-deposit-percentage"
+                    />
+                  </div>
+                )}
+                {formData.depositType === "flat" && (
+                  <div>
+                    <Label htmlFor="depositFlatAmount">Deposit amount</Label>
+                    <Input
+                      id="depositFlatAmount"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="e.g. 50.00"
+                      value={formData.depositFlatAmount}
+                      onChange={(e) => set("depositFlatAmount", e.target.value)}
+                      className="mt-2"
+                      data-testid="input-deposit-flat-amount"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
