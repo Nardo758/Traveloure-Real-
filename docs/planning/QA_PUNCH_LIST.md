@@ -95,7 +95,7 @@ the cart IS the design, not a gap. CLOSED.
 
 ## Open — build items
 
-**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
+~~**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
 take an expert listing live are UNGATED (found Aug 11, 2026 by the R2 lane; verified in code).**
 Ruling 53 records verify-to-publish as enforced. It is enforced — but only on
 `POST`/`PATCH /api/provider/services` when the request carries `status:"active"`, and **the expert
@@ -123,7 +123,15 @@ an unverified expert, should the approval be (a) REFUSED with a typed reason, (b
 landing `approved` + `status:'draft'`/`paused` so it is not publicly live until the expert verifies
 (recommended — it preserves the admin's review work and lets go-live follow verification
 automatically), or (c) allowed with an explicit admin override that is recorded? The Activate
-toggle should call the same shared helper regardless of which is chosen.
+toggle should call the same shared helper regardless of which is chosen.~~
+**LANDED (ruling 56, amends 53) — option (B) implemented.** `resolvePublishVerification(userId)`
+(`server/services/publish-verification.service.ts`) is the one predicate; admin approval always
+records `approved` but only sets `status:"active"` when the listing owner passes it (else
+`approved`+`draft`, held not live); the owner's Activate toggle and an idempotent
+`activateVerificationHeldListings` sweep (wired from the identity + business verification webhook
+paths) both resolve through the same function. `approved`+`paused` rows are never touched. Proven
+by `server/__tests__/publish-verification-hold.http.test.ts` (9 proofs); original 11
+f2-verification-gate proofs stay green.
 
 **P1 — the D3 deliverable is LINK-delivery, not protected delivery (verified Aug 10, 2026;
 Service Fundamentals dispatch v1.2 §4).** `GET /api/service-bookings/:id/deliverable` server-derives
