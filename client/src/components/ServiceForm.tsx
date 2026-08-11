@@ -22,6 +22,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useExpertVerificationStatus } from "@/hooks/use-expert-verification-status";
 import { LOCAL_EXPERT_TIERS, TRIP_PLANNER_TIERS, isAffiliateCategory } from "@/lib/earn-roles";
 import {
   LocationPointPicker,
@@ -967,6 +968,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }),
   });
 
+  // dispatch v1.3 R2 (docs/DECISIONS.md ruling 53): the expert-side mirror of the provider
+  // identity+business gate above — same early-visibility purpose, but experts have no
+  // business-verification check (local_expert_forms carries no such column; ruling 53). Shares
+  // the ONE hook (also used by expert/catalog.tsx) so both surfaces read the identical real
+  // `local_expert_forms.identity_verification_status`, never a locally re-derived guess (§13).
+  const expertVerification = useExpertVerificationStatus({ enabled: role === "expert" });
+
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
   const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
@@ -976,6 +984,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const identityVerified = providerAppStatus?.identityVerificationStatus === "verified";
   const bizVerified = providerAppStatus?.businessVerificationStatus === "verified";
   const verificationGateBlocked = role === "provider" && (!identityVerified || !bizVerified);
+  // Expert equivalent: identity only. `undefined` while the real status is still unknown
+  // (loading/unresolvable) — never treated as "unverified" so a slow network doesn't
+  // flash an incorrect block (§13: no state is asserted until it's real).
+  const expertIdentityKnown = role === "expert" && !expertVerification.isLoading && !expertVerification.isError;
+  const expertVerificationGateBlocked = expertIdentityKnown && !expertVerification.isVerified;
 
   // ── Step machinery (audit item #10) ──────────────────────────────────────
   const STEP_TITLES = ["What you offer", "Details", "Photos", "Terms & requirements"];
@@ -1192,6 +1205,62 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           })}
         </ol>
       </nav>
+
+      {/* ── dispatch v1.3 R2 (ruling 53): expert identity-verification status, visible on
+          EVERY step (not gated to step 1 or the final Publish click) — "the expert always
+          knows verification status, what's blocking, and what happens next... never
+          discovered at the publish click." Reuses expert-status.tsx's own copy/verbs via
+          the shared hook. Draft saves are unaffected — this is informational only. ── */}
+      {role === "expert" && !expertVerification.isLoading && !expertVerification.isVerified && (
+        <div
+          className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${
+            expertVerification.isError
+              ? "bg-amber-50 border-amber-200 text-amber-900"
+              : expertVerification.isFailed
+              ? "bg-red-50 border-red-200 text-red-900"
+              : "bg-amber-50 border-amber-200 text-amber-900"
+          }`}
+          data-testid="banner-expert-identity-verification"
+        >
+          <ShieldAlert className={`w-4 h-4 mt-0.5 flex-shrink-0 ${expertVerification.isFailed ? "text-red-600" : "text-amber-600"}`} />
+          <div className="flex-1">
+            {expertVerification.isError ? (
+              <>
+                <p className="font-medium">Verification status unavailable</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  We couldn't load your identity-verification status just now. Publishing requires a verified
+                  identity — check your{" "}
+                  <a href="/expert-status" className="underline font-medium">Expert Status page</a>.
+                </p>
+              </>
+            ) : expertVerification.isProcessing ? (
+              <>
+                <p className="font-medium">Identity verification in progress</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  Usually a few minutes. You can keep building — drafts save either way — and publishing
+                  unlocks as soon as it clears.
+                </p>
+              </>
+            ) : expertVerification.isFailed ? (
+              <>
+                <p className="font-medium">Identity verification needs attention</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  Your last attempt was unsuccessful, so publishing is still blocked. Retry in your{" "}
+                  <a href="/expert-status" className="underline font-medium">Expert Status page</a>.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">Identity verification required before this listing can go live</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  Save as a draft anytime — verification is only required to publish. Verify now in your{" "}
+                  <a href="/expert-status" className="underline font-medium">Expert Status page</a> (about 2 minutes).
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {currentStep === 1 && (<>
 
@@ -1812,6 +1881,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <p className="text-xs text-muted-foreground mt-1">
                 Buyers can download this link only after their booking is confirmed. It is
                 never shown before purchase.
+              </p>
+              {/* R4 interim honesty labeling (dispatch v1.3 R4; QA_PUNCH_LIST.md P1): this is
+                  LINK delivery, not protected delivery — the platform gates WHO receives the
+                  link but returns it verbatim, so once a buyer has it, it's theirs to share and
+                  we can't revoke it. Copy-only; the endpoint/schema/gating are unchanged. */}
+              <p className="text-xs text-muted-foreground mt-1">
+                This is link delivery, not protected file storage: we control who receives the
+                link, but not what they do with it afterward — once a buyer has it, it can be
+                shared further and we can't revoke it. Use a link you're willing to rotate.
               </p>
               {!formData.serviceFile && (
                 <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
@@ -2519,6 +2597,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("submit")}
                 disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
+                title={
+                  expertVerificationGateBlocked
+                    ? "Submitting for review is fine while unverified — but it can't go live until your identity is verified in your Expert Status page"
+                    : undefined
+                }
+                data-testid="button-submit-service"
               >
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 Submit for Approval
@@ -2564,6 +2648,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </span>
               ))}
               . Or Save Draft and finish later.
+            </p>
+          )}
+
+          {/* dispatch v1.3 R2: reinforce "what happens next" right at the submit action —
+              submitting for review is never blocked while unverified (only going LIVE is
+              gated, ruling 53), so this stays a note, not a disabled button. */}
+          {currentStep === TOTAL_STEPS && expertVerificationGateBlocked && (
+            <p className="text-xs text-amber-700 sm:text-right" data-testid="text-expert-submit-verification-note">
+              You can submit for review now — it just won't go live until you{" "}
+              <a href="/expert-status" className="underline font-medium">verify your identity</a>.
             </p>
           )}
         </CardContent>

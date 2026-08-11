@@ -12,6 +12,7 @@ import Stripe from "stripe";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
+import { activateVerificationHeldListings } from "../services/publish-verification.service";
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
@@ -64,6 +65,13 @@ router.post("/stripe-identity", async (req: any, res) => {
     if (event.type === "identity.verification_session.verified") {
       const ft = formType === "expert" ? "expert" : "provider";
       await storage.updateFormIdentityVerification(ft, userId, "verified", new Date());
+      // QA_PUNCH_LIST.md P0 auto-activation sweep: identity verifying may be the LAST
+      // outstanding half of the publish predicate for this user (the whole predicate for
+      // experts; one of two for providers) — re-evaluate and promote any approved+draft
+      // held listings. No-ops safely if the provider side is still unverified.
+      await activateVerificationHeldListings(userId).catch((err) =>
+        console.error("[webhooks/stripe-identity] activateVerificationHeldListings failed (non-fatal):", err)
+      );
     } else if (event.type === "identity.verification_session.requires_input") {
       const ft = formType === "expert" ? "expert" : "provider";
       await storage.updateFormIdentityVerification(ft, userId, "failed");
@@ -255,6 +263,16 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
                 `[WEBHOOK] account.updated: provider userId=${provUserId} ` +
                 `businessVerificationStatus → ${newBizStatus} (connectId=${account.id})`
               );
+              // QA_PUNCH_LIST.md P0 auto-activation sweep: business verifying may be the
+              // last outstanding half of the provider publish predicate — re-evaluate and
+              // promote any approved+draft held listings. Only worth attempting on the
+              // "verified" transition; the sweep itself re-checks the full predicate
+              // (identity too) and no-ops safely if it still fails.
+              if (newBizStatus === "verified") {
+                await activateVerificationHeldListings(provUserId).catch((err) =>
+                  console.error("[webhooks/stripe] activateVerificationHeldListings failed (non-fatal):", err)
+                );
+              }
             }
           }
         }
