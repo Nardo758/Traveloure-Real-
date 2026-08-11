@@ -1,0 +1,274 @@
+name: Publish Gate & Fundamentals
+
+# Wires FIVE committed http-transport test suites (38 proofs total) into CI. Until this
+# workflow, all five were script-only — ruling 27: "a script not wired into CI is not a
+# guard, it is MISSING" — which is why rulings 53 and 56 stayed tagged [advisory] even
+# though the suites proving them already existed on disk.
+#
+# Suites run (all against the SAME booted server, one job, sequential steps so a failure
+# in one never hides the others):
+#   f2-verification-gate.http.test.ts          (11) — ruling 53's publish gate
+#   publish-verification-hold.http.test.ts      (9) — ruling 56's option-B hold + auto-activation
+#   service-deliverable.http.test.ts             (9) — D3 entitlement + pre-purchase leak sweep
+#   short-links-frame.http.test.ts               (7) — D4 frame dedupe + honest analytics buckets
+#   posting-opportunities-frame.http.test.ts     (2) — D4 opportunity -> frame mapping
+#
+# Why a NEW workflow rather than extending an existing one: these are `.http.test.ts`
+# suites (node:test + raw fetch()), not Playwright specs — they need Postgres AND a real
+# HTTP server listening on :5000, but no browser. journey-suite.yml is the closest existing
+# shape (Postgres service + production-bundle boot + a bare `npx tsx --test <file>` step
+# in the very same job, proven there by checkout-oneclick.stripe.db.test.ts) but it is
+# PUSH/SCHEDULE-ONLY and explicitly cannot gate a merge (see its own header). fee-resolution-
+# authority-gate.yml is the closest BLOCKING (pull_request) shape, but it never boots a
+# server — its suite calls the resolver in-process. Neither existing workflow is both
+# blocking AND server-booting, so this workflow is journey-suite's server-boot recipe
+# grafted onto fee-resolution-authority-gate's blocking pull_request/push trigger — the
+# cheapest correct combination, not a third pattern invented from scratch.
+#
+# Sequential steps, not one combined `npx tsx --test a b c d e` invocation: node:test runs
+# multiple file arguments concurrently across worker threads by default, and every one of
+# these suites registers fresh users via POST /api/auth/register in its `before()` hook —
+# run together they hammer the same loopback IP hard enough to 429 each other's health
+# checks (reproduced locally: 28/38 failures, all "Too Many Requests" on registration).
+# RATE_LIMIT_LOOPBACK_SKIP=1 (same opt-out journey-suite already uses) plus running the
+# five suites as five separate sequential steps eliminates the contention entirely — same
+# 38/38 as running each alone.
+#
+# DB setup delegates to the composite action (ci-db-setup-lint.yml enforces this — no
+# inline migrate-entry.ts / create-sessions-table.ts / seed-ci-test-users.ts steps here).
+#
+# Negative space of THIS gate (ruling 43 — stated here so it prints on every run, not only
+# in the ledger): proves the five suites' 38 proofs, nothing wider. It does not exercise
+# Stripe's real identity/business verification webhooks (STRIPE_SECRET_KEY is an sk_test_
+# stub, never called); does not cover the provider ServiceForm UI submit path (no browser
+# here — HTTP only); and does not prove the D3 deliverable FILE itself is access-controlled
+# in storage — service-deliverable.http.test.ts proves the FIELD is never leaked in an API
+# response pre-purchase, but the file is still a pasted URL per the P1 punchlist entry.
+# Full statement: docs/DECISIONS.md ruling 57.
+#
+# Status context (for branch-protection required checks):
+#   * publish-gate-and-fundamentals (DECISIONS.md rulings 53, 56; D3/D4)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-gate-and-fundamentals-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-gate-and-fundamentals:
+    name: publish-gate-and-fundamentals (DECISIONS.md rulings 53, 56; D3/D4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Shared by every suite step below: real HTTP against the server started in this job,
+      # plus a read/write pg pool for fixture setup and DB-fact assertions.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      JOURNEY_BASE_URL: http://127.0.0.1:5000
+      # These suites refuse to write fixtures without this opt-in (their own disposable-DB
+      # guard) — deliberately allowed here because this is a THROWAWAY CI Postgres service,
+      # never a shared or prod database. See each suite's assertDisposableDb().
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert all five suite files exist
+        run: |
+          missing=0
+          for f in \
+            "server/__tests__/f2-verification-gate.http.test.ts" \
+            "server/__tests__/publish-verification-hold.http.test.ts" \
+            "server/__tests__/service-deliverable.http.test.ts" \
+            "server/__tests__/short-links-frame.http.test.ts" \
+            "server/__tests__/posting-opportunities-frame.http.test.ts"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Suite not found: $f — rename or restore it before re-running this gate."
+              missing=1
+            fi
+          done
+          [ "$missing" = "0" ] && echo "All five suite files present ✅"
+          exit $missing
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The suites mint their own fresh users via POST /api/auth/register (same
+          # posture as journey-suite.yml); no pre-seeded ci-* accounts are needed.
+          seed-ci-users: 'false'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # sk_test_ stub — never a real Stripe secret, and never sk_live_ (server/validate-env.ts
+          # hard-stops boot on a live key outside production; this key is a test-shaped stub so
+          # that check passes trivially either way).
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
+          # explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed, so opt out.
+          # NEVER set this in production.
+          SESSION_COOKIE_INSECURE: '1'
+          # All five suites register fresh users from one loopback IP; exempt loopback from
+          # the limiter so registration calls are never 429'd (reproduced locally without
+          # this — see the workflow header). NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Guard identity (publish-gate-and-fundamentals, DECISIONS.md rulings 53, 56, 57)
+        # This exact string is what scripts/check-decision-guards.cjs matches against the
+        # ledger's [guarded: publish-gate-and-fundamentals] tag on ruling 57 — a guard name
+        # that appears only in a comment or a job `name:` does not count (ruling 27: a
+        # script/check not actually wired into a `run:` command is not in CI).
+        run: echo "GUARD publish-gate-and-fundamentals - enforcing 38 proofs across 5 http suites (rulings 53, 56, 57)"
+
+      - name: 'Suite 1/5 — f2-verification-gate (11 proofs, ruling 53)'
+        id: f2
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsx --test server/__tests__/f2-verification-gate.http.test.ts 2>&1 | tee /tmp/f2.log
+          code=${PIPESTATUS[0]}
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: 'Suite 2/5 — publish-verification-hold (9 proofs, ruling 56)'
+        id: pvh
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsx --test server/__tests__/publish-verification-hold.http.test.ts 2>&1 | tee /tmp/pvh.log
+          code=${PIPESTATUS[0]}
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: 'Suite 3/5 — service-deliverable (9 proofs, D3)'
+        id: sd
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsx --test server/__tests__/service-deliverable.http.test.ts 2>&1 | tee /tmp/sd.log
+          code=${PIPESTATUS[0]}
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: 'Suite 4/5 — short-links-frame (7 proofs, D4)'
+        id: slf
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsx --test server/__tests__/short-links-frame.http.test.ts 2>&1 | tee /tmp/slf.log
+          code=${PIPESTATUS[0]}
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: 'Suite 5/5 — posting-opportunities-frame (2 proofs, D4)'
+        id: poo
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsx --test server/__tests__/posting-opportunities-frame.http.test.ts 2>&1 | tee /tmp/poo.log
+          code=${PIPESTATUS[0]}
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Per-suite verdict (38 proofs; a failure in any one fails this job)
+        if: always()
+        env:
+          F2_EXIT: ${{ steps.f2.outputs.exit }}
+          PVH_EXIT: ${{ steps.pvh.outputs.exit }}
+          SD_EXIT: ${{ steps.sd.outputs.exit }}
+          SLF_EXIT: ${{ steps.slf.outputs.exit }}
+          POO_EXIT: ${{ steps.poo.outputs.exit }}
+        run: |
+          set +e
+          FAIL=0
+          echo "### Publish Gate & Fundamentals — per-suite verdict" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Suite | Expected | Result | Exit |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          report() {
+            local label="$1" logfile="$2" expected="$3" exitvar="$4"
+            local counts icon
+            counts=$(grep -E "^# (tests|pass|fail) " "$logfile" 2>/dev/null | tr '\n' ' ')
+            if [ -z "$counts" ]; then counts="(no TAP summary captured — see raw log below)"; fi
+            echo "----- $label -----"
+            cat "$logfile" 2>/dev/null | tail -60
+            echo "$label summary: $counts (exit=$exitvar)"
+            if [ "$exitvar" = "0" ]; then icon="✅ pass"; else icon="❌ FAIL"; FAIL=1; fi
+            echo "| $label | $expected | $icon | $exitvar |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          report "f2-verification-gate (ruling 53)"        /tmp/f2.log  "11" "$F2_EXIT"
+          report "publish-verification-hold (ruling 56)"   /tmp/pvh.log "9"  "$PVH_EXIT"
+          report "service-deliverable (D3)"                /tmp/sd.log  "9"  "$SD_EXIT"
+          report "short-links-frame (D4)"                  /tmp/slf.log "7"  "$SLF_EXIT"
+          report "posting-opportunities-frame (D4)"        /tmp/poo.log "2"  "$POO_EXIT"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FAIL" = "1" ]; then
+            echo "❌ **One or more suites failed.** Download this run's logs (the per-suite steps above) for the failing assertion; each suite's own header comment documents \`Run solo: npx tsx --test server/__tests__/<file>\` against a local dev server for reproduction." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::publish-gate-and-fundamentals: one or more of the 5 suites (38 proofs) failed — see the verdict table in the run summary."
+            exit 1
+          fi
+          echo "✅ **All 5 suites green — 38/38 proofs pass** (f2-verification-gate 11, publish-verification-hold 9, service-deliverable 9, short-links-frame 7, posting-opportunities-frame 2)." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
