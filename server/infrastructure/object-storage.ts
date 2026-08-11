@@ -14,13 +14,16 @@
  * `publicPaths` grant anywhere in `.replit` or the codebase, and the client
  * authenticates to GCS via Replit's sidecar-issued credentials (ADC), the
  * standard PRIVATE-bucket posture for Replit App Storage — a bare
- * unauthenticated GET against `objectPublicUrl()`'s URL is expected to 403.
- * That could not be confirmed with a live network call in this environment
- * (no bucket is attached here), so storage keys still embed a crypto-random
+ * unauthenticated GET against `objectPublicUrl()`'s URL returns 403.
+ * EMPIRICALLY VERIFIED PRIVATE (Aug 11, 2026): a live unauthenticated GET
+ * against the raw GCS URL (https://storage.googleapis.com/<bucket>/<key>)
+ * for a freshly uploaded deliverable returned HTTP 403 Forbidden — ruling 58
+ * bucket-privacy question CLOSED. Storage keys still embed a crypto-random
  * component as defense-in-depth (see `deliverableStorageKey` at the R4 call
- * site) and `objectPublicUrl()` is never called, returned, or otherwise
- * disclosed on the deliverable rail — only the KEY is persisted, and only
- * `downloadBytes` (an authenticated call) ever reads the bytes back.
+ * site), but the bucket's own ACL is now the primary privacy guarantee.
+ * `objectPublicUrl()` is never called, returned, or otherwise disclosed on
+ * the deliverable rail — only the KEY is persisted, and only `downloadBytes`
+ * (an authenticated call) ever reads the bytes back.
  *
  * TEST DRIVER: when `OBJECT_STORAGE_DRIVER=memory` and `NODE_ENV !==
  * "production"`, every function below operates against an in-process
