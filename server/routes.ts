@@ -5352,15 +5352,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           reason: eligibility.reason,
         });
       }
-      const actor = ownerActorFor(eligibility.rule);
+      // Ruling 69 disposition 1's NARROW arm. in_person/hybrid is a TIMER rule now, so the owner
+      // rail refuses it exactly like pdf/property — EXCEPT for a booking the platform holds no
+      // service date for, where the timer can never fire and the owner is the only actor left.
+      // The service, not this route, decides that (`ownerDeclarableFallback`), and the flip still
+      // mints a HELD earning inside the traveler's dispute window, so the self-credit objection is
+      // answered the same way the other owner-declared rules answer it.
+      const noDateFallback = eligibility.rule === "service_date_timer" && !!eligibility.ownerDeclarableFallback;
+      const actor = noDateFallback ? "provider_declared" : ownerActorFor(eligibility.rule);
       if (!actor) {
         return res.status(409).json({
           message:
-            eligibility.rule === "confirm_completion"
-              ? "In-person bookings are completed by the traveler confirming, not by you."
+            eligibility.rule === "service_date_timer"
+              ? "This in-person booking completes automatically after its booked date — you do not need to mark it complete."
               : "This booking completes automatically — you do not need to mark it complete.",
           rule: eligibility.rule,
           reason: "rule_not_owner_declared",
+          ...(eligibility.eligibleAt ? { eligibleAt: eligibility.eligibleAt } : {}),
         });
       }
 
@@ -5401,7 +5409,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
 
-      const outcome = await completeBooking({ bookingId: req.params.id, actor, reason: `d8_owner:${eligibility.rule}` });
+      const outcome = await completeBooking({
+        bookingId: req.params.id,
+        actor,
+        reason: noDateFallback ? "d8_owner:service_date_timer_no_date" : `d8_owner:${eligibility.rule}`,
+        ...(noDateFallback ? { allowOwnerDeclaredFallback: true } : {}),
+      });
       if (!outcome.completed) {
         return res.status(409).json({
           message:
