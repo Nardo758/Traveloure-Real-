@@ -119,6 +119,35 @@ both the build bench and the Replit workspace.
 
 ## Open — build items
 
+~~**P1 (new, Aug 11) — "adding pins to the map didn't work as intended" (decision-maker report at the
+ruling-62 ballot; diagnosis pending their symptom description).** Code review found three candidate
+causes, most likely compounding: (a) **env timing** — both Google keys were only just set;
+`VITE_GOOGLE_MAPS_API_KEY` is read at Vite dev-server start (and baked into builds), and the server's
+`GOOGLE_MAPS_API_KEY` is read per-request but the workflow predates the secret — until a FULL workflow
+restart the pin picker renders null and `POST /api/geocode` returns honest 404 for every query;
+(b) **route-stop UX** — `catalog-map-view.tsx` locates stops ONLY by name→geocode (`locateStop`); there
+is NO click-the-map-to-place and NO drag-to-adjust for a stop, so a stop the geocoder misses or
+mislocates cannot be pinned by hand — if "adding pins" meant dropping pins, that affordance genuinely
+does not exist on the route editor (the meeting pin has it; stops don't); (c) **key restrictions** —
+a fresh Google key without Maps JavaScript API + Geocoding API enabled (or with referrer restrictions)
+yields gm_authFailure / REQUEST_DENIED, which surfaces as the same "No match found" toast. Fix ships
+with the ruling-62 D7 work (same surface): restart-first diagnosis, then click-to-place + drag-adjust
+for route stops on the L27-P3 confirm posture.~~
+**RESOLVED (ruling 64, Aug 11 2026) — candidate (b) was the whole of it.** The decision-maker
+verified (a) and (c) live before this build started: the Google keys work, the meeting-pin picker
+renders with click-to-place AND drag-adjust, and `POST /api/geocode` resolves correctly — so
+neither env timing nor key restrictions was the fault. The real gap was exactly (b): route stops
+in `client/src/components/provider/catalog-map-view.tsx` could be located ONLY by name→geocode,
+and their Leaflet markers were static. **Closed here:** located stop markers are draggable
+(drag end moves the DRAFT stop and sets the existing `dirty` flag), and an explicitly ARMED
+"Place a stop here" / per-stop "Place on map" mode turns the next canvas click into that stop's
+coordinates — a bare map click still does nothing, so pan/zoom is untouched. A newly placed pin is
+prompted inline for its name and cannot be saved unnamed. Nothing persists until the pre-existing
+"Save route" button; that dirty→Save step IS the L27-P3 confirm posture on this surface. Geocode
+Locate, the off-map listing of unlocated stops, server-derived positions and the replace-list PUT
+with its 409 handling are all unchanged. Proven by 14 chromium UI proofs (drag→Save→reload
+persists; canvas click places a named stop; an unlocated stop gains a pin by hand).
+
 ~~**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
 take an expert listing live are UNGATED (found Aug 11, 2026 by the R2 lane; verified in code).**
 Ruling 53 records verify-to-publish as enforced. It is enforced — but only on
@@ -509,3 +538,117 @@ get real reads — nothing left to hide).
 - **"Where is the other Central Content?"** → live on traveler surfaces (Discover feed,
   experience-template pages) through `content_registry` + placement rules; the Workstation read is
   item 2 above.
+
+---
+
+## Six-Sigma provider pass — Tier B (FILED, NOT BUILT) — Aug 11, 2026
+
+Filed by the DMAIC pass on the provider console for **tourist-specific businesses** (Phase 2 of the
+decision-maker directive; Phase 1 = the D7 build, commit `641327e` / ruling 64). Full report with
+evidence, measurements and citations: **`docs/findings/SIX_SIGMA_PROVIDER_PASS.md`**.
+
+**Read this section with its evidence labels.** Provider count ≈ 0 — there is NO usage data here.
+Each item is tagged with its evidence source: **[measured]** = instrumented chromium walkthrough
+against the real dev server; **[code]** = read from the repo; **[research]** = public sources on how
+real Kyoto/Japan tourist businesses operate, cited in the report (never a persona, never a statistic).
+Tier A (copy/label/link only) already landed in the same commit; everything below needs schema, money,
+a ruling, or real-user validation and is therefore **not built**.
+
+- **SS-1 — The R4 protected-deliverable rail has no UI control.** [measured] `POST /api/provider/
+  services/:id/deliverable-file` (ruling 58) works — measured `200`, `protected:true`, `serviceFile`
+  stamped `objstore:…`. But the wizard's delivery step renders **only a pasted-URL text box**
+  (`deliverable controls — file upload input: false, pasted-URL input: true`). A provider cannot reach
+  platform-protected delivery without leaving the product, so the green "platform-protected, revocable"
+  copy ruling 58 added is **unreachable through the UI**. Needs: a file input + upload call on the
+  ServiceForm delivery step. This is the punchlist's own recurring class — *proved correct, never
+  proved reachable* (standing lesson (a)).
+
+- **SS-2 — Lead time is two values and the UI writes the wrong one.** [code] The wizard writes only the
+  free-text `lead_time` varchar (*"e.g., 48 hours, 1 week"*). The **machine-readable** `lead_time_hours`
+  (default `24`) is never written by any client, yet **is consumed** —
+  `server/services/expert-availability.service.ts:66` (`m.leadTimeHours ?? 24`) uses it as an ETA
+  baseline. A provider who types "1 week" leaves the consumed value at 24, so the platform can offer
+  their service on 24 hours' notice while their own listing says a week. **Ledger note (DECISIONS.md's
+  own rule — a ledger-vs-code disagreement is a finding, never a silent divergence):** ruling 64 lists
+  `leadTimeHours` under "AUDITED AND DELIBERATELY REUSED" for lead time; the wizard does not write it.
+  **[DM] needed:** does the wizard write `lead_time_hours` (structured, like the D7 `changeCutoffHours`
+  beside it), or does `expert-availability` stop defaulting? Do not fix by editing ruling 64.
+
+- **SS-3 — Should editing a live listing be able to unpublish it?** [measured] "Save Draft" sends
+  `status:"draft"` unconditionally; clicking it while editing an `active` listing moved the row to
+  `draft` in the DB, and it sits beside "Next" on every step. Tier A made the button **say so**
+  ("Unpublish & Save Draft" + tooltip). The behaviour is untouched and is a product call: (a) keep as
+  is, now that it is labelled; (b) a live listing's draft-save preserves `active` and only stages
+  edits; (c) confirm dialog. (b) implies staged edits — real design work, not a label.
+
+- **SS-4 — Pickup radius and service radius are one column with two business meanings.** [measured]
+  `#serviceRadius` ("Service Radius (km)") and `#coverageRadius` ("Pickup radius (km)") render
+  **simultaneously** for a pickup operator and both write `provider_services.service_radius` — typing
+  `17` into one makes the other read `17`. [research] For transfer/tour operators "how far I travel to
+  work" and "how far I collect from" are genuinely different numbers. Tier A labelled them as one
+  value; splitting them needs an additive column + a ruling (and touches the D7 surface just landed).
+
+- **SS-5 — D9 attestation: protected professional titles.** [research] Japan deregulated paid guiding on
+  4 Jan 2018 — no licence is required — but the title 通訳案内士 (*Tsūyaku Annai-shi*) remains legally
+  protected, and unlicensed guides may not use titles implying official certification (e.g. "Government
+  certified guide"). Sources cited in the report (JNTO; JGA; Hinomaru; Jasumo). [code] Listing title and
+  description are free text with no attestation, so a Kyoto provider can claim government certification
+  today with nothing asking. This is a concrete, market-specific trigger for **D9** (ruling 62 —
+  attestations keyed to method + category risk, inapplicable ones omitted with a reason), which is
+  ratified but unbuilt. **Scope note: an attestation about a TITLE CLAIM, not a licensing gate** — the
+  licence is not required to trade.
+
+- **SS-6 — No delivery-language field on `provider_services`.** [code] `information_schema` sweep: the
+  only language columns are `local_expert_forms.languages`, `service_gap_analysis.language_gaps`,
+  `trip_emergency_contacts.languages`. Providers have none, and the traveler page shows no language.
+  [research] In Kyoto, delivery language is a **purchasable attribute** — shared tea-ceremony sessions
+  commonly run in Japanese with English requiring a private session, sometimes at an added interpreter
+  fee; English-speaking hosts are advertised as a differentiator. **This is distinct from ruling 60**,
+  which ratified (A) UI chrome translation and (B) provider *content* translation — neither is "what
+  language is the experience delivered in". Needs an additive column + a ruling.
+
+- **SS-7 — Booking lead time / cutoff is never shown to the traveler.** [measured/code] The service page
+  renders no lead time at all, though `lead_time_hours` is stored and consumed elsewhere. [research]
+  Booking cutoffs are a headline term in this trade (private transfers commonly to 24h before). Blocked
+  on SS-2 — do not surface a number the wizard does not actually write.
+
+- **SS-8 — Cancellation expressiveness vs how this market actually writes policies.** [research] Real
+  Kyoto policies are tiered in DAYS and vary widely: free to 2 days (wargo); free to the day before with
+  100% same-day (Yumeyakata); 10d full / 9–5d 50% / 4d–same-day 70–100% (Sakura); a flat ¥3,300 same-day
+  fee (Okamoto); free to 18:00 three days before with a **stricter deadline for groups over 10**
+  (Kyolan); photo tours add explicit **rain-reschedule** clauses. The platform's four fixed tiers
+  (24h · 5d+2d · 7d · none) are a reasonable spine but cannot express a same-day flat fee, a weather
+  clause, or a group-size-dependent deadline. Tier A fixed the *drift* (the seller now sees the enforced
+  windows); expressiveness is a product+money decision. **Durability note:** the vocabulary lives in
+  three files (`cancellation-policy.service.ts`, `shared/schema.ts`, `ServiceForm.tsx` /
+  `service-detail.tsx`) — whatever lands should collapse it to one source, per the fee-resolver
+  precedent (standing lesson (b)).
+
+- **SS-9 — Pickup fallback: "if your hotel isn't listed, meet at X".** [research] Operators universally
+  publish a named fallback (commonly Kyoto Station) for travelers whose hotel is not on the pickup list,
+  plus an arrive-early instruction. [code] `service_route_points` is exactly the right shape for the
+  list (ruling 22/62; **measured green** this pass), but nothing expresses the fallback. Small, but it
+  is the case that actually fails on the day.
+
+- **SS-10 — Party size and luggage: capture → enforcement.** [code] `partySizeMin/Max` and
+  `changeCutoffHours` are captured by D7 and, per ruling 64's stated negative space, **no consumer is
+  wired** — nothing is validated at booking. [research] Transfer operators require exact passenger /
+  child-seat / **luggage** counts at booking and state a waiting/grace window (commonly 90 minutes free
+  at airport arrivals, then hourly overtime); the platform has no luggage/capacity or grace concept at
+  all. Wiring the consumers is a named later lane per ruling 64 — filed here with the trade evidence for
+  when it is scheduled.
+
+- **SS-11 — `/provider/new-service` is an orphan route whose name contradicts its destination.** [code]
+  It renders `ServicesProviderPage` (provider **registration**), not the service wizard
+  (`/provider/services/new`). `grep` finds **zero inbound links**, so no user reaches it today — it is a
+  latent trap for a guessed URL, a bookmark, or a future CTA. Intent is genuinely ambiguous (the sibling
+  routes are commented as "supply recruitment entry points"), so this needs a call: redirect to the
+  wizard, or retire the alias.
+
+- **SS-12 — `provider-money-hardening.db.test.ts` does not run green on this bench.** [measured]
+  **4 pass / 2 fail**, verified **pre-existing** (identical with this pass's changes stashed). P1/P2 fail
+  at *"the provider band must be readable from fee_bands"* — a fixture/category→band mapping gap on the
+  local bench, not a code regression (`fee_bands` has 54 rows; the test's category linkage is what is
+  missing). Ruling 42's P1–P6 are the proofs for the §14/§18 rate-stripping class, so a bench where two
+  of them cannot run is the "a guard that does not run is MISSING" posture (rulings 26/27/43) one level
+  down. Not part of ruling 64's stated keep-green list; filed so it is not rediscovered.

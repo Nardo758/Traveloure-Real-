@@ -2349,6 +2349,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // D7 (docs/DECISIONS.md ruling 62): the service-logistics capture fields ride this same
+      // deliberate write, exactly like `serviceRadius`/`meetingPoint` beside them — they are
+      // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
+      // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
+      // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
@@ -2531,6 +2536,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // D7 NEVER-CLOBBER RULE (docs/DECISIONS.md ruling 62's amendment, §13): declaring a
+      // `pickupCoverageMode` switches only what is RENDERED. It must never delete, null or
+      // overwrite the other mode's data — so this handler writes the mode column and NOTHING
+      // else: it does not touch `serviceRadius`, and it does not touch `service_route_points`
+      // (whose one write path is the owner-gated replace-list PUT .../route-points, ruling 22).
+      // A provider who picks `radius` keeps every saved route stop, and one who picks `route`
+      // keeps their saved radius; the authoring UI says so out loud rather than silently
+      // discarding work. Do not "tidy up" by clearing the unused side here.
+      //
       // Remove userId from input to prevent ownership transfer
       const { userId: _, ...safeInputWithoutLocation } = input as any;
       const safeInput = { ...safeInputWithoutLocation, ...locationPatch };
