@@ -212,11 +212,22 @@ const intOrNull = (v: string): number | null => {
 
 // X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
 // shared/schema.ts cancellationPolicyTypeEnum. App-enforced (no DB CHECK, migration 144).
+//
+// SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-1): these
+// labels previously described the windows VAGUELY ("well in advance", "shorter notice",
+// "limited refund window") while the traveler-facing page (`service-detail.tsx`'s
+// CANCELLATION_POLICY_TYPE_LABELS) and the SERVER'S ACTUAL ENFORCEMENT
+// (`server/services/cancellation-policy.service.ts` refundPercentFor) both use concrete
+// hour thresholds. The seller therefore agreed to a refund schedule whose real terms were
+// never shown at the point of choosing. The strings below are now the same concrete windows
+// the buyer is shown and the server enforces — one vocabulary across all three surfaces.
+// Keep these in step with `refundPercentFor` and `shared/schema.ts`'s
+// CANCELLATION_POLICY_TYPE_LABELS if any of them changes.
 const CANCELLATION_POLICY_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "flexible", label: "Flexible — full refund if cancelled well in advance" },
-  { value: "moderate", label: "Moderate — partial refund on shorter notice" },
-  { value: "strict", label: "Strict — limited refund window" },
-  { value: "non_refundable", label: "Non-refundable" },
+  { value: "flexible", label: "Flexible — full refund if cancelled at least 24 hours before the start" },
+  { value: "moderate", label: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before" },
+  { value: "strict", label: "Strict — 50% refund if cancelled at least 7 days before the start" },
+  { value: "non_refundable", label: "Non-refundable — no refund once booked" },
 ];
 
 function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
@@ -1091,6 +1102,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     ? existingService.routePoints.length
     : 0;
   const savedRadiusKm = Number(existingService?.serviceRadius ?? 0);
+  // SIX-SIGMA PASS (Tier A / finding M-4): is the row being edited PUBLICLY LIVE right now?
+  // Read from the loaded row, never from the in-form draft state — the question is what the
+  // marketplace currently shows, not what this form is about to send. `false` while the row is
+  // still loading, so a slow read never claims a listing is live (§13).
+  const isCurrentlyLive = isEditMode && existingService?.status === "active";
   const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
   const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
   const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
@@ -2435,6 +2451,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       className="mt-1"
                       data-testid="input-coverage-radius"
                     />
+                    {/* SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A /
+                        finding M-3): this input and the "Service Radius (km)" input in the
+                        Pickup card above are TWO LABELS OVER ONE COLUMN
+                        (provider_services.service_radius) — measured: typing 17 here makes
+                        #serviceRadius read 17 instantly. Both are shown at once whenever the
+                        provider has the Pickup switch on AND a pickup coverage mode of radius,
+                        which is precisely the configuration a pickup operator uses. Left
+                        unlabelled, a provider reads them as "how far I travel" vs "how far I
+                        collect from" — two genuinely different numbers in this trade — and the
+                        second silently overwrites the first. State the truth rather than
+                        inventing a second store (§13); a real split needs a column and a
+                        ruling, filed as Tier B. */}
+                    {formData.pickupAvailable && (
+                      <p className="text-xs text-muted-foreground mt-1" data-testid="text-radius-single-value">
+                        This is the same number as “Service Radius (km)” under Pickup/Drop-off
+                        above — one radius per listing, shown in both places. Changing it here
+                        changes it there.
+                      </p>
+                    )}
                     {savedRouteStopCount > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                         {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
@@ -2632,6 +2667,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
               Shown to travelers as a real per-offering policy. Leave unset if you haven't decided — we never show a fabricated default.
+            </p>
+            {/* SIX-SIGMA PASS (Tier A / finding M-1): the option you pick is not advisory —
+                the server computes the refund from it. Say so where the choice is made. */}
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-cancellation-enforced-note">
+              These windows are applied automatically when a traveler cancels — the refund is
+              calculated from the option you pick here, not from the notes below.
             </p>
           </div>
           <div>
@@ -2927,15 +2968,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <div className="flex-1" />
 
             {/* Draft save is reachable from EVERY step (unchanged: drafts skip
-                required-field checks), so nobody has to walk to step 4 to bail out. */}
+                required-field checks), so nobody has to walk to step 4 to bail out.
+
+                SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-4):
+                this action sends `status:"draft"` unconditionally, so on a listing that is
+                CURRENTLY LIVE it takes the listing off the marketplace. Measured directly:
+                clicking it on an `active` listing moved that row to `draft` in the DB, with
+                nothing on screen saying so — and it sits immediately beside "Next", on every
+                step, wearing the same neutral label it wears for a brand-new draft. The
+                BEHAVIOUR is deliberately left alone here (whether an edit should preserve
+                `active` is a product call — filed Tier B); what changes is that the button now
+                says what it is about to do. */}
             <Button
               variant="outline"
               onClick={() => createMutation.mutate("draft")}
               disabled={createMutation.isPending}
+              title={isCurrentlyLive ? "This listing is live. Saving it as a draft removes it from the marketplace until you publish it again." : undefined}
               data-testid="button-save-draft"
             >
               {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              {role === "expert" ? "Save as Draft" : "Save Draft"}
+              {isCurrentlyLive
+                ? "Unpublish & Save Draft"
+                : role === "expert" ? "Save as Draft" : "Save Draft"}
             </Button>
 
             {currentStep < TOTAL_STEPS ? (
@@ -3013,6 +3067,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <p className="text-xs text-amber-700 sm:text-right" data-testid="text-expert-submit-verification-note">
               You can submit for review now — it just won't go live until you{" "}
               <a href="/expert-status" className="underline font-medium">verify your identity</a>.
+            </p>
+          )}
+
+          {/* SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-2):
+              the PROVIDER half of the same honesty note. Measured on the wizard's final step:
+              the Publish button relabels itself "Verification Required" and goes DISABLED, and
+              the only statement of why lived in a `title` tooltip — no visible text and no link
+              to /provider-status anywhere on the wizard (measured: 0 status links in the DOM).
+              A disabled control whose reason is invisible is a dead end; the expert branch above
+              already had its escape, the provider branch did not. Copy only — this asserts no
+              new state and changes no gate; it names the block the gate has ALREADY decided and
+              points at the page that clears it. */}
+          {currentStep === TOTAL_STEPS && role === "provider" && (verificationGateBlocked || publishBlocked) && (
+            <p className="text-xs text-amber-700 sm:text-right" data-testid="text-provider-publish-verification-note">
+              {verificationGateBlocked
+                ? "Publishing needs identity and business verification. "
+                : "This category needs background verification before it can be published. "}
+              <a href="/provider-status" className="underline font-medium">Finish verification on your Provider Status page</a>
+              {" "}— your work here is safe, use Save Draft and come back.
             </p>
           )}
         </CardContent>
