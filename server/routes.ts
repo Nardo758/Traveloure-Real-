@@ -89,6 +89,7 @@ import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { isArtifactDelivery } from "@shared/service-fundamentals";
+import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
@@ -262,6 +263,66 @@ function requireAuthOrShareToken(req: any, res: any, next: any) {
     return res.status(401).json({ message: "Unauthorized" });
   }
   next();
+}
+
+// F2 publish-verification gate (role-aware; ratified Aug 10 2026 — see QA_PUNCH_LIST.md P0).
+// Shared by POST /api/provider/services, PATCH /api/provider/services/:id, PATCH
+// /api/expert/services/:id/status (target "active"), and admin approval (server/routes/
+// admin.routes.ts) — every publish-adjacent enforcement point resolves through the SAME
+// predicate so the two call sites this gate originally had cannot drift the way they did
+// before this fix (be78a9c introduced two hand-copied, provider-only checks that also
+// blocked every expert), and so the P0 class (gate correct but unreachable through the
+// paths that actually go live) cannot recur.
+//
+// The branch logic itself lives in ONE place: resolvePublishVerification
+// (server/services/publish-verification.service.ts). This function only shapes that
+// result into the 403 body/message pair, keeping the existing wire format (and the 11
+// f2-verification-gate.http proofs) unchanged.
+//
+// Role is resolved with a DB lookup on the session user id inside the resolver — the same
+// pattern `requireAdmin` uses (server/routes.ts ~:8861) — never `req.user.role`/
+// `req.user.claims.role`, which is a stale session snapshot (CLAUDE.md §2).
+// Returns null when the caller may proceed; otherwise the exact { status, body } to send.
+async function checkPublishVerificationGate(
+  userId: string
+): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  const verification = await resolvePublishVerification(userId);
+  if (verification.ok) return null;
+
+  if (isProviderRole(verification.role)) {
+    return {
+      status: 403,
+      body: {
+        message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
+        code: "VERIFICATION_GATE",
+        identityVerified: verification.identityVerified,
+        businessVerified: verification.businessVerified,
+      },
+    };
+  }
+
+  if (isExpertRole(verification.role)) {
+    return {
+      status: 403,
+      body: {
+        message: "Identity verification must be complete before publishing an offering. Complete verification in your expert status page.",
+        code: "VERIFICATION_GATE",
+        identityVerified: verification.identityVerified,
+        businessVerified: null, // not applicable — experts have no business-verification check
+      },
+    };
+  }
+
+  // Role in neither family (executive_assistant, plain user, unknown) — default-deny.
+  return {
+    status: 403,
+    body: {
+      message: "Identity verification must be complete before publishing an offering.",
+      code: "VERIFICATION_GATE",
+      identityVerified: false,
+      businessVerified: null,
+    },
+  };
 }
 
 function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
@@ -2273,36 +2334,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // F2 identity + business verification publish gate (Phase 0.5 — docs/backoffice/EARN_PIPELINE_EVAL.md).
-      // An offering cannot go live until the provider's identity and business verification are
-      // both confirmed as "verified" (Stripe Identity + Stripe Connect KYB respectively).
-      // Admin-role users bypass (no service_provider_forms row on admin accounts).
-      // Non-admins with NO form row are also blocked — absence of a form means the provider
-      // has not completed the application flow and cannot have verified status.
+      // F2 identity (+ business, provider-only) verification publish gate (Phase 0.5 —
+      // docs/backoffice/EARN_PIPELINE_EVAL.md). Role-aware — see checkPublishVerificationGate
+      // for the full rule (providers: service_provider_forms, both statuses; experts:
+      // local_expert_forms, identity only; admin bypass via DB role lookup; default-deny
+      // otherwise). Ratified Aug 10 2026 — QA_PUNCH_LIST.md P0.
       if (input.status === "active") {
-        const reqUserRole = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
-        const isAdmin = reqUserRole === "admin";
-
-        if (!isAdmin) {
-          const [provForm] = await db
-            .select({
-              identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
-              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
-            })
-            .from(serviceProviderForms)
-            .where(eq(serviceProviderForms.userId, userId))
-            .limit(1);
-
-          const idOk = provForm?.identityVerificationStatus === "verified";
-          const bizOk = provForm?.businessVerificationStatus === "verified";
-          if (!idOk || !bizOk) {
-            return res.status(403).json({
-              message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
-              code: "VERIFICATION_GATE",
-              identityVerified: idOk,
-              businessVerified: bizOk,
-            });
-          }
+        const gateResult = await checkPublishVerificationGate(userId);
+        if (gateResult) {
+          return res.status(gateResult.status).json(gateResult.body);
         }
       }
 
@@ -2469,32 +2509,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // F2 identity + business verification publish gate (Phase 0.5 — same rule as CREATE above).
-      // Admin users bypass; all other roles require a verified service_provider_forms row.
+      // F2 identity (+ business, provider-only) verification publish gate (Phase 0.5 — same
+      // rule as CREATE above; see checkPublishVerificationGate). Ratified Aug 10 2026 —
+      // QA_PUNCH_LIST.md P0.
       if (input.status === "active") {
-        const reqUserRoleUpd = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
-        const isAdminUpd = reqUserRoleUpd === "admin";
-
-        if (!isAdminUpd) {
-          const [provFormUpd] = await db
-            .select({
-              identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
-              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
-            })
-            .from(serviceProviderForms)
-            .where(eq(serviceProviderForms.userId, userId))
-            .limit(1);
-
-          const idOk = provFormUpd?.identityVerificationStatus === "verified";
-          const bizOk = provFormUpd?.businessVerificationStatus === "verified";
-          if (!idOk || !bizOk) {
-            return res.status(403).json({
-              message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
-              code: "VERIFICATION_GATE",
-              identityVerified: idOk,
-              businessVerified: bizOk,
-            });
-          }
+        const gateResult = await checkPublishVerificationGate(userId);
+        if (gateResult) {
+          return res.status(gateResult.status).json(gateResult.body);
         }
       }
 
@@ -4484,6 +4505,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { status } = req.body;
       if (!["active", "paused", "draft"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
+      }
+      // F2 publish-verification gate (QA_PUNCH_LIST.md P0 — this was the owner's-own-toggle
+      // door the original gate placement missed): re-lives an already-approved listing, so
+      // it must pass the same predicate as first publish before landing 'active'. userId
+      // here is the owner (already ownership-checked above), same actor the gate expects.
+      if (status === "active") {
+        const gateResult = await checkPublishVerificationGate(userId);
+        if (gateResult) {
+          return res.status(gateResult.status).json(gateResult.body);
+        }
       }
       const updated = await storage.toggleServiceStatus(req.params.id, status);
       res.json(updated);
