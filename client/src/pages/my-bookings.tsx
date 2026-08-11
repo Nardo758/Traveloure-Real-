@@ -628,7 +628,11 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // Escrow Phase 3: once the provider marks the booking completed, the traveler can either confirm
   // completion (early-releases the provider's held earnings) or dispute (blocks release for admin
   // review). Both act on this service booking by id.
-  const canConfirmOrDispute = booking.status === "completed";
+  // Task 1091: the traveler's confirmation is now the production completion path — on a paid
+  // `confirmed` booking it drives confirmed → completed (minting the provider's held earnings)
+  // and then early-releases them. `completed` (auto-completed or admin-set) keeps the original
+  // confirm/dispute behavior.
+  const canConfirmOrDispute = booking.status === "completed" || booking.status === "confirmed";
   const canCancel = booking.status === "pending" || booking.status === "confirmed";
   const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;

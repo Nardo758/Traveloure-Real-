@@ -625,11 +625,38 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can confirm this booking' });
 
-    const [booking] = await db.select({ status: serviceBookings.status })
+    const [booking] = await db.select({
+      status: serviceBookings.status,
+      stripePaymentIntentId: serviceBookings.stripePaymentIntentId,
+    })
       .from(serviceBookings).where(eq(serviceBookings.id, bookingId));
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
-    if (booking.status !== 'completed') {
-      return res.status(400).json({ error: 'Only a completed booking can be confirmed' });
+
+    // Task 1091: the traveler's confirmation IS the production completion path. Previously this
+    // endpoint required status already 'completed', but nothing outside admin dispute machinery
+    // ever set 'completed' — so normally paid bookings never minted earnings. The traveler (the
+    // payer, never the earner — self-crediting is impossible on this rail) confirms delivery,
+    // which drives confirmed → completed (minting held earnings in updateServiceBookingStatus)
+    // and then early-releases them, matching the pre-existing Phase 3 semantics.
+    if (booking.status === 'confirmed') {
+      // Earnings must never mint for an unpaid booking. A request-rail booking can sit in
+      // 'confirmed' without a charge (and can even carry a never-charged PI), so require a
+      // Stripe-verified succeeded PaymentIntent before completing.
+      if (!booking.stripePaymentIntentId) {
+        return res.status(400).json({ error: 'This booking has no payment on record, so it cannot be confirmed as completed.' });
+      }
+      const { stripe } = await import('../services/stripe-payment.service');
+      const pi = await stripe.paymentIntents.retrieve(booking.stripePaymentIntentId);
+      if (pi.status !== 'succeeded') {
+        return res.status(400).json({ error: 'Payment for this booking has not completed, so it cannot be confirmed as completed.' });
+      }
+      // Atomic guarded transition — a concurrent cancel/refund wins and this mints nothing.
+      const completed = await storage.updateServiceBookingStatus(bookingId, 'completed', undefined, ['confirmed']);
+      if (!completed) {
+        return res.status(409).json({ error: 'This booking changed before your confirmation was applied. Reload and try again.' });
+      }
+    } else if (booking.status !== 'completed') {
+      return res.status(400).json({ error: 'Only a confirmed or completed booking can be confirmed' });
     }
 
     const released = await storage.releaseEarningsForBooking(bookingId);

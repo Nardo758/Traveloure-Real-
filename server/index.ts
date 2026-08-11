@@ -30,6 +30,7 @@ import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.serv
 import { checkoutClaimSweepScheduler } from "./services/checkout-claim.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
+import { bookingAutoCompleteScheduler } from "./services/booking-auto-complete.service";
 import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
 import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
 import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
@@ -579,6 +580,9 @@ if (process.env.NODE_ENV === "production") {
 
     earningsReleaseScheduler.start();
     logger.info("Earnings release scheduler started");
+
+    bookingAutoCompleteScheduler.start();
+    logger.info("Booking auto-complete scheduler started");
 
     stripeConnectReminderScheduler.start();
     logger.info("Stripe Connect reminder scheduler started");
