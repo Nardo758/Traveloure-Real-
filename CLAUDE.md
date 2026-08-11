@@ -503,6 +503,11 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   unreachable `package-firewall.replit.local` URLs into `package-lock.json` — that breaks `npm ci` on every
   GitHub runner (this kept main red ~Jul 7–11). The main recurrence engine is `.replit [postMerge]` →
   `scripts/post-merge.sh` → `npm install` after every merge.
+- **Source-level prevention — VERIFIED WORKING Aug 11, 2026:** `.replit [env]` pins
+  `npm_config_registry = "https://registry.npmjs.org/"` (LOWERCASE key, deliberately — Replit injects the
+  lowercase spelling and npm resolves a case-collision in its favor; the same-key pin overwrites it at
+  shell spawn). With the pin in force `npm config get registry` reports the real registry and pollution
+  never forms. The layers below are defense-in-depth for the day a platform change outflanks it.
 - Guards, in order: the `postinstall` script scrubs immediately after EVERY install — at the formation
   event itself, regardless of who invoked the install (added Aug 11, 2026; this also covers commits made
   through hook-bypassing interfaces, e.g. Replit's Git pane); `scripts/post-merge.sh` scrubs right after
