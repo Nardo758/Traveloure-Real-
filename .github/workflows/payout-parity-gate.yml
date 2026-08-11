@@ -14,11 +14,18 @@ name: Payout Parity Gate
 # Registered in the docs/DECISIONS.md Guard registry as `payout-parity`. Ruling 27: a
 # script-only/manual-only suite is MISSING — it must run in CI to count as a guard.
 #
-# Negative space (ruling 43): the suite stamps bookings via the same resolver + insurance helper
-# the checkout route imports, but it does NOT drive the HTTP route — a route change that stamps a
-# different figure than this recipe is invisible here (the journey suite covers the route). It
-# proves parity of the MINTED AMOUNT only, not payout delivery (Stripe transfers), not ledger
-# balance (invariant gate), and nothing about refunds/cancellations.
+# Route leg (closes the former ruling-43 negative space): payout-parity-route.http.test.ts
+# drives the REAL `POST /api/checkout` (cart via `POST /api/cart`, session via
+# `POST /api/auth/register`) against a server booted in this job, and asserts the
+# provider_earnings the route stamps equals the same resolver+insurance recipe. With this job's
+# stub Stripe key the checkout answers the declared 503 payment_unavailable contract — the stamp
+# happens BEFORE the Stripe call, so the provisional payment_pending row carries the figure
+# under test. A route change that reorders the insurance deduction, bypasses safeParseRate, or
+# recomputes the split now fails HERE, not just in the recipe-level suite.
+#
+# Remaining negative space: this gate proves parity of the STAMPED and MINTED amounts only —
+# not payout delivery (Stripe transfers), not ledger balance (invariant gate), and nothing
+# about refunds/cancellations.
 #
 # DB writes: the suite's assertDisposableDb guard refuses any non-localhost DB unless
 # JOURNEY_DB_WRITES_OK=1 is set deliberately. This job's Postgres is a THROWAWAY service
@@ -83,4 +90,65 @@ jobs:
           STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
           NODE_ENV: test
           # Disposable-DB opt-in: this is a throwaway service container (see header comment).
+          JOURNEY_DB_WRITES_OK: '1'
+
+      # ── ROUTE LEG (R1–R2): drive the REAL POST /api/checkout ────────────────────────────────
+      # Boot recipe mirrors publish-gate-and-fundamentals-gate.yml (build → prod bundle →
+      # /api/ready poll). The stub Stripe key is DELIBERATE: the route stamps provider_earnings
+      # BEFORE calling Stripe, and answers the declared 503 payment_unavailable contract when
+      # Stripe is unreachable — so the stamped figure is fully assertable without a real key.
+      - name: Build production bundle (route leg)
+        run: npm run build
+
+      - name: Start production server (route leg)
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # sk_test_ stub — never a real Stripe secret (server/validate-env.ts hard-stops a
+          # live key outside production; a test-shaped stub passes trivially).
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
+          # explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed, so opt out.
+          # NEVER set this in production.
+          SESSION_COOKIE_INSECURE: '1'
+          # The suite registers a fresh user from the loopback IP; exempt loopback from the
+          # limiter so registration is never 429'd. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server (route leg)
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Payout parity route leg (R1–R2, real POST /api/checkout)
+        run: npm run test:payout-parity-route
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          NODE_ENV: test
+          # Disposable-DB opt-in: same throwaway service container as the recipe suite above.
           JOURNEY_DB_WRITES_OK: '1'
