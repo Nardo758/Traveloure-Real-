@@ -635,6 +635,18 @@ a ruling, or real-user validation and is therefore **not built**.
   work" and "how far I collect from" are genuinely different numbers. Tier A labelled them as one
   value; splitting them needs an additive column + a ruling (and touches the D7 surface just landed).
 
+- **SS-5 — D9 attestation: protected professional titles. — ADDRESSED** (DECISIONS.md **ruling 67**,
+  build commit `SS5_BUILD_SHA`; migration 197, `shared/service-attestations.ts`,
+  `server/routes/service-attestations.routes.ts`, 13/13 in
+  `server/__tests__/service-attestations.http.test.ts`, reachability proven in the live wizard).
+  Built as a **title-claim attestation, not a licensing gate**, exactly as the scope note below
+  demands: the applicable set is SERVER-DERIVED from delivery method + category (guide/interpreting
+  categories, EVERY method — a pdf itinerary can carry the claim too), undecidable rows are omitted
+  WITH A REASON and are not affirmable, and inapplicable ones never appear. Two siblings shipped in
+  the same catalog (`in_person_safety_basics`, `food_safety_disclosure`). **What ruling 67
+  deliberately did NOT build is filed as SS-5a/b/c below — none of it is a defect in this item.**
+  Original finding retained verbatim:
+
 - **SS-5 — D9 attestation: protected professional titles.** [research] Japan deregulated paid guiding on
   4 Jan 2018 — no licence is required — but the title 通訳案内士 (*Tsūyaku Annai-shi*) remains legally
   protected, and unlicensed guides may not use titles implying official certification (e.g. "Government
@@ -644,6 +656,33 @@ a ruling, or real-user validation and is therefore **not built**.
   attestations keyed to method + category risk, inapplicable ones omitted with a reason), which is
   ratified but unbuilt. **Scope note: an attestation about a TITLE CLAIM, not a licensing gate** — the
   licence is not required to trade.
+
+- **SS-5a — [DM] Should an unaffirmed attestation BLOCK publishing?** [filed by ruling 67] The D9
+  build records affirmations and gates nothing: a provider can publish a guide listing without
+  ticking `title_claim_honesty`, by design, because ruling 62 ratified attestations *keyed to method
+  and category* and said nothing about a publish gate — and this wizard already carries five publish
+  gates (meeting point, price, category verification, identity/business, expert identity), so adding
+  a sixth is a funnel decision with real supply cost, not a build detail. The machinery a gate would
+  need already exists (`resolveApplicableAttestations` + the affirmation rows), so this is a small
+  change once ruled. Options: (a) leave ungated as built; (b) block `status:'active'` when any
+  applicable attestation is unaffirmed, draft-exempt like the sibling gates; (c) block for a named
+  high-risk subset only (`title_claim_honesty`) and leave the rest advisory.
+
+- **SS-5b — [DM] Should attestations be shown to TRAVELERS?** [filed by ruling 67] Nothing D9 records
+  reaches `/services/:id` or any traveler surface today — deliberately, because displaying a
+  self-attestation to a buyer converts it into a **trust signal the platform did not verify**, which
+  is the §13 hazard in its sharpest form (a badge reading "insured" that nobody checked is worse than
+  silence). If it is ever shown, the honest framing is the provider's own words attributed to them
+  with the non-verification stated inline, never a checkmark badge. Needs its own ruling before any
+  surface is built.
+
+- **SS-5c — Nothing scans listing TEXT for the phrases the attestation is about.** [filed by ruling
+  67] A provider can affirm `title_claim_honesty` and still type "Government certified guide" into
+  `service_name`/`description` — the attestation records a promise, it does not detect a breach. This
+  is the arm that would actually catch a lie, and it is a different product: phrase detection in two
+  languages, a false-positive policy ("certified" is legitimate in many compounds), and an
+  enforcement path that does not exist (ruling 67 changed no admin review queue). Filed, not started.
+  Cheapest honest first step if scheduled: flag for HUMAN review, never auto-reject.
 
 - **SS-6 — No delivery-language field on `provider_services`.** [code] `information_schema` sweep: the
   only language columns are `local_expert_forms.languages`, `service_gap_analysis.language_gaps`,
@@ -727,6 +766,13 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   | active / paused | 公開中 / 一時停止中 | |
   | sign in / sign up | ログイン / アカウント作成 | |
   | trip planner / local expert | トリッププランナー / ローカルエキスパート | |
+
+  **Scope grew (ruling 67, D9 attestations):** the review now also owes the **attestation catalog's
+  JA label/body/omission-reason copy** in `shared/service-attestations.ts` — machine-authored like
+  the rest, but this is **legally-loaded copy in the launch market** (it names 通訳案内士 and states
+  what the provider is promising), so it is the highest-priority item in this debt, not another
+  chrome string. Review it as a set with the glossary above; `出品` and `サービス事業者` are already
+  applied there.
 
   Note one JA-specific layout consequence already visible: Japanese nav labels are longer than their
   English counterparts and the traveler navbar wraps `マーケットプレイス` to two lines at desktop width.

@@ -912,4 +912,13 @@ export const MIGRATION_FILES = [
   // state). NULL = never recorded → that arm is skipped with a stated reason, never guessed (§13).
   // No backfill, no CHECK. Declared in shared/schema.ts (publish-trap rule).
   "196_deliverable_uploaded_at.sql",
+  // 197: service_attestations — D9 onboarding attestations keyed to delivery method + category
+  // risk (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67). Child rows of
+  // provider_services on the service_route_points pattern: ON DELETE CASCADE, UNIQUE
+  // (service_id, attestation_key) — that UNIQUE is what makes re-affirming idempotent
+  // (INSERT … ON CONFLICT DO NOTHING). affirmed_by is the SESSION user, ON DELETE SET NULL so a
+  // deleted account never erases the historical fact. Vocabulary is app-enforced in
+  // shared/service-attestations.ts — NO CHECK (migration-144/195 posture, publish-trap
+  // avoidance). Additive, idempotent. Declared in shared/schema.ts (publish-trap rule).
+  "197_service_attestations.sql",
 ] as const;
