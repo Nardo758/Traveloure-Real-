@@ -1370,6 +1370,19 @@ export class DatabaseStorage implements IStorage {
           .limit(1);
         ownerIsProvider = isProviderRole(ownerRow?.role);
       }
+      // ── 1C retirement of the provider-lane snapshot (docs/DECISIONS.md ruling 71) ─────────────
+      // Provider-lane rows no longer carry a STAMPED `revenueShareRate`. Their charge path now
+      // resolves the D1 category band (ruling 69 D6 / ruling 71 Step 1), which OUTRANKS this
+      // snapshot as a first operand — so stamping one only leaves a stale value that an admin band
+      // edit can no longer move. Leave the column NULL (the caller omits it → the nullable column's
+      // NULL default) and let `pickOwnerShareRate` resolve the band live at charge time. Expert-lane
+      // rows keep their derived stamp below — no D1 provider band exists for them, so the snapshot is
+      // still their legacy operand (and a NULL there would simply fall through to the same band).
+      // This stops STAMPING a derived value only; the §18 input strip in createProviderService /
+      // updateProviderService that REJECTS a client-sent value is untouched (§18 rule 3 — a field
+      // with no consumer is still stripped). Existing non-NULL provider rows are NOT backfilled
+      // (publish-trap posture); Step 1 already made them inert.
+      if (ownerIsProvider) return null;
       let feeCategory: string | null = null;
       if (categoryId) {
         const rows = await this.getServiceCategorySlugsByIds([categoryId]);

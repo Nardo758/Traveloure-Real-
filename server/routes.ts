@@ -1560,23 +1560,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           bookingType =
             ownerIsProvider ? BookingType.PROVIDER_BOOKING : BookingType.EXPERT_SESSION;
 
-          // Per-service revenueShareRate is the final override when explicitly set
-          // (consistent with checkout logic in payments.routes.ts).
-          const hasPerServiceRate =
-            service.revenueShareRate !== null && service.revenueShareRate !== undefined;
-
-          if (hasPerServiceRate) {
-            const shareRate = Number(service.revenueShareRate);
-            platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
-            providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
-          } else {
-            platformFeeAmt = commission.platformFee.toFixed(2);
-            providerEarningsAmt = (
-              ownerIsProvider
-                ? (commission.providerPayout ?? 0)
-                : (commission.expertPayout ?? 0)
-            ).toFixed(2);
-          }
+          // ── 1C charge-path repoint (docs/DECISIONS.md ruling 71; completes ruling 69 D6) ──────
+          // The RATE this booking records resolves through the SAME D1 seam cart checkout uses:
+          // `resolveDirectProviderRate` makes ONE call into `resolveProviderRate` (§18 rule 1 —
+          // delegate, never re-implement), and `pickOwnerShareRate` applies the ONE precedence
+          // (rails → direct D1 band → legacy). The direct band deliberately OUTRANKS the per-service
+          // `revenueShareRate` snapshot, which ruling 47 dethroned as a first operand — pricing a
+          // booking off the stale snapshot here would defeat an admin band edit exactly as the cart
+          // path already prevents. §14/§18: the rate is server-resolved from `fee_bands`, never from
+          // `req.body` and never from the snapshot as an override.
+          //
+          // A refusal (expert lane / no category / breached band guard) never throws — the seam
+          // leaves the INCUMBENT legacy rate standing for that line, so a booking-create is never the
+          // casualty of a misconfigured band (the ruling-70 disposition-6 fallback posture, reused —
+          // not a second handler). The legacy operand is this path's own pre-1C incumbent share (the
+          // `calculateCommission` payout share, byte-identical to what it charged before 1C), with the
+          // snapshot demoted to that fallback's fallback.
+          const parseSnapshotRate = (v: unknown, fallback: number): number => {
+            const n = parseFloat(String(v));
+            return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+          };
+          const directRate = await resolveDirectProviderRate({
+            serviceOwnerUserId: providerId,
+            ownerRole,
+            categoryId: service.categoryId ?? null,
+            serviceId,
+          });
+          const incumbentShare = 1 - commission.commissionRate;
+          const { shareRate: ownerShareRate } = pickOwnerShareRate({
+            railsShareRate: null,
+            direct: directRate,
+            legacyShareRate: parseSnapshotRate(service.revenueShareRate, incumbentShare),
+          });
+          platformFeeAmt = (totalAmount * (1 - ownerShareRate)).toFixed(2);
+          providerEarningsAmt = (totalAmount * ownerShareRate).toFixed(2);
         } else {
           // No owner on record — fall back to expert standard split
           const commission = calculateCommission(totalAmount, BookingType.EXPERT_SESSION);
