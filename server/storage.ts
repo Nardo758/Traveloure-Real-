@@ -1873,7 +1873,7 @@ export class DatabaseStorage implements IStorage {
     const cancelStatuses = ["cancelled", "refunded"];
     const isFirstCancellation =
       cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || '');
-    if (isFirstCancellation) {
+    if (isFirstCancellation && updated.serviceId) {
       await db.update(providerServices)
         .set({ bookingsCount: sql`GREATEST(${providerServices.bookingsCount} - 1, 0)` })
         .where(eq(providerServices.id, updated.serviceId));
@@ -1971,7 +1971,7 @@ export class DatabaseStorage implements IStorage {
         availableAt,
       }).onConflictDoNothing({
         target: [providerEarnings.sourceId],
-        where: sql`source_type = 'booking'`,
+        where: sql`source_type = 'booking' and amount >= 0`,
       }).returning({ id: providerEarnings.id });
       if (insertedProvider.length > 0) {
         await tx.update(providerServices)
@@ -1992,7 +1992,7 @@ export class DatabaseStorage implements IStorage {
         availableAt,
       }).onConflictDoNothing({
         target: [expertEarnings.referenceId],
-        where: sql`reference_type = 'service_booking'`,
+        where: sql`reference_type = 'service_booking' and amount >= 0`,
       }).returning({ id: expertEarnings.id });
       if (insertedExpert.length > 0) applied = true;
     }

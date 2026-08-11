@@ -4412,7 +4412,7 @@ export const expertEarnings = pgTable("expert_earnings", {
   // Migration 195 (task 1091): completion-mint race guard — see provider_earnings twin.
   bookingMintUniq: uniqueIndex("expert_earnings_booking_mint_uniq")
     .on(table.referenceId)
-    .where(sql`reference_type = 'service_booking'`),
+    .where(sql`reference_type = 'service_booking' AND amount >= 0`),
 }));
 
 // Expert payouts - tracks payout requests
@@ -4619,9 +4619,11 @@ export const providerEarnings = pgTable("provider_earnings", {
   // Migration 195 (task 1091): the completion mint's race guard — one booking-mint row per
   // booking; the mint INSERTs with ON CONFLICT DO NOTHING against this index. Declared here
   // AND in migration SQL (publish-trap rule).
+  // amount >= 0: only the one original positive completion-mint row is unique; negative
+  // compensation/clawback rows sharing the same source identity stay insertable.
   bookingMintUniq: uniqueIndex("provider_earnings_booking_mint_uniq")
     .on(table.sourceId)
-    .where(sql`source_type = 'booking'`),
+    .where(sql`source_type = 'booking' AND amount >= 0`),
 }));
 
 // Provider payouts - tracks payout requests

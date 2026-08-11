@@ -16,6 +16,8 @@ USING provider_earnings keep
 WHERE pe.source_type = 'booking'
   AND keep.source_type = 'booking'
   AND pe.source_id = keep.source_id
+  AND pe.amount >= 0
+  AND keep.amount >= 0
   AND pe.id <> keep.id
   AND (
     (keep.status = 'paid_out' AND pe.status <> 'paid_out')
@@ -30,6 +32,8 @@ USING expert_earnings keep
 WHERE ee.reference_type = 'service_booking'
   AND keep.reference_type = 'service_booking'
   AND ee.reference_id = keep.reference_id
+  AND ee.amount >= 0
+  AND keep.amount >= 0
   AND ee.id <> keep.id
   AND (
     (keep.status = 'paid_out' AND ee.status <> 'paid_out')
@@ -53,13 +57,16 @@ WHERE pr.source_type = 'booking_commission'
   AND keep.gross_amount >= 0
   AND (keep.created_at, keep.id) < (pr.created_at, pr.id);
 
+-- amount >= 0 on ALL three indexes: only the one original positive completion-mint row is
+-- unique per booking; any negative compensation/clawback row sharing the same source identity
+-- (present or future) stays insertable.
 CREATE UNIQUE INDEX IF NOT EXISTS provider_earnings_booking_mint_uniq
   ON provider_earnings (source_id)
-  WHERE source_type = 'booking';
+  WHERE source_type = 'booking' AND amount >= 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS expert_earnings_booking_mint_uniq
   ON expert_earnings (reference_id)
-  WHERE reference_type = 'service_booking';
+  WHERE reference_type = 'service_booking' AND amount >= 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS platform_revenue_booking_mint_uniq
   ON platform_revenue (source_id)

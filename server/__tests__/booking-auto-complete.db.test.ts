@@ -276,3 +276,31 @@ test("PS-1: parallel mints for DISTINCT bookings on the same date both land in t
   assert.equal(Number((after.rows[0] as any).fee) - feeBefore, 60, "both $30 fees must be summed — no lost update");
   assert.equal(Number((after.rows[0] as any).n) - nBefore, 2, "transaction count must reflect both mints");
 });
+
+test("RV-2: negative compensation rows on BOTH earnings ledgers remain insertable after migration 195", async () => {
+  const id = await insertBooking({ status: "completed", pi: PAID_PI, confirmedDaysAgo: 5, completedAt: new Date() });
+  const booking = await storage.getServiceBooking(id);
+  assert.ok(booking);
+  assert.equal(await storage.mintCompletionEarningsForBooking(booking!), true);
+
+  // A clawback/compensation entry shares the SAME source identity with a negative amount —
+  // the positive-scoped unique indexes must not block it (on either ledger).
+  await db.execute(sql`
+    INSERT INTO provider_earnings (id, provider_id, type, amount, source_type, source_id, description, status)
+    VALUES (${crypto.randomUUID()}, ${providerId}, 'service_booking', '-90.00', 'booking', ${id}, 'compensation row', 'reversed')`);
+  await db.execute(sql`
+    INSERT INTO expert_earnings (id, expert_id, type, amount, reference_id, reference_type, description, status)
+    VALUES (${crypto.randomUUID()}, ${providerId}, 'consulting', '-90.00', ${id}, 'service_booking', 'compensation row', 'reversed')`);
+
+  const pe = await db.execute(sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_type='booking' AND source_id=${id}`);
+  const ee = await db.execute(sql`SELECT count(*)::int AS n FROM expert_earnings WHERE reference_type='service_booking' AND reference_id=${id}`);
+  assert.equal((pe.rows[0] as any).n, 2, "positive mint + negative compensation must coexist");
+  assert.equal((ee.rows[0] as any).n, 2, "positive mint + negative compensation must coexist");
+
+  // But a SECOND positive mint row is still impossible (unique index rejects it).
+  await assert.rejects(() => db.execute(sql`
+    INSERT INTO provider_earnings (id, provider_id, type, amount, source_type, source_id, description, status)
+    VALUES (${crypto.randomUUID()}, ${providerId}, 'service_booking', '90.00', 'booking', ${id}, 'dup mint', 'held')`));
+  const peAfter = await db.execute(sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_type='booking' AND source_id=${id} AND amount >= 0`);
+  assert.equal((peAfter.rows[0] as any).n, 1, "still exactly one positive mint row");
+});
