@@ -252,7 +252,7 @@ export interface IStorage {
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
   updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined>;
-  mintCompletionEarningsForBooking(booking: ServiceBooking): Promise<boolean>;
+  mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
@@ -1840,23 +1840,34 @@ export class DatabaseStorage implements IStorage {
       ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
       : eq(serviceBookings.id, id);
 
-    const [updated] = await db.update(serviceBookings)
-      .set(updates)
-      .where(guard)
-      .returning();
+    // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
+    // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking
+    // stays in its prior status, so the traveler endpoint's retry re-attempts the whole thing —
+    // never a completed booking with no earnings. Mint is idempotent under conflict (partial
+    // unique indexes + ON CONFLICT DO NOTHING), which also fixes the latent dispute-reject
+    // double-mint (completed → disputed → re-completed).
+    let updated: ServiceBooking | undefined;
+    if (status === "completed") {
+      updated = await db.transaction(async (tx) => {
+        const [u] = await tx.update(serviceBookings)
+          .set(updates)
+          .where(guard)
+          .returning();
+        if (!u) return undefined;
+        await this.mintCompletionEarningsForBooking(u, tx);
+        return u;
+      });
+    } else {
+      [updated] = await db.update(serviceBookings)
+        .set(updates)
+        .where(guard)
+        .returning();
+    }
 
     // 0 rows: either the id vanished, or (with a guard) a concurrent writer moved the row out of
     // every expected state first. Either way this caller lost — and critically, NONE of the
     // side-effects below run, so a lost race mints no earnings and no revenue row.
     if (!updated) return undefined;
-
-    // Fire completion side-effects on a transition to "completed". mintCompletionEarningsForBooking
-    // is INTERNALLY idempotent (ledger-existence guard), which also fixes a latent double-mint:
-    // completed → disputed → admin dispute-reject re-enters "completed" with priorStatus
-    // 'disputed', which the old priorStatus-only check treated as a first completion.
-    if (status === "completed") {
-      await this.mintCompletionEarningsForBooking(updated);
-    }
 
     // Only decrement bookingsCount on the FIRST transition to cancelled/refunded.
     const cancelStatuses = ["cancelled", "refunded"];
@@ -1879,7 +1890,7 @@ export class DatabaseStorage implements IStorage {
    * pass), and (c) on dispute-reject re-completion — none of which can double-mint.
    * Returns true if any effect was newly applied.
    */
-  async mintCompletionEarningsForBooking(booking: ServiceBooking): Promise<boolean> {
+  async mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<boolean> {
     const { providerId, serviceId } = booking;
     if (!providerId || !serviceId) {
       console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
@@ -1896,8 +1907,10 @@ export class DatabaseStorage implements IStorage {
     // exactly ONE caller wins each row. The whole mint — ledger rows PLUS their rollup
     // side-effects (service totalRevenue, daily revenue summary) — runs in ONE transaction:
     // a crash or failure mid-mint rolls everything back, so a retry re-attempts the full set and
-    // rollups can never be permanently skipped behind an already-inserted ledger row.
-    return await db.transaction(async (tx) => {
+    // rollups can never be permanently skipped behind an already-inserted ledger row. When an
+    // outer transaction is supplied (the status-transition caller), the mint joins it so the
+    // confirmed → completed flip and the money effects commit or roll back as ONE unit.
+    const run = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
     let applied = false;
 
     if (platformFee > 0) {
@@ -1923,32 +1936,25 @@ export class DatabaseStorage implements IStorage {
       if (inserted.length > 0) {
         applied = true;
         // Daily summary rollup (matches recordPlatformRevenue's side-effect), only for the
-        // winner, and inside the SAME transaction as the winning ledger insert.
+        // winner, inside the SAME transaction, and as an ATOMIC upsert — concurrent mints for
+        // different bookings on the same date each add their increment, never lost-update.
         const date = new Date().toISOString().split('T')[0];
-        const addGross = grossAmount;
-        const addFee = platformFee;
-        const addNet = platformFee * (1 - PROCESSING_FEE_RATE);
-        const [existingSummary] = await tx.select().from(dailyRevenueSummary)
-          .where(eq(dailyRevenueSummary.date, date));
-        if (existingSummary) {
-          await tx.update(dailyRevenueSummary)
-            .set({
-              totalGross: String(parseFloat(existingSummary.totalGross || '0') + addGross),
-              totalPlatformFee: String(parseFloat(existingSummary.totalPlatformFee || '0') + addFee),
-              totalNet: String(parseFloat(existingSummary.totalNet || '0') + addNet),
-              transactionCount: (existingSummary.transactionCount || 0) + 1,
-              updatedAt: new Date(),
-            })
-            .where(eq(dailyRevenueSummary.date, date));
-        } else {
-          await tx.insert(dailyRevenueSummary).values({
-            date,
-            totalGross: String(addGross),
-            totalPlatformFee: String(addFee),
-            totalNet: String(addNet),
-            transactionCount: 1,
-          });
-        }
+        await tx.insert(dailyRevenueSummary).values({
+          date,
+          totalGross: String(grossAmount),
+          totalPlatformFee: String(platformFee),
+          totalNet: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+          transactionCount: 1,
+        }).onConflictDoUpdate({
+          target: dailyRevenueSummary.date,
+          set: {
+            totalGross: sql`${dailyRevenueSummary.totalGross} + excluded.total_gross`,
+            totalPlatformFee: sql`${dailyRevenueSummary.totalPlatformFee} + excluded.total_platform_fee`,
+            totalNet: sql`${dailyRevenueSummary.totalNet} + excluded.total_net`,
+            transactionCount: sql`${dailyRevenueSummary.transactionCount} + 1`,
+            updatedAt: new Date(),
+          },
+        });
       }
     }
 
@@ -1992,7 +1998,8 @@ export class DatabaseStorage implements IStorage {
     }
 
     return applied;
-    });
+    };
+    return outerTx ? await run(outerTx) : await db.transaction(run);
   }
 
   // Service Reviews

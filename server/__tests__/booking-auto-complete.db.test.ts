@@ -230,6 +230,19 @@ test("FI-1: a mid-mint failure rolls back ALL mint effects, and a retry restores
       const r = await db.execute(q);
       assert.equal((r.rows[0] as any).n, 0, `${label} must be rolled back`);
     }
+
+    // THROUGH THE STATUS PATH: with the fault still active, the guarded confirmed → completed
+    // transition must ALSO roll back — a failed mint may never leave a completed booking with
+    // no earnings.
+    const cid = await insertBooking({ status: "confirmed", pi: PAID_PI, confirmedDaysAgo: 5 });
+    await assert.rejects(
+      () => storage.updateServiceBookingStatus(cid, "completed", undefined, ["confirmed"]),
+      /t1091 injected failure|total_revenue/,
+    );
+    const st = await db.execute(sql`SELECT status FROM service_bookings WHERE id = ${cid}`);
+    assert.equal((st.rows[0] as any).status, "confirmed", "status flip must roll back with the failed mint");
+    const cidRows = await db.execute(sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_type='booking' AND source_id=${cid}`);
+    assert.equal((cidRows.rows[0] as any).n, 0, "no earnings row for the rolled-back completion");
   } finally {
     await db.execute(sql.raw(`DROP TRIGGER IF EXISTS t1091_fail_trg ON provider_services; DROP FUNCTION IF EXISTS t1091_fail();`));
   }
@@ -240,4 +253,26 @@ test("FI-1: a mid-mint failure rolls back ALL mint effects, and a retry restores
   assert.equal(Number((revAfter.rows[0] as any).r) - Number((revBefore.rows[0] as any).r), 90, "totalRevenue restored exactly once on retry");
   const pr = await db.execute(sql`SELECT count(*)::int AS n FROM platform_revenue WHERE source_type='booking_commission' AND source_id=${id}`);
   assert.equal((pr.rows[0] as any).n, 1);
+});
+
+test("PS-1: parallel mints for DISTINCT bookings on the same date both land in the daily summary", async () => {
+  const idA = await insertBooking({ status: "completed", pi: PAID_PI, confirmedDaysAgo: 5, completedAt: new Date() });
+  const idB = await insertBooking({ status: "completed", pi: PAID_PI, confirmedDaysAgo: 5, completedAt: new Date() });
+  const [a, b] = await Promise.all([storage.getServiceBooking(idA), storage.getServiceBooking(idB)]);
+  assert.ok(a && b);
+
+  const date = new Date().toISOString().split("T")[0];
+  const before = await db.execute(sql`SELECT COALESCE(total_platform_fee,0)::numeric AS fee, COALESCE(transaction_count,0)::int AS n FROM daily_revenue_summary WHERE date = ${date}`);
+  const feeBefore = before.rows[0] ? Number((before.rows[0] as any).fee) : 0;
+  const nBefore = before.rows[0] ? Number((before.rows[0] as any).n) : 0;
+
+  const [ra, rb] = await Promise.all([
+    storage.mintCompletionEarningsForBooking(a!),
+    storage.mintCompletionEarningsForBooking(b!),
+  ]);
+  assert.ok(ra && rb, "both distinct-booking mints must apply");
+
+  const after = await db.execute(sql`SELECT total_platform_fee::numeric AS fee, transaction_count::int AS n FROM daily_revenue_summary WHERE date = ${date}`);
+  assert.equal(Number((after.rows[0] as any).fee) - feeBefore, 60, "both $30 fees must be summed — no lost update");
+  assert.equal(Number((after.rows[0] as any).n) - nBefore, 2, "transaction count must reflect both mints");
 });
