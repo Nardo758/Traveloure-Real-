@@ -19,10 +19,11 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useExpertVerificationStatus } from "@/hooks/use-expert-verification-status";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { MyOfferingsTable } from "@/components/backoffice/my-offerings-table";
 import { PostingOpportunitiesCard, StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
-import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+import { PageHeader, EmptyState, StatusBadge, type StatusBadgeEntry } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { LayoutGrid, CalendarClock, Trash2, Plus, Copy, ExternalLink } from "lucide-react";
+import { LayoutGrid, CalendarClock, Trash2, Plus, Copy, ExternalLink, ShieldAlert } from "lucide-react";
 
 interface MyService {
   id: string;
@@ -78,6 +79,92 @@ function formatSlotDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+// ─── Verification status banner (dispatch v1.3 R2, docs/DECISIONS.md ruling 53) ─────────────
+// "Verification moves early in expert onboarding with explicit pending-state UX: the expert
+// always knows verification status, what's blocking, and what happens next. It must never be
+// discovered at the publish click." Catalog is the first console page an expert reaches to
+// build listings (per §22b, it's already "what I sell"'s home) — so this is where the
+// requirement surfaces BEFORE any effort goes into a service, not just at the ServiceForm
+// Publish button. Reuses expert-status.tsx's own copy/verbs and the identical
+// /api/expert/application-status field via the shared hook — one source of truth, not a
+// second implementation. §13: renders nothing while the real status is unknown (loading or
+// unresolvable) rather than guessing "pending"; renders nothing once actually verified.
+
+const IDENTITY_STATUS_BADGE_MAP: Record<string, StatusBadgeEntry> = {
+  pending: { label: "Not started", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  processing: { label: "Processing", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  verified: { label: "Verified", className: "bg-green-100 text-green-700 border-green-200" },
+  failed: { label: "Needs attention", className: "bg-red-100 text-red-700 border-red-200" },
+};
+
+function VerificationStatusBanner() {
+  const { enabled, isLoading, isError, status, isVerified } = useExpertVerificationStatus();
+
+  // Not an expert session, still loading, or already verified — nothing to say.
+  if (!enabled || isLoading || isVerified) return null;
+
+  if (isError || !status) {
+    return (
+      <Card className="border border-amber-300 bg-amber-50" data-testid="card-verification-status-unknown">
+        <CardContent className="p-4 flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-console-darkest">Verification status unavailable</p>
+            <p className="text-xs text-console-mid mt-1">
+              We couldn't load your identity-verification status just now. Publishing a listing requires a
+              verified identity — check{" "}
+              <Link href="/expert-status">
+                <span className="underline cursor-pointer font-medium">your Expert Status page</span>
+              </Link>
+              .
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const copy: Record<"pending" | "processing" | "failed", { title: string; body: string }> = {
+    pending: {
+      title: "Identity verification required to publish",
+      body: "You can build and save drafts freely, but a listing can't go live until you verify your identity — takes about 2 minutes.",
+    },
+    processing: {
+      title: "Identity verification in progress",
+      body: "Your verification is being processed — usually a few minutes. Drafts stay unblocked while you wait; publishing unlocks once it clears.",
+    },
+    failed: {
+      title: "Identity verification needs attention",
+      body: "Your last verification attempt was unsuccessful, so publishing is still blocked. Retry with a clear photo of your ID.",
+    },
+  };
+  const { title, body } = copy[status as "pending" | "processing" | "failed"];
+
+  return (
+    <Card className="border border-amber-300 bg-amber-50" data-testid="card-verification-status-banner">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-medium text-console-darkest">{title}</p>
+              <StatusBadge status={status} map={IDENTITY_STATUS_BADGE_MAP} />
+            </div>
+            <p className="text-xs text-console-mid mt-1">{body}</p>
+          </div>
+          {status !== "processing" && (
+            <Link href="/expert-status">
+              <Button size="sm" variant="outline" className="flex-shrink-0" data-testid="button-catalog-go-verify">
+                {status === "failed" ? "Retry verification" : "Verify identity"}
+              </Button>
+            </Link>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Storefront header (C2 — mockup section 5) ──────────────────────────────
@@ -438,6 +525,8 @@ export default function ExpertCatalog() {
             </Link>
           }
         />
+
+        <VerificationStatusBanner />
 
         <StorefrontHeader />
 

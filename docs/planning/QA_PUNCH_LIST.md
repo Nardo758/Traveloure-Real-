@@ -95,7 +95,77 @@ the cart IS the design, not a gap. CLOSED.
 
 ## Open — build items
 
-**P0 — LIVE REGRESSION (found Aug 10, 2026; introduced by `be78a9c` on
+~~**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
+take an expert listing live are UNGATED (found Aug 11, 2026 by the R2 lane; verified in code).**
+Ruling 53 records verify-to-publish as enforced. It is enforced — but only on
+`POST`/`PATCH /api/provider/services` when the request carries `status:"active"`, and **the expert
+UI never sends that**: `ServiceForm.tsx`'s Submit-for-Approval sets `approvalStatus:"submitted"` +
+`status:"draft"` (the expert branch), so `checkPublishVerificationGate` is unreachable through the
+button experts actually use. It has exactly two call sites (`server/routes.ts:2366`, `:2539`).
+Public visibility requires **both** `approval_status='approved'` AND `status='active'`
+(storage.ts:1649, :1994; storefront.routes.ts:557). The two paths that produce that state:
+1. **ADMIN APPROVAL — the real hole.** `storage.approveProviderServiceListing`
+   (server/storage.ts:3223) sets `approvalStatus:"approved"` **and** `status:"active"` in one
+   update, with no verification check anywhere. This is the canonical way an expert listing goes
+   live, and an admin approving an UNVERIFIED expert's listing publishes it — exactly the outcome
+   ruling 53 exists to prevent.
+2. **The owner's own Activate toggle.** `PATCH /api/expert/services/:id/status`
+   (server/routes.ts:4521) accepts `status:"active"`, is ownership-checked but NOT verification-
+   checked, and calls `storage.toggleServiceStatus` directly. Narrower (it only re-lives an
+   already-approved listing, e.g. one paused after approval or after verification lapsed) but it
+   is a second ungated door.
+**Ledger consequence (DECISIONS.md's own rule — a ledger-vs-code disagreement is a finding, never
+a silent divergence):** ruling 53 as appended **overclaims**. It describes the gate's placement
+accurately but implies an enforcement completeness the code does not have. Whatever fix lands must
+append an amending ruling that states the true enforcement boundary; do not edit 53.
+**[DM] needed — this is a policy edge, not just a code fix:** when an admin approves a listing from
+an unverified expert, should the approval be (a) REFUSED with a typed reason, (b) allowed but
+landing `approved` + `status:'draft'`/`paused` so it is not publicly live until the expert verifies
+(recommended — it preserves the admin's review work and lets go-live follow verification
+automatically), or (c) allowed with an explicit admin override that is recorded? The Activate
+toggle should call the same shared helper regardless of which is chosen.~~
+**LANDED (ruling 56, amends 53) — option (B) implemented.** `resolvePublishVerification(userId)`
+(`server/services/publish-verification.service.ts`) is the one predicate; admin approval always
+records `approved` but only sets `status:"active"` when the listing owner passes it (else
+`approved`+`draft`, held not live); the owner's Activate toggle and an idempotent
+`activateVerificationHeldListings` sweep (wired from the identity + business verification webhook
+paths) both resolve through the same function. `approved`+`paused` rows are never touched. Proven
+by `server/__tests__/publish-verification-hold.http.test.ts` (9 proofs); original 11
+f2-verification-gate proofs stay green.
+
+**P1 — the D3 deliverable is LINK-delivery, not protected delivery (verified Aug 10, 2026;
+Service Fundamentals dispatch v1.2 §4).** `GET /api/service-bookings/:id/deliverable` server-derives
+every entitlement condition correctly, then returns **the raw `serviceFile` string verbatim**
+(`res.json({ fileUrl, deliveryMethod })` — no proxy, no signing, no redirect, no expiry) and performs
+**zero writes**. Because `serviceFile` is a provider-pasted external URL (no upload/object-storage
+pipeline exists anywhere in the platform — every media field is a pasted URL), the entitlement gates
+the **one-time reveal of a URL, not access to the file**: once any single buyer sees it, the link is
+permanently shareable, unrevokable, and outside platform control. §14-style server-side gating is
+satisfied in letter only. **Disposition (per the dispatch, needs [DM] ratification): promote the
+file-upload pipeline from "infrastructure decision" to the COMPLETION of D3** — platform-managed
+storage + signed, expiring URLs, with the serve path proxying rather than disclosing. Until it lands,
+label the rail honestly as link-delivery in the provider UI and state that the platform cannot protect
+a pasted link. Sequenced after the D6 attribution retrofit.
+
+**P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
+unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
+ruling: D3 did **not** define completion "by accident" — it defines **nothing**. The deliverable read
+writes no row, logs no download, and touches no status. A pdf booking therefore reaches `completed`
+only via the same manual path as everything else (provider flips status → held earning →
+`POST /api/bookings/:id/confirm-completion` releases it), and **no auto-release timer exists**
+(grepped: no `autoRelease`/`escrowRelease` scheduler), so an inattentive traveler leaves a provider's
+earning held indefinitely on a product that was fully delivered the moment it was downloaded.
+Consequence for D8's proposed table: **"auto-complete after N days undownloaded" cannot be built
+today — there is no download signal to measure.** It requires D3 to start logging deliverable
+fetches (one write on the endpoint above), which should land with the P1 storage work rather than as
+a separate pass.
+
+**Filed (externally gated): Instagram publish round-trip unproven.** The D4 publish button self-gates
+honestly, but the real Graph API round-trip (image reachability from Instagram's servers) has never
+executed — no app credentials and no public URL in any build sandbox. Needs one verification run in
+the Replit environment with a connected account. Not a blocker.
+
+~~**P0 — LIVE REGRESSION (found Aug 10, 2026; introduced by `be78a9c` on
 `claude/sync-local-repo-2j7ghv`): the F2 publish gate blocks EVERY EXPERT from publishing.**
 The Phase-0.5 verification gate on POST/PATCH `/api/provider/services` (server/routes.ts, fires when
 `input.status === "active"`) blocks any non-admin with no `service_provider_forms` row. **Experts
@@ -117,9 +187,20 @@ business verified (current behavior, correct); experts → `local_expert_forms`,
 admin → bypass, but via the **DB role lookup** `requireAdmin` uses (CLAUDE.md §2), not the
 `req.user.role` session snapshot the current code reads; error message routed to each role's own
 status page. **Owner:** the KYB lane (the agent that built the gate) — it is mid-flight in this exact
-block, so a parallel edit risks a divergence. Coordinate before touching. **[DM]** call embedded:
-whether experts must be identity-verified to publish at all is a business decision, not an
-implementation detail — the fix above assumes yes (identity only).
+block, so a parallel edit risks a divergence. Coordinate before touching.~~
+**[DM] RESOLVED (Aug 10, 2026): "Yes, experts need to verify their identity."** Experts MUST be
+identity-verified to publish — `local_expert_forms.identity_verification_status = 'verified'` is a
+required condition on the expert branch of this gate. Business verification stays provider-only (the
+column does not exist on the expert form, correctly — an individual expert is not a business). Role
+resolution uses `isExpertRole`/`isProviderRole` (`shared/roles.ts`: EXPERT_ROLES =
+expert|local_expert|travel_expert|event_planner; PROVIDER_ROLES = service_provider) and the admin
+bypass uses the **DB role lookup** pattern `requireAdmin` uses (server/routes.ts ~:8861), never
+`req.user.role`. Roles in neither family (e.g. `executive_assistant`, plain `user`) stay blocked —
+default-deny. Error copy routes per role: providers → `/provider-status`, experts → `/expert-status`.
+**FIXED (Aug 10, 2026):** landed as a single shared `checkPublishVerificationGate` helper (`server/routes.ts`)
+used by both POST and PATCH `/api/provider/services`, exactly per the [DM] ruling above — proven by
+`server/__tests__/f2-verification-gate.http.test.ts` (11/11: verified-expert publish, unverified-expert
+block routed to `/expert-status`, provider both-statuses-required, admin bypass, draft-never-gated).
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
    but after booking on the partner site there is no "Log completed booking → add to Day N" action —
