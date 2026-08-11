@@ -8095,6 +8095,50 @@ export const serviceAttestations = pgTable("service_attestations", {
 ]);
 export type ServiceAttestation = typeof serviceAttestations.$inferSelect;
 
+// Ruling 60 Phase B — provider CONTENT translation (docs/DECISIONS.md ruling 60 / ruling 73;
+// QA_PUNCH_LIST I18N-4; migration 201). Child rows of provider_services on the
+// service_route_points / service_attestations pattern: ON DELETE CASCADE, composite UNIQUE
+// (service_id, locale). ONE row per (service, locale) — the write path is a replace-for-locale
+// upsert (INSERT … ON CONFLICT (service_id, locale) DO UPDATE), the dmo_extracted_places /
+// route-points replace-list precedent applied per-locale.
+//
+// Only genuine free-text CONTENT columns are translatable — the exact set ruling 60 names
+// ("listing names/descriptions/meeting-point text"): serviceName, shortDescription, description,
+// meetingPoint. NO enums/prices/IDs live here (§14 — identity/amount/rate never travel through a
+// translation row). Each is nullable so a provider may translate a subset; the traveler read
+// falls each untranslated field back to the original.
+//
+// `status` ('draft' | 'approved') and `source` ('human' | 'ai_draft') carry NO DB CHECK — the
+// vocabulary is app-enforced (the migration-144/195 posture; a CHECK over an app vocabulary is
+// the publish-time deploy-push failure CLAUDE.md warns about). `source='ai_draft'` labels a
+// machine draft BY CONSTRUCTION — §13's honesty rule for CONTENT: a draft is NEVER shown to a
+// traveler, and an AI draft is ALWAYS labeled as machine-generated for the reviewing provider.
+// `updatedBy` is the SESSION user, stamped server-side (§14 — never from req.body), ON DELETE
+// SET NULL so deleting an account keeps the historical row.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes.ts (§19/#PS18 — a denylist schema over a table whose status/source/updatedBy are
+// all server-stamped would be exactly the mass-assignment shape ruling 46 named, and would grow
+// the omit-ratchet baseline for nothing). Declared here per the publish-trap rule.
+export const serviceTranslations = pgTable("service_translations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  locale: varchar("locale", { length: 8 }).notNull(),
+  serviceName: varchar("service_name", { length: 255 }),
+  shortDescription: varchar("short_description", { length: 150 }),
+  description: text("description"),
+  meetingPoint: text("meeting_point"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),   // 'draft' | 'approved'
+  source: varchar("source", { length: 20 }).notNull().default("human"),   // 'human' | 'ai_draft'
+  updatedBy: varchar("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_translations_service_locale_unique").on(table.serviceId, table.locale),
+  index("service_translations_service_idx").on(table.serviceId),
+]);
+export type ServiceTranslation = typeof serviceTranslations.$inferSelect;
+
 // R4/R5 (docs/DECISIONS.md ruling 58; migration 194): append-only download log for the D3
 // deliverable rail. One row per SUCCESSFUL fetch of GET /api/service-bookings/:id/deliverable —
 // the download signal D8's proposed "auto-complete after N days undownloaded" needs and does not

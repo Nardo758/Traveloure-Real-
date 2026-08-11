@@ -11,6 +11,7 @@ import {
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
   serviceAttestations, type ServiceAttestation,
+  serviceTranslations, type ServiceTranslation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
@@ -201,6 +202,19 @@ export interface IStorage {
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
   getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
   affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
+
+  // Ruling 60 Phase B — provider CONTENT translation (service_translations).
+  getServiceTranslation(serviceId: string, locale: string): Promise<ServiceTranslation | undefined>;
+  getServiceTranslations(serviceId: string): Promise<ServiceTranslation[]>;
+  upsertServiceTranslation(input: {
+    serviceId: string;
+    locale: string;
+    content: { serviceName: string | null; shortDescription: string | null; description: string | null; meetingPoint: string | null };
+    status: "draft" | "approved";
+    source: "human" | "ai_draft";
+    updatedBy: string;
+  }): Promise<ServiceTranslation>;
+  approveServiceTranslation(serviceId: string, locale: string, updatedBy: string): Promise<ServiceTranslation | undefined>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -1280,6 +1294,81 @@ export class DatabaseStorage implements IStorage {
         target: [serviceAttestations.serviceId, serviceAttestations.attestationKey],
       });
     return await this.getServiceAttestations(serviceId);
+  }
+
+  // ── Ruling 60 Phase B — provider CONTENT translation (service_translations) ─────────────────
+  // Read one locale's row (owner console edit surface + traveler read both use it). Returns
+  // undefined when the provider has never authored a translation for that locale — the caller
+  // (traveler read) then serves the ORIGINAL with an honest "shown in English" label (§13),
+  // never a silent or fabricated translation.
+  async getServiceTranslation(serviceId: string, locale: string): Promise<ServiceTranslation | undefined> {
+    const [row] = await db.select().from(serviceTranslations)
+      .where(and(eq(serviceTranslations.serviceId, serviceId), eq(serviceTranslations.locale, locale)))
+      .limit(1);
+    return row;
+  }
+
+  // Every locale on record for a service (owner console: list what's translated / drafted).
+  async getServiceTranslations(serviceId: string): Promise<ServiceTranslation[]> {
+    return await db.select().from(serviceTranslations)
+      .where(eq(serviceTranslations.serviceId, serviceId))
+      .orderBy(serviceTranslations.locale);
+  }
+
+  // Replace-for-locale upsert (the route-points/dmo-extracted-places replace-list precedent,
+  // applied per (service, locale)). `status`, `source` and `updatedBy` are stamped HERE from
+  // arguments the route derived server-side — a client-supplied status/source/updatedBy/timestamp
+  // never reaches a row (§14/§19; the strip lives at the storage layer too, so every caller is
+  // covered — the §18 two-layer placement). `updatedAt` is set server-side on every write.
+  async upsertServiceTranslation(input: {
+    serviceId: string;
+    locale: string;
+    content: { serviceName: string | null; shortDescription: string | null; description: string | null; meetingPoint: string | null };
+    status: "draft" | "approved";
+    source: "human" | "ai_draft";
+    updatedBy: string;
+  }): Promise<ServiceTranslation> {
+    const now = new Date();
+    const [row] = await db.insert(serviceTranslations)
+      .values({
+        serviceId: input.serviceId,
+        locale: input.locale,
+        serviceName: input.content.serviceName,
+        shortDescription: input.content.shortDescription,
+        description: input.content.description,
+        meetingPoint: input.content.meetingPoint,
+        status: input.status,
+        source: input.source,
+        updatedBy: input.updatedBy,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [serviceTranslations.serviceId, serviceTranslations.locale],
+        set: {
+          serviceName: input.content.serviceName,
+          shortDescription: input.content.shortDescription,
+          description: input.content.description,
+          meetingPoint: input.content.meetingPoint,
+          status: input.status,
+          source: input.source,
+          updatedBy: input.updatedBy,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  // Provider approval of an existing (typically ai_draft) row: flips status→'approved',
+  // source→'human' (the provider owns the reviewed text now), server-stamped updatedBy/updatedAt.
+  // Content is untouched — approval is a review gate, not a rewrite. Returns undefined if no row
+  // exists for that locale (nothing to approve).
+  async approveServiceTranslation(serviceId: string, locale: string, updatedBy: string): Promise<ServiceTranslation | undefined> {
+    const [row] = await db.update(serviceTranslations)
+      .set({ status: "approved", source: "human", updatedBy, updatedAt: new Date() })
+      .where(and(eq(serviceTranslations.serviceId, serviceId), eq(serviceTranslations.locale, locale)))
+      .returning();
+    return row;
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {

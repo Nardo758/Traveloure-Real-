@@ -947,4 +947,12 @@ export const MIGRATION_FILES = [
   // paid-equivalent set — a deposit-only booking releases no earning (D8 fires only from
   // 'confirmed'). Deposits OFF ⇒ checkout byte-identical (§13).
   "200_deposit_partial_payments.sql",
+  // 201: service_translations — provider CONTENT translation (docs/DECISIONS.md ruling 60 Phase B
+  // / ruling 73; QA_PUNCH_LIST I18N-4). Per-service, per-locale translated free-text content
+  // (name/short_description/description/meeting_point) on the service_route_points child-row
+  // pattern: ON DELETE CASCADE, UNIQUE (service_id, locale). `status`/`source` are app-enforced
+  // varchars (no DB CHECK — migration-144 posture); source='ai_draft' labels a machine draft by
+  // construction, never shown to a traveler until a provider approves it (§13). Additive, no
+  // CHECK; table + UNIQUE + index DECLARED in shared/schema.ts (publish-trap rule).
+  "201_service_translations.sql",
 ] as const;

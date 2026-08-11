@@ -58,6 +58,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocale } from "@/hooks/use-locale";
+import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 
 interface PricingTier {
@@ -115,6 +117,16 @@ interface Service {
   // (server: GET /api/services/:id, content.routes.ts). Null when the owner isn't away —
   // listings stay visible either way, booking is disabled only while `away` is set.
   away?: { until: string; message: string | null } | null;
+  // Ruling 60 Phase B — provider CONTENT translation. Present only under a non-en active locale:
+  // status 'approved' means the fields above are the provider's translated content; status
+  // 'fallback' (shownInEnglish: true) means no approved translation exists and the ORIGINAL
+  // English is shown with an honest label (§13 — never a silent or machine translation).
+  translation?: {
+    locale: string;
+    status: "approved" | "fallback";
+    source?: string;
+    shownInEnglish: boolean;
+  } | null;
   // Ruling 22: the location facts were ALREADY on the wire (the endpoint spreads the row);
   // this interface just stopped dropping them on the floor. Map renders only from a real
   // confirmed pin / located stops — no city-center fallback (§13).
@@ -224,14 +236,18 @@ export default function ServiceDetailPage() {
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
+  const { locale } = useLocale();
+  const { t } = useTranslation("common");
 
   const { data: service, isLoading: serviceLoading, isError: serviceError } = useQuery<Service>({
-    queryKey: ["/api/services", id],
+    // Ruling 60 Phase B: the active chrome locale (Phase A resolution) rides the read as
+    // ?locale=, and is part of the query key so switching language refetches the content.
+    queryKey: ["/api/services", id, locale],
     queryFn: async () => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
       try {
-        const res = await fetch(`/api/services/${id}`, { credentials: "include", signal: controller.signal });
+        const res = await fetch(`/api/services/${id}?locale=${encodeURIComponent(locale)}`, { credentials: "include", signal: controller.signal });
         if (res.status === 404) return null as unknown as Service;
         if (!res.ok) throw new Error(`Failed to load service: ${res.status}`);
         return res.json() as Promise<Service>;
@@ -591,6 +607,21 @@ export default function ServiceDetailPage() {
                 </Badge>
               )}
             </div>
+            {/* Ruling 60 Phase B (§13 applied to language): under a non-en locale with no
+                approved translation, the original English content is shown with an HONEST label —
+                never silently, never machine-translated at read time. The label text itself is
+                chrome (Phase A t()), the only place B touches A. */}
+            {service.translation?.shownInEnglish && (
+              <Badge
+                variant="outline"
+                className="mt-2 text-xs font-normal"
+                title={t("contentTranslation.shownInEnglishHint")}
+                data-testid="badge-shown-in-english"
+              >
+                <Languages className="w-3 h-3 mr-1" />
+                {t("contentTranslation.shownInEnglish")}
+              </Badge>
+            )}
             <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
               <div className="flex items-center gap-1">
                 <MapPin className="w-4 h-4" />

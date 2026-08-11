@@ -998,6 +998,14 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   chrome string. Review it as a set with the glossary above; `出品` and `サービス事業者` are already
   applied there.
 
+  **Scope grew again (ruling 73, Phase B content translation):** the new traveler-facing chrome
+  LABEL strings in `client/src/locales/ja/common.json` `contentTranslation.*` — the "原文（英語）"
+  fallback tag, the AI-draft review notices and the approve/generate actions — are machine-authored
+  platform chrome and follow the register/glossary above. (Note this is distinct from provider
+  CONTENT translations, which are the provider's own words or a provider-approved AI draft and carry
+  no platform native-review debt; any JA `service_translations` sample copy in the Phase B test
+  fixtures is machine-authored fixture data only, never a real translation.)
+
   Note one JA-specific layout consequence already visible: Japanese nav labels are longer than their
   English counterparts and the traveler navbar wraps `マーケットプレイス` to two lines at desktop width.
   Cosmetic, not broken — but it is the kind of thing a native reviewer should be asked to judge.
@@ -1024,12 +1032,22 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   than `SUPPORTED_LOCALES` (narrowing it would 400 that page's whole settings save). Retire the three
   dead options — or ship those locales — as a small named follow-up; both halves are one edit.
 
-- **I18N-4 — Ruling 60 Phase B (provider CONTENT translation) is NOT started.** No `service_translations`
-  table, no owner-gated translation writes, no labeled AI draft, no "shown in English" fallback tag.
-  Phase A deliberately routes **zero** content strings through `t()`. Also named-not-built by ruling 60
-  and untouched here: localized share frames, PDF deliverables, and emails. Currency display is **out of
-  scope by the ruling's own words** (a separate later ruling) — the footer currency pill stays `USD ($)`
-  even under a JA locale, on purpose.
+- **I18N-4 — Ruling 60 Phase B (provider CONTENT translation) — LANDED (DECISIONS.md ruling 73,
+  2026-08-11).** `service_translations` (migration 201) is built: per-service, per-locale translated
+  free-text content (`service_name`/`short_description`/`description`/`meeting_point`), owner-gated
+  `GET/PUT/POST-approve /api/provider/services/:id/translations/:locale` (+ `.../draft`), a labeled
+  `source='ai_draft'` machine draft that NEVER auto-publishes, and the honest **"shown in English /
+  原文（英語）"** fallback on the traveler read (`GET /api/services/:id?locale=`, §13). Locale vocabulary
+  is the SHIPPED set (en, ja) only. Proven by `server/__tests__/service-content-translation.http.test.ts`
+  (P1–P9, 14 green) + i18n 27/27 parity. **Still named-not-built by ruling 60 (each its own later
+  phase):** localized share frames, PDF deliverables, and emails. **Currency display is out of scope by
+  the ruling's own words** — the footer currency pill stays `USD ($)` under a JA locale, on purpose.
+  **Follow-ups filed:** (a) an owner-console UI to author/review translations + trigger the AI draft
+  (the API exists; a Catalog/ServiceForm surface does not yet — the endpoints are usable but unwired to
+  a screen); (b) the AI-draft path needs a live `ANTHROPIC_API_KEY` to actually translate (its lifecycle
+  is proven keyless, its translation QUALITY is not); (c) storefront bios and other provider-authored
+  content beyond the four listing fields are not yet translatable (ruling 60 also names "storefront
+  bios" — they live on `users`, not `provider_services`, so a separate home).
 
 - **I18N-5 — The 27 browser proofs now live in the repo but are NOT in CI.** The lane originally ran
   its ruling-65 proofs from a session-scratch script (ephemeral — the bench container reclaims it), so
