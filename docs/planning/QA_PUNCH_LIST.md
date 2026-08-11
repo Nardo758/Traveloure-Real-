@@ -119,6 +119,21 @@ both the build bench and the Replit workspace.
 
 ## Open — build items
 
+**P1 (new, Aug 11) — "adding pins to the map didn't work as intended" (decision-maker report at the
+ruling-62 ballot; diagnosis pending their symptom description).** Code review found three candidate
+causes, most likely compounding: (a) **env timing** — both Google keys were only just set;
+`VITE_GOOGLE_MAPS_API_KEY` is read at Vite dev-server start (and baked into builds), and the server's
+`GOOGLE_MAPS_API_KEY` is read per-request but the workflow predates the secret — until a FULL workflow
+restart the pin picker renders null and `POST /api/geocode` returns honest 404 for every query;
+(b) **route-stop UX** — `catalog-map-view.tsx` locates stops ONLY by name→geocode (`locateStop`); there
+is NO click-the-map-to-place and NO drag-to-adjust for a stop, so a stop the geocoder misses or
+mislocates cannot be pinned by hand — if "adding pins" meant dropping pins, that affordance genuinely
+does not exist on the route editor (the meeting pin has it; stops don't); (c) **key restrictions** —
+a fresh Google key without Maps JavaScript API + Geocoding API enabled (or with referrer restrictions)
+yields gm_authFailure / REQUEST_DENIED, which surfaces as the same "No match found" toast. Fix ships
+with the ruling-62 D7 work (same surface): restart-first diagnosis, then click-to-place + drag-adjust
+for route stops on the L27-P3 confirm posture.
+
 ~~**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
 take an expert listing live are UNGATED (found Aug 11, 2026 by the R2 lane; verified in code).**
 Ruling 53 records verify-to-publish as enforced. It is enforced — but only on
