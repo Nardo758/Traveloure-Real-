@@ -268,9 +268,15 @@ function AssignmentInvitesSection() {
       ) : pending.length === 0 ? (
         <EmptyState icon={MapPin} title="No pending invites" body="Trips travelers assign to you will appear here." testId="empty-inbox-assignments" />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" role="list" aria-label="Assignment invites">
           {pending.map((trip) => (
-            <Card key={trip.trip_id} className="border border-console-light" data-testid={`inbox-assignment-${trip.trip_id}`}>
+            <Card
+              key={trip.trip_id}
+              className="border border-console-light"
+              data-testid={`inbox-assignment-${trip.trip_id}`}
+              role="listitem"
+              aria-label={`${trip.trip_title || trip.destination}, destination ${trip.destination}, dates ${formatDate(trip.start_date)} to ${formatDate(trip.end_date)}, traveler ${trip.traveler_name}, status pending invite`}
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
                   <p className="font-medium text-console-darkest truncate">{trip.trip_title || trip.destination}</p>
@@ -325,9 +331,15 @@ function CoordinationEngagementsSection() {
       ) : engagements.length === 0 ? (
         <EmptyState icon={ClipboardCheck} title="No coordination engagements" body="Events assigned to you for coordination will appear here." testId="empty-inbox-coordination" />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" role="list" aria-label="Coordination engagements">
           {engagements.map((e) => (
-            <Card key={e.id} className="border border-console-light" data-testid={`inbox-engagement-${e.id}`}>
+            <Card
+              key={e.id}
+              className="border border-console-light"
+              data-testid={`inbox-engagement-${e.id}`}
+              role="listitem"
+              aria-label={`${e.experienceType} coordination, status ${e.status ?? "intake"}, destination ${e.destination ?? "to be confirmed"}${e.feePaymentStatus === "paid" ? ", fee paid" : ""}`}
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1205,9 +1217,23 @@ function AssignmentsSection() {
           testId="empty-inbox-assigned-trips"
         />
       ) : (
-        <div className="space-y-2" data-testid="assigned-trips-list">
+        <div className="space-y-2" data-testid="assigned-trips-list" role="list" aria-label="Assigned trips">
           {assignedTrips.map((trip) => (
-            <Card key={trip.trip_id} className="border border-console-light" data-testid={`assigned-trip-card-${trip.trip_id}`}>
+            <Card
+              key={trip.trip_id}
+              className="border border-console-light"
+              data-testid={`assigned-trip-card-${trip.trip_id}`}
+              role="listitem"
+              aria-label={[
+                trip.trip_title || trip.destination,
+                `status ${trip.status === "accepted" ? "Active" : "Pending"}`,
+                `destination ${trip.destination}`,
+                `dates ${formatDate(trip.start_date)} to ${formatDate(trip.end_date)}`,
+                trip.traveler_name ? `traveler ${trip.traveler_name}` : null,
+                trip.assigned_at ? `assigned ${formatDate(trip.assigned_at)}` : null,
+                (trip.suggestion_count ?? 0) > 0 ? `${trip.suggestion_count} suggestion${(trip.suggestion_count ?? 0) > 1 ? "s" : ""} sent` : null,
+              ].filter(Boolean).join(", ")}
+            >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
