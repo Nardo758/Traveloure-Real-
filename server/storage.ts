@@ -103,6 +103,9 @@ import {
   type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
   providerNeighborhoodCoverage,
   cityNeighborhoods,
+  neighborhoodCoverageTarget,
+  searchAnalytics,
+  demandSignals,
   expertNeighborhoods,
   travelPulseCities,
   dmoRawContent,
@@ -118,6 +121,12 @@ import {
   vendorContracts,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
+import type {
+  NeighborhoodRow as MarketNeighborhoodRow,
+  CoverageTargetRow as MarketCoverageTargetRow,
+  SupplyServiceRow as MarketSupplyServiceRow,
+  DemandRow as MarketDemandRow,
+} from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition } from "./services/item-transition-log.service";
 import type { User } from "@shared/models/auth";
@@ -616,6 +625,13 @@ export interface IStorage {
   getDestinationSearchTrends(days?: number): Promise<Array<{ destination: string; searchCount: number; conversionRate: number }>>;
   createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory>;
   getDestinationMetricsHistory(destination: string, metricType: string, days?: number): Promise<DestinationMetricsHistory[]>;
+
+  // Market insights (lane B2, ruling 84) — READ-ONLY rollups for the Catalog map overlay.
+  getProviderMarketCities(userId: string): Promise<string[]>;
+  getMarketNeighborhoods(cities: string[]): Promise<MarketNeighborhoodRow[]>;
+  getCoverageTargetsForNeighborhoods(neighborhoodIds: string[]): Promise<MarketCoverageTargetRow[]>;
+  getLocatedSupplyForCities(cities: string[]): Promise<MarketSupplyServiceRow[]>;
+  getMarketDemandRows(cities: string[], neighborhoodTokens: string[], days: number): Promise<MarketDemandRow[]>;
 
   // Itinerary Changes (PlanCard change tracking)
   getItineraryChanges(tripId: string, limit?: number): Promise<ItineraryChange[]>;
@@ -5501,6 +5517,129 @@ export class DatabaseStorage implements IStorage {
         conversionRate: stats.searches > 0 ? Math.round((stats.conversions / stats.searches) * 100) / 100 : 0,
       }))
       .sort((a, b) => b.searchCount - a.searchCount);
+  }
+
+  // ── Market insights (lane B2, ruling 84) — READ-ONLY rollups feeding the pure resolvers in
+  //    services/market-insights.service.ts. §13: real rows only; no fabrication anywhere here. ──────
+
+  /**
+   * The provider's own market scope = the DISTINCT non-empty cities their OWN services sit in
+   * (provider_services.city). Defines which neighborhoods/targets/demand the overlay covers; it is
+   * NOT the provider's private coverage (§ ruling 84 — market-wide supply is read separately below).
+   */
+  async getProviderMarketCities(userId: string): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ city: providerServices.city })
+      .from(providerServices)
+      .where(and(eq(providerServices.userId, userId), isNotNull(providerServices.city)));
+    return rows
+      .map((r) => (r.city ?? "").trim())
+      .filter((c) => c.length > 0);
+  }
+
+  /** Neighborhoods (with REAL centroids) in the given market cities. */
+  async getMarketNeighborhoods(cities: string[]): Promise<MarketNeighborhoodRow[]> {
+    if (cities.length === 0) return [];
+    const rows = await db
+      .select({
+        id: cityNeighborhoods.id,
+        city: cityNeighborhoods.city,
+        name: cityNeighborhoods.name,
+        slug: cityNeighborhoods.slug,
+        centroidLat: cityNeighborhoods.centroidLat,
+        centroidLng: cityNeighborhoods.centroidLng,
+        radiusKm: cityNeighborhoods.radiusKm,
+      })
+      .from(cityNeighborhoods)
+      .where(inArray(cityNeighborhoods.city, cities));
+    return rows;
+  }
+
+  /** Admin coverage targets for the given neighborhoods (§13 — an absent row is NO target). */
+  async getCoverageTargetsForNeighborhoods(neighborhoodIds: string[]): Promise<MarketCoverageTargetRow[]> {
+    if (neighborhoodIds.length === 0) return [];
+    const rows = await db
+      .select({
+        neighborhoodId: neighborhoodCoverageTarget.neighborhoodId,
+        categoryKey: neighborhoodCoverageTarget.categoryKey,
+        targetCount: neighborhoodCoverageTarget.targetCount,
+      })
+      .from(neighborhoodCoverageTarget)
+      .where(inArray(neighborhoodCoverageTarget.neighborhoodId, neighborhoodIds));
+    return rows;
+  }
+
+  /**
+   * Market-wide BOOKABLE supply = approved+active provider_services in the scoped cities, each with
+   * its neighborhood slug, categoryKey (via service_categories) and confirmed pin (or nulls). The
+   * pure resolver decides placement; UNPLACED rows are excluded there (§13).
+   */
+  async getLocatedSupplyForCities(cities: string[]): Promise<MarketSupplyServiceRow[]> {
+    if (cities.length === 0) return [];
+    const rows = await db
+      .select({
+        id: providerServices.id,
+        neighborhood: providerServices.neighborhood,
+        categoryKey: serviceCategories.categoryKey,
+        latitude: providerServices.latitude,
+        longitude: providerServices.longitude,
+      })
+      .from(providerServices)
+      .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+      .where(
+        and(
+          inArray(providerServices.city, cities),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ),
+      );
+    return rows;
+  }
+
+  /**
+   * REAL search demand for the market, pre-aggregated by destination string. Two real sources,
+   * summed by destination: per-event `search_analytics` (count(*) over the recent window) and the
+   * aggregate `demand_signals.searchCount`. Scoped in SQL to rows that REFERENCE the market — a
+   * destination that ILIKEs a scoped city OR exactly equals a scoped neighborhood name/slug — so an
+   * unrelated market's demand never enters the bucketing. Estimated/TravelPulse tables are NOT read.
+   */
+  async getMarketDemandRows(cities: string[], neighborhoodTokens: string[], days: number): Promise<MarketDemandRow[]> {
+    if (cities.length === 0) return [];
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // OR of: destination ILIKE '%city%' (references the market) for each scoped city, plus an exact
+    // (lowercased) match against each scoped neighborhood name/slug token (captures bare-neighborhood
+    // searches that don't mention the city).
+    const tokenSet = neighborhoodTokens.map((t) => t.trim().toLowerCase()).filter(Boolean);
+    const cityLike = cities.map((c) => ilike(searchAnalytics.destination, `%${c}%`));
+    const tokenMatch = tokenSet.map((t) => sqlOp`lower(${searchAnalytics.destination}) = ${t}`);
+    const marketFilter = or(...cityLike, ...tokenMatch);
+
+    const saRows = await db
+      .select({ destination: searchAnalytics.destination, c: count() })
+      .from(searchAnalytics)
+      .where(and(gte(searchAnalytics.createdAt, cutoff), isNotNull(searchAnalytics.destination), marketFilter))
+      .groupBy(searchAnalytics.destination);
+
+    // demand_signals: aggregate real search volume keyed by destination (no per-event window — it is
+    // already a rollup). Same market scoping.
+    const dsCityLike = cities.map((c) => ilike(demandSignals.destination, `%${c}%`));
+    const dsTokenMatch = tokenSet.map((t) => sqlOp`lower(${demandSignals.destination}) = ${t}`);
+    const dsRows = await db
+      .select({ destination: demandSignals.destination, searchCount: demandSignals.searchCount })
+      .from(demandSignals)
+      .where(or(...dsCityLike, ...dsTokenMatch));
+
+    const totals = new Map<string, number>();
+    for (const r of saRows) {
+      if (!r.destination) continue;
+      totals.set(r.destination, (totals.get(r.destination) ?? 0) + Number(r.c ?? 0));
+    }
+    for (const r of dsRows) {
+      if (!r.destination) continue;
+      totals.set(r.destination, (totals.get(r.destination) ?? 0) + Number(r.searchCount ?? 0));
+    }
+    return Array.from(totals.entries()).map(([destination, searchCount]) => ({ destination, searchCount }));
   }
 
   async createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory> {
