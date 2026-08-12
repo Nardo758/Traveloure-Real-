@@ -76,6 +76,19 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+// Simple XSS sanitization - strips HTML tags and dangerous characters
+// (same reference implementation as server/routes.ts and sibling route modules)
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
+
 /**
  * Fix #969 — canonical owner check for `POST /api/trips/:id/share` (the routing.routes.ts
  * `isTripOwner` pattern, NEVER `getTripRole` — see CLAUDE.md L10). True when `userId` is the
@@ -1558,7 +1571,9 @@ router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) =>
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
-    await storage.updateTrip(tripId, { expertNotes });
+    // Strip HTML/script tags before persisting — matches the sanitizeInput discipline
+    // every other expert-facing text field goes through (bio, headline, notes style, …).
+    await storage.updateTrip(tripId, { expertNotes: sanitizeInput(expertNotes) });
     res.json({ ok: true });
   } catch (err) {
     console.error("[Expert] saveExpertNotes error:", err);
