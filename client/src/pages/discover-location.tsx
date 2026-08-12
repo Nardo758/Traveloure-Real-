@@ -1864,8 +1864,16 @@ export default function DiscoverLocationPage() {
       })
     : experts;
 
+  // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): the mixed "all" feed keeps its
+  // 4-service balance cap; a spine chip is a deliberate search and must show EVERY matching
+  // approved listing, not a sample of four (that cap is why a whole approved Kyoto catalog was
+  // invisible on Kyoto's own page even once it reached the payload).
   const feedItems: FeedItem[] = data
-    ? buildFeedStream(neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices)
+    ? buildFeedStream(
+        neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices,
+        undefined,
+        activeFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
+      )
     : [];
 
   // Wanted/recruitment slots: one per neighborhood for offering types the

@@ -1088,3 +1088,107 @@ These are the follow-ups those lanes deliberately deferred (negative space, ruli
 
 (The Six-Sigma provider-pass **Tier B** ballot is already filed above — "Six-Sigma provider pass — Tier B
 (FILED, NOT BUILT) — Aug 11" — not re-listed here.)
+
+## Batch exercise findings (Aug 12, 2026)
+
+Source: **`docs/testing/PROVIDER_BATCH_EXERCISE.md`** (branch `lane/provider-batch-exercise`,
+as-of `127ffb5`) — one provider account created through the real funnel, approved through the real
+admin queue, then used to author **twelve listings across every product shape** and followed to the
+traveler-facing storefront and detail page. Every row below is that document's own finding id.
+
+**Lane FP-1 (this lane, DECISIONS.md ruling 87) fixed SEVEN of them — the decision-maker's call was
+"fix the UI first".** Everything else stays open; several are explicitly redesign-gated and must not
+be picked up piecemeal.
+
+### Fixed here (lane FP-1 — ruling 87)
+
+- ~~**A1 (P0) — the custom-offering flow produced a listing that could never be published.**~~
+  `service_offering_types.custom_other_offering.category_key = 'custom_other'` while the
+  "Custom / Other" `service_categories` row carried `category_key = NULL`, so the wizard's derived
+  Category lock rendered `—`, `categoryId` stayed empty and Publish never enabled. ROOT CAUSE was an
+  ORDERING one: `runMigrations()` runs before `runDatabaseSeeding()`, so migration 189's identical
+  backfill matched nothing on a fresh DB and `seedCategories()` then created the row without the key.
+  Fixed in the SEEDER (fresh DBs are born correct — `server/seed-categories.ts` +
+  the `/api/admin/seed-categories` twin) and repaired on existing DBs by **migration 208**; the wizard
+  lock now renders an honest, actionable error instead of a silent `—` on a dead Publish button.
+- ~~**B2 (P1) — property, room and bundle listings were all stored `delivery_method = 'pdf'`**~~
+  (the column default; the Workstation builders never set one), so a machiya guest room's storefront
+  card read "PDF guide". Writers now set honest canonical values at create — property/room →
+  `in_person`, bundle → derived from its components (uniform method, else `hybrid`) — and migration 208
+  backfills existing rows under exactly that predicate (`product_shape IN (property, property_room,
+  bundle) AND delivery_method = 'pdf'`; an ordinary pdf service listing is never touched).
+- ~~**B3 (P2) — the traveler location chip rendered the literal word "Unknown"**~~ on five listings.
+  `provider_services.location` defaults to that string; the chip now renders only when there is a real
+  location to state, and nothing otherwise (§13). "Remote" is deliberately NOT substituted.
+- ~~**B4 (P1) — the Kyoto market page showed none of the eleven Kyoto listings.**~~ Both stacked
+  causes closed: (a) `provider_services.city` is now SERVER-DERIVED at create/update from the
+  neighborhood slug — and only when that slug resolves to exactly one `city_neighborhoods` city; free
+  text is never parsed and a client-sent `city` is dropped (`server/utils/service-city.ts`);
+  (b) the market read prefers the structured column with the old free-text substring as the
+  grandfathering fallback, so a listing whose structured city is Osaka can no longer be dragged onto
+  Kyoto's page by its prose, and a listing with no structured source stays honestly ABSENT rather than
+  guessed into a market; (c) migration 208 backfills where a slug resolves unambiguously. The
+  **"No stay found in Kyoto"** half is closed too: `productShape` now rides the city payload and the
+  Stay spine routes `property`/`property_room` (it dropped every provider service before), and the
+  4-service filler cap now applies only to the mixed "all" feed — a spine chip is a deliberate search
+  and shows every match.
+- ~~**B5 (P1) — picking Video/Phone Call deleted all 8 scheduling fields.**~~ Timing, capacity and
+  booking-rules are now gated on the SHARED `needsScheduling` predicate (call/video included);
+  transport, pickup coverage and the travel surcharge stay place-anchored-only. No new fields.
+- ~~**B7 (P1) — the deliverable was unenforced and the upload rail had no client caller.**~~ A pdf
+  listing can no longer PUBLISH with an empty deliverable (server gate beside the price gate, on the
+  same draft-exempt rule; client `missingForFinal` mirrors it), and ruling 58's
+  `POST /api/provider/services/:id/deliverable-file` has its FIRST caller — an upload control on the
+  delivery step. Shape stated: the endpoint needs a row, so create-mode says "Save Draft first, then
+  upload" rather than inventing a draft; the pasted-URL fallback keeps its honest `protected: false`
+  labeling. **Note for API callers:** a row created with no `deliveryMethod` takes the DB default
+  `'pdf'` and is therefore treated as a pdf listing by this gate — as it already was by the storefront
+  chip, the D8 completion rule and the health rail's `delivery_asset` check.
+- ~~**B10 (P2) — five of twelve listings silently fell back to the `expert_standard` default band.**~~
+  VISIBILITY ONLY — zero change to any rate, amount or resolution order (§8/§18 — the fee lanes own
+  that). The owner health rail carries an honest un-scored NOTICE ("no category → the platform default
+  commission band applies"; un-scored deliberately, because the property and bundle builders ask for no
+  category and D3 forbids failing a provider on something they cannot fix), and the admin listing view
+  shows a "default commission band" marker per row.
+
+### Open — the rest of the exercise's findings
+
+| # | Sev | Finding (abridged) | Status |
+|---|---|---|---|
+| **B1** | P1 | Verification failure renders the raw Stripe transport error ("500: Invalid JSON received from the Stripe API") to a business owner, with no support route on the page. | **OPEN** — needs a typed failure taxonomy on the identity/Connect rail; not a UI-only fix. |
+| **B6** | P1 | The async product has no SLA / response-window / scope field anywhere. | **OPEN — redesign-gated.** It is a NEW FIELD (the async rail is D3's documented third rail, unbuilt). FP-1 deliberately did not invent one. |
+| **B8** | P1 | No weekly/recurring availability and no blackout affordance for services (rooms have a date-range publisher; services have one dated slot at a time). | **OPEN — redesign-gated** (the C2 repair removed both sections because nothing backed them). |
+| **B9** | P1 | The property builder has five fields — no photo, cancellation policy, check-in/out, house rules, amenities, capacity, bed config, min-stay or cleaning fee. | **OPEN — redesign-gated** (a product spec, not a defect fix). |
+| **C1** | P2 | The traveler calendar opens on the CURRENT month and says "No availability published yet" while September slots exist. Most likely single cause of a lost booking. | **OPEN** — strong candidate for the next defect pack (read-side only). |
+| **C2** | P2 | A date calendar renders for products with no dates (pdf, async). | **OPEN** — same surface as C1; fix together. |
+| **C3** | P2 | New approved listings land on page 3–4 of browse; default sort is not recency. The pager's next/prev expose no accessible name. | **OPEN** (ranking/curation call + an a11y nit). |
+| **C4** | P2 | A second tracked link does not re-attribute (first-touch wins the stored ref, last link wins the URL). Recorded as behaviour needing a RULING, not asserted as a defect. | **OPEN — needs a decision-maker ruling** on the attribution rule, then a surface that states it. |
+| **C5** | P2 | The application funnel BLOCKS on insurance + licence attestations it never transmits, and maps the licence tick to `infoConfirmation`. | **OPEN** — needs schema columns; touches the application payload contract. |
+| **C6** | P2 | The admin review card shows 7 of ~15 collected application fields. | **OPEN** (admin surface). |
+| **C7** | P2 | The neighbourhood picker lists every neighbourhood for all ~20 launch cities, unscoped and unsearchable. | **OPEN** — worth pairing with B4: the same `city_neighborhoods.city` scoping FP-1 now derives from would scope this picker. |
+| **C8** | P2 | "Save Draft" writes `approval_status = 'submitted'` (the migration-111 born-submitted design), so a private draft sits in the review queue while its owner is told it is a draft. | **OPEN — copy or ruling**, not a code defect: the born state is ratified (F2/D1a). |
+| **C9** | P2 | Publishing does not leave the form (stays on `/provider/services/new`). | **OPEN** (small, but a navigation/UX call). |
+| **C10** | P2 | `gallery_images` is stored and never rendered — the detail page draws exactly one `<img>`. | **OPEN** (read-side; pairs with B9's photo work). |
+| **C11** | P2 | The photography offering defaults to "Package tiers" with no base-price field until a dropdown is discovered. | **OPEN.** |
+| **C12** | P2 | Bundle components render as plain unlinked text — no link, price, method or image. | **OPEN** (read-side; the data is already linked via `bundle_components`). |
+| **D1–D5** | P3 | `window.prompt()` admin override; empty Meeting-pin card on the Catalog map view when no Maps key; `/provider-status` renders in the traveler shell; Distribute never displays the URL itself; free-text Duration stored in `delivery_timeframe` while `duration` stays NULL. | **OPEN — polish.** D5 is a documentation/consolidation item, not a bug. |
+
+### Write-vs-read gap list (exercise §3) — status
+
+FP-1 closed the two "renders WRONG" rows (`delivery_method` on property/rooms/bundles; `location`
+"Unknown") and the `city`/Stay rows. **Still authored → rendered nowhere:** `party_size_min/max`,
+`lead_time`, `change_cutoff_hours`, `service_timezone`, `earliest/latest_start_time`,
+`buffer_minutes`, `neighborhood`, `transport_provision`, `gallery_images`, and the application's
+Tax ID / capacity / price range / amenities / insurance attestation (C5). Those are D7 **capture-only**
+by ruling 62 — the consumers are a later lane, not a defect to patch surface by surface. Note B5 makes
+the scheduling half of that set AUTHORABLE on remote products for the first time; it does not make any
+of it traveler-visible.
+
+### Bench observation (not an exercise finding)
+
+`server/__tests__/provider-money-hardening.db.test.ts` P1/P2 cannot run on a FRESH bench DB: its
+precondition helper reads the band named by `platform_settings.active_provider_commission_policy`,
+which the boot seeders set to **`tiered`** — a value that names no `fee_bands` row (the suite's own
+comment expects `beta_flat`). Nothing in FP-1 touches rate resolution; filed for the fee lane to
+settle (either seed a `tiered` band or point the setting at a real one). The other 4 tests in that
+suite pass.
