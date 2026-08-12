@@ -39,10 +39,15 @@ capacity story).
 - **S2 — derived checklist + honest submit.** Checklist computed from the draft's method and
   record state; rows navigate, work ticks them; Submit → In review transition.
   *(Mock: "Draft & checklist". Closes spec gaps #6, #19-adjacent behavior.)*
-- **S3 — unified location/map component, two mounts.** Pin + radius + route stops + zone rings in
-  one confirm-gated component, mounted in the create flow AND on Catalog map view. Ruling 22b
-  intact (Catalog stays the map's home). Same write rails (§22a replace-list, one pin path).
-  *(Mock: "Mapping". Closes gap #12.)*
+- **S3 — map authoring is create-flow step 4, named "Logistics" (decision-maker ruled Aug 12).**
+  Pin + radius + route stops + zone rings in one confirm-gated component, living as the flow's
+  4th step (after the renamed steps — old Logistics → **"Scheduling"**, old Group →
+  **"Capacity"**); place-anchored/hybrid methods only. **Catalog's map mode is traveler preview
+  ONLY** (read-only; honesty strip lives there) — this amends the earlier "Catalog is the map's
+  authoring home" posture; availability stays on Catalog, so post-creation work is exactly two
+  verbs: publish availability, or develop the offering (checklist rows re-enter the flow's
+  steps, including step 4 for location fixes). Same write rails (§22a replace-list, one pin
+  path). *(Closes gap #12.)*
 - **S4 — money out of creation.** One price at create; surcharge modes/amounts, zone ring
   geometry, deposits, cancellation live in the post-creation Pricing & fees surface. Includes the
   amount-entry shapes the mock now shows. *(Closes gap #8's authoring half.)*
