@@ -135,7 +135,7 @@ test.describe("T4 — Direct URL privilege: protected APIs need auth", () => {
     "/api/admin/users",
     "/api/admin/revenue",
     "/api/admin/service-requests",
-    "/api/expert/earnings",
+    "/api/expert/earnings/details",
     "/api/expert/assigned-trips",
     "/api/expert/dashboard",
     "/api/provider/dashboard",

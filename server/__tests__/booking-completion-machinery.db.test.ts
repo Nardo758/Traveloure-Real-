@@ -37,6 +37,13 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
+import type { PiVerifier } from "../services/booking-auto-complete.service";
+
+// The unified scheduler's payment gate verifies each candidate's PaymentIntent against Stripe.
+// These fixtures model PAID bookings, so the tests inject a stub that reports "succeeded" — the
+// same dependency-injection seam the retained scheduler's own suite uses. This keeps the proofs
+// about the D8 per-method WHEN, not about Stripe connectivity.
+const verifyPaid: PiVerifier = async () => true;
 import {
   completeBooking,
   ownerActorFor,
@@ -132,17 +139,24 @@ async function makeBooking(opts: {
   const id = `d8-${RUN}-bk-${createdBookingIds.length}`;
   const confirmedAt =
     opts.confirmedDaysAgo === undefined ? null : new Date(Date.now() - opts.confirmedDaysAgo * DAY);
+  // A stamped PaymentIntent so the unified scheduler's PAYMENT GATE (Aug 12 2026 reconciliation)
+  // sees "money on record". The tests pass a verifier stub (`verifyPaid`) that treats it as
+  // succeeded — these fixtures model PAID bookings, which is exactly what the gate is meant to let
+  // through. A confirmed booking with a real charge always carries a PI (promotePaidCheckout stamps
+  // it), so this makes the fixture faithful rather than weaker.
   await db.execute(sql`
     INSERT INTO service_bookings
       (id, service_id, traveler_id, provider_id, trip_id, booking_details, status,
-       total_amount, platform_fee, provider_earnings, confirmed_at, slot_id, created_at)
+       total_amount, platform_fee, provider_earnings, confirmed_at, slot_id,
+       stripe_payment_intent_id, created_at)
     VALUES (
       ${id}, ${opts.serviceId}, ${ids.traveler}, ${owner.id},
       ${opts.withTrip === false ? null : ids.trip},
       ${JSON.stringify(opts.details ?? {})}::jsonb,
       ${opts.status ?? "confirmed"},
       '100.00', '20.00', '80.00',
-      ${confirmedAt}, ${opts.slotId ?? null}, NOW()
+      ${confirmedAt}, ${opts.slotId ?? null},
+      ${`pi_test_${id}`}, NOW()
     )
   `);
   createdBookingIds.push(id);
@@ -263,7 +277,7 @@ test("D8-P1: pdf auto-completes 7 days after the FIRST download, through the sha
   await logDownload(bk, ids.pdfSvc, 2); // a later re-download must not restart the clock
 
   const before = await diaryCount(bk);
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
 
   assert.ok(run.completedBookingIds.includes(bk), `job must complete ${bk}; skipped=${JSON.stringify(run.skipped)}`);
   assert.equal(await statusOf(bk), "completed");
@@ -288,7 +302,7 @@ test("D8-N1: pdf does NOT auto-complete before 7 days after the first download",
   assert.equal(e.eligible, false);
   assert.equal(e.reason, "window_open");
 
-  await runBookingAutoCompletion();
+  await runBookingAutoCompletion(undefined, verifyPaid);
   assert.equal(await statusOf(bk), "confirmed", "an open window must leave the booking untouched");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "no money may move inside the window");
 });
@@ -297,7 +311,7 @@ test("D8-P2: pdf auto-completes 7 days UNDOWNLOADED post-delivery", async () => 
   await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NOW() - INTERVAL '9 days' WHERE id = ${ids.pdfSvc}`);
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 10 });
 
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(run.completedBookingIds.includes(bk), `job must complete ${bk}; skipped=${JSON.stringify(run.skipped)}`);
   const stamp = await completionStamp(bk);
   assert.equal(stamp?.evidence?.arm, "undownloaded");
@@ -314,7 +328,7 @@ test("D8-N2 (§13): an UNDOWNLOADED pdf booking with NO delivery timestamp is sk
   assert.equal(e.eligible, false);
   assert.equal(e.reason, "no_delivery_timestamp", "the reason must be STATED, not inferred from confirmedAt alone");
 
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok((run.skipped["no_delivery_timestamp"] ?? 0) >= 1, "the pass must ACCOUNT for the skip");
   assert.equal(await statusOf(bk), "confirmed");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
@@ -337,14 +351,14 @@ test("D8-P3 (§15): a DOUBLE job run is exactly ONE flip, ONE earning set and ON
   await logDownload(bk, ids.pdfSvc, 10);
 
   const diaryBefore = await diaryCount(bk);
-  await runBookingAutoCompletion();
+  await runBookingAutoCompletion(undefined, verifyPaid);
   const afterFirst = await earningCounts(bk);
   const diaryAfterFirst = await diaryCount(bk);
   assert.equal(await statusOf(bk), "completed");
   assert.equal(afterFirst.provider + afterFirst.expert, 2);
   assert.equal(diaryAfterFirst, diaryBefore + 1);
 
-  const second = await runBookingAutoCompletion();
+  const second = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!second.completedBookingIds.includes(bk), "a completed booking is not a candidate on the second pass");
   assert.deepEqual(await earningCounts(bk), afterFirst, "no second earning set");
   assert.equal(await diaryCount(bk), diaryAfterFirst, "no second diary row");
@@ -362,7 +376,7 @@ test("D8-N3: a CALL booking is untouched by the pdf/property timer however old i
   const slot = await makeSlot({ serviceId: ids.callSvc, daysFromNow: -5, endTime: "10:00" });
   const bk = await makeBooking({ serviceId: ids.callSvc, confirmedDaysAgo: 40, slotId: slot });
 
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!run.completedBookingIds.includes(bk), "the timer must never fire an owner-declared rule");
   assert.equal(await statusOf(bk), "confirmed");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
@@ -380,7 +394,7 @@ test("D8-N4 (§15b): a payment_pending provisional claim is NEVER completed by t
   const e = await resolveCompletionEligibility(bk);
   assert.equal(e.eligible, false);
   assert.equal(e.reason, "wrong_status", "the claim machine owns this row (§15b/§18b)");
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!run.completedBookingIds.includes(bk));
   assert.equal(await statusOf(bk), "payment_pending");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
@@ -430,7 +444,7 @@ test("D8-P7: an IN-PERSON booking auto-completes once its service date + the dis
   assert.equal((e.evidence as any).dateSource, "scheduled_date");
   assert.equal((e.evidence as any).windowDays, windowDays, "N is the REUSED dispute window, not a new constant");
 
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(run.completedBookingIds.includes(done), `must complete; skipped=${JSON.stringify(run.skipped)}`);
   assert.equal(await statusOf(done), "completed");
   const stamp = await completionStamp(done);
@@ -457,7 +471,7 @@ test("D8-N11: it does NOT fire before the service date + window has passed", asy
   const future = new Date(Date.now() + 5 * DAY).toISOString();
   const notYet = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 1, details: { scheduledDate: future } });
 
-  await runBookingAutoCompletion();
+  await runBookingAutoCompletion(undefined, verifyPaid);
   assert.equal(await statusOf(early), "confirmed", "the window must be honoured, not just the day");
   assert.equal(await statusOf(notYet), "confirmed");
   assert.deepEqual(await earningCounts(early), { provider: 0, expert: 0, held: 0 });
@@ -488,7 +502,7 @@ test("D8-N12: a DISPUTED in-person booking is never completed by the timer", asy
   const e = await resolveCompletionEligibility(bk);
   assert.equal(e.eligible, false);
   assert.equal(e.reason, "wrong_status");
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!run.completedBookingIds.includes(bk));
   assert.equal(await statusOf(bk), "disputed");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
@@ -502,7 +516,7 @@ test("D8-N13 (§13): NO service date ⇒ skipped with the reason, and ONLY then 
   assert.equal(e.reason, "no_service_date", "a date the platform never held is never guessed");
   assert.equal(e.ownerDeclarableFallback, true, "and THIS is the one case that opens the owner rail");
 
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!run.completedBookingIds.includes(bk), "the timer must skip it, not guess a date");
   assert.equal(run.skipped["no_service_date"] >= 1, true, `the reason must be counted: ${JSON.stringify(run.skipped)}`);
   assert.equal(await statusOf(bk), "confirmed");
@@ -537,13 +551,13 @@ test("D8-P9 (§15): a DOUBLE run of the in-person timer is exactly ONE flip and 
   const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
 
   const diaryBefore = await diaryCount(bk);
-  const first = await runBookingAutoCompletion();
+  const first = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(first.completedBookingIds.includes(bk));
   const afterFirst = await earningCounts(bk);
   assert.equal(afterFirst.provider, 1);
   assert.equal(afterFirst.expert, 1);
 
-  const second = await runBookingAutoCompletion();
+  const second = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!second.completedBookingIds.includes(bk), "the second pass must not re-complete it");
   assert.deepEqual(await earningCounts(bk), afterFirst, "no second earning set");
   assert.equal(await diaryCount(bk), diaryBefore + 1, "exactly one diary row");
@@ -553,7 +567,7 @@ test("D8-P10: the traveler's EARLY confirm-completion still releases, unchanged 
   const windowDays = serviceDateCompletionDays();
   const past = new Date(Date.now() - (windowDays + 4) * DAY).toISOString();
   const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(run.completedBookingIds.includes(bk));
   assert.equal((await earningCounts(bk)).held, 2, "the timer mints HELD earnings");
 
@@ -588,7 +602,7 @@ test("D8-P11: voice_notes is PROVIDER-DECLARED — the ruling-66 no_booked_slot 
   assert.equal((await earningCounts(bk)).held, 2, "the same held-earning machinery, no per-method fork");
 
   // …and no timer may fire it — provider_declared is the owner's to declare.
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!run.completedBookingIds.includes(bk));
 });
 
@@ -604,7 +618,7 @@ test("D8-P4: a PROPERTY booking completes once its checkout date has passed, and
 
   const past = new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10);
   const done = await makeBooking({ serviceId: ids.propSvc, confirmedDaysAgo: 4, details: { checkOut: past } });
-  const run = await runBookingAutoCompletion();
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(run.completedBookingIds.includes(done), `checked-out stay must complete; skipped=${JSON.stringify(run.skipped)}`);
   assert.equal(await statusOf(notYet), "confirmed", "a stay still in progress must NOT complete");
   assert.equal((await completionStamp(done))?.actor, "auto_complete_property");
@@ -615,7 +629,7 @@ test("D8-N6 (§13): a property booking with NO checkout date is skipped with a s
   const e = await resolveCompletionEligibility(bk);
   assert.equal(e.eligible, false);
   assert.equal(e.reason, "no_checkout_date");
-  await runBookingAutoCompletion();
+  await runBookingAutoCompletion(undefined, verifyPaid);
   assert.equal(await statusOf(bk), "confirmed");
 });
 
