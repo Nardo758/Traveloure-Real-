@@ -1192,3 +1192,14 @@ which the boot seeders set to **`tiered`** — a value that names no `fee_bands`
 comment expects `beta_flat`). Nothing in FP-1 touches rate resolution; filed for the fee lane to
 settle (either seed a `tiered` band or point the setting at a real one). The other 4 tests in that
 suite pass.
+
+Also observed while running the FP-1 keep-green battery (three runs on the same bench):
+`server/__tests__/deliverable-protected-rail.http.test.ts` **R4-c2 is INTERMITTENT** — 13/13 on two
+runs, 12/13 on a third, always the same test, always `500` with
+`[object-storage] Object not found` for the key `R4-c1` had just read successfully one line earlier.
+It is NOT a regression from FP-1: `server/infrastructure/object-storage.ts` and the upload/download
+endpoints are byte-identical across this lane's diff (which touches only the provider create/update
+handlers). Suspected mechanism to check when someone picks it up: the upload endpoint's best-effort
+`deleteObject(previous)` is fired UNAWAITED, and the suite uploads twice onto the same service
+(the `before()` driver probe, then R4-a5), so a mis-timed or mis-keyed delete lands on the live
+object. Worth an await or a keyed assertion; do not "fix" it by relaxing the test.
