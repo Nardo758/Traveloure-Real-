@@ -17,7 +17,9 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
+  Users, Route, CalendarClock,
 } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -236,11 +238,13 @@ const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
 // Vocabularies mirror shared/schema.ts's transportProvisionEnum / pickupCoverageModeEnum
 // (app-enforced, no DB CHECK). "" is offered as a real option: NOT SAYING is honest, and is
 // what every pre-195 listing already means (§13).
-const TRANSPORT_PROVISION_OPTIONS: { value: string; label: string }[] = [
-  { value: "pickup_included", label: "Pickup included — I collect the traveler" },
-  { value: "pickup_available", label: "Pickup available — can be arranged" },
-  { value: "meet_at_point", label: "Meet at the meeting point — traveler makes their own way" },
-  { value: "not_applicable", label: "Not applicable" },
+// `segLabel` is the terse caption for the segmented control (ruling 74 / lane T1 — the mock's
+// "Transport & Logistics" step); `label` is the full sentence shown as the helper line under it.
+const TRANSPORT_PROVISION_OPTIONS: { value: string; segLabel: string; label: string }[] = [
+  { value: "pickup_included", segLabel: "Pickup included", label: "Pickup included — I collect the traveler" },
+  { value: "pickup_available", segLabel: "Pickup available", label: "Pickup available — can be arranged" },
+  { value: "meet_at_point", segLabel: "Meet at point", label: "Meet at the meeting point — traveler makes their own way" },
+  { value: "not_applicable", segLabel: "No transport", label: "Not applicable" },
 ];
 // The pickup provisions — the two that make a coverage AREA meaningful (ruling 62 amendment).
 const PICKUP_PROVISIONS: ReadonlySet<string> = new Set(["pickup_included", "pickup_available"]);
@@ -2619,33 +2623,56 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               Service logistics
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5">
+          <CardContent className="space-y-6">
             <p className="text-xs text-muted-foreground">
               These details aren't shown to travelers yet — we're capturing them now so the
               planner can use them when that lands. Leave anything you're unsure of blank.
             </p>
 
-            {/* Transport provision + the ruling-62 AMENDMENT's coverage choice */}
-            <div>
-              <Label htmlFor="transportProvision" className="flex items-center gap-2">
-                <Truck className="w-4 h-4" />
-                How does the traveler get to the start?
-              </Label>
-              <Select
-                value={formData.transportProvision || "unspecified"}
-                onValueChange={(v) => set("transportProvision", v === "unspecified" ? "" : v)}
-              >
-                <SelectTrigger id="transportProvision" className="mt-2" data-testid="select-transport-provision">
-                  <SelectValue placeholder="Not specified" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unspecified">Not specified</SelectItem>
+            {/* ── Getting there: transport provision + the ruling-62 AMENDMENT's coverage choice.
+                T1 (ruling 74) brings this to the mock: the provision is a SEGMENTED choice, the
+                coverage is an explicit radius/route TOGGLE, and the never-clobber notice states
+                out loud that the hidden side's data is preserved (ruling 62/64, §13). */}
+            <div className="space-y-4" data-testid="logistics-section-transport">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Truck className="w-4 h-4" />
+                  Getting there
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  How does the traveler reach the start? Tap the one that fits — tap it again to
+                  leave it unset.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-sm">Transport provision</Label>
+                <ToggleGroup
+                  type="single"
+                  value={formData.transportProvision}
+                  onValueChange={(v) => set("transportProvision", v || "")}
+                  variant="outline"
+                  className="mt-2 flex-wrap justify-start gap-2"
+                  data-testid="segmented-transport-provision"
+                >
                   {TRANSPORT_PROVISION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    <ToggleGroupItem
+                      key={o.value}
+                      value={o.value}
+                      aria-label={o.label}
+                      className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                      data-testid={`toggle-transport-${o.value}`}
+                    >
+                      {o.segLabel}
+                    </ToggleGroupItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formData.transportProvision
+                    ? TRANSPORT_PROVISION_OPTIONS.find((o) => o.value === formData.transportProvision)?.label
+                    : "Not specified."}
+                </p>
+              </div>
 
             {pickupProvisionChosen && (
               <div className="rounded-md border p-3 space-y-3" data-testid="block-pickup-coverage">
@@ -2657,19 +2684,36 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   Pick how your pickup area is defined. Switching between them never deletes the
                   other one's data — it only changes what travelers see.
                 </p>
-                <Select
-                  value={formData.pickupCoverageMode || "unspecified"}
-                  onValueChange={(v) => set("pickupCoverageMode", v === "unspecified" ? "" : v)}
+                <ToggleGroup
+                  type="single"
+                  value={formData.pickupCoverageMode}
+                  onValueChange={(v) => set("pickupCoverageMode", v || "")}
+                  variant="outline"
+                  className="justify-start gap-2"
+                  data-testid="segmented-pickup-coverage-mode"
                 >
-                  <SelectTrigger data-testid="select-pickup-coverage-mode">
-                    <SelectValue placeholder="Not specified" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unspecified">Not specified</SelectItem>
-                    <SelectItem value="radius">Radius — a distance around my meeting pin</SelectItem>
-                    <SelectItem value="route">Route — a fixed set of stops I collect from</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <ToggleGroupItem
+                    value="radius"
+                    data-testid="toggle-coverage-radius"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Radius className="w-4 h-4" /> Radius
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="route"
+                    data-testid="toggle-coverage-route"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Route className="w-4 h-4" /> Route
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground">
+                  {formData.pickupCoverageMode === "radius"
+                    ? "Radius — a distance around your meeting pin."
+                    : formData.pickupCoverageMode === "route"
+                      ? "Route — a fixed set of stops you collect from."
+                      : "Not specified — pick a radius or a route."}
+                </p>
 
                 {formData.pickupCoverageMode === "radius" && (
                   <div>
@@ -2721,9 +2765,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 )}
               </div>
             )}
+            </div>
 
-            {/* Temporal shape */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* ── Timing ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-timing">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Timing
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  How long it runs, and the window it can start in.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="durationMinutes">Duration (minutes)</Label>
                 <Input
@@ -2788,60 +2843,85 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 The start times above are local wall-clock times in this zone.
               </p>
             </div>
+            </div>
 
-            {/* Booking constraints */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* ── Capacity ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-capacity">
               <div>
-                <Label htmlFor="partySizeMin">Minimum party size</Label>
-                <Input
-                  id="partySizeMin" type="number" min={0} placeholder="e.g. 1"
-                  value={formData.partySizeMin}
-                  onChange={(e) => set("partySizeMin", e.target.value)}
-                  className="mt-1" data-testid="input-party-size-min"
-                />
-              </div>
-              <div>
-                <Label htmlFor="partySizeMax">Maximum party size</Label>
-                <Input
-                  id="partySizeMax" type="number" min={0} placeholder="e.g. 8"
-                  value={formData.partySizeMax}
-                  onChange={(e) => set("partySizeMax", e.target.value)}
-                  className="mt-1" data-testid="input-party-size-max"
-                />
-              </div>
-              <div>
-                <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
-                <Input
-                  id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
-                  value={formData.changeCutoffHours}
-                  onChange={(e) => set("changeCutoffHours", e.target.value)}
-                  className="mt-1" data-testid="input-change-cutoff-hours"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  When a traveler can still move the booking. Separate from your refund policy.
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Capacity
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  The party size this fits. Per-person vs per-group is your pricing type — set there,
+                  not asked twice here.
                 </p>
               </div>
-              <div>
-                <Label htmlFor="canAnchor">Can this anchor a day?</Label>
-                <Select
-                  value={formData.canAnchor || "unspecified"}
-                  onValueChange={(v) => set("canAnchor", (v === "unspecified" ? "" : v) as "" | "yes" | "no")}
-                >
-                  <SelectTrigger id="canAnchor" className="mt-1" data-testid="select-can-anchor">
-                    <SelectValue placeholder="Not specified" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unspecified">Not specified</SelectItem>
-                    <SelectItem value="yes">Yes — the day can be planned around it</SelectItem>
-                    <SelectItem value="no">No — it fits around other plans</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="partySizeMin">Minimum party size</Label>
+                  <Input
+                    id="partySizeMin" type="number" min={0} placeholder="e.g. 1"
+                    value={formData.partySizeMin}
+                    onChange={(e) => set("partySizeMin", e.target.value)}
+                    className="mt-1" data-testid="input-party-size-min"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="partySizeMax">Maximum party size</Label>
+                  <Input
+                    id="partySizeMax" type="number" min={0} placeholder="e.g. 8"
+                    value={formData.partySizeMax}
+                    onChange={(e) => set("partySizeMax", e.target.value)}
+                    className="mt-1" data-testid="input-party-size-max"
+                  />
+                </div>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Lead time is set under Booking terms, and per-person vs per-group is your pricing
-              type — neither is asked twice here.
-            </p>
+
+            {/* ── Booking rules ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-booking-rules">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4" />
+                  Booking rules
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Lead time is set under Booking terms — these are the change window and whether the
+                  day can be planned around this.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
+                  <Input
+                    id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
+                    value={formData.changeCutoffHours}
+                    onChange={(e) => set("changeCutoffHours", e.target.value)}
+                    className="mt-1" data-testid="input-change-cutoff-hours"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When a traveler can still move the booking. Separate from your refund policy.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="canAnchor">Can this anchor a day?</Label>
+                  <Select
+                    value={formData.canAnchor || "unspecified"}
+                    onValueChange={(v) => set("canAnchor", (v === "unspecified" ? "" : v) as "" | "yes" | "no")}
+                  >
+                    <SelectTrigger id="canAnchor" className="mt-1" data-testid="select-can-anchor">
+                      <SelectValue placeholder="Not specified" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unspecified">Not specified</SelectItem>
+                      <SelectItem value="yes">Yes — the day can be planned around it</SelectItem>
+                      <SelectItem value="no">No — it fits around other plans</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
