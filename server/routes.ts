@@ -145,7 +145,7 @@ import expertConsoleRoutes from "./routes/expert-console.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
-import paymentsRoutes, { resolveItemBaseAmount } from "./routes/payments.routes";
+import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges } from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -2444,6 +2444,56 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
+    }
+  });
+
+  // ══ B1 (ruling 81): replace-list write for a service's ZONE surcharge tiers ═══════════════════
+  // Owner-gated like the sibling route-points PUT; ALLOWLIST body (§19 posture — nothing but
+  // radiusKm + fee reaches a row, positions derived server-side from array order, never
+  // client-numbered). These are owner LISTING config (radius rings + fee), NOT §18 rates — the
+  // CHARGE is derived server-side at checkout (travel-surcharge.service.ts), never off this body.
+  const surchargeTiersBodySchema = z.object({
+    tiers: z.array(z.object({
+      radiusKm: z.coerce.number().gt(0).max(100000),
+      fee: z.coerce.number().min(0).max(1000000),
+    })).max(20),
+  });
+  app.put("/api/provider/services/:id/surcharge-tiers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = surchargeTiersBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid surcharge tiers", errors: parsed.error.flatten() });
+      }
+      // Positions follow array order; the resolver sorts by radius regardless, so the owner may send
+      // the rings in any order and get honest smallest-ring-contains behaviour.
+      const tiers = parsed.data.tiers.map((t) => ({ radiusKm: t.radiusKm, fee: t.fee }));
+      const surchargeTiers = await storage.replaceServiceSurchargeTiers(service.id, tiers);
+      res.json({ surchargeTiers });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Tiers changed elsewhere — reload and try again" });
+      }
+      console.error("[surcharge-tiers] save failed:", err);
+      res.status(500).json({ message: "Failed to save surcharge tiers" });
+    }
+  });
+
+  // Read: a service's surcharge config + tiers (owner OR any reader — display-only, no secrets).
+  app.get("/api/provider/services/:id/surcharge-tiers", isAuthenticated, async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service) return res.status(404).json({ message: "Service not found" });
+      const surchargeTiers = await storage.getServiceSurchargeTiers(service.id);
+      res.json({ surchargeTiers });
+    } catch (err) {
+      console.error("[surcharge-tiers] read failed:", err);
+      res.status(500).json({ message: "Failed to read surcharge tiers" });
     }
   });
 
@@ -6856,6 +6906,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     let subtotal = 0;
     let platformFeeTotal = 0;
     let conciergeFeeTotal = 0;
+    let surchargeTotal = 0;
+    // B1 (ruling 81): the SAME server-derived travel surcharge the checkout will charge, so the live
+    // cart total already includes it and the traveler is never surprised at Pay (§13/§14, F1
+    // disclosure). Out-of-range pickups show 0 here; the hard refusal is the checkout's 400.
+    const cartSurcharges = await resolveCartSurcharges(items);
     for (const item of items) {
       // §17 property rooms: nights × nightly rate, never quantity × price (a room's cart
       // "quantity" is meaningless — the client pins it to 1). Reuses the exact same helper
@@ -6901,14 +6956,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? cartOfferingKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
         : false;
       if (isConciergeItem) conciergeFeeTotal += price * cartConciergeRate;
+      const sc = cartSurcharges.get(item.id);
+      if (sc?.eligible) surchargeTotal += sc.amount;
     }
+    surchargeTotal = Math.round(surchargeTotal * 100) / 100;
 
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
       platformFee: platformFeeTotal.toFixed(2),
       conciergeFee: conciergeFeeTotal.toFixed(2),
-      total: (subtotal + platformFeeTotal + conciergeFeeTotal).toFixed(2),
+      travelSurcharge: surchargeTotal.toFixed(2),
+      total: (subtotal + platformFeeTotal + conciergeFeeTotal + surchargeTotal).toFixed(2),
       itemCount: items.length,
     });
     } catch (err) {
@@ -7231,10 +7290,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Forbidden" });
       }
       const { quantity, scheduledDate, notes } = req.body;
+      // B1 (ruling 81): the traveler's CONFIRMED pickup location — the travel-surcharge trigger.
+      // Validated here to a {address?, lat, lng} shape (or null to clear); the surcharge AMOUNT is
+      // NEVER read off this body (§14) — it is derived server-side at checkout from these coords +
+      // the listing config. Only touched when the key is present, so an ordinary quantity/notes PATCH
+      // never disturbs a saved pickup (§13, never-clobber).
+      let pickupLocationUpdate: { pickupLocation?: unknown } = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, "pickupLocation")) {
+        const raw = req.body.pickupLocation;
+        if (raw === null) {
+          pickupLocationUpdate = { pickupLocation: null };
+        } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          const lat = typeof raw.lat === "number" ? raw.lat : parseFloat(String(raw.lat));
+          const lng = typeof raw.lng === "number" ? raw.lng : parseFloat(String(raw.lng));
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            return res.status(400).json({ message: "pickupLocation must carry numeric lat/lng within range, or be null to clear" });
+          }
+          const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+          pickupLocationUpdate = { pickupLocation: { address, lat, lng } };
+        } else {
+          return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });
+        }
+      }
       const updated = await cartProjection.updateCartItem(req.params.id, {
         quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
+        ...pickupLocationUpdate,
       });
       res.json(updated);
     } catch (err) {

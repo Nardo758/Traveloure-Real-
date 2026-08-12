@@ -664,6 +664,26 @@ export const pickupCoverageModeEnum = ["radius", "route"] as const;
 export const bookingModeEnum = ["instant", "request", "hidden"] as const;
 export type BookingMode = (typeof bookingModeEnum)[number];
 
+// ── Travel surcharge — PROVIDER-CHOSEN MODE per listing (DECISIONS.md ruling 81, lane B1,
+//    migration 205). A §14 MONEY lane: the mode + config are ordinary owner-authored LISTING config
+//    (like `serviceRadius`/deposit config — client-settable, no fee_bands involvement, §8), but the
+//    resulting CHARGE is SERVER-DERIVED at checkout from the mode + config + the traveler's CONFIRMED
+//    pickup location, NEVER off req.body. NO DB CHECK on the mode column (the migration-144/195/202
+//    publish-trap posture — the vocabulary is enforced by insertProviderServiceSchema's field-level
+//    extend so it survives `.partial()`). The FOUR modes:
+//   none    — DEFAULT (every pre-205 row; column DEFAULTs 'none'). No surcharge, ever. §13.
+//   flat    — one flat fee when the pickup is OUTSIDE the coverage radius (binary in/out — honest
+//             containment, NO computed distance shown). Config: `surchargeFlatAmount`.
+//   zones   — provider-drawn base area + N ordered tiers (each a distance ring + a fee, child rows in
+//             `service_surcharge_tiers`); the pickup maps to the SMALLEST ring that CONTAINS it (0 if
+//             inside the base). Honest containment — no computed distance shown.
+//   per_km  — provider rate × the STRAIGHT-LINE ("as-the-crow-flies, not driving") km from the pin.
+//             Config: `surchargePerKm`. §13 — labeled straight-line, never a driving time/distance.
+// NEVER-CLOBBER (ruling 62 posture): switching the mode changes only what applies/renders; the other
+// modes' config (flat amount, per-km rate, tiers) is preserved, never nulled.
+export const surchargeModeEnum = ["none", "flat", "zones", "per_km"] as const;
+export type SurchargeMode = (typeof surchargeModeEnum)[number];
+
 // The ONE place the null-default is resolved (ruling 75). Called SERVER-SIDE on every card read
 // (the public storefront read and the owner Catalog read) so the traveler card always receives a
 // CONCRETE booking mode: an explicit per-listing value wins; an unset (null) listing inherits the
@@ -799,6 +819,23 @@ export const providerServices = pgTable("provider_services", {
   // Can this service serve as a day's fixed point? Mirrors the `itinerary_items`/`temporal_anchors`
   // anchor vocabulary. CAPTURE ONLY — no scheduler reads it yet.
   canAnchor: boolean("can_anchor"),
+
+  // ══ Travel surcharge — CONFIG (ruling 81, lane B1, migration 205) — §14 money lane ══════════════
+  // Provider-chosen `surchargeMode` (surchargeModeEnum none|flat|zones|per_km, app-enforced in
+  // insertProviderServiceSchema, NO DB CHECK — publish-trap posture) + the config the chosen mode
+  // needs. These are owner-authored LISTING config (no fee_bands, §8), NOT §18 rates: nothing here
+  // multiplies a platform take or selects a fee band, so they are legitimately client-settable (like
+  // `serviceRadius`/deposit config) and NOT stripped. But the resulting CHARGE is derived SERVER-SIDE
+  // at checkout from these + the traveler's confirmed pickup (server/services/travel-surcharge.service.ts),
+  // never from req.body (§14). NEVER-CLOBBER (ruling 62): switching the mode preserves the other
+  // modes' config. All additive-nullable, no DB CHECK. Column named `surcharge_flat_amount`/
+  // `surcharge_per_km` (not a bare `amount`/`rate`) so the fee gate cannot misread them — the same
+  // naming care the deposit config uses. `surchargeMaxKm` doubles as BOOKING ELIGIBILITY: a confirmed
+  // pickup beyond it cannot book (refused BEFORE any charge). Declared here per the publish-trap rule.
+  surchargeMode: varchar("surcharge_mode", { length: 20 }).default("none"), // surchargeModeEnum
+  surchargeFlatAmount: decimal("surcharge_flat_amount", { precision: 10, scale: 2 }), // flat mode: dollars added when pickup is outside the radius
+  surchargePerKm: decimal("surcharge_per_km", { precision: 10, scale: 2 }),           // per_km mode: dollars per straight-line km from the pin
+  surchargeMaxKm: integer("surcharge_max_km"),                                        // outer bound / booking-eligibility ceiling ("won't travel beyond X km")
 
   // Product Builder shape (§17, migrations 151+153) — NULL = single service (every pre-151
   // row), 'bundle' = a bundle row whose components live in bundle_components, 'property' = an
@@ -1279,6 +1316,15 @@ export const cartItems = pgTable("cart_items", {
   // the projection has no independent existence, and an orphan would be uncleanable yet chargeable.
   itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "cascade" }),
   notes: text("notes"),
+  // Travel-surcharge TRIGGER (ruling 81, lane B1, migration 205). The traveler's CONFIRMED pickup
+  // location for this cart line — { address, lat, lng } — captured/confirmed at booking (geocoded
+  // client-side via POST /api/geocode, same confirm posture as the meeting pin). NULL = no pickup
+  // given ⇒ NO surcharge (§13 — a surcharge is NEVER triggered by an invented/defaulted location).
+  // Written owner-gated via PATCH /api/cart/:id; read SERVER-SIDE at checkout/preview to derive the
+  // surcharge (§14 — the coords are the traveler's own booking input, like scheduledDate/notes; the
+  // AMOUNT is derived server-side from them + the listing config, never off req.body). Additive-
+  // nullable jsonb, declared here per the publish-trap rule.
+  pickupLocation: jsonb("pickup_location"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   // Declared here, not only in migration 160: per the CLAUDE.md deploy-push rule the publish-time
@@ -1888,6 +1934,24 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   // predicates do not match `showPrice`/`bookingMode`.
   showPrice: z.boolean().nullable().optional(),
   bookingMode: z.enum(bookingModeEnum).nullable().optional(),
+  // ── Travel surcharge CONFIG (ruling 81, lane B1, migration 205) — owner listing config, NOT a §18 rate ──
+  // App-enforced vocabulary + non-negative shape floors (no DB CHECK, migration-205 publish-trap
+  // posture); field-level so each refinement survives `.partial()` on the PATCH path (the update path
+  // is checked as hard as the insert). These set the LISTING config only — no amount/identity/rate
+  // reaches a MONEY DECISION on this write (the surcharge is derived server-side at checkout from the
+  // persisted row + the traveler's pickup) — so they are ordinary wizard fields, NOT omitted, exactly
+  // like the deposit CONFIG above. The `surchargeFlatAmount`/`surchargePerKm` names are deliberately
+  // not a bare `amount`/`rate` so the money gate does not misread them.
+  surchargeMode: z.enum(surchargeModeEnum).nullable().optional(),
+  surchargeFlatAmount: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Travel surcharge amount must be a non-negative number" },
+  ),
+  surchargePerKm: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Per-km surcharge rate must be a non-negative number" },
+  ),
+  surchargeMaxKm: z.coerce.number().int().min(0).max(100000).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
@@ -8132,6 +8196,30 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+// Travel-surcharge ZONE tiers for a provider service — DECISIONS.md ruling 81 (lane B1, migration
+// 205). The `zones` mode's ordered surcharge rings, on the service_route_points/service_attestations
+// child-row pattern: ON DELETE CASCADE, composite UNIQUE (service_id, position). Positions are
+// server-derived from array order on the owner-gated replace-list write (PUT
+// /api/provider/services/:id/surcharge-tiers) — never client-numbered. Each row is a ring: any
+// pickup within `radiusKm` of the confirmed pin (and outside every smaller ring) incurs `fee`. The
+// resolver picks the SMALLEST containing ring (§13 honest containment — no computed distance shown).
+// `radiusKm`/`fee` are owner LISTING config (not §18 rates), but the CHARGE is derived server-side at
+// checkout. Declared here per the publish-trap rule (table + UNIQUE + index must survive the deploy
+// push). NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in the route (§19).
+export const serviceSurchargeTiers = pgTable("service_surcharge_tiers", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based ring order (smallest ⇒ largest radius)
+  radiusKm: decimal("radius_km", { precision: 10, scale: 3 }).notNull(), // outer radius of this ring, km from the pin
+  fee: decimal("fee", { precision: 10, scale: 2 }).notNull(),            // surcharge dollars for a pickup landing in this ring
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_surcharge_tiers_service_position_unique").on(table.serviceId, table.position),
+  index("service_surcharge_tiers_service_idx").on(table.serviceId),
+]);
+export type ServiceSurchargeTier = typeof serviceSurchargeTiers.$inferSelect;
 
 // D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
 // (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE

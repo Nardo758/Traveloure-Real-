@@ -978,4 +978,14 @@ export const MIGRATION_FILES = [
   // name/tagline it exposes (RENUMBERED from 196 during the Aug 12 2026 reconciliation).
   // Declared in shared/schema.ts (publish-trap).
   "204_expert_profile_display_fields.sql",
+  // 205: travel surcharge — provider-chosen mode per listing (DECISIONS.md ruling 81, lane B1,
+  // Wave 2). A §14 MONEY lane. Additive columns on provider_services (surcharge_mode DEFAULT 'none',
+  // surcharge_flat_amount, surcharge_per_km, surcharge_max_km — owner listing config, NO DB CHECK on
+  // the mode enum, publish-trap posture); a child table service_surcharge_tiers (zones mode's ordered
+  // rings, service_route_points pattern — ON DELETE CASCADE, UNIQUE (service_id, position)); and
+  // cart_items.pickup_location (jsonb) — the traveler's confirmed pickup, the surcharge TRIGGER. The
+  // CHARGE is server-derived at checkout (travel-surcharge.service.ts) from the mode + config + that
+  // pickup, never off req.body (§14); folded into the line total_amount so §15/§17 reconciliation and
+  // re-drive stay correct. All DECLARED in shared/schema.ts (publish-trap rule).
+  "205_travel_surcharge.sql",
 ] as const;
