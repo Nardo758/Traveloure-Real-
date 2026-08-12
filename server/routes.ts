@@ -2047,6 +2047,50 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Ruling 85: SET / UPDATE / CLEAR the provider's account-level office / place-of-business
+  // location AFTER onboarding. Owner-gated — the row is resolved by the SESSION userId, never a
+  // body id, so a provider can only ever touch their OWN service_provider_forms row. The body is an
+  // ALLOWLIST (a hand-written zod pick of just `officeLocation`) — NOT the denylist create schema —
+  // so no unrelated column can ride in, and the #PS18 omit-ratchet is untouched (no new
+  // createInsertSchema). `officeLocation` is provider CONFIG, not a money/identity/rate field: the
+  // §14/§18/§19 strips do not apply (nothing derives a charge from it), but the coordinate is still
+  // validated to a finite in-range {address?,lat,lng} (or null-to-clear) — the §13 honesty gate is
+  // the client Confirm + NULL-stays-NULL, never a fabricated coordinate. The client geocodes the
+  // typed address through the EXISTING POST /api/geocode and emits a point ONLY on explicit Confirm
+  // (the meeting-pin posture).
+  app.patch("/api/provider-application", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const existing = await storage.getServiceProviderForm(userId);
+      if (!existing) {
+        return res.status(404).json({ message: "No provider application found for this account" });
+      }
+      if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, "officeLocation")) {
+        return res.status(400).json({ message: "officeLocation is required (object with lat/lng, or null to clear)" });
+      }
+      const raw = req.body.officeLocation;
+      let officeLocation: { address: string | null; lat: number; lng: number } | null;
+      if (raw === null) {
+        officeLocation = null; // explicit clear — NULL is the honest "not set" state (§13)
+      } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const lat = typeof raw.lat === "number" ? raw.lat : parseFloat(String(raw.lat));
+        const lng = typeof raw.lng === "number" ? raw.lng : parseFloat(String(raw.lng));
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          return res.status(400).json({ message: "officeLocation must carry numeric lat/lng within range, or be null to clear" });
+        }
+        const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+        officeLocation = { address, lat, lng };
+      } else {
+        return res.status(400).json({ message: "officeLocation must be an object with lat/lng, or null" });
+      }
+      const updated = await storage.updateServiceProviderFormOfficeLocation(userId, officeLocation);
+      res.json(updated ?? null);
+    } catch (err) {
+      console.error("Error updating provider office location:", err);
+      res.status(500).json({ message: "Failed to update office location" });
+    }
+  });
+
   // Alias: /api/provider-forms -> /api/provider-application (for API compatibility)
   app.post("/api/provider-forms", isAuthenticated, async (req, res) => {
     try {
