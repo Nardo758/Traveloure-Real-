@@ -79,6 +79,7 @@ import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { draftServiceTranslation, isContentLocale } from "./services/service-translation.service";
+import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
@@ -2250,6 +2251,60 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
     }));
     res.json(withDisplayOptions);
+  });
+
+  // ── Market insights (lane B2, ruling 84; CLAUDE.md §13/§20) ────────────────────────────────────
+  //    Owner-gated (session identity, never req.body — §14 posture) READ-ONLY, non-money overlay for
+  //    the Catalog map. Two REAL layers, both server-aggregated (counts per bucket — a traveler's row
+  //    or coords NEVER leaves the server, so no address leak by construction):
+  //      • gaps   — per (neighborhood, categoryKey) admin target vs REAL located supply; a gap only
+  //                 where target > have. No target row ⇒ no claim (§13).
+  //      • demand — REAL search intent bucketed by destination STRING to neighborhood/market
+  //                 centroids, thresholded at MIN_DEMAND_SIGNAL. Below threshold ⇒ hasSignal=false
+  //                 ("not enough signal yet"). NEVER a per-lat/lng heat cell; booking pickup coords
+  //                 are NOT a demand source (this endpoint reads no bookings at all).
+  //    Estimated / TravelPulse aggregates are excluded. ODbL attribution rides the response.
+  const DEMAND_WINDOW_DAYS = 90; // recent window for the search-intent rollup.
+  app.get("/api/provider/market-insights", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const attribution = "© OpenStreetMap contributors";
+      const emptyDemand = {
+        byNeighborhood: [] as any[],
+        cityLevel: [] as any[],
+        unplaceableCount: 0,
+        threshold: MIN_DEMAND_SIGNAL,
+        hasSignal: false,
+      };
+
+      const cities = await storage.getProviderMarketCities(userId);
+      if (cities.length === 0) {
+        // No market footprint yet — honest empty surface, nothing invented (§13).
+        return res.json({
+          asOf: new Date().toISOString(),
+          cities,
+          demand: emptyDemand,
+          gaps: [],
+          attribution,
+        });
+      }
+
+      const neighborhoods = await storage.getMarketNeighborhoods(cities);
+      const [targets, supply] = await Promise.all([
+        storage.getCoverageTargetsForNeighborhoods(neighborhoods.map((n) => n.id)),
+        storage.getLocatedSupplyForCities(cities),
+      ]);
+      const gaps = resolveCoverageGaps(supply, targets, neighborhoods);
+
+      const neighborhoodTokens = neighborhoods.flatMap((n) => [n.name, n.slug]);
+      const demandRows = await storage.getMarketDemandRows(cities, neighborhoodTokens, DEMAND_WINDOW_DAYS);
+      const demand = resolveDemandBuckets(demandRows, neighborhoods, cities, MIN_DEMAND_SIGNAL);
+
+      res.json({ asOf: new Date().toISOString(), cities, demand, gaps, attribution });
+    } catch (err) {
+      console.error("[market-insights] failed:", (err as any)?.message);
+      res.status(500).json({ message: "Failed to load market insights" });
+    }
   });
 
   // Get a single provider service by ID (ownership required)
