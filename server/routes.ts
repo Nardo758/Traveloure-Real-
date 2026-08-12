@@ -5923,6 +5923,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
       }
 
+      // Acceptance tells the traveler too — symmetric with the cancellation notices below;
+      // no silent state changes in either direction.
+      if (status === "confirmed" && updated.travelerId) {
+        try {
+          await storage.createNotification({
+            userId: updated.travelerId,
+            type: "booking_confirmed",
+            title: "Booking confirmed",
+            message: `Your booking ${updated.trackingNumber ?? ""} was accepted by the provider.`,
+            relatedId: req.params.id,
+            relatedType: "booking",
+            data: { bookingId: req.params.id },
+          });
+        } catch (notifyErr) {
+          console.error("Failed to notify traveler of booking acceptance:", notifyErr);
+        }
+      }
+
       // Unpaid cancellation still tells the traveler — no silent state changes.
       if (status === "cancelled" && updated.travelerId) {
         try {
