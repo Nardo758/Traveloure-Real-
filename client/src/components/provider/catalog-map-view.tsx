@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowDown, ArrowUp, Crosshair, Loader2, MapPin, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Crosshair, Loader2, MapPin, MapPinOff, Plus, Trash2 } from "lucide-react";
 import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/service-location-map";
 import { LocationPointPicker, parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
 
@@ -85,6 +85,15 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   const mappable = services.filter((s) => s.productShape !== "bundle");
   const [selectedId, setSelectedId] = useState<string | null>(mappable[0]?.id ?? null);
   const selected = mappable.find((s) => s.id === selectedId) ?? null;
+
+  // C4 (ruling 74): honest provider-wide coverage. A service is "located" iff its OWN row
+  // carries confirmed coordinates (the same `parseStoredPoint` the left rail and the single-
+  // service canvas use) — never inferred from a delivery method or a city string. The count is
+  // this partition's real size; the unpinned rail lists exactly the services with no coordinates,
+  // which stay OFF the map (§13 — a remote/PDF listing with no pin belongs in the rail, never
+  // dropped on the city centre).
+  const locatedServices = mappable.filter((s) => parseStoredPoint(s.latitude, s.longitude) !== null);
+  const unpinnedServices = mappable.filter((s) => parseStoredPoint(s.latitude, s.longitude) === null);
 
   // Owner single-service read (ruling 22: routePoints ride this response)
   const { data: detail } = useQuery<{ routePoints?: RoutePointRow[] } | undefined>({
@@ -255,7 +264,60 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_320px] gap-4 items-start">
+    <div className="space-y-4">
+      {/* C4: provider-wide coverage summary — the REAL count of services with a confirmed
+          location, never a guess. This is a coverage indicator across the whole catalog and is
+          distinct from the single-service canvas below (which maps only the selected listing). */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E8E2] bg-[#FAFAF8] px-3 py-2"
+        data-testid="catalog-map-located-summary"
+      >
+        <span className="text-[13px] font-medium" style={{ color: "#1A1A18" }} data-testid="text-located-count">
+          {locatedServices.length} of {mappable.length} service{mappable.length === 1 ? "" : "s"} located on the map
+        </span>
+        <span className="text-[11px]" style={{ color: "#7A7A72" }}>
+          Services without a confirmed location stay off the map — nothing is dropped on the city centre.
+        </span>
+      </div>
+
+      {/* C4: the unpinned rail — services with NO coordinates, listed off-map (§13). Each is an
+          "add a pin" affordance that selects the listing so its Meeting pin card (right) opens;
+          the pin itself still writes through the one confirm-gated LocationPointPicker rail. */}
+      {unpinnedServices.length > 0 && (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2.5"
+          data-testid="catalog-map-unpinned-rail"
+        >
+          <p className="text-[12px] font-medium text-amber-800 mb-2 flex items-center gap-1">
+            <MapPinOff className="w-3.5 h-3.5" /> Not on the map yet ({unpinnedServices.length}) — pin these to show
+            travelers where they happen
+          </p>
+          <ul className="flex flex-wrap gap-1.5">
+            {unpinnedServices.map((s) => (
+              <li key={s.id} data-testid={`unpinned-service-${s.id}`}>
+                <button
+                  onClick={() => setSelectedId(s.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+                    s.id === selectedId
+                      ? "border-[#E85D55] bg-[rgba(232,85,85,0.06)]"
+                      : "border-amber-300 bg-white hover:bg-amber-50"
+                  }`}
+                  data-testid={`button-add-pin-${s.id}`}
+                >
+                  <span className="truncate max-w-[180px]" style={{ color: "#1A1A18" }}>
+                    {s.serviceName}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-amber-700 font-medium">
+                    <Plus className="w-3 h-3" /> Add a pin
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_320px] gap-4 items-start">
       {/* Left rail: service selector with pin health */}
       <div className="space-y-1.5 lg:max-h-[560px] lg:overflow-y-auto pr-1" data-testid="map-view-service-rail">
         {mappable.map((s) => {
@@ -515,6 +577,7 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
             </p>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );
