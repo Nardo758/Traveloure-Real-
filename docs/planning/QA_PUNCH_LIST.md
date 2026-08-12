@@ -1058,3 +1058,33 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   rulings 58/64's committed-but-unwired suites: green requires a running server with the beta seed
   accounts, so wiring it into CI belongs with the same batch that wires those (the ruling 57 gate's
   pattern is the template).
+
+## Open — Catalog / Distribute + Service-Provider console follow-ups (added Aug 12, 2026)
+
+Filed from the Catalog/Distribute program (DECISIONS.md rulings 74–85; `docs/briefs/CATALOG_DISTRIBUTE_EXECUTION_MAP.md`).
+Wave 1 + Wave 2 landed to main (PRs #460/#461); the provider office-location lane landed (#462, ruling 85).
+These are the follow-ups those lanes deliberately deferred (negative space, ruling 43).
+
+- **CD-1 — coordinate-level demand heat map** [future lane, blocked on data capture]: B2 (ruling 84)
+  shipped an HONEST demand + coverage overlay — coverage-gap from real located supply vs
+  `neighborhood_coverage_target`, plus string-bucketed real `search_analytics` intent thresholded to an
+  honest "not enough signal yet". A true PER-COORDINATE heat map is NOT buildable today and was
+  deliberately NOT faked: the only located booking coords are surcharge-billing artifacts (§13-forbidden
+  as demand) and search intent is destination-STRING granularity only. It needs a PRIOR lane that durably
+  persists traveler pickup/search COORDINATES for the general (non-surcharge) case. Do not interpolate in
+  the interim.
+- **CD-2 — the Catalog/Distribute Playwright specs are committed but NOT in CI (seed-script ESM
+  breakage)** [build item]: the client specs (catalog-preview-toggle, service-display-options,
+  catalog-map-located, distribute-shell, travel-surcharge-step, service-logistics-step, market-insights)
+  need the seeded `kyoto-interpreter`/`ci-provider` storefront, but the seed script throws
+  `require is not defined` (CJS/ESM mismatch) on a fresh bench, so the specs cannot run there. Same
+  committed-but-unwired `[advisory]` posture rulings 58/64/66/67/79/82/83/84 record. Fix the seed
+  script's module system, then wire the specs into a PR-blocking workflow — the ruling-57 gate is the
+  template, and this belongs in the SAME CI batch as I18N-5.
+- **CD-3 — JA native-speaker review of shipped translations** [externally gated / editorial]: ruling 60
+  Phase A chrome + Phase B content translations shipped (I18N-1…I18N-5 above), but the Japanese copy —
+  INCLUDING the attestation strings — has never had a native-speaker pass. Needs a human reviewer; never
+  machine-"correct" it (§13). Ties to the I18N cluster.
+
+(The Six-Sigma provider-pass **Tier B** ballot is already filed above — "Six-Sigma provider pass — Tier B
+(FILED, NOT BUILT) — Aug 11" — not re-listed here.)
