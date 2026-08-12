@@ -988,4 +988,10 @@ export const MIGRATION_FILES = [
   // pickup, never off req.body (§14); folded into the line total_amount so §15/§17 reconciliation and
   // re-drive stay correct. All DECLARED in shared/schema.ts (publish-trap rule).
   "205_travel_surcharge.sql",
+  // 206: cart_items.party_size — the traveler's confirmed party count, the INPUT the D7 party-size
+  // eligibility gate validates against (DECISIONS.md ruling 83, lane T2, Wave 2). Additive-nullable,
+  // NO DB CHECK, written owner-gated via PATCH /api/cart/:id and read server-side at checkout (the B1
+  // pickup_location pattern) — a booking input, never a money field; NULL ⇒ no party-size gate (§13).
+  // Declared in shared/schema.ts (publish-trap rule).
+  "206_cart_party_size.sql",
 ] as const;

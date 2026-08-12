@@ -301,7 +301,7 @@ export interface IStorage {
   getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
   getCartItemById(id: string): Promise<any | undefined>;
   addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
-  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown }): Promise<any | undefined>;
+  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
   migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
@@ -2649,7 +2649,7 @@ export class DatabaseStorage implements IStorage {
     return { migrated, deduplicated };
   }
 
-  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown }): Promise<any | undefined> {
+  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null }): Promise<any | undefined> {
     // Drizzle skips `undefined` keys, so an absent field is never touched; an explicit `null`
     // pickupLocation is a deliberate clear (§13 — the traveler removed their pickup ⇒ no surcharge).
     const [updated] = await db.update(cartItems)

@@ -1325,6 +1325,15 @@ export const cartItems = pgTable("cart_items", {
   // AMOUNT is derived server-side from them + the listing config, never off req.body). Additive-
   // nullable jsonb, declared here per the publish-trap rule.
   pickupLocation: jsonb("pickup_location"),
+  // Booking-eligibility TRIGGER-INPUT (ruling 83, lane T2, migration 206). The traveler's CONFIRMED
+  // party count for this cart line — the input the D7 party-size gate (party_size_min/max on
+  // provider_services, migration 195) validates against BEFORE any slot claim or charge. NULL = no
+  // party count given ⇒ NO party-size gate (§13 — never gate on a fabricated count; cart_items.quantity
+  // is the price-multiplier "number of the service", NOT a party count, so it is deliberately not
+  // reused here). Written owner-gated via PATCH /api/cart/:id, read SERVER-SIDE at checkout — a booking
+  // input like scheduledDate, never a money field (no amount/rate is derived from it). Additive-nullable
+  // integer, declared here per the publish-trap rule.
+  partySize: integer("party_size"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   // Declared here, not only in migration 160: per the CLAUDE.md deploy-push rule the publish-time
