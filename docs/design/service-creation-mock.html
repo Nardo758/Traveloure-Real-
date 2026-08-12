@@ -1,0 +1,2498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service creation — proposed redesign</title>
+<style>
+  :root{
+    color-scheme: light;
+    --ink:#1A1A18;
+    --muted:#7A7A72;
+    --hair:#E8E8E2;
+    --ground:#FAFAF8;
+    --paper:#FFFFFF;
+    --accent:#35605A;
+    --accent-soft:#EDF2F1;
+    --warn-bg:#FBF6EC;
+    --warn-line:#D9C79A;
+    --warn-ink:#6B551F;
+    --radius:7px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{background:var(--ground);}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  a{color:var(--accent);}
+  button{font:inherit;color:inherit;}
+
+  /* ── chrome ───────────────────────────────────────────── */
+  .topbar{
+    background:var(--paper);
+    border-bottom:1px solid var(--hair);
+    padding:14px 28px;
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  }
+  .topbar .mark{font-weight:650;letter-spacing:-.01em;}
+  .topbar .sub{color:var(--muted);font-size:13px;}
+  .topbar .badge{
+    margin-left:auto;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--hair);border-radius:100px;padding:3px 10px;
+  }
+  .tabs{
+    background:var(--paper);border-bottom:1px solid var(--hair);
+    padding:0 28px;display:flex;gap:2px;overflow-x:auto;
+  }
+  .tabs button{
+    background:none;border:none;border-bottom:2px solid transparent;
+    padding:11px 14px;cursor:pointer;color:var(--muted);font-size:13.5px;white-space:nowrap;
+  }
+  .tabs button:hover{color:var(--ink);}
+  .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600;}
+
+  .wrap{max-width:1200px;margin:0 auto;padding:24px 28px 72px;}
+  .panel{display:none;}
+  .panel.on{display:block;}
+
+  /* ── legend ───────────────────────────────────────────── */
+  .legend{
+    background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);
+    padding:12px 16px;margin-bottom:22px;
+    display:flex;flex-wrap:wrap;gap:6px 26px;
+  }
+  .legend h4{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+    width:100%;font-weight:600;margin-bottom:2px;}
+  .legend div{font-size:12.5px;color:var(--muted);display:flex;gap:7px;align-items:flex-start;}
+  .legend div b{color:var(--ink);font-weight:500;}
+
+  .dot{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:17px;height:17px;flex:0 0 17px;border-radius:100px;
+    background:var(--accent);color:#fff;font-size:11px;line-height:1;
+    font-weight:600;vertical-align:middle;
+  }
+  .dot.ghost{background:var(--accent-soft);color:var(--accent);border:1px solid #CBDAD7;}
+  .dot-inline{margin-left:6px;}
+
+  /* ── generic surfaces ─────────────────────────────────── */
+  .card{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);}
+  .card-pad{padding:20px 22px;}
+  .card-hd{padding:14px 22px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:10px;}
+  .card-hd h3{font-size:15px;font-weight:600;}
+  .card-hd .hint{margin-left:auto;font-size:12px;color:var(--muted);}
+
+  h2.screen{font-size:19px;font-weight:650;letter-spacing:-.01em;margin-bottom:4px;}
+  p.screen-sub{color:var(--muted);font-size:13px;margin-bottom:18px;max-width:70ch;}
+  h5.grouplabel{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:10px;}
+
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:13px;font-weight:550;margin-bottom:5px;}
+  .field .help{font-size:12px;color:var(--muted);margin-top:5px;}
+  .inp{
+    width:100%;padding:9px 11px;border:1px solid var(--hair);border-radius:6px;
+    background:var(--paper);color:var(--ink);font:inherit;font-size:13.5px;
+  }
+  .inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  textarea.inp{resize:vertical;min-height:64px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+
+  .btn{
+    border:1px solid var(--ink);background:var(--ink);color:#fff;
+    padding:9px 16px;border-radius:6px;cursor:pointer;font-size:13.5px;font-weight:550;
+  }
+  .btn:hover{background:#000;}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--hair);}
+  .btn.ghost:hover{border-color:var(--muted);background:var(--ground);}
+  .btn.accent{background:var(--accent);border-color:var(--accent);}
+  .btn.accent:hover{background:#2C514C;}
+  .btn.lg{padding:12px 22px;font-size:14.5px;}
+  .btn.sm{padding:6px 11px;font-size:12.5px;white-space:nowrap;flex:0 0 auto;}
+  .btn.link{background:none;border:none;color:var(--accent);padding:0;text-decoration:underline;
+    text-underline-offset:2px;cursor:pointer;font-size:13px;font-weight:500;}
+
+  .pill{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:100px;
+    border:1px solid var(--hair);color:var(--muted);background:var(--ground);}
+  .pill.draft{border-color:#D9CDB2;background:#FBF6EC;color:#6B551F;}
+  .pill.live{border-color:#BFD5D0;background:var(--accent-soft);color:var(--accent);}
+  .pill.new{border-color:var(--accent);background:var(--accent);color:#fff;}
+
+  .notice{
+    background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink);
+    border-radius:6px;padding:11px 14px;font-size:12.5px;line-height:1.5;
+  }
+  .notice b{font-weight:650;}
+  .note-quiet{
+    background:var(--ground);border:1px dashed var(--hair);border-radius:6px;
+    padding:11px 14px;font-size:12.5px;color:var(--muted);line-height:1.5;
+  }
+
+  /* ── create flow ──────────────────────────────────────── */
+  .flow{display:grid;grid-template-columns:236px 1fr;gap:22px;align-items:start;}
+  .steplist{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);padding:14px;position:sticky;top:16px;}
+  .steplist h5{margin-bottom:12px;}
+  .steplist ol{list-style:none;}
+  .steplist li{
+    display:flex;gap:10px;align-items:flex-start;padding:8px 6px;border-radius:6px;
+    font-size:13px;color:var(--muted);cursor:pointer;transition:background .18s ease;
+  }
+  .steplist li:hover{background:var(--ground);}
+  .steplist li .num{
+    width:20px;height:20px;flex:0 0 20px;border-radius:100px;border:1px solid var(--hair);
+    display:flex;align-items:center;justify-content:center;font-size:11px;background:var(--paper);
+  }
+  .steplist li.cur{color:var(--ink);font-weight:600;background:var(--accent-soft);}
+  .steplist li.cur .num{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .steplist li.done .num{background:var(--ink);border-color:var(--ink);color:#fff;}
+  .steplist li.done{color:var(--ink);}
+  @keyframes flashin{
+    0%{background:#DCEAE7;transform:translateX(-5px);opacity:.35;}
+    100%{background:transparent;transform:none;opacity:1;}
+  }
+  .steplist li.added{animation:flashin .85s ease-out;}
+  .stepcount{margin-top:12px;padding-top:11px;border-top:1px solid var(--hair);font-size:12px;color:var(--muted);}
+
+  .methods{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+  .method{
+    border:1px solid var(--hair);border-radius:var(--radius);background:var(--paper);
+    padding:11px 12px;cursor:pointer;text-align:left;transition:border-color .15s,background .15s;
+  }
+  .method:hover{border-color:var(--muted);}
+  .method .mname{font-size:13px;font-weight:600;display:block;margin-bottom:2px;}
+  .method .mmeta{font-size:11.5px;color:var(--muted);display:block;line-height:1.35;}
+  .method[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent);}
+  .method[aria-pressed="true"] .mmeta{color:var(--accent);}
+
+  .seedswap{margin-top:10px;font-size:12px;color:var(--accent);display:none;}
+  .seedswap.on{display:block;}
+
+  .flowfoot{
+    margin-top:18px;padding-top:16px;border-top:1px solid var(--hair);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .flowfoot .spacer{margin-left:auto;}
+  .flowfoot .save-note{font-size:12px;color:var(--muted);}
+
+  /* map placeholder */
+  .mapbox{position:relative;border:1px solid var(--hair);border-radius:6px;overflow:hidden;background:#F1F0EA;height:220px;}
+  .mapbox svg{display:block;width:100%;height:100%;}
+  .maplabel{
+    position:absolute;top:9px;right:9px;background:rgba(255,255,255,.94);
+    border:1px solid var(--hair);border-radius:100px;padding:3px 10px;font-size:11px;color:var(--muted);
+  }
+  .mapattr{position:absolute;bottom:6px;left:9px;font-size:10.5px;color:#8A8A80;}
+  .pinmark{position:absolute;left:50%;top:48%;transform:translate(-50%,-100%);display:none;}
+  .pinmark.on{display:block;}
+  .radiusring{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);border-radius:100px;
+    border:1px dashed var(--accent);background:rgba(53,96,90,.07);display:none;}
+  .radiusring.on{display:block;}
+
+  input[type=range]{width:100%;accent-color:var(--accent);}
+
+  .toggle{display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 0;background:none;border:none;text-align:left;}
+  .toggle .track{width:36px;height:20px;border-radius:100px;background:var(--hair);position:relative;transition:background .15s;flex:0 0 36px;}
+  .toggle .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:100px;background:var(--paper);
+    box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s;}
+  .toggle[aria-pressed="true"] .track{background:var(--accent);}
+  .toggle[aria-pressed="true"] .track::after{transform:translateX(16px);}
+  .toggle .tl{font-size:13px;font-weight:550;}
+
+  .stops{border:1px solid var(--hair);border-radius:6px;overflow:hidden;}
+  .stop{display:flex;align-items:center;gap:11px;padding:10px 12px;border-bottom:1px solid var(--hair);font-size:13px;}
+  .stop:last-child{border-bottom:none;}
+  .stop .pos{width:20px;height:20px;flex:0 0 20px;border-radius:100px;background:var(--ground);
+    border:1px solid var(--hair);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);}
+  .stop .sname{flex:1;}
+  .stop .flag{font-size:11.5px;color:#8A6A22;background:var(--warn-bg);border:1px solid var(--warn-line);
+    border-radius:100px;padding:1px 8px;}
+  .stop .ok{font-size:11.5px;color:var(--accent);}
+
+  /* summary */
+  .sumrow{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:13px;}
+  .sumrow:last-child{border-bottom:none;}
+  .sumrow .k{width:170px;flex:0 0 170px;color:var(--muted);}
+  .sumrow .v{flex:1;}
+
+  /* ── checklist ────────────────────────────────────────── */
+  .draft-hero{
+    background:var(--paper);border:1px solid var(--accent);border-radius:var(--radius);
+    padding:22px;display:flex;gap:18px;align-items:flex-start;margin-bottom:20px;
+  }
+  .draft-hero .tick{width:34px;height:34px;flex:0 0 34px;border-radius:100px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;}
+  .draft-hero h2{font-size:17px;font-weight:650;margin-bottom:3px;}
+  .draft-hero p{font-size:13px;color:var(--muted);}
+
+  .check{display:flex;gap:13px;align-items:flex-start;padding:14px 18px;border-bottom:1px solid var(--hair);
+    cursor:pointer;transition:background .15s;}
+  .check:last-child{border-bottom:none;}
+  .check:hover{background:var(--ground);}
+  .check .box{
+    width:19px;height:19px;flex:0 0 19px;border-radius:5px;border:1.5px solid var(--hair);
+    background:var(--paper);display:flex;align-items:center;justify-content:center;margin-top:1px;
+  }
+  .check[aria-checked="true"] .box{background:var(--accent);border-color:var(--accent);}
+  .check[aria-checked="true"] .ctitle{color:var(--muted);text-decoration:line-through;}
+  .check > span:not(.box){flex:1;min-width:0;}
+  .check .ctitle{display:block;font-size:13.5px;font-weight:550;}
+  .check .cdesc{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.45;}
+  .check .go{margin-left:auto;font-size:12.5px;color:var(--accent);white-space:nowrap;align-self:center;}
+  .check[aria-checked="true"] .go{visibility:hidden;}
+
+  .drawer-scrim{position:fixed;inset:0;background:rgba(26,26,24,.32);display:none;z-index:40;}
+  .drawer-scrim.on{display:block;}
+  .drawer{
+    position:fixed;top:0;right:0;bottom:0;width:min(430px,92vw);background:var(--paper);
+    border-left:1px solid var(--hair);z-index:41;transform:translateX(100%);transition:transform .22s ease;
+    display:flex;flex-direction:column;
+  }
+  .drawer.on{transform:none;}
+  .drawer .dhd{padding:18px 22px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:10px;}
+  .drawer .dhd h3{font-size:15px;font-weight:650;}
+  .drawer .dbody{padding:20px 22px;overflow-y:auto;flex:1;}
+  .drawer .dfoot{padding:14px 22px;border-top:1px solid var(--hair);display:flex;gap:10px;}
+  .xbtn{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;}
+
+  .seg{display:inline-flex;border:1px solid var(--hair);border-radius:6px;overflow:hidden;}
+  .seg button{background:var(--paper);border:none;padding:7px 13px;font-size:12.5px;cursor:pointer;color:var(--muted);
+    border-right:1px solid var(--hair);}
+  .seg button:last-child{border-right:none;}
+  .seg button[aria-pressed="true"]{background:var(--ink);color:#fff;}
+
+  /* ── one door ─────────────────────────────────────────── */
+  .doortiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .doortile{
+    border:1px solid var(--hair);border-radius:var(--radius);background:var(--paper);padding:20px;
+    text-align:left;cursor:pointer;transition:border-color .15s;min-height:172px;display:flex;flex-direction:column;
+  }
+  .doortile:hover{border-color:var(--accent);}
+  .doortile h4{font-size:15px;font-weight:650;margin:12px 0 5px;}
+  .doortile p{font-size:12.5px;color:var(--muted);line-height:1.5;}
+  .doortile .cta{margin-top:auto;padding-top:14px;font-size:12.5px;color:var(--accent);font-weight:550;}
+  .doortile.locked{background:var(--ground);border-style:dashed;cursor:not-allowed;opacity:.92;}
+  .doortile.locked h4{color:var(--muted);}
+  .doortile.locked .cta{color:var(--muted);}
+  .progressbar{height:5px;border-radius:100px;background:var(--hair);overflow:hidden;margin-top:10px;}
+  .progressbar i{display:block;height:100%;width:50%;background:var(--muted);}
+
+  .cats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+  .cat{
+    border:1px solid var(--hair);border-radius:6px;background:var(--paper);padding:12px 13px;
+    text-align:left;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .cat:hover{border-color:var(--accent);background:var(--accent-soft);}
+  .cat b{display:block;font-size:13px;font-weight:600;margin-bottom:2px;}
+  .cat span{font-size:11.5px;color:var(--muted);line-height:1.35;display:block;}
+
+  /* ── catalog before/after ─────────────────────────────── */
+  .ba{display:grid;grid-template-columns:278px 1fr;gap:20px;align-items:start;}
+  .wire{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);padding:14px;}
+  .wire .wlabel{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:600;}
+  .wblock{border:1px dashed #D6D6CE;background:#F4F3EE;border-radius:5px;padding:8px 10px;margin-bottom:7px;
+    font-size:11.5px;color:#8A8A80;display:flex;align-items:center;gap:8px;}
+  .wblock .tag{margin-left:auto;font-size:10px;color:#A33;border:1px solid #E3C4C4;background:#FBF1F1;border-radius:100px;padding:0 7px;}
+  .wblock.keep .tag{color:var(--accent);border-color:#BFD5D0;background:var(--accent-soft);}
+  .wrow{display:flex;gap:7px;}
+  .wrow .wblock{flex:1;}
+
+  .listing{display:flex;gap:14px;padding:15px 18px;border-bottom:1px solid var(--hair);align-items:flex-start;}
+  .listing:last-child{border-bottom:none;}
+  .thumb{width:74px;height:56px;flex:0 0 74px;border-radius:5px;background:#EDEBE3;border:1px solid var(--hair);
+    display:flex;align-items:center;justify-content:center;}
+  .listing .lname{font-size:14px;font-weight:600;margin-bottom:3px;}
+  .listing .lmeta{font-size:12.5px;color:var(--muted);}
+  .listing .lright{margin-left:auto;text-align:right;display:flex;flex-direction:column;gap:7px;align-items:flex-end;}
+  .health{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
+  .healthbar{width:56px;height:5px;border-radius:100px;background:var(--hair);overflow:hidden;}
+  .healthbar i{display:block;height:100%;background:var(--accent);}
+  .healthbar.warn i{background:#C79A3C;}
+
+  /* ── sidebar mock ─────────────────────────────────────── */
+  .navmock{width:214px;background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);padding:12px;}
+  .navmock .ng{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+    padding:10px 8px 5px;font-weight:600;}
+  .navmock .ni{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:5px;font-size:13px;color:var(--ink);}
+  .navmock .ni .gl{width:15px;text-align:center;color:var(--muted);font-size:12px;}
+  .navmock .ni.hot{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:inset 0 0 0 1px #CBDAD7;}
+  .navmock .ni.hot .gl{color:var(--accent);}
+
+  /* ── fix pack ─────────────────────────────────────────── */
+  .fixgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+  .fix{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);overflow:hidden;}
+  .fix .fhd{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:9px;}
+  .fix .fhd b{font-size:13px;font-weight:600;}
+  .fix .fhd .code{font-size:11px;color:var(--muted);border:1px solid var(--hair);border-radius:100px;padding:1px 8px;}
+  .fix .fbody{display:grid;grid-template-columns:1fr 26px 1fr;align-items:stretch;}
+  .swatch{padding:15px 16px;}
+  .swatch.before{background:#FBF9F6;}
+  .swatch .slab{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;font-weight:600;}
+  .arrowcol{display:flex;align-items:center;justify-content:center;color:var(--muted);border-left:1px solid var(--hair);
+    border-right:1px solid var(--hair);background:var(--ground);font-size:13px;}
+  .fakebtn{display:inline-block;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:550;}
+  .fakebtn.ink{background:var(--ink);color:#fff;}
+  .fakebtn.dim{background:#B9B9B0;color:#fff;}
+  .toastbad{background:#2B2B28;color:#F0EFE9;border-radius:6px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;line-height:1.45;word-break:break-all;}
+  .toastgood{background:var(--paper);border:1px solid var(--warn-line);background:var(--warn-bg);color:var(--warn-ink);
+    border-radius:6px;padding:11px 13px;font-size:12.5px;line-height:1.5;}
+  .switchdead{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);}
+  .switchdead .track{width:34px;height:19px;border-radius:100px;background:var(--hair);position:relative;flex:0 0 34px;}
+  .switchdead .track::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:100px;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.2);}
+  .strike{text-decoration:line-through;color:#A9A9A0;}
+
+  .modal-scrim{position:fixed;inset:0;background:rgba(26,26,24,.36);display:none;z-index:50;
+    align-items:center;justify-content:center;padding:20px;}
+  .modal-scrim.on{display:flex;}
+  .modal{background:var(--paper);border:1px solid var(--hair);border-radius:8px;max-width:410px;width:100%;padding:22px;}
+  .modal h3{font-size:15.5px;font-weight:650;margin-bottom:7px;}
+  .modal p{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.55;}
+  .modal .mfoot{display:flex;gap:9px;justify-content:flex-end;}
+  .btn.danger{background:#8C2F2A;border-color:#8C2F2A;}
+
+  /* ── mapping tab ──────────────────────────────────────── */
+  .maplayout{display:grid;grid-template-columns:1fr 344px;gap:18px;align-items:start;}
+  .bigmap{position:relative;border:1px solid var(--hair);border-radius:var(--radius);overflow:hidden;
+    background:#F1F0EA;height:556px;cursor:default;}
+  .bigmap.armed{cursor:crosshair;}
+  .bigmap > svg.base{display:block;width:100%;height:100%;}
+  .overlay{position:absolute;inset:0;pointer-events:none;}
+  .overlay svg{width:100%;height:100%;display:block;}
+  .mk{position:absolute;transform:translate(-50%,-100%);pointer-events:none;}
+  .mk .cap{
+    position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:3px;white-space:nowrap;
+    background:rgba(255,255,255,.95);border:1px solid var(--hair);border-radius:100px;
+    padding:1px 8px;font-size:10.5px;color:var(--ink);
+  }
+  .mk.stop{transform:translate(-50%,-50%);}
+  .mk.stop .bub{
+    width:23px;height:23px;border-radius:100px;background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:650;
+    border:2px solid #FAFAF8;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .ring{position:absolute;transform:translate(-50%,-50%);border-radius:100px;pointer-events:none;}
+  .ring.radius{border:1px dashed var(--accent);background:rgba(53,96,90,.08);}
+  .ring.zone1{border:1px solid rgba(53,96,90,.55);background:rgba(53,96,90,.06);}
+  .ring.zone2{border:1px dashed #B08A3C;background:rgba(176,138,60,.07);}
+  .zonetag{
+    position:absolute;transform:translate(-50%,-50%);background:rgba(255,255,255,.95);
+    border:1px solid var(--hair);border-radius:100px;padding:1px 8px;font-size:10.5px;color:var(--muted);
+    pointer-events:none;white-space:nowrap;
+  }
+  .armbar{
+    position:absolute;left:12px;right:12px;top:12px;background:rgba(255,255,255,.97);
+    border:1px solid var(--hair);border-radius:6px;padding:9px 12px;display:flex;align-items:center;gap:10px;
+    font-size:12.5px;box-shadow:0 1px 4px rgba(26,26,24,.08);
+  }
+  .armbar.arm{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .armbar .ab-txt{flex:1;}
+  .bigmap > .maplabel{top:auto;bottom:9px;right:9px;}
+  .maprail .rail-card{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);margin-bottom:12px;}
+  .maprail .rail-hd{padding:11px 14px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:8px;}
+  .maprail .rail-hd b{font-size:13px;font-weight:600;flex:1;}
+  .maprail .rail-bd{padding:12px 14px;}
+  .layertog{display:flex;align-items:center;gap:9px;cursor:pointer;background:none;border:none;
+    padding:0;width:100%;text-align:left;font-size:12.5px;}
+  .layertog .tk{width:30px;height:17px;flex:0 0 30px;border-radius:100px;background:var(--hair);position:relative;transition:background .15s;}
+  .layertog .tk::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:100px;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s;}
+  .layertog[aria-pressed="true"] .tk{background:var(--accent);}
+  .layertog[aria-pressed="true"] .tk::after{transform:translateX(13px);}
+  .layertog .lt{flex:1;}
+  .layertog[aria-disabled="true"]{opacity:.5;cursor:not-allowed;}
+  .stoprow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--hair);}
+  .stoprow:last-child{border-bottom:none;}
+  .stoprow .pos{width:19px;height:19px;flex:0 0 19px;border-radius:100px;font-size:10.5px;
+    display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:650;}
+  .stoprow .pos.un{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line);}
+  .stoprow input{flex:1;min-width:0;border:1px solid transparent;background:none;border-radius:4px;
+    padding:3px 5px;font:inherit;font-size:12.5px;color:var(--ink);}
+  .stoprow input:hover{border-color:var(--hair);}
+  .stoprow input:focus{outline:none;border-color:var(--accent);background:var(--paper);}
+  .capline{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:8px;}
+  .minimap{position:relative;border:1px solid var(--hair);border-radius:6px;overflow:hidden;background:#F1F0EA;height:132px;}
+  .minimap svg.base{display:block;width:100%;height:100%;}
+  .mounts{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .mountbox{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);overflow:hidden;}
+  .mountbox .mhd{padding:10px 14px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:8px;}
+  .mountbox .mhd b{font-size:12.5px;font-weight:600;}
+  .mountbox .mhd .same{margin-left:auto;font-size:10.5px;color:var(--accent);background:var(--accent-soft);
+    border:1px solid #CBDAD7;border-radius:100px;padding:1px 8px;}
+  .mountbox .mbd{padding:13px;}
+  .chromebar{background:var(--ground);border:1px solid var(--hair);border-radius:5px;padding:6px 9px;
+    font-size:11px;color:var(--muted);margin-bottom:9px;display:flex;gap:7px;align-items:center;}
+  .chromebar .cseg{border:1px solid var(--hair);border-radius:4px;padding:1px 7px;background:var(--paper);}
+  .chromebar .cseg.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .threepane{display:grid;grid-template-columns:52px 1fr 52px;gap:6px;}
+  .paneblk{border:1px dashed #D6D6CE;background:#F4F3EE;border-radius:5px;font-size:9.5px;color:#8A8A80;
+    padding:5px 4px;text-align:center;line-height:1.3;display:flex;align-items:center;justify-content:center;}
+  .travelstrip{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .tcard{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);overflow:hidden;}
+  .tcard .thd{padding:10px 14px;border-bottom:1px solid var(--hair);font-size:12.5px;font-weight:600;}
+  .tcard .tbd{padding:13px;}
+  .tcard .tfoot{padding:0 14px 13px;font-size:11.5px;color:var(--muted);line-height:1.5;}
+  .nomap{border:1px dashed var(--hair);border-radius:6px;background:var(--ground);padding:20px 16px;height:132px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:5px;}
+  .nomap b{font-size:13px;}
+  .nomap span{font-size:11.5px;color:var(--muted);line-height:1.5;}
+
+  .scrollx{overflow-x:auto;}
+  .stack-gap{display:flex;flex-direction:column;gap:20px;}
+  .divider{height:1px;background:var(--hair);margin:26px 0;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="mark">Traveloure</span>
+  <span class="sub">Service creation — proposed redesign · mock for review</span>
+  <span class="badge">Mock — not connected to live data</span>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="flow" aria-selected="true">New create flow</button>
+  <button data-tab="draft" aria-selected="false">Draft &amp; checklist</button>
+  <button data-tab="door" aria-selected="false">One door</button>
+  <button data-tab="catalog" aria-selected="false">Catalog after</button>
+  <button data-tab="map" aria-selected="false">Mapping</button>
+  <button data-tab="fix" aria-selected="false">Fix pack</button>
+</nav>
+
+<div class="wrap">
+
+<!-- ══════════════════════════ TAB 1 — CREATE FLOW ══════════════════════════ -->
+<section class="panel on" id="panel-flow">
+  <div class="legend">
+    <h4>What this screen demonstrates</h4>
+    <div><span class="dot">①</span><span><b>Delivery-method-first.</b> Pick a method — the step list and every later question change with it.</span></div>
+    <div><span class="dot">②</span><span><b>Basics fast path.</b> Screen 1 is five fields and a Save draft.</span></div>
+    <div><span class="dot">③</span><span><b>One location card.</b> One address, one pin, one radius, stops inline.</span></div>
+    <div><span class="dot">④</span><span><b>Money in one place.</b> Creation asks one price; the rest is a later settings panel.</span></div>
+    <div><span class="dot">⑤</span><span><b>Honest submit.</b> "Submit for review" — the turnaround is stated as an expectation ("usually within 2 business days") pending a real SLA decision.</span></div>
+  </div>
+
+  <div class="flow">
+    <aside class="steplist">
+      <h5>Steps</h5>
+      <ol id="steplist-ol"></ol>
+      <div class="stepcount" id="stepcount"></div>
+      <div class="note-quiet" style="margin-top:12px;font-size:11.5px;">
+        The step list is generated from the delivery method. Nothing here is a fixed 4-step wizard.
+      </div>
+    </aside>
+
+    <main>
+      <div class="card">
+        <div class="card-hd">
+          <h3 id="step-title">Basics</h3>
+          <span class="pill draft" id="autosave-pill">Draft · autosaved</span>
+          <span class="hint" id="step-hint"></span>
+        </div>
+        <div class="card-pad" id="step-body"></div>
+        <div class="card-pad" style="padding-top:0;">
+          <div class="flowfoot">
+            <button class="btn ghost" id="btn-back">← Back</button>
+            <button class="btn" id="btn-next">Next →</button>
+            <span class="spacer"></span>
+            <span class="save-note" id="foot-note"></span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</section>
+
+<!-- ══════════════════════════ TAB 2 — DRAFT & CHECKLIST ══════════════════════════ -->
+<section class="panel" id="panel-draft">
+  <div class="legend">
+    <h4>What this screen demonstrates</h4>
+    <div><span class="dot">②</span><span><b>Basics fast path lands here.</b> Save draft on screen 1 creates a real listing.</span></div>
+    <div><span class="dot">④</span><span><b>Money in one place.</b> "Pricing &amp; fees" is a tune-later panel, not a creation step.</span></div>
+    <div><span class="dot">⑤</span><span><b>Checklist, not a disabled button.</b> Items are derived from this listing's delivery method; each row navigates and ticks only when the work is done there.</span></div>
+  </div>
+
+  <div class="draft-hero">
+    <div class="tick">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M4 10.5l4 4 8-9" stroke="#35605A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div style="flex:1">
+      <h2>Your listing is saved — finish it now or later<span class="dot ghost dot-inline">②</span></h2>
+      <p id="draft-hero-sub">Morning Tea Ceremony in a Machiya Townhouse · In person · $68 per person · saved a moment ago</p>
+    </div>
+    <span class="pill draft" id="draft-pill">Draft</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 348px;gap:20px;align-items:start;">
+    <div class="stack-gap">
+      <div class="card">
+        <div class="card-hd">
+          <h3 id="checklist-heading">3 things left before review</h3>
+          <span class="dot ghost">⑤</span>
+          <span class="hint">Derived from the draft — rows navigate, they do not tick</span>
+        </div>
+        <div id="checklist"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>Already done</h3></div>
+        <div id="donelist"></div>
+      </div>
+
+      <div class="card card-pad">
+        <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:260px;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Ready when you are<span class="dot ghost dot-inline">⑤</span></div>
+            <div style="font-size:12.5px;color:var(--muted);line-height:1.55;" id="submit-copy">
+              Reviewed by our team, usually within 2 business days. You can keep editing while it is in review —
+              changes are re-checked before anything goes live.
+              <span style="display:block;margin-top:7px;color:var(--warn-ink);">
+                “Usually within 2 business days” is written as an <b>expectation, not a committed SLA</b>.
+                Whether the platform stands behind a number — and which number — is a decision still to be made
+                (spec gap #7).
+              </span>
+            </div>
+          </div>
+          <div style="display:flex;gap:9px;align-items:center;">
+            <button class="btn ghost" id="btn-finish-later">Finish later</button>
+            <button class="btn accent" id="btn-submit-review">Submit for review</button>
+          </div>
+        </div>
+        <div id="submitted-state" style="display:none;margin-top:16px;">
+          <div class="notice">
+            <b>Submitted for review.</b> We will email you when it is decided. Reviewed by our team,
+            usually within 2 business days — this listing stays a draft on your Catalog until then.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="stack-gap">
+      <div class="card">
+        <div class="card-hd"><h3>Listing settings</h3></div>
+        <div style="padding:6px 0;">
+          <button class="check" style="width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--hair);" id="open-pricing">
+            <span class="box" style="border:none;background:none;">
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v14M6.5 6.5h5.2a2.4 2.4 0 010 4.8H8.3a2.4 2.4 0 000 4.8h5.2" stroke="#7A7A72" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </span>
+            <span>
+              <span class="ctitle">Pricing &amp; fees<span class="dot ghost dot-inline">④</span></span>
+              <span class="cdesc">Surcharges, deposit, cancellation. Tune later — not required to go live.</span>
+            </span>
+            <span class="go">→</span>
+          </button>
+          <div class="check" aria-checked="false" style="cursor:default;">
+            <span class="box" style="border:none;background:none;">
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="5" width="14" height="11" rx="2" stroke="#7A7A72" stroke-width="1.6"/><path d="M3 8h14" stroke="#7A7A72" stroke-width="1.6"/></svg>
+            </span>
+            <span><span class="ctitle">Availability</span><span class="cdesc">Slots and blackout dates. Lives on Catalog.</span></span>
+          </div>
+          <div class="check" style="cursor:default;">
+            <span class="box" style="border:none;background:none;">
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 15l4.5-5.5 3 3.4L14 10l2 5z" stroke="#7A7A72" stroke-width="1.6" stroke-linejoin="round"/><rect x="3" y="4" width="14" height="12" rx="2" stroke="#7A7A72" stroke-width="1.6"/></svg>
+            </span>
+            <span><span class="ctitle">Photos &amp; media</span><span class="cdesc">Cover photo, gallery, short clip.</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="note-quiet">
+        <b style="color:var(--ink)">What changed:</b> today the form collects everything before it will save
+        anything, and the last screen shows a disabled button with five red asterisks. Here the listing exists
+        after five fields, and what is left is named in plain language.
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ══════════════════════════ TAB 3 — ONE DOOR ══════════════════════════ -->
+<section class="panel" id="panel-door">
+  <div class="legend">
+    <h4>What this screen demonstrates</h4>
+    <div><span class="dot">⑥</span><span><b>The one door.</b> Every "Add New Service" click in the console lands on this Workstation screen.</span></div>
+  </div>
+
+  <h2 class="screen">What are you building?<span class="dot ghost dot-inline">⑥</span></h2>
+  <p class="screen-sub">Workstation · the single entry point for anything you sell. Pick a shape to start; you can change most of it later.</p>
+
+  <div class="doortiles">
+    <button class="doortile" id="tile-single">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="3" stroke="#35605A" stroke-width="1.7"/>
+        <path d="M7 9h10M7 13h6" stroke="#35605A" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+      <h4>Single service</h4>
+      <p>One thing you offer — a session, a walk, a guide, a transfer. Five fields to a saved draft.</p>
+      <span class="cta">Start a service →</span>
+    </button>
+
+    <div class="doortile locked">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="#7A7A72" stroke-width="1.7"/>
+        <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="#7A7A72" stroke-width="1.7"/>
+      </svg>
+      <h4>Bundle</h4>
+      <p>Two or more of your approved services sold together at one price.</p>
+      <p style="margin-top:8px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:5px;padding:7px 9px;">
+        Locked. Unlocks when you have 2 approved services — you have 1 approved, 1 in review.
+      </p>
+      <div class="progressbar"><i style="width:50%"></i></div>
+      <span class="cta">1 of 2 approved</span>
+    </div>
+
+    <button class="doortile" id="tile-property">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" stroke="#35605A" stroke-width="1.7" stroke-linejoin="round"/>
+        <path d="M10 21v-6h4v6" stroke="#35605A" stroke-width="1.7" stroke-linejoin="round"/>
+      </svg>
+      <h4>Property</h4>
+      <p>A room, apartment or house with per-night pricing and room availability.</p>
+      <p style="margin-top:8px;color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:5px;padding:7px 9px;">
+        Builder not yet specified. The tile opens an honest explanation, not the single-service form.
+      </p>
+      <span class="cta">See what is still to specify →</span>
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <h5 class="grouplabel">Or start from what you do</h5>
+  <p class="screen-sub" style="margin-bottom:14px;">These are the live service categories. Picking one pre-selects the category and jumps straight into the Basics screen.</p>
+  <div class="cats" id="cats"></div>
+
+  <div class="divider"></div>
+
+  <div class="card card-pad">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">The five links this screen replaces</div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.7;">
+      Today, five different "Add New Service" affordances jump straight into the 4-step form and skip Workstation
+      entirely, so the ladder (single → bundle → property) is invisible to a first-time provider. In this proposal
+      every one of them routes here first. This screen is the only place a new listing is born.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+      <span class="pill">Catalog · empty state</span>
+      <span class="pill">Catalog · header button</span>
+      <span class="pill">Dashboard · quick action</span>
+      <span class="pill">Onboarding · finish setup</span>
+      <span class="pill">Playbook · "list your first service"</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ TAB 4 — CATALOG AFTER ══════════════════════════ -->
+<section class="panel" id="panel-catalog">
+  <div class="legend">
+    <h4>What this screen demonstrates</h4>
+    <div><span class="dot">⑦</span><span><b>Slim Catalog.</b> Storefront bar, share kit and promote feed leave; one "Promote this →" link per card points at Distribute.</span></div>
+    <div><span class="dot">⑧</span><span><b>Sidebar gains Distribute.</b> The page exists but has no nav entry today.</span></div>
+  </div>
+
+  <div class="scrollx">
+    <div class="ba" style="min-width:1020px;">
+      <div class="wire">
+        <div class="wlabel">Catalog today — miniature</div>
+        <div class="wblock">Storefront manager bar — handle, bio, share storefront <span class="tag">moves</span></div>
+        <div class="wblock">Share kit — 3 image formats, copy link, QR <span class="tag">moves</span></div>
+        <div class="wblock">Promote feed — posting opportunities <span class="tag">moves</span></div>
+        <div class="wrow">
+          <div class="wblock keep">Search / filter <span class="tag">keeps</span></div>
+          <div class="wblock keep">List / map <span class="tag">keeps</span></div>
+        </div>
+        <div class="wblock">Creation launcher — "Add New Service" <span class="tag">moves</span></div>
+        <div class="wblock keep">Availability slots <span class="tag">keeps</span></div>
+        <div class="wblock">Per-card analytics strip <span class="tag">moves</span></div>
+        <div class="wblock keep">Listing cards <span class="tag">keeps</span></div>
+        <div class="wblock keep">Listing cards <span class="tag">keeps</span></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:11px;line-height:1.55;">
+          One page carrying four jobs: storefront manager, share tools, creation launcher and analytics — around
+          1,500 lines. Red = leaves Catalog for the surface that owns it (Workstation or Distribute).
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;gap:20px;align-items:flex-start;">
+          <div style="flex:1;">
+            <h2 class="screen">Catalog<span class="dot ghost dot-inline">⑦</span></h2>
+            <p class="screen-sub">What you sell. 4 listings.</p>
+
+            <div class="card" style="margin-bottom:16px;">
+              <div class="card-pad" style="display:flex;gap:10px;align-items:center;flex-wrap:nowrap;padding:14px 18px;">
+                <input class="inp" style="max-width:210px;flex:0 1 210px;" placeholder="Search your listings" aria-label="Search listings">
+                <div class="seg">
+                  <button aria-pressed="true">All</button>
+                  <button aria-pressed="false">Live</button>
+                  <button aria-pressed="false">In review</button>
+                  <button aria-pressed="false">Draft</button>
+                </div>
+                <div class="seg" style="margin-left:auto;">
+                  <button aria-pressed="true">List</button>
+                  <button aria-pressed="false">Map</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div id="listings"></div>
+            </div>
+
+            <div class="card" style="margin-top:16px;">
+              <div class="card-hd"><h3>Availability</h3><span class="hint">Slot editing stays here — this is where per-listing curation lives</span></div>
+              <div class="card-pad" style="display:flex;gap:9px;flex-wrap:wrap;">
+                <span class="pill live">Mon 09:00 · 2 left</span>
+                <span class="pill live">Mon 14:00 · 4 left</span>
+                <span class="pill">Tue — blocked</span>
+                <span class="pill live">Wed 09:00 · 4 left</span>
+                <button class="btn ghost sm">Edit slots</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:0 0 214px;">
+            <h5 class="grouplabel">Provider sidebar<span class="dot ghost dot-inline">⑧</span></h5>
+            <div class="navmock">
+              <div class="ng">Work</div>
+              <div class="ni"><span class="gl">◇</span>Dashboard</div>
+              <div class="ni"><span class="gl">▤</span>Calendar</div>
+              <div class="ni"><span class="gl">✉</span>Inbox</div>
+              <div class="ni"><span class="gl">⚒</span>Workstation</div>
+              <div class="ng">Business</div>
+              <div class="ni"><span class="gl">▦</span>Catalog</div>
+              <div class="ni hot"><span class="gl">↗</span>Distribute <span class="pill new" style="margin-left:auto;font-size:10px;padding:1px 7px;">new</span></div>
+              <div class="ni"><span class="gl">☺</span>Customers</div>
+              <div class="ni"><span class="gl">↑</span>Performance</div>
+              <div class="ni"><span class="gl">$</span>Money</div>
+              <div class="ng">Account</div>
+              <div class="ni"><span class="gl">⚙</span>Settings</div>
+              <div class="ni"><span class="gl">▣</span>Playbook</div>
+            </div>
+            <div class="note-quiet" style="margin-top:12px;">
+              Distribute is a built page with no way to reach it from the nav. Every "Promote this →" on the left
+              lands there, so it needs an entry of its own.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ TAB 5 — MAPPING ══════════════════════════ -->
+<section class="panel" id="panel-map">
+  <div class="legend">
+    <h4>What this screen demonstrates</h4>
+    <div><span class="dot">⑨</span><span><b>One map-authoring component.</b> Pin, radius, route stops and zones — all on one canvas, all editable here.</span></div>
+    <div><span class="dot">⑩</span><span><b>Two mounts, one component.</b> Embedded in the create flow; full-screen on Catalog.</span></div>
+    <div><span class="dot">⑪</span><span><b>Traveler-side honesty.</b> Only located things render; no coordinates means no map.</span></div>
+    <div><span class="dot">⑫</span><span><b>Market overlays move to Performance.</b> Flagged separately — not part of this approval.</span></div>
+  </div>
+
+  <h2 class="screen">Map authoring<span class="dot ghost dot-inline">⑨</span></h2>
+  <p class="screen-sub">
+    Everything geographic about one listing, on one canvas. Today the meeting pin lives in the create form,
+    route stops live on a different page, and the radius is three unrelated number fields. This is one surface.
+    Try it: arm a mode in the bar at the top of the map, then click the canvas.
+  </p>
+
+  <div class="maplayout">
+    <div>
+      <div class="bigmap" id="bigmap">
+        <div id="bigmap-base"></div>
+        <div class="overlay" id="bigmap-overlay"></div>
+        <div class="maplabel">Map preview — illustrative</div>
+        <div class="mapattr">© OpenStreetMap contributors</div>
+        <div class="armbar" id="armbar">
+          <span class="ab-txt" id="armbar-text"></span>
+          <button class="btn ghost sm" id="arm-pin">Place the meeting pin</button>
+          <button class="btn ghost sm" id="arm-stop">Place a stop</button>
+        </div>
+      </div>
+      <div class="capline" id="map-caption"></div>
+    </div>
+
+    <aside class="maprail">
+      <div class="rail-card">
+        <div class="rail-hd"><b>Meeting pin</b><span class="pill" id="pin-pill">Not placed</span></div>
+        <div class="rail-bd">
+          <input class="inp" value="Hanamikoji-dori, Gion, Higashiyama-ku, Kyoto" aria-label="Meeting point address" style="font-size:12.5px;">
+          <div class="capline">
+            A typed address is never a location. The pin is saved only when you press
+            <b style="color:var(--ink)">Confirm this location</b> — the same posture the live picker already uses.
+          </div>
+          <div id="pin-confirm-slot"></div>
+        </div>
+      </div>
+
+      <div class="rail-card">
+        <div class="rail-hd"><b>Layers</b></div>
+        <div class="rail-bd" style="display:flex;flex-direction:column;gap:12px;">
+          <button class="layertog" id="tog-radius" aria-pressed="true"><span class="tk"></span><span class="lt">Service radius</span></button>
+          <div id="radius-slot"></div>
+          <button class="layertog" id="tog-stops" aria-pressed="true"><span class="tk"></span><span class="lt">Route stops</span></button>
+          <button class="layertog" id="tog-zones" aria-pressed="false"><span class="tk"></span><span class="lt">Travel-surcharge zones</span></button>
+          <div class="capline" style="margin-top:0;">
+            Zones are <b style="color:var(--ink)">display only</b> here — the amounts are set in
+            <button class="btn link" id="map-open-pricing" style="font-size:11.5px;">Pricing &amp; fees →</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rail-card">
+        <div class="rail-hd"><b>Route stops</b><span class="pill" id="stops-pill">0 of 0 located</span></div>
+        <div class="rail-bd">
+          <div id="rail-stops"></div>
+          <button class="btn ghost sm" id="rail-add-stop" style="margin-top:10px;">+ Add a stop</button>
+          <div class="capline">
+            Connectors are straight dashed lines — <b style="color:var(--ink)">sequence, not travel routing</b>.
+            No distance or duration is invented between stops.
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 class="screen">Two mounts, one component<span class="dot ghost dot-inline">⑩</span></h2>
+  <p class="screen-sub">
+    One authoring surface, two doors — Catalog stays the map's home, the create flow embeds it.
+    No more “go edit your stops on another page.”
+  </p>
+
+  <div class="mounts">
+    <div class="mountbox">
+      <div class="mhd"><b>Mount A — embedded in the create flow</b><span class="same">same component</span></div>
+      <div class="mbd">
+        <div class="chromebar">
+          <span>Create flow</span><span class="cseg">Basics</span><span class="cseg on">Where it happens</span><span class="cseg">Logistics</span><span class="cseg">Review</span>
+        </div>
+        <div id="mini-a"></div>
+        <div class="capline">
+          Sits inside the “Where it happens” step, shown <b>mid-gate</b>: an unconfirmed candidate pin with the
+          same Confirm / Discard bar the full canvas uses. The create-flow mount now carries that gate too —
+          there is no instant latch left anywhere.
+        </div>
+      </div>
+    </div>
+
+    <div class="mountbox">
+      <div class="mhd"><b>Mount B — full-screen on Catalog</b><span class="same">same component</span></div>
+      <div class="mbd">
+        <div class="chromebar">
+          <span>Catalog</span><span class="cseg">List</span><span class="cseg on">Map</span>
+        </div>
+        <div class="threepane">
+          <div class="paneblk">Your listings</div>
+          <div id="mini-b"></div>
+          <div class="paneblk">Pin &amp; route cards</div>
+        </div>
+        <div class="capline">
+          Catalog stays the map's home — the three-pane shell wraps the same canvas. Workstation may deep-link in;
+          it never owns the surface.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note-quiet" style="margin-top:16px;">
+    <b style="color:var(--ink)">Why this matters for approval:</b> a provider who pins a meeting point during
+    creation and then wants to add route stops currently has to leave the form, find another page, and come back.
+    With one component behind both doors, the stop list is right there under the pin they just dropped — and there
+    is only one place for the answer to live.
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 class="screen">What the traveler sees<span class="dot ghost dot-inline">⑪</span></h2>
+  <p class="screen-sub">The traveler map renders what is actually known and nothing else. Never a city-center fallback.</p>
+
+  <div class="travelstrip">
+    <div class="tcard">
+      <div class="thd">Confirmed pin + radius</div>
+      <div class="tbd"><div id="mini-t1"></div></div>
+      <div class="tfoot">
+        Meeting point in Gion · host travels free up to 8 km.
+        <span style="display:block;margin-top:6px;color:var(--warn-ink);">
+          Whether the traveler sees the exact pin or a fuzzed neighbourhood point is a
+          <b>spec decision, not a shipped behaviour</b> (spec gap #13). This canvas draws the authored point
+          as-is — no precision rule is implied.
+        </span>
+      </div>
+    </div>
+    <div class="tcard">
+      <div class="thd">Route service — partly located</div>
+      <div class="tbd">
+        <div id="mini-t2"></div>
+        <div class="stops" style="margin-top:10px;">
+          <div class="stop" style="padding:7px 10px;"><span class="pos">–</span>
+            <span class="sname" style="font-size:12px;">Nishiki market — west end</span>
+            <span class="flag">not located</span></div>
+          <div class="stop" style="padding:7px 10px;"><span class="pos">–</span>
+            <span class="sname" style="font-size:12px;">Pontocho alley, north entrance</span>
+            <span class="flag">not located</span></div>
+        </div>
+      </div>
+      <div class="tfoot">
+        <b style="color:var(--ink)">3 of 5 stops located.</b> Only the three with coordinates are drawn.
+        The other two are named above — not dropped, and not guessed onto the map.
+      </div>
+    </div>
+    <div class="tcard">
+      <div class="thd">No coordinates — no map</div>
+      <div class="tbd">
+        <div class="nomap">
+          <b>Location shared after booking</b>
+          <span>This host has not pinned a location yet.<br>We would rather show nothing than guess one.</span>
+        </div>
+      </div>
+      <div class="tfoot">
+        No map renders at all. Never a city-center fallback, never another listing's shapes standing in for
+        this one.
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="card card-pad" style="border-style:dashed;">
+    <div style="display:flex;gap:12px;align-items:flex-start;">
+      <span class="dot ghost" style="margin-top:2px;">⑫</span>
+      <div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:5px;">Separate decision — the market-insight overlays</div>
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.6;">
+          Demand heat and coverage-gap overlays are <b style="color:var(--ink)">analytics, not authoring</b> — they
+          tell you where to sell, not where your listing is. They are proposed to move to Performance, where the rest
+          of the measurement lives, so this canvas stays a place where every layer is something you can edit.
+          <b style="color:var(--ink)">That move is not part of this approval</b> — flagged here so it is not decided
+          by accident.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ TAB 6 — FIX PACK ══════════════════════════ -->
+<section class="panel" id="panel-fix">
+  <div class="legend">
+    <h4>What this strip demonstrates</h4>
+    <div><span class="dot ghost">A</span><span><b>Package A — small, independent fixes.</b> Each pair ships on its own; none depends on the redesign landing.</span></div>
+  </div>
+
+  <div class="fixgrid">
+
+    <div class="fix">
+      <div class="fhd"><b>The button tells the truth</b><span class="code">A1</span></div>
+      <div class="fbody">
+        <div class="swatch before">
+          <div class="slab">Today</div>
+          <span class="fakebtn ink">Publish Service</span>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5;">
+            The click submits for admin review — the server stores it as <i>submitted</i>, never published.
+            Providers only learn this after clicking; experts are told up front.
+          </div>
+        </div>
+        <div class="arrowcol">→</div>
+        <div class="swatch">
+          <div class="slab">Proposed</div>
+          <span class="fakebtn ink">Submit for review</span>
+          <div class="toastgood" style="margin-top:10px;">
+            Listings are reviewed by our team before they go live — usually within 2 business days.
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;">Same notice shown up front, for providers and experts alike.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fhd"><b>The dead switch goes</b><span class="code">A2</span></div>
+      <div class="fbody">
+        <div class="swatch before">
+          <div class="slab">Today</div>
+          <div class="switchdead"><span class="track"></span><span>Published / Draft</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5;">
+            Toggling it changes nothing — the server decides status. It reads as a control that can put a
+            listing live.
+          </div>
+        </div>
+        <div class="arrowcol">→</div>
+        <div class="swatch">
+          <div class="slab">Proposed</div>
+          <span class="pill draft">Draft</span>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5;">
+            Status becomes a read-only pill that reflects the real record: Draft → In review → Live.
+            No control that pretends to set it.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fhd"><b>Errors in human words</b><span class="code">A3</span><span class="hint" style="margin-left:auto;font-size:11.5px;color:var(--muted)">click either side</span></div>
+      <div class="fbody">
+        <div class="swatch before">
+          <div class="slab">Today</div>
+          <div class="toastbad">{"error":"ValidationError","issues":[{"path":["meetingPoint"],"code":"invalid_type","expected":"string","received":"undefined"}]}</div>
+        </div>
+        <div class="arrowcol">→</div>
+        <div class="swatch">
+          <div class="slab">Proposed</div>
+          <div class="toastgood">
+            <b>This listing needs a meeting point before it can go live.</b><br>
+            <button class="btn link" id="fix-a3-link" style="margin-top:6px;">Add one →</button>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;" id="fix-a3-note">The link opens the location card with the field focused.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fhd"><b>Delete asks first</b><span class="code">A4</span><span class="hint" style="margin-left:auto;font-size:11.5px;color:var(--muted)">click Delete</span></div>
+      <div class="fbody">
+        <div class="swatch before">
+          <div class="slab">Today</div>
+          <button class="fakebtn dim" style="border:none;cursor:pointer;" id="fix-a4-old">Delete</button>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5;">
+            One click removes the listing. No confirmation, no undo.
+          </div>
+        </div>
+        <div class="arrowcol">→</div>
+        <div class="swatch">
+          <div class="slab">Proposed</div>
+          <button class="btn ghost" id="fix-a4-new">Delete</button>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5;">
+            A confirm dialog that names the listing and says what happens to bookings.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fhd"><b>Three radius fields become one</b><span class="code">A5</span></div>
+      <div class="fbody">
+        <div class="swatch before">
+          <div class="slab">Today</div>
+          <div style="font-size:12.5px;line-height:2;color:var(--muted);">
+            <span class="strike">Service radius (km)</span><br>
+            <span class="strike">Travel radius (km)</span><br>
+            <span class="strike">Free travel radius (km)</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;">Three number inputs, three vocabularies, no stated relationship between them.</div>
+        </div>
+        <div class="arrowcol">→</div>
+        <div class="swatch">
+          <div class="slab">Proposed</div>
+          <label style="font-size:13px;font-weight:550;display:block;margin-bottom:6px;">How far will you travel?</label>
+          <input type="range" min="0" max="30" value="8" id="fix-a5-range" aria-label="Travel radius">
+          <div style="font-size:12.5px;color:var(--muted);margin-top:5px;">Included free up to <b id="fix-a5-val" style="color:var(--ink)">8 km</b> from the meeting point.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fhd"><b>Transport asked once</b><span class="code">A6</span></div>
+      <div class="fbody">
+        <div class="swatch before">
+          <div class="slab">Today</div>
+          <div style="font-size:12.5px;line-height:1.7;color:var(--muted);">
+            Step 2 — <span class="strike">Transport provision:</span> Pickup included / Pickup available / Meet at point / N&#47;A<br>
+            Step 4 — <span class="strike">Do you provide transportation?</span> Yes / No
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:9px;">Two questions, two vocabularies, two steps apart. Answers can contradict each other.</div>
+        </div>
+        <div class="arrowcol">→</div>
+        <div class="swatch">
+          <div class="slab">Proposed</div>
+          <label style="font-size:13px;font-weight:550;display:block;margin-bottom:6px;">Getting there</label>
+          <select class="inp" aria-label="Getting there">
+            <option>I collect the traveller and drop them back</option>
+            <option>Pickup can be arranged on request</option>
+            <option selected>Travellers make their own way to the meeting point</option>
+          </select>
+          <div style="font-size:12px;color:var(--muted);margin-top:8px;">One question, asked in the location card where it belongs.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</div><!-- /wrap -->
+
+<!-- pricing drawer -->
+<div class="drawer-scrim" id="drawer-scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dhd">
+    <h3>Pricing &amp; fees</h3>
+    <span class="dot ghost">④</span>
+    <button class="xbtn" id="drawer-close" aria-label="Close">×</button>
+  </div>
+  <div class="dbody">
+    <div class="note-quiet" style="margin-bottom:18px;">
+      <b style="color:var(--ink)">Tune later.</b> None of this is required to go live. Your listing already has a
+      price — everything here is an adjustment on top of it.
+    </div>
+
+    <div class="field">
+      <label>Base price</label>
+      <input class="inp" id="pf-base" value="" readonly style="background:var(--ground);color:var(--muted);">
+      <div class="help">Set during creation. Edit it on the listing itself.</div>
+    </div>
+
+    <div id="pf-surcharge"></div>
+
+    <div class="divider" style="margin:20px 0;"></div>
+
+    <h5 class="grouplabel">Deposit</h5>
+    <div class="field">
+      <label>Take a deposit at booking</label>
+      <div class="seg" id="pf-dep-seg">
+        <button type="button" data-dep="none">No deposit</button>
+        <button type="button" data-dep="part">Part now</button>
+      </div>
+      <div id="pf-dep-amt"></div>
+      <div class="help">Travellers pay the balance on the day.</div>
+    </div>
+
+    <div class="divider" style="margin:20px 0;"></div>
+
+    <h5 class="grouplabel">Cancellation</h5>
+    <div class="field">
+      <label>Policy</label>
+      <select class="inp">
+        <option>Flexible — full refund if cancelled at least 24 hours before the start</option>
+        <option selected>Moderate — full refund 5+ days before; 50% refund 2+ days before</option>
+        <option>Strict — 50% refund if cancelled at least 7 days before</option>
+        <option>Non-refundable — no refund once booked</option>
+      </select>
+    </div>
+
+    <div id="pf-saved"></div>
+
+    <div class="note-quiet" style="margin-top:18px;">
+      Platform commission is not shown or set here — it is resolved from your category, not typed into a form.
+      The amounts above are <b style="color:var(--ink)">illustrative inputs</b>; the surcharge taxonomy itself
+      (and zone geometry) is still a spec gap (#8).
+    </div>
+  </div>
+  <div class="dfoot">
+    <button class="btn ghost" id="drawer-cancel" style="flex:1;">Cancel</button>
+    <button class="btn" id="drawer-save" style="flex:1;">Save settings</button>
+  </div>
+</aside>
+
+<!-- photos drawer — the surface the cover-photo checklist row navigates to -->
+<div class="drawer-scrim" id="photo-scrim"></div>
+<aside class="drawer" id="photo-drawer" aria-hidden="true">
+  <div class="dhd">
+    <h3>Photos &amp; media</h3>
+    <button class="xbtn" id="photo-close" aria-label="Close">×</button>
+  </div>
+  <div class="dbody">
+    <div class="note-quiet" style="margin-bottom:18px;">
+      The checklist row “Add a cover photo” links <b style="color:var(--ink)">here</b>. It ticks when a cover
+      photo exists on the listing — not when you click the row.
+    </div>
+    <div class="field">
+      <label>Cover photo</label>
+      <div id="photo-slot"></div>
+    </div>
+    <div class="note-quiet">
+      Gallery, ordering, clip support and the cover-photo requirement itself are
+      <b style="color:var(--ink)">not specified yet</b> (spec gap #16). Only the cover-photo state is simulated
+      here, because the checklist derives from it.
+    </div>
+  </div>
+  <div class="dfoot">
+    <button class="btn ghost" id="photo-done" style="flex:1;">Back to the checklist</button>
+  </div>
+</aside>
+
+<!-- property: an honest locked door, not a wrong form -->
+<div class="modal-scrim" id="prop-scrim">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="prop-title" style="max-width:520px;">
+    <h3 id="prop-title">Property builder — not yet specified</h3>
+    <p>
+      This door stays locked until the rooms / nightly / date-range builder is designed
+      (<b>spec gap #1</b>). Sending you into the single-service form would be worse than a locked door: that
+      form has no rooms concept, no “per night” price unit, and no date-range availability, so it would collect
+      the wrong answers and look finished.
+    </p>
+    <p style="margin-bottom:10px;">Still to be decided before this opens:</p>
+    <div class="card" style="background:var(--ground);border-style:dashed;margin-bottom:18px;">
+      <div class="stop"><span class="pos">1</span><span class="sname">Units / rooms and how they relate to one listing</span><span class="flag">open</span></div>
+      <div class="stop"><span class="pos">2</span><span class="sname">Nightly &amp; weekly price units, occupancy and extra-guest rules</span><span class="flag">open</span></div>
+      <div class="stop"><span class="pos">3</span><span class="sname">Date-range availability and minimum stay</span><span class="flag">open</span></div>
+      <div class="stop"><span class="pos">4</span><span class="sname">Whether a property is a <code>provider_services</code> row or a new shape — a schema question</span><span class="flag">decision-maker</span></div>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost" id="prop-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- delete confirm modal -->
+<div class="modal-scrim" id="modal-scrim">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title">Delete "Morning Tea Ceremony in a Machiya Townhouse"?</h3>
+    <p>
+      This listing has 2 upcoming bookings. Deleting it removes it from your Catalog and from search;
+      the existing bookings stay and you still owe those travellers the session. This cannot be undone.
+    </p>
+    <div class="mfoot">
+      <button class="btn ghost" id="modal-cancel">Keep listing</button>
+      <button class="btn danger" id="modal-confirm">Delete listing</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ═════════════ tabs ═════════════ */
+  var tabBtns = Array.prototype.slice.call(document.querySelectorAll('#tabs button'));
+  function showTab(name){
+    tabBtns.forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.tab === name)); });
+    ['flow','draft','door','catalog','map','fix'].forEach(function(n){
+      document.getElementById('panel-'+n).classList.toggle('on', n === name);
+    });
+    /* the checklist is DERIVED — re-read it from state whenever the draft surface is shown,
+       so work done on another surface is reflected without anyone ticking anything */
+    if (name === 'draft' && typeof renderChecklist === 'function') renderChecklist();
+    window.scrollTo({top:0, behavior:'auto'});
+  }
+  tabBtns.forEach(function(b){ b.addEventListener('click', function(){ showTab(b.dataset.tab); }); });
+
+  /* ═════════════ seeded content ═════════════ */
+  var SEEDS = {
+    kyoto: {
+      category:'Arts & Crafts Instruction',
+      offering:'Tea ceremony & cultural ritual',
+      name:'Morning Tea Ceremony in a Machiya Townhouse',
+      price:'68', unit:'per person',
+      desc:'A 90-minute seated tea ceremony in my family machiya in Gion, with matcha and seasonal wagashi.'
+    },
+    consult: {
+      category:'Personal Assistance',
+      offering:'Trip planning consultation',
+      name:'Kyoto Trip Planning Call — 45 minutes',
+      price:'40', unit:'per call',
+      desc:'A live call where we shape your Kyoto days around what you actually want to see, not the top-ten list.'
+    },
+    guide: {
+      category:'Tours & Experiences',
+      offering:'Written city guide',
+      name:'Tokyo Like a Local — 3-Day Neighbourhood Guide',
+      price:'24', unit:'per download',
+      desc:'A 28-page PDF of the walks, cafes and back-street bars I send my own friends when they visit Tokyo.'
+    },
+    async: {
+      category:'Personal Assistance',
+      offering:'Ask-me-anything trip support',
+      name:'Kyoto Questions — Ask Me Anything for 5 Days',
+      price:'30', unit:'per traveller',
+      desc:'Message me while you are here and I answer with what I would actually do, not what the guidebook says.'
+    }
+  };
+
+  var METHODS = [
+    {key:'in_person',       name:'In person',      meta:'Place-anchored',  seed:'kyoto',   flow:['basics','location','logistics','review']},
+    {key:'video',           name:'Video call',     meta:'Live, remote',    seed:'consult', flow:['basics','session','review']},
+    {key:'call',            name:'Phone call',     meta:'Live, remote',    seed:'consult', flow:['basics','session','review']},
+    {key:'pdf',             name:'PDF guide',      meta:'Artifact',        seed:'guide',   flow:['basics','artifact','review']},
+    {key:'voice_notes',     name:'Voice notes',    meta:'Async lane',      seed:'async',   flow:['basics','asyncstub','review']},
+    {key:'async_messaging', name:'Async messaging',meta:'Async lane',      seed:'async',   flow:['basics','asyncstub','review']},
+    {key:'hybrid',          name:'Hybrid',         meta:'In person + video',seed:'kyoto',  flow:['basics','location','logistics','online','review']}
+  ];
+
+  var STEP_TITLE = {
+    basics:'Basics',
+    location:'Where does this happen?',
+    logistics:'Group, timing & getting there',
+    online:'The online half',
+    session:'Session details',
+    artifact:'What they get',
+    asyncstub:'Async delivery details',
+    review:'Review & submit'
+  };
+  var STEP_SHORT = {
+    basics:'Basics', location:'Where it happens', logistics:'Logistics & group',
+    online:'Online half', session:'Session details', artifact:'What they get',
+    asyncstub:'Async details', review:'Review & submit'
+  };
+
+  var S = {
+    method:'in_person',
+    step:0,
+    pinState:null,          /* null | 'candidate' | 'confirmed' — same gate as the Mapping tab */
+    radius:8,
+    desc:null,              /* provider-edited description; null = the seeded one */
+    safety:{liability:false, conduct:false},
+    uploaded:false,
+    photo:false,
+    submitted:false,
+    pricing:{saved:false, surcharge:'none', flat:'', perkm:'', deposit:'none', depositPct:''},
+    pickup:false,
+    stops:[
+      {name:'Gion-Shijo station, north exit', located:true},
+      {name:'The machiya — Hanamikoji-dori', located:true},
+      {name:'Yasaka shrine tea garden', located:false}
+    ],
+    prevFlow:['basics','location','logistics','review'],
+    seedNoteFor:null
+  };
+
+  function method(){ for (var i=0;i<METHODS.length;i++){ if (METHODS[i].key===S.method) return METHODS[i]; } }
+  function flow(){ return method().flow; }
+  function seed(){ return SEEDS[method().seed]; }
+  function isPlaceAnchored(){ return S.method==='in_person' || S.method==='hybrid'; }
+  function isRemote(){ return !isPlaceAnchored(); }
+  function descText(){ return S.desc === null ? seed().desc : S.desc; }
+  function pinConfirmed(){ return S.pinState === 'confirmed'; }
+  /* every method resets its own derived answers — a PDF draft must not inherit a pin */
+  function resetForMethod(){
+    S.desc = null; S.uploaded = false; S.submitted = false;
+    S.safety = {liability:false, conduct:false};
+    S.pricing = {saved:false, surcharge:'none', flat:'', perkm:'', deposit:'none', depositPct:''};
+    if (isRemote()) S.pinState = null;
+  }
+
+  /* ═════════════ step list ═════════════ */
+  function renderSteps(){
+    var f = flow();
+    var ol = document.getElementById('steplist-ol');
+    ol.innerHTML = '';
+    f.forEach(function(k, i){
+      var li = document.createElement('li');
+      li.className = (i===S.step ? 'cur' : (i<S.step ? 'done' : ''));
+      if (S.prevFlow.indexOf(k) === -1) li.className += ' added';
+      li.innerHTML = '<span class="num">'+(i<S.step ? '&#10003;' : (i+1))+'</span><span>'+STEP_SHORT[k]+'</span>';
+      li.addEventListener('click', function(){ S.step = i; render(); });
+      ol.appendChild(li);
+    });
+    document.getElementById('stepcount').innerHTML =
+      '<b>'+f.length+' steps</b> for “'+method().name+'”. ' +
+      (isPlaceAnchored()
+        ? 'Location and logistics are here because this method happens somewhere.'
+        : 'No location, transport or travel-surcharge questions anywhere in this flow.');
+    S.prevFlow = f.slice();
+  }
+
+  /* ═════════════ map placeholder ═════════════ */
+  function mapSvg(){
+    var lines = '';
+    for (var x=40; x<640; x+=64){ lines += '<line x1="'+x+'" y1="0" x2="'+(x-26)+'" y2="240" stroke="#E2E0D6" stroke-width="7"/>'; }
+    for (var y=34; y<240; y+=48){ lines += '<line x1="0" y1="'+y+'" x2="640" y2="'+(y+9)+'" stroke="#E6E4DA" stroke-width="5"/>'; }
+    return '<svg viewBox="0 0 640 240" preserveAspectRatio="none" aria-hidden="true">' +
+      '<rect width="640" height="240" fill="#F2F1EB"/>' + lines +
+      '<path d="M0 176 C 130 150, 250 210, 400 168 S 600 132, 640 152 L640 240 L0 240 Z" fill="#E3E9E8"/>' +
+      '<rect x="404" y="34" width="120" height="74" rx="6" fill="#E4E9DF"/>' +
+      '<rect x="66" y="52" width="86" height="56" rx="5" fill="#EBE8DE"/>' +
+      '<rect x="196" y="120" width="74" height="48" rx="5" fill="#EBE8DE"/>' +
+      '</svg>';
+  }
+
+  /* ═════════════ step bodies ═════════════ */
+  function body_basics(){
+    var d = seed();
+    var tiles = METHODS.map(function(m){
+      return '<button class="method" type="button" data-m="'+m.key+'" aria-pressed="'+(m.key===S.method)+'">' +
+        '<span class="mname">'+m.name+'</span><span class="mmeta">'+m.meta+'</span></button>';
+    }).join('');
+
+    return '' +
+    '<div class="note-quiet" style="margin-bottom:18px;">' +
+      '<b style="color:var(--ink)">Screen 1 is the whole fast path.</b> Five fields, then a saved listing. ' +
+      'Everything else can wait — and what waits is named for you afterwards.<span class="dot ghost dot-inline">②</span>' +
+    '</div>' +
+
+    '<div class="row2">' +
+      '<div class="field"><label>What are you offering?</label>' +
+        '<select class="inp"><option selected>'+d.offering+'</option><option>Something else — browse the catalog</option></select>' +
+        '<div class="help">Category: '+d.category+'</div></div>' +
+      '<div class="field"><label>Name it</label><input class="inp" value="'+d.name+'">' +
+        '<div class="help">Travellers see this first.</div></div>' +
+    '</div>' +
+
+    '<div class="field" style="margin-top:6px;">' +
+      '<label>How do you deliver this?<span class="dot dot-inline">①</span></label>' +
+      '<div class="methods">'+tiles+'</div>' +
+      '<div class="help">This is asked second, not buried mid-form — because the rest of the form is built from the answer.</div>' +
+      '<div class="seedswap" id="seedswap"></div>' +
+    '</div>' +
+
+    '<div class="row2">' +
+      '<div class="field"><label>Price<span class="dot dot-inline">④</span></label>' +
+        '<div style="display:flex;gap:9px;">' +
+          '<input class="inp" style="max-width:120px;" value="$'+d.price+'">' +
+          '<select class="inp" style="max-width:190px;"><option selected>'+d.unit+'</option><option>per group</option><option>per hour</option></select>' +
+        '</div>' +
+        '<div class="help">One price. Surcharges, deposits and cancellation live in <b>Pricing &amp; fees</b> after you save — none of them are required to go live.</div></div>' +
+      '<div class="field"><label>One line about it</label>' +
+        '<textarea class="inp" id="basics-desc">'+descText()+'</textarea>' +
+        '<div class="help">You can write the long version later. ' +
+        '<span id="desc-count">'+descText().length+' characters</span> — the draft checklist asks for 140+ ' +
+        'before review, and reads it from this field.</div></div>' +
+    '</div>' +
+
+    '<div class="notice" style="margin-top:4px;">' +
+      '<b>Before you start:</b> listings are reviewed by our team before they go live — usually within 2 business days. ' +
+      'Saving a draft costs you nothing and does not start the review.' +
+    '</div>';
+  }
+
+  function body_location(){
+    var r = S.radius;
+    var ringPx = 24 + r * 3.6;
+    return '' +
+    '<div class="note-quiet" style="margin-bottom:18px;">' +
+      '<b style="color:var(--ink)">One card, one vocabulary.</b> Today this is six questions spread across two ' +
+      'steps and a separate page: Meeting Point, map pin, Service Area, Pickup, Drop-off, and route stops.' +
+      '<span class="dot ghost dot-inline">③</span>' +
+    '</div>' +
+
+    '<div class="mapbox">' + mapSvg() +
+      '<div class="radiusring '+(pinConfirmed()?'on':'')+'" style="width:'+ringPx+'px;height:'+ringPx+'px;"></div>' +
+      '<div class="pinmark '+(S.pinState?'on':'')+'">' + pinSvg(pinConfirmed()) +
+        (S.pinState === 'candidate' ? '<span class="cap" style="position:absolute;left:50%;top:100%;transform:translateX(-50%);' +
+          'margin-top:3px;white-space:nowrap;background:rgba(255,255,255,.95);border:1px solid var(--hair);' +
+          'border-radius:100px;padding:1px 8px;font-size:10.5px;">Unconfirmed</span>' : '') +
+      '</div>' +
+      '<div class="maplabel">Map preview — illustrative</div>' +
+      '<div class="mapattr">© OpenStreetMap contributors</div>' +
+    '</div>' +
+
+    '<div class="field" style="margin-top:16px;">' +
+      '<label>Where do you meet travellers?</label>' +
+      '<div style="display:flex;gap:9px;">' +
+        '<input class="inp" value="Hanamikoji-dori, Gion, Higashiyama-ku, Kyoto">' +
+        '<button class="btn '+(S.pinState?'ghost':'')+'" id="btn-pin" type="button" style="white-space:nowrap;">' +
+          (S.pinState ? 'Move the pin' : 'Place the pin') + '</button>' +
+      '</div>' +
+      '<div class="help">' + (pinConfirmed()
+        ? '<span style="color:var(--accent)">Pin confirmed at 35.0037, 135.7788.</span> The exact address is only shown to travellers after they book.'
+        : 'One address, one pin. A typed address is never a location — the pin is stored only when you confirm it.') +
+      '</div>' +
+      (S.pinState === 'candidate'
+        ? '<div class="notice" style="margin-top:10px;">Pin placed but <b>not saved</b>. Nothing is stored until you confirm.</div>' +
+          '<div style="display:flex;gap:8px;margin-top:9px;">' +
+            '<button class="btn accent sm" id="pin-confirm-flow" type="button">Confirm this location</button>' +
+            '<button class="btn ghost sm" id="pin-discard-flow" type="button">Discard</button></div>'
+        : '') +
+      (pinConfirmed()
+        ? '<button class="btn ghost sm" id="pin-remove-flow" type="button" style="margin-top:9px;">Remove pin</button>' : '') +
+    '</div>' +
+
+    '<div class="field">' +
+      '<label>How far will you travel?</label>' +
+      '<input type="range" min="0" max="30" value="'+r+'" id="radius-range">' +
+      '<div class="help">Included free up to <b style="color:var(--ink)" id="radius-val">'+r+' km</b> from the pin. ' +
+      'Beyond that, travellers see “travel fee may apply” — you set the fee itself in Pricing &amp; fees. ' +
+      '<b style="color:var(--ink)">One radius field, not three.</b></div>' +
+    '</div>' +
+
+    '<button class="toggle" type="button" id="pickup-toggle" aria-pressed="'+S.pickup+'">' +
+      '<span class="track"></span><span class="tl">I collect travellers and drop them back</span></button>' +
+    (S.pickup ?
+      '<div class="row2" style="margin-top:6px;padding:14px;border:1px solid var(--hair);border-radius:6px;background:var(--ground);">' +
+        '<div class="field" style="margin-bottom:0;"><label>Pickup</label>' +
+          '<input class="inp" value="Your hotel lobby, anywhere in Higashiyama or Gion">' +
+          '<div class="help">Inside your free radius, at no extra cost.</div></div>' +
+        '<div class="field" style="margin-bottom:0;"><label>Drop-off</label>' +
+          '<input class="inp" value="Back to your hotel, or Gion-Shijo station">' +
+          '<div class="help">Leave blank to drop back where you collected.</div></div>' +
+      '</div>'
+      : '<div class="help" style="margin:-4px 0 14px;">Off by default. Turning it on reveals pickup and drop-off here — not on another step, and not as a second transport question.</div>') +
+
+    '<div class="divider" style="margin:20px 0 16px;"></div>' +
+
+    '<h5 class="grouplabel">Route stops <span style="text-transform:none;letter-spacing:0;font-weight:400;">— optional, and edited right here</span></h5>' +
+    '<div class="stops" id="stops"></div>' +
+    '<div style="display:flex;gap:9px;align-items:center;margin-top:10px;">' +
+      '<button class="btn ghost sm" id="add-stop" type="button">+ Add a stop</button>' +
+      '<span style="font-size:12px;color:var(--muted);">Connectors on the map are drawn as a dashed sequence — they are the order you visit, not a driving route, and we never invent a distance or a duration between them.</span>' +
+    '</div>';
+  }
+
+  function body_logistics(){
+    return '' +
+    '<div class="row3">' +
+      '<div class="field"><label>How long does it take?</label>' +
+        '<div style="display:flex;gap:8px;"><input class="inp" value="90"><select class="inp"><option selected>minutes</option><option>hours</option><option>days</option></select></div>' +
+        '<div class="help">Asked once. Today the same answer is collected twice, in two different units.</div></div>' +
+      '<div class="field"><label>Group size</label>' +
+        '<div style="display:flex;gap:8px;align-items:center;"><input class="inp" value="1"><span style="color:var(--muted)">to</span><input class="inp" value="4"></div>' +
+        '<div class="help">One pair of numbers. Today capacity is asked three times.</div></div>' +
+      '<div class="field"><label>Getting there</label>' +
+        '<select class="inp">' +
+          '<option'+(S.pickup?' selected':'')+'>I collect the traveller and drop them back</option>' +
+          '<option>Pickup can be arranged on request</option>' +
+          '<option'+(S.pickup?'':' selected')+'>Travellers make their own way to the meeting point</option>' +
+        '</select>' +
+        '<div class="help">Kept in sync with the pickup toggle on the previous step — one answer, one vocabulary.</div></div>' +
+    '</div>' +
+
+    '<div class="row2">' +
+      '<div class="field"><label>What should they bring or wear?</label>' +
+        '<textarea class="inp">Socks without holes — you will be on tatami. Nothing else; kimono is provided if you want one.</textarea></div>' +
+      '<div class="field"><label>Anything travellers should know about access?</label>' +
+        '<textarea class="inp">One step up at the entrance and low seating. I can provide a low stool — tell me when you book.</textarea>' +
+        '<div class="help">Written in your words. We do not claim an accessibility standard on your behalf.</div></div>' +
+    '</div>' +
+
+    '<div class="divider" style="margin:6px 0 16px;"></div>' +
+    '<h5 class="grouplabel">Safety basics</h5>' +
+    '<div class="card" style="background:var(--ground);">' +
+      attest('liability', 'I hold public liability cover for this activity',
+             'Required for in-person listings. Not asked at all for remote ones.') +
+      attest('conduct', 'I have read the in-person conduct standards',
+             'Two minutes. Opens in a panel — you will not lose this draft.') +
+    '</div>' +
+    '<div class="help" style="margin-top:9px;">Both of these are what the draft checklist\'s “safety basics” row ' +
+    'watches. It ticks when they are ticked <b style="color:var(--ink)">here</b>.</div>';
+  }
+
+  function attest(key, title, desc){
+    var on = S.safety[key];
+    return '<button class="check" type="button" data-attest="'+key+'" aria-checked="'+on+'" ' +
+      'style="width:100%;background:none;border:none;border-bottom:1px solid var(--hair);text-align:left;">' +
+      '<span class="box"'+(on?' style="background:var(--accent);border-color:var(--accent);"':'')+'>' +
+      (on ? '<svg width="11" height="11" viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '') +
+      '</span><span><span class="ctitle" style="text-decoration:none;">'+title+'</span>' +
+      '<span class="cdesc">'+desc+'</span></span></button>';
+  }
+
+  function body_online(){
+    return '' +
+    '<div class="note-quiet" style="margin-bottom:18px;">' +
+      'Hybrid is the only method that gets both halves. It is one extra step, not a second copy of the form.' +
+      '<span class="dot ghost dot-inline">①</span></div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Where does the online half happen?</label>' +
+        '<select class="inp"><option selected>Traveloure video room</option><option>My own link (Zoom, Meet, Teams)</option></select></div>' +
+      '<div class="field"><label>How long is the online half?</label>' +
+        '<div style="display:flex;gap:8px;"><input class="inp" value="30"><select class="inp"><option selected>minutes</option></select></div></div>' +
+    '</div>' +
+    '<div class="field"><label>What happens online that does not happen in the room?</label>' +
+      '<textarea class="inp">A short call a week before, so I can prepare sweets that suit you and tell you what to expect in the tea room.</textarea></div>' +
+    '<div class="notice">' +
+      '<b>Open question — not decided here.</b> “Hybrid” in this mock means <b>in person + video</b> only. ' +
+      'In-person <i>plus a delivered artifact</i> (a photo shoot with edited photos afterwards) has no branch, ' +
+      'and no field for photo count, delivery timeframe or usage rights. Whether that becomes an eighth method, ' +
+      'a second axis, or a per-category extension is a spec decision for the decision-maker.' +
+    '</div>';
+  }
+
+  function body_session(){
+    return '' +
+    '<div class="note-quiet" style="margin-bottom:18px;">' +
+      '<b style="color:var(--ink)">No location card, no transport question, no travel surcharge.</b> This method does not ' +
+      'happen anywhere, so those questions are not asked — not disabled, not skipped over. Absent.' +
+      '<span class="dot ghost dot-inline">①</span></div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>How long is the call?</label>' +
+        '<div style="display:flex;gap:8px;"><input class="inp" value="45"><select class="inp"><option selected>minutes</option></select></div></div>' +
+      '<div class="field"><label>Where does it happen?</label>' +
+        '<select class="inp"><option selected>Traveloure video room</option><option>My own link (Zoom, Meet, Teams)</option><option>I call their number</option></select></div>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Languages you can run it in</label><input class="inp" value="English, Japanese"></div>' +
+      '<div class="field"><label>Your usual hours</label><input class="inp" value="Weekday evenings, JST"></div>' +
+    '</div>' +
+    '<div class="field"><label>What do they walk away with?</label>' +
+      '<textarea class="inp">A written summary of what we decided, sent within a day of the call.</textarea></div>';
+  }
+
+  function body_artifact(){
+    return '' +
+    '<div class="note-quiet" style="margin-bottom:18px;">' +
+      '<b style="color:var(--ink)">No location, transport or surcharge anywhere in this flow.</b> A guide is not ' +
+      'delivered somewhere, so the form never asks where.<span class="dot ghost dot-inline">①</span></div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>What exactly do they receive?</label>' +
+        '<input class="inp" value="A 28-page PDF plus a printable one-page map"></div>' +
+      '<div class="field"><label>How soon after buying?</label>' +
+        '<select class="inp"><option selected>Instantly — it is already written</option><option>Within 2 days — I personalise it</option><option>Within a week</option></select></div>' +
+    '</div>' +
+    '<div class="field"><label>Upload the file</label>' +
+      (S.uploaded
+        ? '<div style="border:1px solid var(--hair);border-radius:6px;padding:18px;text-align:center;background:var(--paper);">' +
+            '<div style="font-size:13px;font-weight:550;">tokyo-like-a-local-v3.pdf</div>' +
+            '<div style="font-size:12px;color:var(--accent);margin-top:3px;">Uploaded · 4.1 MB · ' +
+            '<button class="btn link" id="artifact-clear" type="button">Remove</button></div></div>'
+        : '<div style="border:1px dashed var(--hair);border-radius:6px;padding:22px;text-align:center;background:var(--ground);">' +
+            '<div style="font-size:13px;color:var(--muted);margin-bottom:9px;">No file yet — travellers cannot receive anything until there is one.</div>' +
+            '<button class="btn ghost sm" id="artifact-upload" type="button">Upload the guide</button></div>') +
+      '<div class="help">Travellers get the current file at the moment they buy. Updating it later does not re-send. ' +
+      'This is the item the draft checklist watches — it ticks when a file is here, not when you tick it.</div></div>' +
+    '<div class="field"><label>Show a sample?</label>' +
+      '<select class="inp"><option selected>First 3 pages, free</option><option>No sample</option></select>' +
+      '<div class="help">Optional.</div></div>';
+  }
+
+  function body_asyncstub(){
+    var d = seed();
+    return '' +
+    '<div class="notice" style="margin-bottom:18px;">' +
+      '<b>Async delivery details — to be specified.</b> This step is deliberately a stub. Voice notes and ' +
+      'async messaging are the platform\'s <i>provider-declared async lane</i>, not artifacts, so the PDF ' +
+      'upload step would be the wrong form — and the right form has not been designed yet ' +
+      '(<b>spec gap #3</b>).' +
+    '</div>' +
+
+    '<div class="note-quiet" style="margin-bottom:18px;">' +
+      'Your Basics are saved and intact — “'+d.name+'”, $'+d.price+' '+d.unit+'. Nothing here is lost while ' +
+      'this step is being designed.' +
+    '</div>' +
+
+    '<h5 class="grouplabel">To be specified</h5>' +
+    '<div class="card" style="background:var(--ground);border-style:dashed;">' +
+      '<div class="stop"><span class="pos">1</span><span class="sname"><b>Response window</b> — how fast you ' +
+        'answer, and over what hours</span><span class="flag">not designed</span></div>' +
+      '<div class="stop"><span class="pos">2</span><span class="sname"><b>Scope</b> — how many messages or ' +
+        'voice notes, or is it open-ended</span><span class="flag">not designed</span></div>' +
+      '<div class="stop"><span class="pos">3</span><span class="sname"><b>Completion rule</b> — what “delivered” ' +
+        'means for a shape with no booked slot</span><span class="flag">not designed</span></div>' +
+    '</div>' +
+
+    '<div class="note-quiet" style="margin-top:16px;">' +
+      'Shown as an empty labelled step on purpose. A mock that borrowed the PDF form here would look finished ' +
+      'and would be wrong — this is the honest state of the design, not a placeholder for missing markup.' +
+    '</div>';
+  }
+
+  function body_review(){
+    var d = seed(), m = method(), rows = '';
+    function row(k,v){ rows += '<div class="sumrow"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>'; }
+    row('Offering', d.offering + ' <span class="pill" style="margin-left:6px;">'+d.category+'</span>');
+    row('Name', d.name);
+    row('Delivery', m.name + ' <span style="color:var(--muted)">· '+m.meta+'</span>');
+    row('Price', '$'+d.price+' '+d.unit+' <span style="color:var(--muted)">· surcharges and deposit not set (optional)</span>');
+    if (isPlaceAnchored()){
+      row('Where', pinConfirmed()
+        ? 'Hanamikoji-dori, Gion, Kyoto · pin confirmed · free travel to '+S.radius+' km'
+        : '<span style="color:#8A6A22">Meeting point not pinned yet — this is one of the things left</span>');
+      var loc = S.stops.filter(function(s){return s.located;}).length;
+      row('Route stops', S.stops.length + ' stops · ' + loc + ' of ' + S.stops.length + ' located' +
+        (loc < S.stops.length ? ' <span style="color:#8A6A22">· unlocated stops will not appear on the map</span>' : ''));
+    } else {
+      row('Where', '<span style="color:var(--muted)">Not applicable — this method is not place-anchored, so it was never asked.</span>');
+    }
+    row('Cover photo', '<span style="color:#8A6A22">Not added yet</span>');
+
+    return '' +
+      '<div class="card" style="border:none;">'+rows+'</div>' +
+      '<div class="notice" style="margin-top:18px;">' +
+        '<b>What happens when you submit.</b> Our team reviews the listing before it goes live — usually within ' +
+        '2 business days. Until then it stays a draft on your Catalog and no traveller can see or book it. ' +
+        'You can keep editing while it waits.' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap;">' +
+        '<button class="btn accent lg" id="review-submit">Submit for review<span class="dot ghost dot-inline" style="background:#fff;color:var(--accent);border:none;">⑤</span></button>' +
+        '<button class="btn ghost" id="review-later">Save and finish later</button>' +
+        '<span style="font-size:12.5px;color:var(--muted);">Nothing here says “Publish” — because clicking it does not publish anything.</span>' +
+      '</div>' +
+      '<div class="note-quiet" style="margin-top:16px;">' +
+        'There is no disabled button and no red asterisk on this screen. If something is missing, it is listed by ' +
+        'name on the draft checklist, and you can still submit — review will tell you if it is not enough.' +
+      '</div>';
+  }
+
+  var BODIES = {
+    basics:body_basics, location:body_location, logistics:body_logistics,
+    online:body_online, session:body_session, artifact:body_artifact,
+    asyncstub:body_asyncstub, review:body_review
+  };
+
+  /* ═════════════ stops ═════════════ */
+  function renderStops(){
+    var el = document.getElementById('stops');
+    if (!el) return;
+    el.innerHTML = '';
+    S.stops.forEach(function(st, i){
+      var d = document.createElement('div');
+      d.className = 'stop';
+      d.innerHTML = '<span class="pos">'+(i+1)+'</span><span class="sname">'+st.name+'</span>' +
+        (st.located
+          ? '<span class="ok">Located</span>'
+          : '<span class="flag">Not located — will not appear on the map</span><button class="btn link" data-locate="'+i+'">Place pin</button>') +
+        '<button class="btn link" data-rmstop="'+i+'" style="color:var(--muted)">Remove</button>';
+      el.appendChild(d);
+    });
+    el.querySelectorAll('[data-locate]').forEach(function(b){
+      b.addEventListener('click', function(){ S.stops[+b.dataset.locate].located = true; renderStops(); });
+    });
+    el.querySelectorAll('[data-rmstop]').forEach(function(b){
+      b.addEventListener('click', function(){ S.stops.splice(+b.dataset.rmstop,1); renderStops(); });
+    });
+  }
+
+  /* ═════════════ flow render ═════════════ */
+  function render(){
+    var f = flow();
+    if (S.step >= f.length) S.step = f.length - 1;
+    var key = f[S.step];
+
+    renderSteps();
+    document.getElementById('step-title').textContent = STEP_TITLE[key];
+    document.getElementById('step-hint').textContent = 'Step ' + (S.step+1) + ' of ' + f.length;
+    document.getElementById('step-body').innerHTML = BODIES[key]();
+
+    var back = document.getElementById('btn-back');
+    var next = document.getElementById('btn-next');
+    back.style.display = S.step === 0 ? 'none' : '';
+
+    if (key === 'basics'){
+      next.textContent = 'Save draft';
+      next.className = 'btn accent lg';
+      document.getElementById('foot-note').textContent =
+        'Saving creates the listing. You can leave and come back — nothing is lost, and review has not started.';
+    } else if (key === 'review'){
+      next.style.display = 'none';
+      document.getElementById('foot-note').textContent = '';
+    } else {
+      next.textContent = 'Next: ' + STEP_SHORT[f[S.step+1]] + ' →';
+      next.className = 'btn';
+      document.getElementById('foot-note').textContent = 'Autosaved. Closing this tab keeps everything.';
+    }
+    if (key !== 'review') next.style.display = '';
+
+    /* wiring inside the body */
+    var swap = document.getElementById('seedswap');
+    if (swap && S.seedNoteFor){
+      swap.classList.add('on');
+      swap.textContent = 'Sample content switched to the ' + S.seedNoteFor + ' example, so you can see what this method actually asks for.';
+    }
+    document.querySelectorAll('.method').forEach(function(b){
+      b.addEventListener('click', function(){
+        var prevSeed = method().seed;
+        S.method = b.dataset.m;
+        var m = method();
+        S.seedNoteFor = (m.seed !== prevSeed)
+          ? (m.seed === 'kyoto' ? 'Kyoto tea ceremony' : (m.seed === 'guide' ? 'Tokyo PDF guide' : 'planning call'))
+          : S.seedNoteFor;
+        S.step = 0;
+        resetForMethod();
+        render();
+        renderChecklist();
+      });
+    });
+
+    var pinBtn = document.getElementById('btn-pin');
+    if (pinBtn) pinBtn.addEventListener('click', function(){ S.pinState = 'candidate'; render(); });
+    var pcf = document.getElementById('pin-confirm-flow');
+    if (pcf) pcf.addEventListener('click', function(){ S.pinState = 'confirmed'; render(); });
+    var pdf_ = document.getElementById('pin-discard-flow');
+    if (pdf_) pdf_.addEventListener('click', function(){ S.pinState = null; render(); });
+    var prf = document.getElementById('pin-remove-flow');
+    if (prf) prf.addEventListener('click', function(){ S.pinState = null; render(); });
+
+    var rng = document.getElementById('radius-range');
+    if (rng) rng.addEventListener('input', function(){
+      S.radius = +rng.value;
+      document.getElementById('radius-val').textContent = S.radius + ' km';
+      var ring = document.querySelector('.radiusring');
+      if (ring){ var px = 24 + S.radius*3.6; ring.style.width = px+'px'; ring.style.height = px+'px'; }
+    });
+
+    var pt = document.getElementById('pickup-toggle');
+    if (pt) pt.addEventListener('click', function(){ S.pickup = !S.pickup; render(); });
+
+    var add = document.getElementById('add-stop');
+    if (add) add.addEventListener('click', function(){
+      S.stops.push({name:'New stop — name it', located:false});
+      renderStops();
+    });
+    renderStops();
+
+    var rs = document.getElementById('review-submit');
+    if (rs) rs.addEventListener('click', function(){ showTab('draft'); });
+    var rl = document.getElementById('review-later');
+    if (rl) rl.addEventListener('click', function(){ showTab('draft'); });
+
+    document.querySelectorAll('[data-attest]').forEach(function(c){
+      c.addEventListener('click', function(){
+        S.safety[c.dataset.attest] = !S.safety[c.dataset.attest];
+        render(); renderChecklist();
+      });
+    });
+
+    var bd = document.getElementById('basics-desc');
+    if (bd) bd.addEventListener('input', function(){
+      S.desc = bd.value;
+      document.getElementById('desc-count').textContent = bd.value.length + ' characters';
+      renderChecklist();
+    });
+
+    var au = document.getElementById('artifact-upload');
+    if (au) au.addEventListener('click', function(){ S.uploaded = true; render(); renderChecklist(); });
+    var ac = document.getElementById('artifact-clear');
+    if (ac) ac.addEventListener('click', function(){ S.uploaded = false; render(); renderChecklist(); });
+  }
+
+  document.getElementById('btn-back').addEventListener('click', function(){
+    if (S.step > 0){ S.step--; render(); }
+  });
+  document.getElementById('btn-next').addEventListener('click', function(){
+    var f = flow();
+    if (f[S.step] === 'basics'){ renderChecklist(); showTab('draft'); S.step = 1; render(); return; }
+    if (S.step < f.length - 1){ S.step++; render(); }
+  });
+
+  /* ═════════════ draft hero sync ═════════════ */
+  function syncDraftHero(){
+    var d = seed(), m = method();
+    document.getElementById('draft-hero-sub').textContent =
+      d.name + ' · ' + m.name + ' · $' + d.price + ' ' + d.unit + ' · saved a moment ago';
+    var pill = document.getElementById('draft-pill');
+    pill.textContent = S.submitted ? 'In review' : 'Draft';
+    pill.className = 'pill ' + (S.submitted ? 'live' : 'draft');
+  }
+
+  /* ═════════════ checklist — DERIVED from the drafted listing ═════════════
+     Two rules this must never break:
+       (1) items come from the delivery method, so a PDF draft is never asked for a map pin;
+       (2) a row NAVIGATES to the surface that owns the work — it never ticks itself. The tick
+           is read back from state after the work is done there.                              */
+  var DESC_MIN = 140;
+
+  function checksFor(){
+    var out = [{
+      id:'photo', t:'Add a cover photo',
+      d:'Listings without one get far fewer opens. One good photo is enough to start.',
+      go:'Open photos', done:function(){ return S.photo; },
+      act:function(){ photoDrawer(true); }
+    }];
+
+    if (isPlaceAnchored()){
+      out.push({
+        id:'where', t:'Confirm where it happens',
+        d:'Your address is typed, but the pin is not confirmed yet — an address alone is not a location.',
+        go:'Open location', done:pinConfirmed,
+        act:function(){ S.step = flow().indexOf('location'); render(); showTab('flow'); }
+      });
+      out.push({
+        id:'safety', t:'Confirm the safety basics',
+        d:'Liability cover and the in-person conduct standards, on the Logistics step.',
+        go:'Open safety', done:function(){ return S.safety.liability && S.safety.conduct; },
+        act:function(){ S.step = flow().indexOf('logistics'); render(); showTab('flow'); }
+      });
+    }
+
+    if (S.method === 'pdf'){
+      out.push({
+        id:'file', t:'Upload the guide',
+        d:'Travellers receive the file the moment they buy. There is no file on the draft yet.',
+        go:'Open the file step', done:function(){ return S.uploaded; },
+        act:function(){ S.step = flow().indexOf('artifact'); render(); showTab('flow'); }
+      });
+    }
+
+    out.push({
+      id:'desc', t:'Expand the description',
+      d:'A one-liner is enough to save a draft, not to sell. ' + descText().length + ' of ' + DESC_MIN + ' characters so far.',
+      go:'Open Basics', done:function(){ return descText().length >= DESC_MIN; },
+      act:function(){ S.step = 0; render(); showTab('flow'); }
+    });
+
+    return out;
+  }
+
+  /* Items a shape needs that have no designed surface yet are listed HONESTLY and cannot tick. */
+  function blockedFor(){
+    if (S.method === 'voice_notes' || S.method === 'async_messaging'){
+      return [{t:'Async delivery details', d:'Response window, scope and completion rule — not yet designed (spec gap #3). This cannot be completed or waived here.'}];
+    }
+    if (S.method === 'video' || S.method === 'call'){
+      return [{t:'Session details', d:'Timezone, join link and 1:1-vs-group capacity have no designed fields yet (spec gap #4). Not tickable, and not counted as done.'}];
+    }
+    return [];
+  }
+
+  function doneFor(){
+    var d = seed(), m = method();
+    return [
+      {t:'Name', d:d.name},
+      {t:'Delivery method', d:m.name + ' — ' + (isPlaceAnchored()
+          ? 'location and logistics steps added to your flow'
+          : 'no location, transport or travel-surcharge questions in this flow')},
+      {t:'Price', d:'$' + d.price + ' ' + d.unit},
+      {t:'Offering', d:d.offering + ' · ' + d.category}
+    ];
+  }
+
+  function checkSvg(){
+    return '<svg width="11" height="11" viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+
+  function renderChecklist(){
+    var checks = checksFor(), blocked = blockedFor(), frozen = S.submitted;
+    var el = document.getElementById('checklist');
+    el.innerHTML = '';
+
+    checks.forEach(function(c){
+      var on = c.done();
+      var b = document.createElement('button');
+      b.className = 'check';
+      b.type = 'button';
+      b.setAttribute('data-check', c.id);
+      b.style.width = '100%'; b.style.background = 'none'; b.style.border = 'none';
+      b.style.borderBottom = '1px solid var(--hair)'; b.style.textAlign = 'left';
+      b.setAttribute('aria-checked', String(on));
+      b.innerHTML = '<span class="box">' + (on ? checkSvg() : '') + '</span>' +
+        '<span><span class="ctitle">'+c.t+'</span><span class="cdesc">'+c.d+'</span></span>' +
+        '<span class="go">'+c.go+' →</span>';
+      b.addEventListener('click', function(){ c.act(); });
+      el.appendChild(b);
+    });
+
+    blocked.forEach(function(x){
+      var d = document.createElement('div');
+      d.className = 'check';
+      d.style.cursor = 'default';
+      d.style.borderBottom = '1px solid var(--hair)';
+      d.setAttribute('data-blocked','1');
+      d.innerHTML = '<span class="box" style="border-style:dashed;"></span>' +
+        '<span><span class="ctitle" style="text-decoration:none;color:var(--muted);">'+x.t+'</span>' +
+        '<span class="cdesc">'+x.d+'</span></span>' +
+        '<span class="go" style="color:var(--warn-ink);visibility:visible;">not yet specified</span>';
+      el.appendChild(d);
+    });
+
+    var foot = document.createElement('div');
+    foot.style.cssText = 'padding:11px 18px;font-size:11.5px;color:var(--muted);line-height:1.5;background:var(--ground);';
+    foot.innerHTML = frozen
+      ? '<b style="color:var(--ink)">In review — the list is frozen.</b> You can still edit the listing; changes go back through review.'
+      : 'Each row <b style="color:var(--ink)">opens the surface that owns the work</b>. Nothing ticks because you clicked it here — the tick is read back from the listing.';
+    el.appendChild(foot);
+
+    var left = checks.filter(function(c){ return !c.done(); }).length;
+    var head = document.getElementById('checklist-heading');
+    if (frozen){
+      head.textContent = 'Submitted — ' + (left === 0 ? 'nothing outstanding' : left + ' still outstanding');
+    } else {
+      head.textContent = left === 0
+        ? 'Nothing left — ready for review'
+        : left + (left === 1 ? ' thing left before review' : ' things left before review');
+    }
+
+    var dl = document.getElementById('donelist');
+    dl.innerHTML = '';
+    doneFor().concat(checks.filter(function(c){ return c.done(); })
+      .map(function(c){ return {t:c.t, d:'Done on the ' + c.go.replace(/^Open /,'') + ' surface'}; }))
+      .forEach(function(x){
+        var d = document.createElement('div');
+        d.className = 'check'; d.style.cursor = 'default';
+        d.setAttribute('aria-checked','true');
+        d.innerHTML = '<span class="box" style="background:var(--accent);border-color:var(--accent);">' + checkSvg() + '</span>' +
+          '<span><span class="ctitle" style="text-decoration:none;color:var(--ink);">'+x.t+'</span><span class="cdesc">'+x.d+'</span></span>';
+        dl.appendChild(d);
+      });
+
+    /* submit affordance reflects state, and stops being interactive once submitted */
+    var btn = document.getElementById('btn-submit-review');
+    if (S.submitted){
+      btn.textContent = 'Submitted';
+      btn.disabled = true;
+      btn.className = 'btn';
+      btn.style.cssText = 'background:var(--hair);border-color:var(--hair);color:var(--muted);cursor:default;';
+    } else {
+      btn.textContent = 'Submit for review';
+      btn.disabled = false;
+      btn.className = 'btn accent';
+      btn.style.cssText = '';
+    }
+    document.getElementById('submitted-state').style.display = S.submitted ? 'block' : 'none';
+    syncDraftHero();
+    renderPricingDrawer();
+  }
+  renderChecklist();
+
+  document.getElementById('btn-submit-review').addEventListener('click', function(){
+    if (S.submitted) return;
+    S.submitted = true;
+    renderChecklist();
+  });
+  document.getElementById('btn-finish-later').addEventListener('click', function(){ showTab('catalog'); });
+
+  /* ═════════════ pricing drawer ═════════════ */
+  function drawer(on){
+    document.getElementById('drawer').classList.toggle('on', on);
+    document.getElementById('drawer').setAttribute('aria-hidden', String(!on));
+    document.getElementById('drawer-scrim').classList.toggle('on', on);
+  }
+  document.getElementById('open-pricing').addEventListener('click', function(){ renderPricingDrawer(); drawer(true); });
+
+  /* photos drawer — the cover-photo checklist row's real destination */
+  function photoDrawer(on){
+    if (on){ showTab('draft'); renderPhotoSlot(); }
+    document.getElementById('photo-drawer').classList.toggle('on', on);
+    document.getElementById('photo-drawer').setAttribute('aria-hidden', String(!on));
+    document.getElementById('photo-scrim').classList.toggle('on', on);
+  }
+  function renderPhotoSlot(){
+    document.getElementById('photo-slot').innerHTML = S.photo
+      ? '<div style="border:1px solid var(--hair);border-radius:6px;padding:16px;text-align:center;background:var(--paper);">' +
+          '<div style="font-size:13px;font-weight:550;">cover-machiya-morning.jpg</div>' +
+          '<div style="font-size:12px;color:var(--accent);margin-top:3px;">Set as cover · ' +
+          '<button class="btn link" id="photo-remove" type="button">Remove</button></div></div>'
+      : '<div style="border:1px dashed var(--hair);border-radius:6px;padding:22px;text-align:center;background:var(--ground);">' +
+          '<div style="font-size:12.5px;color:var(--muted);margin-bottom:9px;">No cover photo yet.</div>' +
+          '<button class="btn ghost sm" id="photo-add" type="button">Add a cover photo</button></div>';
+    var a = document.getElementById('photo-add');
+    if (a) a.addEventListener('click', function(){ S.photo = true; renderPhotoSlot(); renderChecklist(); });
+    var r = document.getElementById('photo-remove');
+    if (r) r.addEventListener('click', function(){ S.photo = false; renderPhotoSlot(); renderChecklist(); });
+  }
+  document.getElementById('photo-close').addEventListener('click', function(){ photoDrawer(false); });
+  document.getElementById('photo-done').addEventListener('click', function(){ photoDrawer(false); });
+  document.getElementById('photo-scrim').addEventListener('click', function(){ photoDrawer(false); });
+
+  /* property: honest locked door */
+  function propPanel(on){ document.getElementById('prop-scrim').classList.toggle('on', on); }
+  document.getElementById('prop-close').addEventListener('click', function(){ propPanel(false); });
+  document.getElementById('prop-scrim').addEventListener('click', function(e){
+    if (e.target === document.getElementById('prop-scrim')) propPanel(false);
+  });
+
+  /* pricing drawer — real (illustrative) amounts, per-method visibility, distinct save */
+  function renderPricingDrawer(){
+    var d = seed(), P = S.pricing;
+    document.getElementById('pf-base').value = '$' + d.price + ' ' + d.unit;
+
+    var sur = document.getElementById('pf-surcharge');
+    if (isRemote()){
+      sur.innerHTML = '<div class="divider" style="margin:20px 0;"></div>' +
+        '<div class="note-quiet"><b style="color:var(--ink)">No travel surcharges for this listing.</b> ' +
+        '“' + method().name + '” is not place-anchored, so there is no radius to travel beyond — the whole ' +
+        'section is absent rather than shown and ignored.</div>';
+    } else {
+      var amt = '';
+      if (P.surcharge === 'flat'){
+        amt = '<div style="display:flex;gap:8px;align-items:center;margin-top:9px;">' +
+          '<span style="font-size:13px;color:var(--muted)">$</span>' +
+          '<input class="inp" id="pf-flat" style="max-width:110px;" value="'+P.flat+'" placeholder="12.00" aria-label="Flat travel fee">' +
+          '<span style="font-size:12.5px;color:var(--muted)">per booking beyond the free radius</span></div>';
+      } else if (P.surcharge === 'perkm'){
+        amt = '<div style="display:flex;gap:8px;align-items:center;margin-top:9px;">' +
+          '<span style="font-size:13px;color:var(--muted)">$</span>' +
+          '<input class="inp" id="pf-perkm" style="max-width:110px;" value="'+P.perkm+'" placeholder="1.40" aria-label="Per-km travel fee">' +
+          '<span style="font-size:12.5px;color:var(--muted)">per km beyond the free radius</span></div>';
+      }
+      sur.innerHTML = '<div class="divider" style="margin:20px 0;"></div>' +
+        '<h5 class="grouplabel">Surcharges</h5>' +
+        '<div class="field"><label>Extra travel beyond your free radius</label>' +
+          '<div class="seg" id="pf-sur-seg">' +
+            '<button type="button" data-sur="none" aria-pressed="'+(P.surcharge==='none')+'">None</button>' +
+            '<button type="button" data-sur="flat" aria-pressed="'+(P.surcharge==='flat')+'">Flat fee</button>' +
+            '<button type="button" data-sur="perkm" aria-pressed="'+(P.surcharge==='perkm')+'">Per km</button>' +
+          '</div>' + amt +
+          '<div class="help">Shown because this is an in-person listing. Remote listings do not render this section at all.</div>' +
+        '</div>';
+      sur.querySelectorAll('[data-sur]').forEach(function(b){
+        b.addEventListener('click', function(){ P.surcharge = b.dataset.sur; P.saved = false; renderPricingDrawer(); });
+      });
+      var f = document.getElementById('pf-flat');
+      if (f) f.addEventListener('input', function(){ P.flat = f.value; P.saved = false; });
+      var k = document.getElementById('pf-perkm');
+      if (k) k.addEventListener('input', function(){ P.perkm = k.value; P.saved = false; });
+    }
+
+    document.querySelectorAll('#pf-dep-seg [data-dep]').forEach(function(b){
+      b.setAttribute('aria-pressed', String(P.deposit === b.dataset.dep));
+      b.onclick = function(){ P.deposit = b.dataset.dep; P.saved = false; renderPricingDrawer(); };
+    });
+    document.getElementById('pf-dep-amt').innerHTML = P.deposit === 'part'
+      ? '<div style="display:flex;gap:8px;align-items:center;margin-top:9px;">' +
+        '<input class="inp" id="pf-deppct" style="max-width:90px;" value="'+P.depositPct+'" placeholder="25" aria-label="Deposit percentage">' +
+        '<span style="font-size:13px;color:var(--muted)">% now, balance on the day</span></div>'
+      : '';
+    var dp = document.getElementById('pf-deppct');
+    if (dp) dp.addEventListener('input', function(){ P.depositPct = dp.value; P.saved = false; });
+
+    document.getElementById('pf-saved').innerHTML = P.saved
+      ? '<div class="notice" style="margin-top:16px;"><b>Saved.</b> ' + pricingSummary() + '</div>'
+      : '<div class="note-quiet" style="margin-top:16px;">Unsaved. Cancel discards these edits; Save keeps them and says what it kept.</div>';
+  }
+
+  function pricingSummary(){
+    var P = S.pricing, bits = [];
+    if (isRemote()) bits.push('no travel surcharge (not place-anchored)');
+    else if (P.surcharge === 'flat')  bits.push('travel: flat $' + (P.flat || '0') + ' beyond the free radius');
+    else if (P.surcharge === 'perkm') bits.push('travel: $' + (P.perkm || '0') + '/km beyond the free radius');
+    else bits.push('no travel surcharge');
+    bits.push(P.deposit === 'part' ? 'deposit ' + (P.depositPct || '0') + '% at booking' : 'no deposit');
+    return bits.join(' · ') + '.';
+  }
+  document.getElementById('drawer-close').addEventListener('click', function(){ drawer(false); });
+  document.getElementById('drawer-cancel').addEventListener('click', function(){
+    S.pricing = {saved:false, surcharge:'none', flat:'', perkm:'', deposit:'none', depositPct:''};
+    renderPricingDrawer(); drawer(false);
+  });
+  document.getElementById('drawer-save').addEventListener('click', function(){
+    S.pricing.saved = true; renderPricingDrawer();
+  });
+  document.getElementById('drawer-scrim').addEventListener('click', function(){ drawer(false); });
+
+  /* ═════════════ one door ═════════════ */
+  var CATS = [
+    ['Tours & Experiences','Walks, museum tours, cultural sessions'],
+    ['Food & Culinary','Private chefs, cooking lessons, food tours'],
+    ['Photography & Videography','Portrait, event, travel video'],
+    ['Transportation & Logistics','Transfers, day trips, specialty transport'],
+    ['Arts & Crafts Instruction','Pottery, calligraphy, ikebana, dance'],
+    ['Personal Assistance','Trip planning, errands, concierge'],
+    ['Events & Celebrations','Proposals, birthdays, small weddings'],
+    ['Beauty & Styling','Hair, make-up, kimono dressing'],
+    ['Restaurants & Dining','Private dining, tastings, venue seats'],
+    ['Lodging & Accommodation','Rooms, homestays, glamping'],
+    ['Entertainment','Musicians, performers, hosts'],
+    ['Rental Services','Bikes, gear, cameras, kimono']
+  ];
+  var catEl = document.getElementById('cats');
+  CATS.forEach(function(c){
+    var b = document.createElement('button');
+    b.className = 'cat';
+    b.innerHTML = '<b>'+c[0]+'</b><span>'+c[1]+'</span>';
+    b.addEventListener('click', function(){ S.step = 0; render(); showTab('flow'); });
+    catEl.appendChild(b);
+  });
+  document.getElementById('tile-single').addEventListener('click', function(){ S.step = 0; render(); showTab('flow'); });
+  document.getElementById('tile-property').addEventListener('click', function(){ propPanel(true); });
+
+  /* ═════════════ catalog listings ═════════════ */
+  var LISTINGS = [
+    {n:'Morning Tea Ceremony in a Machiya Townhouse', m:'In person · Gion, Kyoto · $68 per person', s:'draft', st:'Draft', h:62, warn:true, hn:'Needs a cover photo'},
+    {n:'Tokyo Like a Local — 3-Day Neighbourhood Guide', m:'PDF guide · instant delivery · $24', s:'live', st:'Live', h:94, warn:false, hn:'Complete'},
+    {n:'Kyoto Trip Planning Call — 45 minutes', m:'Video call · 45 min · $40', s:'', st:'In review', h:88, warn:false, hn:'Complete'},
+    {n:'Kimono Dressing & Gion Photo Walk', m:'In person · Higashiyama · $120 per group', s:'live', st:'Live', h:71, warn:true, hn:'2 route stops unlocated'}
+  ];
+  var lel = document.getElementById('listings');
+  LISTINGS.forEach(function(l){
+    var d = document.createElement('div');
+    d.className = 'listing';
+    d.innerHTML =
+      '<div class="thumb"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+        '<rect x="3" y="5" width="18" height="14" rx="2.5" stroke="#B8B6AC" stroke-width="1.6"/>' +
+        '<path d="M5 16l4.5-5 3.2 3.6L15.5 12 19 16" stroke="#B8B6AC" stroke-width="1.6" stroke-linejoin="round"/></svg></div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div class="lname">'+l.n+'</div><div class="lmeta">'+l.m+'</div>' +
+        '<div style="display:flex;gap:14px;align-items:center;margin-top:9px;flex-wrap:wrap;">' +
+          '<span class="pill '+l.s+'">'+l.st+'</span>' +
+          '<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--muted);cursor:pointer;">' +
+            '<span class="track" style="width:32px;height:18px;border-radius:100px;background:'+(l.s==='live'?'var(--accent)':'var(--hair)')+';position:relative;display:inline-block;">' +
+            '<span style="position:absolute;top:2px;left:'+(l.s==='live'?'16px':'2px')+';width:14px;height:14px;border-radius:100px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);"></span></span>' +
+            'Show on my storefront</label>' +
+        '</div>' +
+      '</div>' +
+      '<div class="lright">' +
+        '<div class="health"><span class="healthbar'+(l.warn?' warn':'')+'"><i style="width:'+l.h+'%"></i></span>'+l.hn+'</div>' +
+        '<button class="btn ghost sm">Edit</button>' +
+        '<button class="btn link" style="font-size:12.5px;">Promote this →</button>' +
+      '</div>';
+    lel.appendChild(d);
+  });
+
+  /* ═════════════ fix pack interactions ═════════════ */
+  document.getElementById('fix-a5-range').addEventListener('input', function(e){
+    document.getElementById('fix-a5-val').textContent = e.target.value + ' km';
+  });
+  document.getElementById('fix-a3-link').addEventListener('click', function(){
+    S.method = 'in_person'; resetForMethod(); S.pinState = null; S.step = 1; render(); showTab('flow');
+  });
+  function modal(on){ document.getElementById('modal-scrim').classList.toggle('on', on); }
+  document.getElementById('fix-a4-new').addEventListener('click', function(){ modal(true); });
+  document.getElementById('modal-cancel').addEventListener('click', function(){ modal(false); });
+  document.getElementById('modal-confirm').addEventListener('click', function(){ modal(false); });
+  document.getElementById('modal-scrim').addEventListener('click', function(e){
+    if (e.target === document.getElementById('modal-scrim')) modal(false);
+  });
+  document.getElementById('fix-a4-old').addEventListener('click', function(){
+    var b = document.getElementById('fix-a4-old');
+    b.textContent = 'Gone. No confirmation, no undo.';
+    setTimeout(function(){ b.textContent = 'Delete'; }, 1800);
+  });
+
+  /* ═════════════ mapping tab ═════════════ */
+  var M = {
+    pin:null,              /* {x,y} candidate or confirmed */
+    pinConfirmed:false,
+    radius:8,
+    showRadius:true,
+    showStops:true,
+    showZones:false,
+    armed:null,            /* null | 'pin' | 'stop' | {relocate:i} */
+    note:'',
+    stops:[
+      {name:'Gion-Shijo station, north exit', x:20, y:66},
+      {name:'The machiya — Hanamikoji-dori',  x:47, y:45},
+      {name:'Yasaka shrine tea garden',       x:null, y:null}
+    ]
+  };
+
+  function baseMapSvg(seedShift){
+    var s = seedShift || 0, lines = '';
+    for (var x=30+s; x<700; x+=58){ lines += '<line x1="'+x+'" y1="0" x2="'+(x-30)+'" y2="300" stroke="#E2E0D6" stroke-width="8"/>'; }
+    for (var y=28; y<300; y+=44){ lines += '<line x1="0" y1="'+y+'" x2="700" y2="'+(y+12)+'" stroke="#E6E4DA" stroke-width="5"/>'; }
+    return '<svg class="base" viewBox="0 0 700 300" preserveAspectRatio="none" aria-hidden="true">' +
+      '<rect width="700" height="300" fill="#F2F1EB"/>' + lines +
+      '<path d="M0 224 C 150 196, 280 262, 440 212 S 650 168, 700 190 L700 300 L0 300 Z" fill="#E3E9E8"/>' +
+      '<rect x="470" y="36" width="140" height="86" rx="7" fill="#E4E9DF"/>' +
+      '<rect x="62" y="44" width="96" height="62" rx="6" fill="#EBE8DE"/>' +
+      '<rect x="228" y="140" width="88" height="54" rx="6" fill="#EBE8DE"/>' +
+      '</svg>';
+  }
+
+  function connectorSvg(pts){
+    if (pts.length < 2) return '<svg aria-hidden="true"></svg>';
+    var d = '';
+    for (var i=0;i<pts.length-1;i++){
+      d += '<line x1="'+pts[i].x+'" y1="'+pts[i].y+'" x2="'+pts[i+1].x+'" y2="'+pts[i+1].y+'" ' +
+           'stroke="#35605A" stroke-width="1.6" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" opacity="0.85"/>';
+    }
+    return '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+d+'</svg>';
+  }
+
+  function pinSvg(confirmed){
+    return confirmed
+      ? '<svg width="26" height="34" viewBox="0 0 26 34" fill="none" aria-hidden="true">' +
+        '<path d="M13 33s11-12.4 11-20A11 11 0 102 13c0 7.6 11 20 11 20z" fill="#35605A"/>' +
+        '<circle cx="13" cy="13" r="4.1" fill="#FAFAF8"/></svg>'
+      : '<svg width="26" height="34" viewBox="0 0 26 34" fill="none" aria-hidden="true">' +
+        '<path d="M13 33s11-12.4 11-20A11 11 0 102 13c0 7.6 11 20 11 20z" fill="#FAFAF8" stroke="#35605A" ' +
+        'stroke-width="2" stroke-dasharray="4 3"/><circle cx="13" cy="13" r="3.6" fill="#35605A" opacity=".45"/></svg>';
+  }
+
+  function renderBigMap(){
+    var box  = document.getElementById('bigmap');
+    var over = document.getElementById('bigmap-overlay');
+    document.getElementById('bigmap-base').innerHTML = baseMapSvg();
+    box.classList.toggle('armed', !!M.armed);
+
+    var html = '';
+
+    /* zones + radius ring, only around a CONFIRMED pin */
+    if (M.pin && M.pinConfirmed){
+      if (M.showZones){
+        var z1 = 118, z2 = 214;
+        html += '<div class="ring zone1" style="left:'+M.pin.x+'%;top:'+M.pin.y+'%;width:'+z1+'px;height:'+z1+'px;"></div>';
+        html += '<div class="ring zone2" style="left:'+M.pin.x+'%;top:'+M.pin.y+'%;width:'+z2+'px;height:'+z2+'px;"></div>';
+        html += '<div class="zonetag" style="left:'+M.pin.x+'%;top:calc('+M.pin.y+'% - '+(z1/2)+'px);">included</div>';
+        html += '<div class="zonetag" style="left:'+M.pin.x+'%;top:calc('+M.pin.y+'% - '+(z2/2)+'px);">+$15</div>';
+      }
+      if (M.showRadius){
+        var rp = 34 + M.radius * 6.2;
+        html += '<div class="ring radius" style="left:'+M.pin.x+'%;top:'+M.pin.y+'%;width:'+rp+'px;height:'+rp+'px;"></div>';
+      }
+    }
+
+    /* connectors between located stops, in order */
+    if (M.showStops){
+      var located = M.stops.filter(function(s){ return s.x !== null; });
+      html += '<div class="overlay">'+connectorSvg(located)+'</div>';
+      var n = 0;
+      M.stops.forEach(function(s){
+        if (s.x === null) return;
+        n++;
+        html += '<div class="mk stop" style="left:'+s.x+'%;top:'+s.y+'%;"><div class="bub">'+n+'</div></div>';
+      });
+    }
+
+    /* the pin last, so it sits on top */
+    if (M.pin){
+      html += '<div class="mk" style="left:'+M.pin.x+'%;top:'+M.pin.y+'%;">' + pinSvg(M.pinConfirmed) +
+        '<span class="cap">' + (M.pinConfirmed ? 'Meeting point' : 'Unconfirmed — press Confirm') + '</span></div>';
+    }
+    over.innerHTML = html;
+
+    /* arm bar */
+    var bar = document.getElementById('armbar');
+    var txt = document.getElementById('armbar-text');
+    bar.classList.toggle('arm', !!M.armed);
+    if (M.armed === 'pin')          txt.innerHTML = '<b>Armed.</b> Click the map to place the meeting pin.';
+    else if (M.armed === 'stop')    txt.innerHTML = '<b>Armed.</b> Click the map to drop the next stop.';
+    else if (M.armed && M.armed.relocate !== undefined)
+                                    txt.innerHTML = '<b>Armed.</b> Click the map to place “' + M.stops[M.armed.relocate].name + '”.';
+    else if (M.note)                txt.innerHTML = '<span style="color:var(--warn-ink)">'+M.note+'</span>';
+    else                            txt.innerHTML = 'Nothing armed. Pick a mode, then click the map.';
+    document.getElementById('arm-pin').textContent  = M.pin ? 'Move the meeting pin' : 'Place the meeting pin';
+    document.getElementById('arm-pin').className    = 'btn ' + (M.armed === 'pin' ? 'accent' : 'ghost') + ' sm';
+    document.getElementById('arm-stop').className   = 'btn ' + (M.armed === 'stop' ? 'accent' : 'ghost') + ' sm';
+
+    /* caption under the map */
+    var loc = M.stops.filter(function(s){ return s.x !== null; }).length;
+    document.getElementById('map-caption').innerHTML =
+      'A <b style="color:var(--ink)">bare map click does nothing</b> — placing anything needs an explicitly armed ' +
+      'mode, so panning and zooming never drop a stray pin. ' + loc + ' of ' + M.stops.length + ' stops located; ' +
+      'unlocated stops stay in the list and off the map. Straight dashed connectors are the visiting ' +
+      '<b style="color:var(--ink)">sequence, not travel routing</b>.';
+
+    /* pin card */
+    document.getElementById('pin-pill').textContent =
+      !M.pin ? 'Not placed' : (M.pinConfirmed ? 'Confirmed' : 'Unconfirmed');
+    document.getElementById('pin-pill').className = 'pill ' + (M.pinConfirmed ? 'live' : (M.pin ? 'draft' : ''));
+
+    var slot = document.getElementById('pin-confirm-slot');
+    if (M.pin && !M.pinConfirmed){
+      slot.innerHTML =
+        '<div class="notice" style="margin-top:10px;">Pin placed but <b>not saved</b>. Nothing is stored until you confirm.</div>' +
+        '<div style="display:flex;gap:8px;margin-top:9px;">' +
+          '<button class="btn accent sm" id="pin-confirm">Confirm this location</button>' +
+          '<button class="btn ghost sm" id="pin-discard">Discard</button></div>';
+      document.getElementById('pin-confirm').addEventListener('click', function(){
+        M.pinConfirmed = true; M.armed = null; M.note = ''; renderBigMap();
+      });
+      document.getElementById('pin-discard').addEventListener('click', function(){
+        M.pin = null; M.pinConfirmed = false; M.armed = null; M.note = ''; renderBigMap();
+      });
+    } else if (M.pin){
+      slot.innerHTML = '<div style="margin-top:10px;font-size:12px;color:var(--accent)">Confirmed at 35.0037, 135.7788.</div>' +
+        '<button class="btn ghost sm" id="pin-remove" style="margin-top:8px;">Remove pin</button>';
+      document.getElementById('pin-remove').addEventListener('click', function(){
+        M.pin = null; M.pinConfirmed = false; renderBigMap();
+      });
+    } else {
+      slot.innerHTML = '';
+    }
+
+    /* layer toggles */
+    document.getElementById('tog-radius').setAttribute('aria-pressed', String(M.showRadius));
+    document.getElementById('tog-stops').setAttribute('aria-pressed', String(M.showStops));
+    document.getElementById('tog-zones').setAttribute('aria-pressed', String(M.showZones));
+    var needPin = !(M.pin && M.pinConfirmed);
+    ['tog-radius','tog-zones'].forEach(function(id){
+      document.getElementById(id).setAttribute('aria-disabled', String(needPin));
+    });
+
+    var rs = document.getElementById('radius-slot');
+    rs.innerHTML = needPin
+      ? '<div class="capline" style="margin:0 0 0 39px;">Needs a confirmed pin — a radius has no centre without one.</div>'
+      : '<div style="margin-left:39px;"><input type="range" min="0" max="30" value="'+M.radius+'" id="map-radius"></div>' +
+        '<div class="capline" style="margin:4px 0 0 39px;">Included free up to <b style="color:var(--ink)">'+M.radius+' km</b>. One radius, one label.</div>';
+    var mr = document.getElementById('map-radius');
+    if (mr) mr.addEventListener('input', function(){ M.radius = +mr.value; renderBigMap(); });
+
+    /* stop list */
+    var sl = document.getElementById('rail-stops');
+    sl.innerHTML = '';
+    var num = 0;
+    M.stops.forEach(function(s, i){
+      var on = s.x !== null;
+      if (on) num++;
+      var row = document.createElement('div');
+      row.className = 'stoprow';
+      row.innerHTML =
+        '<span class="pos'+(on?'':' un')+'">'+(on ? num : '–')+'</span>' +
+        '<input value="'+s.name.replace(/"/g,'&quot;')+'" aria-label="Stop name">' +
+        (on ? '<button class="btn link" data-mv="'+i+'" style="font-size:11.5px;">Move</button>'
+            : '<button class="btn link" data-mv="'+i+'" style="font-size:11.5px;">Place on map</button>') +
+        '<button class="btn link" data-rm="'+i+'" style="font-size:11.5px;color:var(--muted)">Remove</button>';
+      sl.appendChild(row);
+      row.querySelector('input').addEventListener('input', function(e){ M.stops[i].name = e.target.value; });
+    });
+    sl.querySelectorAll('[data-mv]').forEach(function(b){
+      b.addEventListener('click', function(){ M.armed = {relocate:+b.dataset.mv}; M.note=''; renderBigMap(); armScroll(); });
+    });
+    sl.querySelectorAll('[data-rm]').forEach(function(b){
+      b.addEventListener('click', function(){ M.stops.splice(+b.dataset.rm,1); renderBigMap(); });
+    });
+    document.getElementById('stops-pill').textContent =
+      M.stops.filter(function(s){return s.x!==null;}).length + ' of ' + M.stops.length + ' located';
+  }
+
+  /* arming from the rail scrolls the canvas into view — you cannot click a map you cannot see */
+  function armScroll(){
+    if (!M.armed) return;
+    var el = document.getElementById('bigmap');
+    var r = el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({block:'center'});
+  }
+
+  document.getElementById('bigmap').addEventListener('click', function(e){
+    if (e.target.closest('.armbar')) return;
+    var r = this.getBoundingClientRect();
+    var x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10;
+    var y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10;
+    if (M.armed === 'pin'){
+      M.pin = {x:x, y:y}; M.pinConfirmed = false; M.armed = null; M.note = '';
+    } else if (M.armed === 'stop'){
+      M.stops.push({name:'New stop', x:x, y:y}); M.armed = null; M.note = '';
+    } else if (M.armed && M.armed.relocate !== undefined){
+      M.stops[M.armed.relocate].x = x; M.stops[M.armed.relocate].y = y; M.armed = null; M.note = '';
+    } else {
+      M.note = 'That click did nothing — arm a mode first. This is deliberate: a bare click must never drop a pin.';
+    }
+    renderBigMap();
+  });
+  document.getElementById('arm-pin').addEventListener('click', function(){
+    M.armed = (M.armed === 'pin') ? null : 'pin'; M.note = ''; renderBigMap(); armScroll();
+  });
+  document.getElementById('arm-stop').addEventListener('click', function(){
+    M.armed = (M.armed === 'stop') ? null : 'stop'; M.note = ''; renderBigMap(); armScroll();
+  });
+  document.getElementById('rail-add-stop').addEventListener('click', function(){
+    M.stops.push({name:'New stop', x:null, y:null}); renderBigMap();
+  });
+  ['radius','stops','zones'].forEach(function(k){
+    var id = 'tog-' + k, prop = 'show' + k.charAt(0).toUpperCase() + k.slice(1);
+    document.getElementById(id).addEventListener('click', function(){
+      if (document.getElementById(id).getAttribute('aria-disabled') === 'true'){
+        M.note = 'Confirm the meeting pin first — this layer is drawn around it.'; renderBigMap(); return;
+      }
+      M[prop] = !M[prop]; renderBigMap();
+    });
+  });
+  document.getElementById('map-open-pricing').addEventListener('click', function(){ showTab('draft'); renderPricingDrawer(); drawer(true); });
+
+  /* small static maps: two mounts + traveler strip */
+  function miniMap(opts){
+    var h = '<div class="minimap">' + baseMapSvg(opts.shift||0) + '<div class="overlay">';
+    if (opts.ring){ h += '<div class="ring radius" style="left:'+opts.pin.x+'%;top:'+opts.pin.y+'%;width:'+opts.ring+'px;height:'+opts.ring+'px;"></div>'; }
+    if (opts.stops && opts.stops.length){
+      h += '<div class="overlay">'+connectorSvg(opts.stops)+'</div>';
+      opts.stops.forEach(function(s,i){
+        h += '<div class="mk stop" style="left:'+s.x+'%;top:'+s.y+'%;"><div class="bub" style="width:18px;height:18px;font-size:10px;">'+(i+1)+'</div></div>';
+      });
+    }
+    if (opts.pin){
+      h += '<div class="mk" style="left:'+opts.pin.x+'%;top:'+opts.pin.y+'%;">' + (opts.candidate
+        ? '<svg width="19" height="25" viewBox="0 0 26 34" fill="none" aria-hidden="true">' +
+          '<path d="M13 33s11-12.4 11-20A11 11 0 102 13c0 7.6 11 20 11 20z" fill="#FAFAF8" stroke="#35605A" ' +
+          'stroke-width="2.4" stroke-dasharray="4 3"/><circle cx="13" cy="13" r="3.6" fill="#35605A" opacity=".45"/></svg>' +
+          '<span class="cap" style="font-size:9px;padding:0 6px;">Unconfirmed</span>'
+        : '<svg width="19" height="25" viewBox="0 0 26 34" fill="none" aria-hidden="true">' +
+          '<path d="M13 33s11-12.4 11-20A11 11 0 102 13c0 7.6 11 20 11 20z" fill="#35605A"/>' +
+          '<circle cx="13" cy="13" r="4.1" fill="#FAFAF8"/></svg>') + '</div>';
+    }
+    h += '</div><div class="maplabel" style="font-size:9.5px;padding:2px 7px;">Map preview — illustrative</div>' +
+         '<div class="mapattr" style="font-size:9px;">© OpenStreetMap contributors</div></div>';
+    return h;
+  }
+  var MINI_STOPS = [{x:20,y:66},{x:47,y:45},{x:72,y:58}];
+  document.getElementById('mini-a').innerHTML =
+    miniMap({pin:{x:36,y:28}, stops:MINI_STOPS, candidate:true}) +
+    '<div style="display:flex;gap:7px;align-items:center;border:1px solid var(--accent);border-radius:6px;' +
+    'padding:7px 9px;margin-top:8px;background:var(--accent-soft);">' +
+      '<span style="flex:1;font-size:11px;color:var(--accent);">Pin placed but <b>not saved</b>.</span>' +
+      '<span class="btn accent sm" style="font-size:10.5px;padding:3px 8px;">Confirm this location</span>' +
+      '<span class="btn ghost sm" style="font-size:10.5px;padding:3px 8px;background:var(--paper);">Discard</span>' +
+    '</div>';
+  document.getElementById('mini-b').innerHTML = miniMap({pin:{x:36,y:28}, ring:70, stops:MINI_STOPS, shift:6});
+  document.getElementById('mini-t1').innerHTML = miniMap({pin:{x:50,y:52}, ring:88});
+  document.getElementById('mini-t2').innerHTML = miniMap({stops:MINI_STOPS, shift:12});
+
+  /* ═════════════ boot ═════════════ */
+  render();
+  syncDraftHero();
+  renderBigMap();
+})();
+</script>
+</body>
+</html>
