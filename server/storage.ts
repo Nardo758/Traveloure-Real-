@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
@@ -1647,7 +1648,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProviderService(id: string): Promise<void> {
-    await db.delete(providerServices).where(eq(providerServices.id, id));
+    // Financial-history guard: suspend instead of delete when bookings reference the row
+    // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
+    await guardedDeleteProviderService(id);
   }
 
   async upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void> {
@@ -3301,11 +3304,18 @@ export class DatabaseStorage implements IStorage {
       .from(expertServiceOfferings)
       .where(eq(expertServiceOfferings.id, serviceOfferingId));
     if (!offering) return;
-    await db.delete(providerServices)
+    // Financial-history guard: this matches by owner+name, so resolve the concrete row ids
+    // first, then run each through the guarded delete (suspend when bookings exist —
+    // service_bookings.service_id is ON DELETE CASCADE).
+    const rows = await db.select({ id: providerServices.id })
+      .from(providerServices)
       .where(and(
         eq(providerServices.userId, expertId),
         eq(providerServices.serviceName, offering.name)
       ));
+    for (const row of rows) {
+      await guardedDeleteProviderService(row.id);
+    }
   }
 
   // Expert Specializations
@@ -3605,7 +3615,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProviderServiceListing(id: string): Promise<void> {
-    await db.delete(providerServices).where(eq(providerServices.id, id));
+    // Financial-history guard: suspend instead of delete when bookings reference the row
+    // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
+    await guardedDeleteProviderService(id);
   }
 
   async getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]> {
