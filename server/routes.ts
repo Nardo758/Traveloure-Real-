@@ -2277,6 +2277,120 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // ── D1 (ruling 74/76): per-listing publish-readiness summary for the Distribute
+  //    Marketplace channel. Owner-gated (service.userId === session user, §14 identity from
+  //    the session never the body) and read-only. It COMPOSES the three existing gate
+  //    authorities — it re-derives none of them:
+  //      • approval + active status  ← the provider_services row (the owner console read)
+  //      • verification gate         ← resolvePublishVerification(ownerId)  (F2, account-level)
+  //      • attestation gate          ← resolveAttestationShape + checkAttestationPublishGate
+  //                                     (SS-5a, per-listing, applicable set server-derived)
+  //    §13: a listing that CANNOT go live returns the TRUE blocker(s) with a fix deep-link,
+  //    never an optimistic "ready". "Live" is asserted only when approval='approved' AND
+  //    status='active' AND both gates pass — the same predicate the storefront read enforces.
+  //    The attestation gate is resolved against the LIVE row shape (no overrides — this is a
+  //    read of what-is, not a would-be write). Justification for a new endpoint over composing
+  //    client-side: the attestation APPLICABLE set is server-derived only (a client deciding
+  //    its own applicable set is exactly the walk-past the gate service forbids), so the honest
+  //    state cannot be assembled on the client without duplicating that logic.
+  app.get("/api/provider/services/:id/publish-readiness", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const approvalStatus = service.approvalStatus ?? "draft";
+      const status = service.status ?? "draft";
+
+      // Verification gate — the SAME resolver the publish choke points use; owner id, not actor.
+      const verification = await resolvePublishVerification(userId);
+
+      // Attestation gate — resolve the live shape, then ask the shared gate whether it blocks.
+      const attestShape = await resolveAttestationShape({ serviceId: service.id });
+      const attestGate = await checkAttestationPublishGate({ serviceId: service.id, shape: attestShape });
+      const attestationOk = attestGate === null;
+      const unaffirmed = attestGate
+        ? ((attestGate.body.attestations as { key: string; label: unknown }[] | undefined) ?? [])
+        : [];
+
+      const isApproved = approvalStatus === "approved";
+      const isActive = status === "active";
+      // "Live" = the SAME predicate the public storefront read (loadStorefront) actually serves:
+      // approved AND active. The verification/attestation gates are PUBLISH gates — they block a
+      // TRANSITION to active, not continuous serving — so a grandfathered approved+active listing
+      // on an as-yet-unverified account is genuinely live to travelers, and the Storefront header
+      // on THIS page reports it live too. Folding the publish gates into `isLive` would contradict
+      // both. Instead they surface below as the reasons a NON-active listing can't be activated.
+      const isLive = isApproved && isActive;
+
+      // Honest, ordered blocker list for a listing that is NOT live — each carries a fix
+      // deep-link (§13: the real reason, never a fake "ready"). Order = the sequence the owner
+      // resolves them in. Empty when the listing is live.
+      const blockers: { code: string; message: string; fixHref: string }[] = [];
+      if (!isLive) {
+        if (!verification.ok) {
+          blockers.push({
+            code: "VERIFICATION_GATE",
+            message: isProviderRole(verification.role)
+              ? "Finish identity and business verification before this listing can go live."
+              : "Finish identity verification before this listing can go live.",
+            fixHref: isExpertRole(verification.role) ? "/expert-status" : "/provider-status",
+          });
+        }
+        if (!attestationOk) {
+          blockers.push({
+            code: "ATTESTATION_GATE",
+            message: "Affirm the statements on this listing before publishing it.",
+            fixHref: `/provider/services/${service.id}/edit`,
+          });
+        }
+        if (!isApproved) {
+          blockers.push({
+            code: approvalStatus === "rejected" ? "APPROVAL_REJECTED" : "APPROVAL_PENDING",
+            message:
+              approvalStatus === "rejected"
+                ? "This listing was rejected in review — edit and resubmit it."
+                : "This listing is in review. It goes live once approved.",
+            fixHref: `/provider/services/${service.id}/edit`,
+          });
+        } else if (!isActive) {
+          blockers.push({
+            code: "NOT_ACTIVE",
+            message:
+              status === "paused"
+                ? "This listing is paused. Reactivate it in Catalog to sell it."
+                : "This listing is approved but not active yet. Activate it in Catalog.",
+            fixHref: `/provider/services`,
+          });
+        }
+      }
+
+      res.json({
+        serviceId: service.id,
+        name: (service as any).serviceName ?? (service as any).name ?? "",
+        approvalStatus,
+        status,
+        isLive,
+        publicHref: `/services/${service.id}`,
+        verification: {
+          ok: verification.ok,
+          role: verification.role,
+          identityVerified: verification.identityVerified,
+          businessVerified: verification.businessVerified,
+        },
+        attestation: {
+          ok: attestationOk,
+          unaffirmed,
+        },
+        blockers,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to resolve publish readiness" });
+    }
+  });
+
   // Ruling 22: replace-list write for a service's ordered route stops. Owner-gated like the
   // sibling PATCH; ALLOWLIST body (§19 posture — nothing but name + coordinates can reach a
   // row, and positions are derived server-side from array order, never client-numbered).

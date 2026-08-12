@@ -208,7 +208,9 @@ const inspirationCards = [
 // (react-query dedups the key — no new endpoint), filtered by the public read-gate
 // (storefront.routes.ts serves approved+active services; 404 at zero — that IS "not live").
 // §13: no chip renders until the real count is loaded.
-function ProviderStorefrontHeader() {
+// Exported (D1, ruling 74/76) so the Distribute page's Storefront channel mounts the SAME
+// component — a second mount, not a move (per ruling 74 the storefront tools STAY on Catalog).
+export function ProviderStorefrontHeader() {
   const { toast } = useToast();
   const { user } = useAuth();
   const handle = (user as any)?.handle as string | null | undefined;

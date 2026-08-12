@@ -74,6 +74,7 @@ import {
   Play,
   X,
   CalendarRange,
+  Share2,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -583,6 +584,14 @@ export default function ProviderWorkstation() {
           title="Workstation"
           subtitle="One door for building what you sell — start with a service, grow into bundles."
           testId="text-workstation-title"
+          actions={
+            // Catalog+Distribute (ruling 74, lane D1): the on-ramp into the distribution hub.
+            <Link href="/provider/distribute">
+              <Button size="sm" variant="outline" data-testid="button-goto-distribute">
+                <Share2 className="w-4 h-4 mr-1.5" /> Distribute
+              </Button>
+            </Link>
+          }
         />
 
         {/* ── The creation ladder (§17): single service → bundle → property ─────── */}
