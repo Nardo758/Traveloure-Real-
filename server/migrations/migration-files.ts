@@ -963,4 +963,19 @@ export const MIGRATION_FILES = [
   // Both are DISPLAY prefs, NOT money/identity/rate fields — legitimately client-settable, not
   // stripped. Both DECLARED in shared/schema.ts (publish-trap rule); additive, no CHECK.
   "202_service_display_options.sql",
+  // 203: completion-mint race guards (task 1091 review; RENUMBERED from 195 during the Aug 12
+  // 2026 reconciliation of the replit line into main — my line already owned 195/196; ledger
+  // row 80). Partial unique indexes on provider_earnings(source_id) WHERE source_type='booking',
+  // expert_earnings(reference_id) WHERE reference_type='service_booking', and
+  // platform_revenue(source_id) WHERE source_type='booking_commission' — the DB half of the
+  // idempotent completion mint (INSERT ... ON CONFLICT DO NOTHING), so concurrent traveler
+  // confirm / auto-complete scheduler / reconciliation callers can never double-mint. Dedupes
+  // pre-existing duplicates first (keep paid_out, else earliest). Declared in shared/schema.ts
+  // (publish-trap rule) — LOAD-BEARING for mint idempotency.
+  "203_completion_mint_unique_guards.sql",
+  // 204: expert profile display fields — additive nullable display_name/headline on
+  // local_expert_forms so the expert profile editor can persist the public-facing
+  // name/tagline it exposes (RENUMBERED from 196 during the Aug 12 2026 reconciliation).
+  // Declared in shared/schema.ts (publish-trap).
+  "204_expert_profile_display_fields.sql",
 ] as const;

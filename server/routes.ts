@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
+import { validateImageDataUrl } from "./utils/imageValidation";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
@@ -173,7 +174,6 @@ import {
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
-  getExpertSplitRates,
   resolveExpertSharePct,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
@@ -662,6 +662,8 @@ export async function registerRoutes(
   const EXPERT_SELF_SERVICE_PREFIXES = [
     "/api/expert/neighborhoods",
     "/api/expert/profile-notes",
+    "/api/expert/profile",
+    "/api/expert/photo",
     "/api/expert/selected-services",
     "/api/expert/specializations",
     "/api/expert/service-listings",
@@ -1877,6 +1879,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = insertLocalExpertFormSchema.parse(req.body);
+          const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+          if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
@@ -1897,6 +1901,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const input = insertLocalExpertFormSchema.parse(req.body);
+      const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+      if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
@@ -1928,6 +1934,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = insertLocalExpertFormSchema.parse(req.body);
+          const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+          if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
@@ -1947,6 +1955,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
+      const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+      if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
@@ -3708,7 +3718,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cleaned: string[] = [];
       for (const raw of neighborhoods) {
         if (typeof raw !== "string") continue;
-        const trimmed = raw.trim();
+        // Sanitize server-side: strip HTML tags / escape dangerous characters (stored-XSS defense)
+        const trimmed = sanitizeInput(raw);
         if (!trimmed) continue;
         const key = trimmed.toLowerCase();
         if (!seen.has(key)) {
@@ -3724,7 +3735,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
 
-      await storage.updateLocalExpertFormNeighborhoods(userId, cleaned, localityProof ?? "");
+      await storage.updateLocalExpertFormNeighborhoods(
+        userId,
+        cleaned,
+        sanitizeInput(localityProof ?? ""),
+      );
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert neighborhoods:", err);
@@ -3740,11 +3755,129 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (typeof notesStyle !== "string") {
         return res.status(400).json({ message: "notesStyle must be a string" });
       }
-      await storage.updateLocalExpertFormNotesStyle(userId, notesStyle.trim());
+      // Sanitize server-side (stored-XSS defense) and reject empty/whitespace-only input
+      const cleanedNotesStyle = sanitizeInput(notesStyle);
+      if (!cleanedNotesStyle) {
+        return res.status(400).json({ message: "notesStyle cannot be empty" });
+      }
+      await storage.updateLocalExpertFormNotesStyle(userId, cleanedNotesStyle);
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert notes style:", err);
       res.status(500).json({ message: "Failed to save" });
+    }
+  });
+
+  // PATCH /api/expert/profile — Save the expert's public profile fields
+  // (bio / headline / displayName / first+last name / city / country / languages).
+  // Writes name+bio to the users row (the auth identity + public listing source)
+  // and the display fields to local_expert_forms (the public detail-page source).
+  app.patch("/api/expert/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const body = req.body ?? {};
+
+      const strField = (key: string, max: number): string | undefined => {
+        const v = body[key];
+        if (v === undefined) return undefined;
+        if (typeof v !== "string") throw new Error(`${key} must be a string`);
+        // Sanitize server-side: strip HTML tags / escape dangerous characters (stored-XSS defense)
+        const trimmed = sanitizeInput(v.trim());
+        if (trimmed.length > max) throw new Error(`${key} must be at most ${max} characters`);
+        return trimmed;
+      };
+
+      let firstName: string | undefined,
+        lastName: string | undefined,
+        displayName: string | undefined,
+        headline: string | undefined,
+        bio: string | undefined,
+        city: string | undefined,
+        country: string | undefined;
+      let languages: string[] | undefined;
+      try {
+        firstName = strField("firstName", 100);
+        lastName = strField("lastName", 100);
+        displayName = strField("displayName", 100);
+        headline = strField("headline", 150);
+        bio = strField("bio", 500);
+        city = strField("city", 100);
+        country = strField("country", 100);
+        if (body.languages !== undefined) {
+          if (!Array.isArray(body.languages)) throw new Error("languages must be an array");
+          const seen = new Set<string>();
+          languages = [];
+          for (const raw of body.languages) {
+            if (typeof raw !== "string") continue;
+            // Sanitize server-side (stored-XSS defense)
+            const trimmed = sanitizeInput(raw.trim());
+            if (!trimmed || trimmed.length > 50) continue;
+            const key = trimmed.toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              languages.push(trimmed);
+            }
+          }
+          if (languages.length > 20) throw new Error("You can list at most 20 languages");
+        }
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
+
+      // users row: identity + the bio the public /api/experts listing reads.
+      const userUpdates: Record<string, any> = {};
+      if (firstName !== undefined) userUpdates.firstName = firstName;
+      if (lastName !== undefined) userUpdates.lastName = lastName;
+      if (bio !== undefined) userUpdates.bio = bio;
+      if (Object.keys(userUpdates).length > 0) {
+        await db.update(users).set(userUpdates).where(eq(users.id, userId));
+      }
+
+      // local_expert_forms row: public detail-page display fields.
+      const formUpdates: Record<string, any> = {};
+      if (firstName !== undefined) formUpdates.firstName = firstName;
+      if (lastName !== undefined) formUpdates.lastName = lastName;
+      if (displayName !== undefined) formUpdates.displayName = displayName;
+      if (headline !== undefined) formUpdates.headline = headline;
+      if (bio !== undefined) formUpdates.bio = bio;
+      if (city !== undefined) formUpdates.city = city;
+      if (country !== undefined) formUpdates.country = country;
+      if (languages !== undefined) formUpdates.languages = languages;
+      if (Object.keys(formUpdates).length > 0) {
+        await storage.updateLocalExpertFormProfileFields(userId, formUpdates);
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert profile:", err);
+      res.status(500).json({ message: "Failed to save profile" });
+    }
+  });
+
+  // PATCH /api/expert/photo — Save the expert's profile photo.
+  // Accepts a base64 data URL; server-side validation of type + decoded size.
+  app.patch("/api/expert/photo", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { imageData } = req.body ?? {};
+      if (typeof imageData !== "string") {
+        return res.status(400).json({ message: "imageData must be a base64 data URL string" });
+      }
+      const match = imageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) {
+        return res.status(400).json({ message: "Photo must be a PNG, JPEG, or WebP image" });
+      }
+      const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB decoded
+      // base64 → bytes: 4 chars encode 3 bytes.
+      const approxBytes = Math.floor((match[2].length * 3) / 4);
+      if (approxBytes > MAX_PHOTO_BYTES) {
+        return res.status(400).json({ message: "Photo must be smaller than 2 MB" });
+      }
+      await db.update(users).set({ profileImageUrl: imageData }).where(eq(users.id, userId));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert photo:", err);
+      res.status(500).json({ message: "Failed to save photo" });
     }
   });
 
@@ -3779,10 +3912,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Add specialization to expert's profile (authenticated)
   app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const { specialization } = req.body;
-    const spec = await storage.addExpertSpecialization(userId, specialization);
-    res.json(spec);
+    try {
+      const userId = getUserId(req)!;
+      const { specialization } = req.body;
+      if (typeof specialization !== "string") {
+        return res.status(400).json({ message: "specialization must be a string" });
+      }
+      // Sanitize server-side (stored-XSS defense) and reject empty/whitespace-only input
+      const cleaned = sanitizeInput(specialization);
+      if (!cleaned) {
+        return res.status(400).json({ message: "specialization cannot be empty" });
+      }
+      if (cleaned.length > 100) {
+        return res.status(400).json({ message: "specialization must be 100 characters or fewer" });
+      }
+      const spec = await storage.addExpertSpecialization(userId, cleaned);
+      res.json(spec);
+    } catch (err) {
+      console.error("Error adding expert specialization:", err);
+      res.status(500).json({ message: "Failed to add specialization" });
+    }
   });
 
   // Remove specialization from expert's profile (authenticated)
@@ -4478,80 +4627,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get expert earnings (authenticated)
-  app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-
-      // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
-      const [bookings, payouts, ledgerSummary] = await Promise.all([
-        storage.getServiceBookings({ providerId: userId }),
-        storage.getExpertPayouts(userId),
-        storage.getExpertEarningsSummary(userId),
-      ]);
-
-      // Compute gross/fee totals and monthly figure from bookings for display context
-      const now = new Date();
-      let grossBookingTotal = 0;
-      let platformFeeTotal = 0;
-      let monthlyEarnings = 0;
-
-      for (const b of bookings) {
-        const gross = Number(b.totalAmount ?? 0);
-        const fee = Number(b.platformFee ?? 0);
-        const earned = Number(b.providerEarnings ?? 0);
-
-        grossBookingTotal += gross;
-        platformFeeTotal += fee;
-
-        if (b.status === "completed") {
-          const completedAt = b.completedAt ? new Date(b.completedAt) : null;
-          if (completedAt && completedAt.getMonth() === now.getMonth() && completedAt.getFullYear() === now.getFullYear()) {
-            monthlyEarnings += earned;
-          }
-        }
-      }
-
-      const effectiveRate = grossBookingTotal > 0
-        ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : (await getExpertSplitRates()).expertShareRate;
-
-      const lastPayout = payouts[0];
-
-      // Summary figures sourced from the expert_earnings ledger — same source used by payout request validation
-      const summary = {
-        totalEarnings: ledgerSummary.total,
-        monthlyEarnings,
-        pendingPayout: ledgerSummary.pending,
-        availableForPayout: ledgerSummary.available,
-        lastPayout: lastPayout ? parseFloat(lastPayout.amount || '0') : 0,
-        lastPayoutDate: lastPayout?.processedAt
-          ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : undefined,
-        platformFeeTotal: Number(platformFeeTotal.toFixed(2)),
-        grossBookingTotal: Number(grossBookingTotal.toFixed(2)),
-        revenueShareRate: effectiveRate,
-      };
-
-      // Build transactions from service_bookings for the activity feed
-      const bookingTransactions = [...bookings]
-        .sort((a, b) => new Date(b.createdAt as any || 0).getTime() - new Date(a.createdAt as any || 0).getTime())
-        .slice(0, 20)
-        .map(b => ({
-          id: b.id,
-          amount: b.providerEarnings || "0",
-          type: "service_booking",
-          status: b.status || "pending",
-          createdAt: b.createdAt || new Date().toISOString(),
-          description: `Booking #${b.trackingNumber || b.id.slice(0, 8)}`,
-        }));
-
-      res.json({ earnings: bookingTransactions, summary });
-    } catch (err) {
-      console.error("Error fetching earnings:", err);
-      res.status(500).json({ message: "Failed to fetch earnings" });
-    }
-  });
+  // NOTE (task retirement, Aug 2026): the legacy GET /api/expert/earnings endpoint was removed.
+  // It built pseudo-transactions from service_bookings (refunded bookings still appeared as earned,
+  // grossBookingTotal included refunds, revenueShareRate was a meaningless derived ratio, and
+  // lastPayout reported pending payout requests as paid). The live UI and tests use the
+  // ledger-backed GET /api/expert/earnings/details (server/routes/experts.routes.ts).
 
   // Get expert template sales (authenticated)
   app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {

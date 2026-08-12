@@ -638,6 +638,7 @@ export async function findAutoCompleteCandidates(now: Date = new Date(), limit =
   // Thursday, so applying the artifact window to it would silently strand every short stay. That
   // asymmetry is why this is not one `min`/`max` over both windows.
   const artifactFloor = new Date(now.getTime() - ARTIFACT_AUTO_COMPLETE_DAYS * DAY_MS);
+  const nowIso = now.toISOString();
   const rows = await db
     .select({ id: serviceBookings.id })
     .from(serviceBookings)
@@ -645,6 +646,14 @@ export async function findAutoCompleteCandidates(now: Date = new Date(), limit =
     .where(
       and(
         inArray(serviceBookings.status, COMPLETION_ALLOWED_FROM_STATUSES),
+        // UNPAID-RECHECK exclusion (Aug 12 2026 scheduler unification): a candidate the job found
+        // unpaid stamps `autoCompleteUnpaidRecheckAt` on its booking_metadata so the next passes
+        // skip it until the window elapses — this is what stops a stale-unpaid backlog from
+        // head-of-line-blocking paid bookings behind a per-pass Stripe-lookup budget.
+        sql`(
+          ${serviceBookings.bookingMetadata}->>'autoCompleteUnpaidRecheckAt' IS NULL
+          OR (${serviceBookings.bookingMetadata}->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${nowIso}::timestamptz
+        )`,
         sql`(
           ${providerServices.productShape} IN ('property', 'property_room')
           OR (
