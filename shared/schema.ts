@@ -395,6 +395,9 @@ export const localExpertForms = pgTable("local_expert_forms", {
   phone: varchar("phone", { length: 50 }),
   country: varchar("country", { length: 100 }),
   city: varchar("city", { length: 100 }),
+  // Public-facing display fields (migration 204) — edited from the expert profile editor.
+  displayName: varchar("display_name", { length: 100 }),
+  headline: varchar("headline", { length: 150 }),
   // Expertise
   destinations: jsonb("destinations").default([]),
   specialties: jsonb("specialties").default([]),
@@ -611,6 +614,9 @@ export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 // with no DB CHECK (migration 144: app-enforced, like deliveryMethodEnum pre-109); NULL = the owner
 // hasn't declared a policy type (the honest state — never a fabricated blanket claim).
 export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
+// Deposit CONFIG vocabulary (Lane 7, ruling 72). App-enforced (no DB CHECK): 'percentage' collects
+// depositPercentage% of the line total now; 'flat' collects depositFlatAmount dollars now.
+export const depositTypeEnum = ["percentage", "flat"] as const;
 export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
   // Concrete windows mirror the server enforcement schedule in
   // server/services/cancellation-policy.service.ts (refundPercentFor).
@@ -619,6 +625,57 @@ export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTy
   strict: "Strict — 50% refund if cancelled at least 7 days before the start",
   non_refundable: "Non-refundable — no refund once booked",
 };
+
+// ── D7 service-logistics vocabularies (docs/DECISIONS.md ruling 62, migration 195) ───────────
+// Both columns are varchar with NO DB CHECK — the migration-144 posture (app-enforced
+// vocabulary, publish-trap avoidance). NULL is the honest "never captured" state on every
+// pre-195 row; it is NEVER read as "not applicable".
+//
+// `transportProvision` is FINER-GRAINED than the pre-existing `transportProvided`
+// (yes|no|not_applicable, migration 119, which DOES carry a DB CHECK). The two are deliberately
+// NOT merged: widening 119's CHECK to a 4-value set is exactly the publish-time CHECK failure
+// CLAUDE.md warns about, and the old column's answer ("do you drive them once you've met?") is a
+// different question from this one ("how does the traveler get to the start?").
+export const transportProvisionEnum = [
+  "pickup_included",   // the price includes collecting the traveler
+  "pickup_available",  // pickup can be arranged (possibly for extra), but is not the default
+  "meet_at_point",     // the traveler makes their own way to the meeting pin
+  "not_applicable",    // remote/artifact delivery — no physical arrival at all
+] as const;
+
+// The ruling-62 AMENDMENT (decision-maker, verbatim intent: "ensure the service provider can set
+// EITHER a pickup RADIUS or a pickup ROUTE"). This column records WHICH of two ALREADY-SHIPPED
+// stores the provider means their pickup coverage to be read from:
+//   radius → `provider_services.service_radius` (the display-only ring around the confirmed pin)
+//   route  → `service_route_points` (ruling 22, migration 192 — ordered stops)
+// NEVER-CLOBBER RULE (§13): declaring one mode does not delete, null, or overwrite the other
+// mode's data. Both stores keep whatever they hold; only the RENDERING is switched, and the
+// authoring UI states out loud that the other mode's saved data is still there.
+export const pickupCoverageModeEnum = ["radius", "route"] as const;
+
+// Per-listing booking affordance (Catalog+Distribute ruling 74/75, lane C3). The provider's own
+// display choice for the traveler card's CTA — NOT a money/identity/rate field (§14/§18/§19 do not
+// apply: nothing here multiplies a charge, selects a fee band, or identifies an actor), so it is an
+// ordinary owner-authored listing pref that is legitimately client-settable, like `price`/
+// `serviceRadius`. App-enforced vocabulary in insertProviderServiceSchema, NO DB CHECK (migration
+// 144/195/202 publish-trap posture). NULL on the column = "unset" → the read-time default is DERIVED
+// from the account's existing `service_provider_forms.instantBooking` (never duplicated here) via
+// `resolveBookingMode` below.
+export const bookingModeEnum = ["instant", "request", "hidden"] as const;
+export type BookingMode = (typeof bookingModeEnum)[number];
+
+// The ONE place the null-default is resolved (ruling 75). Called SERVER-SIDE on every card read
+// (the public storefront read and the owner Catalog read) so the traveler card always receives a
+// CONCRETE booking mode: an explicit per-listing value wins; an unset (null) listing inherits the
+// account flag — instant if the provider offers instant booking, request otherwise. `hidden` is only
+// ever an explicit per-listing choice, never a derived default.
+export function resolveBookingMode(
+  stored: string | null | undefined,
+  accountInstantBooking: boolean | null | undefined,
+): BookingMode {
+  if (stored === "instant" || stored === "request" || stored === "hidden") return stored;
+  return accountInstantBooking ? "instant" : "request";
+}
 
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -641,6 +698,13 @@ export const providerServices = pgTable("provider_services", {
   // Delivery
   deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // canonical: deliveryMethodEnum — DB CHECK enforced since migration 109
   deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
+  // SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): the language(s) the service is
+  // DELIVERED in — a purchasable attribute in the launch market, and a thing providers previously
+  // could not state at all. Typed to match `local_expert_forms.languages` (jsonb string array)
+  // rather than inventing a shape. DELIBERATELY no default: NULL = never captured (render NOTHING,
+  // never a presumed "English" — §13), `[]` = deliberately cleared. This is NOT ruling 60's chrome
+  // (A) or content (B) translation; it is the third question those two do not ask.
+  deliveryLanguages: jsonb("delivery_languages").$type<string[]>(),
   revisionsIncluded: integer("revisions_included").default(0),
   includesExpertNotes: boolean("includes_expert_notes").default(false),
   
@@ -655,6 +719,12 @@ export const providerServices = pgTable("provider_services", {
   pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
   pickupAddress: text("pickup_address"), // Starting pickup location
   serviceRadius: integer("service_radius"), // km radius provider covers
+  // SS-4 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): how far the provider travels
+  // TO COLLECT a traveler — a genuinely different number from `serviceRadius` above ("how far I
+  // travel to work"). Until this column existed, the wizard rendered BOTH labels and wrote BOTH
+  // into `service_radius`, so typing one changed the other. NEVER-CLOBBER: `serviceRadius` keeps
+  // its stored value with no backfill, and NULL here means "not set" — never 0, never a copy (§13).
+  pickupRadiusKm: integer("pickup_radius_km"),
   // Does the provider transport the traveler during/from the meeting point?
   // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
   // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
@@ -665,6 +735,70 @@ export const providerServices = pgTable("provider_services", {
   dropOffPoint: text("drop_off_point"),
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
+
+  // ══ D7 service_logistics capture (docs/DECISIONS.md ruling 62, migration 195) ═══════════════
+  // CAPTURE-ONLY by ruling: nothing here has a consumer yet (no transport resolver, no
+  // fundamentals check, no pricing/matching read). Every column is additive-nullable with NO DB
+  // CHECK — NULL means "the provider never told us", never a fabricated default (§13).
+  //
+  // AUDIT — what this block deliberately REUSES instead of duplicating (ruling 62 asked for a
+  // field set; these members of it already exist on this table and are NOT re-added):
+  //   lead-time hours          → `leadTimeHours` above (integer, default 24)
+  //   pickup radius            → `serviceRadius` above (integer km; the amendment's radius arm)
+  //   pickup route             → `service_route_points` (ruling 22, migration 192)
+  //   meeting point / pickup / drop-off → `meetingPoint`, `pickupAvailable`, `pickupAddress`,
+  //                              `dropOffPoint`
+  //   concurrency cap          → `maxConcurrentBookings` above
+  //   turnaround copy          → `deliveryTimeframe` above (free text; NOT a duration — see below)
+  //   confirmed pin            → `latitude`/`longitude`/`locationPrecision` above
+  //   per-group vs per-person  → `priceType` above already carries `per_person` alongside
+  //                              `fixed`/`per_event` (per-group), so the group-handling flag
+  //                              ruling 62 listed IS already expressible — no new column.
+  //   cancellation refund tiers → `cancellationPolicyType` (a REFUND policy; distinct from the
+  //                              reschedule window captured by `changeCutoffHours` below)
+  transportProvision: varchar("transport_provision", { length: 30 }), // transportProvisionEnum
+  pickupCoverageMode: varchar("pickup_coverage_mode", { length: 20 }), // pickupCoverageModeEnum
+  // Temporal shape. `deliveryTimeframe` is free-text turnaround copy ("24-48 hours") and can't be
+  // arithmetic'd, so a structured duration genuinely had no home on this table (the
+  // `duration_minutes` that exists elsewhere is on `itinerary_items`, a different row entirely).
+  durationMinutes: integer("duration_minutes"),
+  bufferMinutes: integer("buffer_minutes"), // setup//teardown minutes to keep free around a booking
+  earliestStartTime: varchar("earliest_start_time", { length: 5 }), // "HH:MM", local wall clock
+  latestStartTime: varchar("latest_start_time", { length: 5 }),     // "HH:MM", local wall clock
+  serviceTimezone: varchar("service_timezone", { length: 64 }),     // IANA id, e.g. "Asia/Tokyo"
+  // Booking constraints.
+  partySizeMin: integer("party_size_min"),
+  partySizeMax: integer("party_size_max"),
+  changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
+
+  // ══ Deposits / partial payments — CONFIG (Lane 7, docs/DECISIONS.md ruling 72, migration 200) ══
+  // PROVIDER OPT-IN PER LISTING: no listing takes a deposit unless `depositEnabled` is on and a
+  // percentage OR a flat amount is set. These are ordinary owner-authored LISTING facts, like
+  // `price`/`serviceRadius` beside them — the provider's OWN business config on their OWN listing,
+  // read server-side at checkout to derive the amount-due-now (§14). They are NOT a platform
+  // fee/commission rate (§8/§18 do not apply: nothing here multiplies a platform take or selects a
+  // fee band), and are named so the fee gate cannot misread them. All additive-nullable, app-layer
+  // vocabulary in insertProviderServiceSchema, no DB CHECK (publish-trap posture).
+  depositEnabled: boolean("deposit_enabled").default(false),
+  depositType: varchar("deposit_type", { length: 20 }),          // depositTypeEnum: 'percentage' | 'flat'
+  depositPercentage: integer("deposit_percentage"),               // e.g. 30 = collect 30% of the line total now
+  depositFlatAmount: decimal("deposit_flat_amount", { precision: 10, scale: 2 }), // flat dollars collected now
+
+  // ══ Per-listing card display options (Catalog+Distribute ruling 74/75, lane C3, migration 202) ══
+  // The provider's own "Card shows" choices, rendered on the shared traveler OfferingCard in Catalog
+  // Preview AND on the public storefront. DISPLAY PREFS, not §14/§18/§19 fields — no amount, identity
+  // or rate — so they are legitimately client-settable (owner-gated on POST/PATCH like `price`) and
+  // are NOT stripped. `showPrice` DEFAULTs true so every row is concrete without a backfill: false ⇒
+  // the card hides the price and shows an honest "Enquire for pricing" affordance (allowed for ALL
+  // services, ruling 74 res. A — never a blank or a fake "$0", §13). `bookingMode` is nullable (app-
+  // enforced bookingModeEnum, NO DB CHECK — publish-trap posture): NULL = unset ⇒ resolved at read
+  // time from the account `service_provider_forms.instantBooking` by `resolveBookingMode`.
+  showPrice: boolean("show_price").default(true),
+  bookingMode: varchar("booking_mode", { length: 20 }), // bookingModeEnum: 'instant' | 'request' | 'hidden'
+
+  // Can this service serve as a day's fixed point? Mirrors the `itinerary_items`/`temporal_anchors`
+  // anchor vocabulary. CAPTURE ONLY — no scheduler reads it yet.
+  canAnchor: boolean("can_anchor"),
 
   // Product Builder shape (§17, migrations 151+153) — NULL = single service (every pre-151
   // row), 'bundle' = a bundle row whose components live in bundle_components, 'property' = an
@@ -705,6 +839,14 @@ export const providerServices = pgTable("provider_services", {
   // sanctioned reveal is GET /api/service-bookings/:id/deliverable (server/routes.ts), gated
   // on a confirmed booking belonging to the session user.
   serviceFile: text("service_file"), // File URL
+  // D8 artifact-timer delivery clock (ruling 63, executed by ruling 66; migration 196). Stamped
+  // by the deliverable UPLOAD path only. `deliveredAt` for a pdf booking is
+  // max(booking.confirmedAt, this) — the moment the entitlement first became satisfiable. NULL =
+  // never recorded (every pre-196 row, and every legacy pasted-URL deliverable) ⇒ the
+  // UNDOWNLOADED auto-complete arm is skipped with a stated reason, never guessed (§13). The
+  // downloaded arm rides deliverable_downloads and is unaffected. Declared here per the
+  // publish-trap rule — a column only in migration SQL is dropped by the deploy push.
+  deliverableUploadedAt: timestamp("deliverable_uploaded_at"),
   
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
@@ -885,7 +1027,25 @@ export const serviceBookings = pgTable("service_bookings", {
   insuranceFee: decimal("insurance_fee", { precision: 10, scale: 2 }).default("0.00"),
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  
+
+  // ══ Deposits / partial payments — BOOKING STATE (Lane 7, ruling 72, migration 200) ═══════════
+  // Mirrors the legacy `bookings` deposit/balance shape additively on THIS (cart-rail) table. A
+  // deposit-partial booking lands in status='deposit_paid' (a plain varchar value, no CHECK) —
+  // distinguishable BY CONSTRUCTION from a full-paid `confirmed` (deposit_paid has an outstanding
+  // balance) and from an unauthorized `payment_pending` claim (deposit_paid carries a stamped PI +
+  // deposit_paid=true). `total_amount`/`platformFee`/`providerEarnings` stay the FULL values — the
+  // deposit/balance split is the PAYMENT SCHEDULE, not a re-split of the charge, so completion (D8)
+  // and earnings math read the full amounts unchanged.
+  depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),   // charged NOW at deposit checkout (§14 server-derived)
+  depositPaid: boolean("deposit_paid").default(false),
+  balanceAmount: decimal("balance_amount", { precision: 10, scale: 2 }),   // = (total_amount + platform_fee) − deposit; collected at the SECOND checkout
+  balancePaid: boolean("balance_paid").default(false),
+  balanceDueAt: timestamp("balance_due_at"),                                // cutoff, derived at checkout from the listing's service date / change window
+  // §19a: PI linkage — written ONLY by the shared promotion / balance-authorization paths, never
+  // born on the row. Stripped in insertServiceBookingSchema (.omit) and in createServiceBooking.
+  stripeDepositIntentId: varchar("stripe_deposit_intent_id", { length: 255 }),
+  stripeBalanceIntentId: varchar("stripe_balance_intent_id", { length: 255 }),
+
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
@@ -1666,7 +1826,11 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // fee_bands-resolved split at the real Stripe charge — a client-supplied rate reaching a payment
 // decision (§14 in substance, §8 in spirit). No UI ever sent it. Layer 2 is the storage-level
 // derivation in `createProviderService`/`updateProviderService`, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
+// D8/ruling 66: `deliverableUploadedAt` joins the omit list (§18 layer 1). It is the clock the
+// pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
+// completion event, and mint a held earning, on a booking whose deliverable never existed. The
+// storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -1680,6 +1844,50 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
     (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
     { message: "Price must be a non-negative number" },
   ),
+  // ── D7 (ruling 62, migration 195): app-enforced vocabularies + shape floors ─────────────────
+  // No DB CHECK exists for any of these (publish-trap posture), so THIS is the enforcement.
+  // Field-level so every refinement survives `.partial()` on the PATCH path — the update path is
+  // checked as hard as the insert (§18 rule 2, applied by analogy to a non-privileged field).
+  transportProvision: z.enum(transportProvisionEnum).nullable().optional(),
+  pickupCoverageMode: z.enum(pickupCoverageModeEnum).nullable().optional(),
+  durationMinutes: z.coerce.number().int().min(0).max(10080).nullable().optional(),
+  bufferMinutes: z.coerce.number().int().min(0).max(1440).nullable().optional(),
+  earliestStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  latestStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  serviceTimezone: z.string().trim().min(1).max(64).nullable().optional(),
+  partySizeMin: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  partySizeMax: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  changeCutoffHours: z.coerce.number().int().min(0).max(8760).nullable().optional(),
+  canAnchor: z.boolean().nullable().optional(),
+  // ── SS-4 + SS-6 (ruling 69 disposition 9, migration 199) ────────────────────────────────────
+  // Same treatment as the D7 block above and for the same reason: no DB CHECK exists (publish-trap
+  // posture), so THIS is the enforcement, and field-level so it survives `.partial()` on PATCH.
+  // Neither is privileged (§18 rule 3 does not apply — no amount, no identity, no rate), so they
+  // are ordinary wizard fields, NOT omitted.
+  pickupRadiusKm: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  // Array of language NAMES, matching `local_expert_forms.languages`. `null` is preserved as
+  // "never captured" and `[]` as "deliberately cleared" — the two must not collapse (§13).
+  deliveryLanguages: z.array(z.string().trim().min(1).max(60)).max(20).nullable().optional(),
+  // ── Deposits CONFIG (Lane 7, ruling 72) — owner listing config, NOT a §18 rate ──────────────
+  // App-enforced vocabulary + shape floors (no DB CHECK, migration-200 posture); field-level so
+  // each refinement survives `.partial()` on the PATCH path (the update path is checked as hard as
+  // the insert). These are ordinary wizard fields (no amount/identity/rate reaching a MONEY
+  // DECISION on the config write — the deposit is derived server-side at checkout from the
+  // persisted row), so they are NOT omitted.
+  depositEnabled: z.boolean().nullable().optional(),
+  depositType: z.enum(depositTypeEnum).nullable().optional(),
+  depositPercentage: z.coerce.number().int().min(1).max(100).nullable().optional(),
+  depositFlatAmount: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Deposit amount must be a non-negative number" },
+  ),
+  // ── Card display options (ruling 74/75, migration 202) — app-enforced vocabulary, no DB CHECK ──
+  // Field-level so the bookingMode enum survives `.partial()` on the PATCH path (the update path is
+  // checked as hard as the insert). These are ordinary owner display prefs (no amount/identity/rate),
+  // so — like the deposit CONFIG above — they are NOT omitted; the money guard's rate/identity
+  // predicates do not match `showPrice`/`bookingMode`.
+  showPrice: z.boolean().nullable().optional(),
+  bookingMode: z.enum(bookingModeEnum).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
@@ -1714,6 +1922,11 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   travelerId: true,  // Set server-side from authenticated user
   providerId: true,  // Set server-side from service lookup
   stripePaymentIntentId: true,  // PS15/ruling 46 — server-verified actors only, via stampAuthorization
+  // Lane 7 (ruling 72): the deposit/balance PI linkage columns are the same class as
+  // stripePaymentIntentId — written ONLY by the shared promotion / balance-authorization paths
+  // (§19a), never born on the row. Stripped here (layer 1) and in createServiceBooking (layer 2).
+  stripeDepositIntentId: true,
+  stripeBalanceIntentId: true,
   confirmedAt: true,
   completedAt: true,
   cancelledAt: true,
@@ -4408,7 +4621,12 @@ export const expertEarnings = pgTable("expert_earnings", {
   paidOutAt: timestamp("paid_out_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): completion-mint race guard — see provider_earnings twin.
+  bookingMintUniq: uniqueIndex("expert_earnings_booking_mint_uniq")
+    .on(table.referenceId)
+    .where(sql`reference_type = 'service_booking' AND amount >= 0`),
+}));
 
 // Expert payouts - tracks payout requests
 export const expertPayouts = pgTable("expert_payouts", {
@@ -4610,7 +4828,16 @@ export const providerEarnings = pgTable("provider_earnings", {
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): the completion mint's race guard — one booking-mint row per
+  // booking; the mint INSERTs with ON CONFLICT DO NOTHING against this index. Declared here
+  // AND in migration SQL (publish-trap rule).
+  // amount >= 0: only the one original positive completion-mint row is unique; negative
+  // compensation/clawback rows sharing the same source identity stay insertable.
+  bookingMintUniq: uniqueIndex("provider_earnings_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking' AND amount >= 0`),
+}));
 
 // Provider payouts - tracks payout requests
 export const providerPayouts = pgTable("provider_payouts", {
@@ -4685,7 +4912,14 @@ export const platformRevenue = pgTable("platform_revenue", {
   transactionDate: timestamp("transaction_date").defaultNow(),
   reconciliationDate: timestamp("reconciliation_date"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): completion-mint race guard — see provider_earnings twin.
+  // gross_amount >= 0: only the original completion-mint row is unique; negative reversal
+  // compensation rows (reversePlatformRevenueForBooking) share the same identity and stay free.
+  bookingMintUniq: uniqueIndex("platform_revenue_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking_commission' AND gross_amount >= 0`),
+}));
 
 // Daily revenue summary for dashboard analytics
 export const dailyRevenueSummary = pgTable("daily_revenue_summary", {
@@ -7785,11 +8019,21 @@ export const shortLinks = pgTable("short_links", {
   frame: varchar("frame", { length: 20 }),
   clicks: integer("clicks").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // D6 rails attribution (migration 198, ruling 61). NULL = never expires — every link shared
+  // before this column existed behaves identically. Read by the rails MONEY decision only
+  // (rails-attribution.service.ts): past-dated ⇒ the ref no longer selects the rails band lane.
+  // The /r/:code redirect and the S4 analytics attribution deliberately ignore it — a click that
+  // really happened stays a true analytics fact whatever the fee lane says (§13).
+  expiresAt: timestamp("expires_at"),
 }, (table) => [
   index("idx_short_links_owner_user_id").on(table.ownerUserId),
 ]);
 
-export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
+// §18 rule 3 ("a field with no consumer is still stripped") + ruling 66's money-timer precedent:
+// `expiresAt` GATES a fee lane (an unexpired link selects the rails band, an expired one does not),
+// so it is omitted here as well as being absent from the route's hand-written body schema. This
+// schema is parsed off no request body today; that is exactly why it must not become the way in.
+export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true, expiresAt: true });
 export type ShortLink = typeof shortLinks.$inferSelect;
 export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;
 
@@ -7888,6 +8132,79 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+// D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
+// (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE
+// CASCADE, composite UNIQUE (service_id, attestation_key). That UNIQUE is the idempotency
+// mechanism, not a nicety — the write path is INSERT … ON CONFLICT DO NOTHING, so re-affirming
+// keeps the FIRST affirmation's timestamp and never mints a second row.
+//
+// `attestationKey` carries NO DB CHECK: the vocabulary lives in shared/service-attestations.ts and
+// is app-enforced (the migration-144/195 posture — a CHECK over an app vocabulary is the
+// publish-time deploy-push failure CLAUDE.md warns about). `affirmedBy` is the SESSION user,
+// stamped server-side (§14 — never from req.body), ON DELETE SET NULL because deleting an account
+// must not erase the historical fact that the attestation was made.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes/service-attestations.routes.ts (§19/#PS18 — a denylist schema over a table whose
+// every non-key column is server-stamped would be exactly the mass-assignment shape ruling 46
+// named). Declared here per the publish-trap rule.
+export const serviceAttestations = pgTable("service_attestations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  attestationKey: varchar("attestation_key", { length: 64 }).notNull(),
+  affirmedAt: timestamp("affirmed_at").notNull().defaultNow(),
+  affirmedBy: varchar("affirmed_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_attestations_service_key_unique").on(table.serviceId, table.attestationKey),
+  index("service_attestations_service_idx").on(table.serviceId),
+]);
+export type ServiceAttestation = typeof serviceAttestations.$inferSelect;
+
+// Ruling 60 Phase B — provider CONTENT translation (docs/DECISIONS.md ruling 60 / ruling 73;
+// QA_PUNCH_LIST I18N-4; migration 201). Child rows of provider_services on the
+// service_route_points / service_attestations pattern: ON DELETE CASCADE, composite UNIQUE
+// (service_id, locale). ONE row per (service, locale) — the write path is a replace-for-locale
+// upsert (INSERT … ON CONFLICT (service_id, locale) DO UPDATE), the dmo_extracted_places /
+// route-points replace-list precedent applied per-locale.
+//
+// Only genuine free-text CONTENT columns are translatable — the exact set ruling 60 names
+// ("listing names/descriptions/meeting-point text"): serviceName, shortDescription, description,
+// meetingPoint. NO enums/prices/IDs live here (§14 — identity/amount/rate never travel through a
+// translation row). Each is nullable so a provider may translate a subset; the traveler read
+// falls each untranslated field back to the original.
+//
+// `status` ('draft' | 'approved') and `source` ('human' | 'ai_draft') carry NO DB CHECK — the
+// vocabulary is app-enforced (the migration-144/195 posture; a CHECK over an app vocabulary is
+// the publish-time deploy-push failure CLAUDE.md warns about). `source='ai_draft'` labels a
+// machine draft BY CONSTRUCTION — §13's honesty rule for CONTENT: a draft is NEVER shown to a
+// traveler, and an AI draft is ALWAYS labeled as machine-generated for the reviewing provider.
+// `updatedBy` is the SESSION user, stamped server-side (§14 — never from req.body), ON DELETE
+// SET NULL so deleting an account keeps the historical row.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes.ts (§19/#PS18 — a denylist schema over a table whose status/source/updatedBy are
+// all server-stamped would be exactly the mass-assignment shape ruling 46 named, and would grow
+// the omit-ratchet baseline for nothing). Declared here per the publish-trap rule.
+export const serviceTranslations = pgTable("service_translations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  locale: varchar("locale", { length: 8 }).notNull(),
+  serviceName: varchar("service_name", { length: 255 }),
+  shortDescription: varchar("short_description", { length: 150 }),
+  description: text("description"),
+  meetingPoint: text("meeting_point"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),   // 'draft' | 'approved'
+  source: varchar("source", { length: 20 }).notNull().default("human"),   // 'human' | 'ai_draft'
+  updatedBy: varchar("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_translations_service_locale_unique").on(table.serviceId, table.locale),
+  index("service_translations_service_idx").on(table.serviceId),
+]);
+export type ServiceTranslation = typeof serviceTranslations.$inferSelect;
 
 // R4/R5 (docs/DECISIONS.md ruling 58; migration 194): append-only download log for the D3
 // deliverable rail. One row per SUCCESSFUL fetch of GET /api/service-bookings/:id/deliverable —

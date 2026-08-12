@@ -19,6 +19,7 @@
  *     /api/me/posting-opportunities — session-scoped, real rows only §13).
  *     /provider/share-promote now redirects here (its expert twin redirected in C2).
  */
+import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ import {
   ensureShortLink,
 } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
+import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Plus,
@@ -88,10 +90,12 @@ import {
   Compass,
   Share2,
   ExternalLink,
+  ArrowRight,
   CalendarClock,
   ChevronDown,
   ImageOff,
   CheckCircle2,
+  Star,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -121,6 +125,10 @@ interface Service {
   pickupAvailable?: boolean;
   averageRating?: string;
   reviewCount?: number;
+  // C2 Preview toggle: the unfiltered /api/provider/services row already carries these; the
+  // storefront card maps price-unit + place-anchored city chip from them (mirrors storefront.tsx).
+  pricingUnit?: string | null;
+  city?: string | null;
   contentAffinityTags?: string[];
   // PB (§17 Product Builder): a bundle IS a provider_services row (product_shape='bundle',
   // migration 151) — it appears in this list like any listing; NULL = single service.
@@ -137,6 +145,10 @@ interface Service {
   // D2 method-aware fundamentals: rides the same unfiltered row; drives which chip the card
   // shows (pin for place-anchored services, delivery-method for the rest).
   deliveryMethod?: string | null;
+  // C3 (ruling 74/75): per-listing "Card shows" options. The owner read resolves bookingMode to a
+  // concrete value (never null) with the SAME derivation the storefront uses; showPrice defaults true.
+  showPrice?: boolean;
+  bookingMode?: "instant" | "request" | "hidden";
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -197,7 +209,9 @@ const inspirationCards = [
 // (react-query dedups the key — no new endpoint), filtered by the public read-gate
 // (storefront.routes.ts serves approved+active services; 404 at zero — that IS "not live").
 // §13: no chip renders until the real count is loaded.
-function ProviderStorefrontHeader() {
+// Exported (D1, ruling 74/76) so the Distribute page's Storefront channel mounts the SAME
+// component — a second mount, not a move (per ruling 74 the storefront tools STAY on Catalog).
+export function ProviderStorefrontHeader() {
   const { toast } = useToast();
   const { user } = useAuth();
   const handle = (user as any)?.handle as string | null | undefined;
@@ -617,15 +631,18 @@ interface HealthResponse {
 
 // Short, compact labels for the failing-checks inline list (the check KEY, not the longer
 // server-provided `detail` prose — "no photo · no exact pin · no availability").
-const HEALTH_CHECK_LABELS: Record<string, string> = {
-  photo: "no photo",
-  exact_pin: "no exact pin",
-  description: "short description",
-  pricing: "no price",
-  availability: "no availability",
-  approval: "not approved",
-  delivery_asset: "no deliverable",
-};
+// Ruling 60 Phase A: the English strings moved to locales/<lng>/catalog.json under
+// health.checks.*; the server-sent check key is the translation key, and an UNKNOWN key still
+// falls through to the raw key exactly as before (the `?? c.key` at the call site).
+const HEALTH_CHECK_KEYS = [
+  "photo",
+  "exact_pin",
+  "description",
+  "pricing",
+  "availability",
+  "approval",
+  "delivery_asset",
+] as const;
 
 const TONE_CLASSNAMES = {
   ok: "bg-green-100 text-green-700 border-green-200",
@@ -635,20 +652,15 @@ const TONE_CLASSNAMES = {
 } as const;
 
 // Short "n/a" labels for method-omitted checks (D2) — the muted note beside the health meter.
-const OMITTED_CHECK_LABELS: Record<string, string> = {
-  exact_pin: "pin",
-  availability: "calendar",
-};
+// Translated under health.omitted.* (ruling 60 Phase A).
+const OMITTED_CHECK_KEYS = ["exact_pin", "availability"] as const;
 
 // Delivery-method chip for non-place-anchored services — shown INSTEAD of a pin chip, because
 // scoring a PDF guide red for "no location" was exactly the unfairness D2 removes.
-const DELIVERY_CHIP_LABELS: Record<string, string> = {
-  pdf: "📄 PDF delivery",
-  video: "🎥 Video call",
-  call: "📞 Call",
-  voice_notes: "🎙️ Voice notes",
-  async_messaging: "💬 Messaging",
-};
+// The seven canonical delivery methods are a DATA vocabulary (CLAUDE.md §3) — the keys below
+// are those values verbatim and are never translated; only their display labels are
+// (delivery.* in catalog.json).
+const DELIVERY_CHIP_KEYS = ["pdf", "video", "call", "voice_notes", "async_messaging"] as const;
 
 /** 62×46 rounded thumbnail from serviceImage/galleryImages[0]; an honest neutral placeholder
  *  tile (muted icon, no fake image) when neither is present. Sourced from the services list
@@ -679,20 +691,16 @@ function ServiceThumb({ service }: { service: Service }) {
 /** Pin-status chip. Semantics mirror the server's exact_pin health check exactly (exact pin =
  *  lat+lng present AND locationPrecision='exact'; else approximate-vs-none by coordinate
  *  presence), computed locally from the services-list row so it renders pre-mount too. */
-function pinStatus(service: Service): { label: string; tone: keyof typeof TONE_CLASSNAMES; title: string } {
+function pinStatus(service: Service): { labelKey: string; tone: keyof typeof TONE_CLASSNAMES; titleKey: string } {
   const hasCoords = service.latitude != null && service.longitude != null && service.latitude !== "" && service.longitude !== "";
   const isExact = hasCoords && service.locationPrecision === "exact";
   if (isExact) {
-    return { label: "📍 Exact pin", tone: "ok", title: "Provider-confirmed exact location." };
+    return { labelKey: "pin.exact", tone: "ok", titleKey: "pin.exactTitle" };
   }
   if (hasCoords) {
-    return {
-      label: "📍 Approximate area",
-      tone: "warn",
-      title: "Approximate area — neighborhood-level location from the platform backfill. Edit this service to set an exact pin.",
-    };
+    return { labelKey: "pin.approximate", tone: "warn", titleKey: "pin.approximateTitle" };
   }
-  return { label: "📍 No location", tone: "bad", title: "No location on file yet. Edit this service to add one." };
+  return { labelKey: "pin.none", tone: "bad", titleKey: "pin.noneTitle" };
 }
 
 /** Pin chip: clicking it opens the service's Edit (the existing edit navigation) — the pin
@@ -701,15 +709,19 @@ function pinStatus(service: Service): { label: string; tone: keyof typeof TONE_C
  *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
  *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
 function PinChip({ service, isBundle }: { service: Service; isBundle: boolean }) {
+  const { t } = useTranslation("catalog");
   const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
   const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
 
   if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
-    const label = DELIVERY_CHIP_LABELS[service.deliveryMethod ?? ""] ?? "Digital delivery";
+    const method = service.deliveryMethod ?? "";
+    const label = (DELIVERY_CHIP_KEYS as readonly string[]).includes(method)
+      ? t(`delivery.${method}`)
+      : t("delivery.fallback");
     return (
       <Badge
         variant="outline"
-        title="Delivered remotely — no meeting point needed for this service."
+        title={t("pin.remoteTitle")}
         className={`text-[10px] ${TONE_CLASSNAMES.neutral}`}
         data-testid={`chip-pin-${service.id}`}
       >
@@ -718,16 +730,16 @@ function PinChip({ service, isBundle }: { service: Service; isBundle: boolean })
     );
   }
 
-  const { label, tone, title } = pinStatus(service);
+  const { labelKey, tone, titleKey } = pinStatus(service);
   return (
     <Link href={editHref}>
       <Badge
         variant="outline"
-        title={title}
+        title={t(titleKey)}
         className={`text-[10px] cursor-pointer ${TONE_CLASSNAMES[tone]}`}
         data-testid={`chip-pin-${service.id}`}
       >
-        {label}
+        {t(labelKey)}
       </Badge>
     </Link>
   );
@@ -737,13 +749,16 @@ function PinChip({ service, isBundle }: { service: Service; isBundle: boolean })
  *  returned data for this service (endpoint unavailable pre-mount, or the service is missing
  *  from the response) — honest absence per §13, never a skeleton or a guess. */
 function HealthRow({ health }: { health: ServiceHealth | undefined }) {
+  const { t } = useTranslation("catalog");
   if (!health) return null;
   const { passed, total } = health.score;
   if (total <= 0) return null;
   const allPassing = passed === total;
   const failingLabels = health.checks
     .filter((c) => !c.ok)
-    .map((c) => HEALTH_CHECK_LABELS[c.key] ?? c.key);
+    .map((c) =>
+      (HEALTH_CHECK_KEYS as readonly string[]).includes(c.key) ? t(`health.checks.${c.key}`) : c.key,
+    );
   // D2: method-omitted checks render as a muted "n/a" note (reason on hover) — visibly not
   // counted, never presented as failures.
   const omitted = health.omitted ?? [];
@@ -752,7 +767,7 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
     <div className="mt-3 pt-3 border-t border-console-light" data-testid={`health-row-${health.serviceId}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-medium text-console-darkest">
-          Health {passed}/{total}
+          {t("health.meter", { passed, total })}
         </span>
         <div className="w-24 h-1.5 rounded-full bg-console-light overflow-hidden">
           <div
@@ -762,7 +777,7 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
         </div>
         {allPassing ? (
           <Badge className={`text-[10px] ${TONE_CLASSNAMES.ok}`} variant="outline">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
+            <CheckCircle2 className="w-3 h-3 mr-1" /> {t("health.ready")}
           </Badge>
         ) : (
           <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
@@ -773,7 +788,14 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
             title={omitted.map((o) => o.reason).join("; ")}
             data-testid={`health-omitted-${health.serviceId}`}
           >
-            n/a: {omitted.map((o) => OMITTED_CHECK_LABELS[o.key] ?? o.key).join(", ")}
+            {t("health.naPrefix")}:{" "}
+            {omitted
+              .map((o) =>
+                (OMITTED_CHECK_KEYS as readonly string[]).includes(o.key)
+                  ? t(`health.omitted.${o.key}`)
+                  : o.key,
+              )
+              .join(", ")}
           </span>
         )}
       </div>
@@ -781,11 +803,179 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
   );
 }
 
+// ─── Manage ⇄ Preview toggle (Catalog+Distribute ruling 74, lane C2) ─────────────────────────
+//
+// Preview renders each listing through C1's SHARED OfferingCard — the EXACT traveler card the
+// public /p/:handle storefront draws — so "what you see = what users see" by construction. The
+// data-prep below (delivery-method chip, place-anchored city chip, price-unit label, rating slot,
+// non-away CTA) mirrors storefront.tsx's own mapping verbatim; the card itself is reused, never
+// re-implemented. Hover-Edit (ruling 74 resolution B) is layered as an OVERLAY sibling of the
+// card link (a named `group/edit` so it never fights the card's own `group` hover) — the
+// OfferingCard's storefront output stays byte-identical (C1 is not regressed).
+
+const PREVIEW_DELIVERY_LABELS: Record<string, string> = {
+  pdf: "PDF guide",
+  video: "Video call",
+  call: "Phone call",
+  in_person: "In-person",
+  voice_notes: "Voice notes",
+  async_messaging: "Messaging",
+  hybrid: "Hybrid",
+};
+
+function previewPriceUnitLabel(priceType?: string | null, pricingUnit?: string | null): string | null {
+  if (pricingUnit === "per_night") return "per night";
+  if (priceType === "per_person") return "per person";
+  if (priceType === "hourly") return "per hour";
+  if (priceType === "per_event") return "per event";
+  return null;
+}
+
+/** Storefront rating line — "New" pill when there are no reviews (never a fabricated score),
+ *  else star + weighted average + review count. Mirrors storefront.tsx RatingLine. */
+function PreviewRatingLine({ rating, count }: { rating?: string | number | null; count?: number | null }) {
+  if (!count || count === 0 || rating == null) {
+    return <Badge variant="outline" className="text-[11px] w-fit">New</Badge>;
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+      {Number(rating).toFixed(1)}
+      <span>· {count} review{count === 1 ? "" : "s"}</span>
+    </span>
+  );
+}
+
+// C3 (ruling 74/75): the per-listing "Card shows" control on the Manage card. Two prefs — Show
+// price (on/off) and Booking (Instant / Request / Hidden) — that drive the shared traveler
+// OfferingCard in Preview AND on the public storefront. Each change PATCHes exactly its one field.
+// `bookingMode` arrives concrete from the owner read (resolved with the storefront's own derivation),
+// so an unset listing shows the account default pre-selected; the moment the provider picks a segment
+// it becomes an explicit per-listing choice. Not a §14/§18/§19 money field.
+const BOOKING_MODE_OPTIONS: Array<{ value: "instant" | "request" | "hidden"; label: string }> = [
+  { value: "instant", label: "Instant" },
+  { value: "request", label: "Request" },
+  { value: "hidden", label: "Hidden" },
+];
+
+function CardShowsControl({
+  service,
+  onPatch,
+  disabled,
+}: {
+  service: Service;
+  onPatch: (patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" }) => void;
+  disabled?: boolean;
+}) {
+  const showPrice = service.showPrice ?? true;
+  const bookingMode = service.bookingMode ?? "instant";
+  return (
+    <div
+      className="mt-3 pt-3 border-t border-console-light flex flex-wrap items-center gap-x-4 gap-y-2"
+      data-testid={`cardshows-${service.id}`}
+    >
+      <span className="text-[10px] font-medium text-console-mid uppercase tracking-wide">Card shows</span>
+      <div className="flex items-center gap-2">
+        <Switch
+          checked={showPrice}
+          onCheckedChange={(checked) => onPatch({ showPrice: checked })}
+          disabled={disabled}
+          data-testid={`switch-cardshows-price-${service.id}`}
+        />
+        <span className="text-xs text-console-mid">Show price</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-console-mid">Booking</span>
+        <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
+          {BOOKING_MODE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onPatch({ bookingMode: opt.value })}
+              disabled={disabled}
+              aria-pressed={bookingMode === opt.value}
+              className={
+                "px-2 py-1 text-xs font-medium transition-colors " +
+                (bookingMode === opt.value
+                  ? "bg-console-dark text-white"
+                  : "bg-white text-console-mid hover:bg-console-light/40")
+              }
+              data-testid={`button-cardshows-booking-${service.id}-${opt.value}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CatalogPreviewCard({ service }: { service: Service }) {
+  const { t: tCommon } = useTranslation("common");
+  const isBundle = service.productShape === "bundle";
+  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+
+  const chips = service.deliveryMethod && PREVIEW_DELIVERY_LABELS[service.deliveryMethod]
+    ? [PREVIEW_DELIVERY_LABELS[service.deliveryMethod]]
+    : [];
+  // D5: place-anchored listings get a city-level text chip (row's own city field; nothing mapped/derived, §13).
+  if (
+    isPlaceAnchored({ deliveryMethod: service.deliveryMethod, productShape: service.productShape }) &&
+    service.city?.trim()
+  ) {
+    chips.push(`📍 ${service.city.trim()}`);
+  }
+
+  const rawPrice = service.price;
+  const hasPrice = rawPrice != null && rawPrice !== "";
+  const price = hasPrice ? `$${Number(rawPrice).toFixed(0)}` : "Custom quote";
+  const unit = hasPrice ? previewPriceUnitLabel(service.priceType, service.pricingUnit) : null;
+  const cta = service.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+
+  return (
+    <div className="relative group/edit" data-testid={`preview-card-${service.id}`}>
+      <OfferingCard
+        href={`/services/${service.id}`}
+        testId={`storefront-service-${service.id}`}
+        image={service.serviceImage ?? null}
+        title={service.serviceName || service.name || "Untitled service"}
+        chips={chips}
+        ratingSlot={<PreviewRatingLine rating={service.averageRating} count={service.reviewCount} />}
+        price={price}
+        unit={unit}
+        cta={cta}
+        showPrice={service.showPrice}
+        bookingMode={service.bookingMode}
+      />
+      {/* Hover-only Edit deep-link (ruling 74 res. B) — a sibling of the card's own <Link>, not a
+          nested anchor; z-10 keeps it clickable above the full-card link. */}
+      <Link
+        href={editHref}
+        className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md border border-console-light bg-white/95 px-2 py-1 text-xs font-medium text-console-dark shadow-sm opacity-0 transition-opacity group-hover/edit:opacity-100 focus:opacity-100"
+        data-testid={`button-preview-edit-${service.id}`}
+      >
+        <Edit className="w-3.5 h-3.5" /> {tCommon("actions.edit")}
+      </Link>
+    </div>
+  );
+}
+
 export default function ProviderServices() {
+  const { t } = useTranslation("catalog");
+  const { t: tCommon } = useTranslation("common");
+  // NOTE the filter state stays the ENGLISH category name / the literal "All": it is compared
+  // against live category names coming off the API (content, not chrome — ruling 60's system B)
+  // and is also the source of the `button-category-filter-*` testids. Only the "All" pill's
+  // DISPLAY is translated.
   const [selectedCategory, setSelectedCategory] = useState("All");
   // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
   // authoring surface (CatalogMapView); everything below the content block is untouched.
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  // C2 (ruling 74): Manage ⇄ Preview is a SEPARATE axis from List/Map — it governs the LIST
+  // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
+  // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
+  const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
   const [shareTarget, setShareTarget] = useState<Service | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -820,6 +1010,23 @@ export default function ProviderServices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service updated" });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  // C3 (ruling 74/75): the per-listing "Card shows" control PATCHes exactly ONE display pref
+  // (showPrice or bookingMode) — never the whole row, so it can't disturb any other listing field.
+  // The server parses these off insertProviderServiceSchema.partial() (owner-gated as today); they
+  // are display prefs, not §14/§18/§19 money fields, so they persist unstripped.
+  const displayOptionsMutation = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" } }) => {
+      const res = await apiRequest("PATCH", `/api/provider/services/${id}`, patch);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", description: error.message });
@@ -875,6 +1082,15 @@ export default function ProviderServices() {
           return name === selectedCategory;
         });
 
+  // C2 Preview honesty filter (§13): a listing appears in Preview ONLY if it would appear on the
+  // public /p/:handle storefront — the SAME predicate storefront.routes.ts loadStorefront applies
+  // to lane 1 (approvalStatus='approved' AND status='active'; owner-scoping is implicit here since
+  // the query is already the session owner's services). Mirrored, never loosened: a paused/draft/
+  // unapproved listing is visible in Manage but drops out of Preview, exactly as travelers see.
+  const previewServices = filteredServices.filter(
+    (s) => s.approvalStatus === "approved" && s.status === "active",
+  );
+
   const activeCount = (services || []).filter(s => s.status === "active").length;
   const isFirstTimeEmpty = !isLoading && totalServices === 0;
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
@@ -907,15 +1123,41 @@ export default function ProviderServices() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-console-darkest" data-testid="text-services-title">
-              Your Services
+              {t("header.title")}
             </h2>
             {isLoading ? (
               <Skeleton className="h-4 w-40 mt-1" />
             ) : (
-              <p className="text-console-mid text-sm">{activeCount} of {totalServices} services active</p>
+              <p className="text-console-mid text-sm">
+                {t("header.countSummary", { active: activeCount, total: totalServices })}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* C2 (ruling 74): Manage ⇄ Preview segmented control — a separate axis from List/Map,
+                shown only in list view (the map is neither Manage nor Preview). */}
+            {viewMode === "list" && (
+              <div className="flex rounded-lg border border-console-light overflow-hidden">
+                <Button
+                  variant={catalogMode === "manage" ? "default" : "ghost"}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setCatalogMode("manage")}
+                  data-testid="button-mode-manage"
+                >
+                  Manage
+                </Button>
+                <Button
+                  variant={catalogMode === "preview" ? "default" : "ghost"}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setCatalogMode("preview")}
+                  data-testid="button-mode-preview"
+                >
+                  Preview
+                </Button>
+              </div>
+            )}
             <div className="flex rounded-lg border border-console-light overflow-hidden">
               <Button
                 variant={viewMode === "list" ? "default" : "ghost"}
@@ -924,7 +1166,7 @@ export default function ProviderServices() {
                 onClick={() => setViewMode("list")}
                 data-testid="button-view-list"
               >
-                List
+                {t("header.viewList")}
               </Button>
               <Button
                 variant={viewMode === "map" ? "default" : "ghost"}
@@ -933,12 +1175,12 @@ export default function ProviderServices() {
                 onClick={() => setViewMode("map")}
                 data-testid="button-view-map"
               >
-                Map
+                {t("header.viewMap")}
               </Button>
             </div>
             <Link href="/provider/services/new">
               <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
-                <Plus className="w-4 h-4 mr-2" /> Add New Service
+                <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
               </Button>
             </Link>
           </div>
@@ -955,7 +1197,7 @@ export default function ProviderServices() {
                 onClick={() => setSelectedCategory(label)}
                 data-testid={`button-category-filter-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
               >
-                {label}
+                {label === "All" ? t("filter.all") : label}
               </Button>
             ))}
           </div>
@@ -972,10 +1214,8 @@ export default function ProviderServices() {
           /* First-time empty state: show all categories */
           <div className="space-y-6">
             <div className="text-center py-4">
-              <h3 className="text-lg font-semibold text-console-darkest mb-1">What will you offer?</h3>
-              <p className="text-console-mid text-sm">
-                Pick a category below to get started, or build your own service from scratch.
-              </p>
+              <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
+              <p className="text-console-mid text-sm">{t("empty.body")}</p>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
@@ -1000,7 +1240,7 @@ export default function ProviderServices() {
             <div className="text-center">
               <Link href="/provider/services/new">
                 <Button variant="outline" data-testid="button-add-first-service">
-                  <Plus className="w-4 h-4 mr-2" /> Start from scratch
+                  <Plus className="w-4 h-4 mr-2" /> {t("empty.fromScratch")}
                 </Button>
               </Link>
             </div>
@@ -1011,23 +1251,47 @@ export default function ProviderServices() {
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-console-mid font-medium">No services in this category.</p>
-              <p className="text-console-mid text-sm mt-1">Try a different filter or add a new service.</p>
+              <p className="text-console-mid font-medium">{t("filter.emptyTitle")}</p>
+              <p className="text-console-mid text-sm mt-1">{t("filter.emptyBody")}</p>
               <Button
                 variant="outline"
                 className="mt-4"
                 onClick={() => setSelectedCategory("All")}
                 data-testid="button-clear-filter"
               >
-                Clear filter
+                {t("filter.clear")}
               </Button>
             </CardContent>
           </Card>
+        ) : catalogMode === "preview" ? (
+          /* C2 Preview: the shared traveler card, honest storefront visibility (approved+active). */
+          previewServices.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center" data-testid="preview-empty">
+                <p className="text-console-mid font-medium">Nothing is live to preview yet</p>
+                <p className="text-console-mid text-sm mt-1">
+                  Preview shows your listings exactly as travelers see them on your storefront — only
+                  approved, active ones appear. Get a listing approved and switched on to see it here.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+              data-testid="catalog-preview-grid"
+            >
+              {previewServices.map((service) => (
+                <CatalogPreviewCard key={service.id} service={service} />
+              ))}
+            </div>
+          )
         ) : (
           /* Service cards */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredServices.map((service) => {
-              const displayName = service.serviceName || service.name || "Untitled Service";
+              // The listing's own NAME is provider content (ruling 60 system B) and is never
+              // translated; only the placeholder shown when there is no name is chrome.
+              const displayName = service.serviceName || service.name || t("card.untitled");
               const rawPrice = service.price ?? service.basePrice;
               const priceDisplay = rawPrice == null || rawPrice === ""
                 ? "—"
@@ -1066,12 +1330,12 @@ export default function ProviderServices() {
                           <StatusBadge status={isActive ? "active" : "paused"} />
                           {isBundle && (
                             <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
-                              Bundle
+                              {t("card.bundle")}
                             </Badge>
                           )}
                           {service.isFeatured && (
                             <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
-                              Featured
+                              {t("card.featured")}
                             </Badge>
                           )}
                           {categoryName && (
@@ -1095,7 +1359,8 @@ export default function ProviderServices() {
                           )}
                           {service.maxConcurrentBookings && service.maxConcurrentBookings > 1 && (
                             <span className="flex items-center gap-1 text-console-mid">
-                              <Users className="w-4 h-4" /> Up to {service.maxConcurrentBookings}
+                              <Users className="w-4 h-4" />{" "}
+                              {t("card.upTo", { count: service.maxConcurrentBookings })}
                             </span>
                           )}
                           {service.meetingPoint && (
@@ -1105,7 +1370,7 @@ export default function ProviderServices() {
                           )}
                           {service.pickupAvailable && (
                             <span className="flex items-center gap-1 text-blue-500">
-                              <Truck className="w-4 h-4" /> Pickup available
+                              <Truck className="w-4 h-4" /> {t("card.pickupAvailable")}
                             </span>
                           )}
                         </div>
@@ -1114,7 +1379,7 @@ export default function ProviderServices() {
                         {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
                           <div className="mt-3" data-testid={`affinity-tags-${service.id}`}>
                             <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
-                              Surfaces when travellers view:
+                              {t("card.affinityHeading")}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                               {service.contentAffinityTags.map((tag) => (
@@ -1142,15 +1407,24 @@ export default function ProviderServices() {
                           data-testid={`switch-active-${service.id}`}
                         />
                         <span className="text-xs text-console-mid">
-                          {isActive ? "Active" : "Paused"}
+                          {isActive ? tCommon("state.active") : tCommon("state.paused")}
                         </span>
                       </div>
                     </div>
 
+                    {/* C3: per-listing "Card shows" control (Show price + Booking mode). Bundles
+                        are edited in the Workstation, but their storefront card honors the same two
+                        prefs, so the control belongs on every listing card. */}
+                    <CardShowsControl
+                      service={service}
+                      onPatch={(patch) => displayOptionsMutation.mutate({ id: service.id, patch })}
+                      disabled={displayOptionsMutation.isPending}
+                    />
+
                     <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
                       <Link href={isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`}>
                         <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
-                          <Edit className="w-4 h-4 mr-1" /> Edit
+                          <Edit className="w-4 h-4 mr-1" /> {tCommon("actions.edit")}
                         </Button>
                       </Link>
                       {/* PB: no Duplicate for bundles — duplicateService copies the
@@ -1164,7 +1438,7 @@ export default function ProviderServices() {
                           disabled={duplicateMutation.isPending}
                           data-testid={`button-duplicate-${service.id}`}
                         >
-                          <Copy className="w-4 h-4 mr-1" /> Duplicate
+                          <Copy className="w-4 h-4 mr-1" /> {tCommon("actions.duplicate")}
                         </Button>
                       )}
                       {/* C9 Share & Promote absorption: share kit only for approved+active
@@ -1176,7 +1450,7 @@ export default function ProviderServices() {
                           onClick={() => setShareTarget(service)}
                           data-testid={`button-share-${service.id}`}
                         >
-                          <Share2 className="w-4 h-4 mr-1" /> Share
+                          <Share2 className="w-4 h-4 mr-1" /> {tCommon("actions.share")}
                         </Button>
                       )}
                       <Button
@@ -1187,7 +1461,7 @@ export default function ProviderServices() {
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-${service.id}`}
                       >
-                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                        <Trash2 className="w-4 h-4 mr-1" /> {tCommon("actions.delete")}
                       </Button>
                     </div>
 
@@ -1202,12 +1476,30 @@ export default function ProviderServices() {
         {/* C9: availability editing's ratified Catalog home (see header comment). */}
         <AvailabilitySection />
 
-        {/* C9: Share & Promote's opportunity-scoped creation half — real rows only (§13). */}
+        {/* C9 → C6 (ruling 74): Share & Promote's opportunity-scoped nudges — real rows only (§13)
+            — reworked into an ON-RAMP into the Distribute hub. The timely nudges STAY here
+            (valuable on the listing); the share/channels actions now deep-link into
+            /provider/distribute rather than opening a second share surface on Catalog (ruling 74:
+            "Promote → Distribute; no second share surface"). The storefront share tools stay on
+            Catalog (the header above), unchanged. */}
         <section data-testid="section-catalog-promote">
-          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-            Promote
-          </h2>
-          <PostingOpportunitiesCard />
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide">
+              {t("sections.promote")}
+            </h2>
+            <Link href="/provider/distribute">
+              <Button size="sm" variant="outline" data-testid="link-promote-distribute">
+                <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                Open Distribute
+                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            </Link>
+          </div>
+          <p className="text-xs text-console-mid mb-3" data-testid="text-promote-onramp">
+            Direct links, social kits and channel status all live in your Distribute hub. These
+            timely nudges point straight into it.
+          </p>
+          <PostingOpportunitiesCard promoteHref="/provider/distribute" />
         </section>
 
         {/* C9: the per-service share kit dialog (shared share-tools components — feed/story
@@ -1216,7 +1508,7 @@ export default function ProviderServices() {
         <Dialog open={!!shareOffering} onOpenChange={(open) => !open && setShareTarget(null)}>
           <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-share-kit">
             <DialogHeader>
-              <DialogTitle>{shareOffering?.name ?? "Share"}</DialogTitle>
+              <DialogTitle>{shareOffering?.name ?? t("shareDialog.fallbackTitle")}</DialogTitle>
             </DialogHeader>
             {shareOffering && <OfferingShareDetail offering={shareOffering} showImages />}
           </DialogContent>

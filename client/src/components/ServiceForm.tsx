@@ -17,7 +17,9 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
+  Users, Route, CalendarClock,
 } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +31,18 @@ import {
   parseStoredPoint,
   type LocationPoint,
 } from "@/components/backoffice/location-point-picker";
+// D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
+// the server scorers and console chips use, never a second local copy.
+import { isPlaceAnchored } from "@shared/service-fundamentals";
+// D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
+// server re-runs on the write, so what this wizard renders and what the API will accept cannot
+// drift. The client calls it only to draw the card — it never decides what it may affirm.
+import {
+  resolveApplicableAttestations,
+  detectProtectedTitleClaims,
+  type AttestationKey,
+} from "@shared/service-attestations";
+import { ServiceAttestationsCard } from "@/components/provider/service-attestations-card";
 
 interface ServiceCategory {
   id: string;
@@ -137,11 +151,39 @@ interface ServiceFormData {
   // departure. "" = never captured, matches meetingPoint's own optional-string convention.
   dropOffPoint: string;
   serviceRadius: number;
+  // SS-4 (ruling 69 disposition 9, migration 199): the PICKUP radius, its own column at last.
+  // "" = not set — deliberately a string so the never-captured state survives round-tripping and
+  // reaches the server as NULL rather than as a fabricated 0 (§13).
+  pickupRadiusKm: string;
+  // SS-6 (ruling 69 disposition 9, migration 199): the language(s) the service is DELIVERED in.
+  // `null` = never captured (render nothing); `[]` = deliberately cleared. The two must not
+  // collapse, so this is nullable rather than defaulting to an empty array.
+  deliveryLanguages: string[] | null;
   transportProvided: "yes" | "no" | "not_applicable";
+  // ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ───────────────
+  // CAPTURE ONLY — nothing reads these yet. Every one is a string here so that "" can mean
+  // NEVER CAPTURED and reach the server as an honest NULL (§13), never a fabricated default.
+  transportProvision: string;      // transportProvisionEnum | ""
+  pickupCoverageMode: string;      // "radius" | "route" | ""  — the ruling-62 AMENDMENT
+  durationMinutes: string;
+  bufferMinutes: string;
+  earliestStartTime: string;       // "HH:MM"
+  latestStartTime: string;         // "HH:MM"
+  serviceTimezone: string;         // IANA id
+  partySizeMin: string;
+  partySizeMax: string;
+  changeCutoffHours: string;
+  canAnchor: "" | "yes" | "no";    // tri-state: "" = never declared
   // Booking terms
   cancellationPolicy: string;
   // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
   cancellationPolicyType: string;
+  // Deposits / partial payments (Lane 7, ruling 72) — PROVIDER OPT-IN PER LISTING. When on, the
+  // traveler pays a deposit at checkout and the balance in a second checkout before a cutoff.
+  depositEnabled: boolean;
+  depositType: "" | "percentage" | "flat";
+  depositPercentage: string;
+  depositFlatAmount: string;
   leadTime: string;
   // Media
   serviceImage: string;
@@ -161,6 +203,25 @@ interface ServiceFormProps {
   onSuccess?: (serviceId: string) => void;
 }
 
+/**
+ * SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199) — the languages a service can be
+ * DELIVERED in. A short starter list for the launch market plus the majors; the column itself is a
+ * free jsonb string array, so this list constrains the UI only and never the data. Deliberately NOT
+ * pre-selected: an absent value means "the provider never told us" and must render as nothing on
+ * the traveler surface, never as a presumed "English" (§13).
+ */
+const DELIVERY_LANGUAGE_OPTIONS: string[] = [
+  "English",
+  "日本語",
+  "中文",
+  "한국어",
+  "Français",
+  "Deutsch",
+  "Español",
+  "Italiano",
+  "Português",
+];
+
 const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
   { value: "hotel_arrival", label: "Hotel arrival/departure" },
   { value: "photo_shoot", label: "Photo shoot" },
@@ -173,13 +234,46 @@ const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
   { value: "general_logistics", label: "Any trip (general logistics)" },
 ];
 
+// ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ────────────────
+// Vocabularies mirror shared/schema.ts's transportProvisionEnum / pickupCoverageModeEnum
+// (app-enforced, no DB CHECK). "" is offered as a real option: NOT SAYING is honest, and is
+// what every pre-195 listing already means (§13).
+// `segLabel` is the terse caption for the segmented control (ruling 74 / lane T1 — the mock's
+// "Transport & Logistics" step); `label` is the full sentence shown as the helper line under it.
+const TRANSPORT_PROVISION_OPTIONS: { value: string; segLabel: string; label: string }[] = [
+  { value: "pickup_included", segLabel: "Pickup included", label: "Pickup included — I collect the traveler" },
+  { value: "pickup_available", segLabel: "Pickup available", label: "Pickup available — can be arranged" },
+  { value: "meet_at_point", segLabel: "Meet at point", label: "Meet at the meeting point — traveler makes their own way" },
+  { value: "not_applicable", segLabel: "No transport", label: "Not applicable" },
+];
+// The pickup provisions — the two that make a coverage AREA meaningful (ruling 62 amendment).
+const PICKUP_PROVISIONS: ReadonlySet<string> = new Set(["pickup_included", "pickup_available"]);
+/** "" → null (never captured). A non-numeric entry is also null, never a fabricated 0. */
+const intOrNull = (v: string): number | null => {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number.parseInt(t, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
 // X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
 // shared/schema.ts cancellationPolicyTypeEnum. App-enforced (no DB CHECK, migration 144).
+//
+// SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-1): these
+// labels previously described the windows VAGUELY ("well in advance", "shorter notice",
+// "limited refund window") while the traveler-facing page (`service-detail.tsx`'s
+// CANCELLATION_POLICY_TYPE_LABELS) and the SERVER'S ACTUAL ENFORCEMENT
+// (`server/services/cancellation-policy.service.ts` refundPercentFor) both use concrete
+// hour thresholds. The seller therefore agreed to a refund schedule whose real terms were
+// never shown at the point of choosing. The strings below are now the same concrete windows
+// the buyer is shown and the server enforces — one vocabulary across all three surfaces.
+// Keep these in step with `refundPercentFor` and `shared/schema.ts`'s
+// CANCELLATION_POLICY_TYPE_LABELS if any of them changes.
 const CANCELLATION_POLICY_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "flexible", label: "Flexible — full refund if cancelled well in advance" },
-  { value: "moderate", label: "Moderate — partial refund on shorter notice" },
-  { value: "strict", label: "Strict — limited refund window" },
-  { value: "non_refundable", label: "Non-refundable" },
+  { value: "flexible", label: "Flexible — full refund if cancelled at least 24 hours before the start" },
+  { value: "moderate", label: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before" },
+  { value: "strict", label: "Strict — 50% refund if cancelled at least 7 days before the start" },
+  { value: "non_refundable", label: "Non-refundable — no refund once booked" },
 ];
 
 function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
@@ -215,7 +309,25 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     pickupAddress: "",
     dropOffPoint: "",
     serviceRadius: 0,
+    pickupRadiusKm: "",
+    deliveryLanguages: null,
     transportProvided: "not_applicable",
+    // D7 (ruling 62): every field starts UNCAPTURED — an empty string, not a guessed default.
+    transportProvision: "",
+    pickupCoverageMode: "",
+    durationMinutes: "",
+    bufferMinutes: "",
+    earliestStartTime: "",
+    latestStartTime: "",
+    serviceTimezone: "",
+    partySizeMin: "",
+    partySizeMax: "",
+    changeCutoffHours: "",
+    depositEnabled: false,
+    depositType: "",
+    depositPercentage: "",
+    depositFlatAmount: "",
+    canAnchor: "",
     cancellationPolicy: "",
     cancellationPolicyType: "",
     leadTime: "",
@@ -300,7 +412,27 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     pickupAddress: s.pickupAddress || "",
     dropOffPoint: s.dropOffPoint || "",
     serviceRadius: Number(s.serviceRadius || 0),
+    // NULL round-trips as "" / null — never coerced into a number or a presumed language.
+    pickupRadiusKm: s.pickupRadiusKm == null ? "" : String(s.pickupRadiusKm),
+    deliveryLanguages: Array.isArray(s.deliveryLanguages) ? (s.deliveryLanguages as string[]) : null,
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
+    // D7 (ruling 62): NULL on the row round-trips back as "" — still uncaptured, never coerced
+    // into a value the provider did not choose.
+    transportProvision: s.transportProvision || "",
+    pickupCoverageMode: s.pickupCoverageMode || "",
+    durationMinutes: s.durationMinutes == null ? "" : String(s.durationMinutes),
+    bufferMinutes: s.bufferMinutes == null ? "" : String(s.bufferMinutes),
+    earliestStartTime: s.earliestStartTime || "",
+    latestStartTime: s.latestStartTime || "",
+    serviceTimezone: s.serviceTimezone || "",
+    partySizeMin: s.partySizeMin == null ? "" : String(s.partySizeMin),
+    partySizeMax: s.partySizeMax == null ? "" : String(s.partySizeMax),
+    changeCutoffHours: s.changeCutoffHours == null ? "" : String(s.changeCutoffHours),
+    depositEnabled: !!s.depositEnabled,
+    depositType: ((s.depositType as any) === "percentage" || (s.depositType as any) === "flat") ? (s.depositType as any) : "",
+    depositPercentage: s.depositPercentage == null ? "" : String(s.depositPercentage),
+    depositFlatAmount: s.depositFlatAmount == null ? "" : String(s.depositFlatAmount),
+    canAnchor: s.canAnchor === true ? "yes" : s.canAnchor === false ? "no" : "",
     cancellationPolicy: s.cancellationPolicy || "",
     cancellationPolicyType: s.cancellationPolicyType || "",
     leadTime: s.leadTime || "",
@@ -561,6 +693,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: isEditMode,
   });
 
+  // ── D9 attestations (ruling 62's D9 clause / ruling 67) ──────────────────────────────────
+  // Affirmations already ON RECORD for this listing. Edit mode only — a listing that does not
+  // exist yet can have none (the record is a child row of the service). Read-only here: the
+  // record is append-only and this query never writes.
+  const { data: attestationState } = useQuery<{
+    applicable: Array<{ key: string; affirmedAt: string | null }>;
+    affirmedOther: Array<{ key: string; affirmedAt: string }>;
+  }>({
+    queryKey: ["/api/provider/services", id, "attestations"],
+    enabled: isEditMode,
+  });
+  // Locally checked-but-unsaved boxes. Written to the server only AFTER the listing save
+  // succeeds — the affirmation is a child row and needs the service id to exist.
+  const [attestationChecks, setAttestationChecks] = useState<Record<string, boolean>>({});
+
   const categoryPreSelected = useRef(false);
   const offeringTypeKeyPreSelected = useRef(false);
   const providerOfferingTypeKeyPreSelected = useRef(false);
@@ -797,6 +944,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // Enforced at submit/publish only — a draft is allowed to be incomplete. Existing listings
       // are grandfathered until their next submit/publish (the has_insurance/F2 precedent).
       const isInPerson = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+      // D7 (ruling 62): the SHARED predicate decides where the logistics capture applies, so
+      // "place-anchored" means the same thing here as it does in the server scorers and the
+      // console chips (shared/service-fundamentals.ts).
+      const isPlaceAnchoredListing = isPlaceAnchored({
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+        productShape: existingService?.productShape ?? null,
+      });
+      const isPickupProvision = PICKUP_PROVISIONS.has(formData.transportProvision);
       if (submitAction !== "draft" && isInPerson && !formData.meetingPoint.trim()) {
         throw new Error("Add a meeting point — in-person services must show travelers where to meet. Save as draft to finish later.");
       }
@@ -853,11 +1008,63 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — mirrors
         // pickupAddress's own pickupAvailable gate; drop-off only means something alongside pickup.
         dropOffPoint: formData.pickupAvailable ? (formData.dropOffPoint || null) : null,
-        serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
+        // D7 NEVER-CLOBBER (ruling 62's amendment, §13): a saved radius survives a provider
+        // choosing the ROUTE coverage mode. Under any pickup provision the radius is kept as
+        // entered — switching coverage mode changes what RENDERS, never what is stored. The
+        // historical `pickupAvailable` clearing rule is left exactly as it was for every other
+        // case (an explicit pickup toggle-OFF is a different act from a coverage-mode choice).
+        serviceRadius:
+          formData.serviceRadius > 0 && (formData.pickupAvailable || isPickupProvision)
+            ? formData.serviceRadius
+            : null,
+        // SS-4 (ruling 69 disposition 9): the pickup radius writes its OWN column. `serviceRadius`
+        // above is untouched by this field and vice versa — that separation IS the fix, and the
+        // two-labels-one-column notice the six-sigma pass added is retired with it. "" stays NULL
+        // ("not set"), never 0.
+        pickupRadiusKm: formData.pickupRadiusKm.trim() === "" ? null : (parseInt(formData.pickupRadiusKm, 10) || 0),
+        // SS-6 (ruling 69 disposition 9): sent only once the provider has touched the field —
+        // `null` here means "never captured" and must not be confused with a cleared `[]`.
+        deliveryLanguages: formData.deliveryLanguages,
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
+        // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
+        // Only sent for place-anchored listings (the shared isPlaceAnchored predicate) — the
+        // keys are OMITTED entirely otherwise, so a PATCH on a pdf/call listing leaves whatever
+        // was captured earlier untouched rather than wiping it (§13).
+        ...(isPlaceAnchoredListing
+          ? {
+              transportProvision: formData.transportProvision || null,
+              // The coverage MODE is meaningless without a pickup provision — clear the CHOICE
+              // when it no longer applies. This clears no DATA: `serviceRadius` above and the
+              // `service_route_points` rows are both untouched by this write.
+              pickupCoverageMode: isPickupProvision ? (formData.pickupCoverageMode || null) : null,
+              durationMinutes: intOrNull(formData.durationMinutes),
+              bufferMinutes: intOrNull(formData.bufferMinutes),
+              earliestStartTime: formData.earliestStartTime || null,
+              latestStartTime: formData.latestStartTime || null,
+              serviceTimezone: formData.serviceTimezone.trim() || null,
+              partySizeMin: intOrNull(formData.partySizeMin),
+              partySizeMax: intOrNull(formData.partySizeMax),
+              changeCutoffHours: intOrNull(formData.changeCutoffHours),
+              canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
+            }
+          : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
         cancellationPolicyType: formData.cancellationPolicyType || null,
+        // Deposits (Lane 7, ruling 72): provider opt-in. When off, everything is cleared to null so
+        // the listing checks out at the full price (§13). The server derives the actual deposit
+        // amount at checkout from these persisted values × the line total (§14) — never from a
+        // traveler's request body.
+        depositEnabled: formData.depositEnabled,
+        depositType: formData.depositEnabled ? (formData.depositType || null) : null,
+        depositPercentage:
+          formData.depositEnabled && formData.depositType === "percentage" && formData.depositPercentage.trim() !== ""
+            ? (parseInt(formData.depositPercentage, 10) || null)
+            : null,
+        depositFlatAmount:
+          formData.depositEnabled && formData.depositType === "flat" && formData.depositFlatAmount.trim() !== ""
+            ? formData.depositFlatAmount
+            : null,
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
@@ -902,6 +1109,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // revisionsIncluded is shared (expert + provider)
       payload.revisionsIncluded = formData.revisionsIncluded;
 
+      // SS-5a (ruling 69 disposition 3): the ticked confirmations travel WITH the write, because
+      // the publish gate is judged before the row exists on a create — a child row cannot pre-date
+      // its parent. The server re-derives what applies and refuses anything outside it; this sends
+      // only keys, never an opinion about applicability.
+      const affirmWithWrite = Object.entries(attestationChecks)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      if (affirmWithWrite.length > 0) {
+        payload.affirmAttestations = affirmWithWrite;
+      }
+
       // L2: read back the actual created/updated row (status + approvalStatus) rather
       // than assuming from submitAction — the server clamps the born approval state
       // (D1a), so what the client asked for and what actually landed can diverge.
@@ -909,10 +1127,45 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         ? await apiRequest("PATCH", `/api/provider/services/${id}`, payload)
         : await apiRequest("POST", "/api/provider/services", payload);
       const service = await res.json().catch(() => null);
-      return { submitAction, service };
+
+      // ── D9 attestations (ruling 62's D9 clause / ruling 67) ────────────────────────────
+      // An affirmation is a CHILD ROW, so it can only be written once the service id exists —
+      // hence a second call AFTER the save rather than fields on the listing payload. The
+      // server re-derives the applicable set from the saved row and refuses anything outside
+      // it; this call sends nothing but the keys the provider ticked.
+      //
+      // A failure here does NOT fail the save — the listing genuinely landed, and reporting
+      // "Failed to create service" would be a lie (§13). It is surfaced as its own honest
+      // toast in onSuccess instead.
+      let attestationError: string | null = null;
+      const keysToAffirm = Object.entries(attestationChecks)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      const savedServiceId: string | undefined = service?.id ?? (isEditMode ? id : undefined);
+      if (keysToAffirm.length > 0 && savedServiceId) {
+        try {
+          await apiRequest("POST", `/api/provider/services/${savedServiceId}/attestations`, {
+            affirm: keysToAffirm,
+          });
+        } catch (err: any) {
+          attestationError = err?.message || "unknown error";
+        }
+      }
+      return { submitAction, service, attestationError };
     },
-    onSuccess: ({ submitAction, service }) => {
+    onSuccess: ({ submitAction, service, attestationError }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      if (attestationError) {
+        // English, deliberately: ServiceForm is on I18N-2's "hardcoded English, migrate the
+        // WHOLE surface in one commit" list, and a single t() call here would half-wrap it —
+        // the one thing that convention forbids. The attestation CARD is a new file and is
+        // wholly wrapped; this toast belongs to the wizard, not the card.
+        toast({
+          title: "Listing saved — confirmations were not recorded",
+          description: `${attestationError}. Reopen this listing and confirm them.`,
+          variant: "destructive",
+        });
+      }
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
@@ -977,6 +1230,77 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+  // ── D7 (docs/DECISIONS.md ruling 62) ─────────────────────────────────────────────────────
+  // Placement: the logistics/delivery step, shown ONLY for place-anchored methods, decided by
+  // the SHARED predicate (shared/service-fundamentals.ts) rather than a local method list.
+  const showLogisticsCapture = isPlaceAnchored({
+    deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+    productShape: existingService?.productShape ?? null,
+  });
+  const pickupProvisionChosen = PICKUP_PROVISIONS.has(formData.transportProvision);
+
+  // ── D9 (ruling 62's D9 clause, executed by ruling 67) ────────────────────────────────────
+  // The applicable attestation set for the listing AS CURRENTLY DRAFTED, from the SHARED
+  // resolver. Recomputed as the provider changes category or delivery method, so the card
+  // tracks what they are actually building. This is a PREVIEW: the server re-derives the same
+  // set from the saved row on the write and rejects anything outside it (§14 posture).
+  const attestationResolution = useMemo(
+    () =>
+      resolveApplicableAttestations({
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+        productShape: existingService?.productShape ?? null,
+        categoryKey: selectedCategory?.categoryKey ?? null,
+        categorySlug: selectedCategory?.slug ?? null,
+      }),
+    [formData.deliveryMethod, existingService?.productShape, selectedCategory?.categoryKey, selectedCategory?.slug],
+  );
+  // attestationKey → the date it was affirmed, for the read-only rows.
+  const attestationAffirmedAt = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const a of attestationState?.applicable ?? []) {
+      if (a.affirmedAt) out[a.key] = a.affirmedAt;
+    }
+    for (const a of attestationState?.affirmedOther ?? []) out[a.key] = a.affirmedAt;
+    return out;
+  }, [attestationState]);
+
+  // ── SS-5a PUBLISH GATE (ruling 69 disposition 3) ────────────────────────────────────────
+  // The applicable attestations this listing has NOT affirmed, counting both what is on record
+  // and what is ticked in this session (both of which the save will carry). This mirrors the
+  // server predicate; the SERVER is still the authority — this only stops the provider from
+  // walking into a 403 they could not see coming.
+  const unaffirmedAttestations = useMemo(
+    () =>
+      attestationResolution.applicable.filter(
+        (key) => !attestationAffirmedAt[key] && !attestationChecks[key],
+      ),
+    [attestationResolution, attestationAffirmedAt, attestationChecks],
+  );
+  // The gate binds on a TRANSITION to active: an already-live listing is grandfathered, exactly
+  // as the server has it, so an edit of a live listing is never blocked here either.
+  const attestationGateBlocked =
+    unaffirmedAttestations.length > 0 && !(isEditMode && existingService?.status === "active");
+
+  // ── SS-5c SOFT WARNING (ruling 69 disposition 5) ────────────────────────────────────────
+  // The SAME shared detector the server runs, over the text as currently drafted, so the nudge
+  // appears while the provider is typing rather than only after a save. It never blocks and never
+  // edits: the server attaches the authoritative warning to its own response.
+  const protectedTitleWarning = useMemo(
+    () => detectProtectedTitleClaims({ serviceName: formData.name, description: formData.description }),
+    [formData.name, formData.description],
+  );
+
+  // NEVER-CLOBBER SURFACING (ruling 62's amendment, §13): picking one coverage mode must not
+  // silently delete the other's data — so state, out loud, that the other side is still there.
+  const savedRouteStopCount: number = Array.isArray(existingService?.routePoints)
+    ? existingService.routePoints.length
+    : 0;
+  const savedRadiusKm = Number(existingService?.serviceRadius ?? 0);
+  // SIX-SIGMA PASS (Tier A / finding M-4): is the row being edited PUBLICLY LIVE right now?
+  // Read from the loaded row, never from the in-form draft state — the question is what the
+  // marketplace currently shows, not what this form is about to send. `false` while the row is
+  // still loading, so a slow read never claims a listing is live (§13).
+  const isCurrentlyLive = isEditMode && existingService?.status === "active";
   const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
   const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
   const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
@@ -1860,6 +2184,48 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     Options filtered to your selected tier's delivery formats.
                   </p>
                 )}
+
+                {/* ── SS-6 delivery language (ruling 69 disposition 9, migration 199) ─────────
+                    Placed beside the delivery METHOD because it answers the sibling question:
+                    how it is delivered, and in what language. This is NOT ruling 60's chrome or
+                    content translation — it is a purchasable attribute of the experience itself
+                    (in Kyoto, an English-run session is commonly a different product from the
+                    shared Japanese one). Untouched ⇒ nothing is sent and nothing is shown. */}
+                <div className="mt-4">
+                  <Label>Delivered in (languages)</Label>
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-delivery-languages-hint">
+                    The language(s) you actually run this service in. Leave blank if you would
+                    rather not say — we will not guess one for you.
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {DELIVERY_LANGUAGE_OPTIONS.map((lang) => {
+                      const selected = formData.deliveryLanguages?.includes(lang) ?? false;
+                      return (
+                        <label key={lang} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              // The FIRST touch turns null (never captured) into a real array;
+                              // unticking the last one leaves [] (deliberately cleared), which is
+                              // a different fact and is preserved as such.
+                              const current = formData.deliveryLanguages ?? [];
+                              set(
+                                "deliveryLanguages",
+                                e.target.checked
+                                  ? [...current, lang]
+                                  : current.filter((l) => l !== lang),
+                              );
+                            }}
+                            className="h-4 w-4 rounded"
+                            data-testid={`checkbox-delivery-language-${lang}`}
+                          />
+                          {lang}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             );
           })()}
@@ -2244,6 +2610,322 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
+      {/* ── D7 service logistics (docs/DECISIONS.md ruling 62, migration 195) ──────────────────
+          CAPTURE ONLY. Nothing on this card is read by the transport resolver, the fundamentals
+          checks or any traveler surface yet — ruling 62 captures the field set NOW, while the
+          provider count is ~0, and wires consumers in later lanes. Every control offers a real
+          "not specified" state: an unanswered question stays unanswered (§13). */}
+      {showLogisticsCapture && (
+        <Card data-testid="card-service-logistics">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Service logistics
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              These details aren't shown to travelers yet — we're capturing them now so the
+              planner can use them when that lands. Leave anything you're unsure of blank.
+            </p>
+
+            {/* ── Getting there: transport provision + the ruling-62 AMENDMENT's coverage choice.
+                T1 (ruling 74) brings this to the mock: the provision is a SEGMENTED choice, the
+                coverage is an explicit radius/route TOGGLE, and the never-clobber notice states
+                out loud that the hidden side's data is preserved (ruling 62/64, §13). */}
+            <div className="space-y-4" data-testid="logistics-section-transport">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Truck className="w-4 h-4" />
+                  Getting there
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  How does the traveler reach the start? Tap the one that fits — tap it again to
+                  leave it unset.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-sm">Transport provision</Label>
+                <ToggleGroup
+                  type="single"
+                  value={formData.transportProvision}
+                  onValueChange={(v) => set("transportProvision", v || "")}
+                  variant="outline"
+                  className="mt-2 flex-wrap justify-start gap-2"
+                  data-testid="segmented-transport-provision"
+                >
+                  {TRANSPORT_PROVISION_OPTIONS.map((o) => (
+                    <ToggleGroupItem
+                      key={o.value}
+                      value={o.value}
+                      aria-label={o.label}
+                      className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                      data-testid={`toggle-transport-${o.value}`}
+                    >
+                      {o.segLabel}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formData.transportProvision
+                    ? TRANSPORT_PROVISION_OPTIONS.find((o) => o.value === formData.transportProvision)?.label
+                    : "Not specified."}
+                </p>
+              </div>
+
+            {pickupProvisionChosen && (
+              <div className="rounded-md border p-3 space-y-3" data-testid="block-pickup-coverage">
+                <Label className="flex items-center gap-2">
+                  <Radius className="w-4 h-4" />
+                  Pickup coverage — a radius or a route?
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Pick how your pickup area is defined. Switching between them never deletes the
+                  other one's data — it only changes what travelers see.
+                </p>
+                <ToggleGroup
+                  type="single"
+                  value={formData.pickupCoverageMode}
+                  onValueChange={(v) => set("pickupCoverageMode", v || "")}
+                  variant="outline"
+                  className="justify-start gap-2"
+                  data-testid="segmented-pickup-coverage-mode"
+                >
+                  <ToggleGroupItem
+                    value="radius"
+                    data-testid="toggle-coverage-radius"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Radius className="w-4 h-4" /> Radius
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="route"
+                    data-testid="toggle-coverage-route"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <Route className="w-4 h-4" /> Route
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground">
+                  {formData.pickupCoverageMode === "radius"
+                    ? "Radius — a distance around your meeting pin."
+                    : formData.pickupCoverageMode === "route"
+                      ? "Route — a fixed set of stops you collect from."
+                      : "Not specified — pick a radius or a route."}
+                </p>
+
+                {formData.pickupCoverageMode === "radius" && (
+                  <div>
+                    <Label htmlFor="coverageRadius">Pickup radius (km)</Label>
+                    <Input
+                      id="coverageRadius"
+                      type="number"
+                      min={0}
+                      value={formData.pickupRadiusKm}
+                      onChange={(e) => set("pickupRadiusKm", e.target.value)}
+                      placeholder="Not set"
+                      className="mt-1"
+                      data-testid="input-coverage-radius"
+                    />
+                    {/* SS-4 CLOSED (docs/DECISIONS.md ruling 69 disposition 9, migration 199).
+                        The six-sigma pass (finding M-3) measured this input and "Service Radius
+                        (km)" in the Pickup card above writing ONE column: typing 17 here made
+                        #serviceRadius read 17 instantly. They are now two columns
+                        (`pickup_radius_km` and `service_radius`), so the honesty notice that used
+                        to sit here — stating they were the same number — is RETIRED rather than
+                        reworded: it described a defect that no longer exists. NEVER-CLOBBER: the
+                        split added a column and backfilled nothing, so a listing saved under the
+                        old UI keeps its number on `service_radius` and shows "Not set" here until
+                        its owner says otherwise (§13 — never a guessed copy). */}
+                    {savedRouteStopCount > 0 && (
+                      <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
+                        {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
+                        not shown while coverage is set to radius. Nothing was deleted; switch to
+                        Route to show them again.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {formData.pickupCoverageMode === "route" && (
+                  <div>
+                    <p className="text-xs text-muted-foreground" data-testid="text-route-coverage-hint">
+                      {savedRouteStopCount > 0
+                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the Catalog map view.`
+                        : "No route stops saved yet — add them on the Catalog map view (Services → Map)."}
+                    </p>
+                    {savedRadiusKm > 0 && (
+                      <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
+                        A {savedRadiusKm} km service radius is saved — not shown while coverage is
+                        set to route. Nothing was deleted; switch to Radius to show it again.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
+
+            {/* ── Timing ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-timing">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Timing
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  How long it runs, and the window it can start in.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="durationMinutes">Duration (minutes)</Label>
+                <Input
+                  id="durationMinutes" type="number" min={0} placeholder="e.g. 180"
+                  value={formData.durationMinutes}
+                  onChange={(e) => set("durationMinutes", e.target.value)}
+                  className="mt-1" data-testid="input-duration-minutes"
+                />
+              </div>
+              <div>
+                <Label htmlFor="bufferMinutes">Setup / buffer (minutes)</Label>
+                <Input
+                  id="bufferMinutes" type="number" min={0} placeholder="e.g. 30"
+                  value={formData.bufferMinutes}
+                  onChange={(e) => set("bufferMinutes", e.target.value)}
+                  className="mt-1" data-testid="input-buffer-minutes"
+                />
+              </div>
+              <div>
+                <Label htmlFor="earliestStartTime">Earliest start</Label>
+                <Input
+                  id="earliestStartTime" type="time"
+                  value={formData.earliestStartTime}
+                  onChange={(e) => set("earliestStartTime", e.target.value)}
+                  className="mt-1" data-testid="input-earliest-start"
+                />
+              </div>
+              <div>
+                <Label htmlFor="latestStartTime">Latest start</Label>
+                <Input
+                  id="latestStartTime" type="time"
+                  value={formData.latestStartTime}
+                  onChange={(e) => set("latestStartTime", e.target.value)}
+                  className="mt-1" data-testid="input-latest-start"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="serviceTimezone">Timezone (IANA)</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  id="serviceTimezone" placeholder="e.g. Asia/Tokyo"
+                  value={formData.serviceTimezone}
+                  onChange={(e) => set("serviceTimezone", e.target.value)}
+                  data-testid="input-service-timezone"
+                />
+                <Button
+                  type="button" variant="outline"
+                  onClick={() => {
+                    // Suggest, never assume — the provider still has to keep or change it.
+                    try {
+                      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                      if (tz) set("serviceTimezone", tz);
+                    } catch { /* no resolvable zone — leave the field alone (§13) */ }
+                  }}
+                  data-testid="button-detect-timezone"
+                >
+                  Use mine
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                The start times above are local wall-clock times in this zone.
+              </p>
+            </div>
+            </div>
+
+            {/* ── Capacity ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-capacity">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Capacity
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  The party size this fits. Per-person vs per-group is your pricing type — set there,
+                  not asked twice here.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="partySizeMin">Minimum party size</Label>
+                  <Input
+                    id="partySizeMin" type="number" min={0} placeholder="e.g. 1"
+                    value={formData.partySizeMin}
+                    onChange={(e) => set("partySizeMin", e.target.value)}
+                    className="mt-1" data-testid="input-party-size-min"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="partySizeMax">Maximum party size</Label>
+                  <Input
+                    id="partySizeMax" type="number" min={0} placeholder="e.g. 8"
+                    value={formData.partySizeMax}
+                    onChange={(e) => set("partySizeMax", e.target.value)}
+                    className="mt-1" data-testid="input-party-size-max"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Booking rules ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-booking-rules">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4" />
+                  Booking rules
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Lead time is set under Booking terms — these are the change window and whether the
+                  day can be planned around this.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
+                  <Input
+                    id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
+                    value={formData.changeCutoffHours}
+                    onChange={(e) => set("changeCutoffHours", e.target.value)}
+                    className="mt-1" data-testid="input-change-cutoff-hours"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When a traveler can still move the booking. Separate from your refund policy.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="canAnchor">Can this anchor a day?</Label>
+                  <Select
+                    value={formData.canAnchor || "unspecified"}
+                    onValueChange={(v) => set("canAnchor", (v === "unspecified" ? "" : v) as "" | "yes" | "no")}
+                  >
+                    <SelectTrigger id="canAnchor" className="mt-1" data-testid="select-can-anchor">
+                      <SelectValue placeholder="Not specified" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unspecified">Not specified</SelectItem>
+                      <SelectItem value="yes">Yes — the day can be planned around it</SelectItem>
+                      <SelectItem value="no">No — it fits around other plans</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       </>)}
 
       {currentStep === 4 && (<>
@@ -2290,6 +2972,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <p className="text-xs text-muted-foreground mt-1">
               Shown to travelers as a real per-offering policy. Leave unset if you haven't decided — we never show a fabricated default.
             </p>
+            {/* SIX-SIGMA PASS (Tier A / finding M-1): the option you pick is not advisory —
+                the server computes the refund from it. Say so where the choice is made. */}
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-cancellation-enforced-note">
+              These windows are applied automatically when a traveler cancels — the refund is
+              calculated from the option you pick here, not from the notes below.
+            </p>
           </div>
           <div>
             <Label htmlFor="cancellationPolicy">Cancellation Policy Details (optional)</Label>
@@ -2302,6 +2990,79 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               className="mt-2"
               data-testid="textarea-cancellation-policy"
             />
+          </div>
+
+          {/* ── Deposits / partial payments (Lane 7, ruling 72) — PROVIDER OPT-IN ─────────────────
+              Off by default: the listing checks out at the full price, exactly as before. When on,
+              the traveler pays a deposit now and settles the balance in a second checkout before a
+              cutoff derived from your service date and change window. The deposit amount is computed
+              server-side at checkout from the values below. */}
+          <div className="rounded-md border p-4 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer" htmlFor="depositEnabled">
+              <input
+                id="depositEnabled"
+                type="checkbox"
+                checked={formData.depositEnabled}
+                onChange={(e) => set("depositEnabled", e.target.checked)}
+                data-testid="checkbox-deposit-enabled"
+              />
+              <span className="font-medium">Take a deposit for this listing</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              When on, travelers pay a deposit at checkout and the remaining balance in a second
+              checkout before a cutoff. Leave off to collect the full price up front.
+            </p>
+            {formData.depositEnabled && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="depositType">Deposit type</Label>
+                  <Select
+                    value={formData.depositType || undefined}
+                    onValueChange={(v) => set("depositType", v as "percentage" | "flat")}
+                  >
+                    <SelectTrigger id="depositType" className="mt-2" data-testid="select-deposit-type">
+                      <SelectValue placeholder="Choose percentage or flat amount" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">Percentage of the total</SelectItem>
+                      <SelectItem value="flat">Flat amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.depositType === "percentage" && (
+                  <div>
+                    <Label htmlFor="depositPercentage">Deposit percentage (%)</Label>
+                    <Input
+                      id="depositPercentage"
+                      type="number"
+                      min={1}
+                      max={100}
+                      placeholder="e.g. 30"
+                      value={formData.depositPercentage}
+                      onChange={(e) => set("depositPercentage", e.target.value)}
+                      className="mt-2"
+                      data-testid="input-deposit-percentage"
+                    />
+                  </div>
+                )}
+                {formData.depositType === "flat" && (
+                  <div>
+                    <Label htmlFor="depositFlatAmount">Deposit amount</Label>
+                    <Input
+                      id="depositFlatAmount"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="e.g. 50.00"
+                      value={formData.depositFlatAmount}
+                      onChange={(e) => set("depositFlatAmount", e.target.value)}
+                      className="mt-2"
+                      data-testid="input-deposit-flat-amount"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -2339,6 +3100,27 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── D9 attestations (ruling 62's D9 clause, executed by ruling 67) ──────────────────
+          Placement: the "Terms & requirements" step — the C9 precedent that puts per-listing
+          curation on the "what I sell" module. The card renders ITSELF only when the SHARED
+          resolver returns a non-empty applicable set for what is currently drafted; nothing
+          here decides applicability locally. IT IS NOW A PUBLISH GATE (ruling 69 disposition
+          3, answering the question ruling 67 filed as SS-5a): an unticked applicable box
+          blocks a TRANSITION to active — draft saves and already-live listings are exempt,
+          which is the whole grandfathering mechanism. The server holds the authority; the
+          disabled Publish button below only makes the refusal visible before it happens. */}
+      <ServiceAttestationsCard
+        resolution={attestationResolution}
+        affirmedAt={attestationAffirmedAt}
+        checked={attestationChecks}
+        onToggle={(key: AttestationKey, next: boolean) =>
+          setAttestationChecks((prev) => ({ ...prev, [key]: next }))
+        }
+        unaffirmed={unaffirmedAttestations}
+        gateApplies={!(isEditMode && existingService?.status === "active")}
+        titleClaimWarning={protectedTitleWarning}
+      />
 
       </>)}
 
@@ -2584,15 +3366,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <div className="flex-1" />
 
             {/* Draft save is reachable from EVERY step (unchanged: drafts skip
-                required-field checks), so nobody has to walk to step 4 to bail out. */}
+                required-field checks), so nobody has to walk to step 4 to bail out.
+
+                SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-4):
+                this action sends `status:"draft"` unconditionally, so on a listing that is
+                CURRENTLY LIVE it takes the listing off the marketplace. Measured directly:
+                clicking it on an `active` listing moved that row to `draft` in the DB, with
+                nothing on screen saying so — and it sits immediately beside "Next", on every
+                step, wearing the same neutral label it wears for a brand-new draft. The
+                BEHAVIOUR is deliberately left alone here (whether an edit should preserve
+                `active` is a product call — filed Tier B); what changes is that the button now
+                says what it is about to do. */}
             <Button
               variant="outline"
               onClick={() => createMutation.mutate("draft")}
               disabled={createMutation.isPending}
+              title={isCurrentlyLive ? "This listing is live. Saving it as a draft removes it from the marketplace until you publish it again." : undefined}
               data-testid="button-save-draft"
             >
               {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              {role === "expert" ? "Save as Draft" : "Save Draft"}
+              {isCurrentlyLive
+                ? "Unpublish & Save Draft"
+                : role === "expert" ? "Save as Draft" : "Save Draft"}
             </Button>
 
             {currentStep < TOTAL_STEPS ? (
@@ -2623,12 +3418,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("publish")}
-                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || attestationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
                 title={
                   verificationGateBlocked
                     ? "Complete identity and business verification in your Provider Status page before publishing"
                     : publishBlocked
                     ? "Complete background verification before publishing this category"
+                    : attestationGateBlocked
+                    ? "Tick the confirmations on the Terms & requirements step before publishing"
                     : (!isEditMode && !formData.serviceOfferingTypeId)
                     ? "Pick an offering from the /earn catalog first"
                     : undefined
@@ -2636,7 +3433,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 data-testid="button-publish-service"
               >
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {verificationGateBlocked ? "Verification Required" : publishBlocked ? "Verification Required" : "Publish Service"}
+                {verificationGateBlocked || publishBlocked
+                  ? "Verification Required"
+                  : attestationGateBlocked
+                  ? "Confirmations Required"
+                  : "Publish Service"}
               </Button>
             )}
           </div>
@@ -2670,6 +3471,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <p className="text-xs text-amber-700 sm:text-right" data-testid="text-expert-submit-verification-note">
               You can submit for review now — it just won't go live until you{" "}
               <a href="/expert-status" className="underline font-medium">verify your identity</a>.
+            </p>
+          )}
+
+          {/* SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-2):
+              the PROVIDER half of the same honesty note. Measured on the wizard's final step:
+              the Publish button relabels itself "Verification Required" and goes DISABLED, and
+              the only statement of why lived in a `title` tooltip — no visible text and no link
+              to /provider-status anywhere on the wizard (measured: 0 status links in the DOM).
+              A disabled control whose reason is invisible is a dead end; the expert branch above
+              already had its escape, the provider branch did not. Copy only — this asserts no
+              new state and changes no gate; it names the block the gate has ALREADY decided and
+              points at the page that clears it. */}
+          {currentStep === TOTAL_STEPS && role === "provider" && (verificationGateBlocked || publishBlocked) && (
+            <p className="text-xs text-amber-700 sm:text-right" data-testid="text-provider-publish-verification-note">
+              {verificationGateBlocked
+                ? "Publishing needs identity and business verification. "
+                : "This category needs background verification before it can be published. "}
+              <a href="/provider-status" className="underline font-medium">Finish verification on your Provider Status page</a>
+              {" "}— your work here is safe, use Save Draft and come back.
             </p>
           )}
         </CardContent>

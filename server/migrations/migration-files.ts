@@ -897,4 +897,85 @@ export const MIGRATION_FILES = [
   // behavior (D8 is unruled); it is the download SIGNAL that a future D8 pass would need.
   // Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
   "194_deliverable_downloads.sql",
+  // 195: provider_services D7 service-logistics capture (docs/DECISIONS.md ruling 62, decision-maker
+  // ratified Aug 11 2026, incl. the radius-or-route AMENDMENT). 11 additive nullable columns:
+  // transport_provision, pickup_coverage_mode, duration_minutes, buffer_minutes,
+  // earliest/latest_start_time, service_timezone, party_size_min/max, change_cutoff_hours,
+  // can_anchor. CAPTURE ONLY — no consumer wired. No CHECK (app-enforced vocabularies, the
+  // migration-144 posture), no backfill (NULL = never captured, §13). Declared in
+  // shared/schema.ts (publish-trap rule).
+  "195_service_logistics_capture.sql",
+  // 196: provider_services.deliverable_uploaded_at — D8 per-method completion (docs/DECISIONS.md
+  // ruling 63, executed by ruling 66). ONE additive nullable timestamp stamped by the deliverable
+  // UPLOAD path; it is the "post-delivery" clock the pdf auto-complete timer's UNDOWNLOADED arm
+  // measures from (the downloaded arm rides deliverable_downloads, migration 194, and needs no new
+  // state). NULL = never recorded → that arm is skipped with a stated reason, never guessed (§13).
+  // No backfill, no CHECK. Declared in shared/schema.ts (publish-trap rule).
+  "196_deliverable_uploaded_at.sql",
+  // 197: service_attestations — D9 onboarding attestations keyed to delivery method + category
+  // risk (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67). Child rows of
+  // provider_services on the service_route_points pattern: ON DELETE CASCADE, UNIQUE
+  // (service_id, attestation_key) — that UNIQUE is what makes re-affirming idempotent
+  // (INSERT … ON CONFLICT DO NOTHING). affirmed_by is the SESSION user, ON DELETE SET NULL so a
+  // deleted account never erases the historical fact. Vocabulary is app-enforced in
+  // shared/service-attestations.ts — NO CHECK (migration-144/195 posture, publish-trap
+  // avoidance). Additive, idempotent. Declared in shared/schema.ts (publish-trap rule).
+  "197_service_attestations.sql",
+  // 198: short_links.expires_at — D6 rails attribution (docs/DECISIONS.md ruling 61). ONE additive
+  // nullable timestamp; NULL = never expires, so every link already shared behaves identically and
+  // nothing is backfilled. It exists because ruling 61's "expired ref → full rate" refusal had
+  // nothing to key on — short_links carried no expiry. Enforced ONLY in the rails money decision
+  // (rails-attribution.service.ts); GET /r/:code and the S4 analytics attribution are unchanged.
+  // No CHECK, no DEFAULT. Declared in shared/schema.ts (publish-trap rule).
+  "198_short_link_expires_at.sql",
+  // 199: provider_services.pickup_radius_km + delivery_languages — SS-4 + SS-6 (docs/DECISIONS.md
+  // ruling 69 disposition 9). TWO additive-nullable columns, no CHECK, no DEFAULT, no backfill.
+  // SS-4 splits "how far I collect from" out of `service_radius` (which two wizard labels were
+  // both writing) WITHOUT touching the existing value — NULL renders as "not set", never as a
+  // copy. SS-6 gives providers a delivery-language field at all, typed to match
+  // `local_expert_forms.languages` (jsonb string array); NULL means never captured and must never
+  // render as a default "English" (§13). Both declared in shared/schema.ts (publish-trap rule).
+  "199_pickup_radius_and_delivery_languages.sql",
+  // 200: deposits / partial payments on the cart-checkout rail — Lane 7 (docs/DECISIONS.md ruling
+  // 72). Ratified design: MANUAL BALANCE + PROVIDER OPT-IN PER LISTING. Adds deposit CONFIG to
+  // provider_services (deposit_enabled/type/percentage/flat_amount — owner listing config, not a
+  // §8/§18 fee rate) and the deposit/balance booking state to service_bookings (deposit_amount,
+  // deposit_paid, balance_amount, balance_paid, balance_due_at, stripe_deposit_intent_id,
+  // stripe_balance_intent_id — mirroring the legacy `bookings` shape additively). All
+  // additive-nullable, NO DB CHECK (app-enforced vocab), all DECLARED in shared/schema.ts
+  // (publish-trap rule). status='deposit_paid' is a plain varchar value outside every
+  // paid-equivalent set — a deposit-only booking releases no earning (D8 fires only from
+  // 'confirmed'). Deposits OFF ⇒ checkout byte-identical (§13).
+  "200_deposit_partial_payments.sql",
+  // 201: service_translations — provider CONTENT translation (docs/DECISIONS.md ruling 60 Phase B
+  // / ruling 73; QA_PUNCH_LIST I18N-4). Per-service, per-locale translated free-text content
+  // (name/short_description/description/meeting_point) on the service_route_points child-row
+  // pattern: ON DELETE CASCADE, UNIQUE (service_id, locale). `status`/`source` are app-enforced
+  // varchars (no DB CHECK — migration-144 posture); source='ai_draft' labels a machine draft by
+  // construction, never shown to a traveler until a provider approves it (§13). Additive, no
+  // CHECK; table + UNIQUE + index DECLARED in shared/schema.ts (publish-trap rule).
+  "201_service_translations.sql",
+  // 202: per-listing card display options — Catalog+Distribute lane C3 (docs/DECISIONS.md ruling
+  // 74/75). TWO additive columns on provider_services: show_price (boolean DEFAULT true — false =>
+  // the card shows an honest "Enquire for pricing", never a blank/$0; allowed for ALL services) and
+  // booking_mode (varchar, app-enforced bookingModeEnum instant|request|hidden, NO DB CHECK, NULL =
+  // unset => derived at read time from service_provider_forms.instant_booking by resolveBookingMode).
+  // Both are DISPLAY prefs, NOT money/identity/rate fields — legitimately client-settable, not
+  // stripped. Both DECLARED in shared/schema.ts (publish-trap rule); additive, no CHECK.
+  "202_service_display_options.sql",
+  // 203: completion-mint race guards (task 1091 review; RENUMBERED from 195 during the Aug 12
+  // 2026 reconciliation of the replit line into main — my line already owned 195/196; ledger
+  // row 80). Partial unique indexes on provider_earnings(source_id) WHERE source_type='booking',
+  // expert_earnings(reference_id) WHERE reference_type='service_booking', and
+  // platform_revenue(source_id) WHERE source_type='booking_commission' — the DB half of the
+  // idempotent completion mint (INSERT ... ON CONFLICT DO NOTHING), so concurrent traveler
+  // confirm / auto-complete scheduler / reconciliation callers can never double-mint. Dedupes
+  // pre-existing duplicates first (keep paid_out, else earliest). Declared in shared/schema.ts
+  // (publish-trap rule) — LOAD-BEARING for mint idempotency.
+  "203_completion_mint_unique_guards.sql",
+  // 204: expert profile display fields — additive nullable display_name/headline on
+  // local_expert_forms so the expert profile editor can persist the public-facing
+  // name/tagline it exposes (RENUMBERED from 196 during the Aug 12 2026 reconciliation).
+  // Declared in shared/schema.ts (publish-trap).
+  "204_expert_profile_display_fields.sql",
 ] as const;

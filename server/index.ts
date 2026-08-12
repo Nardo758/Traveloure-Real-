@@ -37,6 +37,7 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
   logger,
@@ -602,6 +603,27 @@ if (process.env.NODE_ENV === "production") {
       runStripeReconciliation();
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+
+    // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
+    // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
+    // "when" (pdf artifact timer, property checkout-date, in_person service-date) PLUS the payment
+    // gate, unpaid-recheck stamping and the Pass-2 ledger reconciliation. The replit line's
+    // bookingAutoCompleteScheduler is retained only for its reconciliation helper (reused inside
+    // this job) and its unit proofs — it is deliberately NOT started, so exactly one job flips
+    // bookings. HOURLY, matching the earnings release scheduler — the windows are day-scale, so
+    // hourly is ample and keeps the lag between "eligible" and "completed" under an hour. Re-running
+    // is a no-op by construction (§15 atomic conditional + migration-203 DB-guarded idempotent
+    // mint), so an overlapping or repeated pass is safe. First pass is delayed to clear startup.
+    setTimeout(() => {
+      void runBookingAutoCompletion().catch((err) =>
+        logger.error({ err }, "[auto-complete] first pass failed"),
+      );
+      setInterval(() => {
+        void runBookingAutoCompletion().catch((err) =>
+          logger.error({ err }, "[auto-complete] scheduled pass failed"),
+        );
+      }, 60 * 60 * 1000);
+    }, 3 * 60 * 1000);
 
     // DMO extraction warmup sweep (part 2/3 of the pre-extraction design, CLAUDE.md-adjacent
     // ruling Aug 9 2026 — see server/jobs/dmoExtractionWarmup.ts). Delayed ~60s so it never

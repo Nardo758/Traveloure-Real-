@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
+import { validateImageDataUrl } from "./utils/imageValidation";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
@@ -48,6 +49,7 @@ import {
   funnelEvents,
   bundleComponents,
   deliverableDownloads,
+  resolveBookingMode,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -76,6 +78,7 @@ import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
+import { draftServiceTranslation, isContentLocale } from "./services/service-translation.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
@@ -119,6 +122,7 @@ import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
 import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
+import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
@@ -170,7 +174,6 @@ import {
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
-  getExpertSplitRates,
   resolveExpertSharePct,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
@@ -179,6 +182,23 @@ import {
   resolveServiceOwnerShareRate,
   type CommissionRates,
 } from "./services/commission";
+// 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6) — the cart quote must price a
+// direct provider line through the same D1 resolver /api/checkout charges it through.
+import {
+  resolveDirectProviderRate,
+  pickOwnerShareRate,
+} from "./services/direct-charge-rate.service";
+// SS-5a attestation publish gate (docs/DECISIONS.md ruling 69 disposition 3) — beside the F2
+// verification gate at the same three choke points; grandfathering is the transition condition.
+import {
+  resolveAttestationShape,
+  readAffirmAttestationsField,
+  validateAffirmKeys,
+  checkAttestationPublishGate,
+} from "./services/attestation-publish-gate.service";
+// SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
+import { detectProtectedTitleClaims } from "@shared/service-attestations";
+import { sanitizeInput } from './utils/sanitize';
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
@@ -363,17 +383,6 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Simple XSS sanitization - strips HTML tags and dangerous characters
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
 
 // Sanitize object string fields recursively
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
@@ -643,6 +652,8 @@ export async function registerRoutes(
   const EXPERT_SELF_SERVICE_PREFIXES = [
     "/api/expert/neighborhoods",
     "/api/expert/profile-notes",
+    "/api/expert/profile",
+    "/api/expert/photo",
     "/api/expert/selected-services",
     "/api/expert/specializations",
     "/api/expert/service-listings",
@@ -965,6 +976,13 @@ export async function registerRoutes(
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
   // id="health" and 404s (live-verified), so order is load-bearing here.
   app.use(providerListingHealthRoutes);
+
+  // D9 onboarding attestations (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67;
+  // migration 197) — GET/POST /api/provider/services/:id/attestations. Mounted in the same slot
+  // rule as the health router above: ahead of the inline GET /api/provider/services/:id. The
+  // applicable SET is server-derived from the live row on every read AND every write
+  // (shared/service-attestations.ts); the body is a §19 allowlist of one field.
+  app.use(serviceAttestationsRoutes);
 
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
@@ -1536,23 +1554,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           bookingType =
             ownerIsProvider ? BookingType.PROVIDER_BOOKING : BookingType.EXPERT_SESSION;
 
-          // Per-service revenueShareRate is the final override when explicitly set
-          // (consistent with checkout logic in payments.routes.ts).
-          const hasPerServiceRate =
-            service.revenueShareRate !== null && service.revenueShareRate !== undefined;
-
-          if (hasPerServiceRate) {
-            const shareRate = Number(service.revenueShareRate);
-            platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
-            providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
-          } else {
-            platformFeeAmt = commission.platformFee.toFixed(2);
-            providerEarningsAmt = (
-              ownerIsProvider
-                ? (commission.providerPayout ?? 0)
-                : (commission.expertPayout ?? 0)
-            ).toFixed(2);
-          }
+          // ── 1C charge-path repoint (docs/DECISIONS.md ruling 71; completes ruling 69 D6) ──────
+          // The RATE this booking records resolves through the SAME D1 seam cart checkout uses:
+          // `resolveDirectProviderRate` makes ONE call into `resolveProviderRate` (§18 rule 1 —
+          // delegate, never re-implement), and `pickOwnerShareRate` applies the ONE precedence
+          // (rails → direct D1 band → legacy). The direct band deliberately OUTRANKS the per-service
+          // `revenueShareRate` snapshot, which ruling 47 dethroned as a first operand — pricing a
+          // booking off the stale snapshot here would defeat an admin band edit exactly as the cart
+          // path already prevents. §14/§18: the rate is server-resolved from `fee_bands`, never from
+          // `req.body` and never from the snapshot as an override.
+          //
+          // A refusal (expert lane / no category / breached band guard) never throws — the seam
+          // leaves the INCUMBENT legacy rate standing for that line, so a booking-create is never the
+          // casualty of a misconfigured band (the ruling-70 disposition-6 fallback posture, reused —
+          // not a second handler). The legacy operand is this path's own pre-1C incumbent share (the
+          // `calculateCommission` payout share, byte-identical to what it charged before 1C), with the
+          // snapshot demoted to that fallback's fallback.
+          const parseSnapshotRate = (v: unknown, fallback: number): number => {
+            const n = parseFloat(String(v));
+            return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+          };
+          const directRate = await resolveDirectProviderRate({
+            serviceOwnerUserId: providerId,
+            ownerRole,
+            categoryId: service.categoryId ?? null,
+            serviceId,
+          });
+          const incumbentShare = 1 - commission.commissionRate;
+          const { shareRate: ownerShareRate } = pickOwnerShareRate({
+            railsShareRate: null,
+            direct: directRate,
+            legacyShareRate: parseSnapshotRate(service.revenueShareRate, incumbentShare),
+          });
+          platformFeeAmt = (totalAmount * (1 - ownerShareRate)).toFixed(2);
+          providerEarningsAmt = (totalAmount * ownerShareRate).toFixed(2);
         } else {
           // No owner on record — fall back to expert standard split
           const commission = calculateCommission(totalAmount, BookingType.EXPERT_SESSION);
@@ -1834,6 +1869,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = insertLocalExpertFormSchema.parse(req.body);
+          const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+          if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
@@ -1854,6 +1891,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const input = insertLocalExpertFormSchema.parse(req.body);
+      const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+      if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
@@ -1885,6 +1924,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = insertLocalExpertFormSchema.parse(req.body);
+          const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+          if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
@@ -1904,6 +1945,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
+      const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+      if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
@@ -2179,7 +2222,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       category: category || undefined,
       activeOnly: activeOnly === "true",
     });
-    res.json(services);
+    // C3 (ruling 74/75): resolve each listing's card booking mode server-side with the SAME
+    // derivation the public storefront read uses (resolveBookingMode), so the Catalog Preview card
+    // is concrete AND identical to what travelers see ("what you see = what users see"). The
+    // account instant-booking flag is read ONCE (never duplicated per row); showPrice is already
+    // concrete via its column DEFAULT. The RAW column value is preserved for any consumer that
+    // needs it — resolution only fills the unset case.
+    const [ownerForm] = await db
+      .select({ instantBooking: serviceProviderForms.instantBooking })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, userId))
+      .limit(1);
+    const ownerInstantBooking = ownerForm?.instantBooking ?? false;
+    const withDisplayOptions = services.map((s) => ({
+      ...s,
+      showPrice: (s as any).showPrice ?? true,
+      bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
+    }));
+    res.json(withDisplayOptions);
   });
 
   // Get a single provider service by ID (ownership required)
@@ -2214,6 +2274,120 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json({ ...service, neighborhoods, routePoints });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
+    }
+  });
+
+  // ── D1 (ruling 74/76): per-listing publish-readiness summary for the Distribute
+  //    Marketplace channel. Owner-gated (service.userId === session user, §14 identity from
+  //    the session never the body) and read-only. It COMPOSES the three existing gate
+  //    authorities — it re-derives none of them:
+  //      • approval + active status  ← the provider_services row (the owner console read)
+  //      • verification gate         ← resolvePublishVerification(ownerId)  (F2, account-level)
+  //      • attestation gate          ← resolveAttestationShape + checkAttestationPublishGate
+  //                                     (SS-5a, per-listing, applicable set server-derived)
+  //    §13: a listing that CANNOT go live returns the TRUE blocker(s) with a fix deep-link,
+  //    never an optimistic "ready". "Live" is asserted only when approval='approved' AND
+  //    status='active' AND both gates pass — the same predicate the storefront read enforces.
+  //    The attestation gate is resolved against the LIVE row shape (no overrides — this is a
+  //    read of what-is, not a would-be write). Justification for a new endpoint over composing
+  //    client-side: the attestation APPLICABLE set is server-derived only (a client deciding
+  //    its own applicable set is exactly the walk-past the gate service forbids), so the honest
+  //    state cannot be assembled on the client without duplicating that logic.
+  app.get("/api/provider/services/:id/publish-readiness", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const approvalStatus = service.approvalStatus ?? "draft";
+      const status = service.status ?? "draft";
+
+      // Verification gate — the SAME resolver the publish choke points use; owner id, not actor.
+      const verification = await resolvePublishVerification(userId);
+
+      // Attestation gate — resolve the live shape, then ask the shared gate whether it blocks.
+      const attestShape = await resolveAttestationShape({ serviceId: service.id });
+      const attestGate = await checkAttestationPublishGate({ serviceId: service.id, shape: attestShape });
+      const attestationOk = attestGate === null;
+      const unaffirmed = attestGate
+        ? ((attestGate.body.attestations as { key: string; label: unknown }[] | undefined) ?? [])
+        : [];
+
+      const isApproved = approvalStatus === "approved";
+      const isActive = status === "active";
+      // "Live" = the SAME predicate the public storefront read (loadStorefront) actually serves:
+      // approved AND active. The verification/attestation gates are PUBLISH gates — they block a
+      // TRANSITION to active, not continuous serving — so a grandfathered approved+active listing
+      // on an as-yet-unverified account is genuinely live to travelers, and the Storefront header
+      // on THIS page reports it live too. Folding the publish gates into `isLive` would contradict
+      // both. Instead they surface below as the reasons a NON-active listing can't be activated.
+      const isLive = isApproved && isActive;
+
+      // Honest, ordered blocker list for a listing that is NOT live — each carries a fix
+      // deep-link (§13: the real reason, never a fake "ready"). Order = the sequence the owner
+      // resolves them in. Empty when the listing is live.
+      const blockers: { code: string; message: string; fixHref: string }[] = [];
+      if (!isLive) {
+        if (!verification.ok) {
+          blockers.push({
+            code: "VERIFICATION_GATE",
+            message: isProviderRole(verification.role)
+              ? "Finish identity and business verification before this listing can go live."
+              : "Finish identity verification before this listing can go live.",
+            fixHref: isExpertRole(verification.role) ? "/expert-status" : "/provider-status",
+          });
+        }
+        if (!attestationOk) {
+          blockers.push({
+            code: "ATTESTATION_GATE",
+            message: "Affirm the statements on this listing before publishing it.",
+            fixHref: `/provider/services/${service.id}/edit`,
+          });
+        }
+        if (!isApproved) {
+          blockers.push({
+            code: approvalStatus === "rejected" ? "APPROVAL_REJECTED" : "APPROVAL_PENDING",
+            message:
+              approvalStatus === "rejected"
+                ? "This listing was rejected in review — edit and resubmit it."
+                : "This listing is in review. It goes live once approved.",
+            fixHref: `/provider/services/${service.id}/edit`,
+          });
+        } else if (!isActive) {
+          blockers.push({
+            code: "NOT_ACTIVE",
+            message:
+              status === "paused"
+                ? "This listing is paused. Reactivate it in Catalog to sell it."
+                : "This listing is approved but not active yet. Activate it in Catalog.",
+            fixHref: `/provider/services`,
+          });
+        }
+      }
+
+      res.json({
+        serviceId: service.id,
+        name: (service as any).serviceName ?? (service as any).name ?? "",
+        approvalStatus,
+        status,
+        isLive,
+        publicHref: `/services/${service.id}`,
+        verification: {
+          ok: verification.ok,
+          role: verification.role,
+          identityVerified: verification.identityVerified,
+          businessVerified: verification.businessVerified,
+        },
+        attestation: {
+          ok: attestationOk,
+          unaffirmed,
+        },
+        blockers,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to resolve publish readiness" });
     }
   });
 
@@ -2260,6 +2434,155 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
+    }
+  });
+
+  // ══ Ruling 60 Phase B — provider CONTENT translation (service_translations) ══════════════════
+  // System B (the provider's OWN traveler-facing content), NOT system A (chrome). §13's honesty
+  // rule binds here: a draft is never shown to a traveler, an AI draft is labeled by construction,
+  // and a missing translation is served as the honest ORIGINAL with a "shown in English" label
+  // (that last part lives on the traveler read in content.routes.ts).
+  //
+  // Owner-gated: the service is resolved by id + `service.userId === session user`. The write body
+  // is a hand-written zod ALLOWLIST of exactly the four translatable content fields (§19 — no
+  // client-settable status/source/updatedBy/timestamp; status/source are set server-side by the
+  // path, updatedBy from the session per §14). A PUT is replace-for-that-locale.
+  const translationContentBodySchema = z.object({
+    serviceName: z.string().trim().max(255).nullish(),
+    shortDescription: z.string().trim().max(150).nullish(),
+    description: z.string().trim().max(20000).nullish(),
+    meetingPoint: z.string().trim().max(20000).nullish(),
+  });
+  const normalizeContent = (b: z.infer<typeof translationContentBodySchema>) => ({
+    serviceName: b.serviceName ?? null,
+    shortDescription: b.shortDescription ?? null,
+    description: b.description ?? null,
+    meetingPoint: b.meetingPoint ?? null,
+  });
+  async function resolveOwnedService(req: any, res: any) {
+    const userId = getUserId(req)!;
+    const service = await storage.getProviderServiceById(req.params.id);
+    if (!service || service.userId !== userId) {
+      res.status(404).json({ message: "Service not found" });
+      return null;
+    }
+    return { userId, service };
+  }
+  function parseTargetLocale(raw: string, res: any): string | null {
+    // A translation TARGET must be a shipped content locale other than the source language (en).
+    if (!isContentLocale(raw) || raw === "en") {
+      res.status(400).json({ message: `Unsupported translation locale '${raw}' (shipped: ja)` });
+      return null;
+    }
+    return raw;
+  }
+
+  // Owner read: the translation row for one locale (null when never authored). Includes status +
+  // source so the console can label a draft / an AI draft and gate the "Approve" action.
+  app.get("/api/provider/services/:id/translations/:locale", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const translation = await storage.getServiceTranslation(owned.service.id, locale);
+      res.json({ locale, translation: translation ?? null });
+    } catch (err) {
+      console.error("[service-translation] owner read failed:", err);
+      res.status(500).json({ message: "Failed to fetch translation" });
+    }
+  });
+
+  // Owner replace-for-locale write: a provider supplying/editing their OWN translation. Sets
+  // status='approved', source='human' — the provider authored and owns this text. updatedBy is
+  // the session user (§14); status/source/timestamps are NEVER read from the body (§19).
+  app.put("/api/provider/services/:id/translations/:locale", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const parsed = translationContentBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid translation content", errors: parsed.error.flatten() });
+      }
+      const translation = await storage.upsertServiceTranslation({
+        serviceId: owned.service.id,
+        locale,
+        content: normalizeContent(parsed.data),
+        status: "approved",
+        source: "human",
+        updatedBy: owned.userId,
+      });
+      res.json({ locale, translation });
+    } catch (err) {
+      console.error("[service-translation] owner write failed:", err);
+      res.status(500).json({ message: "Failed to save translation" });
+    }
+  });
+
+  // Owner approve: flip an existing (typically ai_draft) row to approved/human. Review gate, not a
+  // rewrite — the reviewed content is kept verbatim. 404 when nothing exists to approve.
+  app.post("/api/provider/services/:id/translations/:locale/approve", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const translation = await storage.approveServiceTranslation(owned.service.id, locale, owned.userId);
+      if (!translation) return res.status(404).json({ message: "No translation to approve for this locale" });
+      res.json({ locale, translation });
+    } catch (err) {
+      console.error("[service-translation] approve failed:", err);
+      res.status(500).json({ message: "Failed to approve translation" });
+    }
+  });
+
+  // Owner opt-in AI first draft: generate a machine translation and store it labeled
+  // source='ai_draft', status='draft' — NEVER shown to a traveler until the provider approves it
+  // (§13). Degrades HONESTLY with no translation provider configured: 503 + a clear state, never a
+  // fabricated/echoed translation. Uses the existing AI infra + ai_cost_tracking (no new client).
+  app.post("/api/provider/services/:id/translations/:locale/draft", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const s = owned.service as any;
+      const outcome = await draftServiceTranslation(
+        {
+          serviceName: s.serviceName ?? null,
+          shortDescription: s.shortDescription ?? null,
+          description: s.description ?? null,
+          meetingPoint: s.meetingPoint ?? null,
+        },
+        locale,
+        owned.userId,
+      );
+      if (outcome.status === "no_api_key") {
+        return res.status(503).json({
+          message: "AI draft unavailable — no translation provider configured.",
+          code: "AI_DRAFT_UNAVAILABLE",
+        });
+      }
+      if (outcome.status === "unsupported_locale") {
+        return res.status(400).json({ message: `Unsupported translation locale '${locale}'` });
+      }
+      if (outcome.status === "ai_error") {
+        return res.status(502).json({ message: "AI draft failed — please try again.", code: "AI_DRAFT_ERROR" });
+      }
+      const translation = await storage.upsertServiceTranslation({
+        serviceId: owned.service.id,
+        locale,
+        content: outcome.content,
+        status: "draft",
+        source: "ai_draft",
+        updatedBy: owned.userId,
+      });
+      res.json({ locale, translation });
+    } catch (err) {
+      console.error("[service-translation] AI draft endpoint failed:", err);
+      res.status(500).json({ message: "Failed to generate draft" });
     }
   });
 
@@ -2349,7 +2672,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3) — beside the F2 gate, at the same
+      // choke point, on the same draft-exempt rule. A CREATE is always a transition to active when
+      // `status:'active'`, so grandfathering has nothing to say here. The affirmations travel with
+      // the write (see the service header for why a child row cannot pre-exist a create), are
+      // re-validated against the SERVER-resolved applicable set, and are recorded after the row
+      // exists.
+      const attestShapeCreate = await resolveAttestationShape({
+        overrides: {
+          deliveryMethod: (input as any).deliveryMethod ?? null,
+          productShape: (input as any).productShape ?? null,
+          categoryId: (input as any).categoryId ?? null,
+        },
+      });
+      const affirmRequestedCreate = readAffirmAttestationsField(req.body) ?? [];
+      const affirmCheckCreate = validateAffirmKeys(affirmRequestedCreate, attestShapeCreate);
+      if (!affirmCheckCreate.ok) {
+        return res.status(affirmCheckCreate.refusal.status).json(affirmCheckCreate.refusal.body);
+      }
+      if (input.status === "active") {
+        const attestGate = await checkAttestationPublishGate({
+          shape: attestShapeCreate,
+          affirmingNow: affirmCheckCreate.keys,
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
+      // D7 (docs/DECISIONS.md ruling 62): the service-logistics capture fields ride this same
+      // deliberate write, exactly like `serviceRadius`/`meetingPoint` beside them — they are
+      // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
+      // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
+      // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
+
+      // The affirmations validated above, now that the child row has a parent. Append-only and
+      // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
+      if (affirmCheckCreate.keys.length > 0) {
+        await storage.affirmServiceAttestations(service.id, affirmCheckCreate.keys, userId);
+      }
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
       // field is present in the payload — including empty arrays, which must
@@ -2367,7 +2729,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // approvalStatus from this response (verified); omit just this one verified field
       // rather than a full allowlist — provider_services is large and read by several
       // other unaudited surfaces this endpoint's response itself does not feed.
-      res.status(201).json(omitFields(service, ["revenueShareRate"] as const));
+      // SS-5c SOFT WARNING (ruling 69 disposition 5) — advisory, non-blocking, never auto-editing.
+      // Attached to a SUCCESSFUL response: the listing genuinely saved, and the warning is a nudge
+      // toward the `title_claim_honesty` statement, not a verdict. Absence proves nothing (§13).
+      const titleWarning = detectProtectedTitleClaims({
+        serviceName: (input as any).serviceName,
+        description: (input as any).description,
+      });
+      res.status(201).json({
+        ...omitFields(service, ["revenueShareRate"] as const),
+        ...(titleWarning ? { warnings: { protectedTitleClaim: titleWarning } } : {}),
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -2522,6 +2894,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3). GRANDFATHERING lives in the
+      // condition: it fires only on a TRANSITION to active, so a listing that is already `active`
+      // is never evaluated on an edit and can never be knocked off by this. The shape is the one
+      // the listing will HAVE after this save (live row overlaid with the write's own fields), so
+      // the gate cannot be walked past by omitting a field from the body.
+      const attestShapeUpd = await resolveAttestationShape({
+        serviceId: req.params.id,
+        overrides: {
+          ...((input as any).deliveryMethod !== undefined ? { deliveryMethod: (input as any).deliveryMethod } : {}),
+          ...((input as any).productShape !== undefined ? { productShape: (input as any).productShape } : {}),
+          ...((input as any).categoryId !== undefined ? { categoryId: (input as any).categoryId } : {}),
+        },
+      });
+      const affirmRequestedUpd = readAffirmAttestationsField(req.body) ?? [];
+      const affirmCheckUpd = validateAffirmKeys(affirmRequestedUpd, attestShapeUpd);
+      if (!affirmCheckUpd.ok) {
+        return res.status(affirmCheckUpd.refusal.status).json(affirmCheckUpd.refusal.body);
+      }
+      if (affirmCheckUpd.keys.length > 0) {
+        // Recorded BEFORE the gate is judged: an affirmation is a statement the provider made, and
+        // it is a fact whether or not the publish that carried it succeeds (append-only, ruling 67).
+        await storage.affirmServiceAttestations(req.params.id, affirmCheckUpd.keys, userId);
+      }
+      if (input.status === "active" && ownedService.status !== "active") {
+        const attestGate = await checkAttestationPublishGate({
+          serviceId: req.params.id,
+          shape: attestShapeUpd,
+          affirmingNow: affirmCheckUpd.keys,
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
       // Compute price scalar from lowest tier when package_tiers pricing is used
       const pricingTiersUpd = (input as any).pricingTiers;
       if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersUpd) && pricingTiersUpd.length > 0) {
@@ -2531,6 +2937,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // D7 NEVER-CLOBBER RULE (docs/DECISIONS.md ruling 62's amendment, §13): declaring a
+      // `pickupCoverageMode` switches only what is RENDERED. It must never delete, null or
+      // overwrite the other mode's data — so this handler writes the mode column and NOTHING
+      // else: it does not touch `serviceRadius`, and it does not touch `service_route_points`
+      // (whose one write path is the owner-gated replace-list PUT .../route-points, ruling 22).
+      // A provider who picks `radius` keeps every saved route stop, and one who picks `route`
+      // keeps their saved radius; the authoring UI says so out loud rather than silently
+      // discarding work. Do not "tidy up" by clearing the unused side here.
+      //
       // Remove userId from input to prevent ownership transfer
       const { userId: _, ...safeInputWithoutLocation } = input as any;
       const safeInput = { ...safeInputWithoutLocation, ...locationPatch };
@@ -2572,7 +2987,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
       // commission split (§18) and must never round-trip to the client, on create OR update.
-      res.json(updated ? omitFields(updated, ["revenueShareRate"] as const) : updated);
+      // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
+      // the text this write actually produces: the field from the body when it was edited, else
+      // the stored value, so an untouched offending description keeps warning on every save.
+      const titleWarningUpd = detectProtectedTitleClaims({
+        serviceName: (input as any).serviceName ?? updated?.serviceName ?? ownedService.serviceName,
+        description: (input as any).description ?? updated?.description ?? ownedService.description,
+      });
+      res.json(
+        updated
+          ? {
+              ...omitFields(updated, ["revenueShareRate"] as const),
+              ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
+            }
+          : updated,
+      );
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -3279,7 +3708,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cleaned: string[] = [];
       for (const raw of neighborhoods) {
         if (typeof raw !== "string") continue;
-        const trimmed = raw.trim();
+        // Sanitize server-side: strip HTML tags / escape dangerous characters (stored-XSS defense)
+        const trimmed = sanitizeInput(raw);
         if (!trimmed) continue;
         const key = trimmed.toLowerCase();
         if (!seen.has(key)) {
@@ -3295,7 +3725,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
 
-      await storage.updateLocalExpertFormNeighborhoods(userId, cleaned, localityProof ?? "");
+      await storage.updateLocalExpertFormNeighborhoods(
+        userId,
+        cleaned,
+        sanitizeInput(localityProof ?? ""),
+      );
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert neighborhoods:", err);
@@ -3311,11 +3745,129 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (typeof notesStyle !== "string") {
         return res.status(400).json({ message: "notesStyle must be a string" });
       }
-      await storage.updateLocalExpertFormNotesStyle(userId, notesStyle.trim());
+      // Sanitize server-side (stored-XSS defense) and reject empty/whitespace-only input
+      const cleanedNotesStyle = sanitizeInput(notesStyle);
+      if (!cleanedNotesStyle) {
+        return res.status(400).json({ message: "notesStyle cannot be empty" });
+      }
+      await storage.updateLocalExpertFormNotesStyle(userId, cleanedNotesStyle);
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert notes style:", err);
       res.status(500).json({ message: "Failed to save" });
+    }
+  });
+
+  // PATCH /api/expert/profile — Save the expert's public profile fields
+  // (bio / headline / displayName / first+last name / city / country / languages).
+  // Writes name+bio to the users row (the auth identity + public listing source)
+  // and the display fields to local_expert_forms (the public detail-page source).
+  app.patch("/api/expert/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const body = req.body ?? {};
+
+      const strField = (key: string, max: number): string | undefined => {
+        const v = body[key];
+        if (v === undefined) return undefined;
+        if (typeof v !== "string") throw new Error(`${key} must be a string`);
+        // Sanitize server-side: strip HTML tags / escape dangerous characters (stored-XSS defense)
+        const trimmed = sanitizeInput(v.trim());
+        if (trimmed.length > max) throw new Error(`${key} must be at most ${max} characters`);
+        return trimmed;
+      };
+
+      let firstName: string | undefined,
+        lastName: string | undefined,
+        displayName: string | undefined,
+        headline: string | undefined,
+        bio: string | undefined,
+        city: string | undefined,
+        country: string | undefined;
+      let languages: string[] | undefined;
+      try {
+        firstName = strField("firstName", 100);
+        lastName = strField("lastName", 100);
+        displayName = strField("displayName", 100);
+        headline = strField("headline", 150);
+        bio = strField("bio", 500);
+        city = strField("city", 100);
+        country = strField("country", 100);
+        if (body.languages !== undefined) {
+          if (!Array.isArray(body.languages)) throw new Error("languages must be an array");
+          const seen = new Set<string>();
+          languages = [];
+          for (const raw of body.languages) {
+            if (typeof raw !== "string") continue;
+            // Sanitize server-side (stored-XSS defense)
+            const trimmed = sanitizeInput(raw.trim());
+            if (!trimmed || trimmed.length > 50) continue;
+            const key = trimmed.toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              languages.push(trimmed);
+            }
+          }
+          if (languages.length > 20) throw new Error("You can list at most 20 languages");
+        }
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
+
+      // users row: identity + the bio the public /api/experts listing reads.
+      const userUpdates: Record<string, any> = {};
+      if (firstName !== undefined) userUpdates.firstName = firstName;
+      if (lastName !== undefined) userUpdates.lastName = lastName;
+      if (bio !== undefined) userUpdates.bio = bio;
+      if (Object.keys(userUpdates).length > 0) {
+        await db.update(users).set(userUpdates).where(eq(users.id, userId));
+      }
+
+      // local_expert_forms row: public detail-page display fields.
+      const formUpdates: Record<string, any> = {};
+      if (firstName !== undefined) formUpdates.firstName = firstName;
+      if (lastName !== undefined) formUpdates.lastName = lastName;
+      if (displayName !== undefined) formUpdates.displayName = displayName;
+      if (headline !== undefined) formUpdates.headline = headline;
+      if (bio !== undefined) formUpdates.bio = bio;
+      if (city !== undefined) formUpdates.city = city;
+      if (country !== undefined) formUpdates.country = country;
+      if (languages !== undefined) formUpdates.languages = languages;
+      if (Object.keys(formUpdates).length > 0) {
+        await storage.updateLocalExpertFormProfileFields(userId, formUpdates);
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert profile:", err);
+      res.status(500).json({ message: "Failed to save profile" });
+    }
+  });
+
+  // PATCH /api/expert/photo — Save the expert's profile photo.
+  // Accepts a base64 data URL; server-side validation of type + decoded size.
+  app.patch("/api/expert/photo", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { imageData } = req.body ?? {};
+      if (typeof imageData !== "string") {
+        return res.status(400).json({ message: "imageData must be a base64 data URL string" });
+      }
+      const match = imageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) {
+        return res.status(400).json({ message: "Photo must be a PNG, JPEG, or WebP image" });
+      }
+      const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB decoded
+      // base64 → bytes: 4 chars encode 3 bytes.
+      const approxBytes = Math.floor((match[2].length * 3) / 4);
+      if (approxBytes > MAX_PHOTO_BYTES) {
+        return res.status(400).json({ message: "Photo must be smaller than 2 MB" });
+      }
+      await db.update(users).set({ profileImageUrl: imageData }).where(eq(users.id, userId));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert photo:", err);
+      res.status(500).json({ message: "Failed to save photo" });
     }
   });
 
@@ -3350,10 +3902,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Add specialization to expert's profile (authenticated)
   app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const { specialization } = req.body;
-    const spec = await storage.addExpertSpecialization(userId, specialization);
-    res.json(spec);
+    try {
+      const userId = getUserId(req)!;
+      const { specialization } = req.body;
+      if (typeof specialization !== "string") {
+        return res.status(400).json({ message: "specialization must be a string" });
+      }
+      // Sanitize server-side (stored-XSS defense) and reject empty/whitespace-only input
+      const cleaned = sanitizeInput(specialization);
+      if (!cleaned) {
+        return res.status(400).json({ message: "specialization cannot be empty" });
+      }
+      if (cleaned.length > 100) {
+        return res.status(400).json({ message: "specialization must be 100 characters or fewer" });
+      }
+      const spec = await storage.addExpertSpecialization(userId, cleaned);
+      res.json(spec);
+    } catch (err) {
+      console.error("Error adding expert specialization:", err);
+      res.status(500).json({ message: "Failed to add specialization" });
+    }
   });
 
   // Remove specialization from expert's profile (authenticated)
@@ -4049,80 +4617,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get expert earnings (authenticated)
-  app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-
-      // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
-      const [bookings, payouts, ledgerSummary] = await Promise.all([
-        storage.getServiceBookings({ providerId: userId }),
-        storage.getExpertPayouts(userId),
-        storage.getExpertEarningsSummary(userId),
-      ]);
-
-      // Compute gross/fee totals and monthly figure from bookings for display context
-      const now = new Date();
-      let grossBookingTotal = 0;
-      let platformFeeTotal = 0;
-      let monthlyEarnings = 0;
-
-      for (const b of bookings) {
-        const gross = Number(b.totalAmount ?? 0);
-        const fee = Number(b.platformFee ?? 0);
-        const earned = Number(b.providerEarnings ?? 0);
-
-        grossBookingTotal += gross;
-        platformFeeTotal += fee;
-
-        if (b.status === "completed") {
-          const completedAt = b.completedAt ? new Date(b.completedAt) : null;
-          if (completedAt && completedAt.getMonth() === now.getMonth() && completedAt.getFullYear() === now.getFullYear()) {
-            monthlyEarnings += earned;
-          }
-        }
-      }
-
-      const effectiveRate = grossBookingTotal > 0
-        ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : (await getExpertSplitRates()).expertShareRate;
-
-      const lastPayout = payouts[0];
-
-      // Summary figures sourced from the expert_earnings ledger — same source used by payout request validation
-      const summary = {
-        totalEarnings: ledgerSummary.total,
-        monthlyEarnings,
-        pendingPayout: ledgerSummary.pending,
-        availableForPayout: ledgerSummary.available,
-        lastPayout: lastPayout ? parseFloat(lastPayout.amount || '0') : 0,
-        lastPayoutDate: lastPayout?.processedAt
-          ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : undefined,
-        platformFeeTotal: Number(platformFeeTotal.toFixed(2)),
-        grossBookingTotal: Number(grossBookingTotal.toFixed(2)),
-        revenueShareRate: effectiveRate,
-      };
-
-      // Build transactions from service_bookings for the activity feed
-      const bookingTransactions = [...bookings]
-        .sort((a, b) => new Date(b.createdAt as any || 0).getTime() - new Date(a.createdAt as any || 0).getTime())
-        .slice(0, 20)
-        .map(b => ({
-          id: b.id,
-          amount: b.providerEarnings || "0",
-          type: "service_booking",
-          status: b.status || "pending",
-          createdAt: b.createdAt || new Date().toISOString(),
-          description: `Booking #${b.trackingNumber || b.id.slice(0, 8)}`,
-        }));
-
-      res.json({ earnings: bookingTransactions, summary });
-    } catch (err) {
-      console.error("Error fetching earnings:", err);
-      res.status(500).json({ message: "Failed to fetch earnings" });
-    }
-  });
+  // NOTE (task retirement, Aug 2026): the legacy GET /api/expert/earnings endpoint was removed.
+  // It built pseudo-transactions from service_bookings (refunded bookings still appeared as earned,
+  // grossBookingTotal included refunds, revenueShareRate was a meaningless derived ratio, and
+  // lastPayout reported pending payout requests as paid). The live UI and tests use the
+  // ledger-backed GET /api/expert/earnings/details (server/routes/experts.routes.ts).
 
   // Get expert template sales (authenticated)
   app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
@@ -4517,6 +5016,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const gateResult = await checkPublishVerificationGate(userId);
         if (gateResult) {
           return res.status(gateResult.status).json(gateResult.body);
+        }
+      }
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3) — the third choke point, same
+      // transition rule. This toggle carries no listing fields at all, so the shape is read
+      // wholly from the live row, and this door has no inline-affirm path: the provider confirms
+      // in the wizard (where the card is) and toggles afterwards.
+      if (status === "active" && service.status !== "active") {
+        const attestGate = await checkAttestationPublishGate({
+          serviceId: req.params.id,
+          shape: await resolveAttestationShape({ serviceId: req.params.id }),
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
         }
       }
       const updated = await storage.toggleServiceStatus(req.params.id, status);
@@ -5274,6 +5786,140 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // (only experts had one), so provider bookings dead-ended at "pending". Same
   // ownership gate + transition allow-list.
   app.patch("/api/provider/bookings/:id/status", isAuthenticated, handleOwnerBookingStatus);
+
+  // ── D8 OWNER-DECLARED COMPLETION (docs/DECISIONS.md ruling 63, executed by ruling 66) ────────
+  //
+  // Ruling 63 makes three of the six completion rules the OWNER's to declare: `session_end`
+  // (call/video/voice_notes — "session end per booked slot, provider-confirmed"),
+  // `provider_declared` (async_messaging — "SLA satisfied + scope delivered, provider-declared,
+  // disputable window") and `bundle_components` ("all components complete").
+  //
+  // HOW THIS RECONCILES WITH THE `status` RAIL ABOVE, which deliberately refuses `completed`
+  // ("marking a booking completed fires the escrow earnings side-effect, so allowing the owner to
+  // set it would let them self-credit"). That objection is answered here, not waived:
+  //   (1) it is not a free-text status write — the rule is resolved SERVER-SIDE from the service
+  //       row via the shared `completionRuleFor`, and an owner may only declare the rules ruling
+  //       63 assigns them. in_person/hybrid stay traveler-driven and pdf/property stay
+  //       timer-driven; both are REFUSED here with a stated reason;
+  //   (2) `session_end` is EVIDENCE-GATED against the booked slot's own end time — a provider
+  //       cannot declare a session complete before it has happened, and a booking with no slot or
+  //       no slot end time is refused rather than guessed (§13);
+  //   (3) completion is not payout. The flip mints a HELD earning whose clearance window IS the
+  //       traveler's dispute window (`holdWindowDays('service_booking')` — the same constant
+  //       `POST /api/bookings/:id/dispute` enforces), so a wrongly-declared completion is
+  //       disputable and reversible for the whole window before any money moves.
+  //
+  // BODY IS AN EXPLICIT ALLOWLIST (§19): the ONLY field read is `componentServiceId`, and only
+  // for a bundle. The acting user comes from the session, the booking from the path, and every
+  // amount/rate from the server-side record (§14/§18) — this handler reads none of them.
+  const handleOwnerBookingComplete = async (req: any, res: any) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      // Ownership gate: the booking's service belongs to the session user. Undifferentiated 404
+      // so a caller probing ids that are not theirs learns nothing (§13 posture).
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+
+      const {
+        completeBooking,
+        ownerActorFor,
+        recordBundleComponentCompletion,
+        resolveCompletionEligibility,
+      } = await import("./services/booking-completion.service");
+
+      const eligibility = await resolveCompletionEligibility(req.params.id);
+      if (!eligibility.rule) {
+        return res.status(409).json({
+          message: "This booking's completion rule cannot be determined from its service, so it cannot be completed here.",
+          reason: eligibility.reason,
+        });
+      }
+      // Ruling 69 disposition 1's NARROW arm. in_person/hybrid is a TIMER rule now, so the owner
+      // rail refuses it exactly like pdf/property — EXCEPT for a booking the platform holds no
+      // service date for, where the timer can never fire and the owner is the only actor left.
+      // The service, not this route, decides that (`ownerDeclarableFallback`), and the flip still
+      // mints a HELD earning inside the traveler's dispute window, so the self-credit objection is
+      // answered the same way the other owner-declared rules answer it.
+      const noDateFallback = eligibility.rule === "service_date_timer" && !!eligibility.ownerDeclarableFallback;
+      const actor = noDateFallback ? "provider_declared" : ownerActorFor(eligibility.rule);
+      if (!actor) {
+        return res.status(409).json({
+          message:
+            eligibility.rule === "service_date_timer"
+              ? "This in-person booking completes automatically after its booked date — you do not need to mark it complete."
+              : "This booking completes automatically — you do not need to mark it complete.",
+          rule: eligibility.rule,
+          reason: "rule_not_owner_declared",
+          ...(eligibility.eligibleAt ? { eligibleAt: eligibility.eligibleAt } : {}),
+        });
+      }
+
+      if (eligibility.rule === "bundle_components") {
+        // ALLOWLIST: one field, string, nothing else off the body.
+        const componentServiceId =
+          typeof req.body?.componentServiceId === "string" ? req.body.componentServiceId.trim() : "";
+        if (!componentServiceId) {
+          return res.status(400).json({
+            message: "Name the bundle component you delivered (componentServiceId).",
+            rule: eligibility.rule,
+            evidence: eligibility.evidence,
+          });
+        }
+        const outcome = await recordBundleComponentCompletion({
+          bookingId: req.params.id,
+          componentServiceId,
+          actor,
+        });
+        if (!outcome.recorded) {
+          return res.status(400).json({
+            message: outcome.unknownComponent
+              ? "That service is not one of this bundle's components."
+              : "This bundle component could not be recorded.",
+            rule: outcome.rule,
+            reason: outcome.reason,
+            evidence: outcome.evidence,
+          });
+        }
+        // Partial is a SUCCESSFUL record and an explicitly UNCOMPLETED booking — no partial
+        // payout exists, and none is implied here (ruling 63: partial routes to the refund lane).
+        return res.json({
+          recorded: true,
+          completed: outcome.completed,
+          rule: outcome.rule,
+          reason: outcome.reason,
+          evidence: outcome.evidence,
+        });
+      }
+
+      const outcome = await completeBooking({
+        bookingId: req.params.id,
+        actor,
+        reason: noDateFallback ? "d8_owner:service_date_timer_no_date" : `d8_owner:${eligibility.rule}`,
+        ...(noDateFallback ? { allowOwnerDeclaredFallback: true } : {}),
+      });
+      if (!outcome.completed) {
+        return res.status(409).json({
+          message:
+            outcome.reason === "session_not_ended"
+              ? "This session has not ended yet."
+              : outcome.reason === "no_booked_slot" || outcome.reason === "slot_has_no_end_time"
+                ? "This booking has no booked slot with an end time, so its session end cannot be confirmed."
+                : "This booking cannot be completed right now.",
+          rule: outcome.rule,
+          reason: outcome.reason,
+          evidence: outcome.evidence,
+        });
+      }
+      return res.json({ completed: true, rule: outcome.rule, evidence: outcome.evidence });
+    } catch (err) {
+      console.error("Owner booking completion error:", err);
+      res.status(500).json({ message: "Failed to complete booking" });
+    }
+  };
+  app.post("/api/provider/bookings/:id/complete", isAuthenticated, handleOwnerBookingComplete);
+  app.post("/api/expert/bookings/:id/complete", isAuthenticated, handleOwnerBookingComplete);
 
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
@@ -6209,22 +6855,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      let isProviderService = false;
+      let ownerRole: string | null = null;
       if (item.service?.userId) {
         const [providerRow] = await db
           .select({ role: users.role })
           .from(users)
           .where(eq(users.id, item.service.userId))
           .limit(1);
-        // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
-        if (isProviderRole(providerRow?.role)) isProviderService = true;
+        ownerRole = providerRow?.role ?? null;
       }
+      // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
+      const isProviderService = isProviderRole(ownerRole);
       const rates = await resolveCommissionRates(
         isProviderService
           ? { source: "provider", providerId: item.service?.userId ?? null }
           : { category: feeCategory, expertId: item.service?.userId ?? null }
       );
-      const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
+      // 1C (ruling 69 disposition 6): the cart quote prices a direct provider line through the SAME
+      // `pickOwnerShareRate` precedence /api/checkout charges through, so this quote cannot silently
+      // diverge from the charged total (the same reason the §17 base-amount helper is shared).
+      // No rails here: this surface carries no ref, so it quotes the un-attributed (full) lane.
+      const { shareRate: expertShare } = pickOwnerShareRate({
+        railsShareRate: null,
+        direct: await resolveDirectProviderRate({
+          serviceOwnerUserId: item.service?.userId ?? null,
+          ownerRole,
+          categoryId: item.service?.categoryId ?? null,
+          serviceId: item.service?.id ?? item.serviceId,
+        }),
+        legacyShareRate: safeRate(item.service?.revenueShareRate, rates.expertShareRate),
+      });
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare) + calcInsuranceFee(price, rates, feeCategory);
       const isConciergeItem = item.service?.expertOfferingTypeId

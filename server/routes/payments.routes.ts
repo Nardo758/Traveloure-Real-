@@ -15,6 +15,34 @@ import {
   assertServiceOwnerNotAway,
   ProviderAwayError,
 } from "../services/checkout-claim.service";
+// D6 rails attribution (docs/DECISIONS.md ruling 61): the chain from a shared link to the single
+// fee resolver. §14/§18 — the ref SELECTS a band lane and can carry no rate, amount or identity;
+// every rate still comes from `fee_bands` through `resolveProviderRate`, one call, inside the
+// service below. A ref that fails server-side validation degrades to the incumbent full rate.
+import {
+  validateRailsRef,
+  resolveRailsForItem,
+  railsSnapshot,
+  logRailsRefusal,
+  type RailsItemResolution,
+} from "../services/rails-attribution.service";
+// 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6): a DIRECT provider booking
+// prices through the same D1 resolver the rails lane uses, so `fee_bands` is the single authority
+// on every provider charge path — not just the attributed one (ruling 68 §5's owed item).
+import {
+  resolveDirectProviderRate,
+  pickOwnerShareRate,
+  directRateSnapshot,
+  type DirectRateResolution,
+} from "../services/direct-charge-rate.service";
+// Lane 7 (docs/DECISIONS.md ruling 72): deposits / partial payments. Deposit amounts are derived
+// server-side from the listing's OWN opt-in config × the server-side line total (§14/§18) — never
+// from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
+import { resolveDepositPlan, resolveBalanceDueAt } from "../services/deposit.service";
+import {
+  stampBalanceAuthorization,
+  promoteBalancePayment,
+} from "../services/checkout-claim.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -106,6 +134,7 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
+import { sanitizeInput } from '../utils/sanitize';
 
 const router = Router();
 
@@ -113,16 +142,6 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '')
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
 
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };
@@ -314,10 +333,20 @@ async function authorizeAndPromote(
      * `requiresAction` out). Two one-click flows in one product should not speak two dialects.
      */
     useSavedCard?: boolean;
+    /**
+     * Lane 7 (ruling 72): the amount to charge NOW when this checkout collects DEPOSITS. Server-
+     * derived (§14) as the sum of per-line deposit amounts + full non-deposit lines; each booking
+     * row already carries its own deposit_amount/balance_amount. Absent ⇒ charge the full total,
+     * byte-identical to the pre-deposit behaviour (§13).
+     */
+    chargeAmount?: number;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
-  const total = subtotal + platformFee + conciergeFee;
+  const fullTotal = subtotal + platformFee + conciergeFee;
+  // Charge the deposit sum when this is a deposit checkout, else the full total (unchanged).
+  const total = args.chargeAmount != null ? args.chargeAmount : fullTotal;
+  const isDepositCheckout = args.chargeAmount != null && args.chargeAmount < fullTotal - 0.001;
   const bookingIds = bookings.map((b: any) => b.booking.id as string);
 
   // LAYER 1 of the paid-PI protection (see checkout-claim.service.ts): stamp the pre-flight
@@ -333,7 +362,7 @@ async function authorizeAndPromote(
       userId,
       bookings.map((b: any) => b.booking),
       total,
-      false,
+      isDepositCheckout,
       'usd',
       // §15 layer (a): the deterministic Stripe idempotency key. Uses the SAME normalised
       // key the DB claim used (`checkoutKey`, not the raw body value) so the two layers can
@@ -383,6 +412,32 @@ async function authorizeAndPromote(
       message: "This checkout expired before payment could start. Your cart is intact — please try again.",
       retryable: true,
     });
+  }
+
+  // ── D6 (ruling 61): the fee EVENT for a rails-attributed booking ────────────────────────────
+  // Written HERE, at the authorization stamp — migration 179's own stated strategy (b): the
+  // PaymentIntent is in scope, and a provisional claim the TTL sweep may still void never gets a
+  // row in an append-only table with no DELETE path. Rows are derived from the snapshot the claim
+  // already carries, never re-resolved (a band re-priced in the last few seconds must not rewrite
+  // what was charged), and the write is idempotent by a per-booking key + UNIQUE index, so the
+  // re-drive and the webhook's own retry land EXACTLY ONE row.
+  //
+  // Best-effort in precisely the sense every post-authorization effect here is: Stripe has the
+  // money and the booking row is the money truth, so a recording failure is logged loudly and the
+  // promotion path retries the same idempotent write — it never fails a paid checkout.
+  try {
+    const { recordRailsFeeLedger } = await import("../services/fee-ledger.service");
+    await recordRailsFeeLedger({
+      bookingIds,
+      stripePaymentRef: paymentIntent.paymentIntentId,
+      actor: "checkout",
+    });
+  } catch (ledgerErr: any) {
+    console.error(
+      `[checkout] rails fee-ledger write failed for idempotencyKey=${checkoutKey} ` +
+        `(payment AUTHORIZED; the promotion path retries the same idempotent write):`,
+      ledgerErr?.message ?? ledgerErr,
+    );
   }
 
   await promoteAuthorizedCheckout(userId, bookingIds);
@@ -435,6 +490,10 @@ async function authorizeAndPromote(
     paymentIntent,
     bookingType: BookingType.EXPERIENCE_CART,
     commissionRate: effectiveCommissionRate,
+    // Lane 7 (ruling 72): when this checkout collected deposits, `total` is the amount charged NOW
+    // (the deposit sum); `fullAmount` is the full cart value, and the outstanding balance is
+    // collected later per booking via POST /api/bookings/:id/pay-balance.
+    ...(isDepositCheckout ? { depositCheckout: true, amountChargedNow: total.toFixed(2), fullAmount: fullTotal.toFixed(2) } : {}),
     ...(args.redriven ? { redriven: true } : {}),
     // B2 — same three fields the optimize-fee one-click already returns, so the client can reuse
     // its existing branch shape. `oneClick && status === "succeeded"` ⇒ paid, nothing left to do,
@@ -617,6 +676,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           // and not from a re-priced cart (§14): every row's totalAmount/platformFee was derived
           // from the catalog + fee_bands when the claim was written, so this cannot drift.
           console.info(`[checkout] idempotencyKey=${checkoutKey} has an unauthorized claim — re-driving authorization`);
+          // Lane 7 (ruling 72): a re-drive charges the SAME amount the first attempt would have —
+          // the per-row deposit for a deposit line, the full line otherwise — read from the claimed
+          // rows, never recomputed from a re-priced cart (§14). No deposit rows ⇒ chargeAmount
+          // equals the full total, so this is byte-identical to the pre-deposit re-drive (§13).
+          const redriveAnyDeposit = provisional.some((r) => r.depositAmount != null);
+          const redriveChargeNow = provisional.reduce(
+            (s, r) =>
+              s +
+              (r.depositAmount != null
+                ? parseFloat(r.depositAmount)
+                : parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")),
+            0,
+          );
           return await authorizeAndPromote(res, {
             userId,
             checkoutKey,
@@ -624,6 +696,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             subtotal: provisional.reduce((s, r) => s + parseFloat(r.totalAmount || "0"), 0),
             platformFee: provisional.reduce((s, r) => s + parseFloat(r.platformFee || "0"), 0),
             conciergeFee: 0, // already folded into each row's stored platformFee
+            ...(redriveAnyDeposit ? { chargeAmount: Math.round(redriveChargeNow * 100) / 100 } : {}),
             redriven: true,
             useSavedCard: req.body?.useSavedCard === true,
           });
@@ -874,6 +947,101 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         ? await requireConciergeBookingRate()
         : await getConciergeBookingRate();
 
+      // ── D6 RAILS ATTRIBUTION (docs/DECISIONS.md ruling 61) ───────────────────────────────────
+      // ONE pre-pass, consumed by BOTH loops below, so the amount QUOTED and the amount CLAIMED can
+      // never disagree about attribution: the two loops already resolve rates twice, and this lane
+      // deliberately does not add a third place where the decision could drift.
+      //
+      // §14/§18 — `req.body.ref` is an OPAQUE SELECTOR. It names a `short_links` row that the server
+      // re-reads and re-authorizes against THIS traveler and THIS listing's owner; it can express
+      // neither a rate nor an amount, and a forged one buys nothing. Every refusal (fabricated /
+      // expired / wrong-provider / self-referral / non-provider lane) degrades to the incumbent full
+      // rate, is recorded on the booking row, and can never fail the purchase.
+      //
+      // The rate itself is ONE call into the single resolver (`resolveProviderRate`, rulings 47/48)
+      // made inside `resolveRailsForItem` — min(category band, rails) and the traveler-fee waiver
+      // both stay in there. Nothing here computes a rate.
+      //
+      // The whole pre-pass is wrapped: rails is an OPTIONAL discount lane, so an attribution
+      // failure of any kind leaves an empty map, every line prices at the incumbent full rate, and
+      // the traveler still buys. It can never be the reason a checkout 500s.
+      const railsByItemId = new Map<string, RailsItemResolution>();
+      // Owner role, resolved ONCE per distinct owner and shared by the rails pre-pass, the 1C
+      // direct pre-pass and both charge loops below — the loops used to re-query it per item per
+      // loop, which is three chances for the same question to be answered differently.
+      const ownerRoleById = new Map<string, string | null>();
+      const ownerRoleOf = async (ownerId: string | null | undefined): Promise<string | null> => {
+        if (!ownerId) return null;
+        if (!ownerRoleById.has(ownerId)) {
+          const [ownerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, ownerId))
+            .limit(1);
+          ownerRoleById.set(ownerId, ownerRow?.role ?? null);
+        }
+        return ownerRoleById.get(ownerId) ?? null;
+      };
+      try {
+        const railsValidation = await validateRailsRef({ ref: refCandidate, travelerUserId: userId });
+        for (const item of cartData) {
+          if (!item.service) continue;
+          const ownerId = item.service.userId ?? null;
+          await ownerRoleOf(ownerId);
+          const railsResolution = await resolveRailsForItem({
+            ref: refCandidate,
+            travelerUserId: userId,
+            serviceOwnerUserId: ownerId,
+            ownerRole: ownerRoleById.get(ownerId ?? "") ?? null,
+            categoryId: item.service.categoryId ?? null,
+            itemSubtotal: resolveItemBaseAmount(item),
+            preValidated: railsValidation,
+          });
+          railsByItemId.set(item.id, railsResolution);
+          if (!railsResolution.attributed && railsResolution.reason) {
+            logRailsRefusal({
+              reason: railsResolution.reason,
+              ref: railsResolution.ref,
+              serviceId: item.service.id ?? item.serviceId,
+              travelerUserId: userId,
+            });
+          }
+        }
+      } catch (railsErr: any) {
+        railsByItemId.clear();
+        console.error(
+          `[checkout] rails attribution pre-pass failed — every line prices at the FULL rate:`,
+          railsErr?.message ?? railsErr,
+        );
+      }
+
+      // ── 1C DIRECT-LANE RATE (docs/DECISIONS.md ruling 69 disposition 6) ─────────────────────
+      // The SECOND pre-pass, on the SAME shape and for the same reason as the rails one: the two
+      // charge loops below resolve rates twice and two more surfaces quote the same cart, so the
+      // attribution AND the band decision are each made ONCE here and read everywhere. The amount
+      // quoted and the amount claimed cannot disagree because they are not two decisions.
+      //
+      // §18 rule 1 — nothing here computes a rate: `resolveDirectProviderRate` makes ONE call into
+      // `resolveProviderRate`, the same single resolver the rails lane calls. A refusal (expert
+      // lane, no category, breached band guard) leaves the incumbent legacy resolution standing
+      // for that line; it never throws and never fails a purchase.
+      const directRateByItemId = new Map<string, DirectRateResolution>();
+      for (const item of cartData) {
+        if (!item.service) continue;
+        // A rails-attributed line is already priced by the resolver; asking twice would only
+        // create a second answer to the same question.
+        if (railsByItemId.get(item.id)?.rate) continue;
+        directRateByItemId.set(
+          item.id,
+          await resolveDirectProviderRate({
+            serviceOwnerUserId: item.service.userId ?? null,
+            ownerRole: ownerRoleById.get(item.service.userId ?? "") ?? null,
+            categoryId: item.service.categoryId ?? null,
+            serviceId: item.service.id ?? item.serviceId,
+          }),
+        );
+      }
+
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
       let checkoutBasePlatformFeeTotal = 0;
@@ -886,19 +1054,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        let isProviderService = false;
-        if (item.service.userId) {
-          const [providerRow] = await db
-            .select({ role: users.role })
-            .from(users)
-            .where(eq(users.id, item.service.userId))
-            .limit(1);
-          // Canonical vocabulary (shared/roles.ts): stored role is "service_provider" —
-          // the old `=== "provider"` was always false, misrouting provider items to the expert band.
-          if (isProviderRole(providerRow?.role)) {
-            isProviderService = true;
-          }
-        }
+        // Canonical vocabulary (shared/roles.ts): stored role is "service_provider" — the old
+        // `=== "provider"` was always false, misrouting provider items to the expert band. The
+        // role itself comes from the ONE pre-pass map above, so this loop, the booking loop and
+        // both rate pre-passes cannot disagree about whose lane a line is on.
+        const isProviderService = isProviderRole(ownerRoleById.get(item.service.userId ?? "") ?? null);
         // Provider-role items: route through source:"provider" + providerId so the
         // early-adopter gate in resolveCommissionRates picks the correct band
         // (beta_flat vs expert_standard) from platform_settings — no literal strings.
@@ -907,8 +1067,18 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory, expertId: item.service.userId ?? null } // EXP-OVR.P2
         );
-        // Per-service revenueShareRate is the final override (takes priority over config)
-        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        // ONE precedence, shared by every quote and charge surface (`pickOwnerShareRate`):
+        //   rails (ruling 61) → direct D1 band (ruling 69 disposition 6) → the legacy path.
+        // Both resolver lanes deliberately outrank the per-service `revenueShareRate` snapshot,
+        // which ruling 47 dethroned as a first operand; letting a stale snapshot survive here
+        // would defeat an admin band edit exactly as audit C2/Q9 described. A line neither lane
+        // can price (expert-owned, or a refusal) is byte-identical to pre-1C.
+        const itemRails = railsByItemId.get(item.id);
+        const { shareRate: itemExpertShare } = pickOwnerShareRate({
+          railsShareRate: itemRails?.rate?.providerShareRate ?? null,
+          direct: directRateByItemId.get(item.id) ?? null,
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate),
+        });
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
@@ -931,6 +1101,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
       // Create bookings for each cart item
       const bookings = [];
+      // Lane 7 (ruling 72): the sum charged NOW. For a non-deposit cart this equals the full total,
+      // so the Stripe charge and everything downstream is byte-identical (§13). For a deposit cart
+      // it is Σ(per-line deposit) + Σ(full non-deposit line).
+      let checkoutAmountDueNow = 0;
+      let anyDepositLine = false;
       for (const item of cartData) {
         if (!item.service) continue;
 
@@ -941,25 +1116,24 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        let isProviderService2 = false;
-        if (item.service.userId) {
-          const [providerRow] = await db
-            .select({ role: users.role })
-            .from(users)
-            .where(eq(users.id, item.service.userId))
-            .limit(1);
-          // Canonical vocabulary (shared/roles.ts) — see the quote loop above.
-          if (isProviderRole(providerRow?.role)) {
-            isProviderService2 = true;
-          }
-        }
+        // Canonical vocabulary (shared/roles.ts) — from the SAME pre-pass map the quote loop read.
+        const isProviderService2 = isProviderRole(ownerRoleById.get(item.service.userId ?? "") ?? null);
         const itemCategoryRates2 = await resolveCommissionRates(
           isProviderService2
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory2, expertId: item.service.userId ?? null } // EXP-OVR.P2
         );
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
-        const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
+        // The SAME precedence and the SAME pre-pass decisions the quote loop above read — rails
+        // (ruling 61) then the direct D1 band (ruling 69 disposition 6), both through the single
+        // resolver, both outranking the dethroned per-service snapshot.
+        const itemRails2 = railsByItemId.get(item.id);
+        const itemDirect2 = directRateByItemId.get(item.id) ?? null;
+        const { shareRate: expertShareRate, lane: rateLane } = pickOwnerShareRate({
+          railsShareRate: itemRails2?.rate?.providerShareRate ?? null,
+          direct: itemDirect2,
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate),
+        });
         const baseExpertEarningsAmt = price * expertShareRate;
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
@@ -972,7 +1146,43 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const conciergeFeaAmt = isBookingConcierge2 ? price * conciergeBookingFlatFee : 0;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
-        
+
+        // ── Lane 7 (ruling 72): deposit split for THIS line, server-derived (§14) ──────────────
+        // The line's full charge = price + all platform fees. `resolveDepositPlan` reads the
+        // listing's OWN deposit config (provider opt-in) — no client value reaches it — and returns
+        // null when this listing takes no deposit, in which case the full line is charged now and
+        // the deposit/balance columns stay NULL (byte-identical to pre-deposit, §13).
+        const lineFullCharge = price + totalPlatformFeeAmt;
+        const depositPlan = resolveDepositPlan(
+          {
+            depositEnabled: (item.service as any).depositEnabled,
+            depositType: (item.service as any).depositType,
+            depositPercentage: (item.service as any).depositPercentage,
+            depositFlatAmount: (item.service as any).depositFlatAmount,
+          },
+          lineFullCharge,
+        );
+        let lineBalanceDueAt: Date | null = null;
+        if (depositPlan) {
+          anyDepositLine = true;
+          checkoutAmountDueNow += depositPlan.depositAmount;
+          // Cutoff derived from EXISTING listing/booking facts only (§13): the service date (room
+          // check-in, else the cart line's scheduled date) minus the change window.
+          const serviceDateStr = stay?.checkIn
+            ?? (typeof item.scheduledDate === "string"
+              ? item.scheduledDate.slice(0, 10)
+              : item.scheduledDate instanceof Date
+                ? item.scheduledDate.toISOString().slice(0, 10)
+                : null);
+          lineBalanceDueAt = resolveBalanceDueAt({
+            serviceDate: serviceDateStr,
+            changeCutoffHours: (item.service as any).changeCutoffHours,
+            leadTimeHours: (item.service as any).leadTimeHours,
+          });
+        } else {
+          checkoutAmountDueNow += lineFullCharge;
+        }
+
         // Create contract for this booking
         // Migration 157: stamp both principals. Both were already in scope here — the contract
         // row simply never recorded them, which is what left the two contract readers ungatable.
@@ -1029,6 +1239,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               ...(bundleSnapshots.has(item.serviceId)
                 ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
                 : {}),
+              // D6 (ruling 61): the rails decision, SNAPSHOT onto the row it priced — including
+              // every REFUSAL with its reason, so "this ref bought nothing and here is why" is a DB
+              // fact per booking and not only a log line (the ruling-66 precedent for a record that
+              // must survive on a tripless booking). Server-derived in full; no client value reaches
+              // it. The fee-ledger row is written from this snapshot at the authorization stamp, so
+              // an admin re-pricing a band mid-checkout cannot rewrite what was charged.
+              ...(itemRails2 ? { railsAttribution: railsSnapshot(itemRails2) } : {}),
+              // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
+              // posture and for the same reason — a line that fell back to the legacy lane must
+              // SAY so on the row, or a later reader would infer a D1 charge that never happened
+              // (§13). Present only for lines the direct pre-pass considered (a rails-priced line
+              // records its provenance in `railsAttribution` instead).
+              ...(itemDirect2 ? { directRateResolution: directRateSnapshot(itemDirect2, rateLane) } : {}),
               // §17 property rooms: the night range + rate SNAPSHOT into the booking (locked at
               // purchase — the same ready-made snapshot posture as bundle contents above).
               ...(stay
@@ -1047,6 +1270,18 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             platformFee: totalPlatformFeeAmt.toFixed(2),
             insuranceFee: insuranceFeeAmt.toFixed(2),
             providerEarnings: netExpertEarningsAmt.toFixed(2),
+            // Lane 7 (ruling 72): a deposit line is BORN with its split recorded (server-derived).
+            // `deposit_paid`/`balance_paid` stay false until each payment promotes. The PROMOTION —
+            // not the claim — lands the row in status='deposit_paid' once the deposit PI succeeds
+            // (promoteOneBooking is deposit-aware); the claim itself is an ordinary payment_pending
+            // row so the §15 spine (sweep/authorize/promote) is unchanged.
+            ...(depositPlan
+              ? {
+                  depositAmount: depositPlan.depositAmount.toFixed(2),
+                  balanceAmount: depositPlan.balanceAmount.toFixed(2),
+                  ...(lineBalanceDueAt ? { balanceDueAt: lineBalanceDueAt } : {}),
+                }
+              : {}),
             status: "payment_pending",
             // S4: first real writer of the attribution columns (source existed unwritten).
             source: acquisitionSource,
@@ -1102,6 +1337,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         subtotal,
         platformFee,
         conciergeFee,
+        // Lane 7: charge the deposit sum now when any line takes a deposit; else undefined ⇒ the
+        // full total is charged, unchanged (§13).
+        ...(anyDepositLine ? { chargeAmount: Math.round(checkoutAmountDueNow * 100) / 100 } : {}),
         useSavedCard: req.body?.useSavedCard === true,
       });
     } catch (err: any) {
@@ -1112,6 +1350,138 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return res.status(500).json({ message: err.message });
       }
       res.status(500).json({ message: "Checkout failed" });
+    }
+  });
+
+  // ══ LANE 7 — BALANCE CHECKOUT (deposits / partial payments, DECISIONS.md ruling 72) ═══════════
+  // The SECOND, separate checkout that settles the outstanding balance of a deposit-paid booking.
+  // Its own authorized PaymentIntent on the SAME booking row (carried on stripe_balance_intent_id),
+  // its own atomic promotion deposit_paid → confirmed (promoteBalancePayment). Owner-gated to the
+  // TRAVELER who owns the booking. Idempotent: the Stripe idempotency key is deterministic per
+  // booking so a retry/double-click returns the SAME PaymentIntent and the SAME single charge (§15),
+  // and the balance-authorization stamp is an atomic conditional so only one caller stamps.
+  //
+  // §14/§18 — the amount is SERVER-DERIVED from the booking row (`balance_amount`); the acting user
+  // is the session; NOTHING is read from req.body. There is no `money-derive-ok` here because there
+  // is no client-trusted read to exempt.
+  router.post("/api/bookings/:id/pay-balance", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const bookingId = req.params.id;
+      const booking = await storage.getServiceBooking(bookingId);
+      // Ownership gate: the TRAVELER owns this booking. Undifferentiated 404 (§13 posture).
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      // Only a deposit-paid booking with an outstanding balance is payable here. A payment_pending
+      // claim (§15b) and a fully-paid `confirmed` booking are both refused, by construction.
+      if (booking.status !== "deposit_paid" || (booking as any).balancePaid === true) {
+        return res.status(409).json({
+          error: "balance_not_payable",
+          message: "This booking has no outstanding balance to pay.",
+        });
+      }
+      // SERVER-DERIVED (§14) — the balance comes from the booking row, never from the request body.
+      const balanceDue = parseFloat(String((booking as any).balanceAmount ?? "0"));
+      if (!Number.isFinite(balanceDue) || balanceDue <= 0) {
+        return res.status(409).json({
+          error: "balance_not_payable",
+          message: "This booking has no outstanding balance to pay.",
+        });
+      }
+
+      const { stripePaymentService } = await import("../services/stripe-payment.service");
+
+      // Already-authorized balance: a prior call stamped the balance PI — return the SAME
+      // clientSecret, never a second PaymentIntent (idempotent).
+      if ((booking as any).stripeBalanceIntentId) {
+        const existingPi = await stripePaymentService
+          .getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId)
+          .catch(() => null);
+        return res.status(200).json({
+          success: true,
+          duplicate: true,
+          bookingId,
+          balanceAmount: balanceDue.toFixed(2),
+          ...(existingPi ? { paymentIntent: existingPi } : {}),
+          note: "Balance payment already started — completing the existing payment.",
+        });
+      }
+
+      // Deterministic idempotency key per booking: Stripe returns the SAME PaymentIntent for a
+      // retry/double-click, so the external call cannot double-charge (§15 layer a).
+      const balanceKey = `bal-${bookingId}`;
+      let paymentIntent: any;
+      try {
+        paymentIntent = await stripePaymentService.createPaymentIntent(
+          userId,
+          [{ id: bookingId }],
+          balanceDue,
+          false,
+          "usd",
+          balanceKey,
+          { isBalance: true, offSession: req.body?.useSavedCard === true },
+        );
+      } catch (stripeErr: any) {
+        console.error(`[balance] authorization failed for booking=${bookingId}:`, stripeErr?.message ?? stripeErr);
+        return res.status(503).json({
+          success: false,
+          error: "payment_unavailable",
+          message:
+            "We couldn't reach our payment provider, so nothing was charged. Please try again.",
+          retryable: true,
+        });
+      }
+      if (!paymentIntent?.paymentIntentId) {
+        return res.status(503).json({ success: false, error: "payment_unavailable", retryable: true });
+      }
+
+      // AUTHORIZE stamp — atomic conditional on the balance column (§15). Loses the race (another
+      // concurrent call stamped first) ⇒ return that call's clientSecret, never a second charge.
+      const stamped = await stampBalanceAuthorization(bookingId, paymentIntent.paymentIntentId);
+      if (!stamped) {
+        const refreshed = await storage.getServiceBooking(bookingId);
+        const existingPi = (refreshed as any)?.stripeBalanceIntentId
+          ? await stripePaymentService.getPaymentIntentClientSecret((refreshed as any).stripeBalanceIntentId).catch(() => null)
+          : null;
+        return res.status(200).json({
+          success: true,
+          duplicate: true,
+          bookingId,
+          ...(existingPi ? { paymentIntent: existingPi } : {}),
+          note: "Balance payment already started — completing the existing payment.",
+        });
+      }
+
+      // Inline promotion when the PaymentIntent already SUCCEEDED (saved-card / off-session). The
+      // interactive path relies on the webhook (isBalance → promoteBalancePayment). Both drive the
+      // SAME atomic conditional, so a double signal is exactly one flip (§15).
+      let confirmed = false;
+      if (paymentIntent?.status === "succeeded") {
+        const promo = await promoteBalancePayment({
+          bookingId,
+          paymentIntentId: paymentIntent.paymentIntentId,
+          actor: "checkout",
+          actorId: userId,
+        });
+        confirmed = promo.promoted || promo.alreadyConfirmed;
+      }
+
+      return res.status(201).json({
+        success: true,
+        bookingId,
+        balanceAmount: balanceDue.toFixed(2),
+        paymentIntent,
+        status: paymentIntent?.status,
+        confirmed,
+        message:
+          paymentIntent?.status === "succeeded"
+            ? "Balance paid. Your booking is fully confirmed."
+            : "Balance checkout started. Complete payment.",
+      });
+    } catch (err: any) {
+      console.error("Pay-balance error:", err);
+      res.status(500).json({ message: "Balance checkout failed" });
     }
   });
 
@@ -1126,7 +1496,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       const cartData = await storage.getCartItems(userId);
 
       if (cartData.length === 0) {
-        return res.json({ subtotal: 0, platformFeeTotal: 0, total: 0, itemCount: 0 });
+        return res.json({ subtotal: 0, platformFeeTotal: 0, conciergeFeeTotal: 0, total: 0, itemCount: 0 });
       }
 
       const safeParseRate = (value: any, fallback: number): number => {
@@ -1146,8 +1516,51 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         }
       }
 
+      // Preload offering type keys to detect booking_concierge items (mirrors checkout logic).
+      const distinctPreviewOfferingTypeIds = Array.from(new Set(
+        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+      ));
+      const previewOfferingTypeKeyMap = new Map<string, string>();
+      if (distinctPreviewOfferingTypeIds.length > 0) {
+        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctPreviewOfferingTypeIds);
+        for (const row of typeRows) {
+          previewOfferingTypeKeyMap.set(row.id, row.key);
+        }
+      }
+
+      // Load the concierge rate once. Task 1108: if the cart actually CONTAINS a
+      // booking_concierge item, use the SAME strict loader checkout uses — a misconfigured
+      // band must surface here as a machine-readable 503, not as a misleading $0 fee that
+      // 500s later at POST /api/checkout. Carts without concierge items keep the lenient
+      // loader (a zero rate is never applied to them anyway).
+      const previewHasConciergeItem = cartData.some(i =>
+        i.service?.expertOfferingTypeId
+          ? previewOfferingTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
+          : false,
+      );
+      let previewConciergeRate: number;
+      if (previewHasConciergeItem) {
+        try {
+          previewConciergeRate = await requireConciergeBookingRate();
+        } catch (bandErr: any) {
+          // Same misconfiguration checkout would 500 on — surface it BEFORE the traveler
+          // hits "Pay", with a code the cart UI can act on.
+          console.error("Fee preview: concierge band misconfigured:", bandErr?.message ?? bandErr);
+          return res.status(503).json({
+            error: "concierge_fee_unconfigured",
+            message:
+              "The Booking Concierge fee isn't configured right now, so we can't show an accurate total. " +
+              "Please try again shortly or contact support — checkout is paused for concierge items until this is fixed.",
+            retryable: true,
+          });
+        }
+      } else {
+        previewConciergeRate = await getConciergeBookingRate();
+      }
+
       let previewSubtotal = 0;
       let previewPlatformFeeTotal = 0;
+      let previewConciergeFeeTotal = 0;
 
       for (const item of cartData) {
         if (!item.service) continue;
@@ -1156,33 +1569,54 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
-        let isProviderServicePreview = false;
+        let ownerRolePreview: string | null = null;
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
             .from(users)
             .where(eq(users.id, item.service.userId))
             .limit(1);
-          // Canonical vocabulary (shared/roles.ts) — mirrors the checkout loops.
-          if (isProviderRole(providerRow?.role)) {
-            isProviderServicePreview = true;
-          }
+          ownerRolePreview = providerRow?.role ?? null;
         }
+        // Canonical vocabulary (shared/roles.ts) — mirrors the checkout loops.
+        const isProviderServicePreview = isProviderRole(ownerRolePreview);
         const itemRates = await resolveCommissionRates(
           isProviderServicePreview
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory, expertId: item.service.userId ?? null }
         );
-        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate);
+        // 1C (ruling 69 disposition 6): the PREVIEW must price a direct provider line the same way
+        // the charge does, through the SAME `pickOwnerShareRate` precedence — a preview that keeps
+        // the pre-1C lane would quote a number the checkout no longer charges. Rails is absent here
+        // by construction: this surface has no ref, so it quotes the un-attributed (full) lane, as
+        // it always has.
+        const { shareRate: itemExpertShare } = pickOwnerShareRate({
+          railsShareRate: null,
+          direct: await resolveDirectProviderRate({
+            serviceOwnerUserId: item.service.userId ?? null,
+            ownerRole: ownerRolePreview,
+            categoryId: item.service.categoryId ?? null,
+            serviceId: item.service.id ?? item.serviceId,
+          }),
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate),
+        });
         previewSubtotal += itemPrice;
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
         previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+        // Concierge facilitation fee: charged ON TOP of the normal split (mirrors checkout).
+        const isBookingConciergePreview = item.service.expertOfferingTypeId
+          ? previewOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+          : false;
+        if (isBookingConciergePreview) {
+          previewConciergeFeeTotal += itemPrice * previewConciergeRate;
+        }
       }
 
       res.json({
         subtotal: Math.round(previewSubtotal * 100) / 100,
         platformFeeTotal: Math.round(previewPlatformFeeTotal * 100) / 100,
-        total: Math.round((previewSubtotal + previewPlatformFeeTotal) * 100) / 100,
+        conciergeFeeTotal: Math.round(previewConciergeFeeTotal * 100) / 100,
+        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal) * 100) / 100,
         itemCount: cartData.filter(i => i.service).length,
       });
     } catch (err) {

@@ -425,7 +425,7 @@ class StripePaymentService {
     isDeposit: boolean = false,
     currency: string = 'usd',
     idempotencyKey?: string,
-    options?: { offSession?: boolean }
+    options?: { offSession?: boolean; isBalance?: boolean }
   ) {
     try {
       // Get user details
@@ -495,9 +495,13 @@ class StripePaymentService {
           userId,
           bookingIds: truncatedBookingIds,
           isDeposit: isDeposit.toString(),
+          // Lane 7 (ruling 72): the BALANCE leg of a deposit booking. The webhook branches on this
+          // to drive `promoteBalancePayment` (deposit_paid → confirmed on stripe_balance_intent_id)
+          // instead of `promotePaidCheckout` (which keys on stripe_payment_intent_id).
+          ...(options?.isBalance ? { isBalance: 'true' } : {}),
           bookingCount: bookings.length.toString(),
         },
-        description: `Traveloure ${isDeposit ? 'Deposit' : 'Booking'} - ${bookings.length} item(s)`,
+        description: `Traveloure ${options?.isBalance ? 'Balance' : isDeposit ? 'Deposit' : 'Booking'} - ${bookings.length} item(s)`,
         receipt_email: userEmail,
         // One-click needs a NAMED payment method plus confirm+off_session. `automatic_payment_methods`
         // is mutually exclusive with that here: it exists to let Stripe pick a method interactively,
@@ -645,12 +649,33 @@ class StripePaymentService {
    * rail unchanged. The two id spaces do not overlap, and each path no-ops on ids it does not own.
    */
   async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
-    const { userId, bookingIds, isDeposit } = paymentIntent.metadata;
+    const { userId, bookingIds, isDeposit, isBalance } = paymentIntent.metadata;
 
     // Update payment intent status
     await db.execute(sql`
       UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
+
+    // ── LANE 7 (ruling 72): the BALANCE leg of a deposit booking ──────────────────────────
+    // A balance PI is carried on `stripe_balance_intent_id`, NOT `stripe_payment_intent_id`, so the
+    // shared `promotePaidCheckout` below would mis-resolve it (the row's stamped PI is the DEPOSIT
+    // PI). Route it to `promoteBalancePayment` (deposit_paid → confirmed, atomic conditional on the
+    // balance column). Idempotent: a double signal matches 0 rows and is a no-op. Never fails the
+    // webhook — the booking row is the money truth.
+    if (isBalance === 'true') {
+      try {
+        const { promoteBalancePayment } = await import('./checkout-claim.service');
+        const balanceIds = (bookingIds ?? '').split(',').map((id: string) => id.trim()).filter(Boolean);
+        for (const bId of balanceIds) {
+          await promoteBalancePayment({ bookingId: bId, paymentIntentId: paymentIntent.id, actor: 'webhook' });
+        }
+      } catch (balErr: any) {
+        console.error('[webhook] balance payment promotion failed:', balErr?.message ?? balErr);
+      }
+      // A balance PI belongs to a service_bookings row already born on the cart rail; the legacy
+      // `bookings` loop below never owns it, so return here rather than fall through.
+      return;
+    }
 
     // ── CART-CHECKOUT RAIL (service_bookings) — the shared payment promotion ──────────────
     // Resolved by the row's server-stamped `stripe_payment_intent_id`, and additionally by the
@@ -957,6 +982,27 @@ class StripePaymentService {
         amount, currency, status, reason, created_at
       ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
     `);
+
+    // COMPLETION/REFUND RACE SWEEP (task 1091 review): callers reverse the ledger BEFORE this
+    // atomic claim (ledger-first order). A completion mint can commit in between — the caller's
+    // reversal finds nothing, the mint wins the confirmed-status guard, and the booking would end
+    // 'refunded' with live positive earnings. Now that this refund EXCLUSIVELY owns the terminal
+    // status (the claim above), re-run the reversals to sweep any mint that raced in. Both are
+    // idempotent flips: if the caller's earlier reversal already did the work, these no-op.
+    // Earnings are only swept for FULL refunds (partial refunds deliberately keep the retained
+    // share's earnings); platform revenue is swept proportionally, matching caller semantics.
+    try {
+      const { storage } = await import('../storage');
+      const fraction = amountCharged > 0 ? Math.min(amount / amountCharged, 1) : 1;
+      if (fraction >= 1) {
+        await storage.reverseEarningsForBooking(bookingId);
+      }
+      await storage.reversePlatformRevenueForBooking(bookingId, new Date(), fraction);
+    } catch (sweepErr) {
+      // The refund already succeeded; a sweep failure must not undo it. The admin refund rail
+      // re-runs the same idempotent reversals on retry.
+      console.error(`[refund] post-claim ledger sweep failed for booking ${bookingId}:`, sweepErr);
+    }
 
     // C3 filed follow-up: a refunded slot-bound booking gives its capacity back so another
     // traveler can book the time. Runs only under this refund's atomic status claim (the flip

@@ -20,6 +20,7 @@ import {
 import {
   ArrowLeft,
   MapPin,
+  Languages,
   Clock,
   Star,
   DollarSign,
@@ -57,6 +58,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocale } from "@/hooks/use-locale";
+import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 
 interface PricingTier {
@@ -114,6 +117,16 @@ interface Service {
   // (server: GET /api/services/:id, content.routes.ts). Null when the owner isn't away —
   // listings stay visible either way, booking is disabled only while `away` is set.
   away?: { until: string; message: string | null } | null;
+  // Ruling 60 Phase B — provider CONTENT translation. Present only under a non-en active locale:
+  // status 'approved' means the fields above are the provider's translated content; status
+  // 'fallback' (shownInEnglish: true) means no approved translation exists and the ORIGINAL
+  // English is shown with an honest label (§13 — never a silent or machine translation).
+  translation?: {
+    locale: string;
+    status: "approved" | "fallback";
+    source?: string;
+    shownInEnglish: boolean;
+  } | null;
   // Ruling 22: the location facts were ALREADY on the wire (the endpoint spreads the row);
   // this interface just stopped dropping them on the floor. Map renders only from a real
   // confirmed pin / located stops — no city-center fallback (§13).
@@ -123,6 +136,14 @@ interface Service {
   serviceRadius?: string | number | null;
   dropOffPoint?: string | null;
   routePoints?: ServiceRoutePointRow[];
+  // D7 amendment (docs/DECISIONS.md ruling 62, migration 195): which coverage store the owner
+  // declared — 'radius' | 'route' | null. NULL = never declared (every pre-195 listing), which
+  // renders exactly as before. Both stores always hold their data; this only picks what shows.
+  pickupCoverageMode?: string | null;
+  // SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): the language(s) the service
+  // is DELIVERED in. Absent/null on every pre-199 listing and on every listing whose owner has
+  // not said — which renders NOTHING at all, never a presumed "English" (§13).
+  deliveryLanguages?: string[] | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -215,14 +236,18 @@ export default function ServiceDetailPage() {
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
+  const { locale } = useLocale();
+  const { t } = useTranslation("common");
 
   const { data: service, isLoading: serviceLoading, isError: serviceError } = useQuery<Service>({
-    queryKey: ["/api/services", id],
+    // Ruling 60 Phase B: the active chrome locale (Phase A resolution) rides the read as
+    // ?locale=, and is part of the query key so switching language refetches the content.
+    queryKey: ["/api/services", id, locale],
     queryFn: async () => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
       try {
-        const res = await fetch(`/api/services/${id}`, { credentials: "include", signal: controller.signal });
+        const res = await fetch(`/api/services/${id}?locale=${encodeURIComponent(locale)}`, { credentials: "include", signal: controller.signal });
         if (res.status === 404) return null as unknown as Service;
         if (!res.ok) throw new Error(`Failed to load service: ${res.status}`);
         return res.json() as Promise<Service>;
@@ -582,6 +607,21 @@ export default function ServiceDetailPage() {
                 </Badge>
               )}
             </div>
+            {/* Ruling 60 Phase B (§13 applied to language): under a non-en locale with no
+                approved translation, the original English content is shown with an HONEST label —
+                never silently, never machine-translated at read time. The label text itself is
+                chrome (Phase A t()), the only place B touches A. */}
+            {service.translation?.shownInEnglish && (
+              <Badge
+                variant="outline"
+                className="mt-2 text-xs font-normal"
+                title={t("contentTranslation.shownInEnglishHint")}
+                data-testid="badge-shown-in-english"
+              >
+                <Languages className="w-3 h-3 mr-1" />
+                {t("contentTranslation.shownInEnglish")}
+              </Badge>
+            )}
             <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
               <div className="flex items-center gap-1">
                 <MapPin className="w-4 h-4" />
@@ -662,6 +702,19 @@ export default function ServiceDetailPage() {
                     <Badge variant="outline">{service.deliveryMethod.replace(/_/g, " ")}</Badge>
                   </div>
                 )}
+
+                {/* SS-6 (ruling 69 disposition 9): delivery language, plainly, WHEN PRESENT.
+                    In the launch market this is a purchasable attribute — a shared session in
+                    Japanese and a private one in English are commonly different products — and
+                    providers previously could not state it at all. §13: an absent value renders
+                    NOTHING. There is deliberately no "English" fallback and no "language not
+                    specified" line: silence is the honest answer to a question nobody answered. */}
+                {Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0 && (
+                  <div className="flex items-center gap-2 mt-2 text-sm" data-testid="text-delivery-languages">
+                    <Languages className="w-4 h-4 text-muted-foreground" />
+                    <span>Delivered in: {service.deliveryLanguages.join(", ")}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -671,10 +724,16 @@ export default function ServiceDetailPage() {
                 connector is stop order, not travel routing — the map component says so. */}
             {(() => {
               const servicePin = parseLatLng(service.latitude, service.longitude);
-              const routeStops = service.routePoints ?? [];
+              // D7 amendment (ruling 62): the traveler sees ONLY the coverage mode the owner
+              // chose. The other store still holds its rows — it is hidden here, never deleted
+              // (§13); the owner's wizard says so explicitly. A NULL mode (every pre-195
+              // listing) shows both, exactly as ruling 22 shipped it.
+              const coverageMode = service.pickupCoverageMode ?? null;
+              const routeStops = coverageMode === "radius" ? [] : (service.routePoints ?? []);
+              const rawRadiusKm = Number(service.serviceRadius);
+              const radiusKm = coverageMode === "route" ? NaN : rawRadiusKm;
               if (!servicePin && routeStops.length === 0) return null;
               const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
-              const radiusKm = Number(service.serviceRadius);
               return (
                 <Card data-testid="card-location-route">
                   <CardHeader>

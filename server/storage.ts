@@ -10,6 +10,8 @@ import {
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
+  serviceAttestations, type ServiceAttestation,
+  serviceTranslations, type ServiceTranslation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
@@ -181,6 +183,7 @@ export interface IStorage {
   updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
+  updateLocalExpertFormProfileFields(userId: string, fields: Partial<Pick<InsertLocalExpertForm, "displayName" | "headline" | "city" | "country" | "languages" | "bio" | "firstName" | "lastName">>): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
 
   // Provider Verification (publish-gate Step 1)
@@ -198,6 +201,21 @@ export interface IStorage {
   getAllProviderServices(): Promise<ProviderService[]>;
   getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
+  getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
+  affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
+
+  // Ruling 60 Phase B — provider CONTENT translation (service_translations).
+  getServiceTranslation(serviceId: string, locale: string): Promise<ServiceTranslation | undefined>;
+  getServiceTranslations(serviceId: string): Promise<ServiceTranslation[]>;
+  upsertServiceTranslation(input: {
+    serviceId: string;
+    locale: string;
+    content: { serviceName: string | null; shortDescription: string | null; description: string | null; meetingPoint: string | null };
+    status: "draft" | "approved";
+    source: "human" | "ai_draft";
+    updatedBy: string;
+  }): Promise<ServiceTranslation>;
+  approveServiceTranslation(serviceId: string, locale: string, updatedBy: string): Promise<ServiceTranslation | undefined>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -252,6 +270,7 @@ export interface IStorage {
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
   updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined>;
+  mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
@@ -1114,6 +1133,26 @@ export class DatabaseStorage implements IStorage {
       .where(eq(localExpertForms.id, id));
   }
 
+  // Expert profile editor persistence: partial update of the public-facing display
+  // fields on the expert's form row. Creates a minimal form row when the expert
+  // (e.g. a travel_expert who never filled the application form) has none — the
+  // local_expert public gate only applies to role='local_expert', so this cannot
+  // surface an unapproved local expert.
+  async updateLocalExpertFormProfileFields(
+    userId: string,
+    fields: Partial<Pick<InsertLocalExpertForm, "displayName" | "headline" | "city" | "country" | "languages" | "bio" | "firstName" | "lastName">>,
+  ): Promise<void> {
+    if (Object.keys(fields).length === 0) return;
+    const existing = await this.getLocalExpertForm(userId);
+    if (existing) {
+      await db.update(localExpertForms)
+        .set(fields)
+        .where(eq(localExpertForms.userId, userId));
+    } else {
+      await db.insert(localExpertForms).values({ userId, ...fields });
+    }
+  }
+
   async updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void> {
     await db.update(localExpertForms)
       .set({ expertNotesStyle: notesStyle })
@@ -1244,6 +1283,116 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // ── D9 attestations (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67) ───────
+  // Read path: every affirmation on record for a service, oldest first. The APPLICABILITY of a
+  // key is never stored — it is re-derived from the live row by
+  // shared/service-attestations.ts on every read, so a listing that changes delivery method
+  // does not carry a stale "applies to you" claim (§13).
+  async getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]> {
+    return await db.select().from(serviceAttestations)
+      .where(eq(serviceAttestations.serviceId, serviceId))
+      .orderBy(serviceAttestations.affirmedAt);
+  }
+
+  // Write path: APPEND-ONLY affirmation record. `affirmedAt` and `affirmedBy` are stamped HERE,
+  // server-side, from the session user the route resolved — a client-supplied timestamp or user
+  // id never reaches a row (§14/§19), and there is no code path in this file that can update or
+  // delete one. Idempotency is structural: ON CONFLICT DO NOTHING against the
+  // (service_id, attestation_key) UNIQUE means a re-affirm keeps the FIRST affirmation's
+  // timestamp rather than silently back-dating or re-dating the record. The keys arrive already
+  // intersected with the SERVER-derived applicable set by the route; this layer is the strip
+  // that covers every other caller (the §18 two-layer placement rationale).
+  async affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]> {
+    const unique = Array.from(new Set(keys));
+    if (unique.length === 0) return await this.getServiceAttestations(serviceId);
+    await db.insert(serviceAttestations)
+      .values(unique.map((attestationKey) => ({
+        serviceId,
+        attestationKey,
+        affirmedAt: new Date(),
+        affirmedBy,
+      })))
+      .onConflictDoNothing({
+        target: [serviceAttestations.serviceId, serviceAttestations.attestationKey],
+      });
+    return await this.getServiceAttestations(serviceId);
+  }
+
+  // ── Ruling 60 Phase B — provider CONTENT translation (service_translations) ─────────────────
+  // Read one locale's row (owner console edit surface + traveler read both use it). Returns
+  // undefined when the provider has never authored a translation for that locale — the caller
+  // (traveler read) then serves the ORIGINAL with an honest "shown in English" label (§13),
+  // never a silent or fabricated translation.
+  async getServiceTranslation(serviceId: string, locale: string): Promise<ServiceTranslation | undefined> {
+    const [row] = await db.select().from(serviceTranslations)
+      .where(and(eq(serviceTranslations.serviceId, serviceId), eq(serviceTranslations.locale, locale)))
+      .limit(1);
+    return row;
+  }
+
+  // Every locale on record for a service (owner console: list what's translated / drafted).
+  async getServiceTranslations(serviceId: string): Promise<ServiceTranslation[]> {
+    return await db.select().from(serviceTranslations)
+      .where(eq(serviceTranslations.serviceId, serviceId))
+      .orderBy(serviceTranslations.locale);
+  }
+
+  // Replace-for-locale upsert (the route-points/dmo-extracted-places replace-list precedent,
+  // applied per (service, locale)). `status`, `source` and `updatedBy` are stamped HERE from
+  // arguments the route derived server-side — a client-supplied status/source/updatedBy/timestamp
+  // never reaches a row (§14/§19; the strip lives at the storage layer too, so every caller is
+  // covered — the §18 two-layer placement). `updatedAt` is set server-side on every write.
+  async upsertServiceTranslation(input: {
+    serviceId: string;
+    locale: string;
+    content: { serviceName: string | null; shortDescription: string | null; description: string | null; meetingPoint: string | null };
+    status: "draft" | "approved";
+    source: "human" | "ai_draft";
+    updatedBy: string;
+  }): Promise<ServiceTranslation> {
+    const now = new Date();
+    const [row] = await db.insert(serviceTranslations)
+      .values({
+        serviceId: input.serviceId,
+        locale: input.locale,
+        serviceName: input.content.serviceName,
+        shortDescription: input.content.shortDescription,
+        description: input.content.description,
+        meetingPoint: input.content.meetingPoint,
+        status: input.status,
+        source: input.source,
+        updatedBy: input.updatedBy,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [serviceTranslations.serviceId, serviceTranslations.locale],
+        set: {
+          serviceName: input.content.serviceName,
+          shortDescription: input.content.shortDescription,
+          description: input.content.description,
+          meetingPoint: input.content.meetingPoint,
+          status: input.status,
+          source: input.source,
+          updatedBy: input.updatedBy,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  // Provider approval of an existing (typically ai_draft) row: flips status→'approved',
+  // source→'human' (the provider owns the reviewed text now), server-stamped updatedBy/updatedAt.
+  // Content is untouched — approval is a review gate, not a rewrite. Returns undefined if no row
+  // exists for that locale (nothing to approve).
+  async approveServiceTranslation(serviceId: string, locale: string, updatedBy: string): Promise<ServiceTranslation | undefined> {
+    const [row] = await db.update(serviceTranslations)
+      .set({ status: "approved", source: "human", updatedBy, updatedAt: new Date() })
+      .where(and(eq(serviceTranslations.serviceId, serviceId), eq(serviceTranslations.locale, locale)))
+      .returning();
+    return row;
+  }
+
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
     // EX-2 layer 2 (docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price never reaches a row —
     // the schema floor is layer 1, but this backstop lives here so every caller is covered (the
@@ -1332,6 +1481,19 @@ export class DatabaseStorage implements IStorage {
           .limit(1);
         ownerIsProvider = isProviderRole(ownerRow?.role);
       }
+      // ── 1C retirement of the provider-lane snapshot (docs/DECISIONS.md ruling 71) ─────────────
+      // Provider-lane rows no longer carry a STAMPED `revenueShareRate`. Their charge path now
+      // resolves the D1 category band (ruling 69 D6 / ruling 71 Step 1), which OUTRANKS this
+      // snapshot as a first operand — so stamping one only leaves a stale value that an admin band
+      // edit can no longer move. Leave the column NULL (the caller omits it → the nullable column's
+      // NULL default) and let `pickOwnerShareRate` resolve the band live at charge time. Expert-lane
+      // rows keep their derived stamp below — no D1 provider band exists for them, so the snapshot is
+      // still their legacy operand (and a NULL there would simply fall through to the same band).
+      // This stops STAMPING a derived value only; the §18 input strip in createProviderService /
+      // updateProviderService that REJECTS a client-sent value is untouched (§18 rule 3 — a field
+      // with no consumer is still stripped). Existing non-NULL provider rows are NOT backfilled
+      // (publish-trap posture); Step 1 already made them inert.
+      if (ownerIsProvider) return null;
       let feeCategory: string | null = null;
       if (categoryId) {
         const rows = await this.getServiceCategorySlugsByIds([categoryId]);
@@ -1369,11 +1531,30 @@ export class DatabaseStorage implements IStorage {
     // since `insertProviderServiceSchema.partial()` let a single-field PATCH set nothing but the
     // commission split on an already-approved listing. Stripped in STORAGE, not the route, so every
     // caller is covered — same placement rationale as the approval-lifecycle strip.
+    // D8/ruling 66 layer 2 — `deliverableUploadedAt` is STRIP-AND-DERIVE, same §18 shape as the
+    // two above. It is a MONEY-TIMER field (it is the clock the pdf auto-complete's undownloaded
+    // arm measures from), so a client must never be able to set it: a backdated value would fire
+    // the completion timer — and mint the held earning — on a booking whose deliverable never
+    // existed. Stripped here in STORAGE so every caller is covered, and DERIVED below from the
+    // one fact the server observes: the deliverable value actually changing.
     const {
       approvalStatus: _as, submittedAt: _sa, reviewedAt: _ra, reviewedBy: _rb,
-      rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, ...safeUpdates
+      rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, deliverableUploadedAt: _dua,
+      ...safeUpdates
     } = updates as Record<string, unknown>;
     let patch: Partial<InsertProviderService> = safeUpdates as Partial<InsertProviderService>;
+    // Derive: stamp the delivery clock only when the deliverable value CHANGES to a non-empty
+    // one. Re-saving the same value on an unrelated listing edit must not restamp (that would
+    // silently push every open booking's undownloaded timer out); clearing it must not stamp.
+    if (Object.prototype.hasOwnProperty.call(safeUpdates, 'serviceFile')) {
+      const nextFile = String((safeUpdates as any).serviceFile ?? '').trim();
+      if (nextFile) {
+        const prior = await this.getProviderServiceById(id);
+        if (String(prior?.serviceFile ?? '').trim() !== nextFile) {
+          (patch as any).deliverableUploadedAt = new Date();
+        }
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(updates, 'serviceOfferingTypeId') && (updates as any).serviceOfferingTypeId) {
       const [known] = await db.select({ id: serviceOfferingTypes.id })
         .from(serviceOfferingTypes)
@@ -1760,8 +1941,18 @@ export class DatabaseStorage implements IStorage {
     //
     // NOT a compatibility break: verified at 281d355c that no caller passes this field. A booking
     // that legitimately needs a PI gets it from the claim machine, one state transition later.
-    const { stripePaymentIntentId: _clientSuppliedPi, ...safeBooking } =
-      booking as InsertServiceBooking & { stripePaymentIntentId?: unknown };
+    // Lane 7 (ruling 72): the deposit/balance PI linkage columns join stripePaymentIntentId in the
+    // §19a strip — they are written only by the shared promotion / balance-authorization paths.
+    const {
+      stripePaymentIntentId: _clientSuppliedPi,
+      stripeDepositIntentId: _clientSuppliedDepositPi,
+      stripeBalanceIntentId: _clientSuppliedBalancePi,
+      ...safeBooking
+    } = booking as InsertServiceBooking & {
+      stripePaymentIntentId?: unknown;
+      stripeDepositIntentId?: unknown;
+      stripeBalanceIntentId?: unknown;
+    };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
       // booking. Nothing downstream can distinguish that row from a real one after the fact, which
@@ -1839,90 +2030,166 @@ export class DatabaseStorage implements IStorage {
       ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
       : eq(serviceBookings.id, id);
 
-    const [updated] = await db.update(serviceBookings)
-      .set(updates)
-      .where(guard)
-      .returning();
+    // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
+    // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking
+    // stays in its prior status, so the traveler endpoint's retry re-attempts the whole thing —
+    // never a completed booking with no earnings. Mint is idempotent under conflict (partial
+    // unique indexes + ON CONFLICT DO NOTHING), which also fixes the latent dispute-reject
+    // double-mint (completed → disputed → re-completed).
+    let updated: ServiceBooking | undefined;
+    if (status === "completed") {
+      updated = await db.transaction(async (tx) => {
+        const [u] = await tx.update(serviceBookings)
+          .set(updates)
+          .where(guard)
+          .returning();
+        if (!u) return undefined;
+        await this.mintCompletionEarningsForBooking(u, tx);
+        return u;
+      });
+    } else {
+      [updated] = await db.update(serviceBookings)
+        .set(updates)
+        .where(guard)
+        .returning();
+    }
 
     // 0 rows: either the id vanished, or (with a guard) a concurrent writer moved the row out of
     // every expected state first. Either way this caller lost — and critically, NONE of the
     // side-effects below run, so a lost race mints no earnings and no revenue row.
     if (!updated) return undefined;
 
-    // Only fire completion side-effects on the FIRST transition to "completed".
-    const isFirstCompletion = status === "completed" && priorStatus !== "completed";
-    if (isFirstCompletion) {
-      const grossAmount = parseFloat(updated.totalAmount || '0');
-      const platformFee = parseFloat(updated.platformFee || '0');
-      const providerEarningsAmount = parseFloat(updated.providerEarnings || '0');
-      
-      // Atomically add provider earnings to service totalRevenue
-      if (providerEarningsAmount > 0) {
-        await db.update(providerServices)
-          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
-          .where(eq(providerServices.id, updated.serviceId));
-      }
-      
-      // Record platform revenue if there's a platform fee
-      if (platformFee > 0) {
-        await this.recordPlatformRevenue({
-          sourceType: 'booking_commission',
-          sourceId: updated.id,
-          trackingNumber: updated.trackingNumber || undefined,
-          grossAmount: String(grossAmount),
-          platformFee: String(platformFee),
-          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
-          processingFees: String(platformFee * PROCESSING_FEE_RATE),
-          providerId: updated.providerId,
-          providerEarnings: String(providerEarningsAmount),
-          description: `Booking commission from ${updated.trackingNumber || id}`,
-          status: 'recorded',
-          transactionDate: new Date(),
-        });
-      }
-      
-      // Create earnings ledger entries only if amount > 0
-      // Earnings become available after the configurable hold period (default 7 days)
-      const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
-
-      if (providerEarningsAmount > 0) {
-        await this.createProviderEarning({
-          providerId: updated.providerId,
-          type: 'service_booking',
-          amount: String(providerEarningsAmount),
-          sourceType: 'booking',
-          sourceId: updated.id,
-          trackingNumber: updated.trackingNumber || undefined,
-          description: `Earnings from booking ${updated.trackingNumber || id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-
-        // Also record in expert earnings ledger (provider may be an expert)
-        await this.createExpertEarning({
-          expertId: updated.providerId,
-          type: 'consulting',
-          amount: String(providerEarningsAmount),
-          referenceId: updated.id,
-          referenceType: 'service_booking',
-          description: `Service booking earnings from ${updated.trackingNumber || id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-      }
-    }
-
     // Only decrement bookingsCount on the FIRST transition to cancelled/refunded.
     const cancelStatuses = ["cancelled", "refunded"];
     const isFirstCancellation =
       cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || '');
-    if (isFirstCancellation) {
+    if (isFirstCancellation && updated.serviceId) {
       await db.update(providerServices)
         .set({ bookingsCount: sql`GREATEST(${providerServices.bookingsCount} - 1, 0)` })
         .where(eq(providerServices.id, updated.serviceId));
     }
     
     return updated;
+  }
+
+  /**
+   * Completion side-effects for a service booking, extracted from updateServiceBookingStatus and
+   * made IDEMPOTENT (task 1091 review): each ledger effect is guarded by its own existence check,
+   * so this is safe to call (a) on every completed transition, (b) again after a crash that left
+   * a booking `completed` with some or all ledger rows missing (the scheduler's reconciliation
+   * pass), and (c) on dispute-reject re-completion — none of which can double-mint.
+   * Returns true if any effect was newly applied.
+   */
+  async mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<boolean> {
+    const { providerId, serviceId } = booking;
+    if (!providerId || !serviceId) {
+      console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    const grossAmount = parseFloat(booking.totalAmount || '0');
+    const platformFee = parseFloat(booking.platformFee || '0');
+    const providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
+    // Earnings become available after the configurable hold period (default 7 days)
+    const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
+    // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
+    // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 203's partial unique
+    // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)
+    // exactly ONE caller wins each row. The whole mint — ledger rows PLUS their rollup
+    // side-effects (service totalRevenue, daily revenue summary) — runs in ONE transaction:
+    // a crash or failure mid-mint rolls everything back, so a retry re-attempts the full set and
+    // rollups can never be permanently skipped behind an already-inserted ledger row. When an
+    // outer transaction is supplied (the status-transition caller), the mint joins it so the
+    // confirmed → completed flip and the money effects commit or roll back as ONE unit.
+    const run = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    let applied = false;
+
+    if (platformFee > 0) {
+      const inserted = await tx.insert(platformRevenue).values({
+        sourceType: 'booking_commission',
+        sourceId: booking.id,
+        trackingNumber: booking.trackingNumber || undefined,
+        grossAmount: String(grossAmount),
+        platformFee: String(platformFee),
+        netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+        processingFees: String(platformFee * PROCESSING_FEE_RATE),
+        providerId,
+        providerEarnings: String(providerEarningsAmount),
+        description: `Booking commission from ${booking.trackingNumber || booking.id}`,
+        status: 'recorded',
+        transactionDate: new Date(),
+      }).onConflictDoNothing({
+        // gross_amount >= 0 scopes the guard to the ONE original mint row; negative compensation
+        // rows from reversePlatformRevenueForBooking share source_type/source_id and stay free.
+        target: [platformRevenue.sourceId],
+        where: sql`source_type = 'booking_commission' and gross_amount >= 0`,
+      }).returning({ id: platformRevenue.id });
+      if (inserted.length > 0) {
+        applied = true;
+        // Daily summary rollup (matches recordPlatformRevenue's side-effect), only for the
+        // winner, inside the SAME transaction, and as an ATOMIC upsert — concurrent mints for
+        // different bookings on the same date each add their increment, never lost-update.
+        const date = new Date().toISOString().split('T')[0];
+        await tx.insert(dailyRevenueSummary).values({
+          date,
+          totalGross: String(grossAmount),
+          totalPlatformFee: String(platformFee),
+          totalNet: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+          transactionCount: 1,
+        }).onConflictDoUpdate({
+          target: dailyRevenueSummary.date,
+          set: {
+            totalGross: sql`${dailyRevenueSummary.totalGross} + excluded.total_gross`,
+            totalPlatformFee: sql`${dailyRevenueSummary.totalPlatformFee} + excluded.total_platform_fee`,
+            totalNet: sql`${dailyRevenueSummary.totalNet} + excluded.total_net`,
+            transactionCount: sql`${dailyRevenueSummary.transactionCount} + 1`,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    if (providerEarningsAmount > 0) {
+      const insertedProvider = await tx.insert(providerEarnings).values({
+        providerId,
+        type: 'service_booking',
+        amount: String(providerEarningsAmount),
+        sourceType: 'booking',
+        sourceId: booking.id,
+        trackingNumber: booking.trackingNumber || undefined,
+        description: `Earnings from booking ${booking.trackingNumber || booking.id}`,
+        status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+        availableAt,
+      }).onConflictDoNothing({
+        target: [providerEarnings.sourceId],
+        where: sql`source_type = 'booking' and amount >= 0`,
+      }).returning({ id: providerEarnings.id });
+      if (insertedProvider.length > 0) {
+        await tx.update(providerServices)
+          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
+          .where(eq(providerServices.id, serviceId));
+        applied = true;
+      }
+
+      // Also record in expert earnings ledger (provider may be an expert)
+      const insertedExpert = await tx.insert(expertEarnings).values({
+        expertId: providerId,
+        type: 'consulting',
+        amount: String(providerEarningsAmount),
+        referenceId: booking.id,
+        referenceType: 'service_booking',
+        description: `Service booking earnings from ${booking.trackingNumber || booking.id}`,
+        status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+        availableAt,
+      }).onConflictDoNothing({
+        target: [expertEarnings.referenceId],
+        where: sql`reference_type = 'service_booking' and amount >= 0`,
+      }).returning({ id: expertEarnings.id });
+      if (insertedExpert.length > 0) applied = true;
+    }
+
+    return applied;
+    };
+    return outerTx ? await run(outerTx) : await db.transaction(run);
   }
 
   // Service Reviews
@@ -3047,6 +3314,13 @@ export class DatabaseStorage implements IStorage {
         selectedServices: services,
         specializations: specializations.map(s => s.specialization),
         expertForm: form,
+        // Public display fields surfaced top-level from the expert's form (the
+        // profile editor + cards read them off the expert object directly).
+        displayName: form?.displayName ?? null,
+        headline: form?.headline ?? null,
+        city: form?.city ?? null,
+        country: form?.country ?? null,
+        languages: (form?.languages as string[] | null) ?? [],
         // Computed expert-level aggregate (overrides any column of the same name).
         averageRating: expertAverageRating,
         reviewCount: totalReviews,

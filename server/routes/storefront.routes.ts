@@ -25,7 +25,7 @@ import fs from "fs";
 import path from "path";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode } from "@shared/schema";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
 // providerServices/expertTemplates/readyMadeTrips rows or their approval/status columns.
@@ -195,7 +195,21 @@ const settingsPatchSchema = z.object({
     paymentReceived: notificationChannelSchema.optional(),
     platformAnnouncements: notificationChannelSchema.optional(),
   }).strict().optional(),
-  language: z.string().trim().max(20).optional(),
+  // Ruling 60 Phase A (chrome i18n): this field is the account-persisted copy of the chrome
+  // locale — RESOLUTION STEP 1. It already existed on this allow-list as a free-form
+  // max(20) string; tightening it to an enum keeps arbitrary text out of the jsonb namespace
+  // while staying a minimal extension of the existing strict-allowlist posture (no new
+  // endpoint, no new column, no migration — the preference rides users.preferences.settings).
+  //
+  // WHY THE LIST IS WIDER THAN THE SHIPPED LOCALES: only `en` and `ja` have locale files
+  // (SUPPORTED_LOCALES, client/src/lib/i18n.ts). `es`/`fr`/`de` are here because
+  // client/src/pages/expert/settings.tsx has offered them in its Language select since before
+  // this ruling, and narrowing to en|ja would 400 that page's whole settings save (notifications
+  // and timezone included) for any expert who had picked one. They persist and resolve to
+  // nothing — the client's normalizeLocale drops an unshipped locale and the resolution order
+  // falls through to the next step, which is exactly the pre-ruling behavior. Retiring those
+  // three options is filed on the punchlist, not done here.
+  language: z.enum(["en", "ja", "es", "fr", "de"]).optional(),
   timezone: z.string().trim().max(30).optional(),
   // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
   // now a real persisted preference (display opt-in only, no money/ranking semantics here).
@@ -549,6 +563,12 @@ async function loadStorefront(handle: string) {
       // only — never the meeting point/address pre-purchase, and no map tiles here.
       city: providerServices.city,
       productShape: providerServices.productShape,
+      // C3 (ruling 74/75): per-listing card display options rendered on the shared OfferingCard.
+      // A provider who hides the price hides it everywhere — so the public storefront carries the
+      // same two fields the Catalog Preview does. `bookingMode` is RESOLVED to a concrete value
+      // below (the ONE derivation site), never returned null.
+      showPrice: providerServices.showPrice,
+      bookingMode: providerServices.bookingMode,
     })
     .from(providerServices)
     .where(
@@ -558,6 +578,24 @@ async function loadStorefront(handle: string) {
         eq(providerServices.status, "active"),
       ),
     );
+
+  // C3 (ruling 74/75): resolve each service's booking mode server-side, so the traveler card
+  // always receives a CONCRETE value. This is THE ONE derivation site shared by both card reads
+  // (the owner Catalog read enriches identically). An unset (NULL) listing inherits the account's
+  // instant-booking flag — read here ONCE from service_provider_forms, never duplicated per row.
+  // showPrice defaults true at the column, so it is already concrete (NULL only on a would-be
+  // legacy row the DEFAULT covers; coalesce for safety).
+  const [ownerForm] = await db
+    .select({ instantBooking: serviceProviderForms.instantBooking })
+    .from(serviceProviderForms)
+    .where(eq(serviceProviderForms.userId, owner.id))
+    .limit(1);
+  const ownerInstantBooking = ownerForm?.instantBooking ?? false;
+  const resolvedServices = services.map((s) => ({
+    ...s,
+    showPrice: s.showPrice ?? true,
+    bookingMode: resolveBookingMode(s.bookingMode, ownerInstantBooking),
+  }));
 
   // Lane 2: itinerary templates — approved + expert-published (§10 read-gate). Teaser fields only
   // (the content-gate: no itineraryData here, ever).
@@ -663,7 +701,7 @@ async function loadStorefront(handle: string) {
       coverImageUrl,
       offeringsCount: total,
     },
-    services,
+    services: resolvedServices,
     templates,
     readyMade,
     away,

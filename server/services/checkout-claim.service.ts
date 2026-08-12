@@ -296,9 +296,12 @@ export async function findPriorClaim(
   stripePaymentIntentId: string | null;
   totalAmount: string;
   platformFee: string | null;
+  /** Lane 7 (ruling 72): present when this row is a deposit line — the amount its RE-DRIVE charges
+   *  now (the deposit, not the full line), so a re-driven deposit checkout cannot charge the total. */
+  depositAmount: string | null;
 }>> {
   const rows = await db.execute(sql`
-    SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee, idempotency_key
+    SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee, deposit_amount, idempotency_key
     FROM service_bookings
     WHERE traveler_id = ${travelerId}
       AND (idempotency_key = ${idempotencyKey} OR idempotency_key LIKE ${idempotencyKey + "#%"})
@@ -310,6 +313,7 @@ export async function findPriorClaim(
     stripePaymentIntentId: r.stripe_payment_intent_id ?? null,
     totalAmount: String(r.total_amount ?? "0"),
     platformFee: r.platform_fee == null ? null : String(r.platform_fee),
+    depositAmount: r.deposit_amount == null ? null : String(r.deposit_amount),
   }));
 }
 
@@ -679,6 +683,10 @@ interface CandidateRow {
   bookingDetails: Record<string, unknown> | null;
   travelerId: string | null;
   idempotencyKey: string | null;
+  /** Lane 7 (ruling 72): a deposit-partial booking carries an outstanding balance; when the PI being
+   *  promoted is the DEPOSIT PI, the promotion lands the row in `deposit_paid`, not `confirmed`. */
+  balanceAmount: string | null;
+  balancePaid: boolean | null;
 }
 
 function mapCandidate(r: any): CandidateRow {
@@ -690,10 +698,12 @@ function mapCandidate(r: any): CandidateRow {
     bookingDetails: (r.booking_details ?? null) as Record<string, unknown> | null,
     travelerId: r.traveler_id ?? null,
     idempotencyKey: r.idempotency_key ?? null,
+    balanceAmount: r.balance_amount == null ? null : String(r.balance_amount),
+    balancePaid: r.balance_paid ?? null,
   };
 }
 
-const CANDIDATE_COLUMNS = sql`id, trip_id, status, stripe_payment_intent_id, booking_details, traveler_id, idempotency_key`;
+const CANDIDATE_COLUMNS = sql`id, trip_id, status, stripe_payment_intent_id, booking_details, traveler_id, idempotency_key, balance_amount, balance_paid`;
 
 async function loadPromotionCandidates(
   paymentIntentId: string,
@@ -863,6 +873,30 @@ export async function promotePaidCheckout(opts: {
     }
   }
 
+  // ── D6 (ruling 61): the rails fee EVENT, retried from here ──────────────────────────────────
+  // The inline post-authorization write (`payments.routes.ts`) is the normal path; this covers the
+  // window only a payment SIGNAL can reach — a server that died between the authorization stamp and
+  // that write, where the booking is paid and nothing recorded the fee event. Same shared function,
+  // same per-booking key, `ON CONFLICT DO NOTHING`: a double signal is a no-op, never a second row
+  // and never a second waiver. §15c rule 4 holds — this is not a money move and re-runs none of
+  // `promoteAuthorizedCheckout`'s non-idempotent effects; it is a recording, in the same idempotent
+  // class as the `markItemPurchased` catch-up above. Best-effort: the booking is the money truth.
+  if (result.promoted.length > 0 || result.lateAuthorized.length > 0) {
+    try {
+      const { recordRailsFeeLedger } = await import("./fee-ledger.service");
+      await recordRailsFeeLedger({
+        bookingIds: Array.from(new Set([...result.promoted, ...result.lateAuthorized])),
+        stripePaymentRef: paymentIntentId,
+        actor: `promotion:${actor}`,
+      });
+    } catch (err) {
+      logger.error(
+        { err, paymentIntentId, actor },
+        "[checkout-promote] rails fee-ledger catch-up failed (booking stands; append is idempotent and retried by any later signal)",
+      );
+    }
+  }
+
   if (result.promoted.length + result.exceptions.length + result.lateAuthorized.length > 0) {
     logger.info(
       {
@@ -890,12 +924,25 @@ async function promoteOneBooking(
   actor: PromotionActor,
   actorId: string | null,
 ): Promise<{ promoted: boolean; diaryRows: number; terminalStatus: string | null }> {
+  // ── Lane 7 (ruling 72): DEPOSIT-AWARE TARGET, derived from the ROW, never from a caller ────────
+  // The PI being promoted here is the row's server-stamped `stripe_payment_intent_id` — for a
+  // deposit-partial booking that is the DEPOSIT PI. When the row carries an outstanding balance the
+  // deposit payment lands it in `deposit_paid` (NOT `confirmed`): distinguishable by construction
+  // from a full-paid booking, and OUTSIDE every paid-equivalent / completion-eligible status set, so
+  // no earning releases until the balance is paid and the row flips to `confirmed`. A non-deposit
+  // booking (no `balance_amount`) is byte-identical to before: target `confirmed` (§13).
+  const hasOutstandingBalance =
+    row.balanceAmount != null && parseFloat(row.balanceAmount) > 0 && row.balancePaid !== true;
+  const targetStatus = hasOutstandingBalance ? "deposit_paid" : "confirmed";
   try {
     return await db.transaction(async (tx) => {
       const claimed = await tx.execute(sql`
         UPDATE service_bookings
-        SET status = 'confirmed',
-            confirmed_at = NOW(),
+        SET status = ${targetStatus},
+            confirmed_at = ${hasOutstandingBalance ? sql`confirmed_at` : sql`NOW()`},
+            deposit_paid = ${hasOutstandingBalance ? sql`true` : sql`deposit_paid`},
+            stripe_deposit_intent_id = ${hasOutstandingBalance ? sql`${paymentIntentId}` : sql`stripe_deposit_intent_id`},
+            deposit_amount = ${hasOutstandingBalance ? sql`COALESCE(deposit_amount, ROUND((total_amount + COALESCE(platform_fee, 0)) - balance_amount, 2))` : sql`deposit_amount`},
             updated_at = NOW()
         WHERE id = ${row.id}
           AND status = 'payment_pending'
@@ -920,9 +967,11 @@ async function promoteOneBooking(
         await logItemTransition(tx, {
           tripId: row.tripId,
           itemId,
-          eventType: "checkout_payment_confirmed",
+          // A deposit payment is honestly a DIFFERENT event than a full confirm — a later reader must
+          // not see "confirmed" for a booking that only paid its deposit (§13).
+          eventType: hasOutstandingBalance ? "checkout_deposit_paid" : "checkout_payment_confirmed",
           fromStatus: "payment_pending",
-          toStatus: "confirmed",
+          toStatus: targetStatus,
           actorType: diaryActorType(actor),
           actorId,
         });
@@ -999,6 +1048,135 @@ async function recordReconciliationException(
       { err, bookingId: row.id, paymentIntentId },
       "[checkout-promote] failed to RECORD the reconciliation exception (the log line above is the surviving trace)",
     );
+  }
+}
+
+// ══ LANE 7 — THE BALANCE LEG (deposits / partial payments, DECISIONS.md ruling 72) ═══════════════
+//
+// A deposit-partial booking sits in `status='deposit_paid'` with the DEPOSIT PI stamped on
+// `stripe_payment_intent_id` (+ `stripe_deposit_intent_id`) and an outstanding `balance_amount`.
+// The traveler settles the BALANCE in a SECOND, separate checkout — its OWN authorized PaymentIntent
+// on the SAME booking row, carried on the parallel `stripe_balance_intent_id` column.
+//
+// This is the SAME §15 claim shape as the deposit/promotion spine above — atomic conditional
+// UPDATE … WHERE the row is in the expected state — PARAMETERISED onto the balance column and the
+// `deposit_paid → confirmed` transition, NOT a second copy of the promotion's decision logic. Two
+// rules that do not move:
+//   • `status='deposit_paid' AND stripe_balance_intent_id IS NULL` is an UNAUTHORIZED balance claim
+//     by construction (the §15b posture, one leg over): the row is real and paid-a-deposit, but the
+//     balance PI is not yet stamped.
+//   • The flip to `confirmed` is an atomic conditional keyed on the row's OWN server-stamped
+//     `stripe_balance_intent_id`, so a double signal (webhook + inline confirm) is exactly ONE flip.
+
+/**
+ * BALANCE AUTHORIZE gate — the atomic conditional stamp of the balance PI on a deposit-paid row.
+ * Mirrors `stampAuthorization`, on the balance column. Returns false when the row is no longer an
+ * unauthorized balance claim (already stamped, or no longer `deposit_paid`) — the caller must then
+ * refuse to promote and reconcile against the already-stamped PI instead.
+ */
+export async function stampBalanceAuthorization(
+  bookingId: string,
+  paymentIntentId: string,
+): Promise<boolean> {
+  const stamped = await db.execute(sql`
+    UPDATE service_bookings
+    SET stripe_balance_intent_id = ${paymentIntentId}, updated_at = NOW()
+    WHERE id = ${bookingId}
+      AND status = 'deposit_paid'
+      AND stripe_balance_intent_id IS NULL
+    RETURNING id
+  `);
+  return stamped.rows.length === 1;
+}
+
+export interface BalancePromotionResult {
+  promoted: boolean;
+  alreadyConfirmed: boolean;
+  /** A non-promotable / mismatched terminal state — ops-visible, never a resurrection. */
+  exception?: { status: string | null; reason: string };
+  diaryRows: number;
+}
+
+/**
+ * THE BALANCE PROMOTION — flip `deposit_paid → confirmed` once the balance PI succeeds. Idempotent
+ * by the same atomic-conditional discipline as `promoteOneBooking`: whichever signal (webhook or the
+ * inline confirm) arrives first flips the row and writes ONE diary row; every later signal matches 0
+ * rows and is a no-op. Never throws — a reconciliation path must not take the webhook down.
+ *
+ * The predicate carries the §14/security property that a caller cannot promote with a PaymentIntent
+ * of its own choosing: the row's OWN server-stamped `stripe_balance_intent_id` must equal the one
+ * presented. Amount is never read here — the balance was server-derived at the balance checkout.
+ */
+export async function promoteBalancePayment(opts: {
+  bookingId: string;
+  paymentIntentId: string;
+  actor: PromotionActor;
+  actorId?: string | null;
+}): Promise<BalancePromotionResult> {
+  const { bookingId, paymentIntentId, actor } = opts;
+  const result: BalancePromotionResult = { promoted: false, alreadyConfirmed: false, diaryRows: 0 };
+  if (!bookingId || !paymentIntentId) return result;
+
+  try {
+    return await db.transaction(async (tx) => {
+      const claimed = await tx.execute(sql`
+        UPDATE service_bookings
+        SET status = 'confirmed',
+            balance_paid = true,
+            confirmed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${bookingId}
+          AND status = 'deposit_paid'
+          AND stripe_balance_intent_id = ${paymentIntentId}
+        RETURNING id, trip_id, booking_details
+      `);
+      if (claimed.rows.length === 0) {
+        // Not ours to flip: read the current state to decide honestly.
+        const cur = await tx.execute(
+          sql`SELECT status, balance_paid, stripe_balance_intent_id FROM service_bookings WHERE id = ${bookingId}`,
+        );
+        const r = cur.rows[0] as any;
+        const status = (r?.status ?? null) as string | null;
+        if (status === "confirmed" && r?.balance_paid === true) {
+          // The other signal already promoted this exact balance — idempotent no-op.
+          result.alreadyConfirmed = true;
+          return result;
+        }
+        // Anything else (terminal, or a different balance PI stamped) is an ops-visible exception.
+        result.exception = {
+          status,
+          reason:
+            r?.stripe_balance_intent_id && r.stripe_balance_intent_id !== paymentIntentId
+              ? "balance_payment_intent_mismatch"
+              : "not_promotable",
+        };
+        return result;
+      }
+
+      const claimedRow = claimed.rows[0] as any;
+      result.promoted = true;
+      const tripId = claimedRow.trip_id ?? null;
+      if (tripId) {
+        const details = (claimedRow.booking_details ?? {}) as Record<string, unknown>;
+        await logItemTransition(tx, {
+          tripId,
+          itemId: typeof details.itineraryItemId === "string" ? (details.itineraryItemId as string) : null,
+          eventType: "checkout_balance_paid",
+          fromStatus: "deposit_paid",
+          toStatus: "confirmed",
+          actorType: diaryActorType(actor),
+          actorId: opts.actorId ?? null,
+        });
+        result.diaryRows = 1;
+      }
+      return result;
+    });
+  } catch (err) {
+    logger.error(
+      { err, bookingId, paymentIntentId, actor },
+      "[checkout-balance] balance promotion transaction failed — booking left deposit_paid for the next signal",
+    );
+    return result;
   }
 }
 

@@ -9,6 +9,7 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
@@ -73,6 +74,7 @@ const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
 const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
 const ProviderWorkstation = lazy(() => import("@/pages/provider/workstation"));
+const ProviderDistribute = lazy(() => import("@/pages/provider/distribute"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 const AdminUsers = lazy(() => import("@/pages/admin/users"));
@@ -884,6 +886,12 @@ function Router() {
       <Route path="/provider/workstation">
         {() => <ProtectedRoute component={ProviderWorkstation} requiredRole="provider" />}
       </Route>
+      {/* Catalog+Distribute (ruling 74, lane D1): the distribution hub — Storefront +
+          Marketplace channels now, Direct/Social/state-strip (D2–D4) mount into it later.
+          Reached from the Workstation. */}
+      <Route path="/provider/distribute">
+        {() => <ProtectedRoute component={ProviderDistribute} requiredRole="provider" />}
+      </Route>
       {/* Console IA C9: Earnings renamed Money — the ratified module name (route move
           /provider/earnings → /provider/money; same page, no endpoint or queryKey change).
           The redirect keeps every existing /provider/earnings navigation working (the C8
@@ -1161,6 +1169,17 @@ function GuestCartMigrator() {
   return null;
 }
 
+/**
+ * Ruling 60 Phase A — applies resolution STEP 1 (the authenticated user's saved chrome locale,
+ * users.preferences.settings.language) as soon as the session resolves, and keeps <html lang>
+ * in sync. Steps 2-4 (localStorage → Accept-Language → en) already ran at i18n module load, so
+ * this only ever overrides them with a real account preference. Renders nothing.
+ */
+function LocaleSync() {
+  useLocale();
+  return null;
+}
+
 function App() {
   // S4: capture a short-link ?ref= (set by GET /r/:code) once per session; checkout relays it
   // and the server derives the attribution source.
@@ -1176,6 +1195,7 @@ function App() {
             <ActiveConsoleProvider>
               <TooltipProvider>
                 <Toaster />
+                <LocaleSync />
                 <GuestCartMigrator />
                 <AuthReturnToRestorer />
                 <MaintenanceGate>

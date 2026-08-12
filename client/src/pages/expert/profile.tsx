@@ -155,6 +155,16 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
   const [newSpecialty, setNewSpecialty] = useState("");
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>([]);
+  const [newLanguage, setNewLanguage] = useState("");
+  const [showLanguageInput, setShowLanguageInput] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [headline, setHeadline] = useState("");
+  const [bio, setBio] = useState("");
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
   const [expertNotesStyle, setExpertNotesStyle] = useState("");
   const [neighborhoods, setNeighborhoods] = useState<string[]>([]);
   const [newNeighborhood, setNewNeighborhood] = useState("");
@@ -174,10 +184,15 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
     queryKey: ["/api/expert/specializations"],
   });
 
-  // Update specialties when data loads
+  // Update specialties when data loads. GET /api/expert/specializations returns an
+  // array of {id, expertId, specialization} rows — map them to plain strings.
   React.useEffect(() => {
-    if (specializationData?.specializations) {
-      setSpecialties(specializationData.specializations);
+    if (Array.isArray(specializationData)) {
+      setSpecialties(
+        specializationData
+          .map((row: any) => (typeof row === "string" ? row : row?.specialization))
+          .filter(Boolean),
+      );
     } else {
       setSpecialties([]);
     }
@@ -185,12 +200,25 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
 
   // Update languages when data loads
   React.useEffect(() => {
-    if (expertProfile?.languages) {
-      setLanguages(expertProfile.languages);
+    const langs = (expertProfile as any)?.languages;
+    if (Array.isArray(langs)) {
+      setLanguages(langs);
     } else {
       setLanguages([]);
     }
   }, [expertProfile]);
+
+  // Sync editable profile fields from loaded profile/user
+  React.useEffect(() => {
+    const p = expertProfile as any;
+    setFirstName(p?.firstName ?? user?.firstName ?? "");
+    setLastName(p?.lastName ?? user?.lastName ?? "");
+    setDisplayName(p?.displayName || `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim());
+    setHeadline(p?.headline ?? "");
+    setBio(p?.bio ?? "");
+    setCity(p?.city ?? "");
+    setCountry(p?.country ?? "");
+  }, [expertProfile, user]);
 
   // Sync expertNotesStyle from loaded profile
   React.useEffect(() => {
@@ -279,15 +307,124 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
     setNeighborhoods(neighborhoods.filter((n) => n !== name));
   };
 
+  const saveProfileMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", "/api/expert/profile", {
+        firstName,
+        lastName,
+        displayName,
+        headline,
+        bio,
+        city,
+        country,
+        languages,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Profile saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save profile", variant: "destructive" });
+    },
+  });
+
+  const addSpecialtyMutation = useMutation({
+    mutationFn: (specialization: string) =>
+      apiRequest("POST", "/api/expert/specializations", { specialization }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to add specialty", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+    },
+  });
+
+  const removeSpecialtyMutation = useMutation({
+    mutationFn: (specialization: string) =>
+      apiRequest("DELETE", `/api/expert/specializations/${encodeURIComponent(specialization)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove specialty", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/specializations"] });
+    },
+  });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (imageData: string) =>
+      apiRequest("PATCH", "/api/expert/photo", { imageData }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
+      toast({ title: "Profile photo updated" });
+    },
+    onError: (error: any) => {
+      let message = "Failed to upload photo";
+      try {
+        const raw: string = error?.message ?? "";
+        const jsonStart = raw.indexOf("{");
+        if (jsonStart !== -1) {
+          const body = JSON.parse(raw.slice(jsonStart));
+          if (body?.message) message = body.message;
+        }
+      } catch {}
+      toast({ title: message, variant: "destructive" });
+    },
+  });
+
+  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const allowed = ["image/png", "image/jpeg", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Photo must be a PNG, JPEG, or WebP image", variant: "destructive" });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Photo must be smaller than 2 MB", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        uploadPhotoMutation.mutate(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddSpecialty = () => {
-    if (newSpecialty.trim() && !specialties.includes(newSpecialty.trim())) {
-      setSpecialties([...specialties, newSpecialty.trim()]);
+    const trimmed = newSpecialty.trim();
+    if (trimmed && !specialties.includes(trimmed)) {
+      setSpecialties([...specialties, trimmed]);
       setNewSpecialty("");
+      addSpecialtyMutation.mutate(trimmed);
     }
   };
 
   const handleRemoveSpecialty = (specialty: string) => {
     setSpecialties(specialties.filter((s) => s !== specialty));
+    removeSpecialtyMutation.mutate(specialty);
+  };
+
+  const handleAddLanguage = () => {
+    const trimmed = newLanguage.trim();
+    if (trimmed && !languages.some((l) => l.toLowerCase() === trimmed.toLowerCase())) {
+      setLanguages([...languages, trimmed]);
+    }
+    setNewLanguage("");
+  };
+
+  const handleRemoveLanguage = (language: string) => {
+    setLanguages(languages.filter((l) => l !== language));
   };
 
   // C8: embedded, the host Settings page already provides the ExpertLayout shell —
@@ -307,6 +444,14 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
             <CardTitle className="text-lg">Profile Photo</CardTitle>
           </CardHeader>
           <CardContent>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={handlePhotoSelected}
+              data-testid="input-photo-file"
+            />
             <div className="flex items-center gap-6">
               <div className="relative">
                 <Avatar className="w-24 h-24 border-4 border-primary/20">
@@ -318,6 +463,8 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 <Button
                   size="icon"
                   className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-primary "
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
                   data-testid="button-change-photo"
                 >
                   <Camera className="w-4 h-4" />
@@ -325,10 +472,16 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
               </div>
               <div>
                 <p className="text-sm text-console-mid mb-2">
-                  Upload a professional photo that shows your face clearly
+                  Upload a professional photo that shows your face clearly (PNG, JPEG, or WebP, max 2 MB)
                 </p>
-                <Button variant="outline" size="sm" data-testid="button-upload-photo">
-                  Upload New Photo
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
+                  data-testid="button-upload-photo"
+                >
+                  {uploadPhotoMutation.isPending ? "Uploading…" : "Upload New Photo"}
                 </Button>
               </div>
             </div>
@@ -346,7 +499,8 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
                   id="firstName"
-                  defaultValue={user?.firstName || ""}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                   data-testid="input-first-name"
                 />
               </div>
@@ -354,7 +508,8 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
                   id="lastName"
-                  defaultValue={user?.lastName || ""}
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                   data-testid="input-last-name"
                 />
               </div>
@@ -428,7 +583,8 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
               ) : (
                 <Input
                   id="displayName"
-                  defaultValue={expertProfile?.displayName || `${user?.firstName} ${user?.lastName}`.trim()}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="How clients will see your name"
                   data-testid="input-display-name"
                 />
@@ -442,7 +598,8 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
               ) : (
                 <Input
                   id="headline"
-                  defaultValue={expertProfile?.headline || ""}
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
                   placeholder="A short tagline about your expertise"
                   data-testid="input-headline"
                 />
@@ -457,11 +614,26 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 <Textarea
                   id="bio"
                   rows={4}
-                  defaultValue={expertProfile?.bio || ""}
+                  value={bio}
+                  maxLength={500}
+                  onChange={(e) => setBio(e.target.value)}
                   placeholder="Tell clients about yourself and your expertise"
                   data-testid="input-bio"
                 />
               )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={saveProfileMutation.isPending || profileLoading}
+                onClick={() => saveProfileMutation.mutate()}
+                data-testid="button-save-profile"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveProfileMutation.isPending ? "Saving…" : "Save Profile"}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -483,7 +655,8 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 ) : (
                   <Input
                     id="city"
-                    defaultValue={expertProfile?.city || ""}
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
                     data-testid="input-city"
                   />
                 )}
@@ -493,20 +666,28 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 {profileLoading ? (
                   <Skeleton className="h-10 rounded" />
                 ) : (
-                  <Select defaultValue={expertProfile?.country || ""}>
-                    <SelectTrigger data-testid="select-country">
-                      <SelectValue placeholder="Select country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="japan">Japan</SelectItem>
-                      <SelectItem value="usa">United States</SelectItem>
-                      <SelectItem value="uk">United Kingdom</SelectItem>
-                      <SelectItem value="france">France</SelectItem>
-                      <SelectItem value="italy">Italy</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    id="country"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    placeholder="e.g. Japan"
+                    data-testid="input-country"
+                  />
                 )}
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={saveProfileMutation.isPending || profileLoading}
+                onClick={() => saveProfileMutation.mutate()}
+                data-testid="button-save-location"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveProfileMutation.isPending ? "Saving…" : "Save Location"}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -691,8 +872,21 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
               <div className="flex flex-wrap gap-2 mb-4">
                 {languages.length > 0 ? (
                   languages.map((language) => (
-                    <Badge key={language} variant="outline" className="py-1.5">
+                    <Badge
+                      key={language}
+                      variant="outline"
+                      className="py-1.5 pl-3 pr-1 flex items-center gap-1"
+                    >
                       {language}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => handleRemoveLanguage(language)}
+                        data-testid={`button-remove-language-${language}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
                     </Badge>
                   ))
                 ) : (
@@ -700,9 +894,42 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 )}
               </div>
             )}
-            <Button variant="outline" size="sm" data-testid="button-add-language">
-              <Plus className="w-4 h-4 mr-1" /> Add Language
-            </Button>
+            {showLanguageInput ? (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. English, Japanese…"
+                  value={newLanguage}
+                  onChange={(e) => setNewLanguage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddLanguage()}
+                  autoFocus
+                  data-testid="input-new-language"
+                />
+                <Button variant="outline" onClick={handleAddLanguage} data-testid="button-confirm-add-language">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLanguageInput(true)}
+                data-testid="button-add-language"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Add Language
+              </Button>
+            )}
+            <div className="flex justify-end mt-4">
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={saveProfileMutation.isPending || profileLoading}
+                onClick={() => saveProfileMutation.mutate()}
+                data-testid="button-save-languages"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveProfileMutation.isPending ? "Saving…" : "Save Languages"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

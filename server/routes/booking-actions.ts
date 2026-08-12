@@ -23,6 +23,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 // handler, and shadowing the table import would be a silent footgun.
 import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, users, PLAN_APPROVAL_STATUSES } from '@shared/schema';
 import { getExpertSplitRates } from '../services/commission';
+import { resolveDirectProviderRate, pickOwnerShareRate } from '../services/direct-charge-rate.service';
 import {
   sendPlanDeliveredEmail,
   sendPlanApprovedEmail,
@@ -67,6 +68,7 @@ import {
   updateGeneratedItineraryData,
   getTravelerProfile,
 } from '../services/booking-actions.service';
+import { sanitizeInput } from '../utils/sanitize';
 
 const router = Router();
 
@@ -74,6 +76,7 @@ const router = Router();
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
+
 
 /**
  * Fix #969 — canonical owner check for `POST /api/trips/:id/share` (the routing.routes.ts
@@ -1557,7 +1560,9 @@ router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) =>
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
-    await storage.updateTrip(tripId, { expertNotes });
+    // Strip HTML/script tags before persisting — matches the sanitizeInput discipline
+    // every other expert-facing text field goes through (bio, headline, notes style, …).
+    await storage.updateTrip(tripId, { expertNotes: sanitizeInput(expertNotes) });
     res.json({ ok: true });
   } catch (err) {
     console.error("[Expert] saveExpertNotes error:", err);
@@ -1590,9 +1595,42 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     };
     const { expertShareRate: fallbackExpertShare } = await getExpertSplitRates();
     const expertServices = await storage.getProviderServicesByStatus(userId, "active");
-    const expertRate = expertServices.length > 0
-      ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, fallbackExpertShare), 0) / expertServices.length
-      : fallbackExpertShare;
+    // 1C charge-path repoint (docs/DECISIONS.md ruling 71): this displayed estimate must agree with
+    // what the D1 resolver would actually CHARGE, so each service's owner share resolves through the
+    // SAME `pickOwnerShareRate` precedence the cart/charge paths use — the direct D1 band (ruling 69
+    // D6) outranking the dethroned per-service `revenueShareRate` snapshot (ruling 47). This is a live
+    // recompute (itinerary estimatedCost × rate), NOT a historical read of an already-charged row, so
+    // it is repointed rather than left as-is. The owner is fixed (this advisor), so the direct
+    // resolution is memoised per category — no N+1 across the service list. An expert-owned line
+    // refuses the provider lane and falls through to the snapshot/band exactly as before.
+    const ownerRole = (
+      await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
+    )[0]?.role ?? null;
+    const directByCategory = new Map<string, Awaited<ReturnType<typeof resolveDirectProviderRate>>>();
+    const resolveOwnerShare = async (svc: any): Promise<number> => {
+      const catKey = svc.categoryId ?? "__none__";
+      let direct = directByCategory.get(catKey);
+      if (!direct) {
+        direct = await resolveDirectProviderRate({
+          serviceOwnerUserId: userId,
+          ownerRole,
+          categoryId: svc.categoryId ?? null,
+          serviceId: svc.id,
+        });
+        directByCategory.set(catKey, direct);
+      }
+      return pickOwnerShareRate({
+        railsShareRate: null,
+        direct,
+        legacyShareRate: safeParseRate(svc.revenueShareRate, fallbackExpertShare),
+      }).shareRate;
+    };
+    let expertRate = fallbackExpertShare;
+    if (expertServices.length > 0) {
+      let shareSum = 0;
+      for (const svc of expertServices) shareSum += await resolveOwnerShare(svc);
+      expertRate = shareSum / expertServices.length;
+    }
 
     let totalGross = 0;
     let expertShare = 0;
