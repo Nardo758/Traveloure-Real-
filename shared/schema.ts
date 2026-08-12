@@ -650,6 +650,30 @@ export const transportProvisionEnum = [
 // authoring UI states out loud that the other mode's saved data is still there.
 export const pickupCoverageModeEnum = ["radius", "route"] as const;
 
+// Per-listing booking affordance (Catalog+Distribute ruling 74/75, lane C3). The provider's own
+// display choice for the traveler card's CTA — NOT a money/identity/rate field (§14/§18/§19 do not
+// apply: nothing here multiplies a charge, selects a fee band, or identifies an actor), so it is an
+// ordinary owner-authored listing pref that is legitimately client-settable, like `price`/
+// `serviceRadius`. App-enforced vocabulary in insertProviderServiceSchema, NO DB CHECK (migration
+// 144/195/202 publish-trap posture). NULL on the column = "unset" → the read-time default is DERIVED
+// from the account's existing `service_provider_forms.instantBooking` (never duplicated here) via
+// `resolveBookingMode` below.
+export const bookingModeEnum = ["instant", "request", "hidden"] as const;
+export type BookingMode = (typeof bookingModeEnum)[number];
+
+// The ONE place the null-default is resolved (ruling 75). Called SERVER-SIDE on every card read
+// (the public storefront read and the owner Catalog read) so the traveler card always receives a
+// CONCRETE booking mode: an explicit per-listing value wins; an unset (null) listing inherits the
+// account flag — instant if the provider offers instant booking, request otherwise. `hidden` is only
+// ever an explicit per-listing choice, never a derived default.
+export function resolveBookingMode(
+  stored: string | null | undefined,
+  accountInstantBooking: boolean | null | undefined,
+): BookingMode {
+  if (stored === "instant" || stored === "request" || stored === "hidden") return stored;
+  return accountInstantBooking ? "instant" : "request";
+}
+
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -756,6 +780,18 @@ export const providerServices = pgTable("provider_services", {
   depositType: varchar("deposit_type", { length: 20 }),          // depositTypeEnum: 'percentage' | 'flat'
   depositPercentage: integer("deposit_percentage"),               // e.g. 30 = collect 30% of the line total now
   depositFlatAmount: decimal("deposit_flat_amount", { precision: 10, scale: 2 }), // flat dollars collected now
+
+  // ══ Per-listing card display options (Catalog+Distribute ruling 74/75, lane C3, migration 202) ══
+  // The provider's own "Card shows" choices, rendered on the shared traveler OfferingCard in Catalog
+  // Preview AND on the public storefront. DISPLAY PREFS, not §14/§18/§19 fields — no amount, identity
+  // or rate — so they are legitimately client-settable (owner-gated on POST/PATCH like `price`) and
+  // are NOT stripped. `showPrice` DEFAULTs true so every row is concrete without a backfill: false ⇒
+  // the card hides the price and shows an honest "Enquire for pricing" affordance (allowed for ALL
+  // services, ruling 74 res. A — never a blank or a fake "$0", §13). `bookingMode` is nullable (app-
+  // enforced bookingModeEnum, NO DB CHECK — publish-trap posture): NULL = unset ⇒ resolved at read
+  // time from the account `service_provider_forms.instantBooking` by `resolveBookingMode`.
+  showPrice: boolean("show_price").default(true),
+  bookingMode: varchar("booking_mode", { length: 20 }), // bookingModeEnum: 'instant' | 'request' | 'hidden'
 
   // Can this service serve as a day's fixed point? Mirrors the `itinerary_items`/`temporal_anchors`
   // anchor vocabulary. CAPTURE ONLY — no scheduler reads it yet.
@@ -1842,6 +1878,13 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
     (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
     { message: "Deposit amount must be a non-negative number" },
   ),
+  // ── Card display options (ruling 74/75, migration 202) — app-enforced vocabulary, no DB CHECK ──
+  // Field-level so the bookingMode enum survives `.partial()` on the PATCH path (the update path is
+  // checked as hard as the insert). These are ordinary owner display prefs (no amount/identity/rate),
+  // so — like the deposit CONFIG above — they are NOT omitted; the money guard's rate/identity
+  // predicates do not match `showPrice`/`bookingMode`.
+  showPrice: z.boolean().nullable().optional(),
+  bookingMode: z.enum(bookingModeEnum).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

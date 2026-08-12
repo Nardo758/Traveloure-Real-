@@ -61,6 +61,10 @@ interface StorefrontService {
   // D5: text-only location chip for place-anchored listings — city-level only, no map tiles.
   city: string | null;
   productShape: string | null;
+  // C3 (ruling 74/75): per-listing card display options, resolved server-side (bookingMode is
+  // always concrete; showPrice defaults true). A provider who hides the price hides it here too.
+  showPrice?: boolean;
+  bookingMode?: "instant" | "request" | "hidden";
 }
 
 interface StorefrontTemplate {
@@ -364,6 +368,8 @@ export default function StorefrontPage() {
                     price={price}
                     unit={s.price ? unit : null}
                     cta={cta}
+                    showPrice={s.showPrice}
+                    bookingMode={s.bookingMode}
                   />
                 );
               })}

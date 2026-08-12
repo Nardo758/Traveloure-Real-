@@ -48,6 +48,7 @@ import {
   funnelEvents,
   bundleComponents,
   deliverableDownloads,
+  resolveBookingMode,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -2221,7 +2222,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       category: category || undefined,
       activeOnly: activeOnly === "true",
     });
-    res.json(services);
+    // C3 (ruling 74/75): resolve each listing's card booking mode server-side with the SAME
+    // derivation the public storefront read uses (resolveBookingMode), so the Catalog Preview card
+    // is concrete AND identical to what travelers see ("what you see = what users see"). The
+    // account instant-booking flag is read ONCE (never duplicated per row); showPrice is already
+    // concrete via its column DEFAULT. The RAW column value is preserved for any consumer that
+    // needs it — resolution only fills the unset case.
+    const [ownerForm] = await db
+      .select({ instantBooking: serviceProviderForms.instantBooking })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, userId))
+      .limit(1);
+    const ownerInstantBooking = ownerForm?.instantBooking ?? false;
+    const withDisplayOptions = services.map((s) => ({
+      ...s,
+      showPrice: (s as any).showPrice ?? true,
+      bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
+    }));
+    res.json(withDisplayOptions);
   });
 
   // Get a single provider service by ID (ownership required)

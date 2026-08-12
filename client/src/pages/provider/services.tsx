@@ -144,6 +144,10 @@ interface Service {
   // D2 method-aware fundamentals: rides the same unfiltered row; drives which chip the card
   // shows (pin for place-anchored services, delivery-method for the rest).
   deliveryMethod?: string | null;
+  // C3 (ruling 74/75): per-listing "Card shows" options. The owner read resolves bookingMode to a
+  // concrete value (never null) with the SAME derivation the storefront uses; showPrice defaults true.
+  showPrice?: boolean;
+  bookingMode?: "instant" | "request" | "hidden";
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -839,6 +843,71 @@ function PreviewRatingLine({ rating, count }: { rating?: string | number | null;
   );
 }
 
+// C3 (ruling 74/75): the per-listing "Card shows" control on the Manage card. Two prefs — Show
+// price (on/off) and Booking (Instant / Request / Hidden) — that drive the shared traveler
+// OfferingCard in Preview AND on the public storefront. Each change PATCHes exactly its one field.
+// `bookingMode` arrives concrete from the owner read (resolved with the storefront's own derivation),
+// so an unset listing shows the account default pre-selected; the moment the provider picks a segment
+// it becomes an explicit per-listing choice. Not a §14/§18/§19 money field.
+const BOOKING_MODE_OPTIONS: Array<{ value: "instant" | "request" | "hidden"; label: string }> = [
+  { value: "instant", label: "Instant" },
+  { value: "request", label: "Request" },
+  { value: "hidden", label: "Hidden" },
+];
+
+function CardShowsControl({
+  service,
+  onPatch,
+  disabled,
+}: {
+  service: Service;
+  onPatch: (patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" }) => void;
+  disabled?: boolean;
+}) {
+  const showPrice = service.showPrice ?? true;
+  const bookingMode = service.bookingMode ?? "instant";
+  return (
+    <div
+      className="mt-3 pt-3 border-t border-console-light flex flex-wrap items-center gap-x-4 gap-y-2"
+      data-testid={`cardshows-${service.id}`}
+    >
+      <span className="text-[10px] font-medium text-console-mid uppercase tracking-wide">Card shows</span>
+      <div className="flex items-center gap-2">
+        <Switch
+          checked={showPrice}
+          onCheckedChange={(checked) => onPatch({ showPrice: checked })}
+          disabled={disabled}
+          data-testid={`switch-cardshows-price-${service.id}`}
+        />
+        <span className="text-xs text-console-mid">Show price</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-console-mid">Booking</span>
+        <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
+          {BOOKING_MODE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onPatch({ bookingMode: opt.value })}
+              disabled={disabled}
+              aria-pressed={bookingMode === opt.value}
+              className={
+                "px-2 py-1 text-xs font-medium transition-colors " +
+                (bookingMode === opt.value
+                  ? "bg-console-dark text-white"
+                  : "bg-white text-console-mid hover:bg-console-light/40")
+              }
+              data-testid={`button-cardshows-booking-${service.id}-${opt.value}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CatalogPreviewCard({ service }: { service: Service }) {
   const { t: tCommon } = useTranslation("common");
   const isBundle = service.productShape === "bundle";
@@ -873,6 +942,8 @@ function CatalogPreviewCard({ service }: { service: Service }) {
         price={price}
         unit={unit}
         cta={cta}
+        showPrice={service.showPrice}
+        bookingMode={service.bookingMode}
       />
       {/* Hover-only Edit deep-link (ruling 74 res. B) — a sibling of the card's own <Link>, not a
           nested anchor; z-10 keeps it clickable above the full-card link. */}
@@ -936,6 +1007,23 @@ export default function ProviderServices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service updated" });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: error.message });
+    },
+  });
+
+  // C3 (ruling 74/75): the per-listing "Card shows" control PATCHes exactly ONE display pref
+  // (showPrice or bookingMode) — never the whole row, so it can't disturb any other listing field.
+  // The server parses these off insertProviderServiceSchema.partial() (owner-gated as today); they
+  // are display prefs, not §14/§18/§19 money fields, so they persist unstripped.
+  const displayOptionsMutation = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" } }) => {
+      const res = await apiRequest("PATCH", `/api/provider/services/${id}`, patch);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", description: error.message });
@@ -1320,6 +1408,15 @@ export default function ProviderServices() {
                         </span>
                       </div>
                     </div>
+
+                    {/* C3: per-listing "Card shows" control (Show price + Booking mode). Bundles
+                        are edited in the Workstation, but their storefront card honors the same two
+                        prefs, so the control belongs on every listing card. */}
+                    <CardShowsControl
+                      service={service}
+                      onPatch={(patch) => displayOptionsMutation.mutate({ id: service.id, patch })}
+                      disabled={displayOptionsMutation.isPending}
+                    />
 
                     <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
                       <Link href={isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`}>
