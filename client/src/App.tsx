@@ -74,6 +74,7 @@ const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
 const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
 const ProviderWorkstation = lazy(() => import("@/pages/provider/workstation"));
+const ProviderDistribute = lazy(() => import("@/pages/provider/distribute"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 const AdminUsers = lazy(() => import("@/pages/admin/users"));
@@ -884,6 +885,12 @@ function Router() {
           /api/provider/bundles); property rung honestly gated (later phase). */}
       <Route path="/provider/workstation">
         {() => <ProtectedRoute component={ProviderWorkstation} requiredRole="provider" />}
+      </Route>
+      {/* Catalog+Distribute (ruling 74, lane D1): the distribution hub — Storefront +
+          Marketplace channels now, Direct/Social/state-strip (D2–D4) mount into it later.
+          Reached from the Workstation. */}
+      <Route path="/provider/distribute">
+        {() => <ProtectedRoute component={ProviderDistribute} requiredRole="provider" />}
       </Route>
       {/* Console IA C9: Earnings renamed Money — the ratified module name (route move
           /provider/earnings → /provider/money; same page, no endpoint or queryKey change).

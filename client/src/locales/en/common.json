@@ -23,5 +23,14 @@
     "active": "Active",
     "paused": "Paused",
     "loading": "Loading..."
+  },
+  "contentTranslation": {
+    "shownInEnglish": "Shown in English",
+    "shownInEnglishHint": "This listing has not been translated yet — showing the provider's original.",
+    "aiDraft": "AI draft — review before publishing",
+    "machineDraftNotice": "Machine-generated first draft. Review and approve before travelers see it.",
+    "approveDraft": "Approve translation",
+    "generateDraft": "Generate AI draft",
+    "draftUnavailable": "AI draft unavailable — no translation provider configured."
   }
 }

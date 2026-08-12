@@ -74,6 +74,12 @@ export type TransitionEventType =
   // item's routing_status (the item's own `ready_for_checkout → purchased` edge was already
   // written at authorization time by markItemPurchased — this event is the money leg).
   | "checkout_payment_confirmed"
+  // Lane 7 (deposits / partial payments, ruling 72): the DEPOSIT payment promotes a claim
+  // `payment_pending → deposit_paid` (an outstanding balance remains), and the BALANCE payment
+  // later promotes `deposit_paid → confirmed`. Same money-leg posture as checkout_payment_confirmed,
+  // written in the SAME transaction as the atomic flip. Both ≤30 chars (varchar(30), migration 171).
+  | "checkout_deposit_paid"
+  | "checkout_balance_paid"
   // Legacy-reconciliation lane (#212/#213): a payment signal arrived for a booking that is NOT
   // in a promotable state — canonically a LATE webhook for a row the TTL sweep already voided.
   // The row is NEVER resurrected (void wins after TTL); the exception is recorded here and on
