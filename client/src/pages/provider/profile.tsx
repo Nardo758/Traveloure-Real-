@@ -19,11 +19,17 @@ import {
   Loader2,
 } from "lucide-react";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { initialsFromUser } from "@/lib/initials";
+import {
+  LocationPointPicker,
+  parseStoredPoint,
+  formatPoint,
+  type LocationPoint,
+} from "@/components/backoffice/location-point-picker";
 
 // Console IA C9 (§17 17→9 collapse): this page is hosted as Settings' FIRST tab (provider
 // settings.tsx lazy-mounts it with embedded — the expert C8 pattern). It has no internal
@@ -66,6 +72,41 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
     onError: (err: any) => {
       toast({
         title: "Couldn't save",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Ruling 85: the provider's account-level office / place-of-business location. GET returns the
+  // provider form (or null); the ONLY fields this card touches are `officeLocation` (the confirmed
+  // {address,lat,lng} pin — NULL = not set, rendered honestly) and `address` (the existing free-text
+  // business address, reused only as the geocode SEED — never written by this card).
+  const { data: providerForm } = useQuery<{ address?: string; officeLocation?: { address?: string | null; lat: number; lng: number } | null } | null>({
+    queryKey: ["/api/provider-application"],
+  });
+  const officeLocation = providerForm?.officeLocation ?? null;
+  const officePoint: LocationPoint | null = officeLocation
+    ? parseStoredPoint(officeLocation.lat, officeLocation.lng)
+    : null;
+
+  const saveOfficeLocationMutation = useMutation({
+    // A confirmed point, or null to clear. The picker only ever calls onChange after an explicit
+    // Confirm / Remove, so every save here is a provider-confirmed value (§13).
+    mutationFn: async (point: LocationPoint | null) => {
+      const payload = point
+        ? { officeLocation: { address: providerForm?.address ?? null, lat: point.lat, lng: point.lng } }
+        : { officeLocation: null };
+      const res = await apiRequest("PATCH", "/api/provider-application", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider-application"] });
+      toast({ title: "Office location saved", description: "New listings will pre-fill their map pin from this." });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't save office location",
         description: err?.message || "Please try again.",
         variant: "destructive",
       });
@@ -301,6 +342,40 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
                   <Globe className="w-5 h-5 text-console-mid" />
                   <p className="text-console-dark">{businessInfo.website}</p>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Office / place of business (ruling 85) — the account-level confirmed location that
+                pre-fills a NEW listing's map pin. Two entry paths in one control: type the business
+                address (geocoded via POST /api/geocode) OR drop/adjust a pin; the point persists
+                ONLY on explicit Confirm. NULL renders honestly as "not set" — never a fake pin. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" /> Office / place of business
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-console-mid">
+                  Set your business location once. New service listings will pre-fill their map pin
+                  from it, so you don&apos;t have to place it every time (you can still adjust or
+                  remove the pin per listing).
+                </p>
+                <div className="text-sm" data-testid="text-office-location-status">
+                  {officePoint ? (
+                    <span className="text-console-dark">Saved: {formatPoint(officePoint)}</span>
+                  ) : (
+                    <span className="text-console-mid">No office location set yet.</span>
+                  )}
+                </div>
+                <LocationPointPicker
+                  value={officePoint}
+                  addressHint={providerForm?.address || ""}
+                  onChange={(point) => saveOfficeLocationMutation.mutate(point)}
+                  label="Place your office on the map"
+                  helpText="Type your business address and press Find, or drop a pin, then Confirm. This is saved to your account and used to pre-fill new listings."
+                  idPrefix="office-location"
+                />
               </CardContent>
             </Card>
 

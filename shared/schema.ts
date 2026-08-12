@@ -533,6 +533,18 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   // never asked (pre-108 rows), distinct from an explicit false. The FEE-2
   // brief's admin-validated insurance_tier evidence columns will sit beside it.
   hasInsurance: boolean("has_insurance"),
+  // Account-level office / place-of-business location (DECISIONS.md ruling 85, migration 207).
+  // { address, lat, lng } — the provider's confirmed business location, captured via the SAME
+  // confirm-gated LocationPointPicker the per-listing meeting pin uses (address typed OR pin
+  // dropped; geocoded through the ONE server path POST /api/geocode; persisted ONLY on explicit
+  // Confirm). PURPOSE: pre-fill a NEW listing's meeting pin so the provider does not re-place it
+  // every time (still overridable/removable per listing). NULL = "office location not set" — the
+  // honest §13 default; NEVER backfilled with a guessed/city-centre coordinate. This is provider-
+  // owned CONFIG, not a money/identity/rate field (§14/§18/§19 do not apply — nothing derives a
+  // charge from it); written owner-gated via PATCH /api/provider-application through a hand-written
+  // zod ALLOWLIST (no new .omit() schema — #PS18 ratchet untouched). Additive-nullable jsonb,
+  // declared here per the publish-trap rule (deploy-push would drop an undeclared column).
+  officeLocation: jsonb("office_location"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
