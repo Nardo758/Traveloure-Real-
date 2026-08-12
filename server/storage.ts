@@ -10,6 +10,7 @@ import {
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
+  serviceSurchargeTiers, type ServiceSurchargeTier,
   serviceAttestations, type ServiceAttestation,
   serviceTranslations, type ServiceTranslation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
@@ -201,6 +202,8 @@ export interface IStorage {
   getAllProviderServices(): Promise<ProviderService[]>;
   getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
+  getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
+  replaceServiceSurchargeTiers(serviceId: string, tiers: Array<{ radiusKm: number; fee: number }>): Promise<ServiceSurchargeTier[]>;
   getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
   affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
 
@@ -298,7 +301,7 @@ export interface IStorage {
   getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
   getCartItemById(id: string): Promise<any | undefined>;
   addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
-  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
+  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
   migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
@@ -1278,6 +1281,39 @@ export class DatabaseStorage implements IStorage {
           name: stop.name,
           latitude: stop.latitude === null ? null : String(stop.latitude),
           longitude: stop.longitude === null ? null : String(stop.longitude),
+        })),
+      ).returning();
+    });
+  }
+
+  // ── B1 travel-surcharge ZONE tiers (docs/DECISIONS.md ruling 81) ────────────────────────────
+  // Read path: the service's surcharge rings, smallest radius first (the resolver expects and
+  // re-sorts either way, but returning ordered keeps the owner UI honest).
+  async getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]> {
+    return await db.select().from(serviceSurchargeTiers)
+      .where(eq(serviceSurchargeTiers.serviceId, serviceId))
+      .orderBy(serviceSurchargeTiers.position);
+  }
+
+  // Replace-list write (ruling 81; the route-points precedent). The owner submits the full ordered
+  // list of rings and the server derives 1-based positions from array order (never client-numbered).
+  // Atomic delete+insert under a parent-row lock so a failed save can't half-replace and two parallel
+  // saves can't collide on the (service_id, position) UNIQUE. radius_km/fee arrive already validated
+  // (both present, non-negative) from the route's allowlist parse.
+  async replaceServiceSurchargeTiers(
+    serviceId: string,
+    tiers: Array<{ radiusKm: number; fee: number }>,
+  ): Promise<ServiceSurchargeTier[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceSurchargeTiers).where(eq(serviceSurchargeTiers.serviceId, serviceId));
+      if (tiers.length === 0) return [];
+      return await tx.insert(serviceSurchargeTiers).values(
+        tiers.map((t, i) => ({
+          serviceId,
+          position: i + 1,
+          radiusKm: String(t.radiusKm),
+          fee: String(t.fee),
         })),
       ).returning();
     });
@@ -2613,9 +2649,11 @@ export class DatabaseStorage implements IStorage {
     return { migrated, deduplicated };
   }
 
-  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined> {
+  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown }): Promise<any | undefined> {
+    // Drizzle skips `undefined` keys, so an absent field is never touched; an explicit `null`
+    // pickupLocation is a deliberate clear (§13 — the traveler removed their pickup ⇒ no surcharge).
     const [updated] = await db.update(cartItems)
-      .set(updates)
+      .set(updates as any)
       .where(eq(cartItems.id, id))
       .returning();
     return updated;
