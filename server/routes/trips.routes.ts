@@ -117,7 +117,6 @@ import { isTripAuthor } from "../utils/trip-authorship";
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
-import { sanitizeInput } from '../utils/sanitize';
 
 const router = Router();
 
@@ -148,6 +147,16 @@ const vendorBulkEmailLimiter = createRateLimiter({
   keyGenerator: (req: any) => `vendor-bulk-email:${getReqUserId(req) ?? req.ip ?? "unknown"}`,
 });
 
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '')
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
 
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };

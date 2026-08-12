@@ -79,6 +79,7 @@ import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { draftServiceTranslation, isContentLocale } from "./services/service-translation.service";
+import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
@@ -145,7 +146,7 @@ import expertConsoleRoutes from "./routes/expert-console.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
-import paymentsRoutes, { resolveItemBaseAmount } from "./routes/payments.routes";
+import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges } from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -198,7 +199,6 @@ import {
 } from "./services/attestation-publish-gate.service";
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
-import { sanitizeInput } from './utils/sanitize';
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
@@ -383,6 +383,17 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Simple XSS sanitization - strips HTML tags and dangerous characters
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
 
 // Sanitize object string fields recursively
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
@@ -2036,6 +2047,50 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Ruling 85: SET / UPDATE / CLEAR the provider's account-level office / place-of-business
+  // location AFTER onboarding. Owner-gated — the row is resolved by the SESSION userId, never a
+  // body id, so a provider can only ever touch their OWN service_provider_forms row. The body is an
+  // ALLOWLIST (a hand-written zod pick of just `officeLocation`) — NOT the denylist create schema —
+  // so no unrelated column can ride in, and the #PS18 omit-ratchet is untouched (no new
+  // createInsertSchema). `officeLocation` is provider CONFIG, not a money/identity/rate field: the
+  // §14/§18/§19 strips do not apply (nothing derives a charge from it), but the coordinate is still
+  // validated to a finite in-range {address?,lat,lng} (or null-to-clear) — the §13 honesty gate is
+  // the client Confirm + NULL-stays-NULL, never a fabricated coordinate. The client geocodes the
+  // typed address through the EXISTING POST /api/geocode and emits a point ONLY on explicit Confirm
+  // (the meeting-pin posture).
+  app.patch("/api/provider-application", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const existing = await storage.getServiceProviderForm(userId);
+      if (!existing) {
+        return res.status(404).json({ message: "No provider application found for this account" });
+      }
+      if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, "officeLocation")) {
+        return res.status(400).json({ message: "officeLocation is required (object with lat/lng, or null to clear)" });
+      }
+      const raw = req.body.officeLocation;
+      let officeLocation: { address: string | null; lat: number; lng: number } | null;
+      if (raw === null) {
+        officeLocation = null; // explicit clear — NULL is the honest "not set" state (§13)
+      } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const lat = typeof raw.lat === "number" ? raw.lat : parseFloat(String(raw.lat));
+        const lng = typeof raw.lng === "number" ? raw.lng : parseFloat(String(raw.lng));
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          return res.status(400).json({ message: "officeLocation must carry numeric lat/lng within range, or be null to clear" });
+        }
+        const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+        officeLocation = { address, lat, lng };
+      } else {
+        return res.status(400).json({ message: "officeLocation must be an object with lat/lng, or null" });
+      }
+      const updated = await storage.updateServiceProviderFormOfficeLocation(userId, officeLocation);
+      res.json(updated ?? null);
+    } catch (err) {
+      console.error("Error updating provider office location:", err);
+      res.status(500).json({ message: "Failed to update office location" });
+    }
+  });
+
   // Alias: /api/provider-forms -> /api/provider-application (for API compatibility)
   app.post("/api/provider-forms", isAuthenticated, async (req, res) => {
     try {
@@ -2242,6 +2297,60 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     res.json(withDisplayOptions);
   });
 
+  // ── Market insights (lane B2, ruling 84; CLAUDE.md §13/§20) ────────────────────────────────────
+  //    Owner-gated (session identity, never req.body — §14 posture) READ-ONLY, non-money overlay for
+  //    the Catalog map. Two REAL layers, both server-aggregated (counts per bucket — a traveler's row
+  //    or coords NEVER leaves the server, so no address leak by construction):
+  //      • gaps   — per (neighborhood, categoryKey) admin target vs REAL located supply; a gap only
+  //                 where target > have. No target row ⇒ no claim (§13).
+  //      • demand — REAL search intent bucketed by destination STRING to neighborhood/market
+  //                 centroids, thresholded at MIN_DEMAND_SIGNAL. Below threshold ⇒ hasSignal=false
+  //                 ("not enough signal yet"). NEVER a per-lat/lng heat cell; booking pickup coords
+  //                 are NOT a demand source (this endpoint reads no bookings at all).
+  //    Estimated / TravelPulse aggregates are excluded. ODbL attribution rides the response.
+  const DEMAND_WINDOW_DAYS = 90; // recent window for the search-intent rollup.
+  app.get("/api/provider/market-insights", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const attribution = "© OpenStreetMap contributors";
+      const emptyDemand = {
+        byNeighborhood: [] as any[],
+        cityLevel: [] as any[],
+        unplaceableCount: 0,
+        threshold: MIN_DEMAND_SIGNAL,
+        hasSignal: false,
+      };
+
+      const cities = await storage.getProviderMarketCities(userId);
+      if (cities.length === 0) {
+        // No market footprint yet — honest empty surface, nothing invented (§13).
+        return res.json({
+          asOf: new Date().toISOString(),
+          cities,
+          demand: emptyDemand,
+          gaps: [],
+          attribution,
+        });
+      }
+
+      const neighborhoods = await storage.getMarketNeighborhoods(cities);
+      const [targets, supply] = await Promise.all([
+        storage.getCoverageTargetsForNeighborhoods(neighborhoods.map((n) => n.id)),
+        storage.getLocatedSupplyForCities(cities),
+      ]);
+      const gaps = resolveCoverageGaps(supply, targets, neighborhoods);
+
+      const neighborhoodTokens = neighborhoods.flatMap((n) => [n.name, n.slug]);
+      const demandRows = await storage.getMarketDemandRows(cities, neighborhoodTokens, DEMAND_WINDOW_DAYS);
+      const demand = resolveDemandBuckets(demandRows, neighborhoods, cities, MIN_DEMAND_SIGNAL);
+
+      res.json({ asOf: new Date().toISOString(), cities, demand, gaps, attribution });
+    } catch (err) {
+      console.error("[market-insights] failed:", (err as any)?.message);
+      res.status(500).json({ message: "Failed to load market insights" });
+    }
+  });
+
   // Get a single provider service by ID (ownership required)
   app.get("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
@@ -2434,6 +2543,56 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
+    }
+  });
+
+  // ══ B1 (ruling 81): replace-list write for a service's ZONE surcharge tiers ═══════════════════
+  // Owner-gated like the sibling route-points PUT; ALLOWLIST body (§19 posture — nothing but
+  // radiusKm + fee reaches a row, positions derived server-side from array order, never
+  // client-numbered). These are owner LISTING config (radius rings + fee), NOT §18 rates — the
+  // CHARGE is derived server-side at checkout (travel-surcharge.service.ts), never off this body.
+  const surchargeTiersBodySchema = z.object({
+    tiers: z.array(z.object({
+      radiusKm: z.coerce.number().gt(0).max(100000),
+      fee: z.coerce.number().min(0).max(1000000),
+    })).max(20),
+  });
+  app.put("/api/provider/services/:id/surcharge-tiers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = surchargeTiersBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid surcharge tiers", errors: parsed.error.flatten() });
+      }
+      // Positions follow array order; the resolver sorts by radius regardless, so the owner may send
+      // the rings in any order and get honest smallest-ring-contains behaviour.
+      const tiers = parsed.data.tiers.map((t) => ({ radiusKm: t.radiusKm, fee: t.fee }));
+      const surchargeTiers = await storage.replaceServiceSurchargeTiers(service.id, tiers);
+      res.json({ surchargeTiers });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Tiers changed elsewhere — reload and try again" });
+      }
+      console.error("[surcharge-tiers] save failed:", err);
+      res.status(500).json({ message: "Failed to save surcharge tiers" });
+    }
+  });
+
+  // Read: a service's surcharge config + tiers (owner OR any reader — display-only, no secrets).
+  app.get("/api/provider/services/:id/surcharge-tiers", isAuthenticated, async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service) return res.status(404).json({ message: "Service not found" });
+      const surchargeTiers = await storage.getServiceSurchargeTiers(service.id);
+      res.json({ surchargeTiers });
+    } catch (err) {
+      console.error("[surcharge-tiers] read failed:", err);
+      res.status(500).json({ message: "Failed to read surcharge tiers" });
     }
   });
 
@@ -6846,6 +7005,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     let subtotal = 0;
     let platformFeeTotal = 0;
     let conciergeFeeTotal = 0;
+    let surchargeTotal = 0;
+    // B1 (ruling 81): the SAME server-derived travel surcharge the checkout will charge, so the live
+    // cart total already includes it and the traveler is never surprised at Pay (§13/§14, F1
+    // disclosure). Out-of-range pickups show 0 here; the hard refusal is the checkout's 400.
+    const cartSurcharges = await resolveCartSurcharges(items);
     for (const item of items) {
       // §17 property rooms: nights × nightly rate, never quantity × price (a room's cart
       // "quantity" is meaningless — the client pins it to 1). Reuses the exact same helper
@@ -6891,14 +7055,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? cartOfferingKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
         : false;
       if (isConciergeItem) conciergeFeeTotal += price * cartConciergeRate;
+      const sc = cartSurcharges.get(item.id);
+      if (sc?.eligible) surchargeTotal += sc.amount;
     }
+    surchargeTotal = Math.round(surchargeTotal * 100) / 100;
 
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
       platformFee: platformFeeTotal.toFixed(2),
       conciergeFee: conciergeFeeTotal.toFixed(2),
-      total: (subtotal + platformFeeTotal + conciergeFeeTotal).toFixed(2),
+      travelSurcharge: surchargeTotal.toFixed(2),
+      total: (subtotal + platformFeeTotal + conciergeFeeTotal + surchargeTotal).toFixed(2),
       itemCount: items.length,
     });
     } catch (err) {
@@ -7221,10 +7389,51 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Forbidden" });
       }
       const { quantity, scheduledDate, notes } = req.body;
+      // B1 (ruling 81): the traveler's CONFIRMED pickup location — the travel-surcharge trigger.
+      // Validated here to a {address?, lat, lng} shape (or null to clear); the surcharge AMOUNT is
+      // NEVER read off this body (§14) — it is derived server-side at checkout from these coords +
+      // the listing config. Only touched when the key is present, so an ordinary quantity/notes PATCH
+      // never disturbs a saved pickup (§13, never-clobber).
+      let pickupLocationUpdate: { pickupLocation?: unknown } = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, "pickupLocation")) {
+        const raw = req.body.pickupLocation;
+        if (raw === null) {
+          pickupLocationUpdate = { pickupLocation: null };
+        } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          const lat = typeof raw.lat === "number" ? raw.lat : parseFloat(String(raw.lat));
+          const lng = typeof raw.lng === "number" ? raw.lng : parseFloat(String(raw.lng));
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            return res.status(400).json({ message: "pickupLocation must carry numeric lat/lng within range, or be null to clear" });
+          }
+          const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+          pickupLocationUpdate = { pickupLocation: { address, lat, lng } };
+        } else {
+          return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });
+        }
+      }
+      // T2 (ruling 83): the traveler's CONFIRMED party count — the D7 party-size eligibility gate's
+      // trigger-input. Validated to a positive integer (or null to clear); the gate DERIVES nothing
+      // from a body amount/rate (§14) — this is a booking input like quantity. Only touched when the
+      // key is present, so an ordinary quantity/notes/pickup PATCH never disturbs a saved party size.
+      let partySizeUpdate: { partySize?: number | null } = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, "partySize")) {
+        const raw = req.body.partySize;
+        if (raw === null) {
+          partySizeUpdate = { partySize: null };
+        } else {
+          const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+          if (!Number.isInteger(n) || n < 1 || n > 100000) {
+            return res.status(400).json({ message: "partySize must be a positive integer, or null to clear" });
+          }
+          partySizeUpdate = { partySize: n };
+        }
+      }
       const updated = await cartProjection.updateCartItem(req.params.id, {
         quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
+        ...pickupLocationUpdate,
+        ...partySizeUpdate,
       });
       res.json(updated);
     } catch (err) {

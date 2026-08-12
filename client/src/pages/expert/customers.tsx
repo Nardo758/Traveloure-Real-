@@ -232,8 +232,6 @@ export default function ExpertCustomers() {
                       onClick={() => setExpanded(isOpen ? null : key)}
                       className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-console-bg/60 transition-colors"
                       data-testid={`button-customer-toggle-${key}`}
-                      aria-expanded={isOpen}
-                      aria-label={`${c.displayName}, ${c.relationship}, ${factsLine(c)}`}
                     >
                       {isOpen ? (
                         <ChevronDown className="w-4 h-4 flex-shrink-0 text-console-mid" />

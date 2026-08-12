@@ -10,6 +10,7 @@ import {
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
+  serviceSurchargeTiers, type ServiceSurchargeTier,
   serviceAttestations, type ServiceAttestation,
   serviceTranslations, type ServiceTranslation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
@@ -102,6 +103,9 @@ import {
   type AffiliateBookingRequest, type InsertAffiliateBookingRequest,
   providerNeighborhoodCoverage,
   cityNeighborhoods,
+  neighborhoodCoverageTarget,
+  searchAnalytics,
+  demandSignals,
   expertNeighborhoods,
   travelPulseCities,
   dmoRawContent,
@@ -117,6 +121,12 @@ import {
   vendorContracts,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
+import type {
+  NeighborhoodRow as MarketNeighborhoodRow,
+  CoverageTargetRow as MarketCoverageTargetRow,
+  SupplyServiceRow as MarketSupplyServiceRow,
+  DemandRow as MarketDemandRow,
+} from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition } from "./services/item-transition-log.service";
 import type { User } from "@shared/models/auth";
@@ -195,12 +205,17 @@ export interface IStorage {
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
   updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
   updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
+  // Ruling 85: owner-gated (by userId, never a body id) set/update/clear of the account-level
+  // office location. The value is a pre-validated {address,lat,lng} or null-to-clear.
+  updateServiceProviderFormOfficeLocation(userId: string, officeLocation: { address: string | null; lat: number; lng: number } | null): Promise<ServiceProviderForm | undefined>;
 
   // Provider Services
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
   getAllProviderServices(): Promise<ProviderService[]>;
   getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
+  getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
+  replaceServiceSurchargeTiers(serviceId: string, tiers: Array<{ radiusKm: number; fee: number }>): Promise<ServiceSurchargeTier[]>;
   getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
   affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
 
@@ -298,7 +313,7 @@ export interface IStorage {
   getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
   getCartItemById(id: string): Promise<any | undefined>;
   addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
-  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
+  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
   migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
@@ -613,6 +628,13 @@ export interface IStorage {
   getDestinationSearchTrends(days?: number): Promise<Array<{ destination: string; searchCount: number; conversionRate: number }>>;
   createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory>;
   getDestinationMetricsHistory(destination: string, metricType: string, days?: number): Promise<DestinationMetricsHistory[]>;
+
+  // Market insights (lane B2, ruling 84) — READ-ONLY rollups for the Catalog map overlay.
+  getProviderMarketCities(userId: string): Promise<string[]>;
+  getMarketNeighborhoods(cities: string[]): Promise<MarketNeighborhoodRow[]>;
+  getCoverageTargetsForNeighborhoods(neighborhoodIds: string[]): Promise<MarketCoverageTargetRow[]>;
+  getLocatedSupplyForCities(cities: string[]): Promise<MarketSupplyServiceRow[]>;
+  getMarketDemandRows(cities: string[], neighborhoodTokens: string[], days: number): Promise<MarketDemandRow[]>;
 
   // Itinerary Changes (PlanCard change tracking)
   getItineraryChanges(tripId: string, limit?: number): Promise<ItineraryChange[]>;
@@ -1225,6 +1247,21 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Ruling 85: scope the write to the caller's OWN row by userId (never by a body-supplied id), so
+  // one provider can never overwrite another's office location. `officeLocation` is already
+  // validated to {address,lat,lng} | null by the route allowlist; NULL clears it (§13 — the honest
+  // "not set" state, never a fabricated coordinate).
+  async updateServiceProviderFormOfficeLocation(
+    userId: string,
+    officeLocation: { address: string | null; lat: number; lng: number } | null,
+  ): Promise<ServiceProviderForm | undefined> {
+    const [updated] = await db.update(serviceProviderForms)
+      .set({ officeLocation })
+      .where(eq(serviceProviderForms.userId, userId))
+      .returning();
+    return updated;
+  }
+
   // Provider Services
   async getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]> {
     const conditions = [eq(providerServices.userId, userId)];
@@ -1278,6 +1315,39 @@ export class DatabaseStorage implements IStorage {
           name: stop.name,
           latitude: stop.latitude === null ? null : String(stop.latitude),
           longitude: stop.longitude === null ? null : String(stop.longitude),
+        })),
+      ).returning();
+    });
+  }
+
+  // ── B1 travel-surcharge ZONE tiers (docs/DECISIONS.md ruling 81) ────────────────────────────
+  // Read path: the service's surcharge rings, smallest radius first (the resolver expects and
+  // re-sorts either way, but returning ordered keeps the owner UI honest).
+  async getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]> {
+    return await db.select().from(serviceSurchargeTiers)
+      .where(eq(serviceSurchargeTiers.serviceId, serviceId))
+      .orderBy(serviceSurchargeTiers.position);
+  }
+
+  // Replace-list write (ruling 81; the route-points precedent). The owner submits the full ordered
+  // list of rings and the server derives 1-based positions from array order (never client-numbered).
+  // Atomic delete+insert under a parent-row lock so a failed save can't half-replace and two parallel
+  // saves can't collide on the (service_id, position) UNIQUE. radius_km/fee arrive already validated
+  // (both present, non-negative) from the route's allowlist parse.
+  async replaceServiceSurchargeTiers(
+    serviceId: string,
+    tiers: Array<{ radiusKm: number; fee: number }>,
+  ): Promise<ServiceSurchargeTier[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceSurchargeTiers).where(eq(serviceSurchargeTiers.serviceId, serviceId));
+      if (tiers.length === 0) return [];
+      return await tx.insert(serviceSurchargeTiers).values(
+        tiers.map((t, i) => ({
+          serviceId,
+          position: i + 1,
+          radiusKm: String(t.radiusKm),
+          fee: String(t.fee),
         })),
       ).returning();
     });
@@ -2613,9 +2683,11 @@ export class DatabaseStorage implements IStorage {
     return { migrated, deduplicated };
   }
 
-  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined> {
+  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null }): Promise<any | undefined> {
+    // Drizzle skips `undefined` keys, so an absent field is never touched; an explicit `null`
+    // pickupLocation is a deliberate clear (§13 — the traveler removed their pickup ⇒ no surcharge).
     const [updated] = await db.update(cartItems)
-      .set(updates)
+      .set(updates as any)
       .where(eq(cartItems.id, id))
       .returning();
     return updated;
@@ -5463,6 +5535,129 @@ export class DatabaseStorage implements IStorage {
         conversionRate: stats.searches > 0 ? Math.round((stats.conversions / stats.searches) * 100) / 100 : 0,
       }))
       .sort((a, b) => b.searchCount - a.searchCount);
+  }
+
+  // ── Market insights (lane B2, ruling 84) — READ-ONLY rollups feeding the pure resolvers in
+  //    services/market-insights.service.ts. §13: real rows only; no fabrication anywhere here. ──────
+
+  /**
+   * The provider's own market scope = the DISTINCT non-empty cities their OWN services sit in
+   * (provider_services.city). Defines which neighborhoods/targets/demand the overlay covers; it is
+   * NOT the provider's private coverage (§ ruling 84 — market-wide supply is read separately below).
+   */
+  async getProviderMarketCities(userId: string): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ city: providerServices.city })
+      .from(providerServices)
+      .where(and(eq(providerServices.userId, userId), isNotNull(providerServices.city)));
+    return rows
+      .map((r) => (r.city ?? "").trim())
+      .filter((c) => c.length > 0);
+  }
+
+  /** Neighborhoods (with REAL centroids) in the given market cities. */
+  async getMarketNeighborhoods(cities: string[]): Promise<MarketNeighborhoodRow[]> {
+    if (cities.length === 0) return [];
+    const rows = await db
+      .select({
+        id: cityNeighborhoods.id,
+        city: cityNeighborhoods.city,
+        name: cityNeighborhoods.name,
+        slug: cityNeighborhoods.slug,
+        centroidLat: cityNeighborhoods.centroidLat,
+        centroidLng: cityNeighborhoods.centroidLng,
+        radiusKm: cityNeighborhoods.radiusKm,
+      })
+      .from(cityNeighborhoods)
+      .where(inArray(cityNeighborhoods.city, cities));
+    return rows;
+  }
+
+  /** Admin coverage targets for the given neighborhoods (§13 — an absent row is NO target). */
+  async getCoverageTargetsForNeighborhoods(neighborhoodIds: string[]): Promise<MarketCoverageTargetRow[]> {
+    if (neighborhoodIds.length === 0) return [];
+    const rows = await db
+      .select({
+        neighborhoodId: neighborhoodCoverageTarget.neighborhoodId,
+        categoryKey: neighborhoodCoverageTarget.categoryKey,
+        targetCount: neighborhoodCoverageTarget.targetCount,
+      })
+      .from(neighborhoodCoverageTarget)
+      .where(inArray(neighborhoodCoverageTarget.neighborhoodId, neighborhoodIds));
+    return rows;
+  }
+
+  /**
+   * Market-wide BOOKABLE supply = approved+active provider_services in the scoped cities, each with
+   * its neighborhood slug, categoryKey (via service_categories) and confirmed pin (or nulls). The
+   * pure resolver decides placement; UNPLACED rows are excluded there (§13).
+   */
+  async getLocatedSupplyForCities(cities: string[]): Promise<MarketSupplyServiceRow[]> {
+    if (cities.length === 0) return [];
+    const rows = await db
+      .select({
+        id: providerServices.id,
+        neighborhood: providerServices.neighborhood,
+        categoryKey: serviceCategories.categoryKey,
+        latitude: providerServices.latitude,
+        longitude: providerServices.longitude,
+      })
+      .from(providerServices)
+      .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+      .where(
+        and(
+          inArray(providerServices.city, cities),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ),
+      );
+    return rows;
+  }
+
+  /**
+   * REAL search demand for the market, pre-aggregated by destination string. Two real sources,
+   * summed by destination: per-event `search_analytics` (count(*) over the recent window) and the
+   * aggregate `demand_signals.searchCount`. Scoped in SQL to rows that REFERENCE the market — a
+   * destination that ILIKEs a scoped city OR exactly equals a scoped neighborhood name/slug — so an
+   * unrelated market's demand never enters the bucketing. Estimated/TravelPulse tables are NOT read.
+   */
+  async getMarketDemandRows(cities: string[], neighborhoodTokens: string[], days: number): Promise<MarketDemandRow[]> {
+    if (cities.length === 0) return [];
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // OR of: destination ILIKE '%city%' (references the market) for each scoped city, plus an exact
+    // (lowercased) match against each scoped neighborhood name/slug token (captures bare-neighborhood
+    // searches that don't mention the city).
+    const tokenSet = neighborhoodTokens.map((t) => t.trim().toLowerCase()).filter(Boolean);
+    const cityLike = cities.map((c) => ilike(searchAnalytics.destination, `%${c}%`));
+    const tokenMatch = tokenSet.map((t) => sqlOp`lower(${searchAnalytics.destination}) = ${t}`);
+    const marketFilter = or(...cityLike, ...tokenMatch);
+
+    const saRows = await db
+      .select({ destination: searchAnalytics.destination, c: count() })
+      .from(searchAnalytics)
+      .where(and(gte(searchAnalytics.createdAt, cutoff), isNotNull(searchAnalytics.destination), marketFilter))
+      .groupBy(searchAnalytics.destination);
+
+    // demand_signals: aggregate real search volume keyed by destination (no per-event window — it is
+    // already a rollup). Same market scoping.
+    const dsCityLike = cities.map((c) => ilike(demandSignals.destination, `%${c}%`));
+    const dsTokenMatch = tokenSet.map((t) => sqlOp`lower(${demandSignals.destination}) = ${t}`);
+    const dsRows = await db
+      .select({ destination: demandSignals.destination, searchCount: demandSignals.searchCount })
+      .from(demandSignals)
+      .where(or(...dsCityLike, ...dsTokenMatch));
+
+    const totals = new Map<string, number>();
+    for (const r of saRows) {
+      if (!r.destination) continue;
+      totals.set(r.destination, (totals.get(r.destination) ?? 0) + Number(r.c ?? 0));
+    }
+    for (const r of dsRows) {
+      if (!r.destination) continue;
+      totals.set(r.destination, (totals.get(r.destination) ?? 0) + Number(r.searchCount ?? 0));
+    }
+    return Array.from(totals.entries()).map(([destination, searchCount]) => ({ destination, searchCount }));
   }
 
   async createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory> {

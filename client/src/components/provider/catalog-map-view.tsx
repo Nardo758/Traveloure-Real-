@@ -30,13 +30,16 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { MapContainer, TileLayer, CircleMarker, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowDown, ArrowUp, Crosshair, Loader2, MapPin, MapPinOff, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Crosshair, Loader2, MapPin, MapPinOff, Plus, Trash2, TrendingUp, AlertTriangle } from "lucide-react";
 import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/service-location-map";
 import { LocationPointPicker, parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
 
@@ -80,8 +83,285 @@ function nextDraftKey(): string {
   return `draft-${draftKeyCounter}`;
 }
 
+// ── Market insights overlay (lane B2, ruling 84) ──────────────────────────────────────────────────
+// A CLIENT-ONLY sibling toggle: fetches GET /api/provider/market-insights and renders the two REAL
+// layers honestly. §13: below-threshold / no rows ⇒ "not enough signal yet"; nothing is invented and
+// nothing is dropped on a city centre. Server counts only (no traveler row/coords reaches the client).
+
+interface DemandNeighborhood {
+  neighborhoodId: string;
+  name: string;
+  centroidLat: number;
+  centroidLng: number;
+  searchCount: number;
+}
+interface DemandCity {
+  city: string;
+  searchCount: number;
+}
+interface GapMarker {
+  neighborhoodId: string;
+  name: string;
+  centroidLat: number;
+  centroidLng: number;
+  categoryKey: string;
+  target: number;
+  have: number;
+  gap: number;
+}
+interface MarketInsights {
+  asOf: string;
+  cities: string[];
+  demand: {
+    byNeighborhood: DemandNeighborhood[];
+    cityLevel: DemandCity[];
+    unplaceableCount: number;
+    threshold: number;
+    hasSignal: boolean;
+  };
+  gaps: GapMarker[];
+  attribution: string;
+}
+
+/** Fit the insights map to every real point (demand centroids + gap markers). */
+function FitInsights({ points }: { points: Array<[number, number]> }) {
+  const map = useMap();
+  const key = points.map((p) => `${p[0]}:${p[1]}`).join(",");
+  useEffect(() => {
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      map.setView(points[0], 13);
+      return;
+    }
+    map.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return null;
+}
+
+function MarketInsightsView() {
+  const { data, isLoading, isError } = useQuery<MarketInsights>({
+    queryKey: ["/api/provider/market-insights"],
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground" data-testid="market-insights-loading">
+          <Loader2 className="w-5 h-5 mx-auto mb-2 animate-spin opacity-50" /> Loading market insights…
+        </CardContent>
+      </Card>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground" data-testid="market-insights-error">
+          Couldn't load market insights right now.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const { demand, gaps } = data;
+  const totalRealSearches =
+    demand.byNeighborhood.reduce((s, d) => s + d.searchCount, 0) +
+    demand.cityLevel.reduce((s, d) => s + d.searchCount, 0) +
+    demand.unplaceableCount;
+
+  // Everything real that can be plotted: demand centroids + gap centroids.
+  const maxDemand = Math.max(1, ...demand.byNeighborhood.map((d) => d.searchCount));
+  const points: Array<[number, number]> = [
+    ...demand.byNeighborhood.map((d) => [d.centroidLat, d.centroidLng] as [number, number]),
+    ...gaps.map((g) => [g.centroidLat, g.centroidLng] as [number, number]),
+  ];
+  const canPlot = points.length > 0;
+  const nothingToShow = !demand.hasSignal && gaps.length === 0;
+
+  return (
+    <div className="space-y-4" data-testid="market-insights-view">
+      {/* Honesty line: real counts only (§13), the C4 "based on N real …" precedent. */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E8E2] bg-[#FAFAF8] px-3 py-2"
+        data-testid="market-insights-honesty"
+      >
+        <span className="text-[13px] font-medium" style={{ color: "#1A1A18" }} data-testid="text-real-search-count">
+          Based on {totalRealSearches} real search{totalRealSearches === 1 ? "" : "es"} in the last 90 days
+          {data.cities.length > 0 ? ` · ${data.cities.join(", ")}` : ""}
+        </span>
+        <span className="text-[11px]" style={{ color: "#7A7A72" }}>
+          Real rows only — thin signal shows "not enough signal yet", never invented heat.
+        </span>
+      </div>
+
+      {nothingToShow ? (
+        <Card>
+          <CardContent className="py-16 text-center text-sm text-muted-foreground" data-testid="market-insights-empty">
+            <TrendingUp className="w-6 h-6 mx-auto mb-2 opacity-40" />
+            Not enough signal yet. As real searches and coverage targets accrue in your market, demand
+            hotspots and coverage gaps will appear here — nothing is estimated or interpolated.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
+          {/* Map: tinted demand centroids (sized by real count) + gap markers. */}
+          <div className="min-w-0 space-y-2">
+            {canPlot ? (
+              <div style={{ position: "relative", width: "100%", height: 480 }} data-testid="market-insights-map">
+                <MapContainer center={points[0]} zoom={12} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  />
+                  <FitInsights points={points} />
+                  {demand.byNeighborhood.map((d) => (
+                    <CircleMarker
+                      key={`demand-${d.neighborhoodId}`}
+                      center={[d.centroidLat, d.centroidLng]}
+                      radius={10 + Math.round((d.searchCount / maxDemand) * 22)}
+                      pathOptions={{ color: "#E85D55", weight: 1.5, fillColor: "#E85D55", fillOpacity: 0.28 }}
+                    >
+                      <Popup>
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", fontSize: 13 }}>
+                          <div style={{ fontWeight: 700, color: "#1A1A18" }}>{d.name}</div>
+                          <div style={{ color: "#7A7A72", fontSize: 12 }}>{d.searchCount} real searches</div>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  ))}
+                  {gaps.map((g) => (
+                    <Marker
+                      key={`gap-${g.neighborhoodId}-${g.categoryKey}`}
+                      position={[g.centroidLat, g.centroidLng]}
+                      icon={L.divIcon({
+                        className: "",
+                        html: `<div style="width:22px;height:22px;border-radius:4px;background:#9A6B1F;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;">+${g.gap}</div>`,
+                        iconSize: [22, 22],
+                        iconAnchor: [11, 11],
+                      })}
+                    >
+                      <Popup>
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", fontSize: 13 }}>
+                          <div style={{ fontWeight: 700, color: "#1A1A18" }}>{g.name}</div>
+                          <div style={{ color: "#7A7A72", fontSize: 12 }}>
+                            {g.categoryKey}: {g.have} of {g.target} — {g.gap} more needed
+                          </div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MapContainer>
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-16 text-center text-sm text-muted-foreground" data-testid="market-insights-map-empty">
+                  Signal exists at the city level only — nothing to place on a neighborhood centroid yet.
+                </CardContent>
+              </Card>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Larger dots = more real searches. Squares mark neighborhoods with a coverage gap in a
+              category. Straight to the real centroid — never an interpolated heat cell.
+            </p>
+          </div>
+
+          {/* Panel: demand + gaps, real counts. */}
+          <div className="space-y-4">
+            <Card data-testid="market-insights-demand-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-[14px] flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4" /> Demand
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {demand.hasSignal ? (
+                  <>
+                    {demand.byNeighborhood.length > 0 && (
+                      <ul className="space-y-1" data-testid="demand-neighborhood-list">
+                        {demand.byNeighborhood.map((d) => (
+                          <li key={d.neighborhoodId} className="flex items-center justify-between text-[13px]">
+                            <span style={{ color: "#1A1A18" }}>{d.name}</span>
+                            <Badge variant="outline">{d.searchCount}</Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {demand.cityLevel.length > 0 && (
+                      <div className="pt-1" data-testid="demand-city-list">
+                        <p className="text-[11px] text-muted-foreground mb-1">City-level (not placed on a neighborhood):</p>
+                        <ul className="space-y-1">
+                          {demand.cityLevel.map((c) => (
+                            <li key={c.city} className="flex items-center justify-between text-[13px]">
+                              <span style={{ color: "#1A1A18" }}>{c.city}</span>
+                              <Badge variant="outline">{c.searchCount}</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[12px] text-muted-foreground" data-testid="demand-empty">
+                    Not enough signal yet (threshold {demand.threshold} searches per place).
+                  </p>
+                )}
+                {demand.unplaceableCount > 0 && (
+                  <p className="text-[11px] text-muted-foreground pt-1" data-testid="demand-unplaceable">
+                    {demand.unplaceableCount} more search{demand.unplaceableCount === 1 ? "" : "es"} referenced your
+                    market but couldn't be placed on a specific neighborhood — shown here honestly, never on the map.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="market-insights-gaps-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-[14px] flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" /> Coverage gaps
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {gaps.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground" data-testid="gaps-empty">
+                    No coverage gaps in your market — every neighborhood with a target is covered.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5" data-testid="gaps-list">
+                    {gaps.map((g) => (
+                      <li
+                        key={`${g.neighborhoodId}-${g.categoryKey}`}
+                        className="flex items-center justify-between text-[13px] rounded-md border border-amber-200 bg-amber-50/50 px-2 py-1.5"
+                      >
+                        <span>
+                          <span className="font-medium" style={{ color: "#1A1A18" }}>{g.name}</span>
+                          <span className="text-[11px] block text-muted-foreground">{g.categoryKey}</span>
+                        </span>
+                        <Badge variant="outline" className="border-amber-400 text-amber-700">
+                          {g.have}/{g.target} · +{g.gap}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ODbL — required wherever this renders (§20). */}
+      <p className="text-[10px] text-muted-foreground" data-testid="market-insights-attribution">
+        {data.attribution}
+      </p>
+    </div>
+  );
+}
+
 export function CatalogMapView({ services }: { services: CatalogMapService[] }) {
   const { toast } = useToast();
+  // Sibling toggle (ruling 84): authoring (per-service pin/route) vs market insights (demand + gaps).
+  // A separate axis from List/Map and Manage/Preview — those are untouched.
+  const [insightsMode, setInsightsMode] = useState(false);
   const mappable = services.filter((s) => s.productShape !== "bundle");
   const [selectedId, setSelectedId] = useState<string | null>(mappable[0]?.id ?? null);
   const selected = mappable.find((s) => s.id === selectedId) ?? null;
@@ -253,18 +533,55 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   // click on. Say so honestly rather than inventing a viewport.
   const canvasExists = !!pin || locatedCount > 0;
 
+  // Sibling toggle bar (ruling 84) — authoring ⇄ market insights. Shown above every branch.
+  const toggleBar = (
+    <div className="inline-flex rounded-lg border border-[#E8E8E2] p-0.5" data-testid="map-insights-toggle">
+      <button
+        onClick={() => setInsightsMode(false)}
+        className={`px-3 py-1.5 text-[13px] rounded-md transition-colors ${
+          !insightsMode ? "bg-[#1A1A18] text-white" : "text-[#7A7A72] hover:bg-[#F3F3EE]"
+        }`}
+        data-testid="button-map-authoring"
+      >
+        Place on map
+      </button>
+      <button
+        onClick={() => setInsightsMode(true)}
+        className={`px-3 py-1.5 text-[13px] rounded-md transition-colors ${
+          insightsMode ? "bg-[#1A1A18] text-white" : "text-[#7A7A72] hover:bg-[#F3F3EE]"
+        }`}
+        data-testid="button-market-insights"
+      >
+        Market insights
+      </button>
+    </div>
+  );
+
+  if (insightsMode) {
+    return (
+      <div className="space-y-4">
+        {toggleBar}
+        <MarketInsightsView />
+      </div>
+    );
+  }
+
   if (mappable.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          No mappable services yet — create a service first, then place it on the map here.
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {toggleBar}
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No mappable services yet — create a service first, then place it on the map here.
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {toggleBar}
       {/* C4: provider-wide coverage summary — the REAL count of services with a confirmed
           location, never a guess. This is a coverage indicator across the whole catalog and is
           distinct from the single-service canvas below (which maps only the selected listing). */}

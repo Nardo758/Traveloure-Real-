@@ -39,6 +39,12 @@ import {
 // server-side from the listing's OWN opt-in config × the server-side line total (§14/§18) — never
 // from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
 import { resolveDepositPlan, resolveBalanceDueAt } from "../services/deposit.service";
+import { resolveTravelSurcharge, type TravelSurchargeResult } from "../services/travel-surcharge.service";
+// T2 (ruling 62/64 D7 capture; ruling 83 wiring): the D7 booking-eligibility gates — party size,
+// start window, lead time — validated against the listing's own constraints BEFORE any slot claim or
+// Stripe call (the B1 pickup_out_of_range placement). §13: NULL field ⇒ no constraint; §14: pure
+// validation, no amount/rate off req.body.
+import { resolveBookingEligibility } from "../services/booking-eligibility.service";
 import {
   stampBalanceAuthorization,
   promoteBalancePayment,
@@ -134,7 +140,6 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
-import { sanitizeInput } from '../utils/sanitize';
 
 const router = Router();
 
@@ -142,6 +147,16 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '')
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
 
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };
@@ -278,6 +293,35 @@ export function resolveItemBaseAmount(item: any): number {
   return rate * (item?.quantity || 1);
 }
 
+// ── B1 travel surcharge (ruling 81): ONE preload+resolve pass, shared by every quote/charge surface
+// (POST /api/checkout, GET /api/cart, GET /api/cart/fee-preview) so the amount quoted and the amount
+// charged can never disagree. Returns a Map keyed by cart-item id. Zones-mode tiers are loaded once
+// (a single query for all zones-mode services in the cart), then the pure resolver decides each line
+// from the listing config + the traveler's confirmed pickup (§14 — no client amount reaches it). A
+// service with mode 'none'/null resolves to amount 0 with zero DB work.
+export async function resolveCartSurcharges(cartData: any[]): Promise<Map<string, TravelSurchargeResult>> {
+  const out = new Map<string, TravelSurchargeResult>();
+  const zonesServiceIds = Array.from(new Set(
+    cartData
+      .filter((i) => i.service && i.service.surchargeMode === "zones")
+      .map((i) => i.service.id as string)
+      .filter(Boolean),
+  ));
+  const tiersByService = new Map<string, Array<{ radiusKm: string; fee: string }>>();
+  for (const sid of zonesServiceIds) {
+    const tiers = await storage.getServiceSurchargeTiers(sid);
+    tiersByService.set(sid, tiers.map((t) => ({ radiusKm: t.radiusKm, fee: t.fee })));
+  }
+  for (const item of cartData) {
+    if (!item.service) continue;
+    const tiers = item.service.surchargeMode === "zones"
+      ? (tiersByService.get(item.service.id) ?? [])
+      : [];
+    out.set(item.id, resolveTravelSurcharge(item.service, item.pickupLocation ?? null, tiers));
+  }
+  return out;
+}
+
 // Postgres unique-violation (SQLSTATE 23505). Drizzle re-wraps driver errors, so the pg code
 // can sit on the error itself or on its `cause` — check both rather than string-matching.
 function isUniqueViolation(err: any): boolean {
@@ -340,10 +384,20 @@ async function authorizeAndPromote(
      * byte-identical to the pre-deposit behaviour (§13).
      */
     chargeAmount?: number;
+    /**
+     * B1 (ruling 81): the sum of per-line travel surcharges, server-derived from each listing's mode
+     * + config × the traveler's confirmed pickup (§14 — never off req.body). Added to the charged
+     * total AND disclosed as its own "travelSurcharge" response line (the F1 disclosure posture).
+     * Absent/0 ⇒ byte-identical to the pre-surcharge behaviour (§13). On a re-drive it is omitted
+     * because each claimed row's surcharge is already folded into its stored total_amount, so the
+     * re-drive's subtotal (Σ total_amount) already carries it — passing it again would double it.
+     */
+    surchargeTotal?: number;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
-  const fullTotal = subtotal + platformFee + conciergeFee;
+  const surchargeTotal = args.surchargeTotal ?? 0;
+  const fullTotal = subtotal + platformFee + conciergeFee + surchargeTotal;
   // Charge the deposit sum when this is a deposit checkout, else the full total (unchanged).
   const total = args.chargeAmount != null ? args.chargeAmount : fullTotal;
   const isDepositCheckout = args.chargeAmount != null && args.chargeAmount < fullTotal - 0.001;
@@ -486,6 +540,9 @@ async function authorizeAndPromote(
     subtotal: subtotal.toFixed(2),
     platformFee: platformFee.toFixed(2),
     conciergeFee: conciergeFee.toFixed(2),
+    // B1 (ruling 81): the travel surcharge disclosed as its OWN line, so the traveler sees it before
+    // completing payment (the F1 fee-disclosure posture, ruling 80). Server-derived (§14).
+    travelSurcharge: surchargeTotal.toFixed(2),
     total: total.toFixed(2),
     paymentIntent,
     bookingType: BookingType.EXPERIENCE_CART,
@@ -808,6 +865,61 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         });
       }
 
+      // ── B1 (ruling 81): resolve travel surcharges ONCE, and refuse an out-of-range pickup BEFORE
+      // any slot claim or Stripe call ─────────────────────────────────────────────────────────────
+      // The surcharge for each line is SERVER-DERIVED (§14) from the listing's mode + config × the
+      // traveler's CONFIRMED pickup (cart_items.pickup_location) — never off req.body. This one map
+      // is read by both the quote loop and the charge loop below, so the amount quoted and the amount
+      // charged cannot disagree (the one-resolver discipline). A confirmed pickup beyond the listing's
+      // outer bound (surcharge_max_km, or — for zones — the largest ring) makes the booking
+      // INELIGIBLE: refuse here, before any capacity is claimed or anything is charged.
+      const surchargeByItemId = await resolveCartSurcharges(cartData);
+      for (const item of cartData) {
+        const sc = surchargeByItemId.get(item.id);
+        if (sc && !sc.eligible) {
+          return res.status(400).json({
+            success: false,
+            error: "pickup_out_of_range",
+            serviceId: item.serviceId,
+            serviceName: item.service?.serviceName,
+            message: `"${item.service?.serviceName ?? "This service"}" doesn't travel that far — your pickup location is outside its coverage. Choose a closer pickup or a different service.`,
+          });
+        }
+      }
+
+      // ── T2 (ruling 62/64/83): D7 booking-ELIGIBILITY gates — refuse an ineligible request BEFORE
+      // any slot claim or Stripe call (the B1 pickup_out_of_range placement above). ─────────────────
+      // Each gate reads the LISTING's own D7 config (migration 195) + this booking line's own inputs
+      // (cart_items.party_size, cart_items.scheduled_date — the latter server-derived from the slot at
+      // add-to-cart) — SERVER-SIDE, never off req.body (§14: no amount/rate here, this is pure
+      // validation). §13: an UNSET listing field is NO constraint (the provider never specified), so
+      // that gate does not apply; an ABSENT booking input skips the gate that needs it — we never
+      // fabricate a bound or a party count. No capacity is claimed and nothing is charged on refusal.
+      // Room stays (per_night) are date-RANGE bookings, not point-in-time starts — the start-window /
+      // lead-time gates key on a single scheduled instant, so their scheduled_date drives these the
+      // same as any other line (a room carries none ⇒ time gates skip; party size still applies).
+      const refuseMessages: Record<string, string> = {
+        party_size_out_of_range: "party size out of range",
+        outside_start_window: "requested start is outside this service's booking window",
+        insufficient_lead_time: "requested start does not meet this service's lead-time notice",
+      };
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const elig = resolveBookingEligibility(item.service as any, {
+          partySize: (item as any).partySize ?? null,
+          scheduledDate: (item as any).scheduledDate ?? null,
+        });
+        if (!elig.eligible) {
+          return res.status(400).json({
+            success: false,
+            error: elig.reason,
+            serviceId: item.serviceId,
+            serviceName: item.service?.serviceName,
+            message: elig.detail ?? refuseMessages[elig.reason!] ?? "This booking request is not eligible for this service.",
+          });
+        }
+      }
+
       // ── C3 (§15): ATOMIC slot claims BEFORE any booking row or Stripe call ─────────────
       // Each slot-bound item claims capacity via storage.bookSlot (conditional UPDATE ...
       // WHERE booked_count < capacity RETURNING — the DB row transition IS the concurrency
@@ -1046,6 +1158,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       let checkoutSubtotal = 0;
       let checkoutBasePlatformFeeTotal = 0;
       let checkoutConciergeFeeTotal = 0;
+      // B1 (ruling 81): the travel-surcharge sum, kept SEPARATE from subtotal/platformFee — it is
+      // neither the service price nor a platform fee. Disclosed as its own line; added to the total.
+      let checkoutSurchargeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
         // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
@@ -1091,10 +1206,14 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         if (isBookingConcierge) {
           checkoutConciergeFeeTotal += itemPrice * conciergeBookingFlatFee;
         }
+        // B1: the travel surcharge for this line — server-derived from the SAME map the charge loop
+        // reads, so quote and charge cannot diverge (§14).
+        checkoutSurchargeTotal += surchargeByItemId.get(item.id)?.amount ?? 0;
       }
       const subtotal = checkoutSubtotal;
       const platformFee = checkoutBasePlatformFeeTotal;
       const conciergeFee = checkoutConciergeFeeTotal;
+      const surchargeTotal = Math.round(checkoutSurchargeTotal * 100) / 100;
       // The Stripe total (subtotal + base platform fee + concierge facilitation fee) is composed
       // by `authorizeAndPromote` from these three server-derived parts — one place, so the first
       // attempt and the same-key re-drive can never charge different amounts.
@@ -1145,14 +1264,24 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           : false;
         const conciergeFeaAmt = isBookingConcierge2 ? price * conciergeBookingFlatFee : 0;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeaAmt;
-        const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
+        // ── B1 (ruling 81): the travel surcharge for THIS line, server-derived (§14) from the SAME
+        // map the quote loop read. The surcharge is a pure provider pass-through — it is NOT the
+        // service price and NOT a platform fee, so the platform takes NO commission on it: the
+        // provider keeps 100%. It is FOLDED INTO the row's total_amount (so §17 reconciliation's
+        // SUM(total_amount + platform_fee) and the §15 re-drive — which recompute from the claimed
+        // rows — both stay correct with NO change to those systems) and ADDED to the provider's net
+        // earnings. `platform_fee` is computed on the base `price` only, untouched by the surcharge.
+        const surchargeResult = surchargeByItemId.get(item.id);
+        const surchargeAmt = surchargeResult?.amount ?? 0;
+        const rowTotalAmount = price + surchargeAmt;
+        const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt + surchargeAmt;
 
         // ── Lane 7 (ruling 72): deposit split for THIS line, server-derived (§14) ──────────────
-        // The line's full charge = price + all platform fees. `resolveDepositPlan` reads the
-        // listing's OWN deposit config (provider opt-in) — no client value reaches it — and returns
-        // null when this listing takes no deposit, in which case the full line is charged now and
-        // the deposit/balance columns stay NULL (byte-identical to pre-deposit, §13).
-        const lineFullCharge = price + totalPlatformFeeAmt;
+        // The line's full charge = price + travel surcharge + all platform fees. `resolveDepositPlan`
+        // reads the listing's OWN deposit config (provider opt-in) — no client value reaches it — and
+        // returns null when this listing takes no deposit, in which case the full line is charged now
+        // and the deposit/balance columns stay NULL (byte-identical to pre-deposit, §13).
+        const lineFullCharge = price + surchargeAmt + totalPlatformFeeAmt;
         const depositPlan = resolveDepositPlan(
           {
             depositEnabled: (item.service as any).depositEnabled,
@@ -1265,8 +1394,22 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
                     nightlyRate: stay.nightlyRate,
                   }
                 : {}),
+              // B1 (ruling 81): SNAPSHOT the travel surcharge and the pickup that triggered it onto
+              // the row (locked at purchase — the same snapshot posture as the rails/deposit facts).
+              // Present ONLY when a surcharge actually applied, so a non-surcharge booking is
+              // byte-identical (§13). `travelSurcharge` is the amount already folded into total_amount
+              // above; the row therefore SELF-DOCUMENTS how much of its total_amount is travel, and
+              // the confirmed pickup is preserved for the provider (who must go there).
+              ...(surchargeAmt > 0
+                ? {
+                    travelSurcharge: surchargeAmt.toFixed(2),
+                    travelSurchargeMode: surchargeResult?.mode ?? null,
+                    travelSurchargeBasis: surchargeResult?.basis ?? null,
+                    pickupLocation: item.pickupLocation ?? null,
+                  }
+                : {}),
             },
-            totalAmount: price.toFixed(2),
+            totalAmount: rowTotalAmount.toFixed(2),
             platformFee: totalPlatformFeeAmt.toFixed(2),
             insuranceFee: insuranceFeeAmt.toFixed(2),
             providerEarnings: netExpertEarningsAmt.toFixed(2),
@@ -1337,6 +1480,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         subtotal,
         platformFee,
         conciergeFee,
+        // B1 (ruling 81): the travel-surcharge sum, added to the full total and disclosed as its own
+        // line. On a re-drive this is NOT passed — each claimed row already carries the surcharge in
+        // its total_amount, so the re-drive's subtotal (Σ total_amount) covers it (see the arg doc).
+        surchargeTotal,
         // Lane 7: charge the deposit sum now when any line takes a deposit; else undefined ⇒ the
         // full total is charged, unchanged (§13).
         ...(anyDepositLine ? { chargeAmount: Math.round(checkoutAmountDueNow * 100) / 100 } : {}),
@@ -1561,6 +1708,11 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       let previewSubtotal = 0;
       let previewPlatformFeeTotal = 0;
       let previewConciergeFeeTotal = 0;
+      let previewSurchargeTotal = 0;
+      // B1 (ruling 81): the SAME server-derived surcharge the checkout will charge, so the traveler
+      // sees the travel line in the cart BEFORE Pay — the F1 disclosure posture. Pure preview: an
+      // out-of-range pickup is NOT refused here (that is the checkout's 400), it simply shows 0.
+      const previewSurcharges = await resolveCartSurcharges(cartData);
 
       for (const item of cartData) {
         if (!item.service) continue;
@@ -1610,13 +1762,19 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         if (isBookingConciergePreview) {
           previewConciergeFeeTotal += itemPrice * previewConciergeRate;
         }
+        // B1: only an ELIGIBLE surcharge is previewed as a charge (an out-of-range pickup shows 0
+        // here; the checkout is where it becomes a hard 400).
+        const psc = previewSurcharges.get(item.id);
+        if (psc?.eligible) previewSurchargeTotal += psc.amount;
       }
 
+      const previewSurcharge = Math.round(previewSurchargeTotal * 100) / 100;
       res.json({
         subtotal: Math.round(previewSubtotal * 100) / 100,
         platformFeeTotal: Math.round(previewPlatformFeeTotal * 100) / 100,
         conciergeFeeTotal: Math.round(previewConciergeFeeTotal * 100) / 100,
-        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal) * 100) / 100,
+        travelSurcharge: previewSurcharge,
+        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal + previewSurcharge) * 100) / 100,
         itemCount: cartData.filter(i => i.service).length,
       });
     } catch (err) {

@@ -978,4 +978,30 @@ export const MIGRATION_FILES = [
   // name/tagline it exposes (RENUMBERED from 196 during the Aug 12 2026 reconciliation).
   // Declared in shared/schema.ts (publish-trap).
   "204_expert_profile_display_fields.sql",
+  // 205: travel surcharge — provider-chosen mode per listing (DECISIONS.md ruling 81, lane B1,
+  // Wave 2). A §14 MONEY lane. Additive columns on provider_services (surcharge_mode DEFAULT 'none',
+  // surcharge_flat_amount, surcharge_per_km, surcharge_max_km — owner listing config, NO DB CHECK on
+  // the mode enum, publish-trap posture); a child table service_surcharge_tiers (zones mode's ordered
+  // rings, service_route_points pattern — ON DELETE CASCADE, UNIQUE (service_id, position)); and
+  // cart_items.pickup_location (jsonb) — the traveler's confirmed pickup, the surcharge TRIGGER. The
+  // CHARGE is server-derived at checkout (travel-surcharge.service.ts) from the mode + config + that
+  // pickup, never off req.body (§14); folded into the line total_amount so §15/§17 reconciliation and
+  // re-drive stay correct. All DECLARED in shared/schema.ts (publish-trap rule).
+  "205_travel_surcharge.sql",
+  // 206: cart_items.party_size — the traveler's confirmed party count, the INPUT the D7 party-size
+  // eligibility gate validates against (DECISIONS.md ruling 83, lane T2, Wave 2). Additive-nullable,
+  // NO DB CHECK, written owner-gated via PATCH /api/cart/:id and read server-side at checkout (the B1
+  // pickup_location pattern) — a booking input, never a money field; NULL ⇒ no party-size gate (§13).
+  // Declared in shared/schema.ts (publish-trap rule).
+  "206_cart_party_size.sql",
+  // 207: service_provider_forms.office_location — the provider's account-level office /
+  // place-of-business location (DECISIONS.md ruling 85). jsonb {address,lat,lng}, captured via the
+  // reused confirm-gated LocationPointPicker (address OR pin; geocoded through POST /api/geocode;
+  // persisted only on Confirm) and written owner-gated via PATCH /api/provider-application through a
+  // hand-written zod ALLOWLIST. PURPOSE: pre-fill a NEW listing's meeting pin (overridable per
+  // listing) — the office coords are provider-confirmed, so the seed is honest (§13). NULL = "not
+  // set" ⇒ no pre-fill; NEVER backfilled with a guessed coordinate. Provider CONFIG, not a
+  // money/identity/rate field. Additive-nullable, NO DB CHECK; DECLARED in shared/schema.ts
+  // (publish-trap rule). Idempotent.
+  "207_provider_office_location.sql",
 ] as const;
