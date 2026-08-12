@@ -33,7 +33,7 @@ import {
 } from "@/components/backoffice/location-point-picker";
 // D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
 // the server scorers and console chips use, never a second local copy.
-import { isPlaceAnchored } from "@shared/service-fundamentals";
+import { isPlaceAnchored, needsScheduling } from "@shared/service-fundamentals";
 // D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
 // server re-runs on the write, so what this wizard renders and what the API will accept cannot
 // drift. The client calls it only to draw the card — it never decides what it may affirm.
@@ -558,6 +558,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [newIncluded, setNewIncluded] = useState("");
   const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
+  // FP-1 / B7: in-flight + succeeded state for the protected-deliverable upload (ruling 58 / R4).
+  // `deliverableUploaded` means "this session uploaded a file, so the row ALREADY carries an
+  // objstore: key" — it is what keeps the subsequent save from clobbering that key with an empty
+  // URL box, and what satisfies the publish gate without the owner having to paste anything.
+  const [deliverableUploading, setDeliverableUploading] = useState(false);
+  const [deliverableUploaded, setDeliverableUploaded] = useState(false);
   // L27-P3 (§13): only an explicit Confirm/Remove in the picker sends `locationPoint`.
   // Untouched ⇒ the key is omitted entirely ⇒ the server leaves latitude/longitude/
   // location_precision exactly as they are, so an unrelated edit can never turn a
@@ -959,6 +965,49 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     },
   });
 
+  // ── FP-1 / B7: the protected-deliverable upload (ruling 58 / R4's first client caller) ────
+  // Raw bytes, not multipart — the server route is `express.raw({ type: ["application/pdf", …] })`
+  // scoped to itself, and no multipart plumbing exists anywhere in this codebase. The server
+  // validates the %PDF- magic bytes, caps at 20MB and NEVER echoes the storage key back, so all
+  // this handler learns is success/failure. On success the stored value becomes `objstore:<key>`;
+  // we mirror that locally as the sentinel the field already understands (`isManaged`), which
+  // flips the honest "platform-protected" copy and satisfies the publish gate — the same string
+  // the owner-gated read would hydrate on the next open.
+  const uploadDeliverable = async (file: File) => {
+    if (!id) return; // create mode has no row to attach to — the UI says so instead
+    setDeliverableUploading(true);
+    try {
+      const res = await fetch(`/api/provider/services/${id}/deliverable-file`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/pdf" },
+        body: file,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        // Honest, actionable failure — the server's own message (not a PDF, too large, storage
+        // unavailable), never a generic "something went wrong" and never a fake success.
+        throw new Error(body?.message ?? `Upload failed (${res.status})`);
+      }
+      // The upload has ALREADY written provider_services.serviceFile server-side. Record that
+      // locally and clear the URL box: from here the save must OMIT the field entirely, or an
+      // empty box (or a stale pasted link) would overwrite the protected key that was just
+      // stored. Deliberately NOT invalidating ["/api/provider/services", id] — that query's
+      // hydration effect resets the whole form, which would discard the provider's unsaved edits.
+      setDeliverableUploaded(true);
+      set("serviceFile", "");
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services/health"] });
+      toast({
+        title: "Deliverable uploaded",
+        description: "Buyers receive this file from platform-protected storage after their booking is confirmed.",
+      });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setDeliverableUploading(false);
+    }
+  };
+
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
       set("whatIncluded", [...formData.whatIncluded, newIncluded.trim()]);
@@ -1025,6 +1074,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // "place-anchored" means the same thing here as it does in the server scorers and the
       // console chips (shared/service-fundamentals.ts).
       const isPlaceAnchoredListing = isPlaceAnchored({
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+        productShape: existingService?.productShape ?? null,
+      });
+      // FP-1 / B5: the timing/capacity/booking-rules half of the D7 capture follows the SCHEDULED
+      // predicate (call + video join in_person/hybrid), matching the card that now renders them.
+      // The transport/pickup/surcharge half stays place-anchored. Both halves keep ruling 62's
+      // never-clobber shape: keys are OMITTED (never null) when they do not apply, so a save on a
+      // listing that has since changed method leaves whatever was captured earlier untouched.
+      const isScheduledListing = needsScheduling({
         deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
         productShape: existingService?.productShape ?? null,
       });
@@ -1105,9 +1163,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
-        // Only sent for place-anchored listings (the shared isPlaceAnchored predicate) — the
-        // keys are OMITTED entirely otherwise, so a PATCH on a pdf/call listing leaves whatever
-        // was captured earlier untouched rather than wiping it (§13).
+        // Sent for PLACE-ANCHORED listings only — getting to a place, and charging for the
+        // distance to it, mean nothing on a remote session. The keys are OMITTED entirely
+        // otherwise, so a PATCH on a pdf/call listing leaves whatever was captured earlier
+        // untouched rather than wiping it (§13).
         ...(isPlaceAnchoredListing
           ? {
               transportProvision: formData.transportProvision || null,
@@ -1115,15 +1174,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               // when it no longer applies. This clears no DATA: `serviceRadius` above and the
               // `service_route_points` rows are both untouched by this write.
               pickupCoverageMode: isPickupProvision ? (formData.pickupCoverageMode || null) : null,
-              durationMinutes: intOrNull(formData.durationMinutes),
-              bufferMinutes: intOrNull(formData.bufferMinutes),
-              earliestStartTime: formData.earliestStartTime || null,
-              latestStartTime: formData.latestStartTime || null,
-              serviceTimezone: formData.serviceTimezone.trim() || null,
-              partySizeMin: intOrNull(formData.partySizeMin),
-              partySizeMax: intOrNull(formData.partySizeMax),
-              changeCutoffHours: intOrNull(formData.changeCutoffHours),
-              canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
               // ── B1 travel surcharge CONFIG (ruling 81) — §14 money lane, but this WRITE only sets
               // the listing config; the CHARGE is derived server-side at checkout from the traveler's
               // confirmed pickup, never off req.body. NEVER-CLOBBER (ruling 62): every field is sent
@@ -1133,6 +1183,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               surchargeFlatAmount: formData.surchargeFlatAmount.trim() === "" ? null : formData.surchargeFlatAmount.trim(),
               surchargePerKm: formData.surchargePerKm.trim() === "" ? null : formData.surchargePerKm.trim(),
               surchargeMaxKm: intOrNull(formData.surchargeMaxKm),
+            }
+          : {}),
+        // FP-1 / B5: timing, capacity and booking rules follow the SCHEDULED predicate — a live
+        // call/video session has a duration, a start window, a time zone, a party size and a
+        // change cutoff exactly as an in-person tour does. Same omit-when-absent contract.
+        ...(isScheduledListing
+          ? {
+              durationMinutes: intOrNull(formData.durationMinutes),
+              bufferMinutes: intOrNull(formData.bufferMinutes),
+              earliestStartTime: formData.earliestStartTime || null,
+              latestStartTime: formData.latestStartTime || null,
+              serviceTimezone: formData.serviceTimezone.trim() || null,
+              partySizeMin: intOrNull(formData.partySizeMin),
+              partySizeMax: intOrNull(formData.partySizeMax),
+              changeCutoffHours: intOrNull(formData.changeCutoffHours),
+              canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
             }
           : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
@@ -1158,7 +1224,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // stale value up for a listing that has since switched to a different delivery
         // method (a leftover file URL on a call/in-person row would be dead weight, and
         // could confuse the delivery_asset fundamentals check).
-        serviceFile: formData.deliveryMethod === "pdf" ? (formData.serviceFile || null) : null,
+        //
+        // FP-1 / B7 NEVER-CLOBBER: after a protected upload in this session the row already
+        // carries `objstore:<key>` — a key this client is never shown (by design: the rail's whole
+        // point is that the location is never disclosed). So while the URL box is empty and an
+        // upload has happened, the key is OMITTED from the payload entirely and the stored value
+        // survives. Typing a URL after uploading still replaces it, exactly as the field's own
+        // copy promises.
+        ...(formData.deliveryMethod === "pdf" && deliverableUploaded && !formData.serviceFile.trim()
+          ? {}
+          : { serviceFile: formData.deliveryMethod === "pdf" ? (formData.serviceFile || null) : null }),
         categoryAttributes: formData.categoryAttributes,
       };
 
@@ -1349,11 +1424,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const expertVerification = useExpertVerificationStatus({ enabled: role === "expert" });
 
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
+  // ── FP-1 / A1 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P0) ──────────────────────────────
+  // Picking an offering makes Category a LOCKED, derived display. When the offering's
+  // `category_key` matches no `service_categories` row, that lock rendered "—",
+  // `formData.categoryId` stayed empty, and Publish was permanently disabled behind a bare
+  // "Still needed: Category (Step 1)" the provider had no way to satisfy — the custom-offering
+  // dead end. The DATA cause is fixed (seeder + migration 208); this is the RENDER half: an
+  // unresolvable key is now an explicit, honest error with a way out, never a silent dash on a
+  // dead button (§13 — say what is wrong rather than look merely incomplete).
+  const offeringCategoryUnresolved =
+    role === "provider" &&
+    !!formData.serviceOfferingTypeId &&
+    !!selectedProviderOffering &&
+    categories.length > 0 &&
+    !selectedCategory;
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
   // ── D7 (docs/DECISIONS.md ruling 62) ─────────────────────────────────────────────────────
   // Placement: the logistics/delivery step, shown ONLY for place-anchored methods, decided by
   // the SHARED predicate (shared/service-fundamentals.ts) rather than a local method list.
   const showLogisticsCapture = isPlaceAnchored({
+    deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+    productShape: existingService?.productShape ?? null,
+  });
+  // ── FP-1 / B5 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────────
+  // Picking Video Call or Phone removed the ENTIRE logistics card — all eight scheduling fields
+  // (duration, buffer, earliest/latest start, timezone, party size, change cutoff, can-anchor)
+  // vanished. But a live remote session is SCHEDULED: `SCHEDULED_METHODS`
+  // (shared/service-fundamentals.ts) already says call/video need bookable slots, and the health
+  // rail already scores them on availability. A Kyoto provider selling a 09:00 call to a New York
+  // buyer could not state WHICH 09:00. The timing / capacity / booking-rules sections are now
+  // gated on the SHARED scheduled predicate; place-anchored (`showLogisticsCapture`) still gates
+  // transport / pickup coverage / travel surcharge, which are meaningless without a place.
+  // isPlaceAnchored ⊂ needsScheduling, so an in-person listing sees exactly what it saw before.
+  const showScheduledLogistics = needsScheduling({
     deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
     productShape: existingService?.productShape ?? null,
   });
@@ -1449,7 +1552,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // final button. Draft saves stay check-free, exactly as before.
   const missingForFinal: { step: number; label: string }[] = [];
   if (!formData.name) missingForFinal.push({ step: 1, label: "Service name" });
-  if (!formData.categoryId) missingForFinal.push({ step: 1, label: "Category" });
+  if (!formData.categoryId) {
+    // FP-1 / A1: when the category is missing BECAUSE the chosen offering resolves to none, say
+    // so — "Category" alone reads as a field the provider forgot to fill, and the field is locked.
+    missingForFinal.push({
+      step: 1,
+      label: offeringCategoryUnresolved
+        ? "Category — this offering resolves to no category (see Step 1)"
+        : "Category",
+    });
+  }
   if (role === "provider" && !isEditMode && !formData.serviceOfferingTypeId) {
     missingForFinal.push({ step: 1, label: "An offering from the catalog" });
   }
@@ -1458,6 +1570,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   }
   if (needsMeetingPoint && !formData.meetingPoint.trim()) {
     missingForFinal.push({ step: 2, label: "Meeting point" });
+  }
+  // ── FP-1 / B7 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────────
+  // The field is labelled "Deliverable File URL *" and the card carries an amber warning, but
+  // nothing ever blocked: a $18 pdf guide published, went live and was sellable with the column
+  // empty, so a buyer could pay and receive nothing. Mirrors the SERVER publish gate added beside
+  // the existing price check (ruling 56's placement discipline) — this is the routing/explanation
+  // half, the server is the enforcement. Provider-only, because a provider's final action is
+  // PUBLISH (status:'active'); an expert's is "submit for approval", which does not go live and is
+  // the same draft-exempt rule the price/meeting-point gates use.
+  if (
+    role === "provider" &&
+    formData.deliveryMethod === "pdf" &&
+    !formData.serviceFile.trim() &&
+    !deliverableUploaded
+  ) {
+    missingForFinal.push({ step: 2, label: "Deliverable file (upload or link)" });
   }
 
   const handleFinalSubmit = (action: "submit" | "publish") => {
@@ -1884,7 +2012,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             {role === "provider" && formData.serviceOfferingTypeId ? (
               <div className="mt-2 flex items-center justify-between gap-3 rounded-md border bg-secondary/40 px-3 py-2">
                 <span className="text-sm font-medium" data-testid="text-derived-category">
-                  {selectedCategory?.name ?? "—"}
+                  {selectedCategory?.name ?? (offeringCategoryUnresolved ? "Not resolvable" : "—")}
                 </span>
                 <Button
                   type="button"
@@ -1915,8 +2043,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </SelectContent>
               </Select>
             )}
-            {role === "provider" && formData.serviceOfferingTypeId && (
+            {role === "provider" && formData.serviceOfferingTypeId && !offeringCategoryUnresolved && (
               <p className="text-xs text-muted-foreground mt-1">Derived from your selected /earn offering above.</p>
+            )}
+            {/* FP-1 / A1: the honest failure. Names the offering, says exactly what is missing and
+                who can fix it, and offers the one action that unblocks the provider right now —
+                instead of a silent "—" plus a Publish button that never enables. */}
+            {offeringCategoryUnresolved && (
+              <div
+                className="mt-2 flex items-start gap-3 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-200"
+                data-testid="banner-offering-category-unresolved"
+              >
+                <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+                <div>
+                  <p className="font-medium">
+                    We can't resolve a category for “{selectedProviderOffering?.display_name}”
+                  </p>
+                  <p className="text-xs mt-0.5 opacity-80">
+                    This offering points at a category this platform doesn't currently have, so we
+                    can't file your listing under one — and a listing without a category can't be
+                    published. This is our problem to fix, not yours: please contact support with
+                    this listing's name. In the meantime you can <strong>Save Draft</strong> to keep
+                    your work, or use <strong>Change offering</strong> to pick a different one and
+                    publish today.
+                  </p>
+                </div>
+              </div>
             )}
             {selectedCategory?.description && (
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
@@ -2360,9 +2512,59 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               string never leaks into this text field). The copy below states which case THIS
               listing is actually in — factual, no spin. */}
           {formData.deliveryMethod === "pdf" && (() => {
-            const isManaged = formData.serviceFile.trim().startsWith("objstore:");
+            // FP-1 / B7: "managed" is either a stored objstore: value hydrated from the owner read,
+            // or an upload made in this session (whose key the client is deliberately never told).
+            const isManaged =
+              formData.serviceFile.trim().startsWith("objstore:") ||
+              (deliverableUploaded && !formData.serviceFile.trim());
             return (
               <div>
+                {/* ── FP-1 / B7 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────
+                    The protected-upload rail (ruling 58 / R4) had existed since it landed with
+                    ZERO client callers — it appeared in this file only inside the comment above,
+                    so every provider-authored PDF was necessarily a pasted, unrevokable link.
+                    This is that rail's first caller.
+
+                    SHAPE, STATED (the smallest honest one): the endpoint is
+                    POST /api/provider/services/:id/deliverable-file and therefore needs a row to
+                    hang the file on. In CREATE mode there is no id yet, so the control says so
+                    plainly and points at Save Draft — rather than inventing a draft behind the
+                    provider's back, or pretending an upload happened. In EDIT mode it uploads the
+                    raw bytes (Content-Type: application/pdf, the shape express.raw() expects) and
+                    the server validates the %PDF- magic bytes; on success the STORED value becomes
+                    `objstore:<key>` and the honest "platform-protected" copy below flips. The
+                    pasted-URL fallback is untouched and keeps its `protected: false` labeling. */}
+                {isEditMode ? (
+                  <div className="mb-3">
+                    <Label htmlFor="deliverableUpload">Upload the PDF (platform-protected)</Label>
+                    <input
+                      id="deliverableUpload"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="mt-2 block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-secondary file:px-3 file:py-1.5 file:text-sm"
+                      disabled={deliverableUploading}
+                      data-testid="input-deliverable-upload"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = ""; // allow re-picking the same file after a failure
+                        if (file) uploadDeliverable(file);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {deliverableUploading
+                        ? "Uploading…"
+                        : "PDF only, up to 20MB. We store it privately and stream it to buyers — you can replace it any time, and we can revoke access."}
+                    </p>
+                  </div>
+                ) : (
+                  <p
+                    className="text-xs text-muted-foreground mb-3"
+                    data-testid="text-deliverable-upload-after-save"
+                  >
+                    A protected upload attaches to a saved listing. <strong>Save Draft</strong>{" "}
+                    first, then reopen this listing to upload the PDF — or paste a link below.
+                  </p>
+                )}
                 <Label htmlFor="serviceFile">Deliverable File URL *</Label>
                 <Input
                   id="serviceFile"
@@ -2749,7 +2951,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           checks or any traveler surface yet — ruling 62 captures the field set NOW, while the
           provider count is ~0, and wires consumers in later lanes. Every control offers a real
           "not specified" state: an unanswered question stays unanswered (§13). */}
-      {showLogisticsCapture && (
+      {showScheduledLogistics && (
         <Card data-testid="card-service-logistics">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -2767,6 +2969,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 T1 (ruling 74) brings this to the mock: the provision is a SEGMENTED choice, the
                 coverage is an explicit radius/route TOGGLE, and the never-clobber notice states
                 out loud that the hidden side's data is preserved (ruling 62/64, §13). */}
+            {/* FP-1 / B5: transport, pickup coverage and the travel surcharge stay
+                PLACE-ANCHORED-ONLY — there is nothing to get to, and no distance to charge for,
+                on a call or a video session. Only the timing / capacity / booking-rules sections
+                below open up for scheduled remote methods. */}
+            {showLogisticsCapture && (
             <div className="space-y-4" data-testid="logistics-section-transport">
               <div>
                 <h4 className="text-sm font-semibold flex items-center gap-2">
@@ -3063,6 +3270,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             )}
             </div>
+            )}
 
             {/* ── Timing ── */}
             <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-timing">

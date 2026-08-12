@@ -101,6 +101,9 @@ interface AdminService {
   providerName?: string;
   providerEmail?: string;
   contentAffinityTags?: string[];
+  // FP-1 / B10: which commission band this listing's CATEGORY resolves, or none. Visibility only —
+  // the band KEY, never a rate; nothing here participates in resolving a charge (§8/§18).
+  commissionBand?: { resolved: boolean; bandKey: string | null; reason: string | null };
 }
 
 interface ServicesSummary {
@@ -361,6 +364,19 @@ export default function AdminServices() {
                             )}
                             {service.location && (
                               <p className="text-xs text-[#7A7A72] mt-0.5 truncate">{service.location}</p>
+                            )}
+                            {/* FP-1 / B10 (docs/testing/PROVIDER_BATCH_EXERCISE.md): a listing with
+                                no category resolves no category commission band, so the platform
+                                default applies — five of twelve listings in one real catalog, and
+                                nothing showed it anywhere. Stated as a fact, with no rate. */}
+                            {service.commissionBand && !service.commissionBand.resolved && (
+                              <p
+                                className="text-xs text-amber-700 mt-0.5"
+                                title={service.commissionBand.reason ?? undefined}
+                                data-testid={`text-default-band-${service.id}`}
+                              >
+                                ⚠ default commission band
+                              </p>
                             )}
                           </div>
                         </TableCell>
