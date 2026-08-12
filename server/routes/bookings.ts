@@ -625,11 +625,58 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can confirm this booking' });
 
-    const [booking] = await db.select({ status: serviceBookings.status })
-      .from(serviceBookings).where(eq(serviceBookings.id, bookingId));
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
-    if (booking.status !== 'completed') {
-      return res.status(400).json({ error: 'Only a completed booking can be confirmed' });
+    // Delivery-eligibility reference (task 1091 review): a slot booking is confirmable once the
+    // slot day has ended; a slotless booking gets a 24h buffer after provider acceptance so the
+    // traveler can never complete-and-release a paid booking the moment it is accepted. This is
+    // the same slot-end-of-day anchor the auto-complete scheduler uses (minus its extra grace —
+    // an explicit traveler attestation of delivery is a stronger signal than a timer).
+    const bookingRes = await db.execute(sql`
+      SELECT sb.status, sb.stripe_payment_intent_id,
+             CASE WHEN vas.id IS NOT NULL THEN vas.date::timestamp + interval '1 day'
+                  ELSE COALESCE(sb.confirmed_at, sb.created_at) + interval '24 hours'
+             END AS confirmable_at
+      FROM service_bookings sb
+      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
+      WHERE sb.id = ${bookingId}
+    `);
+    const raw = bookingRes.rows?.[0] as { status: string; stripe_payment_intent_id: string | null; confirmable_at: string | null } | undefined;
+    if (!raw) return res.status(404).json({ error: 'Booking not found' });
+    const booking = { status: raw.status, stripePaymentIntentId: raw.stripe_payment_intent_id };
+
+    // Task 1091: the traveler's confirmation IS the production completion path. Previously this
+    // endpoint required status already 'completed', but nothing outside admin dispute machinery
+    // ever set 'completed' — so normally paid bookings never minted earnings. The traveler (the
+    // payer, never the earner — self-crediting is impossible on this rail) confirms delivery,
+    // which drives confirmed → completed (minting held earnings in updateServiceBookingStatus)
+    // and then early-releases them, matching the pre-existing Phase 3 semantics.
+    if (booking.status === 'confirmed') {
+      // Not before delivery: completing releases the earner's money, so it is gated on the
+      // service being plausibly delivered (slot day over / 24h past acceptance).
+      if (raw.confirmable_at && new Date(raw.confirmable_at).getTime() > Date.now()) {
+        return res.status(400).json({
+          error: 'not_yet_deliverable',
+          message: 'You can confirm completion after the service has taken place.',
+          confirmableAt: new Date(raw.confirmable_at).toISOString(),
+        });
+      }
+      // Earnings must never mint for an unpaid booking. A request-rail booking can sit in
+      // 'confirmed' without a charge (and can even carry a never-charged PI), so require a
+      // Stripe-verified succeeded PaymentIntent before completing.
+      if (!booking.stripePaymentIntentId) {
+        return res.status(400).json({ error: 'This booking has no payment on record, so it cannot be confirmed as completed.' });
+      }
+      const { stripe } = await import('../services/stripe-payment.service');
+      const pi = await stripe.paymentIntents.retrieve(booking.stripePaymentIntentId);
+      if (pi.status !== 'succeeded') {
+        return res.status(400).json({ error: 'Payment for this booking has not completed, so it cannot be confirmed as completed.' });
+      }
+      // Atomic guarded transition — a concurrent cancel/refund wins and this mints nothing.
+      const completed = await storage.updateServiceBookingStatus(bookingId, 'completed', undefined, ['confirmed']);
+      if (!completed) {
+        return res.status(409).json({ error: 'This booking changed before your confirmation was applied. Reload and try again.' });
+      }
+    } else if (booking.status !== 'completed') {
+      return res.status(400).json({ error: 'Only a confirmed or completed booking can be confirmed' });
     }
 
     const released = await storage.releaseEarningsForBooking(bookingId);

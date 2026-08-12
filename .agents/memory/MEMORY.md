@@ -17,6 +17,7 @@
 - [tsc baseline & getUserId convention](tsc-baseline-and-getuserid.md) — tsc is not clean (~137 pre-existing server errors); diff against baseline. Routes must use getUserId(req) from server/utils/auth.
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.
 - [Amadeus decommission](amadeus-decommission.md) — dropped (ruling 34) and code fully removed Aug 2026; /api/amadeus/* return honest empties; never re-add without new credentials + ledger ruling.
+- [Fee double-take is intended](fee-double-take-ruling.md) — cart checkout charges fee on top AND deducts 25% commission (platform keeps ~50% of list); ratified F1 ruling, not a bug — never "fix" without a new ruling.
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
 - [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Post-merge boot failures](post-merge-boot-failures.md) — ERR_MODULE_NOT_FOUND after a merge = node_modules not synced; npm install, don't hunt branch bugs.
@@ -24,4 +25,6 @@
 - [GitHub push auth](github-push-auth.md) — shell push failures were an expired token embedded in remote.origin.url + stale askpass; plain URL + env-token credential helper now; gitPush callback is the fallback.
 - [Google Maps runtime fallback](google-maps-runtime-fallback.md) — vis.gl clobbers gm_authFailure; use the accessor wrapper + useGoogleMapsAuthFailed(); curl can't test referrer restrictions.
 - [Cancellation refund policy](cancellation-refund-policy.md) — refund before terminal status; amount-scoped Stripe idempotency keys; partial refunds reverse ledger proportionally.
+- [Earnings mint path](earnings-mint-path.md) — earnings mint on booking → completed; production paths are traveler confirm-completion + PI-gated auto-complete scheduler; full fixture recipe inside.
+- [Payout-parity discriminators](payout-parity-discriminators.md) — all live bands are 0.25 so amount-based branch tests are vacuous; use the EXP-OVR override asymmetry to distinguish provider vs expert resolution.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

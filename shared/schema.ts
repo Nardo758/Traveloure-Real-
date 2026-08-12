@@ -395,6 +395,9 @@ export const localExpertForms = pgTable("local_expert_forms", {
   phone: varchar("phone", { length: 50 }),
   country: varchar("country", { length: 100 }),
   city: varchar("city", { length: 100 }),
+  // Public-facing display fields (migration 204) — edited from the expert profile editor.
+  displayName: varchar("display_name", { length: 100 }),
+  headline: varchar("headline", { length: 150 }),
   // Expertise
   destinations: jsonb("destinations").default([]),
   specialties: jsonb("specialties").default([]),
@@ -4618,7 +4621,12 @@ export const expertEarnings = pgTable("expert_earnings", {
   paidOutAt: timestamp("paid_out_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): completion-mint race guard — see provider_earnings twin.
+  bookingMintUniq: uniqueIndex("expert_earnings_booking_mint_uniq")
+    .on(table.referenceId)
+    .where(sql`reference_type = 'service_booking' AND amount >= 0`),
+}));
 
 // Expert payouts - tracks payout requests
 export const expertPayouts = pgTable("expert_payouts", {
@@ -4820,7 +4828,16 @@ export const providerEarnings = pgTable("provider_earnings", {
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): the completion mint's race guard — one booking-mint row per
+  // booking; the mint INSERTs with ON CONFLICT DO NOTHING against this index. Declared here
+  // AND in migration SQL (publish-trap rule).
+  // amount >= 0: only the one original positive completion-mint row is unique; negative
+  // compensation/clawback rows sharing the same source identity stay insertable.
+  bookingMintUniq: uniqueIndex("provider_earnings_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking' AND amount >= 0`),
+}));
 
 // Provider payouts - tracks payout requests
 export const providerPayouts = pgTable("provider_payouts", {
@@ -4895,7 +4912,14 @@ export const platformRevenue = pgTable("platform_revenue", {
   transactionDate: timestamp("transaction_date").defaultNow(),
   reconciliationDate: timestamp("reconciliation_date"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 203 (task 1091): completion-mint race guard — see provider_earnings twin.
+  // gross_amount >= 0: only the original completion-mint row is unique; negative reversal
+  // compensation rows (reversePlatformRevenueForBooking) share the same identity and stay free.
+  bookingMintUniq: uniqueIndex("platform_revenue_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking_commission' AND gross_amount >= 0`),
+}));
 
 // Daily revenue summary for dashboard analytics
 export const dailyRevenueSummary = pgTable("daily_revenue_summary", {

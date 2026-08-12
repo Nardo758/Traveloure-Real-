@@ -604,12 +604,16 @@ if (process.env.NODE_ENV === "production") {
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
 
-    // D8 booking auto-completion (docs/DECISIONS.md ruling 63, executed by ruling 66): the pdf
-    // entitlement timer and the property checkout-date timer. HOURLY, matching the earnings
-    // release scheduler — the windows are day-scale, so hourly is ample and keeps the lag between
-    // "eligible" and "completed" under an hour. Re-running is a no-op by construction (§15 atomic
-    // conditional inside the shared completeBooking), so an overlapping or repeated pass is safe.
-    // First pass is delayed so it never competes with startup.
+    // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
+    // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
+    // "when" (pdf artifact timer, property checkout-date, in_person service-date) PLUS the payment
+    // gate, unpaid-recheck stamping and the Pass-2 ledger reconciliation. The replit line's
+    // bookingAutoCompleteScheduler is retained only for its reconciliation helper (reused inside
+    // this job) and its unit proofs — it is deliberately NOT started, so exactly one job flips
+    // bookings. HOURLY, matching the earnings release scheduler — the windows are day-scale, so
+    // hourly is ample and keeps the lag between "eligible" and "completed" under an hour. Re-running
+    // is a no-op by construction (§15 atomic conditional + migration-203 DB-guarded idempotent
+    // mint), so an overlapping or repeated pass is safe. First pass is delayed to clear startup.
     setTimeout(() => {
       void runBookingAutoCompletion().catch((err) =>
         logger.error({ err }, "[auto-complete] first pass failed"),
