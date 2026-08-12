@@ -6,6 +6,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { users, providerServices, bundleComponents } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { guardedDeleteProviderService, softDeleteMessage } from "../services/service-delete-guard";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 
 /**
@@ -394,7 +395,15 @@ router.delete("/api/provider/bundles/:id", isAuthenticated, async (req, res) => 
     }
     // bundle_components.bundle_service_id is ON DELETE CASCADE (migration 151) —
     // deleting the bundle's provider_services row takes its component rows with it.
-    await db.delete(providerServices).where(eq(providerServices.id, existing.id));
+    // Financial-history guard: bundles are bookable rows in the same table, so a bundle
+    // with bookings is suspended instead of deleted (service_bookings CASCADE hazard).
+    const outcome = await guardedDeleteProviderService(existing.id);
+    if (outcome.softDeleted) {
+      return res.status(200).json({
+        softDeleted: true,
+        message: softDeleteMessage("Bundle", outcome.bookingCount),
+      });
+    }
     res.status(204).send();
   } catch (err) {
     console.error("[Provider] deleteBundle error:", err);
@@ -654,7 +663,15 @@ router.delete("/api/provider/properties/:id", isAuthenticated, async (req, res) 
     if (!existing || existing.userId !== userId || existing.productShape !== "property") {
       return res.status(404).json({ message: "Property not found or not owned by you" });
     }
-    await db.delete(providerServices).where(eq(providerServices.id, existing.id));
+    // Financial-history guard: a property with bookings is suspended, never hard-deleted
+    // (service_bookings.service_id CASCADE would wipe booking history + fee snapshots).
+    const outcome = await guardedDeleteProviderService(existing.id);
+    if (outcome.softDeleted) {
+      return res.status(200).json({
+        softDeleted: true,
+        message: softDeleteMessage("Property", outcome.bookingCount),
+      });
+    }
     res.status(204).send();
   } catch (err) {
     if (await respondIfPropertyHasRooms(err, req.params.id, res)) return;
@@ -788,8 +805,11 @@ router.delete("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
     // A3: removing a room type from an APPROVED property is also a room-set change —
     // re-enter the property's review, symmetric with the add-room trigger above.
     let propertyReenteredReview = false;
-    await db.transaction(async (tx) => {
-      await tx.delete(providerServices).where(eq(providerServices.id, existing.id));
+    // Financial-history guard: a room with bookings is suspended, never hard-deleted
+    // (service_bookings.service_id CASCADE would wipe its booking history). Either way the
+    // room leaves the sellable roster, so the A3 property re-review trigger fires in both
+    // branches — atomically, inside the same guarded transaction.
+    const outcome = await guardedDeleteProviderService(existing.id, async (tx) => {
       if (existing.parentServiceId) {
         const [property] = await tx
           .select()
@@ -805,6 +825,14 @@ router.delete("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
       }
     });
 
+    if (outcome.softDeleted) {
+      return res.json({
+        success: true,
+        softDeleted: true,
+        propertyReenteredReview,
+        message: softDeleteMessage("Room", outcome.bookingCount),
+      });
+    }
     res.json({ success: true, propertyReenteredReview });
   } catch (err) {
     console.error("[Provider] deleteRoom error:", err);
