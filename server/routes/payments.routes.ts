@@ -1505,7 +1505,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       const cartData = await storage.getCartItems(userId);
 
       if (cartData.length === 0) {
-        return res.json({ subtotal: 0, platformFeeTotal: 0, total: 0, itemCount: 0 });
+        return res.json({ subtotal: 0, platformFeeTotal: 0, conciergeFeeTotal: 0, total: 0, itemCount: 0 });
       }
 
       const safeParseRate = (value: any, fallback: number): number => {
@@ -1525,8 +1525,51 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         }
       }
 
+      // Preload offering type keys to detect booking_concierge items (mirrors checkout logic).
+      const distinctPreviewOfferingTypeIds = Array.from(new Set(
+        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+      ));
+      const previewOfferingTypeKeyMap = new Map<string, string>();
+      if (distinctPreviewOfferingTypeIds.length > 0) {
+        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctPreviewOfferingTypeIds);
+        for (const row of typeRows) {
+          previewOfferingTypeKeyMap.set(row.id, row.key);
+        }
+      }
+
+      // Load the concierge rate once. Task 1108: if the cart actually CONTAINS a
+      // booking_concierge item, use the SAME strict loader checkout uses — a misconfigured
+      // band must surface here as a machine-readable 503, not as a misleading $0 fee that
+      // 500s later at POST /api/checkout. Carts without concierge items keep the lenient
+      // loader (a zero rate is never applied to them anyway).
+      const previewHasConciergeItem = cartData.some(i =>
+        i.service?.expertOfferingTypeId
+          ? previewOfferingTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
+          : false,
+      );
+      let previewConciergeRate: number;
+      if (previewHasConciergeItem) {
+        try {
+          previewConciergeRate = await requireConciergeBookingRate();
+        } catch (bandErr: any) {
+          // Same misconfiguration checkout would 500 on — surface it BEFORE the traveler
+          // hits "Pay", with a code the cart UI can act on.
+          console.error("Fee preview: concierge band misconfigured:", bandErr?.message ?? bandErr);
+          return res.status(503).json({
+            error: "concierge_fee_unconfigured",
+            message:
+              "The Booking Concierge fee isn't configured right now, so we can't show an accurate total. " +
+              "Please try again shortly or contact support — checkout is paused for concierge items until this is fixed.",
+            retryable: true,
+          });
+        }
+      } else {
+        previewConciergeRate = await getConciergeBookingRate();
+      }
+
       let previewSubtotal = 0;
       let previewPlatformFeeTotal = 0;
+      let previewConciergeFeeTotal = 0;
 
       for (const item of cartData) {
         if (!item.service) continue;
@@ -1569,12 +1612,20 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         previewSubtotal += itemPrice;
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
         previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+        // Concierge facilitation fee: charged ON TOP of the normal split (mirrors checkout).
+        const isBookingConciergePreview = item.service.expertOfferingTypeId
+          ? previewOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+          : false;
+        if (isBookingConciergePreview) {
+          previewConciergeFeeTotal += itemPrice * previewConciergeRate;
+        }
       }
 
       res.json({
         subtotal: Math.round(previewSubtotal * 100) / 100,
         platformFeeTotal: Math.round(previewPlatformFeeTotal * 100) / 100,
-        total: Math.round((previewSubtotal + previewPlatformFeeTotal) * 100) / 100,
+        conciergeFeeTotal: Math.round(previewConciergeFeeTotal * 100) / 100,
+        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal) * 100) / 100,
         itemCount: cartData.filter(i => i.service).length,
       });
     } catch (err) {

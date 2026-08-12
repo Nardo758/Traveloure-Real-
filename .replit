@@ -53,6 +53,10 @@ args = "check-noop-migrations"
 task = "workflow.run"
 args = "check-claims-only-lookups"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "payout-parity"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -87,6 +91,17 @@ outputType = "console"
 task = "shell.exec"
 args = "node scripts/check-claims-only-user-lookups.cjs"
 
+[[workflows.workflow]]
+name = "payout-parity"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "JOURNEY_DB_WRITES_OK=1 npm run test:payout-parity"
+
+[workflows.workflow.metadata]
+isValidation = true
+
 [agent]
 integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_anthropic:1.0.0", "javascript_xai:1.0.0", "javascript_stripe:1.0.0"]
 
@@ -112,6 +127,10 @@ timeoutMs = 30000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3000
 
 [[ports]]
 localPort = 23636
