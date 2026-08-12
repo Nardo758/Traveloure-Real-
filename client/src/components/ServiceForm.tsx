@@ -795,6 +795,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // NULL/absent office location leaves the picker empty — behaves exactly as before (no pre-fill).
   // The pin is marked "touched" so the seeded point is actually SENT on create (see the submit
   // guard); it stays fully overridable/removable per listing.
+  // Ruling 86 (§13): "touched" is necessary but NOT sufficient — the submit guard also requires the
+  // listing to be place-anchored at submit time, so this seed can never reach a pdf/call/async
+  // listing whose Meeting Location card (and therefore the pin + its pre-fill note) never renders.
   useEffect(() => {
     if (role !== "provider" || isEditMode || officePreFilled.current) return;
     if (locationPointTouched || formData.locationPoint) return;
@@ -1164,7 +1167,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // one. Omitted otherwise so the server leaves the stored coordinates/precision
       // untouched (§13). The client never sends latitude/longitude/locationPrecision
       // directly: the server strips those and derives `'exact'` from this field alone.
-      if (locationPointTouched) {
+      //
+      // Ruling 86 (§13): ALSO gated on the listing being place-anchored. `isInPerson` is the
+      // same predicate as `needsMeetingPoint`, which is what renders the Meeting Location card
+      // — the ONLY surface that shows a pin (picker + the ruling-85 "Pre-filled from your office
+      // location" note). Ruling 85's office seed marks the pin touched so it saves, with no
+      // delivery-method condition, so a pdf/call/async listing was getting the provider's office
+      // coordinates stamped on it with NO UI anywhere showing them: a location the provider never
+      // saw or confirmed, on a listing that has none. OMIT (never `null`) when not place-anchored:
+      // key-absent = untouched is the never-clobber contract (extractServiceLocation rule 3), so
+      // an edit-mode round trip cannot wipe a pin that is already stored; `null` would clobber it.
+      if (locationPointTouched && isInPerson) {
         payload.locationPoint = formData.locationPoint;
       }
 
