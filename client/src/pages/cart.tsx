@@ -90,6 +90,8 @@ interface CartItem {
   // Slot detail joined server-side (_enrichCartItems) — real times, never fabricated client-side.
   slot?: { date: string; startTime: string | null; endTime: string | null } | null;
   notes: string | null;
+  // B1 (ruling 81): the traveler's confirmed pickup for this line — the travel-surcharge trigger.
+  pickupLocation?: { address: string | null; lat: number; lng: number } | null;
   service: {
     id: string;
     serviceName: string;
@@ -102,6 +104,9 @@ interface CartItem {
     // §17 property rooms (migration 153): 'per_night' marks a room-stay item —
     // charge is nights × price, never quantity × price. NULL/undefined = flat price.
     pricingUnit?: string | null;
+    // B1 (ruling 81): the listing's surcharge mode — non-'none' means this line prompts for a
+    // pickup location so a travel surcharge can be applied honestly.
+    surchargeMode?: string | null;
   } | null;
 }
 
@@ -110,6 +115,8 @@ interface CartData {
   subtotal: string;
   platformFee: string;
   conciergeFee: string;
+  // B1 (ruling 81): the server-derived travel surcharge for the cart, disclosed as its own line.
+  travelSurcharge?: string;
   total: string;
   itemCount: number;
 }
@@ -220,6 +227,97 @@ function getRoomStay(item: CartItem): { checkIn: string; checkOut: string; night
   const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
   if (!Number.isFinite(nights) || nights < 1) return null;
   return { checkIn, checkOut, nights };
+}
+
+/**
+ * B1 (ruling 81): the traveler's pickup-location capture for a travel-surcharge listing. The traveler
+ * types an address, we GEOCODE it via the existing POST /api/geocode (the same rail the map uses),
+ * they CONFIRM the resolved point, and it is PATCHed onto the cart row (cart_items.pickup_location).
+ * The surcharge AMOUNT is NEVER computed here — the server derives it at checkout/preview from these
+ * confirmed coords + the listing config (§14). No pickup ⇒ no surcharge (§13). Only rendered for a
+ * surcharge-enabled listing.
+ */
+function PickupLocationField({ item }: { item: CartItem }) {
+  const { toast } = useToast();
+  const [address, setAddress] = useState(item.pickupLocation?.address ?? "");
+  const [geocoding, setGeocoding] = useState(false);
+
+  const savePickup = useMutation({
+    mutationFn: async (pickupLocation: { address: string | null; lat: number; lng: number } | null) => {
+      return apiRequest("PATCH", `/api/cart/${item.id}`, { pickupLocation });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/cart"] }),
+  });
+
+  const confirmAddress = async () => {
+    if (!address.trim()) return;
+    setGeocoding(true);
+    try {
+      const res = await apiRequest("POST", "/api/geocode", { address: address.trim() });
+      const data = await res.json();
+      const lat = typeof data?.lat === "number" ? data.lat : parseFloat(String(data?.lat ?? data?.latitude));
+      const lng = typeof data?.lng === "number" ? data.lng : parseFloat(String(data?.lng ?? data?.longitude));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast({ title: "Couldn't find that address", description: "Try a more specific address.", variant: "destructive" });
+        return;
+      }
+      // We confirm the traveler-typed address to real coordinates — a real location, never a guess (§13).
+      savePickup.mutate({ address: address.trim(), lat, lng });
+    } catch {
+      toast({ title: "Couldn't look up that address", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
+  const confirmed = !!item.pickupLocation;
+  return (
+    <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2.5" data-testid={`pickup-field-${item.id}`}>
+      <p className="text-xs font-medium flex items-center gap-1.5">
+        <MapPin className="w-3.5 h-3.5" />
+        Pickup location
+      </p>
+      <p className="text-[11px] text-muted-foreground mt-0.5">
+        This provider may add a travel fee for a distant pickup. Tell us where to collect you — we'll
+        show any surcharge before you pay. Leave blank for no pickup.
+      </p>
+      <div className="flex items-center gap-2 mt-2">
+        <Input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Enter a pickup address"
+          className="h-8 text-sm"
+          data-testid={`input-pickup-address-${item.id}`}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={confirmAddress}
+          disabled={geocoding || savePickup.isPending || !address.trim()}
+          data-testid={`button-confirm-pickup-${item.id}`}
+        >
+          {geocoding || savePickup.isPending ? "…" : "Confirm"}
+        </Button>
+        {confirmed && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => { setAddress(""); savePickup.mutate(null); }}
+            data-testid={`button-clear-pickup-${item.id}`}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+      {confirmed && (
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1.5" data-testid={`text-pickup-confirmed-${item.id}`}>
+          Pickup confirmed{item.pickupLocation?.address ? `: ${item.pickupLocation.address}` : ""}.
+        </p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -464,6 +562,7 @@ export default function CartPage() {
     subtotal: string;
     platformFee: string;
     conciergeFee: string;
+    travelSurcharge: string;
     total: string;
   } | null>(null);
   // FP-4: C3 slot-conflict — which cart item(s) (by serviceId) the last checkout
@@ -726,6 +825,7 @@ export default function CartPage() {
           subtotal: data.subtotal,
           platformFee: data.platformFee,
           conciergeFee: data.conciergeFee ?? "0",
+          travelSurcharge: data.travelSurcharge ?? "0",
           total: data.total,
         });
         setCheckoutPaymentIntent(data.paymentIntent);
@@ -827,7 +927,10 @@ export default function CartPage() {
   const combinedSubtotal = platformSubtotal + externalSubtotal;
   const platformFee = parseFloat(cart?.platformFee || "0");
   const conciergeFee = parseFloat(cart?.conciergeFee || "0");
-  const combinedTotal = combinedSubtotal + platformFee + conciergeFee;
+  // B1 (ruling 81): the server-derived travel surcharge for this cart (0 unless a surcharge listing
+  // has a confirmed pickup outside its coverage). Shown as its own line; part of the total.
+  const travelSurcharge = parseFloat(cart?.travelSurcharge || "0");
+  const combinedTotal = combinedSubtotal + platformFee + conciergeFee + travelSurcharge;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const exchangeRates = exchangeRatesData?.rates ?? {};
@@ -1826,6 +1929,9 @@ export default function CartPage() {
                             )}
                           </div>
                         </div>
+                        {item.service?.surchargeMode && item.service.surchargeMode !== "none" && (
+                          <PickupLocationField item={item} />
+                        )}
                         <div className="flex justify-end mt-3">
                           <Button
                             variant="ghost"
@@ -1995,6 +2101,12 @@ export default function CartPage() {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Booking Concierge fee</span>
                           <span data-testid="text-concierge-fee">{formatPrice(conciergeFee)}</span>
+                        </div>
+                      )}
+                      {travelSurcharge > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Travel surcharge</span>
+                          <span data-testid="text-travel-surcharge">{formatPrice(travelSurcharge)}</span>
                         </div>
                       )}
                       <Separator />
@@ -2676,6 +2788,14 @@ export default function CartPage() {
                           <span className="text-muted-foreground">Booking Concierge fee</span>
                           <span data-testid="text-concierge-fee-payment">
                             {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee)}
+                          </span>
+                        </div>
+                      )}
+                      {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.travelSurcharge) : travelSurcharge) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Travel surcharge</span>
+                          <span data-testid="text-travel-surcharge-payment">
+                            {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.travelSurcharge) : travelSurcharge)}
                           </span>
                         </div>
                       )}

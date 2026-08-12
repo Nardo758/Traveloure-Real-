@@ -184,6 +184,15 @@ interface ServiceFormData {
   depositType: "" | "percentage" | "flat";
   depositPercentage: string;
   depositFlatAmount: string;
+  // ── Travel surcharge (B1, ruling 81) — PROVIDER-CHOSEN MODE per listing. §14 money lane: the
+  // provider sets the mode + config here; the CHARGE is derived server-side at checkout from the
+  // traveler's confirmed pickup. NEVER-CLOBBER: switching the mode keeps the other modes' config
+  // (every field is round-tripped, so a mode change never blanks the sibling values).
+  surchargeMode: "" | "none" | "flat" | "zones" | "per_km"; // "" hydrates as none
+  surchargeFlatAmount: string;
+  surchargePerKm: string;
+  surchargeMaxKm: string;
+  surchargeTiers: Array<{ radiusKm: string; fee: string }>; // zones mode — saved via a separate PUT
   leadTime: string;
   // Media
   serviceImage: string;
@@ -327,6 +336,11 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     depositType: "",
     depositPercentage: "",
     depositFlatAmount: "",
+    surchargeMode: "none",
+    surchargeFlatAmount: "",
+    surchargePerKm: "",
+    surchargeMaxKm: "",
+    surchargeTiers: [],
     canAnchor: "",
     cancellationPolicy: "",
     cancellationPolicyType: "",
@@ -432,6 +446,13 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     depositType: ((s.depositType as any) === "percentage" || (s.depositType as any) === "flat") ? (s.depositType as any) : "",
     depositPercentage: s.depositPercentage == null ? "" : String(s.depositPercentage),
     depositFlatAmount: s.depositFlatAmount == null ? "" : String(s.depositFlatAmount),
+    // B1 (ruling 81): NULL mode round-trips as 'none'. Amounts stay "" when never set (§13). Tiers
+    // are hydrated separately (a child-row GET); mapServiceToForm only sees the row here.
+    surchargeMode: (["none", "flat", "zones", "per_km"].includes(s.surchargeMode) ? s.surchargeMode : "none") as any,
+    surchargeFlatAmount: s.surchargeFlatAmount == null ? "" : String(s.surchargeFlatAmount),
+    surchargePerKm: s.surchargePerKm == null ? "" : String(s.surchargePerKm),
+    surchargeMaxKm: s.surchargeMaxKm == null ? "" : String(s.surchargeMaxKm),
+    surchargeTiers: [],
     canAnchor: s.canAnchor === true ? "yes" : s.canAnchor === false ? "no" : "",
     cancellationPolicy: s.cancellationPolicy || "",
     cancellationPolicyType: s.cancellationPolicyType || "",
@@ -693,6 +714,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: isEditMode,
   });
 
+  // B1 (ruling 81): the saved zones-mode surcharge rings — a child-row read, hydrated into the form
+  // separately from the listing row (mapServiceToForm only sees the parent). Edit mode only.
+  const { data: surchargeTierState } = useQuery<{ surchargeTiers: Array<{ radiusKm: string; fee: string }> }>({
+    queryKey: ["/api/provider/services", id, "surcharge-tiers"],
+    enabled: isEditMode,
+  });
+
   // ── D9 attestations (ruling 62's D9 clause / ruling 67) ──────────────────────────────────
   // Affirmations already ON RECORD for this listing. Edit mode only — a listing that does not
   // exist yet can have none (the record is a child row of the service). Read-only here: the
@@ -819,6 +847,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       setFormData(mapServiceToForm(existingService, role));
     }
   }, [existingService, role]);
+
+  // B1: merge the saved zone rings into the form once they load (after mapServiceToForm has set the
+  // rest). Strings so the number inputs stay controlled; NULL/absent stays an empty list (§13).
+  useEffect(() => {
+    const tiers = surchargeTierState?.surchargeTiers;
+    if (Array.isArray(tiers) && tiers.length > 0) {
+      setFormData((prev) => ({
+        ...prev,
+        surchargeTiers: tiers.map((t) => ({ radiusKm: String(t.radiusKm ?? ""), fee: String(t.fee ?? "") })),
+      }));
+    }
+  }, [surchargeTierState]);
 
   // Pre-select category's default price type when creating a new service.
   // We only stamp prevCategoryIdRef *after* categoryFields has loaded so
@@ -1047,6 +1087,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               partySizeMax: intOrNull(formData.partySizeMax),
               changeCutoffHours: intOrNull(formData.changeCutoffHours),
               canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
+              // ── B1 travel surcharge CONFIG (ruling 81) — §14 money lane, but this WRITE only sets
+              // the listing config; the CHARGE is derived server-side at checkout from the traveler's
+              // confirmed pickup, never off req.body. NEVER-CLOBBER (ruling 62): every field is sent
+              // on every save, so switching the mode preserves the other modes' amounts. Amounts stay
+              // NULL when never set (§13), never a fabricated 0.
+              surchargeMode: formData.surchargeMode || "none",
+              surchargeFlatAmount: formData.surchargeFlatAmount.trim() === "" ? null : formData.surchargeFlatAmount.trim(),
+              surchargePerKm: formData.surchargePerKm.trim() === "" ? null : formData.surchargePerKm.trim(),
+              surchargeMaxKm: intOrNull(formData.surchargeMaxKm),
             }
           : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
@@ -1151,10 +1200,34 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           attestationError = err?.message || "unknown error";
         }
       }
-      return { submitAction, service, attestationError };
+      // ── B1 zone tiers (ruling 81) ──────────────────────────────────────────────────────────
+      // The zones-mode rings are CHILD ROWS (service_surcharge_tiers), so — like attestations —
+      // they can only be written once the service id exists: a second owner-gated replace-list PUT
+      // AFTER the save. Sent ONLY when the chosen mode is 'zones', so switching AWAY from zones
+      // leaves the saved rings untouched (never-clobber, ruling 62). A failure here does NOT fail
+      // the save (§13) — surfaced as its own toast.
+      let surchargeTierError: string | null = null;
+      if (formData.surchargeMode === "zones" && savedServiceId) {
+        const tiers = formData.surchargeTiers
+          .map((t) => ({ radiusKm: Number(t.radiusKm), fee: Number(t.fee) }))
+          .filter((t) => Number.isFinite(t.radiusKm) && t.radiusKm > 0 && Number.isFinite(t.fee) && t.fee >= 0);
+        try {
+          await apiRequest("PUT", `/api/provider/services/${savedServiceId}/surcharge-tiers`, { tiers });
+        } catch (err: any) {
+          surchargeTierError = err?.message || "unknown error";
+        }
+      }
+      return { submitAction, service, attestationError, surchargeTierError };
     },
-    onSuccess: ({ submitAction, service, attestationError }) => {
+    onSuccess: ({ submitAction, service, attestationError, surchargeTierError }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      if (surchargeTierError) {
+        toast({
+          title: "Listing saved — travel zones were not recorded",
+          description: `${surchargeTierError}. Reopen this listing and re-save the zones.`,
+          variant: "destructive",
+        });
+      }
       if (attestationError) {
         // English, deliberately: ServiceForm is on I18N-2's "hardcoded English, migrate the
         // WHOLE surface in one commit" list, and a single t() call here would half-wrap it —
@@ -2761,6 +2834,169 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                         set to route. Nothing was deleted; switch to Radius to show it again.
                       </p>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── B1 Travel surcharge (ruling 81) — PROVIDER-CHOSEN MODE. Only for a listing that
+                actually collects travelers in person (a pickup provision). The provider picks how
+                (if at all) distance changes the price; the CHARGE is derived server-side at checkout
+                from the traveler's confirmed pickup, never here. NEVER-CLOBBER: switching the mode
+                keeps every other mode's numbers (they are separate fields on the same form). */}
+            {pickupProvisionChosen && (
+              <div className="rounded-md border p-3 space-y-3" data-testid="block-travel-surcharge">
+                <Label className="flex items-center gap-2">
+                  <Radius className="w-4 h-4" />
+                  Travel surcharge — charge more for a distant pickup?
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Optional. When on, a traveler who books with a pickup location outside your area
+                  pays a travel fee, shown as its own line at checkout. We only ever charge it from
+                  the real pickup a traveler confirms — never a guess.
+                </p>
+                <ToggleGroup
+                  type="single"
+                  value={formData.surchargeMode || "none"}
+                  onValueChange={(v) => set("surchargeMode", (v || "none") as any)}
+                  variant="outline"
+                  className="justify-start gap-2 flex-wrap"
+                  data-testid="segmented-surcharge-mode"
+                >
+                  <ToggleGroupItem value="none" data-testid="toggle-surcharge-none"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">None</ToggleGroupItem>
+                  <ToggleGroupItem value="flat" data-testid="toggle-surcharge-flat"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Flat fee</ToggleGroupItem>
+                  <ToggleGroupItem value="zones" data-testid="toggle-surcharge-zones"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Zones</ToggleGroupItem>
+                  <ToggleGroupItem value="per_km" data-testid="toggle-surcharge-per-km"
+                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Per km</ToggleGroupItem>
+                </ToggleGroup>
+
+                {formData.surchargeMode === "flat" && (
+                  <div data-testid="block-surcharge-flat">
+                    <Label htmlFor="surchargeFlatAmount">Flat travel fee ($)</Label>
+                    <Input
+                      id="surchargeFlatAmount"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formData.surchargeFlatAmount}
+                      onChange={(e) => set("surchargeFlatAmount", e.target.value)}
+                      placeholder="e.g. 20.00"
+                      className="mt-1"
+                      data-testid="input-surcharge-flat-amount"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Charged once when the pickup is outside your coverage radius
+                      {savedRadiusKm > 0 ? ` (${savedRadiusKm} km)` : ` (set a Service radius on the Pickup card)`}.
+                      Inside it, no fee.
+                    </p>
+                  </div>
+                )}
+
+                {formData.surchargeMode === "per_km" && (
+                  <div data-testid="block-surcharge-per-km">
+                    <Label htmlFor="surchargePerKm">Rate per km ($)</Label>
+                    <Input
+                      id="surchargePerKm"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formData.surchargePerKm}
+                      onChange={(e) => set("surchargePerKm", e.target.value)}
+                      placeholder="e.g. 1.50"
+                      className="mt-1"
+                      data-testid="input-surcharge-per-km"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Multiplied by the straight-line distance from your pin to the pickup —
+                      as-the-crow-flies, not driving distance.
+                    </p>
+                  </div>
+                )}
+
+                {formData.surchargeMode === "zones" && (
+                  <div className="space-y-2" data-testid="block-surcharge-zones">
+                    <p className="text-xs text-muted-foreground">
+                      Draw rings from smallest to largest. A pickup pays the fee of the first ring it
+                      falls inside. A pickup beyond the largest ring can't book.
+                    </p>
+                    {formData.surchargeTiers.map((tier, i) => (
+                      <div key={i} className="flex items-end gap-2" data-testid={`row-surcharge-tier-${i}`}>
+                        <div className="flex-1">
+                          <Label htmlFor={`tier-radius-${i}`}>Ring {i + 1} radius (km)</Label>
+                          <Input
+                            id={`tier-radius-${i}`}
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            value={tier.radiusKm}
+                            onChange={(e) => {
+                              const next = [...formData.surchargeTiers];
+                              next[i] = { ...next[i], radiusKm: e.target.value };
+                              set("surchargeTiers", next);
+                            }}
+                            className="mt-1"
+                            data-testid={`input-tier-radius-${i}`}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <Label htmlFor={`tier-fee-${i}`}>Fee ($)</Label>
+                          <Input
+                            id={`tier-fee-${i}`}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={tier.fee}
+                            onChange={(e) => {
+                              const next = [...formData.surchargeTiers];
+                              next[i] = { ...next[i], fee: e.target.value };
+                              set("surchargeTiers", next);
+                            }}
+                            className="mt-1"
+                            data-testid={`input-tier-fee-${i}`}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => set("surchargeTiers", formData.surchargeTiers.filter((_, j) => j !== i))}
+                          data-testid={`button-remove-tier-${i}`}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => set("surchargeTiers", [...formData.surchargeTiers, { radiusKm: "", fee: "" }])}
+                      data-testid="button-add-surcharge-tier"
+                    >
+                      Add a ring
+                    </Button>
+                  </div>
+                )}
+
+                {formData.surchargeMode !== "none" && (
+                  <div data-testid="block-surcharge-max-km">
+                    <Label htmlFor="surchargeMaxKm">Won't travel beyond (km) — optional</Label>
+                    <Input
+                      id="surchargeMaxKm"
+                      type="number"
+                      min={0}
+                      value={formData.surchargeMaxKm}
+                      onChange={(e) => set("surchargeMaxKm", e.target.value)}
+                      placeholder="No limit"
+                      className="mt-1"
+                      data-testid="input-surcharge-max-km"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      A pickup farther than this can't book at all. Leave blank for no limit.
+                    </p>
                   </div>
                 )}
               </div>
