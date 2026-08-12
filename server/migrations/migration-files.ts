@@ -936,4 +936,31 @@ export const MIGRATION_FILES = [
   // `local_expert_forms.languages` (jsonb string array); NULL means never captured and must never
   // render as a default "English" (§13). Both declared in shared/schema.ts (publish-trap rule).
   "199_pickup_radius_and_delivery_languages.sql",
+  // 200: deposits / partial payments on the cart-checkout rail — Lane 7 (docs/DECISIONS.md ruling
+  // 72). Ratified design: MANUAL BALANCE + PROVIDER OPT-IN PER LISTING. Adds deposit CONFIG to
+  // provider_services (deposit_enabled/type/percentage/flat_amount — owner listing config, not a
+  // §8/§18 fee rate) and the deposit/balance booking state to service_bookings (deposit_amount,
+  // deposit_paid, balance_amount, balance_paid, balance_due_at, stripe_deposit_intent_id,
+  // stripe_balance_intent_id — mirroring the legacy `bookings` shape additively). All
+  // additive-nullable, NO DB CHECK (app-enforced vocab), all DECLARED in shared/schema.ts
+  // (publish-trap rule). status='deposit_paid' is a plain varchar value outside every
+  // paid-equivalent set — a deposit-only booking releases no earning (D8 fires only from
+  // 'confirmed'). Deposits OFF ⇒ checkout byte-identical (§13).
+  "200_deposit_partial_payments.sql",
+  // 201: service_translations — provider CONTENT translation (docs/DECISIONS.md ruling 60 Phase B
+  // / ruling 73; QA_PUNCH_LIST I18N-4). Per-service, per-locale translated free-text content
+  // (name/short_description/description/meeting_point) on the service_route_points child-row
+  // pattern: ON DELETE CASCADE, UNIQUE (service_id, locale). `status`/`source` are app-enforced
+  // varchars (no DB CHECK — migration-144 posture); source='ai_draft' labels a machine draft by
+  // construction, never shown to a traveler until a provider approves it (§13). Additive, no
+  // CHECK; table + UNIQUE + index DECLARED in shared/schema.ts (publish-trap rule).
+  "201_service_translations.sql",
+  // 202: per-listing card display options — Catalog+Distribute lane C3 (docs/DECISIONS.md ruling
+  // 74/75). TWO additive columns on provider_services: show_price (boolean DEFAULT true — false =>
+  // the card shows an honest "Enquire for pricing", never a blank/$0; allowed for ALL services) and
+  // booking_mode (varchar, app-enforced bookingModeEnum instant|request|hidden, NO DB CHECK, NULL =
+  // unset => derived at read time from service_provider_forms.instant_booking by resolveBookingMode).
+  // Both are DISPLAY prefs, NOT money/identity/rate fields — legitimately client-settable, not
+  // stripped. Both DECLARED in shared/schema.ts (publish-trap rule); additive, no CHECK.
+  "202_service_display_options.sql",
 ] as const;

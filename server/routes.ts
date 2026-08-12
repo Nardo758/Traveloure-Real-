@@ -48,6 +48,7 @@ import {
   funnelEvents,
   bundleComponents,
   deliverableDownloads,
+  resolveBookingMode,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -76,6 +77,7 @@ import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
+import { draftServiceTranslation, isContentLocale } from "./services/service-translation.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
@@ -2220,7 +2222,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       category: category || undefined,
       activeOnly: activeOnly === "true",
     });
-    res.json(services);
+    // C3 (ruling 74/75): resolve each listing's card booking mode server-side with the SAME
+    // derivation the public storefront read uses (resolveBookingMode), so the Catalog Preview card
+    // is concrete AND identical to what travelers see ("what you see = what users see"). The
+    // account instant-booking flag is read ONCE (never duplicated per row); showPrice is already
+    // concrete via its column DEFAULT. The RAW column value is preserved for any consumer that
+    // needs it — resolution only fills the unset case.
+    const [ownerForm] = await db
+      .select({ instantBooking: serviceProviderForms.instantBooking })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, userId))
+      .limit(1);
+    const ownerInstantBooking = ownerForm?.instantBooking ?? false;
+    const withDisplayOptions = services.map((s) => ({
+      ...s,
+      showPrice: (s as any).showPrice ?? true,
+      bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
+    }));
+    res.json(withDisplayOptions);
   });
 
   // Get a single provider service by ID (ownership required)
@@ -2255,6 +2274,120 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json({ ...service, neighborhoods, routePoints });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
+    }
+  });
+
+  // ── D1 (ruling 74/76): per-listing publish-readiness summary for the Distribute
+  //    Marketplace channel. Owner-gated (service.userId === session user, §14 identity from
+  //    the session never the body) and read-only. It COMPOSES the three existing gate
+  //    authorities — it re-derives none of them:
+  //      • approval + active status  ← the provider_services row (the owner console read)
+  //      • verification gate         ← resolvePublishVerification(ownerId)  (F2, account-level)
+  //      • attestation gate          ← resolveAttestationShape + checkAttestationPublishGate
+  //                                     (SS-5a, per-listing, applicable set server-derived)
+  //    §13: a listing that CANNOT go live returns the TRUE blocker(s) with a fix deep-link,
+  //    never an optimistic "ready". "Live" is asserted only when approval='approved' AND
+  //    status='active' AND both gates pass — the same predicate the storefront read enforces.
+  //    The attestation gate is resolved against the LIVE row shape (no overrides — this is a
+  //    read of what-is, not a would-be write). Justification for a new endpoint over composing
+  //    client-side: the attestation APPLICABLE set is server-derived only (a client deciding
+  //    its own applicable set is exactly the walk-past the gate service forbids), so the honest
+  //    state cannot be assembled on the client without duplicating that logic.
+  app.get("/api/provider/services/:id/publish-readiness", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const approvalStatus = service.approvalStatus ?? "draft";
+      const status = service.status ?? "draft";
+
+      // Verification gate — the SAME resolver the publish choke points use; owner id, not actor.
+      const verification = await resolvePublishVerification(userId);
+
+      // Attestation gate — resolve the live shape, then ask the shared gate whether it blocks.
+      const attestShape = await resolveAttestationShape({ serviceId: service.id });
+      const attestGate = await checkAttestationPublishGate({ serviceId: service.id, shape: attestShape });
+      const attestationOk = attestGate === null;
+      const unaffirmed = attestGate
+        ? ((attestGate.body.attestations as { key: string; label: unknown }[] | undefined) ?? [])
+        : [];
+
+      const isApproved = approvalStatus === "approved";
+      const isActive = status === "active";
+      // "Live" = the SAME predicate the public storefront read (loadStorefront) actually serves:
+      // approved AND active. The verification/attestation gates are PUBLISH gates — they block a
+      // TRANSITION to active, not continuous serving — so a grandfathered approved+active listing
+      // on an as-yet-unverified account is genuinely live to travelers, and the Storefront header
+      // on THIS page reports it live too. Folding the publish gates into `isLive` would contradict
+      // both. Instead they surface below as the reasons a NON-active listing can't be activated.
+      const isLive = isApproved && isActive;
+
+      // Honest, ordered blocker list for a listing that is NOT live — each carries a fix
+      // deep-link (§13: the real reason, never a fake "ready"). Order = the sequence the owner
+      // resolves them in. Empty when the listing is live.
+      const blockers: { code: string; message: string; fixHref: string }[] = [];
+      if (!isLive) {
+        if (!verification.ok) {
+          blockers.push({
+            code: "VERIFICATION_GATE",
+            message: isProviderRole(verification.role)
+              ? "Finish identity and business verification before this listing can go live."
+              : "Finish identity verification before this listing can go live.",
+            fixHref: isExpertRole(verification.role) ? "/expert-status" : "/provider-status",
+          });
+        }
+        if (!attestationOk) {
+          blockers.push({
+            code: "ATTESTATION_GATE",
+            message: "Affirm the statements on this listing before publishing it.",
+            fixHref: `/provider/services/${service.id}/edit`,
+          });
+        }
+        if (!isApproved) {
+          blockers.push({
+            code: approvalStatus === "rejected" ? "APPROVAL_REJECTED" : "APPROVAL_PENDING",
+            message:
+              approvalStatus === "rejected"
+                ? "This listing was rejected in review — edit and resubmit it."
+                : "This listing is in review. It goes live once approved.",
+            fixHref: `/provider/services/${service.id}/edit`,
+          });
+        } else if (!isActive) {
+          blockers.push({
+            code: "NOT_ACTIVE",
+            message:
+              status === "paused"
+                ? "This listing is paused. Reactivate it in Catalog to sell it."
+                : "This listing is approved but not active yet. Activate it in Catalog.",
+            fixHref: `/provider/services`,
+          });
+        }
+      }
+
+      res.json({
+        serviceId: service.id,
+        name: (service as any).serviceName ?? (service as any).name ?? "",
+        approvalStatus,
+        status,
+        isLive,
+        publicHref: `/services/${service.id}`,
+        verification: {
+          ok: verification.ok,
+          role: verification.role,
+          identityVerified: verification.identityVerified,
+          businessVerified: verification.businessVerified,
+        },
+        attestation: {
+          ok: attestationOk,
+          unaffirmed,
+        },
+        blockers,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to resolve publish readiness" });
     }
   });
 
@@ -2301,6 +2434,155 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
+    }
+  });
+
+  // ══ Ruling 60 Phase B — provider CONTENT translation (service_translations) ══════════════════
+  // System B (the provider's OWN traveler-facing content), NOT system A (chrome). §13's honesty
+  // rule binds here: a draft is never shown to a traveler, an AI draft is labeled by construction,
+  // and a missing translation is served as the honest ORIGINAL with a "shown in English" label
+  // (that last part lives on the traveler read in content.routes.ts).
+  //
+  // Owner-gated: the service is resolved by id + `service.userId === session user`. The write body
+  // is a hand-written zod ALLOWLIST of exactly the four translatable content fields (§19 — no
+  // client-settable status/source/updatedBy/timestamp; status/source are set server-side by the
+  // path, updatedBy from the session per §14). A PUT is replace-for-that-locale.
+  const translationContentBodySchema = z.object({
+    serviceName: z.string().trim().max(255).nullish(),
+    shortDescription: z.string().trim().max(150).nullish(),
+    description: z.string().trim().max(20000).nullish(),
+    meetingPoint: z.string().trim().max(20000).nullish(),
+  });
+  const normalizeContent = (b: z.infer<typeof translationContentBodySchema>) => ({
+    serviceName: b.serviceName ?? null,
+    shortDescription: b.shortDescription ?? null,
+    description: b.description ?? null,
+    meetingPoint: b.meetingPoint ?? null,
+  });
+  async function resolveOwnedService(req: any, res: any) {
+    const userId = getUserId(req)!;
+    const service = await storage.getProviderServiceById(req.params.id);
+    if (!service || service.userId !== userId) {
+      res.status(404).json({ message: "Service not found" });
+      return null;
+    }
+    return { userId, service };
+  }
+  function parseTargetLocale(raw: string, res: any): string | null {
+    // A translation TARGET must be a shipped content locale other than the source language (en).
+    if (!isContentLocale(raw) || raw === "en") {
+      res.status(400).json({ message: `Unsupported translation locale '${raw}' (shipped: ja)` });
+      return null;
+    }
+    return raw;
+  }
+
+  // Owner read: the translation row for one locale (null when never authored). Includes status +
+  // source so the console can label a draft / an AI draft and gate the "Approve" action.
+  app.get("/api/provider/services/:id/translations/:locale", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const translation = await storage.getServiceTranslation(owned.service.id, locale);
+      res.json({ locale, translation: translation ?? null });
+    } catch (err) {
+      console.error("[service-translation] owner read failed:", err);
+      res.status(500).json({ message: "Failed to fetch translation" });
+    }
+  });
+
+  // Owner replace-for-locale write: a provider supplying/editing their OWN translation. Sets
+  // status='approved', source='human' — the provider authored and owns this text. updatedBy is
+  // the session user (§14); status/source/timestamps are NEVER read from the body (§19).
+  app.put("/api/provider/services/:id/translations/:locale", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const parsed = translationContentBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid translation content", errors: parsed.error.flatten() });
+      }
+      const translation = await storage.upsertServiceTranslation({
+        serviceId: owned.service.id,
+        locale,
+        content: normalizeContent(parsed.data),
+        status: "approved",
+        source: "human",
+        updatedBy: owned.userId,
+      });
+      res.json({ locale, translation });
+    } catch (err) {
+      console.error("[service-translation] owner write failed:", err);
+      res.status(500).json({ message: "Failed to save translation" });
+    }
+  });
+
+  // Owner approve: flip an existing (typically ai_draft) row to approved/human. Review gate, not a
+  // rewrite — the reviewed content is kept verbatim. 404 when nothing exists to approve.
+  app.post("/api/provider/services/:id/translations/:locale/approve", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const translation = await storage.approveServiceTranslation(owned.service.id, locale, owned.userId);
+      if (!translation) return res.status(404).json({ message: "No translation to approve for this locale" });
+      res.json({ locale, translation });
+    } catch (err) {
+      console.error("[service-translation] approve failed:", err);
+      res.status(500).json({ message: "Failed to approve translation" });
+    }
+  });
+
+  // Owner opt-in AI first draft: generate a machine translation and store it labeled
+  // source='ai_draft', status='draft' — NEVER shown to a traveler until the provider approves it
+  // (§13). Degrades HONESTLY with no translation provider configured: 503 + a clear state, never a
+  // fabricated/echoed translation. Uses the existing AI infra + ai_cost_tracking (no new client).
+  app.post("/api/provider/services/:id/translations/:locale/draft", isAuthenticated, async (req, res) => {
+    try {
+      const owned = await resolveOwnedService(req, res);
+      if (!owned) return;
+      const locale = parseTargetLocale(req.params.locale, res);
+      if (!locale) return;
+      const s = owned.service as any;
+      const outcome = await draftServiceTranslation(
+        {
+          serviceName: s.serviceName ?? null,
+          shortDescription: s.shortDescription ?? null,
+          description: s.description ?? null,
+          meetingPoint: s.meetingPoint ?? null,
+        },
+        locale,
+        owned.userId,
+      );
+      if (outcome.status === "no_api_key") {
+        return res.status(503).json({
+          message: "AI draft unavailable — no translation provider configured.",
+          code: "AI_DRAFT_UNAVAILABLE",
+        });
+      }
+      if (outcome.status === "unsupported_locale") {
+        return res.status(400).json({ message: `Unsupported translation locale '${locale}'` });
+      }
+      if (outcome.status === "ai_error") {
+        return res.status(502).json({ message: "AI draft failed — please try again.", code: "AI_DRAFT_ERROR" });
+      }
+      const translation = await storage.upsertServiceTranslation({
+        serviceId: owned.service.id,
+        locale,
+        content: outcome.content,
+        status: "draft",
+        source: "ai_draft",
+        updatedBy: owned.userId,
+      });
+      res.json({ locale, translation });
+    } catch (err) {
+      console.error("[service-translation] AI draft endpoint failed:", err);
+      res.status(500).json({ message: "Failed to generate draft" });
     }
   });
 

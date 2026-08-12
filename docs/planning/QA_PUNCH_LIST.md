@@ -81,6 +81,35 @@ owner-only, denormalized names) has ZERO client callers — retire as dead code 
 catalog price can never be §14-compliantly charged (no server price authority) — display-only in
 the cart IS the design, not a gap. CLOSED.
 
+## Deposits / partial payments (Lane 7 — LANDED, DECISIONS.md ruling 72, Aug 11 2026)
+
+**LANDED (ruling 72).** Deposits on the cart-checkout rail, ratified shape: MANUAL BALANCE + PROVIDER
+OPT-IN PER LISTING. Config on `provider_services` (`provider_pricing` audited as an orphan and NOT
+reused); deposit/balance state mirrored onto `service_bookings` (migration 200, additive-nullable,
+declared in `shared/schema.ts`). A deposit line checks out through the EXISTING §15 claim machine and
+lands in `status='deposit_paid'` (distinguishable by construction from `confirmed` and from an
+unauthorized claim; releases no earning — D8 completion still requires `confirmed`). Balance is a
+second, owner-gated checkout (`POST /api/bookings/:id/pay-balance`) with its own PaymentIntent on
+`stripe_balance_intent_id`, promoted `deposit_paid → confirmed` by `promoteBalancePayment` (the same
+atomic shape, parameterised — no fork). ServiceForm gains a deposit config section. Proofs:
+`server/__tests__/deposit-checkout.db.test.ts` D1–D9 (10, green); §15 spine + fee suites unchanged.
+
+Follow-ups (filed, NOT built):
+
+- **DEP-1 — overdue-balance SWEEP** [future lane]: v1 builds DETECTION only
+  (`GET /api/admin/bookings/balance-overdue`; the state reads as `deposit_paid`, never `confirmed`).
+  The automatic cancel/refund-or-forfeit at the cutoff — running per the listing's EXISTING
+  `cancellationPolicyType` (no new refund policy), modelled on the TTL sweep (atomic conditional,
+  never voiding a row whose PI may exist) — is deferred.
+- **DEP-2 — deposit-aware reconciliation** [future lane]: the daily drift job's §17 expected-charge is
+  `SUM(total_amount + platform_fee)` over a PI's bookings; a fully-paid deposit booking is a `confirmed`
+  two-PI row whose deposit PI covered only part, which that check would flag. `deposit_paid` rows are
+  skipped by the scan today; make the scan deposit-aware (sum deposit+balance PIs) before deposits see
+  real volume. Does not affect the detection suite's fixtures.
+- **DEP-3 — auto-charge v2** [DM]: the ratified v1 is deliberately manual-balance-only. A future
+  stored-card / off-session / SCA-mandate auto-charge at the cutoff is a separate decision-maker call
+  (it leaves the one-intent-per-claim shape and needs its own consent/mandate design).
+
 ## Open — [DM] / externally-gated only (the buildable column is EMPTY as of Wave 5)
 
 - **activity_bookings** [DM, re-framed]: keep the declaration + accept the publish prompt (safe,
@@ -969,6 +998,14 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   chrome string. Review it as a set with the glossary above; `出品` and `サービス事業者` are already
   applied there.
 
+  **Scope grew again (ruling 73, Phase B content translation):** the new traveler-facing chrome
+  LABEL strings in `client/src/locales/ja/common.json` `contentTranslation.*` — the "原文（英語）"
+  fallback tag, the AI-draft review notices and the approve/generate actions — are machine-authored
+  platform chrome and follow the register/glossary above. (Note this is distinct from provider
+  CONTENT translations, which are the provider's own words or a provider-approved AI draft and carry
+  no platform native-review debt; any JA `service_translations` sample copy in the Phase B test
+  fixtures is machine-authored fixture data only, never a real translation.)
+
   Note one JA-specific layout consequence already visible: Japanese nav labels are longer than their
   English counterparts and the traveler navbar wraps `マーケットプレイス` to two lines at desktop width.
   Cosmetic, not broken — but it is the kind of thing a native reviewer should be asked to judge.
@@ -995,12 +1032,22 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   than `SUPPORTED_LOCALES` (narrowing it would 400 that page's whole settings save). Retire the three
   dead options — or ship those locales — as a small named follow-up; both halves are one edit.
 
-- **I18N-4 — Ruling 60 Phase B (provider CONTENT translation) is NOT started.** No `service_translations`
-  table, no owner-gated translation writes, no labeled AI draft, no "shown in English" fallback tag.
-  Phase A deliberately routes **zero** content strings through `t()`. Also named-not-built by ruling 60
-  and untouched here: localized share frames, PDF deliverables, and emails. Currency display is **out of
-  scope by the ruling's own words** (a separate later ruling) — the footer currency pill stays `USD ($)`
-  even under a JA locale, on purpose.
+- **I18N-4 — Ruling 60 Phase B (provider CONTENT translation) — LANDED (DECISIONS.md ruling 73,
+  2026-08-11).** `service_translations` (migration 201) is built: per-service, per-locale translated
+  free-text content (`service_name`/`short_description`/`description`/`meeting_point`), owner-gated
+  `GET/PUT/POST-approve /api/provider/services/:id/translations/:locale` (+ `.../draft`), a labeled
+  `source='ai_draft'` machine draft that NEVER auto-publishes, and the honest **"shown in English /
+  原文（英語）"** fallback on the traveler read (`GET /api/services/:id?locale=`, §13). Locale vocabulary
+  is the SHIPPED set (en, ja) only. Proven by `server/__tests__/service-content-translation.http.test.ts`
+  (P1–P9, 14 green) + i18n 27/27 parity. **Still named-not-built by ruling 60 (each its own later
+  phase):** localized share frames, PDF deliverables, and emails. **Currency display is out of scope by
+  the ruling's own words** — the footer currency pill stays `USD ($)` under a JA locale, on purpose.
+  **Follow-ups filed:** (a) an owner-console UI to author/review translations + trigger the AI draft
+  (the API exists; a Catalog/ServiceForm surface does not yet — the endpoints are usable but unwired to
+  a screen); (b) the AI-draft path needs a live `ANTHROPIC_API_KEY` to actually translate (its lifecycle
+  is proven keyless, its translation QUALITY is not); (c) storefront bios and other provider-authored
+  content beyond the four listing fields are not yet translatable (ruling 60 also names "storefront
+  bios" — they live on `users`, not `provider_services`, so a separate home).
 
 - **I18N-5 — The 27 browser proofs now live in the repo but are NOT in CI.** The lane originally ran
   its ruling-65 proofs from a session-scratch script (ephemeral — the bench container reclaims it), so
