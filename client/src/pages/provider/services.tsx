@@ -90,6 +90,7 @@ import {
   Compass,
   Share2,
   ExternalLink,
+  ArrowRight,
   CalendarClock,
   ChevronDown,
   ImageOff,
@@ -1475,12 +1476,30 @@ export default function ProviderServices() {
         {/* C9: availability editing's ratified Catalog home (see header comment). */}
         <AvailabilitySection />
 
-        {/* C9: Share & Promote's opportunity-scoped creation half — real rows only (§13). */}
+        {/* C9 → C6 (ruling 74): Share & Promote's opportunity-scoped nudges — real rows only (§13)
+            — reworked into an ON-RAMP into the Distribute hub. The timely nudges STAY here
+            (valuable on the listing); the share/channels actions now deep-link into
+            /provider/distribute rather than opening a second share surface on Catalog (ruling 74:
+            "Promote → Distribute; no second share surface"). The storefront share tools stay on
+            Catalog (the header above), unchanged. */}
         <section data-testid="section-catalog-promote">
-          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-            {t("sections.promote")}
-          </h2>
-          <PostingOpportunitiesCard />
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide">
+              {t("sections.promote")}
+            </h2>
+            <Link href="/provider/distribute">
+              <Button size="sm" variant="outline" data-testid="link-promote-distribute">
+                <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                Open Distribute
+                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            </Link>
+          </div>
+          <p className="text-xs text-console-mid mb-3" data-testid="text-promote-onramp">
+            Direct links, social kits and channel status all live in your Distribute hub. These
+            timely nudges point straight into it.
+          </p>
+          <PostingOpportunitiesCard promoteHref="/provider/distribute" />
         </section>
 
         {/* C9: the per-service share kit dialog (shared share-tools components — feed/story
