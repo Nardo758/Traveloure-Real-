@@ -40,6 +40,11 @@ import {
 // from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
 import { resolveDepositPlan, resolveBalanceDueAt } from "../services/deposit.service";
 import { resolveTravelSurcharge, type TravelSurchargeResult } from "../services/travel-surcharge.service";
+// T2 (ruling 62/64 D7 capture; ruling 83 wiring): the D7 booking-eligibility gates — party size,
+// start window, lead time — validated against the listing's own constraints BEFORE any slot claim or
+// Stripe call (the B1 pickup_out_of_range placement). §13: NULL field ⇒ no constraint; §14: pure
+// validation, no amount/rate off req.body.
+import { resolveBookingEligibility } from "../services/booking-eligibility.service";
 import {
   stampBalanceAuthorization,
   promoteBalancePayment,
@@ -878,6 +883,39 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             serviceId: item.serviceId,
             serviceName: item.service?.serviceName,
             message: `"${item.service?.serviceName ?? "This service"}" doesn't travel that far — your pickup location is outside its coverage. Choose a closer pickup or a different service.`,
+          });
+        }
+      }
+
+      // ── T2 (ruling 62/64/83): D7 booking-ELIGIBILITY gates — refuse an ineligible request BEFORE
+      // any slot claim or Stripe call (the B1 pickup_out_of_range placement above). ─────────────────
+      // Each gate reads the LISTING's own D7 config (migration 195) + this booking line's own inputs
+      // (cart_items.party_size, cart_items.scheduled_date — the latter server-derived from the slot at
+      // add-to-cart) — SERVER-SIDE, never off req.body (§14: no amount/rate here, this is pure
+      // validation). §13: an UNSET listing field is NO constraint (the provider never specified), so
+      // that gate does not apply; an ABSENT booking input skips the gate that needs it — we never
+      // fabricate a bound or a party count. No capacity is claimed and nothing is charged on refusal.
+      // Room stays (per_night) are date-RANGE bookings, not point-in-time starts — the start-window /
+      // lead-time gates key on a single scheduled instant, so their scheduled_date drives these the
+      // same as any other line (a room carries none ⇒ time gates skip; party size still applies).
+      const refuseMessages: Record<string, string> = {
+        party_size_out_of_range: "party size out of range",
+        outside_start_window: "requested start is outside this service's booking window",
+        insufficient_lead_time: "requested start does not meet this service's lead-time notice",
+      };
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const elig = resolveBookingEligibility(item.service as any, {
+          partySize: (item as any).partySize ?? null,
+          scheduledDate: (item as any).scheduledDate ?? null,
+        });
+        if (!elig.eligible) {
+          return res.status(400).json({
+            success: false,
+            error: elig.reason,
+            serviceId: item.serviceId,
+            serviceName: item.service?.serviceName,
+            message: elig.detail ?? refuseMessages[elig.reason!] ?? "This booking request is not eligible for this service.",
           });
         }
       }

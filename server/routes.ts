@@ -7312,11 +7312,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });
         }
       }
+      // T2 (ruling 83): the traveler's CONFIRMED party count — the D7 party-size eligibility gate's
+      // trigger-input. Validated to a positive integer (or null to clear); the gate DERIVES nothing
+      // from a body amount/rate (§14) — this is a booking input like quantity. Only touched when the
+      // key is present, so an ordinary quantity/notes/pickup PATCH never disturbs a saved party size.
+      let partySizeUpdate: { partySize?: number | null } = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, "partySize")) {
+        const raw = req.body.partySize;
+        if (raw === null) {
+          partySizeUpdate = { partySize: null };
+        } else {
+          const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+          if (!Number.isInteger(n) || n < 1 || n > 100000) {
+            return res.status(400).json({ message: "partySize must be a positive integer, or null to clear" });
+          }
+          partySizeUpdate = { partySize: n };
+        }
+      }
       const updated = await cartProjection.updateCartItem(req.params.id, {
         quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
         ...pickupLocationUpdate,
+        ...partySizeUpdate,
       });
       res.json(updated);
     } catch (err) {
