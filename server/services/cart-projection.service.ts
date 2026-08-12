@@ -69,7 +69,7 @@ export async function addToCart(
 /** PATCH /api/cart/:id. Passthrough. */
 export async function updateCartItem(
   id: string,
-  updates: { quantity?: number; scheduledDate?: Date; notes?: string },
+  updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null },
 ): Promise<any | undefined> {
   return storage.updateCartItem(id, updates);
 }
