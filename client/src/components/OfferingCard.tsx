@@ -40,6 +40,8 @@ export function OfferingCard({
   price,
   unit,
   cta,
+  showPrice,
+  bookingMode,
 }: {
   href: string;
   testId: string;
@@ -50,7 +52,20 @@ export function OfferingCard({
   price: string;
   unit?: string | null;
   cta: string;
+  // C3 (Catalog+Distribute ruling 74/75): per-listing display options. Both OPTIONAL and default
+  // to TODAY'S behavior when omitted — existing callers (templates, ready-made trips) and any read
+  // that doesn't carry the fields are unchanged. `showPrice === false` hides the price and shows an
+  // honest "Enquire for pricing" (never a blank or a fake "$0", §13). `bookingMode` drives the CTA:
+  // 'request' ⇒ "Request to book"; 'hidden' ⇒ a contact/enquiry affordance, no booking CTA;
+  // 'instant' (or omitted) ⇒ the caller's own `cta`, i.e. the existing book affordance.
+  showPrice?: boolean;
+  bookingMode?: "instant" | "request" | "hidden";
 }) {
+  const priceHidden = showPrice === false;
+  const ctaLabel =
+    bookingMode === "request" ? "Request to book →"
+    : bookingMode === "hidden" ? "Enquire →"
+    : cta;
   return (
     <Link
       href={href}
@@ -78,10 +93,18 @@ export function OfferingCard({
         {ratingSlot}
         <div className="mt-auto flex items-center justify-between gap-2 border-t pt-2.5">
           <div className="text-base font-bold">
-            {price}
-            {unit && <span className="ml-1 text-xs font-medium text-muted-foreground">{unit}</span>}
+            {priceHidden ? (
+              <span className="text-sm font-medium text-muted-foreground" data-testid={`${testId}-enquire-price`}>
+                Enquire for pricing
+              </span>
+            ) : (
+              <>
+                {price}
+                {unit && <span className="ml-1 text-xs font-medium text-muted-foreground">{unit}</span>}
+              </>
+            )}
           </div>
-          <span className="text-sm font-semibold text-primary whitespace-nowrap">{cta}</span>
+          <span className="text-sm font-semibold text-primary whitespace-nowrap">{ctaLabel}</span>
         </div>
       </div>
     </Link>

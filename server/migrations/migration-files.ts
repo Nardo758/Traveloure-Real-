@@ -955,4 +955,12 @@ export const MIGRATION_FILES = [
   // construction, never shown to a traveler until a provider approves it (§13). Additive, no
   // CHECK; table + UNIQUE + index DECLARED in shared/schema.ts (publish-trap rule).
   "201_service_translations.sql",
+  // 202: per-listing card display options — Catalog+Distribute lane C3 (docs/DECISIONS.md ruling
+  // 74/75). TWO additive columns on provider_services: show_price (boolean DEFAULT true — false =>
+  // the card shows an honest "Enquire for pricing", never a blank/$0; allowed for ALL services) and
+  // booking_mode (varchar, app-enforced bookingModeEnum instant|request|hidden, NO DB CHECK, NULL =
+  // unset => derived at read time from service_provider_forms.instant_booking by resolveBookingMode).
+  // Both are DISPLAY prefs, NOT money/identity/rate fields — legitimately client-settable, not
+  // stripped. Both DECLARED in shared/schema.ts (publish-trap rule); additive, no CHECK.
+  "202_service_display_options.sql",
 ] as const;
