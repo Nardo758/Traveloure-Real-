@@ -1,4 +1,4 @@
-import type { Express, RequestHandler } from "express";
+import type { Express, RequestHandler, ErrorRequestHandler, Request, Response, NextFunction } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
@@ -3181,7 +3181,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return res.status(404).json({ message: "Service not found or not owned by you" });
     }
     try {
-      await storage.deleteProviderService(req.params.id);
+      // Financial-history guard (mirrors DELETE /api/admin/services/:id): service_bookings.service_id
+      // is ON DELETE CASCADE, so a hard delete would silently destroy historical bookings and the
+      // platform_fee revenue snapshots. If any bookings reference this service, soft-delete instead —
+      // suspend it so it drops off public surfaces while every historical record keeps its reference.
+      // Single transaction with the row locked FOR UPDATE: a concurrent checkout's FK KEY SHARE lock
+      // conflicts with FOR UPDATE, so it can't slip a booking in between the count and the delete.
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${req.params.id} FOR UPDATE`);
+        const [{ bookingCount }] = await tx
+          .select({ bookingCount: sql<number>`count(*)::int` })
+          .from(serviceBookings)
+          .where(eq(serviceBookings.serviceId, req.params.id));
+        if (bookingCount > 0) {
+          await tx
+            .update(providerServices)
+            .set({ status: "suspended", updatedAt: new Date() })
+            .where(eq(providerServices.id, req.params.id));
+          return { softDeleted: true as const, bookingCount };
+        }
+        await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
+        return { softDeleted: false as const, bookingCount: 0 };
+      });
+      if (outcome.softDeleted) {
+        return res.status(200).json({
+          softDeleted: true,
+          message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
+        });
+      }
     } catch (err: any) {
       // Migration 151 RESTRICT: honest 409 when the service sits inside a bundle.
       if (await respondIfServiceInBundle(err, req.params.id, res)) return;
@@ -5408,7 +5435,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     "/api/provider/services/:id/deliverable-file",
     isAuthenticated,
     express.raw({ type: ["application/pdf", "application/octet-stream"], limit: "20mb" }) as RequestHandler,
-    async (req, res) => {
+    // Route-scoped error mapper: express.raw rejects an over-limit body with a 413
+    // `entity.too.large` error that would otherwise fall through to the global handler as an
+    // opaque 500. Map it to the documented clean 400/DELIVERABLE_TOO_LARGE for THIS endpoint,
+    // for any oversized upload regardless of how far over the cap it is. Non-size errors pass through.
+    ((err: any, _req: Request, res: Response, next: NextFunction) => {
+      if (err && (err.type === "entity.too.large" || err.status === 413 || err.statusCode === 413)) {
+        return res.status(400).json({
+          message: "File exceeds the 20MB deliverable size limit",
+          code: "DELIVERABLE_TOO_LARGE",
+        });
+      }
+      return next(err);
+    }) as ErrorRequestHandler,
+    async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req)!;
         const service = await storage.getProviderServiceById(req.params.id);
