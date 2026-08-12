@@ -994,4 +994,14 @@ export const MIGRATION_FILES = [
   // pickup_location pattern) — a booking input, never a money field; NULL ⇒ no party-size gate (§13).
   // Declared in shared/schema.ts (publish-trap rule).
   "206_cart_party_size.sql",
+  // 207: service_provider_forms.office_location — the provider's account-level office /
+  // place-of-business location (DECISIONS.md ruling 85). jsonb {address,lat,lng}, captured via the
+  // reused confirm-gated LocationPointPicker (address OR pin; geocoded through POST /api/geocode;
+  // persisted only on Confirm) and written owner-gated via PATCH /api/provider-application through a
+  // hand-written zod ALLOWLIST. PURPOSE: pre-fill a NEW listing's meeting pin (overridable per
+  // listing) — the office coords are provider-confirmed, so the seed is honest (§13). NULL = "not
+  // set" ⇒ no pre-fill; NEVER backfilled with a guessed coordinate. Provider CONFIG, not a
+  // money/identity/rate field. Additive-nullable, NO DB CHECK; DECLARED in shared/schema.ts
+  // (publish-trap rule). Idempotent.
+  "207_provider_office_location.sql",
 ] as const;

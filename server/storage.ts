@@ -205,6 +205,9 @@ export interface IStorage {
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
   updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
   updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
+  // Ruling 85: owner-gated (by userId, never a body id) set/update/clear of the account-level
+  // office location. The value is a pre-validated {address,lat,lng} or null-to-clear.
+  updateServiceProviderFormOfficeLocation(userId: string, officeLocation: { address: string | null; lat: number; lng: number } | null): Promise<ServiceProviderForm | undefined>;
 
   // Provider Services
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
@@ -1240,6 +1243,21 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(serviceProviderForms)
       .set({ rejectionMessage })
       .where(eq(serviceProviderForms.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Ruling 85: scope the write to the caller's OWN row by userId (never by a body-supplied id), so
+  // one provider can never overwrite another's office location. `officeLocation` is already
+  // validated to {address,lat,lng} | null by the route allowlist; NULL clears it (§13 — the honest
+  // "not set" state, never a fabricated coordinate).
+  async updateServiceProviderFormOfficeLocation(
+    userId: string,
+    officeLocation: { address: string | null; lat: number; lng: number } | null,
+  ): Promise<ServiceProviderForm | undefined> {
+    const [updated] = await db.update(serviceProviderForms)
+      .set({ officeLocation })
+      .where(eq(serviceProviderForms.userId, userId))
       .returning();
     return updated;
   }

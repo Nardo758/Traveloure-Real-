@@ -563,6 +563,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // location_precision exactly as they are, so an unrelated edit can never turn a
   // migration-129 neighborhood centroid into an `'exact'` claim.
   const [locationPointTouched, setLocationPointTouched] = useState(false);
+  // Ruling 85: true once a NEW listing's pin was seeded from the provider's saved account office
+  // location, so the picker can show a "pre-filled from your office" note. Reset when the pin is
+  // cleared/moved by the user (they've taken over from the pre-fill).
+  const [officePinPrefilled, setOfficePinPrefilled] = useState(false);
+  const officePreFilled = useRef(false);
 
   // Audit item #10 (PROVIDER_CONSOLE_IMPROVEMENT_AUDIT.md): the form is a 4-step
   // wizard instead of one ~7-viewport scroll. LAYOUT ONLY — the field set, zod/
@@ -736,6 +741,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // succeeds — the affirmation is a child row and needs the service id to exist.
   const [attestationChecks, setAttestationChecks] = useState<Record<string, boolean>>({});
 
+  // Ruling 85: the provider's account-level office location — used ONLY to PRE-FILL a NEW listing's
+  // map pin so they don't re-place it every time. Provider role + create mode only (an expert has
+  // no provider form; an edit already carries its own pin, or deliberately lacks one). The office
+  // coords are provider-CONFIRMED (saved via the same confirm-gated picker), so seeding a new pin
+  // with them is honest (§13); the provider can still move or remove it per listing before saving.
+  const { data: providerAccountForm } = useQuery<{ officeLocation?: { address?: string | null; lat: number; lng: number } | null } | null>({
+    queryKey: ["/api/provider-application"],
+    enabled: role === "provider" && !isEditMode,
+  });
+
   const categoryPreSelected = useRef(false);
   const offeringTypeKeyPreSelected = useRef(false);
   const providerOfferingTypeKeyPreSelected = useRef(false);
@@ -773,6 +788,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       }));
     }
   }, [isEditMode]);
+
+  // Ruling 85: seed a NEW listing's meeting pin from the provider's saved account office location.
+  // Runs once, only when creating (never editing), only if the provider has NOT already touched the
+  // pin and none is set yet, and only if the account office location is present + parseable. §13: a
+  // NULL/absent office location leaves the picker empty — behaves exactly as before (no pre-fill).
+  // The pin is marked "touched" so the seeded point is actually SENT on create (see the submit
+  // guard); it stays fully overridable/removable per listing.
+  useEffect(() => {
+    if (role !== "provider" || isEditMode || officePreFilled.current) return;
+    if (locationPointTouched || formData.locationPoint) return;
+    const loc = providerAccountForm?.officeLocation;
+    if (!loc) return;
+    const point = parseStoredPoint(loc.lat, loc.lng);
+    if (!point) return; // §13: never seed from a non-finite/out-of-range stored value
+    officePreFilled.current = true;
+    setFormData((prev) => ({ ...prev, locationPoint: point }));
+    setLocationPointTouched(true);
+    setOfficePinPrefilled(true);
+  }, [providerAccountForm, role, isEditMode, locationPointTouched, formData.locationPoint]);
 
   // Pre-select tier from ?offeringTypeKey= URL param (used by /earn CTA)
   useEffect(() => {
@@ -2522,12 +2556,26 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 Additive — the text above stays the required field and is unchanged; a pin
                 is optional, and the picker renders nothing at all when no Maps key is
                 configured (the form then behaves exactly as it did before). */}
+            {/* Ruling 85: a NEW listing whose pin was seeded from the provider's saved office
+                location says so, honestly — the coords are provider-confirmed but this service may
+                be offered elsewhere, so the provider is nudged to adjust/remove. */}
+            {officePinPrefilled && (
+              <p
+                className="text-xs flex items-start gap-1.5 rounded-md p-2"
+                style={{ color: "var(--console-mid)", background: "var(--console-ground)", border: "1px solid var(--console-line)" }}
+                data-testid="office-prefill-note"
+              >
+                <MapPin className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: "var(--console-brand)" }} />
+                Pre-filled from your office location — adjust if this service is offered elsewhere.
+              </p>
+            )}
             <LocationPointPicker
               value={formData.locationPoint}
               precision={formData.locationPrecision}
               addressHint={formData.meetingPoint || formData.serviceArea}
               onChange={(point) => {
                 setLocationPointTouched(true);
+                setOfficePinPrefilled(false);
                 set("locationPoint", point);
               }}
               label="Pin this location on the map (optional)"
