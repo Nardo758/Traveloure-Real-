@@ -16,6 +16,7 @@ import {
   hasDepositTerms,
   formatCheckInOut,
   hasAmenities,
+  formatResponseWindow,
 } from "../service-good-to-know";
 
 describe("formatHours", () => {
@@ -164,5 +165,24 @@ describe("hasAmenities", () => {
     assert.equal(hasAmenities(null), false);
     assert.equal(hasAmenities(undefined), false);
     assert.equal(hasAmenities([]), false);
+  });
+});
+
+describe("formatResponseWindow (S9, docs/DECISIONS.md ledger row 102 — §13 never a guessed 'soon')", () => {
+  it("returns null when never captured", () => {
+    assert.equal(formatResponseWindow(null), null);
+    assert.equal(formatResponseWindow(undefined), null);
+  });
+  it("returns null for a non-positive value rather than a fabricated promise", () => {
+    assert.equal(formatResponseWindow(0), null);
+    assert.equal(formatResponseWindow(-5), null);
+  });
+  it("states an hour value in prose", () => {
+    assert.equal(formatResponseWindow(6), "Replies within 6 hours");
+    assert.equal(formatResponseWindow(1), "Replies within 1 hour");
+  });
+  it("reuses formatHours's day-collapsing on an exact multiple of 24", () => {
+    assert.equal(formatResponseWindow(24), "Replies within 1 day");
+    assert.equal(formatResponseWindow(48), "Replies within 2 days");
   });
 });

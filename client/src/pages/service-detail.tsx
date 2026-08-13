@@ -73,6 +73,7 @@ import {
   formatTransportProvision,
   resolveDepositPreview,
   hasDepositTerms,
+  formatResponseWindow,
 } from "@/lib/service-good-to-know";
 // Ledger 90 (FP-5, I3): the SAME rail the storefront's Message CTA uses. "Contact Provider" used
 // to link to `/chat?provider=<userId>` — a param chat.tsx has never read — landing the traveler on
@@ -224,6 +225,12 @@ interface Service {
   // client MUST label the circle as approximate whenever this is true (§13 honesty). Absent on
   // every other product shape and on a confirmed-booking reveal, where the pin is exact.
   locationApproximate?: true;
+  // S9 (docs/DECISIONS.md ledger row 102, migration 212): async (async_messaging/voice_notes)
+  // fields — public pre-purchase info, same §13 posture as the D7 block above. `joinLink` is
+  // deliberately NOT declared here: it never rides this public read at all (see the strip
+  // comment on GET /api/services/:id) — it only ever appears on the confirmed-booking surface.
+  responseWindowHours?: number | null;
+  scopeStatement?: string | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -656,10 +663,18 @@ export default function ServiceDetailPage() {
   const checkInOutText = formatCheckInOut(service.checkInTime, service.checkOutTime);
   const hasHouseRules = !!service.houseRules && service.houseRules.trim().length > 0;
   const showAmenities = hasAmenities(service.amenities);
+  // S9 (docs/DECISIONS.md ledger row 102): response window / scope statement are PUBLIC
+  // pre-purchase info for the two async methods (async_messaging/voice_notes) — absent ⇒
+  // omitted (§13), never a guessed "we'll get back to you soon". joinLink is deliberately NOT
+  // rendered here: it only ever exists on the CONFIRMED-booking surface (server-side reveal),
+  // never on this public pre-purchase read at all.
+  const responseWindowText = formatResponseWindow(service.responseWindowHours);
+  const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
     !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || hasBuffer ||
     hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
-    !!checkInOutText || hasHouseRules || showAmenities;
+    !!checkInOutText || hasHouseRules || showAmenities ||
+    !!responseWindowText || !!scopeStatementText;
 
   // Vacation mode (mockup §08/§06b): the listing stays visible while the owner is away —
   // only new-booking CTAs are disabled. Existing confirmed bookings are untouched (this is
@@ -934,6 +949,22 @@ export default function ServiceDetailPage() {
                       <li className="flex items-start gap-2" data-testid="text-check-in-out">
                         <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                         <span>{checkInOutText}</span>
+                      </li>
+                    )}
+                    {/* S9 (docs/DECISIONS.md ledger row 102): async delivery's promised response
+                        time + scope statement — public pre-purchase info, gated on the real
+                        field (§13). joinLink never appears here — see the comment on
+                        responseWindowText above. */}
+                    {responseWindowText && (
+                      <li className="flex items-start gap-2" data-testid="text-response-window">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{responseWindowText}</span>
+                      </li>
+                    )}
+                    {scopeStatementText && (
+                      <li className="flex items-start gap-2" data-testid="text-scope-statement">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{scopeStatementText}</span>
                       </li>
                     )}
                   </ul>
