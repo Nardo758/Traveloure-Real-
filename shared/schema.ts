@@ -1266,7 +1266,21 @@ export const notifications = pgTable("notifications", {
   data: jsonb("data"), // Arbitrary payload e.g. { bookingId, serviceName, travelerName, amount }
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+  // QA-2 (migration 209): nullable idempotency key for a notification event, shaped
+  // `booking:<id>:<event>` (e.g. `booking:abc123:accepted`). NULL for every pre-209 row and every
+  // caller that has not opted in (message/review/etc. notifications keep firing exactly as before).
+  // A caller writing a durable, at-most-once notification (the booking-status canonical writer)
+  // supplies this and relies on the partial UNIQUE index below + ON CONFLICT DO NOTHING so a
+  // crash-retry of the SAME transition inserts zero duplicate rows. Declared here AND in migration
+  // SQL (publish-trap rule — the migration-155/203 precedent).
+  dedupeKey: varchar("dedupe_key", { length: 255 }),
+}, (table) => ({
+  // Migration 209 (QA-2): partial so legacy NULL rows (and any caller that never opts in) never
+  // collide with each other — only two ACTUAL dedupe keys colliding is a conflict.
+  dedupeKeyUniq: uniqueIndex("notifications_dedupe_key_uniq")
+    .on(table.dedupeKey)
+    .where(sql`${table.dedupeKey} IS NOT NULL`),
+}));
 
 // === Contact Submissions (landing page / contact page) ===
 

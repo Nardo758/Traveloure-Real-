@@ -926,9 +926,22 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // guard). If ANY item's slot just filled, release the slots already claimed in this
       // request (compensation) and abort with 409 slot_unavailable — no bookings created,
       // nothing charged. Claims that succeed stay claimed while the booking completes; if
-      // payment later fails the booking sits payment_pending and the slot stays held — the
-      // release on abandoned/refunded bookings is a filed follow-up alongside the existing
-      // payment_pending recovery design (webhook completes; admin refund path can release).
+      // payment later fails the booking sits payment_pending and the slot stays held.
+      //
+      // STALE COMMENT CLOSED (QA-2 lane, ledger 96, Finding C — INVESTIGATED, not re-filed):
+      // this used to say "release on abandoned/refunded bookings is a filed follow-up". Both
+      // halves are landed and covered elsewhere, so nothing here needed building:
+      //   • ABANDONED (payment never authorized/paid) — the §15b TTL sweep's voidClaim
+      //     (checkout-claim.service.ts) already releases the slot atomically with the void.
+      //   • REFUNDED (a paid, slot-bound booking) — stripe-payment.service.ts's
+      //     refundServiceBooking already calls storage.releaseSlot after the refund succeeds.
+      // The GAP the audit actually found was a THIRD case neither of those covers: a paid,
+      // slot-bound booking cancelled with NO refund due (a non-refundable cancellation policy, or
+      // an owner decline whose Stripe lookup could not confirm payment) — that path calls
+      // storage.updateServiceBookingStatus directly and never touched the slot. FIXED there: the
+      // canonical writer now releases the slot atomically on the booking's FIRST transition into
+      // cancelled/refunded (see its docblock) — one fix, in the one writer, not a second reclaim
+      // rail beside this claim machine (§18c).
       //
       // §17 room stays claim MULTIPLE nights (one slot per date) instead of a single itemSlotId
       // — all-or-nothing for the stay itself, released into the SAME claimedSlotIds compensation

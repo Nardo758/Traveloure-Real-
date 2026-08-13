@@ -26,6 +26,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+// QA-1 (ledger 90 follow-up): this page had its own hand-written History predicate
+// (`status === "confirmed" || status === "completed"`), never the shared module Inbox/Today/
+// Customers/Money all consume — the same "sixth answer" ledger 90 closed elsewhere. Consuming
+// the shared predicate here closes the parity gap rather than adding a second, hand-kept copy.
+import { isEarningBooking, isHistoryBooking } from "@shared/booking-visibility";
 import {
   Inbox as InboxIcon,
   CalendarDays,
@@ -981,9 +986,11 @@ function HistorySection() {
   });
 
   const all = bookings ?? [];
-  // The Queue tab owns pending (actionable) bookings; History is the record —
-  // confirmed and completed bookings.
-  const history = all.filter((b) => b.status === "confirmed" || b.status === "completed");
+  // The Queue tab owns pending (actionable) bookings; History is the record — the shared
+  // HISTORY predicate (RECORD ∪ CLOSED): confirmed/deposit_paid/in_progress/completed PLUS
+  // declined/cancelled/refunded outcomes, so a decline leaves a visible trace here too
+  // (QA-1 — the provider Inbox had the identical gap, closed the same way).
+  const history = all.filter((b) => isHistoryBooking(b.status));
   const visaCases = all.filter(isVisaBooking).length;
 
   const openVisaDialog = (booking: InboxBooking) => {
@@ -1028,7 +1035,7 @@ function HistorySection() {
 
       <section>
         <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-          Confirmed & completed bookings {history.length > 0 && `(${history.length})`}
+          Booking record {history.length > 0 && `(${history.length})`}
         </h2>
         {isLoading ? (
           <div className="space-y-2">
@@ -1038,7 +1045,7 @@ function HistorySection() {
           <EmptyState
             icon={CalendarDays}
             title="No booking history yet"
-            body="Bookings you accept show up here once confirmed."
+            body="Bookings you accept, decline or complete show up here."
             testId="empty-inbox-history"
           />
         ) : (
@@ -1094,6 +1101,20 @@ function HistorySection() {
                             ? Number(booking.providerEarnings)
                             : (total != null ? total - (fee ?? 0) : null);
                           if (payout == null && total == null) return null;
+                          // QA-1: History now includes declined/cancelled/refunded rows, which
+                          // still carry their originally-quoted totalAmount/providerEarnings —
+                          // gate on isEarningBooking so a closed row never reads as payable
+                          // (the FP-5 idiom: disclosed via the status badge, never banked).
+                          if (!isEarningBooking(booking.status)) {
+                            return (
+                              <div
+                                className="mt-3 rounded-md bg-console-hover border border-console-light px-3 py-2 text-xs text-console-mid"
+                                data-testid={`booking-no-payout-${booking.id}`}
+                              >
+                                No payout — this booking was {booking.status === "refunded" ? "refunded" : "cancelled"}.
+                              </div>
+                            );
+                          }
                           return (
                             <div
                               className="mt-3 rounded-md bg-green-50 border border-green-200 px-3 py-2"

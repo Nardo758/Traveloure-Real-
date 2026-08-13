@@ -17,7 +17,7 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
-  Users, Route, CalendarClock,
+  Users, Route, CalendarClock, Circle, ChevronRight,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -52,7 +52,30 @@ import {
 } from "@/lib/property-editor-link";
 // FP-2: the final action's required-field set (pure + unit-tested — see the module header for
 // the "asterisk set = enforced set" rule it keeps).
-import { missingRequiredForFinal } from "@/lib/service-form-required";
+// WAVE 2 / S2: the SAME module now also derives the listing home's checklist rows
+// (`deriveServiceChecklist`) off the SAME required-item descriptors — one set, never forked.
+import {
+  missingRequiredForFinal,
+  deriveServiceChecklist,
+  effectivePriceScalar,
+  type ChecklistRow,
+} from "@/lib/service-form-required";
+// WAVE 2 / A1 (S1+S3): the flow's SHAPE, as data. Method-first — the step list is built from the
+// delivery method, and one module says which step holds which section (see its header for the
+// unreachability invariant a branching wizard has to keep).
+import {
+  clampStep,
+  flowForMethod,
+  stepForSection,
+  stepNumberOf,
+  STEP_LONG_TITLES,
+  STEP_SHORT_TITLES,
+  type SectionKey,
+  type StepKey,
+} from "@/lib/service-form-steps";
+// A1 / S3: the create flow's step 4 — the map authoring component (pin canvas + the ruling-22
+// replace-list route stops). Catalog's map is a traveler preview from this lane on.
+import { ServiceMapAuthoring } from "@/components/provider/service-map-authoring";
 
 interface ServiceCategory {
   id: string;
@@ -553,17 +576,51 @@ function prettifyCategoryKey(key: string): string {
     .join(" ");
 }
 
+// WAVE 2 / S2: the listing home's hero needs a human method label. Same 7 canonical UI values
+// (and the same copy) as the Basics step's own method picker — kept as a small module-scope
+// map rather than a second inline array, so a future eighth branch can't drift between the two.
+const DELIVERY_METHOD_LABELS: Readonly<Record<string, string>> = {
+  "in-person": "In-Person",
+  "video-call": "Video Call",
+  hybrid: "Hybrid (In-Person + Video)",
+  pdf: "PDF Guide",
+  call: "Phone Call",
+  voice_notes: "Voice Notes",
+  async_messaging: "Async Messaging",
+};
+function deliveryMethodLabel(method: string): string {
+  return DELIVERY_METHOD_LABELS[method] ?? method;
+}
+
+// WAVE 2 / S2: ONE status-pill definition for a provider listing, shared by the wizard's own
+// "Current Status" card (FP-2 / A2) and the new listing home's hero — two different English
+// phrasings of the same record would be its own small dishonesty on the same page. NOTE: a
+// listing whose `status` came back "draft" reads as Draft REGARDLESS of `approvalStatus` — the
+// F2 / migration 111 "born submitted" default means `approvalStatus` is "submitted" from the
+// first save even for a plain Save Draft (QA_PUNCH_LIST finding C8, a ratified — if confusing —
+// platform default, not something this lane changes), so `status` is checked FIRST or every
+// fresh draft would misreport itself as already "In review".
+type ListingStatusTone = "unsaved" | "draft" | "review" | "rejected" | "approved-paused" | "live";
+function listingStatusPill(
+  existingService: { status?: string | null; approvalStatus?: string | null } | null | undefined,
+  isEditMode: boolean,
+): { label: string; tone: ListingStatusTone } {
+  if (!isEditMode) return { label: "Not saved yet", tone: "unsaved" };
+  if (existingService?.status === "draft") return { label: "Draft (not submitted)", tone: "draft" };
+  if (existingService?.approvalStatus === "approved") {
+    return existingService?.status === "active"
+      ? { label: "Live", tone: "live" }
+      : { label: "Approved — paused", tone: "approved-paused" };
+  }
+  if (existingService?.approvalStatus === "rejected") return { label: "Changes requested", tone: "rejected" };
+  return { label: "In review", tone: "review" };
+}
+
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
   const isEditMode = !!id;
-  const [creationSuccess, setCreationSuccess] = useState(false);
-  // L2: the post-create success copy must reflect what actually happened server-side
-  // (the row's real status/approvalStatus), never just which button was pressed — a
-  // create is clamped server-side to a non-approved born state (D1a), so "Publish"
-  // does not mean "live" the way the old hardcoded copy claimed.
-  const [creationOutcome, setCreationOutcome] = useState<{ status?: string | null; approvalStatus?: string | null }>({});
   const [newIncluded, setNewIncluded] = useState("");
   const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
@@ -594,6 +651,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // states + createMutation's own throws); the only addition is that a
   // submit-time miss jumps the user to the step that holds the field.
   const [currentStep, setCurrentStep] = useState(1);
+
+  // ── WAVE 2 / LANE S2 — the listing home ──────────────────────────────────────────────────────
+  // A saved listing (edit mode, provider role — the execution map's provider-console lane) lands
+  // on the checklist/hero view by DEFAULT; the wizard itself is entered only via a checklist row
+  // (or any other `?step=<key>` deep link, A1). `!isEditMode` (still on `/…/new`) always renders
+  // the wizard, same as before this lane — a draft that does not exist yet has no listing home to
+  // land on. Local state, not derived from the URL on every render, because a checklist-row click
+  // and a save-success both need to flip this WITHOUT waiting on a wouter route remount.
+  const [viewListingHome, setViewListingHome] = useState<boolean>(
+    () => isEditMode && role === "provider" && !new URLSearchParams(window.location.search).get("step"),
+  );
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -756,6 +824,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // succeeds — the affirmation is a child row and needs the service id to exist.
   const [attestationChecks, setAttestationChecks] = useState<Record<string, boolean>>({});
 
+  // WAVE 2 / S2: the listing home's "Publish some availability" row reads the REAL slot count —
+  // same endpoint Catalog's own AvailabilitySection already reads (`GET /api/me/services/:id/slots`,
+  // ownership resolved server-side against `provider_services.userId`, role-agnostic §14) — never a
+  // second implementation of "does this listing have any". Provider + edit mode only: the row (and
+  // the query) do not exist for a draft that has no id yet.
+  const { data: availabilitySlots } = useQuery<Array<{ id: string }>>({
+    queryKey: [`/api/me/services/${id}/slots`],
+    enabled: isEditMode && role === "provider",
+  });
+
   // Ruling 85: the provider's account-level office location — used ONLY to PRE-FILL a NEW listing's
   // map pin so they don't re-place it every time. Provider role + create mode only (an expert has
   // no provider form; an edit already carries its own pin, or deliberately lacks one). The office
@@ -899,6 +977,34 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       setFormData(mapServiceToForm(existingService, role));
     }
   }, [existingService, role]);
+
+  // ── A1: `?step=<key>` deep link ────────────────────────────────────────────────────────────
+  // The checklist rows, Catalog's map preview and the pin-health rail all need to re-enter the
+  // flow AT a named step ("fix this listing's location" = the Logistics step), and a step NUMBER
+  // would be wrong the moment the delivery method changed the flow's shape. So the link carries
+  // the step's stable KEY and this resolves it against the loaded row's own method. Runs ONCE
+  // (guarded), after the row has hydrated — otherwise it would fight the provider's own
+  // navigation, and in edit mode it would resolve against the empty form's default method.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    if (isEditMode && !existingService) return; // wait for the real method
+    const requested = new URLSearchParams(window.location.search).get("step");
+    if (!requested) {
+      deepLinkApplied.current = true;
+      return;
+    }
+    const n = stepNumberOf(formData.deliveryMethod, requested as StepKey);
+    // An unknown key, or one this branch does not have, is NOT an error and never a guess: the
+    // provider simply stays on step 1 (§13 — a pdf listing has no Logistics step to land on).
+    if (n > 0) {
+      setCurrentStep(n);
+      // S2: a `?step=` link means "enter the flow here" — never the listing home, even for a
+      // provider whose default landing (see `viewListingHome`'s initializer) would otherwise be it.
+      setViewListingHome(false);
+    }
+    deepLinkApplied.current = true;
+  }, [isEditMode, existingService, formData.deliveryMethod]);
 
   // B1: merge the saved zone rings into the form once they load (after mapServiceToForm has set the
   // rest). Strings so the number inputs stay controlled; NULL/absent stays an empty list (§13).
@@ -1058,18 +1164,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       title: "Loaded from template",
       description: "Review and edit below, then Save as draft or Submit for review — it is never auto-approved.",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleAddAnother = () => {
-    setCreationSuccess(false);
-    setCreationOutcome({});
-    setCurrentStep(1);
-    setFormData(buildEmptyForm(role));
-    setLocationPointTouched(false);
-    setNewIncluded("");
-    setNewRequirement("");
-    setRequestOfferingConfirmedName(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1373,6 +1467,43 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
+
+      // ── WAVE 2 / LANE S2 — the listing home ──────────────────────────────────────────────
+      // A PROVIDER save — Save Draft or Submit for review, from the wizard OR the listing
+      // home's own button, create OR edit — lands on the listing home. This replaces both the
+      // old generic "View My Services / Add Another Service" create screen and the silent
+      // edit-mode bounce back to Catalog. L2's rule holds unchanged: the outcome copy reflects
+      // the RETURNED row, never the button label — a create is clamped server-side to a
+      // non-approved born state (F2 / migration 111), so "Submit for review" never claims live.
+      if (role === "provider") {
+        const approvalStatus: string | null | undefined =
+          service?.approvalStatus ?? (isEditMode ? existingService?.approvalStatus : undefined);
+        const isDraftOutcome = submitAction === "draft" || approvalStatus === "draft";
+        toast({
+          title: isDraftOutcome ? "Draft saved" : "Submitted for review",
+          description: isDraftOutcome
+            ? "Not yet visible to travelers — submit it for review when ready."
+            : "It goes live once approved. You'll be notified when it's reviewed.",
+        });
+        const savedId: string | undefined = service?.id ?? id;
+        if (onSuccess && savedId) onSuccess(savedId);
+        // `viewListingHome`'s useState INITIALIZER only ever runs once, at this component
+        // instance's true first mount — and wouter's `<Switch>` reuses the SAME `ServiceForm`
+        // instance across `/provider/services/new` → `/provider/services/:id/edit` (same
+        // component reference at the same tree position, only the `id` PROP changes), exactly
+        // the reason the old `handleAddAnother` had to hand-reset local state instead of relying
+        // on a remount. So this is set EXPLICITLY here rather than trusted to re-derive itself
+        // from the URL on a navigation that will not actually remount anything.
+        setViewListingHome(true);
+        if (!isEditMode && savedId) {
+          // The id did not exist a moment ago — give the row its own URL too (so a reload,
+          // bookmark or share lands back here), even though the state flip above already did
+          // the actual rendering work.
+          navigate(`/provider/services/${savedId}/edit`);
+        }
+        return;
+      }
+
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
@@ -1383,21 +1514,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // came back "approved" (grandfathered/edge case — never true for a fresh create).
       const approvalStatus: string = service?.approvalStatus ?? (submitAction === "draft" ? "draft" : "submitted");
       const isLive = approvalStatus === "approved" && service?.status !== "draft";
-      if (role === "expert") {
-        if (approvalStatus === "draft") {
-          toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
-        } else if (isLive) {
-          toast({ title: "Service published!", description: "Your service is now live." });
-        } else {
-          toast({ title: "Submitted for review", description: "It goes live once approved." });
-        }
-        queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
-        navigate("/expert/services");
-        return;
+      // role === "expert" from here on (provider already returned above).
+      if (approvalStatus === "draft") {
+        toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
+      } else if (isLive) {
+        toast({ title: "Service published!", description: "Your service is now live." });
+      } else {
+        toast({ title: "Submitted for review", description: "It goes live once approved." });
       }
-      setCreationOutcome({ status: service?.status ?? null, approvalStatus });
-      setCreationSuccess(true);
-      if (onSuccess && service?.id) onSuccess(service.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      navigate("/expert/services");
     },
     onError: (error: any) => {
       toast({
@@ -1546,13 +1672,34 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const expertIdentityKnown = role === "expert" && !expertVerification.isLoading && !expertVerification.isError;
   const expertVerificationGateBlocked = expertIdentityKnown && !expertVerification.isVerified;
 
-  // ── Step machinery (audit item #10) ──────────────────────────────────────
-  const STEP_TITLES = ["What you offer", "Details", "Photos", "Terms & requirements"];
-  const TOTAL_STEPS = STEP_TITLES.length;
+  // ── Step machinery — WAVE 2 / A1: METHOD-FIRST, BRANCHING (audit item #10 originally) ──────
+  // The four fixed steps are gone. `flowForMethod` (client/src/lib/service-form-steps.ts) is the
+  // ONE placement authority: it says which steps this listing has and which step holds which
+  // section, and the same module answers the "still needed" jump links (service-form-required.ts).
+  // Nothing here re-derives placement locally.
+  //
+  // The step INDEX is derived, never stored clamped: switching to a shorter branch (in-person → 5
+  // steps, pdf → 3) while standing on step 5 must not leave the form pointing off the end. It
+  // lands on the new branch's last step instead, and nothing in `formData` is touched — the
+  // never-clobber posture (FP-1 / B5): a hidden section's answers are still there, still sent, and
+  // reappear the moment the method comes back.
+  const flow = flowForMethod(formData.deliveryMethod);
+  const TOTAL_STEPS = flow.length;
+  const effectiveStep = clampStep(formData.deliveryMethod, currentStep);
+  const stepKey: StepKey = flow[effectiveStep - 1];
+  /** Is the wizard standing on this step right now? */
+  const onStep = (key: StepKey) => stepKey === key;
+  /** Does this step hold that section? (Placement only — VISIBILITY is still the shared
+   *  predicates: isPlaceAnchored / needsScheduling / the pdf gate.) */
+  const onSection = (section: SectionKey) => stepForSection(section, formData.deliveryMethod) === stepKey;
 
   const goToStep = (step: number) => {
-    setCurrentStep(Math.min(Math.max(step, 1), TOTAL_STEPS));
+    setCurrentStep(clampStep(formData.deliveryMethod, step));
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goToStepKey = (key: StepKey) => {
+    const n = stepNumberOf(formData.deliveryMethod, key);
+    if (n > 0) goToStep(n);
   };
 
   // ── The wizard's required-field set — see client/src/lib/service-form-required.ts ──────────
@@ -1564,7 +1711,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // missing (price, required category fields, the attestation confirmations) and the same lane
   // removed the two asterisks nothing required (Description, Duration). Draft saves stay
   // check-free, exactly as before.
-  const missingForFinal = missingRequiredForFinal({
+  const requiredFieldInput = {
     role,
     isEditMode,
     name: formData.name,
@@ -1583,7 +1730,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     categoryFields,
     categoryAttributes: formData.categoryAttributes,
     attestationGateBlocked,
-  });
+  };
+  const missingForFinal = missingRequiredForFinal(requiredFieldInput);
+
+  // WAVE 2 / S2: the listing home's checklist — the SAME `requiredFieldInput` above (never a
+  // forked set), plus the two facts only this surface needs: whether an attestation applies at
+  // all (so the row never renders hollow) and the real slot count (so "Publish some
+  // availability" ticks off the record, never off a click). Only meaningful once the row exists.
+  const checklistRows: ChecklistRow[] = isEditMode
+    ? deriveServiceChecklist({
+        ...requiredFieldInput,
+        attestationsApplicable: attestationResolution.applicable.length > 0,
+        availabilitySlotCount: Array.isArray(availabilitySlots) ? availabilitySlots.length : 0,
+      })
+    : [];
 
   const handleFinalSubmit = (action: "submit" | "publish") => {
     const firstMissing = missingForFinal[0];
@@ -1593,7 +1753,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       goToStep(firstMissing.step);
       toast({
         title: "A required field is missing",
-        description: `${firstMissing.label} (Step ${firstMissing.step}) is required before you submit this for review. You can Save Draft to finish later.`,
+        description: `${firstMissing.label} — on ${STEP_SHORT_TITLES[firstMissing.stepKey]} (step ${firstMissing.step}) — is required before you submit this for review. You can Save Draft to finish later.`,
         variant: "destructive",
       });
       return;
@@ -1667,47 +1827,165 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     );
   }
 
-  if (creationSuccess) {
-    // L2: copy reflects the actual returned row (creationOutcome), never a
-    // hardcoded "published/live" claim regardless of what really happened.
-    const { status: outcomeStatus, approvalStatus: outcomeApproval } = creationOutcome;
-    const isDraftOutcome = outcomeStatus === "draft" || outcomeApproval === "draft";
-    const isLiveOutcome = outcomeApproval === "approved" && outcomeStatus !== "draft";
-    const successTitle = isDraftOutcome
-      ? "Draft saved"
-      : isLiveOutcome
-        ? "Service published!"
-        : "Submitted for review";
-    const successBody = isDraftOutcome
-      ? "Not yet visible to travelers — submit it for review when ready."
-      : isLiveOutcome
-        ? "Your service is now live. You can add more services to build out your full catalog."
-        : "It goes live once approved. You'll be notified when it's reviewed.";
+  // ── WAVE 2 / LANE S2 — THE LISTING HOME ───────────────────────────────────────────────────
+  // Reuses the SAME route that already owns per-listing editing (`/provider/services/:id/edit`,
+  // the ratified mock's "listing home" maps onto it rather than a new page) instead of the old
+  // generic post-create screen this replaced. Hero (name · method · price · status pill) + the
+  // derived checklist (`deriveServiceChecklist`, `client/src/lib/service-form-required.ts`) +
+  // Submit for review, gated on the SAME `missingForFinal` the wizard's own final step already
+  // uses (never a forked "is this ready" opinion) + links to the drawers this lane does not
+  // rebuild (photos, deliverable, availability — all pre-existing surfaces).
+  if (isEditMode && role === "provider" && viewListingHome && existingService) {
+    const price = effectivePriceScalar({
+      priceType: formData.priceType,
+      basePrice: formData.basePrice,
+      pricingTiers: formData.pricingTiers,
+    });
+    const statusPill = listingStatusPill(existingService, isEditMode);
+    // ONLY "review" freezes the checklist/button — a rejected listing needs to be
+    // resubmittable (that's the whole point of "changes requested"), and an already-live
+    // listing can still submit an edit for re-review (§17's edit-split, gap #17, Wave 3).
+    const frozen = statusPill.tone === "review";
+    const doneCount = checklistRows.filter((r) => r.done).length;
+    const leftCount = checklistRows.length - doneCount;
+    const openChecklistRow = (row: ChecklistRow) => {
+      if (row.target.kind === "availability") {
+        navigate(`/provider/services?availability=${encodeURIComponent(id!)}`);
+        return;
+      }
+      setViewListingHome(false);
+      goToStepKey(row.target.stepKey);
+    };
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="p-10 text-center space-y-4">
-            <div className="flex justify-center">
-              <CheckCircle className="w-16 h-16 text-green-500" />
+      <div className="p-6 max-w-3xl space-y-6" data-testid="view-listing-home">
+        <button
+          onClick={() => navigate(`/${role}/services`)}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-listing-home-back"
+        >
+          <ArrowLeft className="w-4 h-4" /> My Services
+        </button>
+
+        <Card data-testid="card-listing-hero">
+          <CardContent className="p-5 flex items-start gap-4 flex-wrap">
+            <CheckCircle className="w-8 h-8 text-green-500 flex-shrink-0" />
+            <div className="flex-1 min-w-[220px]">
+              <h2 className="text-lg font-semibold text-gray-900" data-testid="text-listing-hero-name">
+                {formData.name || "Untitled listing"}
+              </h2>
+              <p className="text-sm text-muted-foreground" data-testid="text-listing-hero-sub">
+                {deliveryMethodLabel(formData.deliveryMethod)}
+                {" · "}
+                {price != null ? `$${price}${formData.priceType !== "Fixed" ? ` (${formData.priceType})` : ""}` : "No price set yet"}
+              </p>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {successTitle}
-            </h2>
-            <p className="text-gray-500 text-sm">
-              {successBody}
+            <Badge
+              variant={statusPill.tone === "live" ? "default" : "secondary"}
+              data-testid="badge-listing-hero-status"
+            >
+              {statusPill.label}
+            </Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base" data-testid="text-checklist-heading">
+              {frozen
+                ? leftCount === 0
+                  ? "Submitted — nothing outstanding"
+                  : `Submitted — ${leftCount} still outstanding`
+                : leftCount === 0
+                  ? "Nothing left — ready for review"
+                  : `${leftCount} ${leftCount === 1 ? "thing" : "things"} left before review`}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Derived from the draft — rows navigate to the surface that owns the work; nothing
+              here ticks itself.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-              <Button variant="outline" onClick={() => navigate(`/${role}/services`)}>
-                View My Services
-              </Button>
-              <Button
-                className="bg-primary hover:bg-primary/90"
-                onClick={handleAddAnother}
-              >
-                <Plus className="w-4 h-4 mr-2" /> Add Another Service
-              </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div data-testid="list-checklist">
+              {checklistRows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => openChecklistRow(row)}
+                  className="w-full flex items-start gap-3 px-5 py-3 text-left border-t first:border-t-0 hover:bg-muted/40 transition-colors"
+                  data-testid={`checklist-row-${row.id}`}
+                  aria-checked={row.done}
+                >
+                  <span
+                    className={`mt-0.5 flex-shrink-0 rounded-full ${row.done ? "text-green-600" : "text-muted-foreground/50"}`}
+                  >
+                    {row.done ? <CheckCircle className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">{row.label}</span>
+                    <span className="block text-xs text-muted-foreground">{row.hint}</span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                </button>
+              ))}
             </div>
           </CardContent>
+        </Card>
+
+        <Card className="p-5 space-y-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Ready when you are</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {frozen
+                  ? "Submitted for review. We'll email you when it's decided. You can keep editing while it waits — changes are re-checked before anything goes live."
+                  : "Reviewed by our team before it goes live. You can keep editing while it's in review."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/${role}/services`)}
+                data-testid="button-listing-home-finish-later"
+              >
+                Finish later
+              </Button>
+              <Button
+                onClick={() => handleFinalSubmit("publish")}
+                disabled={frozen || createMutation.isPending || missingForFinal.length > 0 || verificationGateBlocked || publishBlocked || attestationGateBlocked}
+                title={
+                  missingForFinal.length > 0
+                    ? `Still needed: ${missingForFinal.map((m) => m.label).join(", ")}`
+                    : verificationGateBlocked
+                    ? "Complete identity and business verification in your Provider Status page first"
+                    : publishBlocked
+                    ? "Complete background verification before submitting a listing in this category"
+                    : undefined
+                }
+                data-testid="button-listing-home-submit"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {frozen ? "Submitted" : statusPill.tone === "live" ? "Submit changes for review" : "Submit for review"}
+              </Button>
+            </div>
+          </div>
+          {!frozen && missingForFinal.length > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="text-listing-home-missing">
+              Still needed before you submit for review:{" "}
+              {missingForFinal.map((m, i) => (
+                <span key={`${m.step}-${m.label}`}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => openChecklistRow({ id: m.section, label: m.label, hint: "", done: false, target: { kind: "step", section: m.section, stepKey: m.stepKey, step: m.step } })}
+                  >
+                    {m.label}
+                  </button>
+                </span>
+              ))}
+              .
+            </p>
+          )}
         </Card>
       </div>
     );
@@ -1783,12 +2061,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       {/* ── Breadcrumb / Back ── */}
       <div className="flex items-center gap-2 text-sm">
+        {/* WAVE 2 / S2: a provider who entered the flow FROM the listing home (a checklist row,
+            or any other `?step=` deep link) gets back to it without a round trip through the
+            server — the row it navigated from is what should be highlighted on return. Anyone
+            else (fresh create, or a direct deep link with no listing home to return to) keeps
+            the original "My Services" breadcrumb, unchanged. */}
         <button
-          onClick={() => navigate(`/${role}/services`)}
+          onClick={() =>
+            isEditMode && role === "provider" ? setViewListingHome(true) : navigate(`/${role}/services`)
+          }
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-form-back"
         >
           <ArrowLeft className="w-4 h-4" />
-          My Services
+          {isEditMode && role === "provider" ? "Listing home" : "My Services"}
         </button>
         <span className="text-muted-foreground">/</span>
         <span className="text-foreground font-medium">
@@ -1796,12 +2082,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </span>
       </div>
 
-      {/* ── Step indicator (audit item #10) — freely clickable in both modes ── */}
+      {/* ── Step indicator — freely clickable in both modes. A1: the list IS the branch, so it
+          grows and shrinks with the delivery method chosen on Basics. ── */}
+      {/* `flex-wrap` matters now that the list is branch-sized: hybrid's SIX steps overflowed the
+          column and hid "Review & submit" off the right edge behind a scroll nobody looks for. */}
       <nav aria-label="Form steps" className="overflow-x-auto" data-testid="service-form-steps">
-        <ol className="flex items-center gap-1 sm:gap-2">
-          {STEP_TITLES.map((title, i) => {
+        <ol className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-2">
+          {flow.map((key, i) => {
+            const title = STEP_SHORT_TITLES[key];
             const stepNum = i + 1;
-            const isActive = currentStep === stepNum;
+            const isActive = effectiveStep === stepNum;
             return (
               <li key={stepNum} className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {i > 0 && <div className="w-3 sm:w-6 h-px bg-border" aria-hidden="true" />}
@@ -1815,6 +2105,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                   data-testid={`button-step-${stepNum}`}
+                  data-step-key={key}
                 >
                   <span
                     className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold border ${
@@ -1831,6 +2122,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             );
           })}
         </ol>
+        {/* The mock's step-count line: say WHY this listing has these steps, so a shortened flow
+            reads as a deliberate branch rather than as missing questions (§13). */}
+        <p className="text-xs text-muted-foreground mt-2" data-testid="text-step-count">
+          <strong>{TOTAL_STEPS} steps</strong> for this delivery method.{" "}
+          {flow.includes("logistics")
+            ? "Scheduling, Capacity and Logistics are here because this one happens somewhere."
+            : "No location, transport or travel-surcharge questions in this flow — the Logistics step never appears."}
+        </p>
       </nav>
 
       {/* ── FP-2 / A1 UPFRONT REVIEW NOTICE (Package A item 1; service-creation mock, fix A1) ────
@@ -1917,7 +2216,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </div>
       )}
 
-      {currentStep === 1 && (<>
+      {onStep("basics") && (<>
 
       {/* ── Offering-first provider create (§17): pick the /earn offering FIRST — ────
           category derives from it below. Shown for both create and edit so an edited
@@ -2226,6 +2525,116 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
           )}
 
+          {/* ── METHOD-FIRST (Wave 2 / A1, S1) ────────────────────────────────────────────────
+              THE question, asked SECOND — right after what you are offering and what it is
+              called, and before anything that depends on it. It used to sit halfway down step 2,
+              under "Details & Delivery", which meant a provider answered a screenful of
+              questions that the answer here would have removed. The step list above is built
+              from this answer, so changing it changes the flow immediately.
+
+              NEVER-CLOBBER (FP-1 / B5): switching the method only changes which steps and
+              sections RENDER. Nothing in `formData` is reset here, and the payload already omits
+              the keys a method does not apply to — so an in-person draft switched to PDF and back
+              still has its start window, party size and pin exactly as they were. ── */}
+          {/* Delivery Method */}
+          {(() => {
+            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
+            const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
+              ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
+              : null;
+            // T3-2: every canonical delivery value gets its own faithful UI option so
+            // editing an existing service always reopens showing the value actually
+            // stored (see fromCanonicalDelivery) instead of collapsing onto "In-Person".
+            const allMethods: { value: UiDelivery; label: string }[] = [
+              { value: "in-person", label: "In-Person" },
+              { value: "video-call", label: "Video Call" },
+              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
+              { value: "pdf", label: "PDF Guide" },
+              { value: "call", label: "Phone Call" },
+              { value: "voice_notes", label: "Voice Notes" },
+              { value: "async_messaging", label: "Async Messaging" },
+            ];
+            let visibleMethods = allowed
+              ? allMethods.filter((m) => allowed.has(m.value))
+              : allMethods;
+            // A tier's deliveryFormats filter (above) is a NEW-selection guardrail, not an
+            // editor for an existing row — an already-stored value must always stay visible
+            // and selected, or the Select silently falls back off it and a no-change save
+            // would corrupt the stored delivery_method (the exact T3-2 bug, one layer up).
+            if (allowed && !visibleMethods.some((m) => m.value === formData.deliveryMethod)) {
+              const current = allMethods.find((m) => m.value === formData.deliveryMethod);
+              if (current) visibleMethods = [...visibleMethods, current];
+            }
+            return (
+              <div>
+                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
+                <Select
+                  value={formData.deliveryMethod}
+                  onValueChange={(v: any) => set("deliveryMethod", v)}
+                >
+                  <SelectTrigger id="deliveryMethod" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibleMethods.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                    {visibleMethods.length === 0 && (
+                      <SelectItem value="in-person">In-Person</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {allowed && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Options filtered to your selected tier's delivery formats.
+                  </p>
+                )}
+
+                {/* ── SS-6 delivery language (ruling 69 disposition 9, migration 199) ─────────
+                    Placed beside the delivery METHOD because it answers the sibling question:
+                    how it is delivered, and in what language. This is NOT ruling 60's chrome or
+                    content translation — it is a purchasable attribute of the experience itself
+                    (in Kyoto, an English-run session is commonly a different product from the
+                    shared Japanese one). Untouched ⇒ nothing is sent and nothing is shown. */}
+                <div className="mt-4">
+                  <Label>Delivered in (languages)</Label>
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-delivery-languages-hint">
+                    The language(s) you actually run this service in. Leave blank if you would
+                    rather not say — we will not guess one for you.
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {DELIVERY_LANGUAGE_OPTIONS.map((lang) => {
+                      const selected = formData.deliveryLanguages?.includes(lang) ?? false;
+                      return (
+                        <label key={lang} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              // The FIRST touch turns null (never captured) into a real array;
+                              // unticking the last one leaves [] (deliberately cleared), which is
+                              // a different fact and is preserved as such.
+                              const current = formData.deliveryLanguages ?? [];
+                              set(
+                                "deliveryLanguages",
+                                e.target.checked
+                                  ? [...current, lang]
+                                  : current.filter((l) => l !== lang),
+                              );
+                            }}
+                            className="h-4 w-4 rounded"
+                            data-testid={`checkbox-delivery-language-${lang}`}
+                          />
+                          {lang}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Pricing */}
           <div className="space-y-4">
             <div>
@@ -2412,6 +2821,24 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
           </div>
 
+          {/* ── The fifth and last field of the fast path. Moved up from the old step 2 so that
+              Basics alone is a complete, resumable draft (mock ②). ── */}
+          {/* Description — FP-2 / item 4: the asterisk is GONE, not made to bind. Nothing
+              requires a description: `provider_services.description` is nullable, the insert
+              schema does not demand it and no publish gate checks it. It IS scored by the owner
+              health rail, which is what "recommended" means here. */}
+          <div>
+            <Label htmlFor="description">Description <span className="text-muted-foreground font-normal">(recommended)</span></Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
+              rows={4}
+              className="mt-2"
+            />
+          </div>
+
           {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
               lib/earn-roles.ts defines one (local_expert / travel_expert); otherwise
               shows the full unpartitioned catalog (see visibleExpertOfferingTypes). */}
@@ -2447,35 +2874,35 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
           )}
 
+          {/* ── THE BASICS FAST PATH, STATED (mock ②) ────────────────────────────────────────
+              Nothing below this screen is required to keep your work: Save Draft is reachable
+              from every step and checks nothing (see client/src/lib/service-form-required.ts —
+              the required set is consulted by the FINAL action only). Saying so here is the
+              difference between a five-field draft and a provider who believes the whole form
+              has to be finished in one sitting. ── */}
+          <p className="text-sm text-muted-foreground border-t pt-4" data-testid="text-basics-fast-path">
+            <strong>This screen is enough to save.</strong> Name it, say how you deliver it, put a
+            price on it — then <strong>Save Draft</strong> and come back. The remaining steps are
+            built from the delivery method you picked, and none of them are needed to keep a draft.
+          </p>
+
         </CardContent>
       </Card>
 
       </>)}
 
-      {currentStep === 2 && (<>
-
-      {/* ── Details & Delivery ── */}
-      <Card>
+      {/* ── A1: THE BRANCH'S SECOND STEP ────────────────────────────────────────────────────
+          One card, titled by the step the branch is on: "Scheduling" (in-person/hybrid),
+          "Session details" (call/video), "What they get" (pdf), "Async delivery details"
+          (voice notes / async messaging). The duration question is the same question in all
+          four — how long it runs, or how long it takes to arrive — so it is asked once, here,
+          and `stepForSection` puts it on whichever of those steps this listing has. ── */}
+      {onSection("duration") && (
+      <Card data-testid="card-details-step">
         <CardHeader>
-          <CardTitle>Details & Delivery</CardTitle>
+          <CardTitle>{STEP_LONG_TITLES[stepKey]}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-
-          {/* Description — FP-2 / item 4: the asterisk is GONE, not made to bind. Nothing
-              requires a description: `provider_services.description` is nullable, the insert
-              schema does not demand it and no publish gate checks it. It IS scored by the owner
-              health rail, which is what "recommended" means here. */}
-          <div>
-            <Label htmlFor="description">Description <span className="text-muted-foreground font-normal">(recommended)</span></Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
-              rows={4}
-              className="mt-2"
-            />
-          </div>
 
           {/* Duration — FP-2: the ONE duration question (Package A item 8). Its asterisk is gone
               for the same reason as Description's: nothing requires it. It writes
@@ -2498,104 +2925,33 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </p>
           </div>
 
-          {/* Delivery Method */}
-          {(() => {
-            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
-            const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
-              ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
-              : null;
-            // T3-2: every canonical delivery value gets its own faithful UI option so
-            // editing an existing service always reopens showing the value actually
-            // stored (see fromCanonicalDelivery) instead of collapsing onto "In-Person".
-            const allMethods: { value: UiDelivery; label: string }[] = [
-              { value: "in-person", label: "In-Person" },
-              { value: "video-call", label: "Video Call" },
-              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
-              { value: "pdf", label: "PDF Guide" },
-              { value: "call", label: "Phone Call" },
-              { value: "voice_notes", label: "Voice Notes" },
-              { value: "async_messaging", label: "Async Messaging" },
-            ];
-            let visibleMethods = allowed
-              ? allMethods.filter((m) => allowed.has(m.value))
-              : allMethods;
-            // A tier's deliveryFormats filter (above) is a NEW-selection guardrail, not an
-            // editor for an existing row — an already-stored value must always stay visible
-            // and selected, or the Select silently falls back off it and a no-change save
-            // would corrupt the stored delivery_method (the exact T3-2 bug, one layer up).
-            if (allowed && !visibleMethods.some((m) => m.value === formData.deliveryMethod)) {
-              const current = allMethods.find((m) => m.value === formData.deliveryMethod);
-              if (current) visibleMethods = [...visibleMethods, current];
-            }
-            return (
-              <div>
-                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
-                <Select
-                  value={formData.deliveryMethod}
-                  onValueChange={(v: any) => set("deliveryMethod", v)}
-                >
-                  <SelectTrigger id="deliveryMethod" className="mt-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleMethods.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                    ))}
-                    {visibleMethods.length === 0 && (
-                      <SelectItem value="in-person">In-Person</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-                {allowed && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Options filtered to your selected tier's delivery formats.
-                  </p>
-                )}
+          {/* §13: the async lane's own fields (reply window, scope statement, engagement window)
+              are RATIFIED but not built — they are Wave 3 / lane S9 (Gate G3), and there is no
+              column for them today. Say that plainly rather than showing a control that decides
+              nothing, or leaving the step looking empty by accident. */}
+          {(formData.deliveryMethod === "voice_notes" || formData.deliveryMethod === "async_messaging") && (
+            <p className="text-xs text-muted-foreground" data-testid="text-async-fields-pending">
+              Async listings have no slot to book and no session to attend, so this branch asks
+              nothing about timing. The reply window, scope statement and engagement window this
+              step will collect are ratified but not built yet — nothing here silently stands in
+              for them.
+            </p>
+          )}
 
-                {/* ── SS-6 delivery language (ruling 69 disposition 9, migration 199) ─────────
-                    Placed beside the delivery METHOD because it answers the sibling question:
-                    how it is delivered, and in what language. This is NOT ruling 60's chrome or
-                    content translation — it is a purchasable attribute of the experience itself
-                    (in Kyoto, an English-run session is commonly a different product from the
-                    shared Japanese one). Untouched ⇒ nothing is sent and nothing is shown. */}
-                <div className="mt-4">
-                  <Label>Delivered in (languages)</Label>
-                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-delivery-languages-hint">
-                    The language(s) you actually run this service in. Leave blank if you would
-                    rather not say — we will not guess one for you.
-                  </p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {DELIVERY_LANGUAGE_OPTIONS.map((lang) => {
-                      const selected = formData.deliveryLanguages?.includes(lang) ?? false;
-                      return (
-                        <label key={lang} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(e) => {
-                              // The FIRST touch turns null (never captured) into a real array;
-                              // unticking the last one leaves [] (deliberately cleared), which is
-                              // a different fact and is preserved as such.
-                              const current = formData.deliveryLanguages ?? [];
-                              set(
-                                "deliveryLanguages",
-                                e.target.checked
-                                  ? [...current, lang]
-                                  : current.filter((l) => l !== lang),
-                              );
-                            }}
-                            className="h-4 w-4 rounded"
-                            data-testid={`checkbox-delivery-language-${lang}`}
-                          />
-                          {lang}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+        </CardContent>
+      </Card>
+      )}
+
+      {/* ── The deliverable — the pdf branch's own step ("What they get"). ── */}
+      {onSection("deliverable") && formData.deliveryMethod === "pdf" && (
+      <Card data-testid="card-deliverable">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            The file they receive
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
 
           {/* D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file —
               only relevant for pdf delivery. Buyers unlock this after a confirmed booking
@@ -2697,9 +3053,50 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
         </CardContent>
       </Card>
+      )}
 
-      {/* ── Category-Specific Dynamic Fields ── */}
-      {categoryFields.length > 0 && (
+      {/* ── The hybrid branch's extra step (mock: "The online half"). ─────────────────────────
+          Hybrid is the only method that gets both halves. The fields this step is ratified to
+          collect — where the online half happens, how long it runs, the provider's own join link
+          — have NO column on `provider_services` today, and this lane adds no schema (Wave 3 /
+          lane S9, Gate G3, owns them). So the step is here, in the shape the mock ratified, and
+          it says exactly what it does and does not yet ask (§13) rather than showing controls
+          that write nowhere. ── */}
+      {onStep("online") && (
+      <Card data-testid="card-online-half">
+        <CardHeader>
+          <CardTitle>{STEP_LONG_TITLES.online}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            You picked <strong>Hybrid</strong>, so this listing has an in-person half — the
+            Scheduling, Capacity and Logistics steps you just filled in — and an online half.
+          </p>
+          <p className="text-sm text-muted-foreground" data-testid="text-online-half-pending">
+            The online half's own questions (where the call happens, how long it runs, and your
+            own meeting link — shared with the traveler only after booking) are ratified but not
+            built yet. Until they are, describe the online half in your description on{" "}
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={() => goToStepKey("basics")}
+              data-testid="button-online-to-basics"
+            >
+              Basics
+            </button>{" "}
+            and in <strong>What&apos;s included</strong> on the last step. We would rather say
+            that than show you a field that saves nothing.
+          </p>
+        </CardContent>
+      </Card>
+      )}
+
+
+      {/* ── Category-Specific Dynamic Fields ──
+          A1: branch-independent content, so it sits on the last step with the rest of it. The
+          asterisks here still bind (FP-2), and "Still needed" links to the step this resolves to,
+          whichever branch the listing is on. */}
+      {onSection("categoryFields") && categoryFields.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>
@@ -2806,7 +3203,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── What's Included ── */}
+      {/* ── What's Included ── A1: branch-independent, so it lives on the last step. */}
+      {onSection("whatIncluded") && (
       <Card>
         <CardHeader>
           <CardTitle>What's Included</CardTitle>
@@ -2839,9 +3237,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {/* ── Logistics (conditional based on delivery method) ── */}
-      {needsMeetingPoint && (
+      {/* ── STEP 4 "LOGISTICS" — WHERE IT HAPPENS (Wave 2 / A1, S3; ruling of Aug 12, 2026) ─────
+          Everything spatial, on ONE step: the free-text meeting point, the confirm-gated pin, the
+          map canvas with its ordered route stops, the service radius, "Getting there"
+          (transport/pickup/drop-off — FP-2 merged those into one block and the block moved here
+          whole), and the travel-surcharge zones. Place-anchored and hybrid only; a remote listing
+          never sees this step at all (not disabled, absent — see the step-count line).
+
+          NO NEW WRITE RAILS. The pin is the same `LocationPointPicker` writing through the same
+          form save (`extractServiceLocation` on POST/PATCH /api/provider/services stays the ONE
+          pin writer, L27-P3); the stops are the same owner-gated replace-list
+          PUT /api/provider/services/:id/route-points (ruling 22a). What changed is WHERE the
+          authoring lives — Catalog's map is a traveler preview from this lane on. ── */}
+      {onSection("place") && needsMeetingPoint && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -2966,6 +3376,51 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               />
             </div>
 
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── A1 / S3: THE MAP, INSIDE THE FLOW ────────────────────────────────────────────────
+          The canvas the pin above draws on, plus this listing's ordered route stops. The stop
+          editor needs a saved row to hang its replace-list PUT on, so in CREATE mode it says so
+          and points at Save Draft — the same honest shape the protected deliverable upload uses,
+          rather than inventing a row behind the provider's back. ── */}
+      {onSection("map") && needsMeetingPoint && (
+        <ServiceMapAuthoring
+          serviceId={isEditMode ? (id ?? null) : null}
+          pin={formData.locationPoint}
+          pinLabel={formData.meetingPoint || formData.name || null}
+          radiusKm={formData.serviceRadius > 0 ? formData.serviceRadius : null}
+          addressHint={formData.meetingPoint || formData.serviceArea || ""}
+          savedStops={(existingService?.routePoints as any) ?? []}
+        />
+      )}
+
+      {/* ── "Getting there" — the transport / pickup / surcharge block (FP-2 merged the two
+          transport questions into one; this lane moves the merged block onto the Logistics step
+          where the rest of the spatial questions now live). Place-anchored only: there is
+          nothing to get to, and no distance to charge for, on a call or a video session. ── */}
+      {onSection("transport") && showLogisticsCapture && (
+        <Card data-testid="card-getting-there">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5" />
+              Getting there
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              These answers are used: the travel surcharge below is charged at checkout from the
+              real pickup a traveler confirms. Leave anything you're unsure of blank — blank means
+              "not stated", never a guessed default.
+            </p>
+
+            {/* ── FP-2's merged "Getting there" block, completed (Wave 2 / A1) ───────────────
+                Pickup, drop-off and the service radius used to sit on the Meeting Location card
+                while the transport provision sat in a different card on a different part of the
+                same step. They are one question — WHERE this listing collects and returns people
+                — so they are now asked in one place, on the step named for it. Fields, columns
+                and payload are untouched; only the location of the question changed. ── */}
             {/* Pickup */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -3021,37 +3476,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </>
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── D7 service logistics (docs/DECISIONS.md ruling 62, migration 195) ──────────────────
-          CAPTURE ONLY. Nothing on this card is read by the transport resolver, the fundamentals
-          checks or any traveler surface yet — ruling 62 captures the field set NOW, while the
-          provider count is ~0, and wires consumers in later lanes. Every control offers a real
-          "not specified" state: an unanswered question stays unanswered (§13). */}
-      {showScheduledLogistics && (
-        <Card data-testid="card-service-logistics">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Service logistics
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* ── FP-2 / Package A item 3 — THE DISCLAIMER WAS WRONG IN BOTH DIRECTIONS ────────
-                It said "these details aren't shown to travelers yet", under a card that holds
-                live gates: the start window + timezone and the party-size pair are what
-                `booking-eligibility.service.ts` refuses a booking against, the change cutoff
-                feeds the deposit/change window, and the travel surcharge inside it is charged
-                for real at checkout. Meanwhile four fields in here genuinely were capture-only
-                and are now removed (duration-in-minutes, setup/buffer, can-anchor, pickup
-                radius — see their own notes below). The card now states what it actually is. ── */}
-            <p className="text-xs text-muted-foreground">
-              These answers are used: the start window and party size are checked when a traveler
-              tries to book, and the travel surcharge is charged at checkout. Leave anything you're
-              unsure of blank — blank means "not stated", never a guessed default.
-            </p>
 
             {/* ── Getting there: transport provision + the ruling-62 AMENDMENT's coverage choice.
                 T1 (ruling 74) brings this to the mock: the provision is a SEGMENTED choice, the
@@ -3063,16 +3487,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 below open up for scheduled remote methods. */}
             {showLogisticsCapture && (
             <div className="space-y-4" data-testid="logistics-section-transport">
-              <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Truck className="w-4 h-4" />
-                  Getting there
-                </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Everything about transport is asked here, and only here. Tap a choice again to
-                  leave it unset.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Everything about transport is asked here, and only here. Tap a choice again to
+                leave it unset.
+              </p>
 
               <div>
                 <Label className="text-sm">How does the traveler reach the start?</Label>
@@ -3202,8 +3620,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                         nothing (§13). ── */}
                     <p className="text-xs text-muted-foreground" data-testid="text-coverage-radius-source">
                       {savedRadiusKm > 0
-                        ? `Your coverage is the ${savedRadiusKm} km Service radius set on the Pickup card above — that is the ring travelers see.`
-                        : "Set the Service radius on the Pickup card above — that number is the ring travelers see. No radius is set yet."}
+                        ? `Your coverage is the ${savedRadiusKm} km Service radius set above — that is the ring travelers see.`
+                        : "Set the Service radius above — that number is the ring travelers see. No radius is set yet."}
                     </p>
                     {/* HISTORY (SS-4, ruling 69 disposition 9, migration 199): the removed input
                         and "Service Radius (km)" once wrote ONE column — the six-sigma pass
@@ -3226,8 +3644,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   <div>
                     <p className="text-xs text-muted-foreground" data-testid="text-route-coverage-hint">
                       {savedRouteStopCount > 0
-                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the Catalog map view.`
-                        : "No route stops saved yet — add them on the Catalog map view (Services → Map)."}
+                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the map on this step.`
+                        : "No route stops saved yet — add them on the map on this step."}
                     </p>
                     {savedRadiusKm > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
@@ -3290,7 +3708,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Charged once when the pickup is outside your coverage radius
-                      {savedRadiusKm > 0 ? ` (${savedRadiusKm} km)` : ` (set a Service radius on the Pickup card)`}.
+                      {savedRadiusKm > 0 ? ` (${savedRadiusKm} km)` : ` (set a Service radius above)`}.
                       Inside it, no fee.
                     </p>
                   </div>
@@ -3404,6 +3822,27 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
             </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── SCHEDULING — timing + booking rules (the step formerly called "Logistics"). ─────────
+          FP-1 / B5: gated on the SHARED scheduled predicate, so a live call/video session keeps
+          every one of these — it is scheduled too. ── */}
+      {onSection("timing") && showScheduledLogistics && (
+        <Card data-testid="card-service-logistics">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              {stepKey === "session" ? "When you are reachable" : "Timing & booking rules"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              These answers are used: the start window is checked when a traveler tries to book.
+              Leave anything you're unsure of blank — blank means "not stated", never a guessed
+              default.
+            </p>
 
             {/* ── Timing ── */}
             <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-timing">
@@ -3480,6 +3919,57 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
             </div>
 
+            {/* ── Booking rules ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-booking-rules">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4" />
+                  Booking rules
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Lead time is set under Booking terms on the Review &amp; submit step — this is the
+                  change window.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
+                  <Input
+                    id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
+                    value={formData.changeCutoffHours}
+                    onChange={(e) => set("changeCutoffHours", e.target.value)}
+                    className="mt-1" data-testid="input-change-cutoff-hours"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When a traveler can still move the booking. Separate from your refund policy.
+                  </p>
+                </div>
+                {/* FP-2 / Package A item 3: "Can this anchor a day?" (`canAnchor`) removed —
+                    an unread D7 capture field (zero consumers repo-wide) whose label is also
+                    planner jargon a seller has no way to interpret. Column untouched; a stored
+                    value round-trips on edit. */}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── CAPACITY — its own step for a place-anchored listing (the step formerly called
+          "Group"); folded into Session details for a remote one, which has no separate step. ── */}
+      {onSection("capacityFields") && showScheduledLogistics && (
+        <Card data-testid="card-capacity">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Capacity
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              The party size the checkout refuses a booking against — a traveler can never book a
+              party you cannot take.
+            </p>
+
             {/* ── Capacity ── */}
             <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-capacity">
               <div>
@@ -3513,45 +4003,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </div>
               </div>
             </div>
-
-            {/* ── Booking rules ── */}
-            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-booking-rules">
-              <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4" />
-                  Booking rules
-                </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Lead time is set under Booking terms — these are the change window and whether the
-                  day can be planned around this.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
-                  <Input
-                    id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
-                    value={formData.changeCutoffHours}
-                    onChange={(e) => set("changeCutoffHours", e.target.value)}
-                    className="mt-1" data-testid="input-change-cutoff-hours"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    When a traveler can still move the booking. Separate from your refund policy.
-                  </p>
-                </div>
-                {/* FP-2 / Package A item 3: "Can this anchor a day?" (`canAnchor`) removed —
-                    an unread D7 capture field (zero consumers repo-wide) whose label is also
-                    planner jargon a seller has no way to interpret. Column untouched; a stored
-                    value round-trips on edit. */}
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
 
-      </>)}
 
-      {currentStep === 4 && (<>
+
+      {onStep("review") && (<>
 
       {/* ── Booking Terms ── */}
       <Card>
@@ -3725,7 +4183,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       </Card>
 
       {/* ── D9 attestations (ruling 62's D9 clause, executed by ruling 67) ──────────────────
-          Placement: the "Terms & requirements" step — the C9 precedent that puts per-listing
+          Placement: the last step, "Review & submit" (Wave 2 / A1 renamed it) — the C9 precedent
+          that puts per-listing
           curation on the "what I sell" module. The card renders ITSELF only when the SHARED
           resolver returns a non-empty applicable set for what is currently drafted; nothing
           here decides applicability locally. IT IS NOW A PUBLISH GATE (ruling 69 disposition
@@ -3747,7 +4206,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       </>)}
 
-      {currentStep === 3 && (<>
+      {onSection("photos") && (<>
 
       {/* ── Photos ── */}
       <Card>
@@ -3834,7 +4293,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       </>)}
 
       {/* ── Provider-Specific Features ── */}
-      {currentStep === 4 && role === "provider" && (
+      {onSection("roleExtras") && role === "provider" && (
         <Card>
           <CardHeader>
             <CardTitle>Additional Features</CardTitle>
@@ -3925,18 +4384,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Label className="text-sm font-medium">Current Status</Label>
               <div className="mt-2">
                 <Badge
-                  variant={existingService?.status === "active" && existingService?.approvalStatus === "approved" ? "default" : "secondary"}
+                  variant={listingStatusPill(existingService, isEditMode).tone === "live" ? "default" : "secondary"}
                   data-testid="badge-provider-listing-status"
                 >
-                  {!isEditMode
-                    ? "Not saved yet"
-                    : existingService?.status === "draft"
-                      ? "Draft (not submitted)"
-                      : existingService?.approvalStatus === "approved"
-                        ? existingService?.status === "active" ? "Live" : "Approved — paused"
-                        : existingService?.approvalStatus === "rejected"
-                          ? "Changes requested"
-                          : "In review"}
+                  {listingStatusPill(existingService, isEditMode).label}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
@@ -3950,7 +4401,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       )}
 
       {/* ── Expert-Specific Approval Workflow ── */}
-      {currentStep === 4 && role === "expert" && (
+      {onSection("roleExtras") && role === "expert" && (
         <Card>
           <CardHeader>
             <CardTitle>Submission & Approval</CardTitle>
@@ -4005,10 +4456,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               Cancel
             </Button>
 
-            {currentStep > 1 && (
+            {effectiveStep > 1 && (
               <Button
                 variant="outline"
-                onClick={() => goToStep(currentStep - 1)}
+                onClick={() => goToStep(effectiveStep - 1)}
                 disabled={createMutation.isPending}
                 data-testid="button-step-back"
               >
@@ -4044,14 +4495,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 : role === "expert" ? "Save as Draft" : "Save Draft"}
             </Button>
 
-            {currentStep < TOTAL_STEPS ? (
+            {effectiveStep < TOTAL_STEPS ? (
               <Button
                 className="bg-primary hover:bg-primary/90"
-                onClick={() => goToStep(currentStep + 1)}
+                onClick={() => goToStep(effectiveStep + 1)}
                 disabled={createMutation.isPending}
                 data-testid="button-step-next"
               >
-                Next: {STEP_TITLES[currentStep]}
+                Next: {STEP_SHORT_TITLES[flow[effectiveStep]]}
               </Button>
             ) : role === "expert" ? (
               <Button
@@ -4079,7 +4530,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     : publishBlocked
                     ? "Complete background verification before submitting a listing in this category"
                     : attestationGateBlocked
-                    ? "Tick the confirmations on the Terms & requirements step before submitting"
+                    ? "Tick the confirmations on the Review & submit step before submitting"
                     : (!isEditMode && !formData.serviceOfferingTypeId)
                     ? "Pick an offering from the /earn catalog first"
                     : undefined
@@ -4099,7 +4550,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {/* Final-step disabled explanation: name WHICH step holds each missing
               required field, with a jump link — mirrors the existing enforcement,
               adds none. */}
-          {currentStep === TOTAL_STEPS && missingForFinal.length > 0 && (
+          {effectiveStep === TOTAL_STEPS && missingForFinal.length > 0 && (
             <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
               Still needed before you submit for review:{" "}
               {missingForFinal.map((m, i) => (
@@ -4110,7 +4561,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     className="underline hover:text-foreground"
                     onClick={() => goToStep(m.step)}
                   >
-                    {m.label} (Step {m.step})
+                    {m.label} ({STEP_SHORT_TITLES[m.stepKey]}, step {m.step})
                   </button>
                 </span>
               ))}
@@ -4121,7 +4572,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {/* dispatch v1.3 R2: reinforce "what happens next" right at the submit action —
               submitting for review is never blocked while unverified (only going LIVE is
               gated, ruling 53), so this stays a note, not a disabled button. */}
-          {currentStep === TOTAL_STEPS && expertVerificationGateBlocked && (
+          {effectiveStep === TOTAL_STEPS && expertVerificationGateBlocked && (
             <p className="text-xs text-amber-700 sm:text-right" data-testid="text-expert-submit-verification-note">
               You can submit for review now — it just won't go live until you{" "}
               <a href="/expert-status" className="underline font-medium">verify your identity</a>.
@@ -4137,7 +4588,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               already had its escape, the provider branch did not. Copy only — this asserts no
               new state and changes no gate; it names the block the gate has ALREADY decided and
               points at the page that clears it. */}
-          {currentStep === TOTAL_STEPS && role === "provider" && (verificationGateBlocked || publishBlocked) && (
+          {effectiveStep === TOTAL_STEPS && role === "provider" && (verificationGateBlocked || publishBlocked) && (
             <p className="text-xs text-amber-700 sm:text-right" data-testid="text-provider-publish-verification-note">
               {verificationGateBlocked
                 ? "Publishing needs identity and business verification. "

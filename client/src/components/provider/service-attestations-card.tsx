@@ -1,9 +1,11 @@
 /**
  * D9 attestation capture card (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67).
  *
- * Placement: the ServiceForm wizard's "Terms & requirements" step — the C9 precedent that puts
- * per-listing curation on the "what I sell" module. This component is the whole surface; the
- * wizard owns only the checkbox state and the post-save write.
+ * Placement: the ServiceForm wizard's LAST step — "Review & submit" since Wave 2 / lane A1
+ * renamed it (it was "Terms & requirements" while the wizard had four fixed steps; the flow now
+ * branches on the delivery method, so the step is named by identity, not by number). The C9
+ * precedent still holds: per-listing curation belongs to the "what I sell" module. This component
+ * is the whole surface; the wizard owns only the checkbox state and the post-save write.
  *
  * ── WHAT RENDERS, AND WHEN ───────────────────────────────────────────────────────────────────
  * The card renders ONLY when the SERVER-SHARED predicate resolves a non-empty applicable set for

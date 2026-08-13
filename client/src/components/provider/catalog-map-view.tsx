@@ -1,47 +1,39 @@
 /**
- * CatalogMapView — CLAUDE.md ruling 22(b): the Catalog's map authoring surface
- * (/provider/services list↔map toggle). Three-pane shell mirroring the Workstation anatomy:
- * left = service selector (the same rows the Catalog grid renders, with their pin-health
- * status), center = the shared ServiceLocationMap canvas, right = the two authoring cards.
+ * CatalogMapView — the Catalog's map view. **TRAVELER PREVIEW ONLY** since Wave 2 / lane A1
+ * (decision-maker ruled Aug 12, 2026; execution map S3).
  *
- * Write paths — deliberately NOT new rails:
- *  - Meeting pin: the SAME confirm-gated LocationPointPicker the edit form mounts, submitting
- *    through the SAME PATCH /api/provider/services/:id (extractServiceLocation stays the one
- *    pin writer — L27-P3). Only an explicit Confirm/Remove in the picker triggers a save.
- *  - Route stops: the ruling-22 replace-list PUT /api/provider/services/:id/route-points.
- *    Stops added without coordinates stay visibly flagged "Not on map" — never guessed (§13).
+ * WHAT CHANGED AND WHY. Ruling 22(b) made Catalog the map's AUTHORING home, on the C9 precedent
+ * that per-listing curation belongs to the "what I sell" module. The Aug 12 ruling AMENDS that:
+ * map authoring is a CREATION job, so the pin, the radius, the route stops and the zone rings
+ * moved into the create/edit flow as its 4th step, named "Logistics"
+ * (`client/src/components/provider/service-map-authoring.tsx`). Catalog keeps the READ half —
+ * see what a traveler will see, and find the listings that have no location yet — so that
+ * post-creation work on Catalog is exactly two verbs: publish availability, or develop the
+ * offering. Availability stays here, untouched.
  *
- * ROUTE-STOP CANVAS INTERACTIONS (ruling 62 / QA_PUNCH_LIST P1, Aug 11 2026) — the reported
- * "adding pins to the map didn't work as intended" gap. Diagnosis (decision-maker verified the
- * Google keys and the meeting-pin picker live): stops were located ONLY by name→geocode
- * (`locateStop`), and their markers were static. A stop the geocoder missed could not be pinned
- * by hand at all. Closed here with the two affordances the meeting pin already had:
- *   • DRAG-TO-ADJUST — a located stop's marker is draggable; drag end moves the DRAFT stop and
- *     sets `dirty`.
- *   • CLICK-TO-PLACE — an explicitly ARMED mode (never a bare map click, which would fight
- *     pan/zoom): "Place a stop here" arms a new stop, "Place on map" arms an existing UNLOCATED
- *     one; the next canvas click sets that stop's coordinates. A newly placed stop is prompted
- *     inline for its name and CANNOT be saved unnamed — an unnamed pin is not a stop.
- * Both are DRAFT-ONLY. Nothing reaches the server until the existing "Save route" button, and
- * that dirty→Save step IS the L27-P3 confirm posture on this surface (no second dialog).
- * Everything already true is unchanged: geocode Locate stays, unlocated stops stay honestly
- * listed off-map, positions are derived server-side from array order, and the replace-list PUT
- * with its 409 concurrency handling is untouched.
+ * NOTHING HERE WRITES. There is no pin picker, no stop editor and no save button on this surface
+ * any more; the two write rails are unchanged and live in the flow —
+ * `extractServiceLocation` on POST/PATCH /api/provider/services (the ONE pin writer, L27-P3) and
+ * the owner-gated replace-list PUT /api/provider/services/:id/route-points (ruling 22a). Every
+ * "fix this" affordance below is a LINK into the flow's Logistics step, which is the same door
+ * the draft checklist uses.
+ *
+ * The honesty rules C4 shipped are kept verbatim: the "X of Y services located" summary is a real
+ * partition of the owner's own rows, an unlocated listing is listed in the unpinned rail and stays
+ * OFF the map (never dropped on a city centre), unlocated stops are counted but never drawn, and
+ * ODbL attribution rides the shared `ServiceLocationMap` wherever it renders (§20/§22c).
  */
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, CircleMarker, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowDown, ArrowUp, Crosshair, Loader2, MapPin, MapPinOff, Plus, Trash2, TrendingUp, AlertTriangle } from "lucide-react";
+import { Loader2, MapPin, MapPinOff, Pencil, Plus, TrendingUp, AlertTriangle } from "lucide-react";
 import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/service-location-map";
-import { LocationPointPicker, parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
+import { parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
 
 export interface CatalogMapService {
   id: string;
@@ -63,24 +55,10 @@ interface RoutePointRow {
   longitude: string | null;
 }
 
-/** Local editable stop — key is client-only (row identity across reorders before save). */
-interface DraftStop {
-  key: string;
-  name: string;
-  lat: number | null;
-  lng: number | null;
-}
-
 function toNum(v: string | number | null | undefined): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
-}
-
-let draftKeyCounter = 0;
-function nextDraftKey(): string {
-  draftKeyCounter += 1;
-  return `draft-${draftKeyCounter}`;
 }
 
 // ── Market insights overlay (lane B2, ruling 84) ──────────────────────────────────────────────────
@@ -358,8 +336,7 @@ function MarketInsightsView() {
 }
 
 export function CatalogMapView({ services }: { services: CatalogMapService[] }) {
-  const { toast } = useToast();
-  // Sibling toggle (ruling 84): authoring (per-service pin/route) vs market insights (demand + gaps).
+  // Sibling toggle (ruling 84): the per-service map preview vs market insights (demand + gaps).
   // A separate axis from List/Map and Manage/Preview — those are untouched.
   const [insightsMode, setInsightsMode] = useState(false);
   const mappable = services.filter((s) => s.productShape !== "bundle");
@@ -375,165 +352,36 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   const locatedServices = mappable.filter((s) => parseStoredPoint(s.latitude, s.longitude) !== null);
   const unpinnedServices = mappable.filter((s) => parseStoredPoint(s.latitude, s.longitude) === null);
 
-  // Owner single-service read (ruling 22: routePoints ride this response)
+  // Owner single-service read (ruling 22: routePoints ride this response). READ ONLY — the stops
+  // below are rendered from this response and edited nowhere on this surface.
   const { data: detail } = useQuery<{ routePoints?: RoutePointRow[] } | undefined>({
     queryKey: [`/api/provider/services/${selectedId}`],
     enabled: !!selectedId,
   });
 
-  const [draft, setDraft] = useState<DraftStop[]>([]);
-  const [dirty, setDirty] = useState(false);
-  const [newStopName, setNewStopName] = useState("");
-  const [locatingKey, setLocatingKey] = useState<string | null>(null);
-  /** Ruling 62: the ARMED click-to-place mode. `null` = disarmed (a bare canvas click does
-   *  nothing). `{kind:"new"}` drops a fresh stop at the clicked point; `{kind:"existing"}`
-   *  gives an already-listed unlocated stop its pin. */
-  const [placement, setPlacement] = useState<{ kind: "new" } | { kind: "existing"; key: string } | null>(null);
-  /** The stop currently being named inline (a just-placed pin). Save is blocked while any
-   *  stop is nameless — an unnamed pin is not a stop. */
-  const [namingKey, setNamingKey] = useState<string | null>(null);
-
-  // Re-seed the editable list whenever the selected service's saved route arrives/changes.
-  useEffect(() => {
-    const rows = detail?.routePoints ?? [];
-    setDraft(
-      rows
-        .slice()
-        .sort((a, b) => a.position - b.position)
-        .map((r) => ({ key: r.id, name: r.name, lat: toNum(r.latitude), lng: toNum(r.longitude) })),
-    );
-    setDirty(false);
-    setPlacement(null);
-    setNamingKey(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, detail?.routePoints]);
-
   const pin: LocationPoint | null = selected ? parseStoredPoint(selected.latitude, selected.longitude) : null;
 
-  const stopsForMap: ServiceRouteStopView[] = useMemo(
-    () => draft.map((s, i) => ({ id: s.key, position: i + 1, name: s.name, lat: s.lat, lng: s.lng })),
-    [draft],
-  );
-  const locatedCount = draft.filter((s) => s.lat !== null && s.lng !== null).length;
-
-  const pinMutation = useMutation({
-    mutationFn: async (point: LocationPoint | null) => {
-      const res = await apiRequest("PATCH", `/api/provider/services/${selectedId}`, { locationPoint: point });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/provider/services/${selectedId}`] });
-      toast({ title: "Meeting pin updated" });
-    },
-    onError: () => toast({ title: "Could not update the pin", variant: "destructive" }),
-  });
-
-  const routeMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("PUT", `/api/provider/services/${selectedId}/route-points`, {
-        stops: draft.map((s) => ({
-          name: s.name,
-          latitude: s.lat === null ? null : s.lat,
-          longitude: s.lng === null ? null : s.lng,
+  const stops: ServiceRouteStopView[] = useMemo(
+    () =>
+      (detail?.routePoints ?? [])
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((r, i) => ({
+          id: r.id,
+          position: i + 1,
+          name: r.name,
+          lat: toNum(r.latitude),
+          lng: toNum(r.longitude),
         })),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/provider/services/${selectedId}`] });
-      setDirty(false);
-      toast({ title: "Route saved" });
-    },
-    onError: () => toast({ title: "Could not save the route", variant: "destructive" }),
-  });
+    [detail?.routePoints],
+  );
+  const locatedCount = stops.filter((s) => s.lat !== null && s.lng !== null).length;
 
-  async function locateStop(stop: DraftStop) {
-    setLocatingKey(stop.key);
-    try {
-      const query = selected?.location ? `${stop.name}, ${selected.location}` : stop.name;
-      const res = await apiRequest("POST", "/api/geocode", { address: query });
-      const data = await res.json();
-      if (typeof data?.lat === "number" && typeof data?.lng === "number") {
-        setDraft((prev) => prev.map((s) => (s.key === stop.key ? { ...s, lat: data.lat, lng: data.lng } : s)));
-        setDirty(true);
-      } else {
-        toast({ title: "No match found", description: "The stop stays listed without a map location." });
-      }
-    } catch {
-      toast({ title: "No match found", description: "The stop stays listed without a map location." });
-    } finally {
-      setLocatingKey(null);
-    }
-  }
+  /** The one door to authoring: the flow's step 4. Same door the draft checklist uses. */
+  const logisticsHref = (id: string) => `/provider/services/${id}/edit?step=logistics`;
 
-  function addStop() {
-    const name = newStopName.trim();
-    if (!name) return;
-    setDraft((prev) => [...prev, { key: nextDraftKey(), name, lat: null, lng: null }]);
-    setNewStopName("");
-    setDirty(true);
-  }
 
-  // ── Ruling 62: canvas interactions (DRAFT ONLY — "Save route" is still the only write) ──────
-
-  /** Drag-to-adjust. Moves the draft stop and marks it dirty; nothing is persisted here. */
-  function handleStopDragEnd(stopKey: string, lat: number, lng: number) {
-    setDraft((prev) => prev.map((s) => (s.key === stopKey ? { ...s, lat, lng } : s)));
-    setDirty(true);
-  }
-
-  /** Click-to-place. Only ever called while a placement mode is ARMED (the bridge is not even
-   *  mounted otherwise), so a bare pan/zoom click can never drop a pin. */
-  function handleCanvasClick(lat: number, lng: number) {
-    if (!placement) return;
-    if (placement.kind === "existing") {
-      setDraft((prev) => prev.map((s) => (s.key === placement.key ? { ...s, lat, lng } : s)));
-      setDirty(true);
-      setPlacement(null);
-      return;
-    }
-    // A new stop is born WITH coordinates but WITHOUT a name; the inline prompt below is
-    // focused immediately and Save stays blocked until it is filled in.
-    const key = nextDraftKey();
-    setDraft((prev) => [...prev, { key, name: "", lat, lng }]);
-    setNamingKey(key);
-    setDirty(true);
-    setPlacement(null);
-  }
-
-  function renameStop(key: string, name: string) {
-    setDraft((prev) => prev.map((s) => (s.key === key ? { ...s, name } : s)));
-    setDirty(true);
-  }
-
-  function moveStop(index: number, delta: -1 | 1) {
-    setDraft((prev) => {
-      const next = prev.slice();
-      const target = index + delta;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-    setDirty(true);
-  }
-
-  function removeStop(key: string) {
-    setDraft((prev) => prev.filter((s) => s.key !== key));
-    if (namingKey === key) setNamingKey(null);
-    if (placement?.kind === "existing" && placement.key === key) setPlacement(null);
-    setDirty(true);
-  }
-
-  // A stop must have a name (the replace-list PUT rejects an empty one anyway — min(1)); block
-  // the save locally so the provider sees WHY instead of a 400.
-  const unnamedCount = draft.filter((s) => !s.name.trim()).length;
-  // §13: click-to-place needs a canvas, and this map deliberately renders NOTHING when the
-  // service has no confirmed pin and no located stop — there is no city-center fallback to
-  // click on. Say so honestly rather than inventing a viewport.
-  const canvasExists = !!pin || locatedCount > 0;
-
-  // Sibling toggle bar (ruling 84) — authoring ⇄ market insights. Shown above every branch.
+  // Sibling toggle bar (ruling 84) — map preview ⇄ market insights. Shown above every branch.
   const toggleBar = (
     <div className="inline-flex rounded-lg border border-[#E8E8E2] p-0.5" data-testid="map-insights-toggle">
       <button
@@ -543,7 +391,7 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
         }`}
         data-testid="button-map-authoring"
       >
-        Place on map
+        Map preview
       </button>
       <button
         onClick={() => setInsightsMode(true)}
@@ -572,7 +420,8 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
         {toggleBar}
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No mappable services yet — create a service first, then place it on the map here.
+            No mappable services yet — create a service first. You place it on the map inside the
+            create flow, on its Logistics step.
           </CardContent>
         </Card>
       </div>
@@ -662,72 +511,65 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
       </div>
 
       {/* Center: canvas */}
+      {/* Center: the traveler's-eye canvas. NO authoring props are passed — markers are static and
+          a map click does nothing (`ServiceLocationMap`'s authoring affordances are opt-in). */}
       <div className="space-y-2 min-w-0">
         <ServiceLocationMap
           pin={pin}
           pinLabel={selected?.meetingPoint || selected?.serviceName || null}
           radiusKm={toNum(selected?.serviceRadius)}
-          stops={stopsForMap}
+          stops={stops}
           height={480}
           testIdPrefix="catalog-map-canvas"
-          onStopDragEnd={handleStopDragEnd}
-          onCanvasClick={placement ? handleCanvasClick : undefined}
-          placementActive={!!placement}
         />
-        {placement && (
-          <p
-            className="text-[12px] rounded-md border border-[#E85D55] bg-[rgba(232,85,85,0.06)] px-2 py-1.5"
-            style={{ color: "#1A1A18" }}
-            data-testid="catalog-map-placement-banner"
-          >
-            {placement.kind === "new"
-              ? "Click the map to drop a new stop — you'll name it next."
-              : "Click the map to place this stop."}{" "}
-            <button className="underline" onClick={() => setPlacement(null)} data-testid="button-cancel-placement">
-              Cancel
-            </button>
-          </p>
-        )}
         {!pin && locatedCount === 0 && (
           <Card>
             <CardContent className="py-16 text-center text-sm text-muted-foreground" data-testid="catalog-map-empty">
               <MapPin className="w-6 h-6 mx-auto mb-2 opacity-40" />
-              This service has no confirmed location yet. Confirm a meeting pin or locate a route
-              stop on the right — nothing is guessed onto the map.
+              This service has no confirmed location yet — nothing is guessed onto the map. Its pin
+              is placed in the create flow, on the Logistics step.
             </CardContent>
           </Card>
         )}
-        {draft.length > 0 && (
+        {stops.length > 0 && (
           <p className="text-[12px] text-muted-foreground" data-testid="catalog-map-coverage">
-            {locatedCount} of {draft.length} stops located
-            {locatedCount < draft.length ? " — unlocated stops stay listed but are never drawn." : "."}
+            {locatedCount} of {stops.length} stops located
+            {locatedCount < stops.length ? " — unlocated stops stay listed but are never drawn." : "."}
           </p>
         )}
       </div>
 
-      {/* Right rail: authoring */}
+      {/* Right rail: READ-ONLY. Nothing here can be dragged, armed or placed — to change a
+          location you go back into the flow's Logistics step, which is the only place either
+          write rail is reachable from. */}
       <div className="space-y-4">
         <Card data-testid="map-view-pin-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px]">Meeting pin</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
+            <p className="text-[13px]" style={{ color: "#1A1A18" }} data-testid="text-pin-state">
+              {pin
+                ? selected?.locationPrecision === "exact"
+                  ? "Exact pin confirmed."
+                  : "Approximate area — no exact pin confirmed yet."
+                : "No location yet."}
+            </p>
+            {selected?.meetingPoint && (
+              <p className="text-[12px] text-muted-foreground">{selected.meetingPoint}</p>
+            )}
             {selected && (
-              <LocationPointPicker
-                value={pin}
-                precision={selected.locationPrecision ?? null}
-                addressHint={selected.meetingPoint || selected.location || ""}
-                onChange={(point) => pinMutation.mutate(point)}
-                label="Where travelers meet you"
-                helpText="Saved the moment you confirm — same pin the edit form uses."
-                idPrefix={`map-view-${selected.id}`}
-              />
+              <Button asChild variant="outline" size="sm" className="w-full" data-testid="button-edit-location">
+                <a href={logisticsHref(selected.id)}>
+                  <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                  {pin ? "Edit location & route" : "Add a location"}
+                </a>
+              </Button>
             )}
-            {pinMutation.isPending && (
-              <p className="text-[12px] text-muted-foreground mt-2 flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" /> Saving pin…
-              </p>
-            )}
+            <p className="text-[11px] text-muted-foreground">
+              Opens this listing&apos;s <strong>Logistics</strong> step — the one place the pin, the
+              radius and the stops are authored.
+            </p>
           </CardContent>
         </Card>
 
@@ -736,165 +578,37 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
             <CardTitle className="text-[14px]">Route stops</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              <Input
-                value={newStopName}
-                onChange={(e) => setNewStopName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addStop();
-                  }
-                }}
-                placeholder="Add a stop (e.g. Nishiki Market)"
-                className="text-[13px]"
-                data-testid="input-new-stop"
-              />
-              <Button variant="outline" size="icon" onClick={addStop} disabled={!newStopName.trim()} data-testid="button-add-stop">
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-
-            {/* Ruling 62: the ARMED click-to-place toggle. Disabled (with the reason stated)
-                when there is no canvas to click — this map never fabricates a city-center
-                viewport (§13), so the meeting pin or a geocoded stop has to come first. */}
-            <Button
-              variant={placement?.kind === "new" ? "default" : "outline"}
-              className="w-full text-[13px]"
-              onClick={() => setPlacement(placement?.kind === "new" ? null : { kind: "new" })}
-              disabled={!canvasExists}
-              data-testid="button-place-stop-mode"
-            >
-              <Crosshair className="w-3.5 h-3.5 mr-1.5" />
-              {placement?.kind === "new" ? "Click the map…" : "Place a stop here"}
-            </Button>
-            {!canvasExists && (
-              <p className="text-[11px] text-muted-foreground" data-testid="text-placement-unavailable">
-                Confirm the meeting pin (or find one stop by name) first — there's no map to click
-                on yet, and nothing is guessed onto one.
-              </p>
-            )}
-
-            {draft.length === 0 ? (
+            {stops.length === 0 ? (
               <p className="text-[12px] text-muted-foreground">
-                No stops yet. Add the places this service visits, in order.
+                No stops saved. The places this service visits are added on its Logistics step.
               </p>
             ) : (
               <ol className="space-y-1.5">
-                {draft.map((stop, i) => (
+                {stops.map((stop) => (
                   <li
-                    key={stop.key}
+                    key={stop.id}
                     className="flex items-center gap-1.5 rounded-md border border-[#E8E8E2] px-2 py-1.5"
-                    data-testid={`route-stop-row-${i + 1}`}
+                    data-testid={`route-stop-row-${stop.position}`}
                   >
                     <span className="w-5 h-5 rounded-full bg-[#E85D55] text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-                      {i + 1}
+                      {stop.position}
                     </span>
                     <span className="flex-1 min-w-0 text-[13px]">
-                      {namingKey === stop.key || !stop.name.trim() ? (
-                        // Ruling 62: a just-placed pin is prompted for its name inline. It is a
-                        // pin, not yet a stop — Save stays blocked until this is filled in.
-                        <Input
-                          autoFocus
-                          value={stop.name}
-                          onChange={(e) => renameStop(stop.key, e.target.value)}
-                          onBlur={() => stop.name.trim() && setNamingKey(null)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && stop.name.trim()) {
-                              e.preventDefault();
-                              setNamingKey(null);
-                            }
-                          }}
-                          placeholder="Name this stop"
-                          className="h-7 text-[13px]"
-                          data-testid={`input-stop-name-${i + 1}`}
-                        />
-                      ) : (
-                        <span className="block truncate">{stop.name}</span>
-                      )}
+                      <span className="block truncate">{stop.name}</span>
                       {stop.lat === null && (
                         <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 mt-0.5">
                           Not on map
                         </Badge>
                       )}
                     </span>
-                    {stop.lat === null && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          title="Find on map by name"
-                          onClick={() => locateStop(stop)}
-                          disabled={locatingKey === stop.key}
-                          data-testid={`button-locate-stop-${i + 1}`}
-                        >
-                          {locatingKey === stop.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Crosshair className="w-3.5 h-3.5" />}
-                        </Button>
-                        {/* Ruling 62: give an already-listed unlocated stop its pin by hand. */}
-                        <Button
-                          variant={placement?.kind === "existing" && placement.key === stop.key ? "default" : "ghost"}
-                          size="icon"
-                          className="h-7 w-7"
-                          title="Place on map"
-                          disabled={!canvasExists}
-                          onClick={() =>
-                            setPlacement(
-                              placement?.kind === "existing" && placement.key === stop.key
-                                ? null
-                                : { kind: "existing", key: stop.key },
-                            )
-                          }
-                          data-testid={`button-place-stop-${i + 1}`}
-                        >
-                          <MapPin className="w-3.5 h-3.5" />
-                        </Button>
-                      </>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveStop(i, -1)} disabled={i === 0} title="Move up">
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => moveStop(i, 1)}
-                      disabled={i === draft.length - 1}
-                      title="Move down"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeStop(stop.key)} title="Remove">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
                   </li>
                 ))}
               </ol>
             )}
-
-            {unnamedCount > 0 && (
-              <p className="text-[11px] text-amber-700" data-testid="text-unnamed-stop-warning">
-                Name {unnamedCount === 1 ? "the new stop" : `all ${unnamedCount} new stops`} before
-                saving — an unnamed pin isn't a stop.
-              </p>
-            )}
-            <Button
-              className="w-full"
-              onClick={() => routeMutation.mutate()}
-              disabled={!dirty || unnamedCount > 0 || routeMutation.isPending}
-              data-testid="button-save-route"
-            >
-              {routeMutation.isPending ? "Saving…" : dirty ? "Save route" : "Route saved"}
-            </Button>
-            {/* L27-P3 on this surface: the draft above lives only in the browser until this
-                button. Drag-adjusts and click-placements are edits like any other — they mark
-                the route dirty and wait for this one explicit confirm (ruling 62). */}
-            <p className="text-[11px] text-muted-foreground">
-              Drag a numbered pin to adjust it. Nothing is saved until you press Save route.
-            </p>
           </CardContent>
         </Card>
       </div>
+
       </div>
     </div>
   );

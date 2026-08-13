@@ -61,6 +61,13 @@ capacity story).
 
 ## Gate G — decisions embedded (answering = unblocking Wave 3)
 
+> **RATIFIED (decision-maker, Aug 13, 2026):** the mock is ratified **in full** — every Gate G
+> proposed surface as designed, including the flagged judgment calls (Scheduling/Capacity step
+> names; read-only Calendar deep-linking into the Catalog availability editor; a property room's
+> Edit opening the property builder at Rooms; the property pin privacy circle). **Wave 2 is GO
+> (in flight); Wave 3 is unblocked**, sequenced after Wave 2, with the S7/S8 schema touchpoints
+> still applying at lane start.
+
 > **Every Gate G item is now DESIGNED INTO THE MOCK as a proposed, interactive surface** carrying
 > a "Proposed — gap #N · ratify or amend" chip: G1 = the Availability tab (weekly patterns,
 > date-ranges, blackouts, honest no-calendar state); G2 = the Property builder behind the One-door
