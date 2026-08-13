@@ -64,11 +64,13 @@ test.describe('ServiceForm — travel-surcharge section (lane B1)', () => {
         timeout: 30_000,
       });
 
-      // Open the Transport & Logistics step.
-      const step2 = page.getByTestId('button-step-2');
-      await expect(step2).toBeVisible({ timeout: 15_000 });
-      await step2.click();
-      await expect(step2).toHaveAttribute('aria-current', 'step');
+      // A1: the surcharge moved with the rest of the spatial block onto step 4, "Logistics"
+      // (in-person is a 5-step flow: Basics · Scheduling · Capacity · Logistics · Review).
+      const step4 = page.getByTestId('button-step-4');
+      await expect(step4).toBeVisible({ timeout: 15_000 });
+      await expect(step4).toHaveAttribute('data-step-key', 'logistics');
+      await step4.click();
+      await expect(step4).toHaveAttribute('aria-current', 'step');
 
       // The surcharge section renders (place-anchored + pickup provision), the mode is a SEGMENTED
       // control pre-selected to the saved 'flat', and the flat amount input carries the saved value.
