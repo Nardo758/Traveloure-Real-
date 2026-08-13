@@ -16,6 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  bundleEditorHref,
   isPropertyEditorShape,
   isPropertyRoom,
   listingEditHref,
@@ -37,8 +38,31 @@ test("N2: every canonical delivery-method listing shape keeps the ServiceForm ro
   for (const shape of ["bundle", "", "properties", "room", "property_rooms", "PROPERTY"]) {
     assert.equal(isPropertyEditorShape(shape), false, `${shape} must not resolve to the property editor`);
   }
-  // The bundle destination is unchanged by this lane (its own filed FP-2 item).
-  assert.equal(listingEditHref({ id: "b-1", productShape: "bundle" }), "/provider/workstation");
+  // A bundle leaves the ServiceForm too, but for the BUNDLE builder — see B1/B2 below.
+  assert.equal(listingEditHref({ id: "b-1", productShape: "bundle" }), "/provider/workstation?bundle=b-1");
+});
+
+// ── FP-2 / Package A item 7 — the bundle Edit link carries the bundle id ───────────────────────
+// It used to resolve to a bare `/provider/workstation`: the right page with the identity dropped,
+// so the provider landed on a list of every bundle they own and had to find the one they had just
+// clicked. Same `?param=` convention as the property editor above.
+
+test("B1: a bundle's Edit carries its id to the Workstation builder", () => {
+  assert.equal(bundleEditorHref({ id: "bundle-7", productShape: "bundle" }), "/provider/workstation?bundle=bundle-7");
+  assert.equal(listingEditHref({ id: "bundle-7", productShape: "bundle" }), "/provider/workstation?bundle=bundle-7");
+});
+
+test("B2 (negative): only a bundle row gets the bundle link, and the id is encoded", () => {
+  assert.equal(bundleEditorHref({ id: "svc-1", productShape: null }), null);
+  assert.equal(bundleEditorHref({ id: "prop-4", productShape: "property" }), null);
+  assert.equal(bundleEditorHref({ id: "room-9", productShape: "property_room" }), null);
+  // A property row must keep the PROPERTY link even though both live on the Workstation.
+  assert.equal(listingEditHref({ id: "prop-4", productShape: "property" }), "/provider/workstation?property=prop-4");
+  // Ids reach the URL encoded — the link is built, never concatenated blindly.
+  assert.equal(
+    bundleEditorHref({ id: "a b&c", productShape: "bundle" }),
+    "/provider/workstation?bundle=a%20b%26c",
+  );
 });
 
 // ── The ratified routing ───────────────────────────────────────────────────────────────────────
