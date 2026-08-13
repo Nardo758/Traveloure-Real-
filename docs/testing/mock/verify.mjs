@@ -422,6 +422,116 @@ ok('review deep-links into Availability', (await view()) === 'view-catalog' && a
 ok('room pre-selected in the editor', await page.evaluate(() =>
   document.querySelector('#av-pick button[aria-pressed="true"]').textContent.includes('Tatami Room')));
 
+/* ══════════════ 10b. property location — the pin (gap #1) ══════════════ */
+console.log('\n== 10b. property location (gap #1 · pin) ==');
+await go('workstation');
+await page.click('#tile-property');
+const pinned = () => cnt('#propmap-overlay .mk');
+
+const pb0 = await page.textContent('#prop-body');
+ok('property basics carries a “Where is it” section', pb0.includes('Where is it') && (await cnt('#propmap')) === 1);
+ok('the section is chipped as proposed gap #1',
+  (await page.$$eval('#prop-body .propchip', e => e.map(x => x.textContent))).filter(t => /gap #1 · ratify or amend/.test(t)).length >= 2);
+ok('it is the flow’s own pin component reused, not a second location rail',
+  pb0.includes('same confirm-gated pin') && pb0.includes('One sanctioned location write, reused'));
+ok('property map is labelled illustrative and carries ODbL attribution',
+  (await page.textContent('#propmap .maplabel')).includes('illustrative')
+  && (await page.textContent('#propmap .mapattr')).includes('© OpenStreetMap contributors'));
+ok('seeded UNPINNED so the placement is experienced', (await page.textContent('#prop-pin-pill')).trim() === 'Not placed'
+  && (await pinned()) === 0);
+ok('unpinned says so, and says rooms inherit it',
+  (await page.textContent('#prop-pin-slot')).includes('Not yet locatable')
+  && (await page.textContent('#prop-pin-slot')).includes('neither are its rooms'));
+
+ok('address line is optional and empty by default', (await page.inputValue('#prop-addr')) === '');
+ok('address placeholder is Kyoto-appropriate',
+  (await page.getAttribute('#prop-addr', 'placeholder')) === 'e.g. Shimbashi-dori, Gion');
+ok('address is labelled display text shown to guests', pb0.includes('shown to guests'));
+ok('no geocoding guess — the pin is authoritative',
+  pb0.includes('never guess coordinates from text') && pb0.includes('geocode poorly'));
+
+ok('privacy panel renders BOTH states, not just describes them',
+  (await cnt('#priv-ill-before .privmini')) === 1 && (await cnt('#priv-ill-after .privmini')) === 1);
+ok('pre-booking illustration is an approximate area circle',
+  (await cnt('#priv-ill-before .ring.approx')) === 1
+  && (await page.textContent('#priv-ill-before')).includes('approximate area')
+  && (await page.textContent('#priv-ill-before')).includes('exact location after booking'));
+ok('post-booking illustration is the exact pin',
+  (await cnt('#priv-ill-after .mk')) === 1 && (await cnt('#priv-ill-after .ring.approx')) === 0);
+ok('privacy toggle starts on the pre-booking state',
+  (await page.getAttribute('#prop-priv-seg [data-priv="before"]', 'aria-pressed')) === 'true'
+  && (await cnt('#priv-ill-before.on')) === 1);
+await page.click('#prop-priv-seg [data-priv="after"]');
+ok('privacy toggle switches which state is inspected',
+  (await cnt('#priv-ill-after.on')) === 1 && (await cnt('#priv-ill-before.on')) === 0
+  && (await page.textContent('#prop-priv-cap')).includes('post-booking'));
+ok('both illustrations stay on screen after the toggle',
+  (await cnt('#priv-ill-before .privmini')) === 1 && (await cnt('#priv-ill-after .privmini')) === 1);
+
+/* the confirm gate, exactly as step 4 */
+await page.click('#propmap', { position: { x: 320, y: 190 } });
+ok('a BARE map click places nothing', (await pinned()) === 0
+  && (await page.textContent('#prop-armbar-text')).includes('did nothing'));
+await page.click('#prop-arm-pin');
+ok('arming says what a click will do', (await page.textContent('#prop-armbar-text')).includes('Armed')
+  && (await cnt('#prop-armbar.arm')) === 1);
+await page.click('#propmap', { position: { x: 320, y: 190 } });
+ok('an armed click places a CANDIDATE pin, unconfirmed', (await pinned()) === 1
+  && (await page.textContent('#prop-pin-pill')).trim() === 'Unconfirmed'
+  && (await page.textContent('#prop-pin-slot')).includes('not saved'));
+ok('arming does not persist after a placement', (await cnt('#prop-armbar.arm')) === 0);
+await page.click('#prop-pin-discard');
+ok('Discard restores the unplaced state exactly', (await pinned()) === 0
+  && (await page.textContent('#prop-pin-pill')).trim() === 'Not placed');
+
+/* an unconfirmed pin is not a location — the review must still refuse */
+await page.click('#prop-arm-pin');
+await page.click('#propmap', { position: { x: 300, y: 170 } });
+await page.click('#prop-step-seg [data-ps="1"]');
+ok('rooms step states the inheritance',
+  (await page.textContent('#prop-inherit-rooms')).includes('All rooms take their location from the property pin')
+  && (await page.textContent('#prop-inherit-rooms')).includes('one placement locates the whole house'));
+ok('rooms step flags the missing pin while it is unconfirmed',
+  (await page.textContent('#prop-inherit-rooms')).includes('no room is locatable'));
+await page.click('#prop-step-seg [data-ps="2"]');
+ok('review shows “Not yet locatable — drop the pin” while unpinned',
+  (await page.textContent('#prop-loc-row')).includes('Not yet locatable — drop the pin'));
+ok('review keeps the separate no-dates row beside it',
+  (await page.textContent('#prop-body')).includes('Not yet bookable — no date ranges published'));
+ok('review states the inheritance too',
+  (await page.textContent('#prop-inherit-review')).includes('All rooms take their location from the property pin'));
+ok('review completes with NO address line — it is optional',
+  (await page.textContent('#prop-loc-sumrow')).includes('No directions line')
+  && await page.isEnabled('#prop-submit'));
+
+await page.click('#prop-step-seg [data-ps="0"]');
+ok('the candidate pin survived the step change, still unconfirmed',
+  (await pinned()) === 1 && (await page.textContent('#prop-pin-pill')).trim() === 'Unconfirmed');
+await page.click('#prop-pin-confirm');
+ok('Confirm stores the location', (await page.textContent('#prop-pin-pill')).trim() === 'Confirmed'
+  && (await page.textContent('#prop-pin-slot')).includes('Every room inherits this'));
+ok('a confirmed pin draws the approximate area on the canvas', (await cnt('#propmap-overlay .ring.approx')) === 1);
+await page.fill('#prop-addr', 'Shimbashi-dori, Gion — the machiya with the black lattice');
+await shot(page, '11-property-location.png');
+
+await page.click('#prop-step-seg [data-ps="1"]');
+ok('rooms step drops the missing-pin warning once pinned',
+  !(await page.textContent('#prop-inherit-rooms')).includes('no room is locatable'));
+await page.click('#prop-step-seg [data-ps="2"]');
+ok('pinning CLEARS the not-locatable row',
+  !(await page.textContent('#prop-loc-row')).includes('Not yet locatable')
+  && (await page.textContent('#prop-loc-row')).includes('Located'));
+ok('review reports the pin and the optional directions line',
+  (await page.textContent('#prop-loc-sumrow')).includes('Pin confirmed')
+  && (await page.textContent('#prop-loc-sumrow')).includes('the machiya with the black lattice'));
+ok('the no-dates row is untouched by the pin — two different refusals',
+  (await page.textContent('#prop-body')).includes('Not yet bookable — no date ranges published'));
+await page.click('#notes-open');
+ok('mock notes legend gained the “Where is it” callout dot',
+  (await page.textContent('#notes')).includes('Where is it')
+  && (await page.textContent('#notes')).includes('never a second location rail'));
+await page.click('#notes-close');
+
 /* ══════════════ 11. bundle builder (gap #9) ══════════════ */
 console.log('\n== 11. bundle builder ==');
 await go('workstation');
