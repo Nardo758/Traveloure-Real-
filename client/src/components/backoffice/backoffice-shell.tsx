@@ -85,6 +85,7 @@ export function BackofficeShell({
                   size="icon"
                   className="relative h-[34px] w-[34px] rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
                   style={{ border: "1px solid #E8E8E2" }}
+                  aria-label="Notifications"
                   data-testid={notificationsTestId}
                 >
                   <Bell className="w-4 h-4" />
