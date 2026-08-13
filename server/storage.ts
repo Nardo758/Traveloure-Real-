@@ -11,6 +11,9 @@ import {
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
   serviceSurchargeTiers, type ServiceSurchargeTier,
+  serviceAvailabilityPatterns, type ServiceAvailabilityPattern,
+  serviceDateRanges, type ServiceDateRange,
+  serviceAvailabilityBlackouts, type ServiceAvailabilityBlackout,
   serviceAttestations, type ServiceAttestation,
   serviceTranslations, type ServiceTranslation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
@@ -129,6 +132,10 @@ import type {
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition } from "./services/item-transition-log.service";
+// RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
+// slot set (see its docblock in checkout-claim.service.ts) — used here so
+// updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
+import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -231,6 +238,14 @@ export interface IStorage {
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
   getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
   replaceServiceSurchargeTiers(serviceId: string, tiers: Array<{ radiusKm: number; fee: number }>): Promise<ServiceSurchargeTier[]>;
+  // S7 availability model (DECISIONS.md ledger 102) — replace-list write rails, patterns.md
+  // route-points precedent (delete+insert under a parent-row lock).
+  getServiceAvailabilityPatterns(serviceId: string): Promise<ServiceAvailabilityPattern[]>;
+  replaceServiceAvailabilityPatterns(serviceId: string, patterns: Array<{ dayOfWeek: number; startTime: string; endTime: string; capacity: number }>): Promise<ServiceAvailabilityPattern[]>;
+  getServiceDateRanges(serviceId: string): Promise<ServiceDateRange[]>;
+  replaceServiceDateRanges(serviceId: string, ranges: Array<{ startDate: string; endDate: string; nightlyPrice: number | null; capacity: number }>): Promise<ServiceDateRange[]>;
+  getServiceAvailabilityBlackouts(serviceId: string): Promise<ServiceAvailabilityBlackout[]>;
+  replaceServiceAvailabilityBlackouts(serviceId: string, blackouts: Array<{ startDate: string; endDate: string; reason: string | null }>): Promise<ServiceAvailabilityBlackout[]>;
   getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
   affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
 
@@ -1368,6 +1383,90 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // ── S7 availability model (DECISIONS.md ledger 102, migration 210) ─────────────────────────
+  // Three replace-list tables on the route-points/surcharge-tiers pattern: atomic delete+insert
+  // under a parent-row lock so a failed save can't half-replace and two parallel saves can't
+  // collide. UNLIKE route-points/surcharge-tiers these are natural-key UNIQUE (no `position`
+  // column — a weekly grid and a set of date ranges/blackouts have no inherent order), so no
+  // position is derived here; the caller-supplied array order becomes insertion order only.
+
+  async getServiceAvailabilityPatterns(serviceId: string): Promise<ServiceAvailabilityPattern[]> {
+    return await db.select().from(serviceAvailabilityPatterns)
+      .where(eq(serviceAvailabilityPatterns.serviceId, serviceId))
+      .orderBy(serviceAvailabilityPatterns.dayOfWeek, serviceAvailabilityPatterns.startTime);
+  }
+
+  async replaceServiceAvailabilityPatterns(
+    serviceId: string,
+    patterns: Array<{ dayOfWeek: number; startTime: string; endTime: string; capacity: number }>,
+  ): Promise<ServiceAvailabilityPattern[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceAvailabilityPatterns).where(eq(serviceAvailabilityPatterns.serviceId, serviceId));
+      if (patterns.length === 0) return [];
+      return await tx.insert(serviceAvailabilityPatterns).values(
+        patterns.map((p) => ({
+          serviceId,
+          dayOfWeek: p.dayOfWeek,
+          startTime: p.startTime,
+          endTime: p.endTime,
+          capacity: p.capacity,
+        })),
+      ).returning();
+    });
+  }
+
+  async getServiceDateRanges(serviceId: string): Promise<ServiceDateRange[]> {
+    return await db.select().from(serviceDateRanges)
+      .where(eq(serviceDateRanges.serviceId, serviceId))
+      .orderBy(serviceDateRanges.startDate);
+  }
+
+  async replaceServiceDateRanges(
+    serviceId: string,
+    ranges: Array<{ startDate: string; endDate: string; nightlyPrice: number | null; capacity: number }>,
+  ): Promise<ServiceDateRange[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceDateRanges).where(eq(serviceDateRanges.serviceId, serviceId));
+      if (ranges.length === 0) return [];
+      return await tx.insert(serviceDateRanges).values(
+        ranges.map((r) => ({
+          serviceId,
+          startDate: r.startDate,
+          endDate: r.endDate,
+          nightlyPrice: r.nightlyPrice === null ? null : String(r.nightlyPrice),
+          capacity: r.capacity,
+        })),
+      ).returning();
+    });
+  }
+
+  async getServiceAvailabilityBlackouts(serviceId: string): Promise<ServiceAvailabilityBlackout[]> {
+    return await db.select().from(serviceAvailabilityBlackouts)
+      .where(eq(serviceAvailabilityBlackouts.serviceId, serviceId))
+      .orderBy(serviceAvailabilityBlackouts.startDate);
+  }
+
+  async replaceServiceAvailabilityBlackouts(
+    serviceId: string,
+    blackouts: Array<{ startDate: string; endDate: string; reason: string | null }>,
+  ): Promise<ServiceAvailabilityBlackout[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceAvailabilityBlackouts).where(eq(serviceAvailabilityBlackouts.serviceId, serviceId));
+      if (blackouts.length === 0) return [];
+      return await tx.insert(serviceAvailabilityBlackouts).values(
+        blackouts.map((b) => ({
+          serviceId,
+          startDate: b.startDate,
+          endDate: b.endDate,
+          reason: b.reason,
+        })),
+      ).returning();
+    });
+  }
+
   // ── D9 attestations (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67) ───────
   // Read path: every affirmation on record for a service, oldest first. The APPLICABILITY of a
   // key is never stored — it is re-derived from the live row by
@@ -1930,6 +2029,9 @@ export class DatabaseStorage implements IStorage {
     // (reviewer, rejection reason, form status/timestamps, revenue counter) is not a public
     // fact about the listing. Every row here is already approved+active, so these carry no
     // traveler-relevant information.
+    // S9 (ledger row 102): joinLink joins the same never-expose list — it is the provider's
+    // OWN meeting link, revealed only to a CONFIRMED traveler + the owning provider (see
+    // GET /api/service-bookings), never on a public pre-purchase browse.
     return rows.map((r) => ({
       ...r,
       serviceFile: null,
@@ -1940,6 +2042,7 @@ export class DatabaseStorage implements IStorage {
       submittedAt: null,
       reviewedAt: null,
       totalRevenue: null,
+      joinLink: null,
     }));
   }
 
@@ -2163,10 +2266,18 @@ export class DatabaseStorage implements IStorage {
       // second reclaim rail (§18c: no second writer on the claim/slot machinery). A row already
       // past its first cancellation (priorStatus already cancelled/refunded) never re-releases —
       // same guard as the pre-existing bookingsCount decrement below.
+      //
+      // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `u.slotId` is only the FIRST night of a
+      // multi-night stay. `deriveClaimedSlotIds` returns the whole per-night list when the
+      // booking carries it (`bookingDetails.claimedSlotIds`) and falls back to the single
+      // `slotId` otherwise — a pre-fix row releases exactly as it always did.
       const cancelStatuses = ["cancelled", "refunded"];
       const isFirstCancellation =
         cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || "");
-      if (isFirstCancellation && u.slotId) {
+      const slotIdsToRelease = isFirstCancellation
+        ? deriveClaimedSlotIds(u.bookingDetails as Record<string, unknown> | null, u.slotId)
+        : [];
+      if (slotIdsToRelease.length > 0) {
         await tx.execute(sql`
           UPDATE vendor_availability_slots
           SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
@@ -2177,7 +2288,7 @@ export class DatabaseStorage implements IStorage {
                 ELSE status
               END,
               updated_at = NOW()
-          WHERE id = ${u.slotId}
+          WHERE id IN (${sql.join(slotIdsToRelease.map((id) => sql`${id}`), sql`, `)})
         `);
       }
 
@@ -2535,7 +2646,24 @@ export class DatabaseStorage implements IStorage {
       // public search) — serviceFile is the pdf-delivery product itself and must never
       // surface pre-purchase. Redacted to null (not omitted) so the return type stays
       // ProviderService[].
-      services: enrichedServices.map((s) => ({ ...s, serviceFile: null })),
+      // S9 (ledger row 102) + Wave-3 integration: this site had never picked up T-REP's 8-field
+      // strip (ledger row 101) — GET /api/discover was still carrying revenueShareRate and the
+      // approval-workflow internals on the public wire, the same §18 read-leak class T-REP closed
+      // on the detail and browse reads. Found by S9's strip audit, closed at integration (the
+      // T-REP precedent: verified and fixed in the same landing). Redacted-to-null so the return
+      // type is unchanged, exactly like getAllActiveServices.
+      services: enrichedServices.map((s) => ({
+        ...s,
+        serviceFile: null,
+        joinLink: null,
+        revenueShareRate: null,
+        reviewedBy: null,
+        rejectionReason: null,
+        formStatus: null,
+        submittedAt: null,
+        reviewedAt: null,
+        totalRevenue: null,
+      })),
       packages,
       total: filtered.length
     };
@@ -2644,11 +2772,13 @@ export class DatabaseStorage implements IStorage {
         // has no confirmed booking yet) — serviceFile must never ride this read even though
         // it's the cart owner's own cart, or a buyer could add-to-cart, read the file URL, and
         // abandon the cart without ever paying.
+        // S9 (ledger row 102): joinLink is the same shape of leak — a cart item has no
+        // confirmed booking, so the provider's meeting link must not ride this read either.
         return {
           ...item,
           isCustomVenue: false,
           slot,
-          service: service ? omitFields({ ...service, providerName, categorySlug }, ["serviceFile"] as const) : null,
+          service: service ? omitFields({ ...service, providerName, categorySlug }, ["serviceFile", "joinLink"] as const) : null,
         };
       }
       return { ...item, service: null };
@@ -3351,6 +3481,8 @@ export class DatabaseStorage implements IStorage {
   // the owner view (above) ungated so an expert still sees their own submitted/draft listings.
   // D3 leak-prevention: every caller of this function is a public surface (verified — see the
   // two call sites), so serviceFile is stripped HERE rather than at each call site.
+  // S9 (ledger row 102): joinLink joins the strip — an expert's public profile listing card is
+  // a pre-purchase surface with no confirmed booking behind it.
   async getApprovedServicesForExpert(expertId: string): Promise<any[]> {
     const rows = await db.select().from(providerServices)
       .where(and(
@@ -3358,7 +3490,7 @@ export class DatabaseStorage implements IStorage {
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
       ));
-    return rows.map((r) => omitFields(r, ["serviceFile"] as const));
+    return rows.map((r) => omitFields(r, ["serviceFile", "joinLink"] as const));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {

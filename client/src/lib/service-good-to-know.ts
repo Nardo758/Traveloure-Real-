@@ -99,6 +99,18 @@ export function formatTransportProvision(value: string | null | undefined): stri
   return TRANSPORT_PROVISION_LABELS[value] ?? value;
 }
 
+/**
+ * S9 (docs/DECISIONS.md ledger row 102) — the async lane's promised response time, in prose
+ * ("Replies within 24 hours"). Reuses `formatHours`'s own day/hour collapsing so this line reads
+ * the same way the lead-time/change-cutoff lines above do. Returns null when never captured or
+ * not a positive number (§13 — never a fabricated "as soon as possible").
+ */
+export function formatResponseWindow(hours: unknown): string | null {
+  const n = asFiniteNumber(hours);
+  if (n === null || n <= 0) return null;
+  return `Replies within ${formatHours(n)}`;
+}
+
 export interface DepositPreviewInput {
   depositEnabled?: boolean | null;
   depositType?: string | null;
@@ -145,4 +157,34 @@ export function resolveDepositPreview(
  * gate the "Deposit required — details at checkout" generic fallback line in the page. */
 export function hasDepositTerms(input: DepositPreviewInput): boolean {
   return !!input.depositEnabled && !!input.depositType;
+}
+
+/**
+ * S8 (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102) — property check-in/out
+ * prose ("Check-in 15:00 · Check-out 11:00", or just one side when only that one is declared).
+ * Returns null when NEITHER is set (§13 — nothing to state; extends the same either-bound-present
+ * shape `formatStartWindow` already uses above).
+ */
+export function formatCheckInOut(
+  checkInTime: string | null | undefined,
+  checkOutTime: string | null | undefined,
+): string | null {
+  const hasIn = !!checkInTime;
+  const hasOut = !!checkOutTime;
+  if (!hasIn && !hasOut) return null;
+  if (hasIn && hasOut) return `Check-in ${checkInTime} · Check-out ${checkOutTime}`;
+  if (hasIn) return `Check-in ${checkInTime}`;
+  return `Check-out ${checkOutTime}`;
+}
+
+/**
+ * S8 — amenities list, NULL-vs-[] preserved by the caller (this helper only decides whether
+ * there is anything to RENDER): a `null`/`undefined`/empty array all mean "nothing to show" here,
+ * matching every other `has*`-style predicate in this module (§13 — an owner who cleared their
+ * amenities list renders identically to one who never captured it; the DISTINCTION lives only in
+ * the stored row, not in what the traveler sees, since there is nothing honest to say about an
+ * empty list either way).
+ */
+export function hasAmenities(amenities: string[] | null | undefined): boolean {
+  return Array.isArray(amenities) && amenities.length > 0;
 }

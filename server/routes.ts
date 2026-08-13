@@ -13,6 +13,7 @@ import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
 import { storage, type BookingStatusNotification } from "./storage";
+import { materializeServiceAvailability } from "./services/availability-materializer.service";
 import { api } from "@shared/routes";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
@@ -64,6 +65,7 @@ import {
 } from "@shared/content-surface-map";
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
+import { applyPropertyLocationPrivacy } from "./services/property-location-privacy.service";
 import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
@@ -99,7 +101,7 @@ import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
-import { isArtifactDelivery } from "@shared/service-fundamentals";
+import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
 import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
@@ -2269,7 +2271,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
     // getAllProviderServices() is shared with admin (which legitimately needs the full row),
     // so the strip happens here at the public call site, not in the storage function.
-    res.json(live.map((s) => omitFields(s, ["serviceFile"] as const)));
+    // S9 (ledger row 102): joinLink joins the strip for the same reason — no confirmed booking
+    // exists on this pre-purchase browse.
+    res.json(live.map((s) => omitFields(s, ["serviceFile", "joinLink"] as const)));
   });
   
   // Get provider's services
@@ -2597,6 +2601,199 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("[surcharge-tiers] read failed:", err);
       res.status(500).json({ message: "Failed to read surcharge tiers" });
+    }
+  });
+
+  // ══ S7 availability model (DECISIONS.md ledger 102) — three owner-gated replace-list rails ═══
+  // Modeled byte-for-byte on the route-points/surcharge-tiers PUTs above: ALLOWLIST body (§19 — no
+  // createInsertSchema), owner resolved by id + session userId (404, never 403, so a non-owner
+  // can't distinguish "not yours" from "doesn't exist"), ids/timestamps server-derived.
+
+  const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  // ── availability-patterns (weekly repeat rule) ─────────────────────────────────────────────
+  const availabilityPatternsBodySchema = z.object({
+    patterns: z.array(z.object({
+      dayOfWeek: z.number().int().min(0).max(6), // 0=Sun..6=Sat, app-enforced (no DB CHECK)
+      startTime: z.string().regex(HHMM_RE, "startTime must be HH:MM"),
+      endTime: z.string().regex(HHMM_RE, "endTime must be HH:MM"),
+      capacity: z.coerce.number().int().min(1).max(1000).optional(),
+    })).max(200), // 7 days × generous slots/day headroom
+  });
+  app.put("/api/provider/services/:id/availability-patterns", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = availabilityPatternsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid availability patterns", errors: parsed.error.flatten() });
+      }
+      for (const p of parsed.data.patterns) {
+        if (p.endTime <= p.startTime) {
+          return res.status(400).json({ message: "Each pattern's endTime must be after its startTime" });
+        }
+      }
+      const patterns = parsed.data.patterns.map((p) => ({
+        dayOfWeek: p.dayOfWeek,
+        startTime: p.startTime,
+        endTime: p.endTime,
+        capacity: p.capacity ?? 1,
+      }));
+      const saved = await storage.replaceServiceAvailabilityPatterns(service.id, patterns);
+      // Trigger 1/2 (materializer service header): expand the rolling window immediately so a
+      // saved pattern is bookable without waiting for the daily horizon-extension sweep.
+      const materialized = await materializeServiceAvailability(service.id);
+      res.json({ patterns: saved, materialized });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Patterns changed elsewhere — reload and try again" });
+      }
+      console.error("[availability-patterns] save failed:", err);
+      res.status(500).json({ message: "Failed to save availability patterns" });
+    }
+  });
+
+  app.get("/api/provider/services/:id/availability-patterns", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const patterns = await storage.getServiceAvailabilityPatterns(service.id);
+      res.json({ patterns });
+    } catch (err) {
+      console.error("[availability-patterns] read failed:", err);
+      res.status(500).json({ message: "Failed to read availability patterns" });
+    }
+  });
+
+  // ── date-ranges (property/property_room date-range authoring; S11 owns the range-claim
+  //    machinery — this wave is authoring only) ──────────────────────────────────────────────
+  const dateRangesBodySchema = z.object({
+    ranges: z.array(z.object({
+      startDate: z.string().regex(DATE_RE, "startDate must be YYYY-MM-DD"),
+      endDate: z.string().regex(DATE_RE, "endDate must be YYYY-MM-DD"),
+      nightlyPrice: z.coerce.number().min(0).max(1000000).nullable().optional(), // S7-Q4: provider-authored config like `price`; §14 — S11 must derive the charge server-side from THIS row, never req.body
+      capacity: z.coerce.number().int().min(1).max(1000).optional(),
+    })).max(200),
+  });
+  app.put("/api/provider/services/:id/date-ranges", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      // Ballot requirement: date-ranges are property/room-shaped authoring only.
+      if (service.productShape !== "property" && service.productShape !== "property_room") {
+        return res.status(400).json({ message: "Date-range availability applies only to property or property_room listings" });
+      }
+      const parsed = dateRangesBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid date ranges", errors: parsed.error.flatten() });
+      }
+      for (const r of parsed.data.ranges) {
+        if (r.endDate < r.startDate) {
+          return res.status(400).json({ message: "Each range's endDate must be on or after its startDate" });
+        }
+      }
+      const ranges = parsed.data.ranges.map((r) => ({
+        startDate: r.startDate,
+        endDate: r.endDate,
+        nightlyPrice: r.nightlyPrice ?? null,
+        capacity: r.capacity ?? 1,
+      }));
+      const saved = await storage.replaceServiceDateRanges(service.id, ranges);
+      res.json({ dateRanges: saved });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Date ranges changed elsewhere — reload and try again" });
+      }
+      console.error("[date-ranges] save failed:", err);
+      res.status(500).json({ message: "Failed to save date ranges" });
+    }
+  });
+
+  app.get("/api/provider/services/:id/date-ranges", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const dateRanges = await storage.getServiceDateRanges(service.id);
+      res.json({ dateRanges });
+    } catch (err) {
+      console.error("[date-ranges] read failed:", err);
+      res.status(500).json({ message: "Failed to read date ranges" });
+    }
+  });
+
+  // ── blackouts (applies to either shape — scheduled-slot services or property date-ranges) ───
+  const blackoutsBodySchema = z.object({
+    blackouts: z.array(z.object({
+      startDate: z.string().regex(DATE_RE, "startDate must be YYYY-MM-DD"),
+      endDate: z.string().regex(DATE_RE, "endDate must be YYYY-MM-DD"),
+      reason: z.string().trim().max(255).nullable().optional(),
+    })).max(200),
+  });
+  app.put("/api/provider/services/:id/blackouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = blackoutsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid blackouts", errors: parsed.error.flatten() });
+      }
+      for (const b of parsed.data.blackouts) {
+        if (b.endDate < b.startDate) {
+          return res.status(400).json({ message: "Each blackout's endDate must be on or after its startDate" });
+        }
+      }
+      const blackouts = parsed.data.blackouts.map((b) => ({
+        startDate: b.startDate,
+        endDate: b.endDate,
+        reason: b.reason ?? null,
+      }));
+      const saved = await storage.replaceServiceAvailabilityBlackouts(service.id, blackouts);
+      // Trigger 2/2 (materializer service header): S7-Q3 — a blackout blocks FUTURE
+      // materialization only. This re-run never touches an already-materialized slot (ADD-ONLY,
+      // ON CONFLICT DO NOTHING) — it only prevents newly-blacked-out dates from being generated
+      // going forward, while any date that already has a row (booked or not) survives untouched.
+      const materialized = await materializeServiceAvailability(service.id);
+      res.json({ blackouts: saved, materialized });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Blackouts changed elsewhere — reload and try again" });
+      }
+      console.error("[blackouts] save failed:", err);
+      res.status(500).json({ message: "Failed to save blackouts" });
+    }
+  });
+
+  app.get("/api/provider/services/:id/blackouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const blackouts = await storage.getServiceAvailabilityBlackouts(service.id);
+      res.json({ blackouts });
+    } catch (err) {
+      console.error("[blackouts] read failed:", err);
+      res.status(500).json({ message: "Failed to read blackouts" });
     }
   });
 
@@ -5451,15 +5648,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-        const service = await storage.getProviderServiceById(booking.serviceId);
+        const rawService = await storage.getProviderServiceById(booking.serviceId);
         const provider = await storage.getUser(booking.providerId);
+        // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
+        // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
+        // the product itself and must never ride a general read. The one sanctioned reveal
+        // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
+        //
+        // S9 (ledger row 102): joinLink is the same shape of sensitive field, but handled here
+        // as a CONDITIONAL INCLUDE rather than a blanket strip — this IS the traveler's own
+        // confirmed-booking read (riding an existing read, per the ballot's REC, rather than a
+        // new endpoint), so each row carries its own reveal decision. The gate mirrors
+        // GET /api/service-bookings/:id/deliverable EXACTLY: booking.travelerId === session
+        // user (this whole list is already scoped to travelerId=userId above), booking.status
+        // === 'confirmed' (never 'payment_pending', §15b), and the service's deliveryMethod is
+        // a scheduled remote session (SESSION_END_METHODS — call/video). A PENDING advisor has
+        // no read path onto this endpoint at all (it is travelerId-scoped, not advisor-scoped),
+        // so no separate advisor exclusion is needed here.
+        const revealJoinLink =
+          !!rawService &&
+          booking.status === "confirmed" &&
+          SESSION_END_METHODS.has(rawService.deliveryMethod ?? "");
+        let service = rawService ? omitFields(rawService, ["serviceFile", "joinLink"] as const) : rawService;
+        // S8/G2 (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the property/room exact
+        // pin is a §15b-gated reveal too — a payment_pending (or any non-confirmed) claim on a
+        // property must NOT expose the exact coordinates just because it's the traveler's own
+        // booking. Mirrors the /deliverable gate's status check. Once confirmed, the row is left
+        // exactly as-is (the exact pin, honestly).
+        if (service && booking.status !== "confirmed") {
+          service = applyPropertyLocationPrivacy(service as any) as typeof service;
+        }
         return {
           ...booking,
-          // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
-          // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
-          // the product itself and must never ride a general read. The one sanctioned reveal
-          // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
-          service: service ? omitFields(service, ["serviceFile"] as const) : service,
+          service: service && revealJoinLink ? { ...service, joinLink: rawService!.joinLink ?? null } : service,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
         };
       }));

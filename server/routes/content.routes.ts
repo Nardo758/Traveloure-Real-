@@ -16,6 +16,7 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
+import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
 import { isContentLocale } from "../services/service-translation.service";
 // Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
 // Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
@@ -1989,6 +1990,10 @@ router.get("/api/services/:id", async (req, res) => {
     // about the LISTING; every row reaching this handler is already `approved`/`active` by the F2
     // gate above, so these columns carry no information the traveler needs and some (rejectionReason,
     // reviewedBy) are closer to provider-private notes than public content.
+    // S9 (docs/DECISIONS.md ledger row 102): joinLink joins the never-expose list — it is the
+    // provider's OWN meeting link for a scheduled remote session (call/video), revealed only to
+    // a CONFIRMED traveler + the owning provider (see GET /api/service-bookings), never on this
+    // public pre-purchase read (§12's PENDING-advisor read grant does not extend to it either).
     const service = omitFields(rawService, [
       "serviceFile",
       "revenueShareRate",
@@ -1998,6 +2003,7 @@ router.get("/api/services/:id", async (req, res) => {
       "submittedAt",
       "reviewedAt",
       "totalRevenue",
+      "joinLink",
     ] as const);
     // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
     // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
@@ -2180,7 +2186,15 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json(withTranslation({ ...service, rooms, away, routePoints, surchargeTiers, neighborhoods }));
+      // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): pre-booking,
+      // a property's exact confirmed pin never rides the public wire — the SAME deterministic
+      // technique the Ready Made teaser map already uses, at a wider (~500m) radius, with an
+      // explicit `locationApproximate` flag so the client labels the circle honestly (§13). The
+      // exact pin is revealed only on the confirmed-booking surface — the GET
+      // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
+      // confirmed booking's row exact (mirroring the /deliverable gate's status check).
+      const jitteredProperty = applyPropertyLocationPrivacy(service);
+      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, surchargeTiers, neighborhoods }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2191,6 +2205,11 @@ router.get("/api/services/:id", async (req, res) => {
           serviceName: providerServices.serviceName,
           approvalStatus: providerServices.approvalStatus,
           status: providerServices.status,
+          // Read-time-only fallback source for the room's OWN pin (S8-Q3, absolute inheritance —
+          // a room never writes its own coordinates). Never re-exposed on `visibleProperty` below;
+          // used only to seed the jitter when the room's own latitude/longitude are NULL.
+          latitude: providerServices.latitude,
+          longitude: providerServices.longitude,
         })
         .from(providerServices)
         .where(eq(providerServices.id, service.parentServiceId));
@@ -2198,7 +2217,13 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints, surchargeTiers, neighborhoods }));
+      // S8/G2 privacy circle, room branch: `room.latitude ?? parent.latitude` at READ TIME ONLY
+      // (never written to either row), then jittered exactly like the property branch above.
+      const jitteredRoom = applyPropertyLocationPrivacy(service, {
+        fallbackLat: property?.latitude ?? null,
+        fallbackLon: property?.longitude ?? null,
+      });
+      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, surchargeTiers, neighborhoods }));
     }
     res.json(withTranslation({ ...service, away, routePoints, surchargeTiers, neighborhoods }));
   });
@@ -2258,7 +2283,12 @@ router.get("/api/services", async (req, res) => {
     const categoryId = req.query.categoryId as string | undefined;
     const location = req.query.location as string | undefined;
     const services = await storage.getAllActiveServices(categoryId, location);
-    res.json(services);
+    // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the same
+    // pre-booking jitter as the public detail read, applied here so the public BROWSE list never
+    // carries an exact property/room pin either. Every other product shape is returned untouched
+    // (applyPropertyLocationPrivacy is a no-op for them) — routePoints/serviceRadius rendering for
+    // non-property shapes is unaffected.
+    res.json(services.map((s) => applyPropertyLocationPrivacy(s)));
   });
 
   // Unified Discovery Search (public - with advanced filtering)

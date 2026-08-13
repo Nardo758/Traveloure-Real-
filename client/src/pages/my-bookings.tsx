@@ -42,6 +42,7 @@ import {
   Check,
   MapPin,
   BookOpen,
+  Video,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
@@ -703,6 +704,20 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     staleTime: 5 * 60 * 1000,
   });
 
+  // S9 (docs/DECISIONS.md ledger row 102): the session join link — same reveal posture as the
+  // deliverable above (confirmed bookings only), but riding the EXISTING GET /api/service-bookings
+  // list read rather than a new by-id endpoint (the ballot's REC). The server already decides,
+  // per row, whether THIS booking qualifies (travelerId === session user, status === 'confirmed',
+  // deliveryMethod in SESSION_END_METHODS) — this client only ever renders what the server
+  // included, never re-derives eligibility. Sharing the '/api/service-bookings' query key means
+  // every BookingCard on this page reads one cached fetch, not one request per card.
+  const { data: bookingsWithLinks } = useQuery<any[]>({
+    queryKey: ["/api/service-bookings"],
+    enabled: booking.status === "confirmed",
+    staleTime: 60 * 1000,
+  });
+  const joinLink = bookingsWithLinks?.find((b) => b.id === booking.id)?.service?.joinLink ?? null;
+
   const disputeMutation = useMutation({
     mutationFn: (reason: string) => apiRequest("POST", `/api/bookings/${booking.id}/dispute`, { reason }),
     onSuccess: () => {
@@ -781,6 +796,22 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   <a href={deliverable.fileUrl} target="_blank" rel="noopener noreferrer">
                     <FileText className="w-4 h-4 mr-1" />
                     Your deliverable
+                  </a>
+                </Button>
+              </div>
+            )}
+
+            {/* S9 (docs/DECISIONS.md ledger row 102): the session join link — server-revealed
+                only for a confirmed call/video booking (see the useQuery above). Never rendered
+                for any other status or delivery method; an absent joinLink here means either the
+                booking doesn't qualify or the provider hasn't set one yet — both render as
+                nothing (§13), never a placeholder link. */}
+            {joinLink && (
+              <div className="mb-2 flex items-center gap-2 flex-wrap" data-testid={`join-link-${booking.id}`}>
+                <Button variant="outline" size="sm" asChild data-testid={`button-join-session-${booking.id}`}>
+                  <a href={joinLink} target="_blank" rel="noopener noreferrer">
+                    <Video className="w-4 h-4 mr-1" />
+                    Join session
                   </a>
                 </Button>
               </div>
