@@ -803,6 +803,29 @@ export const providerServices = pgTable("provider_services", {
   partySizeMax: integer("party_size_max"),
   changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
 
+  // ══ S9 session/async fields (docs/DECISIONS.md ledger row 102, migration 212) ════════════════
+  // Ratifies docs/briefs/WAVE3_SCHEMA_PROPOSALS.md's S9 section (execution-map Wave 3, Gate G3).
+  // Additive nullable, no DB CHECK (app-enforced shape floors in insertProviderServiceSchema,
+  // the migration-195/181 posture). NULL = never captured (§13), never a default claim.
+  //
+  // `joinLink` is a SENSITIVE field — unlike the free-text logistics fields around it, it is NOT
+  // safe to read on any public/pre-booking surface. It is the provider's OWN meeting link for a
+  // scheduled remote session (call/video — shared/service-fundamentals.ts SESSION_END_METHODS)
+  // and is stripped everywhere `serviceFile` (the D3 pdf-deliverable precedent) is stripped, then
+  // revealed ONLY to the CONFIRMED traveler + the owning provider — mirroring the
+  // `GET /api/service-bookings/:id/deliverable` gate (booking.travelerId === session user AND
+  // booking.status === 'confirmed', never 'payment_pending', §15b). A PENDING advisor's read
+  // grant (§12) does NOT extend to this field (ballot ruling, ledger row 102 S9).
+  joinLink: text("join_link"),
+  // `responseWindowHours`/`scopeStatement` are async (async_messaging/voice_notes) fields: the
+  // promised response time and an SLA/promise statement distinct from `whatIncluded` (marketing
+  // copy). Both are ordinary public pre-purchase info (like earliestStartTime/serviceTimezone
+  // above) — DESCRIPTIVE ONLY. Neither feeds shared/service-fundamentals.ts's completionRuleFor
+  // (unchanged — async_messaging/voice_notes already route to 'provider_declared') or
+  // server/services/booking-completion.service.ts, which this lane does not touch.
+  responseWindowHours: integer("response_window_hours"),
+  scopeStatement: text("scope_statement"),
+
   // ══ Deposits / partial payments — CONFIG (Lane 7, docs/DECISIONS.md ruling 72, migration 200) ══
   // PROVIDER OPT-IN PER LISTING: no listing takes a deposit unless `depositEnabled` is on and a
   // percentage OR a flat amount is set. These are ordinary owner-authored LISTING facts, like
@@ -862,6 +885,21 @@ export const providerServices = pgTable("provider_services", {
   // nullable, no DB CHECK.
   pricingUnit: varchar("pricing_unit", { length: 20 }),
   parentServiceId: varchar("parent_service_id").references((): AnyPgColumn => providerServices.id, { onDelete: "restrict" }),
+
+  // S8 property builder (Gate G2, migration 211, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). check_in_time/check_out_time: "HH:MM" wall clock, same shape as
+  // earliestStartTime/latestStartTime above. house_rules: property-level ONLY — a room never
+  // carries its own (absolute inheritance, the same posture as the pin below: no per-room
+  // override). amenities: string array, the deliveryLanguages precedent (§13) — NULL = never
+  // captured (every pre-211 row), [] = deliberately cleared; the two states must not collapse.
+  // All three ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema
+  // (not money/identity/rate fields, §14/§18/§19 do not apply) — no new endpoint. Additive
+  // nullable, no DB CHECK (app-enforced HH:MM regex + amenities shape live on the zod schema
+  // below, the migration-195/199 posture).
+  checkInTime: varchar("check_in_time", { length: 5 }),
+  checkOutTime: varchar("check_out_time", { length: 5 }),
+  houseRules: text("house_rules"),
+  amenities: jsonb("amenities").$type<string[]>(),
 
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
@@ -1940,6 +1978,27 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   partySizeMax: z.coerce.number().int().min(0).max(10000).nullable().optional(),
   changeCutoffHours: z.coerce.number().int().min(0).max(8760).nullable().optional(),
   canAnchor: z.boolean().nullable().optional(),
+  // ── S9 session/async fields (ledger row 102, migration 212) ────────────────────────────────
+  // No DB CHECK exists for either (publish-trap posture), so THIS is the enforcement, and
+  // field-level so both survive `.partial()` on the PATCH path (the update path is checked as
+  // hard as the insert). Neither is a §14/§18/§19-privileged field — ordinary owner-authored
+  // listing config, like the D7 block above — so they are NOT omitted.
+  //
+  // `joinLink` gets a BASIC URL-shape check only (https?://…), the same free-text-with-a-floor
+  // posture as meetingPoint/pickupAddress elsewhere on this table — reject garbage, don't
+  // over-constrain. The SENSITIVE half of this field (never reaching a public read; revealed only
+  // to the confirmed traveler + owning provider) is enforced on the READ side (server/routes.ts,
+  // server/routes/content.routes.ts, server/storage.ts), not here — this schema only governs the
+  // WRITE shape.
+  joinLink: z.string().trim().max(2048).nullable().optional().refine(
+    (v) => v == null || v === "" || /^https?:\/\/.+/i.test(v),
+    { message: "Join link must be a URL starting with http:// or https://" },
+  ),
+  responseWindowHours: z.coerce.number().int().min(1).max(8760).nullable().optional(),
+  // Same free-text-with-a-floor posture as houseRules (S8, beside it on this table): an SLA/promise
+  // statement is prose, not unbounded storage. Added at Wave-3 integration (the lane shipped the
+  // column without a length ceiling).
+  scopeStatement: z.string().max(10000).nullable().optional(),
   // ── SS-4 + SS-6 (ruling 69 disposition 9, migration 199) ────────────────────────────────────
   // Same treatment as the D7 block above and for the same reason: no DB CHECK exists (publish-trap
   // posture), so THIS is the enforcement, and field-level so it survives `.partial()` on PATCH.
@@ -1987,6 +2046,17 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
     { message: "Per-km surcharge rate must be a non-negative number" },
   ),
   surchargeMaxKm: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  // ── S8 property builder (Gate G2, migration 211) ────────────────────────────────────────────
+  // App-enforced vocabulary + shape floors (no DB CHECK, migration-211 publish-trap posture);
+  // field-level so each refinement survives `.partial()` on the PATCH path (update checked as
+  // hard as insert). Ordinary owner-authored listing facts — no amount/identity/rate reaches a
+  // money decision — so NOT omitted, exactly like deliveryLanguages/cancellationPolicy beside them.
+  checkInTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  checkOutTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  houseRules: z.string().max(10000).nullable().optional(),
+  // `null` is preserved as "never captured" and `[]` as "deliberately cleared" — the two must
+  // not collapse (§13), the same rule deliveryLanguages already states above.
+  amenities: z.array(z.string().trim().min(1).max(60)).max(50).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
@@ -2318,27 +2388,47 @@ export const vendorAvailabilitySlots = pgTable("vendor_availability_slots", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
   providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  
+
   date: date("date").notNull(),
   startTime: varchar("start_time", { length: 10 }), // "09:00", "14:00"
   endTime: varchar("end_time", { length: 10 }),
-  
+
   capacity: integer("capacity").default(1),
   bookedCount: integer("booked_count").default(0),
   status: varchar("status", { length: 20 }).default("available"),
-  
+
   pricing: jsonb("pricing").default({}),
   discounts: jsonb("discounts").default([]),
-  
+
   minimumNotice: varchar("minimum_notice", { length: 50 }).default("24 hours"),
   cancellationPolicy: varchar("cancellation_policy", { length: 100 }),
   specialRequirements: jsonb("special_requirements").default([]),
-  
+
   confirmationMethod: varchar("confirmation_method", { length: 20 }).default("instant"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // S7 (DECISIONS.md ledger 102, migration 210, S7-Q2): the availability materializer's
+  // idempotency target — `db.insert(vendorAvailabilitySlots).values(rows).onConflictDoNothing({
+  // target: [...] })` against this index is what lets re-materializing a pattern/blackout change
+  // never duplicate a slot and never touch an existing row's capacity/booked_count/status (manual
+  // edits and live bookings survive untouched). DELIBERATELY NOT PARTIAL (no WHERE clause), even
+  // though start_time is nullable: a plain composite unique index already tolerates multiple NULL
+  // start_times per (service_id, date) under standard SQL NULL semantics (NULL is never considered
+  // equal to NULL), so no WHERE predicate is needed for correctness — and Drizzle's
+  // `onConflictDoNothing({ target: [...] })` emits `ON CONFLICT (cols) DO NOTHING` with no WHERE,
+  // which Postgres can only use to infer a MATCHING arbiter index; pointing it at a partial index
+  // (tried during development) fails with "there is no unique or exclusion constraint matching the
+  // ON CONFLICT specification" because the inference clause's predicate must match the index's
+  // predicate verbatim. Declared here per the publish-trap rule (migration-155/sb_idempotency_key_idx
+  // lesson: an index the code depends on, absent from schema.ts, is dropped by the Replit
+  // deploy-push on the next publish once the migration is already stamped). Migration 210
+  // defensively verifies no pre-existing duplicates and FAILS LOUDLY if any are found — see its
+  // header and scripts/preflight-prod-unique-indexes.cjs for the required pre-publish check.
+  uniqueIndex("vendor_availability_slots_service_date_start_unique")
+    .on(table.serviceId, table.date, table.startTime),
+]);
 
 // === COORDINATION HUB: Itinerary Coordination State ===
 
@@ -8255,6 +8345,76 @@ export const serviceSurchargeTiers = pgTable("service_surcharge_tiers", {
   index("service_surcharge_tiers_service_idx").on(table.serviceId),
 ]);
 export type ServiceSurchargeTier = typeof serviceSurchargeTiers.$inferSelect;
+
+// S7 availability model — DECISIONS.md ledger row 102 (Wave 3 schema ballot, ratified as
+// recommended, decision-maker Aug 13, 2026; docs/briefs/WAVE3_SCHEMA_PROPOSALS.md; migration 210).
+// Three additive child tables. Patterns/blackouts are AUTHORING data, not the §15 claim surface —
+// server/services/availability-materializer.service.ts expands a pattern minus blackouts into
+// ordinary vendorAvailabilitySlots rows for a rolling window, so storage.bookSlot/releaseSlot/the
+// sweep need ZERO changes. service_date_ranges is property/room authoring only this wave; S11 owns
+// the range-claim machinery (checkout, §15 claim/promote/void).
+//
+// Weekly repeat rule ("every Tuesday 09:00-11:00, capacity 4"). Natural-key UNIQUE (service_id,
+// day_of_week, start_time, end_time) — a weekly grid has no sequence, only distinct slots, so this
+// deliberately does NOT follow the position-ordered service_route_points/service_surcharge_tiers
+// shape (the ballot's own note). day_of_week 0=Sun..6=Sat, app-enforced range, NO DB CHECK (the
+// migration-181/195 posture). Owner-gated replace-list write: PUT
+// /api/provider/services/:id/availability-patterns, hand-written ALLOWLIST body (§19 — no
+// createInsertSchema).
+export const serviceAvailabilityPatterns = pgTable("service_availability_patterns", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week").notNull(), // 0=Sun..6=Sat, app-enforced, NO DB CHECK
+  startTime: varchar("start_time", { length: 5 }).notNull(), // "HH:MM", matches earliestStartTime's shape
+  endTime: varchar("end_time", { length: 5 }).notNull(),
+  capacity: integer("capacity").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_availability_patterns_unique").on(table.serviceId, table.dayOfWeek, table.startTime, table.endTime),
+  index("service_availability_patterns_service_idx").on(table.serviceId),
+]);
+export type ServiceAvailabilityPattern = typeof serviceAvailabilityPatterns.$inferSelect;
+
+// Property/room date-range availability, per-night price (S11's future checkout input). S7-Q4
+// (ratified): nightlyPrice is provider-authored config like `price` — NULL = inherit
+// provider_services.price — but §14 stays in force: S11 must server-derive the stay charge from
+// THIS row, never req.body. capacity = units (rooms) available across the range. Owner-gated
+// replace-list write: PUT /api/provider/services/:id/date-ranges — the route validates
+// productShape is 'property'/'property_room' server-side before accepting a write. Natural-key
+// UNIQUE (service_id, start_date, end_date), NO DB CHECK.
+export const serviceDateRanges = pgTable("service_date_ranges", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  nightlyPrice: decimal("nightly_price", { precision: 10, scale: 2 }), // NULL = inherit provider_services.price
+  capacity: integer("capacity").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_date_ranges_unique").on(table.serviceId, table.startDate, table.endDate),
+  index("service_date_ranges_service_idx").on(table.serviceId),
+]);
+export type ServiceDateRange = typeof serviceDateRanges.$inferSelect;
+
+// Blackouts apply to EITHER shape (scheduled-slot services or property date-ranges). S7-Q3
+// (ratified): a blackout blocks FUTURE materialization/manual creation only — it NEVER cancels an
+// existing slot or booking (auto-cancelling a paid booking is a §15 violation waiting to happen).
+// Owner-gated replace-list write: PUT /api/provider/services/:id/blackouts. Natural-key UNIQUE
+// (service_id, start_date, end_date), NO DB CHECK.
+export const serviceAvailabilityBlackouts = pgTable("service_availability_blackouts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  reason: varchar("reason", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_availability_blackouts_unique").on(table.serviceId, table.startDate, table.endDate),
+  index("service_availability_blackouts_service_idx").on(table.serviceId),
+]);
+export type ServiceAvailabilityBlackout = typeof serviceAvailabilityBlackouts.$inferSelect;
 
 // D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
 // (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE

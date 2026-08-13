@@ -14,6 +14,9 @@ import {
   formatTransportProvision,
   resolveDepositPreview,
   hasDepositTerms,
+  formatCheckInOut,
+  hasAmenities,
+  formatResponseWindow,
 } from "../service-good-to-know";
 
 describe("formatHours", () => {
@@ -134,5 +137,52 @@ describe("hasDepositTerms / resolveDepositPreview (§8/§18 — display-only pre
       null,
     );
     assert.equal(resolveDepositPreview({ depositEnabled: false, depositType: "flat" }, fmtPrice, 200), null);
+  });
+});
+
+// S8 (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102) — property builder fields.
+describe("formatCheckInOut", () => {
+  it("renders both bounds together", () => {
+    assert.equal(formatCheckInOut("15:00", "11:00"), "Check-in 15:00 · Check-out 11:00");
+  });
+  it("renders check-in only", () => {
+    assert.equal(formatCheckInOut("15:00", null), "Check-in 15:00");
+  });
+  it("renders check-out only", () => {
+    assert.equal(formatCheckInOut(undefined, "11:00"), "Check-out 11:00");
+  });
+  it("returns null when neither is set — nothing to state (§13)", () => {
+    assert.equal(formatCheckInOut(null, null), null);
+    assert.equal(formatCheckInOut(undefined, undefined), null);
+  });
+});
+
+describe("hasAmenities", () => {
+  it("is true for a non-empty array", () => {
+    assert.equal(hasAmenities(["WiFi", "Kitchen"]), true);
+  });
+  it("is false for null (never captured), undefined, and an empty array (cleared) alike — the page renders identically for both (§13)", () => {
+    assert.equal(hasAmenities(null), false);
+    assert.equal(hasAmenities(undefined), false);
+    assert.equal(hasAmenities([]), false);
+  });
+});
+
+describe("formatResponseWindow (S9, docs/DECISIONS.md ledger row 102 — §13 never a guessed 'soon')", () => {
+  it("returns null when never captured", () => {
+    assert.equal(formatResponseWindow(null), null);
+    assert.equal(formatResponseWindow(undefined), null);
+  });
+  it("returns null for a non-positive value rather than a fabricated promise", () => {
+    assert.equal(formatResponseWindow(0), null);
+    assert.equal(formatResponseWindow(-5), null);
+  });
+  it("states an hour value in prose", () => {
+    assert.equal(formatResponseWindow(6), "Replies within 6 hours");
+    assert.equal(formatResponseWindow(1), "Replies within 1 hour");
+  });
+  it("reuses formatHours's day-collapsing on an exact multiple of 24", () => {
+    assert.equal(formatResponseWindow(24), "Replies within 1 day");
+    assert.equal(formatResponseWindow(48), "Replies within 2 days");
   });
 });

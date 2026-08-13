@@ -619,11 +619,16 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
             // FP-1 / B4: a room sits in its property's city by construction — inherit the DERIVED
             // value rather than re-deriving (or leaving the room out of its own market page).
             city: createdProperty.city,
-            // Rooms sit at the property's own confirmed point — inheriting the coordinates
-            // (and its precision) is the same truthful claim, not a new one.
-            latitude: createdProperty.latitude,
-            longitude: createdProperty.longitude,
-            locationPrecision: createdProperty.locationPrecision,
+            // S8 (Gate G2, S8-Q3, ratified absolute inheritance): a room row NEVER writes its own
+            // pin — latitude/longitude/locationPrecision are left NULL here (previously copied at
+            // creation time, which froze a snapshot that would go stale the moment the property's
+            // pin was later corrected via the generic PATCH /api/provider/services route, the
+            // exact "two labels, one meaning, one goes stale" class CLAUDE.md already names — SS-4).
+            // A room's coordinates are always resolved from its parent at READ TIME instead
+            // (`room.latitude ?? parent.latitude`, content.routes.ts GET /api/services/:id) — one
+            // source of truth, never a copy. `POST /api/provider/properties/:id/rooms` (adding a
+            // room to an existing property) already left these NULL; this makes the create-with-
+            // rooms path consistent with it rather than the other way around.
             ...(r.units != null ? { categoryAttributes: { units: r.units } } : {}),
             approvalStatus: "submitted",
             submittedAt: new Date(),

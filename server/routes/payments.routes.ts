@@ -835,7 +835,21 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // by every downstream loop below).
       const roomStays = new Map<
         string,
-        { checkIn: string; checkOut: string; nights: number; propertyId: string; propertyName: string; roomName: string; nightlyRate: number; firstNightSlotId?: string }
+        {
+          checkIn: string;
+          checkOut: string;
+          nights: number;
+          propertyId: string;
+          propertyName: string;
+          roomName: string;
+          nightlyRate: number;
+          firstNightSlotId?: string;
+          // RELEASE-ALL-NIGHTS hotfix (§18b-class): every night's claimed slot id, not just the
+          // first — persisted onto the booking below so every release path (voidClaim,
+          // refundServiceBooking, updateServiceBookingStatus) can give back the WHOLE stay, not
+          // only the one night `slotId` represents.
+          allNightSlotIds?: string[];
+        }
       >();
       for (const item of cartData) {
         if (item.service?.pricingUnit !== "per_night") continue;
@@ -1006,7 +1020,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             });
           }
           claimedSlotIds.push(...claimedThisStay);
-          roomStays.set(item.id, { ...stay, firstNightSlotId: claimedThisStay[0] });
+          // RELEASE-ALL-NIGHTS hotfix: keep BOTH the first-night representative id (unchanged,
+          // still what `slotId` gets stamped with below) AND the full per-night list, so the
+          // booking row can carry the complete claim (bookingDetails.claimedSlotIds below).
+          roomStays.set(item.id, { ...stay, firstNightSlotId: claimedThisStay[0], allNightSlotIds: claimedThisStay });
           continue;
         }
 
@@ -1405,6 +1422,15 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
                     checkOut: stay.checkOut,
                     nights: stay.nights,
                     nightlyRate: stay.nightlyRate,
+                    // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `slotId` below stamps only the
+                    // FIRST night's slot (backward compatibility — every existing reader keyed on
+                    // `slotId` keeps working unchanged). The full per-night claim is persisted HERE
+                    // so voidClaim / refundServiceBooking / updateServiceBookingStatus can release
+                    // every night, not just the first. Present only when the stay actually claimed
+                    // slots (it always does when `stay` exists — defensive length check regardless).
+                    ...(stay.allNightSlotIds && stay.allNightSlotIds.length > 0
+                      ? { claimedSlotIds: stay.allNightSlotIds }
+                      : {}),
                   }
                 : {}),
               // B1 (ruling 81): SNAPSHOT the travel surcharge and the pickup that triggered it onto

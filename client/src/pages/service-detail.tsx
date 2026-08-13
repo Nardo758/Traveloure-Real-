@@ -68,9 +68,12 @@ import {
   formatMinutes,
   formatPartySize,
   formatStartWindow,
+  formatCheckInOut,
+  hasAmenities,
   formatTransportProvision,
   resolveDepositPreview,
   hasDepositTerms,
+  formatResponseWindow,
 } from "@/lib/service-good-to-know";
 // Ledger 90 (FP-5, I3): the SAME rail the storefront's Message CTA uses. "Contact Provider" used
 // to link to `/chat?provider=<userId>` — a param chat.tsx has never read — landing the traveler on
@@ -208,6 +211,26 @@ interface Service {
   // vs. absent-field ambiguity (§13): always an array, so "no neighborhoods" and "not asked yet"
   // read the same way here (there being no per-listing capture to distinguish them from).
   neighborhoods?: { slug: string; name: string }[];
+  // S8 property builder (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102).
+  // check-in/out and house rules are property-level ONLY (absolute inheritance — a room's own
+  // detail read carries its property's values via the `property` field below, not its own).
+  // amenities: NULL = never captured, [] = deliberately cleared — both render nothing (§13; see
+  // hasAmenities in service-good-to-know.ts).
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  houseRules?: string | null;
+  amenities?: string[] | null;
+  // S8/G2 privacy circle: present (true) only for productShape 'property'/'property_room' when
+  // the pin on this response is the JITTERED approximate one, never the exact stored pin — the
+  // client MUST label the circle as approximate whenever this is true (§13 honesty). Absent on
+  // every other product shape and on a confirmed-booking reveal, where the pin is exact.
+  locationApproximate?: true;
+  // S9 (docs/DECISIONS.md ledger row 102, migration 212): async (async_messaging/voice_notes)
+  // fields — public pre-purchase info, same §13 posture as the D7 block above. `joinLink` is
+  // deliberately NOT declared here: it never rides this public read at all (see the strip
+  // comment on GET /api/services/:id) — it only ever appears on the confirmed-booking surface.
+  responseWindowHours?: number | null;
+  scopeStatement?: string | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -635,9 +658,23 @@ export default function ServiceDetailPage() {
   const hasDeposit = hasDepositTerms(service);
   const depositPreview = resolveDepositPreview(service, fmtPrice, priceNum);
   const hasRevisions = typeof service.revisionsIncluded === "number" && service.revisionsIncluded > 0;
+  // S8 (Gate G2): property check-in/out + house rules + amenities — same gate-on-a-real-field
+  // posture as every other Good-to-know line above.
+  const checkInOutText = formatCheckInOut(service.checkInTime, service.checkOutTime);
+  const hasHouseRules = !!service.houseRules && service.houseRules.trim().length > 0;
+  const showAmenities = hasAmenities(service.amenities);
+  // S9 (docs/DECISIONS.md ledger row 102): response window / scope statement are PUBLIC
+  // pre-purchase info for the two async methods (async_messaging/voice_notes) — absent ⇒
+  // omitted (§13), never a guessed "we'll get back to you soon". joinLink is deliberately NOT
+  // rendered here: it only ever exists on the CONFIRMED-booking surface (server-side reveal),
+  // never on this public pre-purchase read at all.
+  const responseWindowText = formatResponseWindow(service.responseWindowHours);
+  const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
     !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || hasBuffer ||
-    hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit;
+    hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
+    !!checkInOutText || hasHouseRules || showAmenities ||
+    !!responseWindowText || !!scopeStatementText;
 
   // Vacation mode (mockup §08/§06b): the listing stays visible while the owner is away —
   // only new-booking CTAs are disabled. Existing confirmed bookings are untouched (this is
@@ -908,7 +945,47 @@ export default function ServiceDetailPage() {
                         <span>{depositPreview ?? "Deposit required — details at checkout"}</span>
                       </li>
                     )}
+                    {checkInOutText && (
+                      <li className="flex items-start gap-2" data-testid="text-check-in-out">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{checkInOutText}</span>
+                      </li>
+                    )}
+                    {/* S9 (docs/DECISIONS.md ledger row 102): async delivery's promised response
+                        time + scope statement — public pre-purchase info, gated on the real
+                        field (§13). joinLink never appears here — see the comment on
+                        responseWindowText above. */}
+                    {responseWindowText && (
+                      <li className="flex items-start gap-2" data-testid="text-response-window">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{responseWindowText}</span>
+                      </li>
+                    )}
+                    {scopeStatementText && (
+                      <li className="flex items-start gap-2" data-testid="text-scope-statement">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{scopeStatementText}</span>
+                      </li>
+                    )}
                   </ul>
+                  {hasHouseRules && (
+                    <div className="mt-4 pt-4 border-t" data-testid="text-house-rules">
+                      <p className="text-sm font-medium mb-1">House rules</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-line">{service.houseRules}</p>
+                    </div>
+                  )}
+                  {showAmenities && (
+                    <div className="mt-4 pt-4 border-t" data-testid="list-amenities">
+                      <p className="text-sm font-medium mb-2">Amenities</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {service.amenities!.map((a) => (
+                          <Badge key={a} variant="secondary" className="text-xs" data-testid={`badge-amenity-${a}`}>
+                            {a}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -929,17 +1006,34 @@ export default function ServiceDetailPage() {
               const radiusKm = coverageMode === "route" ? NaN : rawRadiusKm;
               if (!servicePin && routeStops.length === 0) return null;
               const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
+              // S8/G2 privacy circle: the server sends `locationApproximate: true` ONLY when this
+              // pin is the ~500m-jittered stand-in for a property/room's real confirmed pin
+              // (never for any other product shape). Label it honestly rather than let a
+              // traveler mistake the circle for the exact address (§13).
+              const isApproximate = service.locationApproximate === true;
               return (
                 <Card data-testid="card-location-route">
                   <CardHeader>
-                    <CardTitle>Location & route</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      Location & route
+                      {isApproximate && (
+                        <Badge variant="outline" className="text-[10px] font-normal" data-testid="badge-approximate-location">
+                          Approximate area
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    {isApproximate && (
+                      <p className="text-xs text-muted-foreground" data-testid="text-approximate-location-note">
+                        The exact address is shared after booking. This circle shows the general neighborhood only.
+                      </p>
+                    )}
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-lg overflow-hidden border">
                       <ServiceLocationMap
                         pin={servicePin}
-                        pinLabel={service.meetingPoint || service.serviceName}
-                        radiusKm={Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null}
+                        pinLabel={isApproximate ? "Approximate area" : (service.meetingPoint || service.serviceName)}
+                        radiusKm={isApproximate ? 0.5 : (Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null)}
                         stops={routeStops.map((s) => {
                           const p = parseLatLng(s.latitude, s.longitude);
                           return { id: s.id, position: s.position, name: s.name, lat: p?.lat ?? null, lng: p?.lng ?? null };
