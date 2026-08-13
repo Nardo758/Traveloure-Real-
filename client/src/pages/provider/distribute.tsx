@@ -1,22 +1,34 @@
 /**
- * Provider Distribute — the ONE distribution hub (Catalog+Distribute ruling 74, lane D1).
+ * Provider Distribute — the ONE distribution hub (Catalog+Distribute ruling 74, lanes D1-D4/C6;
+ * S6 — ruling-74-disposition-6 clarification).
  *
  * A full page reached from the Workstation ("one door for building" → one hub for getting it
- * seen). Ruling 74 disposition 6: Distribute is four channels — Storefront · Marketplace ·
- * Direct · Social. This lane (D1) ships the SHELL plus the first two channels; Direct (D2),
- * Social (D3), the channel-state strip + analytics deep-link (D4) and Promote→Distribute (C6)
- * mount into the `<section data-testid="channels-container">` seam below — pure addition, no
- * rework of what lands here.
+ * seen) and, per lane S6, a first-class provider sidebar entry (Business group, after Catalog).
+ * Ruling 74 disposition 6 originally read "storefront/share tools STAY on Catalog, Distribute
+ * deep-links to them" — D1 (ledger 76) built the storefront channel as a literal SECOND MOUNT
+ * of `ProviderStorefrontHeader` rather than a deep-link, which left the component genuinely
+ * double-mounted (both this page and Catalog rendered it) and left Catalog's Promote container
+ * standing even after C6 (ledger 77) pointed its actions here. **S6 records the clarification:
+ * Distribute is the ONE home for every outward-facing distribution surface** — Catalog now
+ * mounts none of them (just a per-card "Distribute this →" pointer, `?listing=<id>` below).
+ * This page is five sections: Storefront · Marketplace · Direct · Social · Promote.
  *
- * REUSE, not reimplementation (ruling 74 — storefront/share tools STAY on Catalog; this is a
- * SECOND MOUNT of the same components, Distribute deep-links to Catalog where a listing needs
- * fixing):
- *   - Storefront channel  ← <ProviderStorefrontHeader/> (client/src/pages/provider/services.tsx),
- *     which itself composes StorefrontShareTools + ensureShortLink({targetType:'storefront'}).
+ * REUSE, not reimplementation — every section composes an EXISTING component, never a fork:
+ *   - Storefront channel ← <ProviderStorefrontHeader/> (client/src/pages/provider/services.tsx,
+ *     still exported from there — the component's one authored copy — composes
+ *     StorefrontShareTools + ensureShortLink({targetType:'storefront'})). Catalog no longer
+ *     mounts it (S6); this is now its ONLY mount.
  *   - Marketplace channel ← GET /api/provider/services/:id/publish-readiness, the owner-gated
  *     read that COMPOSES the three real gate authorities (approval + F2 verification +
  *     SS-5a attestation). A listing that cannot go live shows the TRUE blocker(s) with a fix
  *     deep-link (§13), never an optimistic "ready".
+ *   - Social channel ← the shared <OfferingShareDetail/> (client/src/components/backoffice/
+ *     share-tools.tsx) — the SAME component Catalog's per-card Share dialog used to open in a
+ *     Dialog wrapper; S6 mounts it inline here instead (no dialog needed, this IS the share
+ *     surface's home now) so the Instagram-publish affordance it always carried is not lost.
+ *   - Promote section ← the shared <PostingOpportunitiesCard/>, mounted WITHOUT `promoteHref`
+ *     (that prop only made sense pointing FROM Catalog TO here; here the real inline share
+ *     actions render directly, same as the expert Catalog's usage).
  *
  * Caption hold (ruling 74 / ruling 69 disposition 2): every caption here is the NEUTRAL
  * "book direct through my link" line — the storefront caption is owned by StorefrontShareTools,
@@ -24,22 +36,27 @@
  * is actually billed on the direct path (a later unlock).
  *
  * Measurement stays on Analytics/Earnings (ruling 74 disposition 8) — this page grows NO
- * analytics of its own; D4 will deep-link out to them.
+ * analytics of its own; D4 deep-links out to them.
  */
-import { useState, useMemo, useEffect, type ReactNode } from "react";
-import { Link } from "wouter";
+import { useState, useMemo, useEffect, useRef, type ReactNode } from "react";
+import { Link, useSearch } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { PageHeader } from "@/components/backoffice/primitives";
 import { ProviderStorefrontHeader } from "@/pages/provider/services";
-import { ensureShortLink, buildOfferingCaption } from "@/components/backoffice/share-tools";
+import {
+  ensureShortLink,
+  buildOfferingCaption,
+  OfferingShareDetail,
+  type OfferingShareOption,
+  PostingOpportunitiesCard,
+} from "@/components/backoffice/share-tools";
 import { qrCodeSvgDataUrl } from "@/lib/qrcode";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -62,7 +79,6 @@ import {
   Download,
   Images,
   BarChart3,
-  ExternalLink,
 } from "lucide-react";
 
 // Owner-console shape (GET /api/provider/services — session-scoped, intentionally ungated on
@@ -73,6 +89,10 @@ interface OwnerService {
   approvalStatus?: string | null;
   status: string;
   productShape?: string | null;
+  // S6: read by the Social channel to build the shared OfferingShareOption (same fields
+  // Catalog's now-removed share dialog used) — both already ride the unfiltered row.
+  price?: string | number | null;
+  city?: string | null;
 }
 
 // GET /api/provider/services/:id/publish-readiness — the composed, honest state.
@@ -291,76 +311,39 @@ function DirectLinkChannel({
   );
 }
 
-// ── Social-kit channel (D3, per-listing) ────────────────────────────────────────────────────
+// ── Social-kit channel (D3, per-listing; S6 — reuse, not reimplementation) ─────────────────────
 //
-// The share kit — a preview of the three real share-image frames + a caption + a deep-link INTO
-// the Catalog share studio for full authoring (ruling 22b: per-listing share authoring stays on
-// Catalog). REUSE, not reimplementation: the images point at the EXISTING share-image rail
-// (`GET /api/share-image/service/:id.png?format=feed|story|route`) — no second renderer; the
-// caption comes from the EXISTING promo-text endpoint with the shared `buildOfferingCaption`
-// neutral fallback — no new caption engine. §13: the share images gate on approved+active, so the
-// kit is honestly UNAVAILABLE for a non-live listing (the render would 404), and the Route frame
-// collapses to an honest "no stops yet" when the service has no route (the endpoint 404s).
-function SocialKitChannel({
-  serviceId,
-  serviceName,
-}: {
-  serviceId: string | null;
-  serviceName: string;
-}) {
-  const { toast } = useToast();
+// The share kit — the three real share-image frames + an editable caption + Instagram-publish
+// + copy/WhatsApp/X actions, for THIS listing. S6 mounts the SAME <OfferingShareDetail/> Catalog's
+// per-card Share dialog used to open (client/src/components/backoffice/share-tools.tsx) — no
+// second renderer, no second caption engine, and no lost feature (the Instagram-publish button
+// that lived only in Catalog's dialog is preserved by reusing the exact component). Per ruling
+// 22b's own reasoning updated by S6: "per-listing share authoring" now stays on Distribute, since
+// Distribute is the one home for outward-facing distribution surfaces — there is no longer a
+// second surface on Catalog to defer to, so no deep-link back is needed.
+function SocialKitChannel({ service }: { service: OwnerService | null }) {
+  const serviceId = service?.id ?? null;
+  const serviceName = service?.serviceName ?? "this listing";
   const readiness = useQuery<PublishReadiness>({
     queryKey: [`/api/provider/services/${serviceId}/publish-readiness`],
     enabled: !!serviceId,
   });
   const isLive = readiness.data?.isLive ?? false;
 
-  const [caption, setCaption] = useState("");
-  const [routeAvailable, setRouteAvailable] = useState(true);
-  useEffect(() => {
-    setRouteAvailable(true);
-    if (!serviceId) {
-      setCaption("");
-      return;
-    }
-    // Neutral fallback shows immediately; the server caption (when available) replaces it.
-    setCaption(
-      buildOfferingCaption({
-        id: serviceId,
+  const offering: OfferingShareOption | null = service
+    ? {
+        id: service.id,
         lane: "service",
         laneLabel: "Service",
-        name: serviceName,
-        city: null,
-        price: null,
-        publicHref: `/services/${serviceId}`,
-      }),
-    );
-    let cancelled = false;
-    fetch(`/api/promo-text?targetType=service&targetId=${serviceId}`, { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.caption) setCaption(data.caption);
-      })
-      .catch(() => {
-        /* keep the neutral fallback */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [serviceId, serviceName]);
-
-  async function copyCaption() {
-    try {
-      await navigator.clipboard.writeText(caption);
-      toast({ title: "Caption copied", description: "Paste it into your post." });
-    } catch {
-      toast({ title: "Couldn't copy", description: "Copy it manually.", variant: "destructive" });
-    }
-  }
-
-  const feedSrc = serviceId ? `/api/share-image/service/${serviceId}.png?format=feed` : "";
-  const storySrc = serviceId ? `/api/share-image/service/${serviceId}.png?format=story` : "";
-  const routeSrc = serviceId ? `/api/share-image/service/${serviceId}.png?format=route` : "";
+        name: service.serviceName || "Untitled service",
+        city: service.city ?? null,
+        price:
+          service.price != null && service.price !== ""
+            ? `$${Number(service.price).toFixed(0)}`
+            : null,
+        publicHref: `/services/${service.id}`,
+      }
+    : null;
 
   return (
     <Card className="border border-console-light" data-testid="card-channel-social">
@@ -370,12 +353,11 @@ function SocialKitChannel({
           Social kit
         </CardTitle>
         <p className="text-sm text-console-mid">
-          Ready-to-post images and a caption for this listing. Full authoring lives in the Catalog
-          share studio.
+          Ready-to-post images, an editable caption and one-tap Instagram publish for this listing.
         </p>
       </CardHeader>
       <CardContent>
-        {!serviceId ? (
+        {!serviceId || !offering ? (
           <p className="text-sm text-console-mid" data-testid="text-social-no-selection">
             Pick a listing above to see its social kit.
           </p>
@@ -387,117 +369,36 @@ function SocialKitChannel({
           </div>
         ) : !isLive ? (
           // §13: the share-image endpoint 404s for a non-approved/inactive listing — the kit is
-          // honestly unavailable rather than rendering broken images.
-          <div className="space-y-2" data-testid="social-unavailable">
-            <p className="text-sm text-console-mid">
-              Social images unlock once this listing is approved and active on the marketplace.
-            </p>
-            <Link href="/provider/services">
-              <Button size="sm" variant="outline" data-testid="link-social-catalog">
-                <ExternalLink className="w-3.5 h-3.5 mr-1.5" /> Open in Catalog
-              </Button>
-            </Link>
-          </div>
+          // honestly unavailable rather than rendering broken images. No Catalog deep-link (S6 —
+          // Catalog carries no share surface to send them to); resolving the block is Marketplace's
+          // job, right above this card.
+          <p className="text-sm text-console-mid" data-testid="social-unavailable">
+            Social images unlock once this listing is approved and active on the marketplace.
+          </p>
         ) : (
-          <div className="space-y-4">
-            <div className="grid sm:grid-cols-3 gap-3">
-              {/* Feed */}
-              <div className="space-y-1.5" data-testid="tile-social-feed">
-                <p className="text-xs font-medium text-console-mid">Feed</p>
-                <img
-                  src={feedSrc}
-                  alt={`${serviceName} — feed share card`}
-                  className="w-full rounded-lg border border-console-light"
-                  data-testid="img-social-feed"
-                />
-                <a
-                  href={feedSrc}
-                  download={`${serviceId}-feed.png`}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-primary"
-                  data-testid="link-social-download-feed"
-                >
-                  <Download className="w-3 h-3" /> Download image
-                </a>
-              </div>
-              {/* Story */}
-              <div className="space-y-1.5" data-testid="tile-social-story">
-                <p className="text-xs font-medium text-console-mid">Story</p>
-                <img
-                  src={storySrc}
-                  alt={`${serviceName} — story share card`}
-                  className="w-full rounded-lg border border-console-light"
-                  data-testid="img-social-story"
-                />
-                <a
-                  href={storySrc}
-                  download={`${serviceId}-story.png`}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-primary"
-                  data-testid="link-social-download-story"
-                >
-                  <Download className="w-3 h-3" /> Download image
-                </a>
-              </div>
-              {/* Route — §13: honestly absent when the service has no route stops (endpoint 404s). */}
-              <div className="space-y-1.5" data-testid="tile-social-route">
-                <p className="text-xs font-medium text-console-mid">Route</p>
-                {routeAvailable ? (
-                  <>
-                    <img
-                      src={routeSrc}
-                      alt={`${serviceName} — route share card`}
-                      className="w-full rounded-lg border border-console-light"
-                      onError={() => setRouteAvailable(false)}
-                      data-testid="img-social-route"
-                    />
-                    <a
-                      href={routeSrc}
-                      download={`${serviceId}-route.png`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-primary"
-                      data-testid="link-social-download-route"
-                    >
-                      <Download className="w-3 h-3" /> Download image
-                    </a>
-                  </>
-                ) : (
-                  <div
-                    className="rounded-lg border border-dashed border-console-light p-3 text-xs text-console-mid"
-                    data-testid="text-social-route-absent"
-                  >
-                    No route stops on this listing yet — add stops on the Catalog map to unlock the
-                    Route frame.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-console-mid" htmlFor="social-caption">
-                Caption
-              </label>
-              <Textarea
-                id="social-caption"
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                rows={3}
-                data-testid="textarea-social-caption"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={copyCaption} data-testid="button-social-copy-caption">
-                <Copy className="w-3.5 h-3.5 mr-1.5" /> Copy caption
-              </Button>
-              <Link href="/provider/services">
-                <Button size="sm" variant="outline" data-testid="link-social-studio">
-                  <Share2 className="w-3.5 h-3.5 mr-1.5" /> Open share studio in Catalog
-                  <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                </Button>
-              </Link>
-            </div>
-          </div>
+          <OfferingShareDetail offering={offering} showImages />
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Promote section (posting-opportunity nudges; S6 — moved here from Catalog) ─────────────────
+//
+// Real, review/open-slot-scoped nudges (§13 — no invented opportunities) with their FULL inline
+// share actions (Copy caption+link / WhatsApp / X / Instagram publish) — the same
+// <PostingOpportunitiesCard/> the expert Catalog mounts, called WITHOUT `promoteHref` since that
+// prop only ever made sense pointing FROM Catalog TO this hub; here the real actions belong
+// in place. `onSelectService` wires "Select in picker" to the page's own listing selector, so
+// acting on a nudge also loads that listing into the channels above.
+function PromoteSection({ onSelectService }: { onSelectService: (serviceId: string) => void }) {
+  return (
+    <section data-testid="section-channel-promote" className="space-y-2">
+      <h2 className="text-xs font-semibold text-console-mid uppercase tracking-wide flex items-center gap-1.5">
+        <Share2 className="w-3.5 h-3.5" /> Promote
+      </h2>
+      <PostingOpportunitiesCard onSelectService={onSelectService} />
+    </section>
   );
 }
 
@@ -757,21 +658,39 @@ export default function ProviderDistribute() {
     queryKey: ["/api/provider/services"],
   });
 
-  // Per-listing channels act on ONE selected listing (Marketplace here; Direct/Social in D2/D3).
+  // Per-listing channels act on ONE selected listing (Marketplace/Direct/Social + the strip).
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Real, non-bundle-agnostic listing set (a bundle/property IS a provider_services row and
-  // distributes the same way, so all owner listings are selectable). Default to the first.
+  // distributes the same way, so all owner listings are selectable).
   const listings = useMemo(
     () => (Array.isArray(services) ? services : []),
     [services],
   );
-  useEffect(() => {
-    if (!selectedId && listings.length > 0) setSelectedId(listings[0].id);
-  }, [listings, selectedId]);
 
-  const selectedName =
-    listings.find((s) => s.id === selectedId)?.serviceName ?? "this listing";
+  // S6: Catalog's per-card "Distribute this →" pointer lands here as `?listing=<id>` — the id
+  // only PICKS a row out of THIS account's own listing read (same convention as Workstation's
+  // `?property=`/`?bundle=` deep-links); a hand-edited or stale id that doesn't match one of the
+  // owner's own listings is silently ignored and the page falls back to selecting the first
+  // listing, same as arriving with no param at all (never a dead end, never someone else's row).
+  const search = useSearch();
+  const deepLinkListing = new URLSearchParams(search).get("listing");
+  const consumedDeepLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedId || listings.length === 0) return;
+    if (deepLinkListing && consumedDeepLink.current !== deepLinkListing) {
+      consumedDeepLink.current = deepLinkListing;
+      const match = listings.find((s) => s.id === deepLinkListing);
+      if (match) {
+        setSelectedId(match.id);
+        return;
+      }
+    }
+    setSelectedId(listings[0].id);
+  }, [listings, selectedId, deepLinkListing]);
+
+  const selectedService = listings.find((s) => s.id === selectedId) ?? null;
+  const selectedName = selectedService?.serviceName ?? "this listing";
 
   return (
     <ProviderLayout title="Distribute">
@@ -779,11 +698,12 @@ export default function ProviderDistribute() {
         <PageHeader
           icon={Share2}
           title="Distribute"
-          subtitle="One hub for getting what you sell seen — your storefront, the marketplace, and (soon) direct links and social kits."
+          subtitle="One hub for getting what you sell seen — your storefront, the marketplace, direct links, social kits and posting nudges."
           testId="text-distribute-title"
         />
 
-        {/* ── Storefront channel (account-level) — a SECOND MOUNT of the Catalog component ──── */}
+        {/* ── Storefront channel (account-level) — the ONE mount of ProviderStorefrontHeader
+            (S6: Catalog no longer mounts it) ─────────────────────────────────────────────── */}
         <section data-testid="section-channel-storefront" className="space-y-2">
           <h2 className="text-xs font-semibold text-console-mid uppercase tracking-wide flex items-center gap-1.5">
             <Store className="w-3.5 h-3.5" /> Storefront
@@ -837,8 +757,12 @@ export default function ProviderDistribute() {
           <DirectLinkChannel serviceId={selectedId} serviceName={selectedName} />
 
           {/* D3 — Social-kit channel (per-listing) */}
-          <SocialKitChannel serviceId={selectedId} serviceName={selectedName} />
+          <SocialKitChannel service={selectedService} />
         </section>
+
+        {/* S6: Promote — moved here from Catalog (real posting-opportunity nudges + inline
+            share actions), account-wide (not gated on the listing selector above). */}
+        <PromoteSection onSelectService={setSelectedId} />
       </div>
     </ProviderLayout>
   );

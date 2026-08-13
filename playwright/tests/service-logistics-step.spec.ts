@@ -64,30 +64,58 @@ async function createFixtureService(req: APIRequestContext): Promise<string> {
   return id;
 }
 
-test.describe('ServiceForm step 2 — Transport & Logistics (lane T1)', () => {
-  test('grouped sections render, provision is segmented, and never-clobber shows both directions', async ({ page }) => {
+// WAVE 2 / LANE A1 UPDATE: the wizard branches on the delivery method now, and the four grouped
+// sections this spec was written against are no longer one card on one step. For an in-person
+// listing (5 steps: Basics · Scheduling · Capacity · Logistics · Review) they are:
+//   step 2 "Scheduling" — timing + booking rules   (card-service-logistics)
+//   step 3 "Capacity"   — party size               (card-capacity)
+//   step 4 "Logistics"  — transport + surcharge    (card-getting-there)
+// Same controls, same testids, same write path — only the step that holds each one changed.
+test.describe('ServiceForm — Transport & Logistics across the branched steps (lane T1 / A1)', () => {
+  test('grouped sections render on their steps, provision is segmented, and never-clobber shows both directions', async ({ page }) => {
     await loginProvider(page);
     const serviceId = await createFixtureService(page.request);
 
     try {
-      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit`, {
+      // WAVE 2 / LANE S2: `/provider/services/:id/edit` with no `?step=` now lands on the
+      // listing home (hero + derived checklist) instead of the wizard — this spec proves the
+      // wizard's OWN steps, so it enters the flow the same way a checklist row would, via the
+      // A1 deep link.
+      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit?step=scheduling`, {
         waitUntil: 'networkidle',
         timeout: 30_000,
       });
 
-      // Step 2 is directly clickable in the step indicator. Wait for the form to hydrate (the step
-      // nav present) then click and confirm the step actually activated before asserting content.
+      // A1: this is a 5-step in-person flow, and the indicator says so.
+      await expect(page.getByTestId('service-form-steps')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('button-step-5')).toBeVisible();
+      await expect(page.getByTestId('button-step-6')).toHaveCount(0);
+      await expect(page.getByTestId('button-step-2')).toHaveAttribute('data-step-key', 'scheduling');
+      await expect(page.getByTestId('button-step-3')).toHaveAttribute('data-step-key', 'capacity');
+      await expect(page.getByTestId('button-step-4')).toHaveAttribute('data-step-key', 'logistics');
+
+      // Step 2 "Scheduling" — timing + booking rules.
       const step2 = page.getByTestId('button-step-2');
-      await expect(step2).toBeVisible({ timeout: 15_000 });
       await step2.click();
       await expect(step2).toHaveAttribute('aria-current', 'step');
-
-      // The logistics card and all four grouped sections render (the mock's layout).
       await expect(page.getByTestId('card-service-logistics')).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId('logistics-section-transport')).toBeVisible();
       await expect(page.getByTestId('logistics-section-timing')).toBeVisible();
-      await expect(page.getByTestId('logistics-section-capacity')).toBeVisible();
       await expect(page.getByTestId('logistics-section-booking-rules')).toBeVisible();
+
+      // Step 3 "Capacity" — its own step now (it used to share a card with the rest).
+      const step3 = page.getByTestId('button-step-3');
+      await step3.click();
+      await expect(step3).toHaveAttribute('aria-current', 'step');
+      await expect(page.getByTestId('logistics-section-capacity')).toBeVisible({ timeout: 15_000 });
+
+      // Step 4 "Logistics" — everything spatial, including the transport block.
+      const step4 = page.getByTestId('button-step-4');
+      await step4.click();
+      await expect(step4).toHaveAttribute('aria-current', 'step');
+      await expect(page.getByTestId('card-getting-there')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('logistics-section-transport')).toBeVisible();
+      // The map authoring component lives here now (Catalog's map is a traveler preview).
+      await expect(page.getByTestId('card-service-map-authoring')).toBeVisible();
 
       // Transport provision is a SEGMENTED control (not a dropdown), pre-selected to the saved value.
       const provision = page.getByTestId('segmented-transport-provision');

@@ -27,6 +27,7 @@ import {
   Users,
   Wrench,
   BookOpen,
+  Share2,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
@@ -41,6 +42,10 @@ import {
 // live (born-submitted, unlocks at 2+ approved services — the §17 creation ladder); the
 // property rung (per-night pricing, room availability) is ALSO live — Workstation's Property
 // card opens the real create dialog (openPropertyCreate in workstation.tsx).
+//
+// S6 (ruling-74-disposition-6 clarification): Distribute joins Business, after Catalog — not
+// one of the ratified NINE (same precedent as Playbook in Account: a real console surface that
+// simply postdates the C9 count, not a re-opening of it).
 //
 // Ruling 60 Phase A (chrome i18n): each group/item keeps its ENGLISH `label`/`title` verbatim
 // and gains an `i18nKey`. The English string is NOT decoration — it is both the fallback
@@ -82,13 +87,18 @@ const menuGroups = [
     labelKey: "groups.business",
     items: [
       // C9: "My Offerings" relabeled "Catalog" (module 5, "what I sell") — route unchanged.
-      // The page absorbed the storefront header (/p/:handle management), availability slot
-      // editing (the ratified Catalog placement), and Share & Promote's creation half
-      // (per-service share kits + posting opportunities via the shared
-      // components/backoffice/share-tools.tsx — the same absorption expert C2 did).
+      // The page absorbed availability slot editing (the ratified Catalog placement).
+      // C9 originally also absorbed the storefront header + Share & Promote's creation half
+      // here — S6 (below) moved both to Distribute, so Catalog is read/manage/triage only.
       { title: "Catalog", i18nKey: "nav.catalog", href: "/provider/services", icon: LayoutGrid },
-      // C9: "Share & Promote" entry RETIRED — its unique functions live on Catalog (per-
-      // service share kit, posting opportunities, storefront share); the measurement half
+      // S6 (ruling-74-disposition-6 clarification): Distribute is a first-class sidebar entry,
+      // placed right after Catalog — the page has existed since D1 (ledger 76) but had no nav
+      // entry (reachable only via a Workstation header action or a Catalog on-ramp link). It is
+      // now the ONE home for every outward-facing distribution surface (storefront, share kit,
+      // promote nudges) — Catalog stays read/manage/triage and points here per listing.
+      { title: "Distribute", i18nKey: "nav.distribute", href: "/provider/distribute", icon: Share2 },
+      // C9: "Share & Promote" entry RETIRED — its unique functions now live on Distribute (S6:
+      // per-service share kit, storefront tools, posting opportunities); the measurement half
       // (LinkAnalyticsPanel) already renders on the Analytics tab under Performance.
       // /provider/share-promote redirects to /provider/services.
       // Customers — module 6: honest self-scoped aggregation over this provider's real

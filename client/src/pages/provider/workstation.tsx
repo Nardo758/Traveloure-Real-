@@ -86,6 +86,31 @@ import {
   CalendarRange,
   Share2,
   AlertCircle,
+  Camera,
+  Car,
+  ChefHat,
+  Map,
+  Heart,
+  Sparkles,
+  CalendarHeart,
+  UserCheck,
+  Languages,
+  Baby,
+  Music,
+  Mic2,
+  Flower2,
+  Palette,
+  Package,
+  BookOpen,
+  Scissors,
+  Shield,
+  Zap,
+  Briefcase,
+  UtensilsCrossed,
+  MapPin,
+  Users,
+  PartyPopper,
+  Award,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -174,6 +199,43 @@ function formatPrice(price: string | number | null | undefined): string {
   const n = Number(price);
   return Number.isFinite(n) ? `$${n.toFixed(2).replace(/\.00$/, "")}` : String(price);
 }
+
+// S5 (ruling 74 disp. 1): the category inspiration tiles, MOVED here from Catalog's empty
+// state (services.tsx) — this screen is now the one door, so the "start from what you do"
+// shortcut lives on it, not on Catalog. Same 30 live service categories, same slugs, same
+// ?category= query param the create flow already reads at step 1.
+const inspirationCards = [
+  { label: "Photography & Video", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
+  { label: "Transportation", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
+  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
+  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
+  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
+  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
+  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
+  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
+  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
+  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
+  { label: "Lodging", slug: "Lodging & Accommodation", icon: BedDouble, color: "bg-cyan-50 text-cyan-600" },
+  { label: "Music & Performance", slug: "Music & Performance", icon: Music, color: "bg-violet-50 text-violet-500" },
+  { label: "Entertainment", slug: "Entertainment", icon: Mic2, color: "bg-fuchsia-50 text-fuchsia-500" },
+  { label: "Floral & Decor", slug: "Floral & Decoration", icon: Flower2, color: "bg-pink-50 text-pink-400" },
+  { label: "Arts & Crafts", slug: "Arts & Crafts Instruction", icon: Palette, color: "bg-lime-50 text-lime-600" },
+  { label: "Rentals", slug: "Rental Services", icon: Package, color: "bg-stone-50 text-stone-500" },
+  { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
+  { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
+  { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
+  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
+  { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
+  { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
+  { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
+  { label: "Companionship", slug: "Companionship & Assistance", icon: Users, color: "bg-blue-50 text-blue-400" },
+  { label: "Stationery & Print", slug: "Stationery & Paper Goods", icon: Languages, color: "bg-indigo-50 text-indigo-400" },
+  { label: "Special Effects", slug: "Specialty Effects & Activities", icon: Zap, color: "bg-yellow-50 text-yellow-500" },
+  { label: "Send-Off & Post-Event", slug: "Send-Off & Post-Event", icon: PartyPopper, color: "bg-pink-50 text-pink-500" },
+  { label: "Unique Specialists", slug: "Unique Specialty Services", icon: Award, color: "bg-violet-50 text-violet-500" },
+  { label: "Spiritual & Wellness", slug: "Spiritual & Wellness", icon: Sparkles, color: "bg-teal-50 text-teal-400" },
+  { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
+];
 
 export default function ProviderWorkstation() {
   const { toast } = useToast();
@@ -785,6 +847,18 @@ export default function ProviderWorkstation() {
           }
         />
 
+        {/* S5 (ruling 74 disp. 1, executed): the one-door launcher headline. Every "Add New
+            Service" affordance in the provider console lands HERE first — this is the only
+            place a new listing is born. The three tiles below are that door. */}
+        <div data-testid="text-launcher-headline-block">
+          <h2 className="text-lg font-semibold text-console-darkest" data-testid="text-launcher-headline">
+            What are you building?
+          </h2>
+          <p className="text-sm text-console-mid mt-0.5">
+            Pick a shape to start — you can change most of it later.
+          </p>
+        </div>
+
         {/* ── The creation ladder (§17): single service → bundle → property ─────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="grid-product-ladder">
           {/* Rung 1 — single service: always available, the existing ServiceForm. */}
@@ -869,6 +943,43 @@ export default function ProviderWorkstation() {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* S5: the category inspiration tiles MOVE here from Catalog's empty state (which now
+            just points at this screen — see services.tsx). Picking one jumps straight into the
+            single-service create flow with the category pre-selected; nothing here is a bundle
+            or property shortcut, so it lives under the "Single service" rung honestly. */}
+        <div data-testid="section-workstation-categories">
+          <h3 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-1">
+            Or start from what you do
+          </h3>
+          <p className="text-xs text-console-mid mb-3">
+            These are the live service categories. Picking one pre-selects it and jumps straight
+            into a single service.
+          </p>
+          <div
+            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3"
+            data-testid="grid-workstation-categories"
+          >
+            {inspirationCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Link
+                  key={card.slug}
+                  href={`/provider/services/new?category=${encodeURIComponent(card.slug)}`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-primary hover:shadow-sm transition-all text-center group"
+                  data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                >
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium text-console-dark leading-tight">{card.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
         {/* ── Your bundles ──────────────────────────────────────────────────────── */}
