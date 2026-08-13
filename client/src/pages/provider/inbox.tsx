@@ -26,6 +26,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+// Ledger 90 (FP-5, X1/I1): the ONE booking-visibility predicate, shared with Today, Customers,
+// the Money page and the server aggregations. See shared/booking-visibility.ts for why.
+import {
+  isActionableBooking,
+  isProvisionalBooking,
+  isRecordBooking,
+  PROVISIONAL_BOOKING_LABEL,
+  PROVISIONAL_BOOKING_HINT,
+} from "@shared/booking-visibility";
 import {
   Inbox as InboxIcon,
   CalendarDays,
@@ -319,23 +328,42 @@ function VisaStatusDialog({
 // unchanged (handleOwnerBookingStatus in routes.ts — shared with the expert route, same
 // ownership gate + confirmed/cancelled-only transition allow-list).
 
-function StatsRow({ bookings }: { bookings: InboxBooking[] }) {
+function StatsRow({
+  bookings,
+  actionable,
+  awaitingPayment,
+}: {
+  bookings: InboxBooking[];
+  /** THE SAME ARRAY the queue below maps over — see QueueSection (ledger 90 / FP-5 I1). */
+  actionable: InboxBooking[];
+  /** Provisional §15b claims — disclosed as information, never as a queue item. */
+  awaitingPayment: InboxBooking[];
+}) {
   // L10b: real service_bookings statuses also include payment_pending, in_progress,
   // disputed, cancelled, refunded, failed (see my-bookings.tsx's PENDING/ACTIVE/COMPLETED
-  // sets) — folding payment_pending into "Pending" and bucketing every other real status
-  // into an honest "Other" tile means Total always equals the sum of the tiles again.
+  // sets) — bucketing every other real status into an honest "Other" tile means Total always
+  // equals the sum of the tiles.
+  //
+  // Ledger 90 (FP-5, I1/X1): "Pending" used to FOLD `payment_pending` in, while the queue list
+  // below filtered `status === 'pending'` only. The result was a tile reading "1 Pending" above
+  // the words "No bookings waiting", counting a row the page could not display anywhere — on the
+  // surface subtitled "Everything that needs your response". The exclusion from the queue was the
+  // CORRECT half (a provider must not Accept an unauthorised claim — §18b); the tile was the lie.
+  // The count is now literally `actionable.length` — the length of the array the list renders —
+  // so the counter and the list cannot disagree by construction, and the provisional claim gets
+  // its own honest tile instead of hiding inside someone else's number.
   const confirmed = bookings.filter((b) => b.status === "confirmed").length;
-  const pending = bookings.filter((b) => b.status === "pending" || b.status === "payment_pending").length;
   const completed = bookings.filter((b) => b.status === "completed").length;
   const stats = {
     total: bookings.length,
     confirmed,
-    pending,
+    pending: actionable.length,
+    awaitingPayment: awaitingPayment.length,
     completed,
-    other: bookings.length - confirmed - pending - completed,
+    other: bookings.length - confirmed - actionable.length - awaitingPayment.length - completed,
   };
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4" data-testid="section-inbox-stats">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4" data-testid="section-inbox-stats">
       <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-total">
         <p className="text-2xl font-bold text-console-darkest">{stats.total}</p>
         <p className="text-sm text-console-mid">Total</p>
@@ -347,6 +375,10 @@ function StatsRow({ bookings }: { bookings: InboxBooking[] }) {
       <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-pending">
         <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
         <p className="text-sm text-console-mid">Pending</p>
+      </div>
+      <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-awaiting-payment">
+        <p className="text-2xl font-bold text-console-mid">{stats.awaitingPayment}</p>
+        <p className="text-sm text-console-mid">{PROVISIONAL_BOOKING_LABEL}</p>
       </div>
       <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-completed">
         <p className="text-2xl font-bold text-blue-600">{stats.completed}</p>
@@ -525,21 +557,25 @@ function QueueSection({
     },
   });
 
-  const pending = bookings.filter((b) => b.status === "pending");
+  // Ledger 90 (FP-5, I1/X1): ONE shared predicate, derived ONCE here and handed to both the
+  // stats row and the list — so the count is the length of the displayed set, not a second
+  // filter that can drift away from it.
+  const actionable = bookings.filter((b) => isActionableBooking(b.status));
+  const awaitingPayment = bookings.filter((b) => isProvisionalBooking(b.status));
 
   return (
     <div className="space-y-6" data-testid="section-inbox-queue">
-      <StatsRow bookings={bookings} />
+      <StatsRow bookings={bookings} actionable={actionable} awaitingPayment={awaitingPayment} />
 
       <section>
         <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-          Bookings needing a response {pending.length > 0 && `(${pending.length})`}
+          Bookings needing a response {actionable.length > 0 && `(${actionable.length})`}
         </h2>
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
           </div>
-        ) : pending.length === 0 ? (
+        ) : actionable.length === 0 ? (
           <EmptyState
             icon={CalendarDays}
             title="No bookings waiting"
@@ -548,7 +584,7 @@ function QueueSection({
           />
         ) : (
           <div className="space-y-2">
-            {pending.map((booking) => (
+            {actionable.map((booking) => (
               <BookingCard
                 key={booking.id}
                 booking={booking}
@@ -560,6 +596,30 @@ function QueueSection({
           </div>
         )}
       </section>
+
+      {/* Ledger 90 (FP-5, I1): the honest home for the row the "Awaiting payment" tile counts.
+          Deliberately NOT in the queue above and deliberately WITHOUT Accept/Decline — the owner
+          rail may not move a booking out of a provisional state (§18b), so offering the button
+          would be the defect. Listed read-only so the tile is never a number with no row. */}
+      {!isLoading && awaitingPayment.length > 0 && (
+        <section data-testid="section-inbox-awaiting-payment">
+          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-1">
+            {PROVISIONAL_BOOKING_LABEL} ({awaitingPayment.length})
+          </h2>
+          <p className="text-sm text-console-mid mb-2">{PROVISIONAL_BOOKING_HINT}</p>
+          <div className="space-y-2">
+            {awaitingPayment.map((booking) => (
+              <BookingCard
+                key={booking.id}
+                booking={booking}
+                onOpenVisaDialog={onOpenVisaDialog}
+                showAcceptDecline={false}
+                statusMutation={statusMutation}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -581,7 +641,11 @@ function HistorySection({
 
   // The record: confirmed + completed bookings (pending lives on Queue; the search/filter
   // capability from the retired page is preserved over this scope).
-  const history = bookings.filter((b) => b.status === "confirmed" || b.status === "completed");
+  // Ledger 90 (FP-5, X1): the shared RECORD predicate rather than a fourth hand-written list.
+  // Widens History by exactly the statuses that were already real bookings and simply had no home
+  // (`deposit_paid`, `in_progress`) — never by a provisional claim, which has its own section on
+  // the Queue tab.
+  const history = bookings.filter((b) => isRecordBooking(b.status));
 
   const filtered = history.filter((booking) => {
     const q = searchQuery.trim().toLowerCase();
@@ -806,7 +870,9 @@ export default function ProviderInbox() {
 
   return (
     <ProviderLayout title="Inbox">
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {/* FP-4: normalized onto ProviderLayout's shared content container (its own
+          narrower `max-w-4xl mx-auto` is dropped, not stacked). */}
+      <div className="p-6 space-y-6">
         <PageHeader
           title="Inbox"
           subtitle="Everything that needs your response"

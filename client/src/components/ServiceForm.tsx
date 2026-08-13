@@ -43,6 +43,13 @@ import {
   type AttestationKey,
 } from "@shared/service-attestations";
 import { ServiceAttestationsCard } from "@/components/provider/service-attestations-card";
+// FP-3: a property / property_room row's editor is the Workstation property surface, never this
+// questionnaire. One home for that routing decision (Catalog uses the same module).
+import {
+  isPropertyEditorShape,
+  isPropertyRoom,
+  propertyEditorHref,
+} from "@/lib/property-editor-link";
 
 interface ServiceCategory {
   id: string;
@@ -1608,6 +1615,64 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ── FP-3 BACK DOOR: /provider/services/:id/edit opened with a property or property_room id ──
+  //
+  // Catalog no longer links here for those rows, but a deep link, a stale bookmark, a browser
+  // history entry or a hand-typed URL still can. The questionnaire below asks for a delivery
+  // method, a service checklist, "what's included", a meeting point — a guest room answers none
+  // of it, and worse, SAVING it would write those answers onto an accommodation row. So the form
+  // is never rendered for one; an honest interstitial names the shape and links to the surface
+  // that actually edits it.
+  //
+  // The classification is SERVER-DERIVED: `productShape` comes off the fetched
+  // GET /api/provider/services/:id row (owner-gated), never from the URL or any other
+  // client-supplied value — a crafted `?shape=` could not turn this guard off or on.
+  // `existingService` is undefined while the row is missing/404 (that path is unchanged).
+  const backDoorShape: string | null = isEditMode ? (existingService?.productShape ?? null) : null;
+  if (isPropertyEditorShape(backDoorShape)) {
+    const isRoom = isPropertyRoom(backDoorShape);
+    const editorHref =
+      propertyEditorHref({
+        id: id!,
+        productShape: backDoorShape,
+        parentServiceId: existingService?.parentServiceId ?? null,
+      }) ?? "/provider/workstation";
+    return (
+      <div className="p-6 max-w-lg mx-auto" data-testid="guard-property-shape">
+        <Card>
+          <CardContent className="p-8 space-y-4">
+            <div className="flex items-center gap-2 text-console-darkest">
+              <Info className="w-5 h-5 flex-shrink-0 text-primary" />
+              <h2 className="text-lg font-semibold">
+                {isRoom ? "Rooms are edited on their property" : "Properties are edited in the Workstation"}
+              </h2>
+            </div>
+            <p className="text-sm text-gray-500">
+              {isRoom
+                ? "This listing is a room type inside a property. A room has no delivery method and no service checklist of its own — it inherits them from its property — so the service form can't describe it honestly. Its name, nightly price, units and availability live on the property editor."
+                : "A property is an accommodation with room types priced per night, not a single service. Its details and its room types are edited together in the Workstation."}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Button
+                onClick={() => navigate(editorHref)}
+                data-testid="button-goto-property-editor"
+              >
+                {isRoom ? "Open the property editor" : "Open in the Workstation"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/${role}/services`)}
+                data-testid="button-guard-back-to-catalog"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Catalog
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

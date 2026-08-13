@@ -53,7 +53,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { MIN_PAYOUT_CENTS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -2032,10 +2032,25 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       if (amountCents <= 0) {
         return res.status(400).json({ error: "no_balance", message: "You have no available balance to withdraw." });
       }
-      if (amountCents < MIN_PAYOUT_CENTS) {
+      // Ledger 90 (FP-5, S2): the threshold is max(platform floor, this earner's own configured
+      // minimum). The floor is never lowered; a stricter preference is respected. §14: the
+      // preference is READ SERVER-SIDE from the earner's own settings row — it is never taken from
+      // req.body, and it can only ever RAISE the bar on the caller's own withdrawal, never lower a
+      // floor or move an amount. Experts have no settings row today, so they get the bare floor.
+      const settingsRow = isProvider
+        ? await storage.getProviderSettings(userId) // money-derive-ok: own settings row, session-scoped
+        : null;
+      const minimumCents = effectivePayoutMinimumCents(settingsRow?.minimumPayoutAmount);
+      if (amountCents < minimumCents) {
+        const isOwnPreference = minimumCents > MIN_PAYOUT_CENTS;
         return res.status(400).json({
           error: "below_minimum",
-          message: `The minimum payout is $${(MIN_PAYOUT_CENTS / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
+          minimumCents,
+          platformFloorCents: MIN_PAYOUT_CENTS,
+          source: isOwnPreference ? "provider_setting" : "platform_floor",
+          message: isOwnPreference
+            ? `Your payout minimum is set to $${(minimumCents / 100).toFixed(2)} in Settings (the platform floor is $${MIN_PAYOUT_DOLLARS.toFixed(2)}). Your available balance is $${(amountCents / 100).toFixed(2)}.`
+            : `The minimum payout is $${(minimumCents / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
         });
       }
 
