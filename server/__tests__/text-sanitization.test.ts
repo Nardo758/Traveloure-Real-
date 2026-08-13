@@ -96,6 +96,33 @@ test("PROVIDER_SERVICE_TEXT_FIELDS covers the JSON prose fields", () => {
   }
 });
 
+test("tag-only required names reject AFTER sanitization (never reach storage)", () => {
+  // Provider service create: `<script></script>` serviceName sanitizes to "" → schema min(1) rejects.
+  assert.throws(() =>
+    insertProviderServiceSchema.parse(sanitizeProviderServiceBody({ serviceName: "<script></script>", price: "10" })),
+  );
+  assert.throws(() =>
+    insertProviderServiceSchema.parse(sanitizeProviderServiceBody({ serviceName: "<b> </b>", price: "10" })),
+  );
+  // PATCH partial: a present-but-tag-only serviceName also rejects (min survives .partial()).
+  assert.throws(() =>
+    insertProviderServiceSchema.partial().parse(sanitizeProviderServiceBody({ serviceName: "<i></i>" })),
+  );
+  // Expert listing create pipeline (route order: sanitize → parse): tag-only title rejects.
+  assert.throws(() =>
+    insertProviderServiceListingSchema.parse(
+      sanitizeTextFields(
+        { title: "<img src=x onerror=alert(1)>", price: "10" },
+        ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
+      ),
+    ),
+  );
+  // Entity expansion on serviceName can't sneak past the varchar(255) limit.
+  assert.throws(() =>
+    insertProviderServiceSchema.parse(sanitizeProviderServiceBody({ serviceName: "'".repeat(250), price: "10" })),
+  );
+});
+
 test("expert listing pipeline sanitizes prose fields", () => {
   const parsed = insertProviderServiceListingSchema.partial().parse(
     sanitizeTextFields(

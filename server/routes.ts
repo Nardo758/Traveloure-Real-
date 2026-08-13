@@ -4136,30 +4136,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Expert access required" });
       }
 
-      const { title, description, categoryName, existingCategoryId, price, duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes, isActive } = req.body;
-      
-      if (!title || !price) {
+      const raw = req.body ?? {};
+      if (!raw.title || !raw.price) {
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      // Task 1135: sanitize expert prose on write (defense-in-depth for non-React sinks).
-      const service = await storage.createProviderServiceListing(userId, sanitizeTextFields({
-        title,
-        description,
-        categoryName,
-        existingCategoryId,
-        price: price.toString(),
-        duration,
-        deliverables,
-        cancellationPolicy,
-        leadTime,
-        imageUrl,
-        galleryImages,
-        experienceTypes,
-        isActive: isActive !== false,
-      }, ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"]));
+      // Task 1135: sanitize expert prose FIRST, then parse the allow-listed schema — so a
+      // tag-only title ("<b></b>") sanitizes to "" and fails the schema's min(1) with a 400,
+      // and no unlisted field ever reaches the storage layer.
+      const body = insertProviderServiceListingSchema.parse(sanitizeTextFields(
+        {
+          title: raw.title,
+          description: raw.description,
+          categoryName: raw.categoryName,
+          existingCategoryId: raw.existingCategoryId,
+          price: String(raw.price),
+          duration: raw.duration,
+          deliverables: raw.deliverables,
+          cancellationPolicy: raw.cancellationPolicy,
+          leadTime: raw.leadTime,
+          imageUrl: raw.imageUrl,
+          galleryImages: raw.galleryImages,
+          experienceTypes: raw.experienceTypes,
+          isActive: raw.isActive !== false,
+        },
+        ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
+      ));
+
+      const service = await storage.createProviderServiceListing(userId, body);
       res.status(201).json(service);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service" });
+      }
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
     }

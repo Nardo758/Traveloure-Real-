@@ -1,22 +1,16 @@
 ---
-name: Booking sanitizer Stripe-field leak
-description: sanitizeBookingForExpert strips the wrong payment field names, leaking Stripe intent IDs to providers/experts
+name: Booking sanitizer field-name drift
+description: Deny-list sanitizers written against assumed field names silently leak; use allow-list projection reconciled with the schema
 ---
-`sanitizeBookingForExpert` (server/utils/data-sanitizer.ts) strips `paymentIntentId`/`stripeSessionId`,
-but the real service_bookings columns are `stripePaymentIntentId`, `stripeDepositIntentId`,
-`stripeBalanceIntentId`. So GET /api/provider/bookings (and the expert equivalent) leaks the full
-Stripe PaymentIntent ID to the earner. Confirmed live Aug 2026: response carried `pi_...`.
+Booking responses to earners (providers/experts) once leaked Stripe PaymentIntent ids because the
+sanitizer's strip-list used assumed field names (`paymentIntentId`) while the real columns were
+`stripePaymentIntentId`/`stripeDepositIntentId`/`stripeBalanceIntentId`.
 
-**Why:** strip-list was written against assumed field names, never reconciled with the Drizzle schema.
-Traveler PII sanitization (sanitizeUserForRole) is correct — only this booking-level payment ref leaks.
+**Why:** a deny-list drifts silently — a wrong or newly added column name fails OPEN.
 
-**Status:** FIXED Aug 13 2026 — sanitizeBookingForExpert now projects through the
-`EARNER_BOOKING_FIELDS` allow-list (stripe*IntentId + idempotencyKey excluded by construction);
-canSeeFull roles still get the raw row.
-
-**How to apply:** when auditing booking responses, grep the actual schema columns, not the sanitizer's
-list. Prefer an allow-list projection over a deny-list so new sensitive columns fail closed. SQLi is
-safe (Drizzle params) and stored-XSS is inert (React escapes; only DOMPurify'd dangerouslySetInnerHTML).
-
+**How to apply:** when auditing responses, grep the actual Drizzle schema columns, never the
+sanitizer's own list. Prefer allow-list projection (e.g. the earner booking-fields allow-list in
+`server/utils/data-sanitizer.ts`) so new sensitive columns fail closed; `canSeeFullUserData` roles
+may still get the raw row.
 ## Aug 2026 full audit result
 All endpoints returning service_bookings rows were enumerated. Leaks found & fixed with EARNER_BOOKING_FIELDS/pickPublicFields: handleOwnerBookingStatus (expert/provider status PATCH, 3 response sites) and the provider-gated visa-status PATCH. All other surfaces are traveler-own, admin-only, or already projected (expert/provider bookings lists, calendar, customers use explicit selects). Note: GET /api/bookings/:id is registered in BOTH server/routes/bookings.ts and server/routes.ts — mount order decides which answers.
