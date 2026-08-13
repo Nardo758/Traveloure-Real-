@@ -1741,3 +1741,82 @@ which is the correct best-effort-after-commit shape for an external-call-adjacen
 lane's target.
 
 Full record: DECISIONS.md ledger row 96.
+
+### Fixed here (lane S6 — ledger row 98)
+
+**Distribute in the sidebar + Catalog slim — records the ruling-74-disposition-6 clarification.**
+`/provider/distribute` existed (D1-D4/C6, ledger 76/77) but had no sidebar entry, and ruling
+74(6)/(7)'s original "storefront/share tools STAY on Catalog, Distribute deep-links to them" had
+been built by D1 as a literal SECOND MOUNT of `ProviderStorefrontHeader` — genuinely double-mounted
+across both pages — while C6 pointed the Promote block's *actions* at Distribute without moving the
+block itself. This lane resolves the ambiguity: **Distribute is the ONE home for every
+outward-facing distribution surface; Catalog is read/manage/triage only.**
+
+**(1) Sidebar.** `Distribute` added to the Business group, right after Catalog
+(`client/src/components/provider/provider-sidebar.tsx`), with an `nav.distribute` i18n key
+(EN "Distribute" / JA "配信") on the ruling-60-Phase-A convention. Proven headless: the entry
+renders, sits immediately after Catalog in DOM order, and navigates to `/provider/distribute`.
+
+**(2) Three blocks moved off Catalog, none duplicated:**
+- **Storefront header** — `ProviderStorefrontHeader` is no longer mounted on Catalog (it stays
+  `export`ed from `services.tsx` since Distribute imports the one authored copy); Distribute's
+  Storefront section is now its ONLY mount.
+- **Share-kit dialog launcher** — Catalog's per-card "Share" button + `OfferingShareDetail` Dialog
+  is gone. Distribute's Social-kit channel now mounts the SAME `<OfferingShareDetail/>` inline
+  (reuse, not reimplementation) — the Instagram-publish affordance that only lived in Catalog's
+  dialog is preserved rather than dropped, and a hand-rolled feed/story/route preview that had
+  been duplicated on Distribute is deleted in favor of the one real component.
+- **Promote block** — the `PostingOpportunitiesCard` (posting-opportunity nudges) no longer
+  renders on Catalog at all (the on-ramp *section* — header text, "Open Distribute" button — is
+  gone, not just re-pointed). It now renders as Distribute's own Promote section, called WITHOUT
+  `promoteHref` so the real inline share actions (Copy/WhatsApp/X/Instagram) render directly
+  instead of a second "Promote in Distribute" deep-link — that on-ramp mode (`promoteHref`,
+  `PromoteInDistributeLink`) is retired from `share-tools.tsx` since S6 removed its only caller.
+
+**(3) Catalog's one remaining outward pointer.** Every listing card carries a "Distribute this →"
+button (`button-distribute-<id>`) linking to `/provider/distribute?listing=<id>` — the id only
+PICKS a row out of the account's own listing read (the Workstation `?property=`/`?bundle=`
+deep-link convention); Distribute's selector falls back to the first listing on a missing/foreign
+id, never a dead end. Catalog's final outward-facing surface list: nothing — cards, list↔map
+(traveler preview), the availability section and per-card health remain, no distribution chrome.
+
+**(4) Measurement untouched.** No analytics were added to the moved Social-kit or Promote
+sections — `ChannelStateStrip`'s "View link performance" deep-link to Performance→Analytics is
+unchanged (§22d posture).
+
+**PROOF.** Playwright specs updated in place (bench-only, not CI-wired, same posture as the rest
+of the Catalog+Distribute suite): `distribute-channels.spec.ts` now asserts (a) the Social-kit
+channel renders the shared component's real testids + an Instagram-publish affordance + NO
+"Open share studio in Catalog" deep-link; (b) Distribute's own Promote section renders with NO
+self-referential "Promote in Distribute" link; (c) Catalog carries NONE of the storefront header /
+share dialog / Promote section testids, and its per-card pointer lands on Distribute with that
+listing preselected. `distribute-shell.spec.ts` needed no logic change (`ProviderStorefrontHeader`
+still renders the same way, just from one call site instead of two).
+
+**KEEP-GREEN**, serialized on a fresh `traveloure_w2d` bench (port 5012, `OBJECT_STORAGE_DRIVER=memory
+RATE_LIMIT_LOOPBACK_SKIP=1 SESSION_SECRET=bench` stub Stripe keys, `scripts/seed-ci-test-users.ts`
+run first): client unit battery 14/14 files, 0 failures; `fp1-console-defects` 12/12;
+`fp3-property-room-edit` 8/8; `short-links-frame` 12/12; `posting-opportunities-frame` 2/2; the two
+Distribute/Catalog Playwright specs pass at 1280 viewport. Five guards exit 0 (check-money-endpoints,
+phase2-fee-gate, check-unmounted-routers, check-decision-guards, check-omit-schema-ratchet); `tsc
+--noEmit` **170** = baseline (unchanged, zero new errors in any touched file); `replit.local` **0**;
+production build (client + server) clean.
+
+**Pre-existing, not this lane's regression:** `distribute-shell.spec.ts`'s blocked-listing assertion
+(`badge-marketplace-blocked` for "Business Document Translation") fails on a *fresh* bench because
+that seeded service is born approved+active there, not approved+draft as the spec's fixture comment
+assumes — a bench-state mismatch in code this lane never touched (`MarketplaceChannel`, the
+publish-readiness endpoint, the phase-d-kyoto-vendors seed). Also found in verification (not fixed,
+out of scope): the `phase-d-kyoto-vendors` seed creates provider rows with no password, no storefront
+handle and no terms-acceptance timestamp, so the pre-existing kyoto-interpreter-based specs cannot
+log in on a genuinely fresh bench without a manual DB stamp — worth a small follow-up in the seed
+itself (`server/seeds/phase-d-kyoto-vendors.seed.ts`) if this bench is meant to be reproducible
+from scratch for the whole Catalog+Distribute suite, not fixed here as out of this lane's scope.
+
+**NEGATIVE SPACE (ruling 43):** no schema change, no migration, no endpoint change, no money
+surface touched; S5's empty-state launcher and `ServiceForm` untouched (different lanes' scope);
+the expert Catalog (`client/src/pages/expert/catalog.tsx`) is untouched — it has no Distribute hub
+and keeps its own inline `PostingOpportunitiesCard` (no `promoteHref`, unaffected by the prop's
+removal since it never passed it).
+
+Full record: DECISIONS.md ledger row 98.
