@@ -23,7 +23,7 @@ import { Link } from "wouter";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
 
@@ -380,12 +380,20 @@ export default function ProviderEarnings() {
     mutationFn: () => apiRequest("POST", "/api/payouts/request"),
     onSuccess: () => {
       setRequested(true);
+      // Refresh payout history so the new open request immediately drives the
+      // Available/Pending-payout split without a page reload.
+      queryClient.invalidateQueries({ queryKey: ["/api/payouts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/earnings/summary"] });
       toast({ title: "Payout requested", description: "It's pending review — you'll be paid to your connected account once approved." });
     },
     onError: (err: any) => {
       const msg = String(err?.message ?? "");
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
+        // The server says an open request exists that our cache doesn't show — refresh so the
+        // Available/Pending-payout split reflects it.
+        queryClient.invalidateQueries({ queryKey: ["/api/payouts"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/provider/earnings/summary"] });
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
       } else if (msg.includes("stripe_not_connected")) {
         toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
@@ -398,6 +406,27 @@ export default function ProviderEarnings() {
       }
     },
   });
+
+  // UX clarity: while a payout request is open (pending/processing), the requested amount is
+  // spoken for — show it as "Pending payout" and subtract it from the displayed Available
+  // figure. Display-only: the server remains authoritative (duplicate requests are blocked
+  // server-side via the one-open-request 409) and ledger rows are untouched until admin
+  // processing flips them to paid_out.
+  // Fail-closed: open state is status-based (a malformed amount must never re-enable the
+  // Request button), and only finite non-negative amounts are summed for display.
+  const openPayouts = useMemo(
+    () => (payouts ?? []).filter((p) => p.status === "pending" || p.status === "processing"),
+    [payouts],
+  );
+  const hasOpenPayout = openPayouts.length > 0;
+  const openPayoutAmount = useMemo(
+    () =>
+      openPayouts.reduce((sum, p) => {
+        const n = parseFloat(p.amount || "0");
+        return Number.isFinite(n) && n > 0 ? sum + n : sum;
+      }, 0),
+    [openPayouts],
+  );
 
   const stats = useMemo(() => {
     if (!bookings) return { total: 0, thisMonth: 0, pending: 0, available: 0 };
@@ -573,27 +602,36 @@ export default function ProviderEarnings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-green-700 dark:text-green-400">Available Balance</p>
-                    <p className="text-xl font-bold text-green-800 dark:text-green-300">${stats.available.toFixed(2)}</p>
+                    {/* Canonical source: the escrow-ledger summary — the same figure the server
+                        derives a payout request from — minus any open (pending/processing)
+                        payout request. The booking-derived stats.available above is an
+                        approximate metric, not the payable balance. */}
+                    <p className="text-xl font-bold text-green-800 dark:text-green-300">${Math.max(0, (earningsSummary?.available ?? 0) - openPayoutAmount).toFixed(2)}</p>
                   </div>
                   <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
+                {hasOpenPayout && (
+                  <p className="text-sm text-green-700 dark:text-green-400 mt-2" data-testid="text-pending-payout">
+                    Pending payout: ${openPayoutAmount.toFixed(2)} — under review
+                  </p>
+                )}
               </div>
 
               <Button
                 className="w-full"
-                disabled={payoutMutation.isPending || requested || stats.available < 10}
+                disabled={payoutMutation.isPending || requested || hasOpenPayout || (earningsSummary?.available ?? 0) - openPayoutAmount < 10}
                 onClick={() => payoutMutation.mutate()}
                 data-testid="button-request-payout"
               >
                 {payoutMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Requesting…</>
-                ) : requested ? (
+                ) : requested || hasOpenPayout ? (
                   "Payout requested — pending review"
                 ) : (
                   <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
                 )}
               </Button>
-              {stats.available < 10 && !requested && (
+              {(earningsSummary?.available ?? 0) - openPayoutAmount < 10 && !requested && !hasOpenPayout && (
                 <p className="text-xs text-muted-foreground text-center">Minimum payout is $10.00.</p>
               )}
 
@@ -761,11 +799,20 @@ export default function ProviderEarnings() {
               <div className="grid grid-cols-2 gap-3">
                 <StatCard
                   label="Available to pay out"
-                  value={`$${(earningsSummary?.available ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  value={`$${Math.max(0, (earningsSummary?.available ?? 0) - openPayoutAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   icon={CheckCircle}
                   iconClassName="bg-green-100 text-green-600"
                   testId="card-ledger-available"
                 />
+                {hasOpenPayout && (
+                  <StatCard
+                    label="Pending payout (under review)"
+                    value={`$${openPayoutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    icon={Clock}
+                    iconClassName="bg-blue-100 text-blue-600"
+                    testId="card-ledger-pending-payout"
+                  />
+                )}
                 <StatCard
                   label="Held in escrow"
                   value={`$${(earningsSummary?.pending ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -780,13 +827,15 @@ export default function ProviderEarnings() {
                   iconClassName="bg-blue-100 text-blue-600"
                   testId="card-ledger-paid-out"
                 />
-                <StatCard
-                  label="Total earned"
-                  value={`$${(earningsSummary?.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  icon={DollarSign}
-                  iconClassName="bg-console-bg text-console-darkest"
-                  testId="card-ledger-total"
-                />
+                <div className={hasOpenPayout ? "col-span-2" : undefined}>
+                  <StatCard
+                    label="Total earned"
+                    value={`$${(earningsSummary?.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    icon={DollarSign}
+                    iconClassName="bg-console-bg text-console-darkest"
+                    testId="card-ledger-total"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
