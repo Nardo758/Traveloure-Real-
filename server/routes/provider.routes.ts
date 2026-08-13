@@ -7,6 +7,7 @@ import { storage } from "../storage";
 import { users, providerServices, bundleComponents } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
+import { deriveCityPatch } from "../utils/service-city";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -147,6 +148,35 @@ const bundlePatchSchema = z.object({
 
 type ProviderServiceRow = typeof providerServices.$inferSelect;
 
+/**
+ * ── FP-1 / B2 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
+ * `provider_services.delivery_method` DEFAULTs to 'pdf' (shared/schema.ts). These Workstation
+ * builders never set the column, so every property, room and bundle they created was stored as
+ * 'pdf' — and that is NOT internal: the traveler-facing storefront card for a 1912 machiya guest
+ * room read "PDF guide", and a bundle mixing an in-person food walk with a video call printed the
+ * literal string `pdf`. The same column drives the D8 completion rule and the D2 fundamentals.
+ *
+ * The two honest values, from the canonical 7 ONLY (CLAUDE.md §3, deliveryMethodEnum):
+ *   property / property_room → `in_person`. An accommodation is consumed at the place it is.
+ *   bundle                   → DERIVED from its components: the method they all share when they
+ *                              agree, otherwise `hybrid` (a genuinely mixed bundle; the canonical
+ *                              vocabulary has exactly one word for that).
+ * A component set with no methods at all is not derivable, so `null` is returned and the caller
+ * leaves the column alone rather than guessing (§13). Migration 208 repairs rows already on disk
+ * under the same rules.
+ */
+const PROPERTY_DELIVERY_METHOD = "in_person";
+const MIXED_BUNDLE_DELIVERY_METHOD = "hybrid";
+
+function deriveBundleDeliveryMethod(components: ProviderServiceRow[]): string | null {
+  const methods = new Set(
+    components.map((c) => (c.deliveryMethod ?? "").trim()).filter((m) => m.length > 0),
+  );
+  if (methods.size === 0) return null;
+  if (methods.size === 1) return Array.from(methods)[0];
+  return MIXED_BUNDLE_DELIVERY_METHOD;
+}
+
 function toComponentSummary(rows: ProviderServiceRow[]) {
   // Owner console shape — the owner may see unapproved states of their own services.
   return rows.map((c, i) => ({
@@ -209,6 +239,9 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
     const components = await validateBundleComponents(userId, body.componentServiceIds, res);
     if (!components) return;
 
+    // FP-1 / B2: an honest delivery method, derived from what the bundle actually contains.
+    const bundleDeliveryMethod = deriveBundleDeliveryMethod(components);
+
     // Transaction: the bundle row and its component rows exist together or not at all.
     const bundle = await db.transaction(async (tx) => {
       const [created] = await tx
@@ -219,6 +252,7 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
           description: body.description ?? null,
           price: body.price,
           productShape: "bundle",
+          ...(bundleDeliveryMethod ? { deliveryMethod: bundleDeliveryMethod } : {}),
           // D1a: born-submitted, server-clamped — approvalStatus is never read from the body.
           approvalStatus: "submitted",
           submittedAt: new Date(),
@@ -331,6 +365,13 @@ router.patch("/api/provider/bundles/:id", isAuthenticated, async (req, res) => {
       if (body.description !== undefined) patch.description = body.description;
       if (body.price !== undefined) patch.price = body.price;
       if (body.status !== undefined) patch.status = body.status;
+      // FP-1 / B2: a changed component set can change what the bundle IS — re-derive the delivery
+      // method from the new members so the traveler-facing label never goes stale. Only when the
+      // set actually changed, and only when it is derivable at all (§13).
+      if (components) {
+        const rederived = deriveBundleDeliveryMethod(components);
+        if (rederived) patch.deliveryMethod = rederived;
+      }
       if (reenteredReview) {
         patch.approvalStatus = "submitted";
         patch.submittedAt = new Date();
@@ -511,6 +552,13 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
         }
       : {};
 
+    // FP-1 / B4: server-derived city from the neighborhood slug (utils/service-city.ts) — the same
+    // ONE rule the listing wizard uses. NULL when the property names no neighborhood, or when the
+    // slug is ambiguous; never guessed from the free-text location (§13).
+    const cityPatch = await deriveCityPatch(body.neighborhood, {
+      neighborhoodPresent: body.neighborhood !== undefined,
+    });
+
     const { property, rooms } = await db.transaction(async (tx) => {
       const [createdProperty] = await tx
         .insert(providerServices)
@@ -521,10 +569,13 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
           ...coords,
           ...(body.location !== undefined ? { location: body.location } : {}),
           ...(body.neighborhood !== undefined ? { neighborhood: body.neighborhood } : {}),
+          ...cityPatch,
           ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
           serviceImage: body.serviceImage ?? null,
           galleryImages: body.galleryImages ?? [],
           productShape: "property",
+          // FP-1 / B2: an accommodation is place-anchored, not a PDF (see deriveBundleDeliveryMethod).
+          deliveryMethod: PROPERTY_DELIVERY_METHOD,
           // D1a: born-submitted, server-clamped — approvalStatus is never read from the body.
           approvalStatus: "submitted",
           submittedAt: new Date(),
@@ -543,10 +594,16 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
             price: r.price,
             pricingUnit: "per_night" as const,
             productShape: "property_room" as const,
+            // FP-1 / B2: a room inherits the property's place-anchored delivery, never the
+            // column DEFAULT 'pdf' that had guest rooms labelled "PDF guide" to travelers.
+            deliveryMethod: createdProperty.deliveryMethod ?? PROPERTY_DELIVERY_METHOD,
             parentServiceId: createdProperty.id,
             categoryId: createdProperty.categoryId,
             location: createdProperty.location,
             neighborhood: createdProperty.neighborhood,
+            // FP-1 / B4: a room sits in its property's city by construction — inherit the DERIVED
+            // value rather than re-deriving (or leaving the room out of its own market page).
+            city: createdProperty.city,
             // Rooms sit at the property's own confirmed point — inheriting the coordinates
             // (and its precision) is the same truthful claim, not a new one.
             latitude: createdProperty.latitude,
@@ -623,7 +680,12 @@ router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) =
     if (body.serviceName !== undefined) patch.serviceName = body.serviceName;
     if (body.description !== undefined) patch.description = body.description;
     if (body.location !== undefined) patch.location = body.location;
-    if (body.neighborhood !== undefined) patch.neighborhood = body.neighborhood;
+    if (body.neighborhood !== undefined) {
+      patch.neighborhood = body.neighborhood;
+      // FP-1 / B4: the city follows the neighborhood it was derived from — re-derived here, and
+      // set to NULL when the new value resolves to nothing (never left pointing at the old city).
+      Object.assign(patch, await deriveCityPatch(body.neighborhood, { neighborhoodPresent: true }));
+    }
     if (body.serviceImage !== undefined) patch.serviceImage = body.serviceImage;
     if (body.galleryImages !== undefined) patch.galleryImages = body.galleryImages;
     if (body.status !== undefined) patch.status = body.status;
@@ -692,10 +754,14 @@ router.post("/api/provider/properties/:id/rooms", isAuthenticated, async (req, r
           price: body.price,
           pricingUnit: "per_night" as const,
           productShape: "property_room" as const,
+          // FP-1 / B2: same inheritance as the rooms created with the property.
+          deliveryMethod: property.deliveryMethod ?? PROPERTY_DELIVERY_METHOD,
           parentServiceId: property.id,
           categoryId: property.categoryId,
           location: property.location,
           neighborhood: property.neighborhood,
+          // FP-1 / B4: same inheritance as the rooms created with the property.
+          city: property.city,
           ...(body.units != null ? { categoryAttributes: { units: body.units } } : {}),
           // D1a: born-submitted, server-clamped.
           approvalStatus: "submitted",

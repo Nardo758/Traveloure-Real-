@@ -121,6 +121,13 @@ export function buildFeedStream(
   supplyActivities: any[],
   platformServices: any[] = [],
   cityName?: string,
+  // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): how many platform services may enter
+  // the filler pool. The MIXED "all" feed keeps its balance cap of 4 — that cap is composition, and
+  // it is unchanged. But a spine chip is a DELIBERATE SEARCH ("show me Services", "show me Stay"),
+  // and answering it with a sample of four is what made a Kyoto provider's whole approved catalog
+  // invisible on Kyoto's own market page while sitting in the payload. Callers pass Infinity for a
+  // filtered view. Default preserves the previous behavior exactly.
+  serviceLimit: number = 4,
 ): FeedItem[] {
   // ── 1. Group gems by neighborhood slug ──────────────────────────────────
   const gemsByNeighborhood = new Map<string, any[]>();
@@ -186,7 +193,7 @@ export function buildFeedStream(
       id: `activity-${a.id ?? Math.random()}`,
       data: a,
     })),
-    ...(platformServices ?? []).slice(0, 4).map((s) => ({
+    ...(platformServices ?? []).slice(0, serviceLimit).map((s) => ({
       kind: "vendor-service" as FeedItemKind,
       id: `vsvc-${s.id}`,
       data: s,
@@ -234,6 +241,16 @@ export function buildFeedStream(
 }
 
 /**
+ * FP-1 / B4b: is this platform service an accommodation listing? `product_shape` is the structured
+ * answer (migration 153: 'property' is the storefront listing, 'property_room' each bookable room
+ * type). A row without the field is NOT assumed to be one — absence stays absence (§13).
+ */
+function isAccommodationShape(service: any): boolean {
+  const shape = service?.productShape ?? service?.product_shape ?? null;
+  return shape === "property" || shape === "property_room";
+}
+
+/**
  * Filter a feed stream by a spine chip category.
  * When filtering, neighborhood containers are dissolved — their gems are extracted
  * and filtered individually.
@@ -261,11 +278,18 @@ export function filterFeedStream(items: FeedItem[], category: string): FeedItem[
       case "stay":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "stay";
         if (item.kind === "supply-hotel") return true;
+        // FP-1 / B4b: an approved guesthouse (product_shape 'property') and its room types ARE
+        // accommodation. They are ordinary provider_services rows, so they arrived here as
+        // vendor-service items and the Stay chip dropped every one of them — a city with a live
+        // 2-room machiya and 60 published nights reported "No stay found". Routed by the row's own
+        // structured shape, never by parsing its name.
+        if (item.kind === "vendor-service") return isAccommodationShape(item.data);
         return false;
       case "do":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "do";
         if (item.kind === "supply-activity") return true;
-        if (item.kind === "vendor-service") return true;
+        // FP-1 / B4b: a place to sleep is not a thing to do — accommodation belongs under Stay.
+        if (item.kind === "vendor-service") return !isAccommodationShape(item.data);
         return false;
       case "photo_spots":
         if (item.kind === "loose-gem") return gemCategory(item.data.placeType) === "photo_spots";
