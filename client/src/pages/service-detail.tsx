@@ -67,6 +67,13 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 // about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
 // and it works; the CTA was simply speaking a language the destination doesn't parse.
 import { useAskExpert } from "@/lib/use-ask-expert";
+// S10 (Gate G4): the shared bundle-component summary shape + pure link/label helpers, so the
+// available/unavailable rendering decision lives in exactly one place (unit-tested separately).
+import {
+  bundleComponentHref,
+  bundleComponentMethodLabel,
+  type BundleComponentSummary,
+} from "@/lib/bundle-component-display";
 
 interface PricingTier {
   label: string;
@@ -161,11 +168,10 @@ interface ServiceRoutePointRow {
   longitude: string | null;
 }
 
-interface BundleComponent {
-  id: string;
-  serviceName: string;
-  shortDescription: string;
-}
+// S10 (Gate G4): matches the server's per-component shape (server/routes/content.routes.ts,
+// GET /api/services/:id bundle branch) — see client/src/lib/bundle-component-display.ts for the
+// shared type and the pure link/label helpers this page renders through.
+type BundleComponent = BundleComponentSummary;
 
 interface RoomSummary {
   id: string;
@@ -863,8 +869,10 @@ export default function ServiceDetailPage() {
               </Card>
             )}
 
-            {/* §17 bundles (migration 151): components of this bundle, server-gated to only
-                still-approved+active items. No section at all for a non-bundle service. */}
+            {/* S10 (Gate G4): components of this bundle. The server (content.routes.ts) sends
+                EVERY component slot, not just the visible ones — an available:false row is
+                unapproved/paused/missing and renders name-only with no link (§13: never a broken
+                link, never invented detail). No section at all for a non-bundle service. */}
             {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
               <Card data-testid="card-bundle-components">
                 <CardHeader>
@@ -873,20 +881,64 @@ export default function ServiceDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Same honest posture the Workstation bundle builder states to the provider
+                      ("component prices below are shown for reference only, nothing is
+                      auto-summed") — the traveler-facing equivalent: this is one bundle price,
+                      not a sum of what the components would cost booked separately. */}
+                  <p className="text-xs text-muted-foreground mb-3">
+                    This is one bundle price — it's not a sum of these components' individual prices.
+                  </p>
                   <div className="divide-y">
-                    {service.bundleComponents.map((component) => (
-                      <Link
-                        key={component.id}
-                        href={`/services/${component.id}`}
-                        data-testid={`bundle-component-${component.id}`}
-                        className="block py-3 hover-elevate rounded-md px-2 -mx-2"
-                      >
-                        <p className="font-medium">{component.serviceName}</p>
-                        {component.shortDescription && (
-                          <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
-                        )}
-                      </Link>
-                    ))}
+                    {service.bundleComponents.map((component, index) => {
+                      const href = bundleComponentHref(component);
+                      const methodLabel = bundleComponentMethodLabel(component);
+                      const key = component.available ? component.id : `unavailable-${index}`;
+                      const body = (
+                        <div className="flex items-start gap-3 py-3">
+                          {component.available && component.serviceImage && (
+                            <img
+                              src={component.serviceImage}
+                              alt=""
+                              className="w-14 h-14 rounded-md object-cover shrink-0"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-medium ${component.available ? "" : "text-muted-foreground"}`}>
+                                {component.serviceName}
+                              </p>
+                              {methodLabel && (
+                                <Badge variant="outline" className="capitalize">{methodLabel}</Badge>
+                              )}
+                            </div>
+                            {component.available && component.shortDescription && (
+                              <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
+                            )}
+                            {!component.available && (
+                              <p className="text-sm text-muted-foreground mt-0.5">Currently unavailable</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                      return href ? (
+                        <Link
+                          key={key}
+                          href={href}
+                          data-testid={`bundle-component-${component.available ? component.id : index}`}
+                          className="block hover-elevate rounded-md px-2 -mx-2"
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <div
+                          key={key}
+                          data-testid={`bundle-component-unavailable-${index}`}
+                          className="px-2 -mx-2"
+                        >
+                          {body}
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
