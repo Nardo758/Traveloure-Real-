@@ -102,12 +102,67 @@ export const PROVIDER_SERVICE_TEXT_FIELDS = [
  * can grow a string past a varchar limit; tag stripping can empty a required field).
  */
 export function sanitizeProviderServiceBody<T extends Record<string, any>>(body: T): T {
-  const result = { ...body };
-  for (const key of PROVIDER_SERVICE_TEXT_FIELDS) {
-    if (key in result) (result as Record<string, any>)[key] = sanitizeDeep(result[key]);
-  }
-  return result;
+  return sanitizeBodyFields(body, PROVIDER_SERVICE_TEXT_FIELDS);
 }
+
+/** Generic form of sanitizeProviderServiceBody: deep-sanitize the named fields of a raw body. */
+export function sanitizeBodyFields<T extends Record<string, any>>(
+  body: T,
+  fields: readonly string[],
+): T {
+  const result = { ...(body ?? {}) } as Record<string, any>;
+  for (const key of fields) {
+    if (key in result) result[key] = sanitizeDeep(result[key]);
+  }
+  return result as T;
+}
+
+/**
+ * Provider onboarding application prose (service_provider_forms) — excludes URLs
+ * (website/bookingLink/file uploads), booleans, verification/status fields.
+ */
+export const PROVIDER_APPLICATION_TEXT_FIELDS = [
+  "businessName",
+  "name",
+  "country",
+  "address",
+  "description",
+  "serviceOffers",
+  "businessCountry",
+  "businessRegistrationNumber",
+] as const;
+
+/**
+ * Expert application prose (local_expert_forms) — excludes email/phone, social links
+ * (URLs), govId/travelLicence (data URLs), and boolean/numeric fields.
+ */
+export const EXPERT_APPLICATION_TEXT_FIELDS = [
+  "firstName",
+  "lastName",
+  "country",
+  "city",
+  "displayName",
+  "headline",
+  "destinations",
+  "specialties",
+  "languages",
+  "experienceTypes",
+  "specializations",
+  "selectedServices",
+  "neighborhoods",
+  "knowledgeProofAnswers",
+  "localSpecialties",
+  "yearsOfExperience",
+  "bio",
+  "portfolio",
+  "certifications",
+  "availability",
+  "responseTime",
+  "hourlyRate",
+  "services",
+  "shortBio",
+  "expertNotesStyle",
+] as const;
 
 export function sanitizeTextFields<T extends Record<string, any>>(
   obj: T,

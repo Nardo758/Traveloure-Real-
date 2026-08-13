@@ -216,7 +216,7 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody } from "./utils/text-sanitizer";
+import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody, sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS } from "./utils/text-sanitizer";
 function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
   if (!slug) return "default";
   if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
@@ -1854,7 +1854,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1876,7 +1876,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -1909,7 +1909,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1930,7 +1930,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2010,7 +2010,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertServiceProviderFormSchema.parse(req.body);
+      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2053,7 +2053,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           return res.status(400).json({ message: "officeLocation must carry numeric lat/lng within range, or be null to clear" });
         }
-        const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+        const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
         officeLocation = { address, lat, lng };
       } else {
         return res.status(400).json({ message: "officeLocation must be an object with lat/lng, or null" });
@@ -2074,7 +2074,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertServiceProviderFormSchema.parse(req.body);
+      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -7475,7 +7475,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
             return res.status(400).json({ message: "pickupLocation must carry numeric lat/lng within range, or be null to clear" });
           }
-          const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+          const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
           pickupLocationUpdate = { pickupLocation: { address, lat, lng } };
         } else {
           return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });

@@ -28,5 +28,5 @@
 - [Cancellation refund policy](cancellation-refund-policy.md) — refund before terminal status; amount-scoped Stripe idempotency keys; partial refunds reverse ledger proportionally.
 - [Earnings mint path](earnings-mint-path.md) — earnings mint on booking → completed; production paths are traveler confirm-completion + PI-gated auto-complete scheduler; full fixture recipe inside.
 - [Payout-parity discriminators](payout-parity-discriminators.md) — all live bands are 0.25 so amount-based branch tests are vacuous; use the EXP-OVR override asymmetry to distinguish provider vs expert resolution.
-- [Write-time text sanitization](write-time-text-sanitization.md) — sanitize BEFORE zod min/max (entity expansion, tag-only-empty), cover JSON prose (faqs/tiers) deeply, drop script content not just tags.
+- [Write-time text sanitization](write-time-text-sanitization.md) — sanitize before zod min/max; cover JSONB prose deeply; drop script content, not just tags.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

@@ -195,6 +195,55 @@ test("bundle/property schemas sanitize BEFORE min/max validation", () => {
   assert.equal(prop.rooms[0].description, "nice");
 });
 
+test("provider/expert application pipelines sanitize prose and JSONB (route order: sanitize → parse)", async () => {
+  const { sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS } =
+    await import("../utils/text-sanitizer");
+  const { insertServiceProviderFormSchema, insertLocalExpertFormSchema } = await import("@shared/schema");
+
+  const provider = insertServiceProviderFormSchema.partial().parse(
+    sanitizeBodyFields(
+      {
+        businessName: `${SCRIPT}Acme Tours`,
+        name: `${XSS}Jane`,
+        address: `<b>1 Main St</b>`,
+        description: `<div onclick=x>We do tours</div>`,
+        serviceOffers: [{ category: `<i>transport</i>`, notes: [`${SCRIPT}airport pickup`] }],
+      },
+      PROVIDER_APPLICATION_TEXT_FIELDS,
+    ),
+  ) as Record<string, any>;
+  assert.equal(provider.businessName, "Acme Tours");
+  assert.equal(provider.name, "Jane");
+  assert.equal(provider.address, "1 Main St");
+  assert.equal(provider.description, "We do tours");
+  assert.deepEqual(provider.serviceOffers, [{ category: "transport", notes: ["airport pickup"] }]);
+
+  // insertLocalExpertFormSchema has effects (no .partial()); the route sanitizes BEFORE
+  // parse, so asserting the sanitized body is what the schema/storage receives.
+  void insertLocalExpertFormSchema;
+  const expert = sanitizeBodyFields(
+      {
+        bio: `${XSS}I know Kyoto`,
+        portfolio: `<script>x</script>my work`,
+        certifications: `<b>Guide license</b>`,
+        knowledgeProofAnswers: [{ questionId: "q1", answer: `${SCRIPT}The temple opens at 6am` }],
+        specialties: [`<i>food</i>`, "temples"],
+      },
+      EXPERT_APPLICATION_TEXT_FIELDS,
+  ) as Record<string, any>;
+  assert.equal(expert.bio, "I know Kyoto");
+  assert.equal(expert.portfolio, "my work");
+  assert.equal(expert.certifications, "Guide license");
+  assert.deepEqual(expert.knowledgeProofAnswers, [{ questionId: "q1", answer: "The temple opens at 6am" }]);
+  assert.deepEqual(expert.specialties, ["food", "temples"]);
+});
+
+test("officeLocation address sanitizes markup", () => {
+  // Mirrors PATCH /api/provider-application: sanitizeText then slice(0, 500).
+  const address = sanitizeText(`<img src=x onerror=alert(1)>221B Baker St`).slice(0, 500);
+  assert.equal(address, "221B Baker St");
+});
+
 test("message body: sanitized, capped, and tag-only rejects", () => {
   const ok = sendMessageSchema.parse({ recipientId: "r1", message: `${XSS}hi there` });
   assert.equal(ok.message, "hi there");
