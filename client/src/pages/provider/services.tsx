@@ -1,23 +1,32 @@
 /**
  * Provider Catalog — Console IA C9 (§17 17→9 collapse, the provider nine-module stamp).
  *
- * This page is the provider console's Catalog seat ("what I sell"). C9 completed the same
- * absorptions the expert catalog.tsx got in C2, reusing the shared pieces rather than
- * rebuilding them:
- *   - STOREFRONT HEADER: the /p/:handle management block (honest Live chip mirroring the
- *     storefront.routes.ts read-gate — services approved+active; 404 at zero — plus the
- *     storefront caption share tool via the shared StorefrontShareTools).
+ * This page is the provider console's Catalog seat ("what I sell") — read / manage / triage
+ * only. It carries NO outward-facing distribution chrome (S6, ruling-74-disposition-6
+ * clarification below):
  *   - AVAILABILITY: the ratified "availability editing belongs to Catalog" placement — the
  *     expert catalog's slot section transplanted onto /api/provider/services + the SAME
  *     session-ownership-scoped /api/me/services/:serviceId/slots CRUD (expert-console.routes.ts
  *     resolves ownership against provider_services.userId, so it is role-agnostic). This is
  *     the REAL slot editor; the old /provider/calendar "Edit Schedule"/"Block Dates" sheets it
  *     supersedes were non-persisting previews.
- *   - SHARE & PROMOTE absorption: per-service Share kit (Dialog + the shared
- *     OfferingShareDetail — approved+active only, the F2 gate share-images.routes.ts enforces)
- *     and the Posting Opportunities card (shared PostingOpportunitiesCard,
- *     /api/me/posting-opportunities — session-scoped, real rows only §13).
- *     /provider/share-promote now redirects here (its expert twin redirected in C2).
+ *   - LISTING HEALTH: the per-card health strip (photo/pin/description completeness) — a
+ *     triage signal, not a distribution surface.
+ *
+ * S6 (ruling-74-disposition-6 clarification, "Distribute is the ONE home for outward-facing
+ * distribution surfaces"): the storefront header, the per-service share-kit dialog and the
+ * Promote (posting-opportunities) block all MOVED to /provider/distribute — ruling 74(6)/(7)
+ * had left the storefront header double-mounted (this page AND Distribute both rendered
+ * `ProviderStorefrontHeader`) and left the Promote block's CONTAINER on Catalog even after C6
+ * pointed its actions at Distribute. This lane resolves both: `ProviderStorefrontHeader` stays
+ * `export`ed from this file (Distribute's storefront channel imports it) but is no longer
+ * mounted HERE; the per-card Share button + `OfferingShareDetail` dialog is gone (Distribute's
+ * Social kit channel now mounts the same shared component); the Promote section
+ * (`PostingOpportunitiesCard`) is gone (it now renders on Distribute). Each card keeps exactly
+ * one outward-facing pointer — "Distribute this →" — which lands on `/provider/distribute`
+ * with that listing preselected. /provider/share-promote still redirects here (unchanged); its
+ * expert twin (a separate, untouched lane) keeps the inline share surface on
+ * `/expert/catalog`.
  */
 import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
@@ -36,19 +45,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ToastAction } from "@/components/ui/toast";
 import { EmptyState, StatusBadge } from "@/components/backoffice/primitives";
-import {
-  OfferingShareDetail,
-  type OfferingShareOption,
-  PostingOpportunitiesCard,
-  StorefrontShareTools,
-  ensureShortLink,
-} from "@/components/backoffice/share-tools";
+// S6: StorefrontShareTools + ensureShortLink stay imported — ProviderStorefrontHeader (below)
+// still composes them, it is just no longer MOUNTED on this page (moved to Distribute).
+// OfferingShareDetail / PostingOpportunitiesCard are gone from this file's imports — both
+// outward-facing surfaces moved to /provider/distribute (S6).
+import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
 import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
@@ -60,34 +72,9 @@ import {
   DollarSign,
   Clock,
   Users,
-  Camera,
-  Car,
-  ChefHat,
-  Map,
-  Heart,
-  Sparkles,
-  CalendarHeart,
-  UserCheck,
-  Languages,
-  Baby,
   BedDouble,
-  Music,
-  Mic2,
-  Flower2,
-  Palette,
-  Package,
-  BookOpen,
-  Scissors,
-  Shield,
-  Zap,
-  Briefcase,
-  UtensilsCrossed,
-  Wrench,
   MapPin,
   Truck,
-  PartyPopper,
-  Award,
-  Compass,
   Share2,
   ExternalLink,
   ArrowRight,
@@ -97,12 +84,17 @@ import {
   CheckCircle2,
   Star,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
+// FP-3: property + property_room rows are edited on the Workstation property surface, never in
+// the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
+// guard imports the same module).
+import { listingEditHref, isPropertyRoom } from "@/lib/property-editor-link";
+import { describeCatalogRefusal, type CatalogAction } from "@/lib/catalog-error-copy";
 
 interface Service {
   id: string;
@@ -132,7 +124,13 @@ interface Service {
   contentAffinityTags?: string[];
   // PB (§17 Product Builder): a bundle IS a provider_services row (product_shape='bundle',
   // migration 151) — it appears in this list like any listing; NULL = single service.
+  // Same for a property and each of its room types (product_shape='property'/'property_room',
+  // migration 153) — FP-3 groups the rooms under their parent card rather than letting them
+  // render as ordinary standalone listings.
   productShape?: string | null;
+  // FP-3: set on a property_room row — the provider_services.id of its parent property. Already
+  // on the wire (getProviderServices is an unfiltered db.select()); this only names it.
+  parentServiceId?: string | null;
   // Listing Health (below): these ride the EXISTING /api/provider/services row — storage.
   // getProviderServices does an unfiltered db.select(), so photo + pin fields are already on
   // the wire. Sourcing the thumbnail/pin chip from here (not the new health endpoint) is what
@@ -169,38 +167,9 @@ interface ServiceCategory {
   slug: string;
 }
 
-const inspirationCards = [
-  { label: "Photography & Video", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
-  { label: "Transportation", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
-  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
-  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
-  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
-  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
-  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
-  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
-  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
-  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
-  { label: "Lodging", slug: "Lodging & Accommodation", icon: BedDouble, color: "bg-cyan-50 text-cyan-600" },
-  { label: "Music & Performance", slug: "Music & Performance", icon: Music, color: "bg-violet-50 text-violet-500" },
-  { label: "Entertainment", slug: "Entertainment", icon: Mic2, color: "bg-fuchsia-50 text-fuchsia-500" },
-  { label: "Floral & Decor", slug: "Floral & Decoration", icon: Flower2, color: "bg-pink-50 text-pink-400" },
-  { label: "Arts & Crafts", slug: "Arts & Crafts Instruction", icon: Palette, color: "bg-lime-50 text-lime-600" },
-  { label: "Rentals", slug: "Rental Services", icon: Package, color: "bg-stone-50 text-stone-500" },
-  { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
-  { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
-  { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
-  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
-  { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
-  { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
-  { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
-  { label: "Companionship", slug: "Companionship & Assistance", icon: Users, color: "bg-blue-50 text-blue-400" },
-  { label: "Stationery & Print", slug: "Stationery & Paper Goods", icon: Languages, color: "bg-indigo-50 text-indigo-400" },
-  { label: "Special Effects", slug: "Specialty Effects & Activities", icon: Zap, color: "bg-yellow-50 text-yellow-500" },
-  { label: "Send-Off & Post-Event", slug: "Send-Off & Post-Event", icon: PartyPopper, color: "bg-pink-50 text-pink-500" },
-  { label: "Unique Specialists", slug: "Unique Specialty Services", icon: Award, color: "bg-violet-50 text-violet-500" },
-  { label: "Spiritual & Wellness", slug: "Spiritual & Wellness", icon: Sparkles, color: "bg-teal-50 text-teal-400" },
-  { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
-];
+// S5 (ruling 74 disp. 1): the category inspiration tiles MOVED to the Workstation launcher
+// (client/src/pages/provider/workstation.tsx) — this page's empty state now just points at
+// that screen instead of re-deriving the same 30-category list here.
 
 // ─── Storefront header (C9 — the expert catalog C2 block, provider lane only) ───────────
 //
@@ -368,9 +337,28 @@ function AvailabilitySection() {
   // Collapsible section — default OPEN (this is a primary task), header states real
   // service/slot-count data so collapsing loses no information (§13).
   const [sectionOpen, setSectionOpen] = useState(true);
+  const sectionRef = useRef<HTMLDivElement>(null);
 
   const list = Array.isArray(services) ? services : [];
   const activeServiceId = selectedServiceId || list[0]?.id || "";
+
+  // WAVE 2 / S2: the listing home's "Publish some availability" checklist row deep-links here
+  // (`?availability=<serviceId>`) — this IS the C9 home for availability, so the row does not
+  // grow its own editor, it just needs to land on the right service and be visible. Runs once
+  // the real service list is loaded, so a row for a service on page 2 of a long catalog still
+  // resolves instead of silently falling back to the first one.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current || servicesLoading) return;
+    const requested = new URLSearchParams(window.location.search).get("availability");
+    if (requested && list.some((s) => s.id === requested)) {
+      setSelectedServiceId(requested);
+      setSectionOpen(true);
+      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    deepLinkApplied.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servicesLoading, list.length]);
 
   const { data: slots, isLoading: slotsLoading } = useQuery<AvailabilitySlot[]>({
     queryKey: [`/api/me/services/${activeServiceId}/slots`],
@@ -435,7 +423,7 @@ function AvailabilitySection() {
     : `${currentService?.serviceName ?? currentService?.name ?? "Untitled"} · ${slotCountLabel}`;
 
   return (
-    <section data-testid="section-catalog-availability">
+    <section data-testid="section-catalog-availability" ref={sectionRef}>
       <button
         type="button"
         onClick={() => setSectionOpen((o) => !o)}
@@ -623,6 +611,11 @@ interface ServiceHealth {
   // D2 method-aware fundamentals: checks that don't apply to this service's shape, omitted
   // with a reason — rendered as a muted "n/a" note, never as a failure.
   omitted?: { key: string; reason: string }[];
+  // FP-1 / B10: advisory notes that are VISIBLE but NOT SCORED — today only the
+  // commission-band fallback ("no category → the platform default band applies"). They never
+  // move the meter: the property and bundle builders ask for no category, and failing an owner
+  // on something they cannot fix is not honest scoring (D3's own rule).
+  notices?: { key: string; detail: string }[];
 }
 interface HealthResponse {
   services: ServiceHealth[];
@@ -708,10 +701,12 @@ function pinStatus(service: Service): { labelKey: string; tone: keyof typeof TON
  *  call, voice notes, messaging…) gets a neutral delivery-method chip instead — its location
  *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
  *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
-function PinChip({ service, isBundle }: { service: Service; isBundle: boolean }) {
+function PinChip({ service }: { service: Service }) {
   const { t } = useTranslation("catalog");
   const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
-  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+  // FP-3: bundles and properties/rooms resolve to their Workstation surface; everything else
+  // keeps the ServiceForm edit route.
+  const editHref = listingEditHref(service);
 
   if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
     const method = service.deliveryMethod ?? "";
@@ -782,6 +777,20 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
         ) : (
           <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
         )}
+        {/* FP-1 / B10: the uncategorized-band fallback, stated plainly beside the meter. Amber
+            (worth knowing) rather than red (broken) — the listing sells fine, it just resolves no
+            category band, so the platform default applies. No rate or percentage is shown here;
+            this rail states the FACT, and the fee lanes own the number (§8/§18). */}
+        {(health.notices ?? []).map((n) => (
+          <span
+            key={n.key}
+            className="text-[11px] text-amber-700"
+            title={n.detail}
+            data-testid={`health-notice-${n.key}-${health.serviceId}`}
+          >
+            ⚠ {n.detail}
+          </span>
+        ))}
         {omitted.length > 0 && (
           <span
             className="text-[11px] italic text-console-mid/60"
@@ -911,10 +920,72 @@ function CardShowsControl({
   );
 }
 
+// ─── FP-3: property rooms are not standalone listings ────────────────────────────────────────
+//
+// Ratified design (service-creation redesign mock, decision-maker Aug 2026): "a property room's
+// Edit opens its property's editor at the Rooms step — a room has no service checklist/delivery-
+// method of its own, and sending it into the generic ServiceForm is a dishonest surface."
+//
+// A room IS a provider_services row (migration 153) so it arrives on this owner read like any
+// listing — but it is a CHILD row: its category, location, pin and delivery method are inherited
+// from its property, and its price is a nightly rate. Rendering it as an ordinary service card
+// (with Duplicate, a pin chip and an Edit into the delivery questionnaire) states things about it
+// that are not true. It renders instead as a compact room row under its parent property's card,
+// showing exactly what a room is: its name, its nightly price, its own review/active state, and
+// an Edit that opens the property editor at the Rooms step.
+function RoomRow({
+  room,
+  parentName,
+  health,
+}: {
+  room: Service;
+  /** The parent property's name — stated on an ORPHAN row (its property card is not in view). */
+  parentName?: string | null;
+  health: ServiceHealth | undefined;
+}) {
+  const { t } = useTranslation("catalog");
+  const { t: tCommon } = useTranslation("common");
+  const rawPrice = room.price ?? room.basePrice;
+  const nightly = rawPrice == null || rawPrice === "" ? "—" : `$${rawPrice} / night`;
+  const isActive = room.status === "active";
+  return (
+    <div
+      className={`rounded-md border border-console-light px-3 py-2 ${!isActive ? "opacity-60" : ""}`}
+      data-testid={`row-catalog-room-${room.id}`}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+          <BedDouble className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
+          <span className="text-sm text-console-darkest truncate">
+            {room.serviceName || room.name || t("card.untitled")}
+          </span>
+          <span className="text-xs font-medium text-green-600" data-testid={`text-room-price-${room.id}`}>
+            {nightly}
+          </span>
+          {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
+          <StatusBadge status={isActive ? "active" : "paused"} />
+          {parentName && (
+            <span className="text-[11px] text-console-mid" data-testid={`text-room-parent-${room.id}`}>
+              Room in {parentName}
+            </span>
+          )}
+        </div>
+        <Link href={listingEditHref(room)}>
+          <Button variant="outline" size="sm" className="h-7" data-testid={`button-edit-room-${room.id}`}>
+            <Edit className="w-3.5 h-3.5 mr-1" /> {tCommon("actions.edit")}
+          </Button>
+        </Link>
+      </div>
+      <HealthRow health={health} />
+    </div>
+  );
+}
+
 function CatalogPreviewCard({ service }: { service: Service }) {
   const { t: tCommon } = useTranslation("common");
-  const isBundle = service.productShape === "bundle";
-  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+  // FP-3: Preview is "what travelers see", so a room KEEPS its traveler card here (a room really
+  // is a bookable public listing) — only the hover Edit affordance re-routes to its property.
+  const editHref = listingEditHref(service);
 
   const chips = service.deliveryMethod && PREVIEW_DELIVERY_LABELS[service.deliveryMethod]
     ? [PREVIEW_DELIVERY_LABELS[service.deliveryMethod]]
@@ -976,7 +1047,10 @@ export default function ProviderServices() {
   // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
   // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
   const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
-  const [shareTarget, setShareTarget] = useState<Service | null>(null);
+  // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate. Holding the target row (not
+  // just its id) lets the dialog name the listing it is about to remove — the Workstation's
+  // property/bundle deletes already work this way, and Catalog's was the odd one out.
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -1002,6 +1076,28 @@ export default function ProviderServices() {
     (healthData?.services ?? []).map((h) => [h.serviceId, h]),
   );
 
+  // ── FP-2 / Package A item 5: HUMAN ERRORS ON THE CATALOG MUTATIONS ─────────────────────────
+  // All four card mutations below used to render `error.message` — which `apiRequest` builds as
+  // `"<status>: <raw body>"`, so a refused activation showed the provider a JSON blob. The
+  // server's sentence was already honest; it was just wrapped. `describeCatalogRefusal` unwraps
+  // it, names the action that failed, and — for the refusals a provider fixes in the listing
+  // editor — hands back a `fixInEditor` flag so the toast can carry the way out (the mock's
+  // "Add one →"). No server response changed and no refusal is softened.
+  const toastRefusal = (action: CatalogAction, err: unknown, service?: { id: string; productShape?: string | null; parentServiceId?: string | null }) => {
+    const copy = describeCatalogRefusal(action, err);
+    const href = service ? listingEditHref(service) : null;
+    toast({
+      variant: "destructive",
+      title: copy.title,
+      description: copy.description,
+      action: copy.fixInEditor && href ? (
+        <ToastAction altText="Open this listing's editor" onClick={() => navigate(href)}>
+          Fix it
+        </ToastAction>
+      ) : undefined,
+    });
+  };
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const res = await apiRequest("PATCH", `/api/provider/services/${id}`, { status });
@@ -1011,8 +1107,9 @@ export default function ProviderServices() {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service updated" });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, vars) => {
+      const service = services?.find((s) => s.id === vars.id);
+      toastRefusal(vars.status === "active" ? "activate" : "pause", error, service);
     },
   });
 
@@ -1028,8 +1125,8 @@ export default function ProviderServices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, vars) => {
+      toastRefusal("display", error, services?.find((s) => s.id === vars.id));
     },
   });
 
@@ -1040,10 +1137,11 @@ export default function ProviderServices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      setDeleteTarget(null);
       toast({ title: "Service deleted" });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, id) => {
+      toastRefusal("delete", error, services?.find((s) => s.id === id));
     },
   });
 
@@ -1056,8 +1154,8 @@ export default function ProviderServices() {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service duplicated", description: "The copy is a draft awaiting review — edit and submit it." });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, id) => {
+      toastRefusal("duplicate", error, services?.find((s) => s.id === id));
     },
   });
 
@@ -1082,6 +1180,28 @@ export default function ProviderServices() {
           return name === selectedCategory;
         });
 
+  // ── FP-3: property rooms are grouped under their parent property card ───────────────────────
+  // A room row is never a top-level card here. It renders as a compact RoomRow inside its
+  // property's card; if the property card is NOT in the current filtered view (a category filter
+  // that catches the room but not the property, or a property row missing from this read), the
+  // room still renders as its own row — an ORPHAN row that names its parent — rather than
+  // silently vanishing (§13) or reverting to a generic service card.
+  const roomsByParent = new globalThis.Map<string, Service[]>();
+  for (const s of filteredServices) {
+    if (!isPropertyRoom(s.productShape)) continue;
+    const key = s.parentServiceId ?? "";
+    roomsByParent.set(key, [...(roomsByParent.get(key) ?? []), s]);
+  }
+  const topLevelServices = filteredServices.filter((s) => !isPropertyRoom(s.productShape));
+  const topLevelIds = new Set(topLevelServices.map((s) => s.id));
+  const orphanRooms = filteredServices.filter(
+    (s) => isPropertyRoom(s.productShape) && !(s.parentServiceId && topLevelIds.has(s.parentServiceId)),
+  );
+  // Parent name for an orphan row — from the unfiltered read when the parent exists at all.
+  const serviceNameById = new globalThis.Map<string, string>(
+    (services ?? []).map((s) => [s.id, s.serviceName || s.name || ""]),
+  );
+
   // C2 Preview honesty filter (§13): a listing appears in Preview ONLY if it would appear on the
   // public /p/:handle storefront — the SAME predicate storefront.routes.ts loadStorefront applies
   // to lane 1 (approvalStatus='approved' AND status='active'; owner-scoping is implicit here since
@@ -1095,30 +1215,13 @@ export default function ProviderServices() {
   const isFirstTimeEmpty = !isLoading && totalServices === 0;
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
 
-  // C9: the per-service share kit rides the shared OfferingShareDetail; images render only
-  // for approved+active services — the same gate share-images.routes.ts enforces (a
-  // submitted/paused listing's share-image 404s, so surfacing it would be a dead preview).
-  const shareOffering: OfferingShareOption | null = shareTarget
-    ? {
-        id: shareTarget.id,
-        lane: "service",
-        laneLabel: "Service",
-        name: shareTarget.serviceName || shareTarget.name || "Untitled service",
-        city: null,
-        price:
-          shareTarget.price != null && shareTarget.price !== ""
-            ? `$${Number(shareTarget.price).toFixed(0)}`
-            : null,
-        publicHref: `/services/${shareTarget.id}`,
-      }
-    : null;
-
   return (
-    <ProviderLayout title="Catalog">
+    /* FP-4 full-bleed exception #1: the MAP view's canvas is a three-pane authoring
+       surface (selector rail · map · authoring cards) whose usable area IS the shell
+       width — capping it would shrink the map for no reading benefit. The LIST view is
+       ordinary card content and stays inside the shared container. */
+    <ProviderLayout title="Catalog" width={viewMode === "map" ? "full" : "contained"}>
       <div className="p-6 space-y-6">
-        {/* C9: the /p/:handle storefront management header (the expert catalog C2 block). */}
-        <ProviderStorefrontHeader />
-
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -1178,7 +1281,10 @@ export default function ProviderServices() {
                 {t("header.viewMap")}
               </Button>
             </div>
-            <Link href="/provider/services/new">
+            {/* S5 (ruling 74 disp. 1): every "Add New Service" affordance routes through the
+                Workstation one-door launcher first — this is no longer a direct deep link into
+                ServiceForm step 1. */}
+            <Link href="/provider/workstation">
               <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
                 <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
               </Button>
@@ -1211,39 +1317,18 @@ export default function ProviderServices() {
             ))}
           </div>
         ) : isFirstTimeEmpty ? (
-          /* First-time empty state: show all categories */
-          <div className="space-y-6">
-            <div className="text-center py-4">
-              <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
-              <p className="text-console-mid text-sm">{t("empty.body")}</p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-              {inspirationCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <button
-                    key={card.slug}
-                    onClick={() => navigate(`/provider/services/new?category=${encodeURIComponent(card.slug)}`)}
-                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-primary hover:shadow-sm transition-all text-center group"
-                    data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-                  >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-medium text-console-dark leading-tight">{card.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="text-center">
-              <Link href="/provider/services/new">
-                <Button variant="outline" data-testid="button-add-first-service">
-                  <Plus className="w-4 h-4 mr-2" /> {t("empty.fromScratch")}
-                </Button>
-              </Link>
-            </div>
+          /* S5 (ruling 74 disp. 1): first-time empty state is now a simple pointer at the
+             Workstation launcher — the 30-tile category picker that used to live here MOVED
+             to that screen (client/src/pages/provider/workstation.tsx) so there is exactly
+             ONE place a new listing is born. */
+          <div className="text-center py-10" data-testid="empty-state-catalog">
+            <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
+            <p className="text-console-mid text-sm mb-4">{t("empty.body")}</p>
+            <Link href="/provider/workstation">
+              <Button data-testid="button-add-first-service">
+                <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
+              </Button>
+            </Link>
           </div>
         ) : viewMode === "map" ? (
           /* Ruling 22(b): the map authoring surface — selector rail, canvas, pin + route cards */
@@ -1286,9 +1371,10 @@ export default function ProviderServices() {
             </div>
           )
         ) : (
-          /* Service cards */
+          /* Service cards. FP-3: rooms are NOT in this list — they render inside their
+             property's card below (or as orphan rows after the grid). */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredServices.map((service) => {
+            {topLevelServices.map((service) => {
               // The listing's own NAME is provider content (ruling 60 system B) and is never
               // translated; only the placeholder shown when there is no name is chrome.
               const displayName = service.serviceName || service.name || t("card.untitled");
@@ -1307,6 +1393,11 @@ export default function ProviderServices() {
               // PB: bundles are edited in the Workstation's bundle builder (components +
               // price live there), not the ServiceForm.
               const isBundle = service.productShape === "bundle";
+              // FP-3: a property is edited on the Workstation property surface — at its Basics —
+              // together with its room types; never in the ServiceForm questionnaire.
+              const isProperty = service.productShape === "property";
+              const childRooms = isProperty ? roomsByParent.get(service.id) ?? [] : [];
+              const editHref = listingEditHref(service);
 
               return (
                 <Card
@@ -1333,6 +1424,11 @@ export default function ProviderServices() {
                               {t("card.bundle")}
                             </Badge>
                           )}
+                          {isProperty && (
+                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-property-${service.id}`}>
+                              Property
+                            </Badge>
+                          )}
                           {service.isFeatured && (
                             <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
                               {t("card.featured")}
@@ -1351,7 +1447,7 @@ export default function ProviderServices() {
                           <span className="flex items-center gap-1 font-semibold text-green-600" data-testid={`text-price-${service.id}`}>
                             <DollarSign className="w-4 h-4" /> {priceDisplay}
                           </span>
-                          <PinChip service={service} isBundle={isBundle} />
+                          <PinChip service={service} />
                           {service.deliveryTimeframe && (
                             <span className="flex items-center gap-1 text-console-mid">
                               <Clock className="w-4 h-4" /> {service.deliveryTimeframe}
@@ -1421,16 +1517,41 @@ export default function ProviderServices() {
                       disabled={displayOptionsMutation.isPending}
                     />
 
+                    {/* FP-3: the property's room types, grouped here rather than scattered
+                        through the grid as standalone service cards. Each row states what a room
+                        really is — name, nightly rate, its own review/active state — and its Edit
+                        opens the property editor at the Rooms step. */}
+                    {isProperty && (
+                      <div className="mt-3 pt-3 border-t border-console-light" data-testid={`rooms-block-${service.id}`}>
+                        <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
+                          Room types
+                        </p>
+                        {childRooms.length === 0 ? (
+                          <p className="text-xs text-console-mid" data-testid={`rooms-empty-${service.id}`}>
+                            No room types yet — add one in the Workstation.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {childRooms.map((room) => (
+                              <RoomRow key={room.id} room={room} health={healthByServiceId.get(room.id)} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
-                      <Link href={isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`}>
+                      <Link href={editHref}>
                         <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
                           <Edit className="w-4 h-4 mr-1" /> {tCommon("actions.edit")}
                         </Button>
                       </Link>
                       {/* PB: no Duplicate for bundles — duplicateService copies the
                           provider_services row only, not bundle_components, so the copy
-                          would be a component-less bundle (filed server follow-up). */}
-                      {!isBundle && (
+                          would be a component-less bundle (filed server follow-up).
+                          FP-3: nor for a property — the same one-row copy would produce a
+                          property with no room types, which is not a sellable thing. */}
+                      {!isBundle && !isProperty && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1441,23 +1562,25 @@ export default function ProviderServices() {
                           <Copy className="w-4 h-4 mr-1" /> {tCommon("actions.duplicate")}
                         </Button>
                       )}
-                      {/* C9 Share & Promote absorption: share kit only for approved+active
-                          services — the F2 gate the public page + share image enforce. */}
-                      {service.approvalStatus === "approved" && isActive && (
+                      {/* S6: Catalog's ONE outward-facing pointer — storefront, share kit and
+                          promote all live on Distribute now. Shown for every listing (Distribute
+                          itself shows the honest not-live/blocked state for anything that isn't
+                          approved+active yet — no gate needed here). */}
+                      <Link href={`/provider/distribute?listing=${service.id}`}>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setShareTarget(service)}
-                          data-testid={`button-share-${service.id}`}
+                          data-testid={`button-distribute-${service.id}`}
                         >
-                          <Share2 className="w-4 h-4 mr-1" /> {tCommon("actions.share")}
+                          <Share2 className="w-4 h-4 mr-1" /> Distribute this
+                          <ArrowRight className="w-3.5 h-3.5 ml-1" />
                         </Button>
-                      )}
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="text-red-500 hover:text-red-600"
-                        onClick={() => deleteMutation.mutate(service.id)}
+                        onClick={() => setDeleteTarget(service)}
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-${service.id}`}
                       >
@@ -1473,46 +1596,68 @@ export default function ProviderServices() {
           </div>
         )}
 
+        {/* FP-3: rooms whose property card is NOT in the current view. They still render as room
+            rows — naming the property they belong to — never as generic service cards, and never
+            silently dropped (§13). Shown in the manage layout only; Preview is the traveler view. */}
+        {catalogMode === "manage" && viewMode === "list" && orphanRooms.length > 0 && (
+          <div className="space-y-1.5" data-testid="catalog-orphan-rooms">
+            <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide">
+              Room types
+            </p>
+            {orphanRooms.map((room) => (
+              <RoomRow
+                key={room.id}
+                room={room}
+                parentName={room.parentServiceId ? serviceNameById.get(room.parentServiceId) ?? null : null}
+                health={healthByServiceId.get(room.id)}
+              />
+            ))}
+          </div>
+        )}
+
         {/* C9: availability editing's ratified Catalog home (see header comment). */}
         <AvailabilitySection />
 
-        {/* C9 → C6 (ruling 74): Share & Promote's opportunity-scoped nudges — real rows only (§13)
-            — reworked into an ON-RAMP into the Distribute hub. The timely nudges STAY here
-            (valuable on the listing); the share/channels actions now deep-link into
-            /provider/distribute rather than opening a second share surface on Catalog (ruling 74:
-            "Promote → Distribute; no second share surface"). The storefront share tools stay on
-            Catalog (the header above), unchanged. */}
-        <section data-testid="section-catalog-promote">
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-            <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide">
-              {t("sections.promote")}
-            </h2>
-            <Link href="/provider/distribute">
-              <Button size="sm" variant="outline" data-testid="link-promote-distribute">
-                <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                Open Distribute
-                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-              </Button>
-            </Link>
-          </div>
-          <p className="text-xs text-console-mid mb-3" data-testid="text-promote-onramp">
-            Direct links, social kits and channel status all live in your Distribute hub. These
-            timely nudges point straight into it.
-          </p>
-          <PostingOpportunitiesCard promoteHref="/provider/distribute" />
-        </section>
+        {/* S6 (ruling-74-disposition-6 clarification): the storefront header, the per-service
+            share-kit dialog and the Promote (posting-opportunities) block all moved to
+            /provider/distribute — this page's own outward-facing pointer is now exactly the
+            per-card "Distribute this →" button above, nothing more. See the file header
+            comment for the full before/after. */}
 
-        {/* C9: the per-service share kit dialog (shared share-tools components — feed/story
-            images + caption + §16-safe actions; identical server calls to the retired
-            /provider/share-promote page). */}
-        <Dialog open={!!shareOffering} onOpenChange={(open) => !open && setShareTarget(null)}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-share-kit">
-            <DialogHeader>
-              <DialogTitle>{shareOffering?.name ?? t("shareDialog.fallbackTitle")}</DialogTitle>
-            </DialogHeader>
-            {shareOffering && <OfferingShareDetail offering={shareOffering} showImages />}
-          </DialogContent>
-        </Dialog>
+        {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────────
+            Catalog's Delete fired `deleteMutation.mutate(id)` straight off the click: one tap,
+            the listing gone, no confirmation and no undo — while the Workstation's property and
+            bundle deletes, two clicks away, both confirm. This is the same AlertDialog those use,
+            and it NAMES the listing so a mis-aimed click on a dense grid is visible before it
+            lands.
+            SCOPE (deliberate): this is the plain confirm only. The "refuse + archive when
+            travelers have already booked it" half is gap #18 on the execution map — a Wave 3
+            lane with a server side — so this dialog does NOT claim anything about bookings it
+            has not checked (§13). ── */}
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent data-testid="dialog-delete-service">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete "{deleteTarget?.serviceName || t("card.untitled")}"?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the listing from your catalog and from anywhere travelers can find
+                it. It can't be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-delete-service">
+                {tCommon("actions.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="bg-red-600 hover:bg-red-700"
+                data-testid="button-confirm-delete-service"
+              >
+                {tCommon("actions.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </ProviderLayout>
   );

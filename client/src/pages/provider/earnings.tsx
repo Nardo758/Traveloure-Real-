@@ -23,9 +23,13 @@ import { Link } from "wouter";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
+// Ledger 90 (FP-5, M1): the ONE money-bearing status predicate, shared with the server
+// aggregations (short-links.routes.ts) and the other console tabs. Every number on this page that
+// carries an earnings/revenue label derives from it — see the `useMemo`s below.
+import { isEarningBooking, isProvisionalBooking } from "@shared/booking-visibility";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
@@ -45,6 +49,14 @@ interface ProviderEarningsSummary {
   pending: number; // held in escrow, not yet releasable
   available: number; // releasable — payable now
   paidOut: number;
+  // Ledger 90 (FP-5, S2): the effective payout threshold, resolved SERVER-side by the same helper
+  // POST /api/payouts/request gates on — max(platform floor, this provider's Settings minimum).
+  // Optional so an older/other payload simply falls back to the platform floor below.
+  payoutMinimum?: {
+    platformFloorCents: number;
+    effectiveCents: number;
+    source: "platform_floor" | "provider_setting";
+  };
 }
 
 // "Link performance" card (§06a mockup). Reads the S5/S6 short-link rails
@@ -205,11 +217,10 @@ function LinkPerformanceCard() {
               <p className="text-xs text-console-mid mt-2">Lifetime totals.</p>
             </div>
 
-            <div className="space-y-2" role="list" aria-label="Distribution links">
+            <div className="space-y-2">
               {links.map((row) => (
                 <div
                   key={row.code}
-                  role="listitem"
                   className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
                   data-testid={`row-link-${row.code}`}
                 >
@@ -315,11 +326,10 @@ function StatementsCard() {
             testId="empty-statements"
           />
         ) : (
-          <div className="space-y-2" role="list" aria-label="Monthly statements">
+          <div className="space-y-2">
             {months.map((row) => (
               <div
                 key={row.month}
-                role="listitem"
                 className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
                 data-testid={`row-statement-${row.month}`}
               >
@@ -382,25 +392,19 @@ export default function ProviderEarnings() {
     mutationFn: () => apiRequest("POST", "/api/payouts/request"),
     onSuccess: () => {
       setRequested(true);
-      // Refresh payout history so the new open request immediately drives the
-      // Available/Pending-payout split without a page reload.
-      queryClient.invalidateQueries({ queryKey: ["/api/payouts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/provider/earnings/summary"] });
       toast({ title: "Payout requested", description: "It's pending review — you'll be paid to your connected account once approved." });
     },
     onError: (err: any) => {
       const msg = String(err?.message ?? "");
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
-        // The server says an open request exists that our cache doesn't show — refresh so the
-        // Available/Pending-payout split reflects it.
-        queryClient.invalidateQueries({ queryKey: ["/api/payouts"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/provider/earnings/summary"] });
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
       } else if (msg.includes("stripe_not_connected")) {
         toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
-        toast({ title: "Below minimum", description: "The minimum payout is $10.00.", variant: "destructive" });
+        // Ledger 90 (FP-5, S2): no client-side "$10.00" literal — the server states the effective
+        // threshold (and whether it is the platform floor or this provider's own Settings value).
+        toast({ title: "Below minimum", description: "Your available balance is under your payout minimum. See Settings for the amount you set.", variant: "destructive" });
       } else if (msg.includes("no_balance")) {
         toast({ title: "No available balance", description: "You have no cleared earnings to withdraw yet.", variant: "destructive" });
       } else {
@@ -409,61 +413,53 @@ export default function ProviderEarnings() {
     },
   });
 
-  // UX clarity: while a payout request is open (pending/processing), the requested amount is
-  // spoken for — show it as "Pending payout" and subtract it from the displayed Available
-  // figure. Display-only: the server remains authoritative (duplicate requests are blocked
-  // server-side via the one-open-request 409) and ledger rows are untouched until admin
-  // processing flips them to paid_out.
-  // Fail-closed: open state is status-based (a malformed amount must never re-enable the
-  // Request button), and only finite non-negative amounts are summed for display.
-  const openPayouts = useMemo(
-    () => (payouts ?? []).filter((p) => p.status === "pending" || p.status === "processing"),
-    [payouts],
-  );
-  const hasOpenPayout = openPayouts.length > 0;
-  const openPayoutAmount = useMemo(
-    () =>
-      openPayouts.reduce((sum, p) => {
-        const n = parseFloat(p.amount || "0");
-        return Number.isFinite(n) && n > 0 ? sum + n : sum;
-      }, 0),
-    [openPayouts],
-  );
-
   const stats = useMemo(() => {
     if (!bookings) return { total: 0, thisMonth: 0, pending: 0, available: 0 };
-    
+
     const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
-    
+
     let total = 0;
     let monthly = 0;
     let pending = 0;
     let available = 0;
-    
+
     bookings.forEach((b) => {
+      // Ledger 90 (FP-5, M1): a row that is not money-bearing contributes to NOTHING here.
+      // The `pending` bucket previously counted `status === "pending"` — the legacy rail's
+      // birth state, where nothing has been charged — alongside the genuinely-paid `confirmed`.
+      if (!isEarningBooking(b.status)) return;
       const earnings = parseFloat(b.providerEarnings || "0");
       const bookingDate = b.createdAt ? new Date(b.createdAt) : new Date();
-      
+
       if (b.status === "completed") {
         total += earnings;
         available += earnings;
         if (bookingDate.getMonth() === thisMonth && bookingDate.getFullYear() === thisYear) {
           monthly += earnings;
         }
-      } else if (b.status === "confirmed" || b.status === "pending") {
+      } else {
+        // Paid, not yet delivered/completed — real money, not yet releasable.
         pending += earnings;
       }
     });
-    
+
     return { total, thisMonth: monthly, pending, available };
   }, [bookings]);
+
+  // Ledger 90 (FP-5, M1): unauthorized §15b claims are DISCLOSED, never banked. Customers wrote
+  // this idiom first ("1 booking (1 pending payment)"); Money adopts it rather than inventing a
+  // second wording, so the page can carry the row without any tile pretending it is earnings.
+  const provisionalClaims = useMemo(
+    () => (bookings ?? []).filter((b) => isProvisionalBooking(b.status)),
+    [bookings],
+  );
 
   const transactions = useMemo(() => {
     if (!bookings) return [];
     return bookings
-      .filter((b) => b.status === "completed" || b.status === "confirmed")
+      .filter((b) => isEarningBooking(b.status))
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
       .slice(0, 10)
       .map((b) => ({
@@ -490,7 +486,9 @@ export default function ProviderEarnings() {
     }
     
     bookings.forEach((b) => {
-      if (b.status === "completed" && b.createdAt) {
+      // completed-only by design (this is the realised-earnings series); the shared predicate
+      // is still the gate, so a status added later can never slip in unfiltered.
+      if (isEarningBooking(b.status) && b.status === "completed" && b.createdAt) {
         const date = new Date(b.createdAt);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         const monthEntry = monthData.find(m => m.key === key);
@@ -505,13 +503,31 @@ export default function ProviderEarnings() {
 
   const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
 
+  // Ledger 90 (FP-5, S2). The gate below was `stats.available < 10` — a client literal that
+  // duplicated the server's floor and ignored the provider's own "Minimum Payout Amount" setting
+  // entirely. Both numbers now come from ONE server-derived field; when the payload has not
+  // arrived yet the button stays disabled rather than promising a payout the server would refuse.
+  const platformFloorCents = earningsSummary?.payoutMinimum?.platformFloorCents ?? null;
+  const effectiveMinimumCents = earningsSummary?.payoutMinimum?.effectiveCents ?? null;
+  const payoutMinimumDollars = (effectiveMinimumCents ?? 0) / 100;
+  const platformFloorDollars = (platformFloorCents ?? 0) / 100;
+  const payoutMinimumIsOwnSetting = earningsSummary?.payoutMinimum?.source === "provider_setting";
+  const meetsPayoutMinimum =
+    effectiveMinimumCents !== null && Math.round(stats.available * 100) >= effectiveMinimumCents;
+
   const revenueBreakdown = useMemo(() => {
     // §8/§13: no client-side rate literal, no fabricated split. With zero gross there is no
     // real split to show — effectiveRate is null and the UI renders an honest empty state.
     // With gross > 0 the rate is derived from this provider's real booking rows (share/gross).
+    //
+    // Ledger 90 (FP-5, M1): this loop carried NO status filter at all, so a never-charged §15b
+    // claim rendered as "Gross Booking Value $95.00 … Your Share $83.60 — Your lifetime earnings"
+    // beside a ledger reading $0.00. The rate was always honest (share/gross, no literal); the
+    // AMOUNT was the lie. Money-bearing rows only, same predicate as the server aggregations.
     if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: null as number | null };
     let gross = 0, fee = 0, share = 0, insurance = 0;
     for (const b of bookings) {
+      if (!isEarningBooking(b.status)) continue;
       gross += Number(b.totalAmount ?? 0);
       fee += Number(b.platformFee ?? 0);
       share += Number(b.providerEarnings ?? 0);
@@ -560,6 +576,23 @@ export default function ProviderEarnings() {
           ))}
         </div>
 
+        {/* Ledger 90 (FP-5, M1): the honest home for an unauthorized §15b claim. Every tile above
+            and every panel below excludes it from the money; this band is where the provider is
+            TOLD it exists, in the same words Customers uses, so "did I make a sale?" has one
+            answer on this page instead of five. Rendered only when such a row exists (§13). */}
+        {provisionalClaims.length > 0 && (
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            data-testid="banner-awaiting-payment"
+          >
+            <span className="font-medium">
+              {provisionalClaims.length} booking{provisionalClaims.length === 1 ? "" : "s"} awaiting the traveler's payment
+            </span>{" "}
+            — not counted in any figure on this page. Nothing is owed to you until payment
+            completes, and nothing for you to do until it does.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -604,37 +637,43 @@ export default function ProviderEarnings() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-green-700 dark:text-green-400">Available Balance</p>
-                    {/* Canonical source: the escrow-ledger summary — the same figure the server
-                        derives a payout request from — minus any open (pending/processing)
-                        payout request. The booking-derived stats.available above is an
-                        approximate metric, not the payable balance. */}
-                    <p className="text-xl font-bold text-green-800 dark:text-green-300">${Math.max(0, (earningsSummary?.available ?? 0) - openPayoutAmount).toFixed(2)}</p>
+                    <p className="text-xl font-bold text-green-800 dark:text-green-300">${stats.available.toFixed(2)}</p>
                   </div>
                   <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
-                {hasOpenPayout && (
-                  <p className="text-sm text-green-700 dark:text-green-400 mt-2" data-testid="text-pending-payout">
-                    Pending payout: ${openPayoutAmount.toFixed(2)} — under review
-                  </p>
-                )}
               </div>
 
               <Button
                 className="w-full"
-                disabled={payoutMutation.isPending || requested || hasOpenPayout || (earningsSummary?.available ?? 0) - openPayoutAmount < 10}
+                disabled={payoutMutation.isPending || requested || !meetsPayoutMinimum}
                 onClick={() => payoutMutation.mutate()}
                 data-testid="button-request-payout"
               >
                 {payoutMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Requesting…</>
-                ) : requested || hasOpenPayout ? (
+                ) : requested ? (
                   "Payout requested — pending review"
                 ) : (
                   <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
                 )}
               </Button>
-              {(earningsSummary?.available ?? 0) - openPayoutAmount < 10 && !requested && !hasOpenPayout && (
-                <p className="text-xs text-muted-foreground text-center">Minimum payout is $10.00.</p>
+              {/* Ledger 90 (FP-5, S2): the EFFECTIVE threshold, server-derived — never a hardcoded
+                  "$10.00" that the server may not be the one enforcing. When the provider's own
+                  Settings minimum is the binding one, say so and link to where they set it, so a
+                  provider who batches at $250 learns why the button is off. */}
+              {!meetsPayoutMinimum && !requested && (
+                <p className="text-xs text-muted-foreground text-center" data-testid="text-payout-minimum">
+                  Minimum payout is ${payoutMinimumDollars.toFixed(2)}.
+                  {payoutMinimumIsOwnSetting && (
+                    <>
+                      {" "}Your own minimum, set in{" "}
+                      <Link href="/provider/settings" className="underline" data-testid="link-payout-minimum-setting">
+                        Settings
+                      </Link>
+                      . The platform floor is ${platformFloorDollars.toFixed(2)}.
+                    </>
+                  )}
+                </p>
               )}
 
               <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800" data-testid="card-pending-balance">
@@ -801,20 +840,11 @@ export default function ProviderEarnings() {
               <div className="grid grid-cols-2 gap-3">
                 <StatCard
                   label="Available to pay out"
-                  value={`$${Math.max(0, (earningsSummary?.available ?? 0) - openPayoutAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  value={`$${(earningsSummary?.available ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   icon={CheckCircle}
                   iconClassName="bg-green-100 text-green-600"
                   testId="card-ledger-available"
                 />
-                {hasOpenPayout && (
-                  <StatCard
-                    label="Pending payout (under review)"
-                    value={`$${openPayoutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    icon={Clock}
-                    iconClassName="bg-blue-100 text-blue-600"
-                    testId="card-ledger-pending-payout"
-                  />
-                )}
                 <StatCard
                   label="Held in escrow"
                   value={`$${(earningsSummary?.pending ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -829,15 +859,13 @@ export default function ProviderEarnings() {
                   iconClassName="bg-blue-100 text-blue-600"
                   testId="card-ledger-paid-out"
                 />
-                <div className={hasOpenPayout ? "col-span-2" : undefined}>
-                  <StatCard
-                    label="Total earned"
-                    value={`$${(earningsSummary?.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    icon={DollarSign}
-                    iconClassName="bg-console-bg text-console-darkest"
-                    testId="card-ledger-total"
-                  />
-                </div>
+                <StatCard
+                  label="Total earned"
+                  value={`$${(earningsSummary?.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={DollarSign}
+                  iconClassName="bg-console-bg text-console-darkest"
+                  testId="card-ledger-total"
+                />
               </div>
             </CardContent>
           </Card>
@@ -848,11 +876,10 @@ export default function ProviderEarnings() {
             </CardHeader>
             <CardContent>
               {payouts && payouts.length > 0 ? (
-                <div className="space-y-3" role="list" aria-label="Payout history">
+                <div className="space-y-3">
                   {payouts.map((payout) => (
                     <div
                       key={payout.id}
-                      role="listitem"
                       className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
                       data-testid={`payout-${payout.id}`}
                     >

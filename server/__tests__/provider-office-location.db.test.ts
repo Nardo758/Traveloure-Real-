@@ -22,6 +22,9 @@
  *       (GET /api/provider-application) exposes the exact office coords that ServiceForm seeds a NEW
  *       listing's pin from; with officeLocation NULL, the read exposes null ⇒ no seed (unchanged
  *       behavior). The coords are finite + in range (a valid LocationPointPicker seed).
+ *   P5  RULING 86 — the seed never reaches a NON-place-anchored listing. See the STATED BOUNDS note
+ *       on the test itself: the client is what decides which payload shape is sent per delivery
+ *       method; this proves the server half of the contract, both shapes, with the office SET.
  *   G1  the money-endpoints guard stays green — officeLocation is not a money/identity/rate field.
  *
  * Runs against the ALREADY-RUNNING dev server on http://127.0.0.1:5000 (the service-display-options /
@@ -44,6 +47,7 @@ const CI_PROVIDER_PASSWORD = "CITestProvider!99";
 const RUN = crypto.randomUUID().slice(0, 8);
 const createdEmails: string[] = [];
 const createdFormUserIds: string[] = []; // forms I created (provider B) — cleaned in after()
+const createdServiceIds: string[] = []; // listings created by P5 — cleaned in after()
 
 // A confirmed office pin (Kyoto) and a second distinct point (Osaka) for owner-scoping.
 const KYOTO = { address: "Kiyomizu-dera, Kyoto", lat: 35.0116, lng: 135.7681 };
@@ -158,6 +162,9 @@ after(async () => {
     await assertDisposableDb();
     // Leave the shared ci-provider fixture's form in place; just reset its office to NULL.
     await storage.updateServiceProviderFormOfficeLocation(ciProviderId, null).catch(() => {});
+    for (const id of createdServiceIds) {
+      await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
+    }
     for (const userId of createdFormUserIds) {
       await db.execute(sql`DELETE FROM service_provider_forms WHERE user_id = ${userId}`).catch(() => {});
     }
@@ -266,6 +273,76 @@ test("P4: PRE-FILL HONESTY — the owner read exposes the office coords the NEW-
   await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
   const withNull = await readOnce(await api("/api/provider-application", providerA.cookie));
   assert.equal(withNull.body.officeLocation ?? null, null, "NULL office ⇒ no seed source ⇒ no pre-fill");
+});
+
+// ═══ RULING 86 — THE SEED MUST NOT REACH A NON-PLACE-ANCHORED LISTING ═══════════════════════════
+
+/** Create a listing as the ci-provider and return its id (draft ⇒ ungated create). */
+async function createListing(cookie: string, extra: Record<string, unknown>): Promise<string> {
+  const res = await readOnce(
+    await api("/api/provider/services", cookie, "POST", {
+      serviceName: `Office prefill ${RUN}-${crypto.randomUUID().slice(0, 6)}`,
+      description: "ruling-86 office-prefill fixture",
+      price: "75.00",
+      status: "draft",
+      ...extra,
+    }),
+  );
+  assert.equal(res.status, 201, `create failed (${res.status}): ${res.text}`);
+  const id = res.body?.id as string;
+  assert.ok(id, "create must return an id");
+  createdServiceIds.push(id);
+  return id;
+}
+
+/** Read the migration-129 coordinate columns straight from the row. */
+async function dbServiceCoords(id: string): Promise<{ lat: any; lng: any; precision: any }> {
+  const r = await db.execute(
+    sql`SELECT latitude, longitude, location_precision FROM provider_services WHERE id = ${id} LIMIT 1`,
+  );
+  const row = r.rows[0] as any;
+  assert.ok(row, `provider_services row ${id} must exist`);
+  return { lat: row.latitude ?? null, lng: row.longitude ?? null, precision: row.location_precision ?? null };
+}
+
+test("P5: ruling 86 — a non-place-anchored create lands with NULL coords; an in-person create keeps the seed", async () => {
+  // STATED BOUNDS (§18d honesty). The silent-office-stamp defect lived in the CLIENT
+  // (client/src/components/ServiceForm.tsx): ruling 85's seed effect marked the office pin
+  // "touched" with NO delivery-method condition, so the create payload carried `locationPoint`
+  // for EVERY delivery method — including pdf/call/async, whose Meeting Location card (the only
+  // surface that renders a pin or the "Pre-filled from your office location" note) never mounts.
+  // The fix gates the SEND on `isInPerson` (=== `needsMeetingPoint`), so the field is OMITTED for
+  // a non-place-anchored listing. This test proves the SERVER half of that contract — that each
+  // of the two payload shapes produces the right row — by simulating BOTH shapes directly. It
+  // does NOT execute the React component, so it cannot itself prove which shape the client picks;
+  // the client gate is what guarantees that, and this suite is its server-side counterpart.
+  // (`extractServiceLocation`, server/utils/service-location.ts: absent key ⇒ NO coordinate
+  // columns touched — which is why OMITTING is the never-clobber shape and `null` is not.)
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, {
+    address: KYOTO.address, lat: KYOTO.lat, lng: KYOTO.lng,
+  });
+
+  // (a) The shape the FIXED client sends for a pdf listing: no `locationPoint` key at all —
+  //     even though this provider HAS a saved office location. §13: no silent office stamp.
+  const pdfId = await createListing(providerA.cookie, { deliveryMethod: "pdf" });
+  const pdf = await dbServiceCoords(pdfId);
+  assert.equal(pdf.lat, null, "pdf listing must land with NULL latitude — no silent office stamp");
+  assert.equal(pdf.lng, null, "pdf listing must land with NULL longitude — no silent office stamp");
+  assert.equal(pdf.precision, null, "no coordinates ⇒ no location_precision claim (§13)");
+
+  // (b) The shape the client still sends for an in-person listing: the ratified ruling-85
+  //     pre-fill, unchanged — the office pin is seeded, shown with its note, and SAVED.
+  const inPersonId = await createListing(providerA.cookie, {
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    locationPoint: { lat: KYOTO.lat, lng: KYOTO.lng },
+  });
+  const inPerson = await dbServiceCoords(inPersonId);
+  assert.equal(Number(inPerson.lat), KYOTO.lat, "in-person listing keeps the pre-filled office lat");
+  assert.equal(Number(inPerson.lng), KYOTO.lng, "in-person listing keeps the pre-filled office lng");
+  assert.equal(inPerson.precision, "exact", "a confirmed point is server-derived 'exact' (never client-asserted)");
+
+  await storage.updateServiceProviderFormOfficeLocation(providerA.id, null);
 });
 
 // ═══ GUARD ══════════════════════════════════════════════════════════════════════════════════════

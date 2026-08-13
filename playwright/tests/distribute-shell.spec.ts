@@ -6,9 +6,10 @@
  *
  * Asserts:
  *   - the page renders (header "Distribute");
- *   - the Storefront channel (a SECOND MOUNT of Catalog's ProviderStorefrontHeader) shows the
- *     real live state ("Live · N approved") and a share caption with NO fee-waiver wording —
- *     the caption hold (ruling 74 / ruling 69 disp. 2): absence of "skip"/"waive"/"service fee";
+ *   - the Storefront channel (`ProviderStorefrontHeader`, exported from services.tsx — S6 made
+ *     this its ONE mount, Catalog no longer renders it) shows the real live state
+ *     ("Live · N approved") and a share caption with NO fee-waiver wording — the caption hold
+ *     (ruling 74 / ruling 69 disp. 2): absence of "skip"/"waive"/"service fee";
  *   - the listing selector lists the owner's services (populated from GET /api/provider/services);
  *   - the Marketplace channel reflects the SELECTED listing's real approval/gate state:
  *       · an approved+active listing shows the honest LIVE badge;

@@ -1058,3 +1058,885 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   rulings 58/64's committed-but-unwired suites: green requires a running server with the beta seed
   accounts, so wiring it into CI belongs with the same batch that wires those (the ruling 57 gate's
   pattern is the template).
+
+## Open — Catalog / Distribute + Service-Provider console follow-ups (added Aug 12, 2026)
+
+Filed from the Catalog/Distribute program (DECISIONS.md rulings 74–85; `docs/briefs/CATALOG_DISTRIBUTE_EXECUTION_MAP.md`).
+Wave 1 + Wave 2 landed to main (PRs #460/#461); the provider office-location lane landed (#462, ruling 85).
+These are the follow-ups those lanes deliberately deferred (negative space, ruling 43).
+
+- **CD-1 — coordinate-level demand heat map** [future lane, blocked on data capture]: B2 (ruling 84)
+  shipped an HONEST demand + coverage overlay — coverage-gap from real located supply vs
+  `neighborhood_coverage_target`, plus string-bucketed real `search_analytics` intent thresholded to an
+  honest "not enough signal yet". A true PER-COORDINATE heat map is NOT buildable today and was
+  deliberately NOT faked: the only located booking coords are surcharge-billing artifacts (§13-forbidden
+  as demand) and search intent is destination-STRING granularity only. It needs a PRIOR lane that durably
+  persists traveler pickup/search COORDINATES for the general (non-surcharge) case. Do not interpolate in
+  the interim.
+- **CD-2 — the Catalog/Distribute Playwright specs are committed but NOT in CI (seed-script ESM
+  breakage)** [build item]: the client specs (catalog-preview-toggle, service-display-options,
+  catalog-map-located, distribute-shell, travel-surcharge-step, service-logistics-step, market-insights)
+  need the seeded `kyoto-interpreter`/`ci-provider` storefront, but the seed script throws
+  `require is not defined` (CJS/ESM mismatch) on a fresh bench, so the specs cannot run there. Same
+  committed-but-unwired `[advisory]` posture rulings 58/64/66/67/79/82/83/84 record. Fix the seed
+  script's module system, then wire the specs into a PR-blocking workflow — the ruling-57 gate is the
+  template, and this belongs in the SAME CI batch as I18N-5.
+- **CD-3 — JA native-speaker review of shipped translations** [externally gated / editorial]: ruling 60
+  Phase A chrome + Phase B content translations shipped (I18N-1…I18N-5 above), but the Japanese copy —
+  INCLUDING the attestation strings — has never had a native-speaker pass. Needs a human reviewer; never
+  machine-"correct" it (§13). Ties to the I18N cluster.
+
+(The Six-Sigma provider-pass **Tier B** ballot is already filed above — "Six-Sigma provider pass — Tier B
+(FILED, NOT BUILT) — Aug 11" — not re-listed here.)
+
+## Batch exercise findings (Aug 12, 2026)
+
+Source: **`docs/testing/PROVIDER_BATCH_EXERCISE.md`** (branch `lane/provider-batch-exercise`,
+as-of `127ffb5`) — one provider account created through the real funnel, approved through the real
+admin queue, then used to author **twelve listings across every product shape** and followed to the
+traveler-facing storefront and detail page. Every row below is that document's own finding id.
+
+**Lane FP-1 (this lane, DECISIONS.md ruling 87) fixed SEVEN of them — the decision-maker's call was
+"fix the UI first".** Everything else stays open; several are explicitly redesign-gated and must not
+be picked up piecemeal.
+
+### Fixed here (lane FP-1 — ruling 87)
+
+- ~~**A1 (P0) — the custom-offering flow produced a listing that could never be published.**~~
+  `service_offering_types.custom_other_offering.category_key = 'custom_other'` while the
+  "Custom / Other" `service_categories` row carried `category_key = NULL`, so the wizard's derived
+  Category lock rendered `—`, `categoryId` stayed empty and Publish never enabled. ROOT CAUSE was an
+  ORDERING one: `runMigrations()` runs before `runDatabaseSeeding()`, so migration 189's identical
+  backfill matched nothing on a fresh DB and `seedCategories()` then created the row without the key.
+  Fixed in the SEEDER (fresh DBs are born correct — `server/seed-categories.ts` +
+  the `/api/admin/seed-categories` twin) and repaired on existing DBs by **migration 208**; the wizard
+  lock now renders an honest, actionable error instead of a silent `—` on a dead Publish button.
+- ~~**B2 (P1) — property, room and bundle listings were all stored `delivery_method = 'pdf'`**~~
+  (the column default; the Workstation builders never set one), so a machiya guest room's storefront
+  card read "PDF guide". Writers now set honest canonical values at create — property/room →
+  `in_person`, bundle → derived from its components (uniform method, else `hybrid`) — and migration 208
+  backfills existing rows under exactly that predicate (`product_shape IN (property, property_room,
+  bundle) AND delivery_method = 'pdf'`; an ordinary pdf service listing is never touched).
+- ~~**B3 (P2) — the traveler location chip rendered the literal word "Unknown"**~~ on five listings.
+  `provider_services.location` defaults to that string; the chip now renders only when there is a real
+  location to state, and nothing otherwise (§13). "Remote" is deliberately NOT substituted.
+- ~~**B4 (P1) — the Kyoto market page showed none of the eleven Kyoto listings.**~~ Both stacked
+  causes closed: (a) `provider_services.city` is now SERVER-DERIVED at create/update from the
+  neighborhood slug — and only when that slug resolves to exactly one `city_neighborhoods` city; free
+  text is never parsed and a client-sent `city` is dropped (`server/utils/service-city.ts`);
+  (b) the market read prefers the structured column with the old free-text substring as the
+  grandfathering fallback, so a listing whose structured city is Osaka can no longer be dragged onto
+  Kyoto's page by its prose, and a listing with no structured source stays honestly ABSENT rather than
+  guessed into a market; (c) migration 208 backfills where a slug resolves unambiguously. The
+  **"No stay found in Kyoto"** half is closed too: `productShape` now rides the city payload and the
+  Stay spine routes `property`/`property_room` (it dropped every provider service before), and the
+  4-service filler cap now applies only to the mixed "all" feed — a spine chip is a deliberate search
+  and shows every match.
+- ~~**B5 (P1) — picking Video/Phone Call deleted all 8 scheduling fields.**~~ Timing, capacity and
+  booking-rules are now gated on the SHARED `needsScheduling` predicate (call/video included);
+  transport, pickup coverage and the travel surcharge stay place-anchored-only. No new fields.
+- ~~**B7 (P1) — the deliverable was unenforced and the upload rail had no client caller.**~~ A pdf
+  listing can no longer PUBLISH with an empty deliverable (server gate beside the price gate, on the
+  same draft-exempt rule; client `missingForFinal` mirrors it), and ruling 58's
+  `POST /api/provider/services/:id/deliverable-file` has its FIRST caller — an upload control on the
+  delivery step. Shape stated: the endpoint needs a row, so create-mode says "Save Draft first, then
+  upload" rather than inventing a draft; the pasted-URL fallback keeps its honest `protected: false`
+  labeling. **Note for API callers:** a row created with no `deliveryMethod` takes the DB default
+  `'pdf'` and is therefore treated as a pdf listing by this gate — as it already was by the storefront
+  chip, the D8 completion rule and the health rail's `delivery_asset` check.
+- ~~**B10 (P2) — five of twelve listings silently fell back to the `expert_standard` default band.**~~
+  VISIBILITY ONLY — zero change to any rate, amount or resolution order (§8/§18 — the fee lanes own
+  that). The owner health rail carries an honest un-scored NOTICE ("no category → the platform default
+  commission band applies"; un-scored deliberately, because the property and bundle builders ask for no
+  category and D3 forbids failing a provider on something they cannot fix), and the admin listing view
+  shows a "default commission band" marker per row.
+
+### Fixed here (lane FP-3 — ledger row 88)
+
+- ~~**Package A item "property/room rows filtered or re-routed"**~~
+  (`docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md` Wave 1) — **CLOSED.** The batch exercise's
+  two-room machiya (`docs/testing/PROVIDER_BATCH_EXERCISE.md` §4 DB block: S4 `product_shape=property`,
+  S4a/S4b `property_room` with `parent_service_id` set and `pricing_unit=per_night`) rendered on
+  Catalog as **three ordinary standalone service cards**, each with the generic Edit into
+  `/provider/services/:id/edit` — the ServiceForm delivery/checklist questionnaire, which a guest
+  room answers none of. Ratified design (service-creation redesign mock): *"a property room's Edit
+  opens its property's editor at the Rooms step — a room has no service checklist/delivery-method
+  of its own, and sending it into the generic ServiceForm is a dishonest surface."* Now: room rows
+  are **grouped under their parent property card** (name · nightly price · own approval/active
+  state · its own health line), the property card carries a **Property** badge and no Duplicate,
+  and Edit on both resolves through ONE module (`client/src/lib/property-editor-link.ts`) to the
+  Workstation property editor — `?property=<id>` (its basics) / `?property=<id>&room=<id>` (the
+  Rooms step). A room whose property card is not in the current filtered view still renders as a
+  room row naming its parent, never as a generic card and never dropped (§13). The **back door is
+  closed**: `/provider/services/:id/edit` opened with a property/property_room id renders an honest
+  interstitial linking to the property editor instead of the questionnaire — guarded on
+  `productShape` **server-derived from the owner-gated fetched row**, never from the URL. The
+  Workstation gained the property **editor** the re-route needs (Basics + Rooms steps) over the
+  two PATCH endpoints that already existed; **no new field** was invented, so B9 below stays
+  redesign-gated exactly as filed.
+
+### Fixed here (lane FP-4 — ledger row 89)
+
+- **Provider-console content stretched to the full width of the shell on wide screens.**
+  Reported by the decision-maker ("some console content stretches too much horizontally on wide
+  screens"). This was NOT an exercise finding — no width item existed in this list before — so it is
+  recorded here as its own lane. Measured on the bench BEFORE the fix: at a **1920** viewport the
+  content region was **1700 px** wide on Catalog, Workstation and Money (and every other uncapped
+  page: Dashboard, Distribute, Performance, Playbook, Business Profile) — a single-line text input
+  on a form-heavy surface ran most of the screen. Root cause: the console had **no shared content
+  container**. Every page rolled its own wrapper and they disagreed — most had no cap at all,
+  Calendar capped at `max-w-6xl mx-auto`, Inbox/Customers at `max-w-4xl mx-auto`, and Settings at a
+  bare `max-w-4xl` with **no `mx-auto`**, so the most form-heavy page in the console hugged the left
+  edge and left a lopsided gutter.
+  **CLOSED** — ONE centered container (`w-full max-w-6xl mx-auto`) mounted once on `ProviderLayout`
+  (`client/src/components/provider/provider-layout.tsx`), and the four pages carrying their own
+  conflicting cap were normalized onto it rather than stacking a second container. `max-w-6xl`
+  (1152 px) is the console's own precedent — the Calendar page already capped at exactly that value.
+  **Full-bleed exceptions**, both deliberate and both declared through the layout's new
+  `width="full"` prop rather than by breaking out of the container: **(1)** the Catalog **map** view
+  (its three-pane authoring canvas IS the shell width; the list view stays contained), and
+  **(2)** `/chat` via `ConsoleAwareLayout` — a viewport-anchored two-pane frame rendered identically
+  for travelers and experts, which capping for providers alone would fork. The two `overflow-x-auto`
+  tables (Calendar's month grid, Business Profile's capacity table) were reviewed and left
+  untouched: they scroll inside the cap and need no bleed.
+  **Phone behaviour is untouched BY CONSTRUCTION, not by luck:** the container is fluid up to
+  1152 px, and the content region is 390 / 548 / 1060 px at the 390 / 768 / 1280 viewports (viewport
+  minus the 220 px desktop sidebar; the whole viewport below the sidebar's 768 px mobile
+  breakpoint), so the cap cannot bite at any of them — it first bites past ~1372 px. Horizontal
+  padding was deliberately **not** made responsive (`p-6` stays on the pages) for the same reason: a
+  `px-4 sm:px-6` would have changed phone layout, which this lane must not do.
+  **Evidence:** headless Chromium at 390 / 768 / 1280 / 1920 across Catalog (list AND map), a
+  ServiceForm step, Workstation, Settings, Calendar and Money — 28 page/width cells before and
+  after. No horizontal page overflow at any width (`scrollWidth == clientWidth` everywhere, both
+  runs), and the 390 and 768 screenshots are **byte-identical** before/after (SHA-256), which is the
+  mobile no-op assertion. **Not touched in this lane:** the sidebar, traveler-facing pages, admin
+  pages, the expert console (`ExpertLayout` and the shared `BackofficeShell` are byte-identical —
+  the container mounts on the PROVIDER layout, not the shared shell) and `ServiceForm` itself
+  (shared with the expert console; its own `max-w-3xl` is left as-is and simply centers inside the
+  new container).
+
+### Fixed here (lane FP-5 — ledger row 90)
+
+Source: `docs/testing/CONSOLE_TABS_EXERCISE.md` (branch `lane/provider-batch-exercise`, as-of
+`f747d0a`) — the eight **P1** findings from the console-tabs assessment. That exercise drove one real
+checkout which failed at the Stripe boundary (`[REDACTED_STRIPE_TEST_KEY]`) and left exactly one row behind: a
+`service_bookings` row at `status='payment_pending'` with `stripe_payment_intent_id IS NULL` — an
+**unauthorized claim by construction** (§15b). The money machinery handled it perfectly. Six console
+surfaces then described it **five different ways**, and that disagreement is most of what this lane
+closes.
+
+- ~~**M1 — Money gave four different answers about the same never-charged booking.**~~ **CLOSED.**
+  `revenueBreakdown` (`earnings.tsx`) summed `totalAmount`/`platformFee`/`providerEarnings` over
+  **every** row and `GET /api/me/earnings-by-source` grouped **every** row — neither carried a status
+  filter at all — so the page simultaneously read *Total Earnings $0.00* and *"Your lifetime
+  earnings" $83.60* and *Earnings by Source: Direct, 1 booking, $95.00*. The rate was always honest
+  (`share/gross`, no literal — §8-clean); the **amount** was the lie. Every earnings/summary
+  aggregation on the surface now derives from **one shared predicate**,
+  `EARNING_BOOKING_STATUSES` in the new `shared/booking-visibility.ts` — server and client read the
+  same arrays, never two hand-kept copies. Money's headline tiles, Recent Transactions, the monthly
+  series and the Revenue Share Breakdown all pass through it. The claim is not erased, it is
+  **disclosed**: a band on the page states "N bookings awaiting the traveler's payment — not counted
+  in any figure on this page", the idiom **Customers** invented and the other tabs now adopt.
+- ~~**M2 — the same missing predicate latent in link analytics.**~~ **CLOSED.**
+  `GET /api/me/link-analytics` aggregated `bookings`/`revenue` per share link with no status filter
+  either. It read `$0` on the bench only by luck (that claim was untagged, `acquisition_ref` NULL);
+  a checkout failing the same way *after* a tracked click would have reported unpaid revenue against
+  the link — the number a provider uses to decide where to spend. Same shared predicate, one fix.
+- ~~**X1 — Today / Inbox / Customers disagreed about one booking (0 / "1 Pending" / "1 pending
+  payment").**~~ **CLOSED — root fix, not three patches.** Each page had picked its own predicate for
+  the same `service_bookings` row. `shared/booking-visibility.ts` is now the single source, with the
+  per-surface semantics stated in one place: **ACTIONABLE** = `pending` only (Inbox queue + tile,
+  Today's Pending-Bookings tile + Action Items, and the server's `pendingBookings` count);
+  **PROVISIONAL** = `payment_pending`, disclosed on every surface and **actionable on none** —
+  §18b/ruling 42 SD-1 means the owner rail may not move a booking out of a provisional state, so
+  offering a provider the Accept button was the defect; **EARNING** = `confirmed | deposit_paid |
+  in_progress | completed`, the only rows whose amounts may appear under a money label;
+  **RECORD** = the same set, for Inbox History. `GET /api/provider/analytics/dashboard` gained an
+  additive `summary.awaitingPaymentBookings` so Today can disclose the claim without banking it, and
+  Customers' `pendingPaymentBookings` — the one honest counter the exercise found — now reads the
+  shared predicate instead of a local string compare, so it cannot drift from the idiom it invented.
+- ~~**I1 — Inbox showed "1 Pending" above "No bookings waiting", counting a row it could not
+  display.**~~ **CLOSED.** The exclusion from the queue was the *correct* half; the tile was the lie.
+  The count is now **structurally** the length of the displayed array (`actionable.length`, the same
+  array the list maps over), so counter and list cannot disagree. The claim gets its **own** tile
+  ("Awaiting payment") **and its own read-only section** with the honest line "Awaiting the
+  traveler's payment — nothing for you to do" — no Accept/Decline, deliberately. Total still equals
+  the sum of the tiles (the L10b property).
+- ~~**N1 — the notification bell's red dot was hardcoded always-on.**~~ **CLOSED — WIRED, not
+  removed.** `backoffice-shell.tsx` rendered the dot as an unconditional `<span>`: no count, no
+  query, no condition, lit for every provider, expert **and** EA on every page forever, including a
+  brand-new account with nothing at all. A **real source exists** and is the console's own —
+  `GET /api/notifications/unread-count`, the same user-scoped endpoint the traveler bell and the
+  traveler sidebar badge already read — so the honest fix was to connect it, not delete it. The
+  decision is one exported predicate, `shouldShowUnreadDot`, which **fails closed twice**: zero
+  unread ⇒ no dot, and an unanswered query (loading / 401 / network error) ⇒ no dot.
+- ~~**S1 — twelve Settings controls persisted to a table no server code reads.**~~ **CLOSED —
+  eleven controls REMOVED, one wired.** `provider_settings` was a closed loop: written and read only
+  by the GET/PATCH that this one page calls. Two were disproved *empirically* during the exercise,
+  not just by grep — `autoResponse: true` produced no auto-response to a real inquiry, and
+  `notificationsJson.messages: true` produced no notification of any kind. Removed: **Instant
+  Booking** (a real consumer exists but reads a *different* column,
+  `service_provider_forms.instant_booking`, so the switch wrote the twin nobody looks at),
+  **Auto-Response**, **Minimum Lead Time**, **Target Response Time**, the whole six-toggle
+  **Notification Preferences** card (New bookings · Booking updates · Messages · Reviews · Payouts ·
+  Marketing), and **Payout Frequency** (no consumer, and it also describes a scheduling mechanism
+  that does not exist — payouts are admin-processed on request). **Kept and wired:** Minimum Payout
+  Amount (see S2). **Kept, unaffected:** Vacation Mode (genuinely enforced server-side) and the
+  Language preference card. **No schema change, no migration:** the columns and the storage are
+  untouched and the PATCH allow-list still accepts all seven fields — this lane removes the *lie*,
+  not the data. The redesign decides which of these features get built; a control comes back with
+  its consumer, never before it. Same call this page already made when it deleted its
+  Change-Password/2FA card.
+- ~~**S2 — "Minimum Payout Amount" ignored; Money and server both enforced a hardcoded $10.**~~
+  **CLOSED.** This was the one control in S1's set with a real consumer waiting, so it was wired
+  rather than removed. New single resolver `effectivePayoutMinimumCents`
+  (`server/config/payout.config.ts`): **effective threshold = max(platform floor, the earner's own
+  configured minimum)** — the `MIN_PAYOUT_CENTS` floor is **never lowered** (it exists for Stripe's
+  transfer economics), a **stricter** preference **is** honoured, and any absent/garbage/negative
+  value degrades to the floor (the safe failure mode for a threshold). `POST /api/payouts/request`
+  gates on it and `GET /api/provider/earnings/summary` returns it, so the Money page prints the
+  figure actually in force — with "Your own minimum, set in Settings" and a link — instead of a
+  client-side `stats.available < 10` literal. §14: the preference is **read server-side from the
+  caller's own settings row**, never from a request body, and can only ever *raise* the bar on the
+  owner's own withdrawal. One consequence handled deliberately: the settings GET's no-row default
+  moved from a cosmetic `"100"` to the platform floor, because a form pre-filled with 100 would
+  silently impose a $100 threshold on every provider who pressed Save without touching the field.
+- ~~**I3 — "Contact Provider" passed `?provider=` which chat.tsx never reads.**~~ **CLOSED.**
+  Investigated first: there is **no separate traveler↔provider conversation system** to point at —
+  `/chat` **is** the rail, `provider_services` is role-agnostic so a listing's owner may be a
+  provider or an expert, and the storefront's Message CTA already proved the rail works end to end
+  (`POST /api/chats 201` → the provider's Inbox → Messages). The CTA was simply speaking a language
+  the destination does not parse, dropping the traveler on a directory of four seeded experts with
+  no composer. Fixed on **both** sides: the CTA now uses the canonical `useAskExpert` rail
+  (`?expertId=` + the `?name=` fallback chat.tsx documents for provider-role targets, since
+  `/api/experts/:id` resolves expert-family roles only), carrying the listing name as the subject so
+  the thread arrives with context; and `chat.tsx` **accepts `?provider=` as an alias** for
+  `?expertId=`, so every link already out in the world — a shared URL, a bookmark, a chat history —
+  stops dead-ending. `GET /api/providers/:userId/public-verification` gained an additive
+  `displayName` (derived exactly as the storefront derives `earner.name`; nothing private — the name
+  is already on the storefront and every listing card). Until it resolves the button is **disabled**
+  rather than repeating the old dead end.
+
+**Proof.** `server/__tests__/fp5-console-agreement.db.test.ts` (9/9, HTTP against the real dev
+server, negatives first: an unauthorized claim contributes zero to earnings-by-source and zero to a
+*tracked link's* attributed revenue — the case the bench never reached — is not "pending" on Today,
+is disclosed there, and Today's disclosure count **equals** Customers'; a genuinely authorized
+booking appears in every one of those numbers; the payout threshold is read from the settings row and
+never from the request body). Pure units:
+`client/src/lib/__tests__/booking-visibility.test.ts` (11/11, including the mutual-exclusivity
+invariant that makes a sixth answer unwritable), `server/__tests__/fp5-payout-threshold.test.ts`
+(7/7) and `client/src/lib/__tests__/backoffice-unread-dot.test.ts` (4/4).
+
+**Keep-green battery** serialized on a fresh `traveloure_fp5` bench (32 suites): **336 pass, 0 unexpected fail**;
+client unit tests 79/79. The only failures are the two already-documented bench limitations, both re-verified as
+unrelated to this lane — `provider-money-hardening` P1/P2 (the fresh-bench `active_provider_commission_policy='tiered'`
+naming no `fee_bands` row; ruling 42's P3–P6 are green) and the six `city-feed-card-recommendation.test.tsx` failures
+FP-4 verified identical on a clean tree. Five guards plus their self-tests exit 0; `tsc` **170** = baseline; lockfile
+`replit.local` **0**; production build clean.
+
+**Not touched in this lane:** the expert console's own Money page and analytics endpoints (the
+findings are provider-console; the two SHARED server aggregations `/api/me/link-analytics` and
+`/api/me/earnings-by-source` are fixed for both, and the bell is fixed for all three consoles because
+it lives on the shared shell); no schema change, no migration, no `fee_bands` change, no new guard.
+
+### Fixed here (lane FP-2 — ledger row 91)
+
+Source: the **Service Creation Audit** (Aug 12, 2026) **Package A**, sequenced as **Wave 1** of
+`docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md`, with the redesign mock's "Fix pack" (A1–A6) as the
+ratified design for each item. **Form fixes only — no structural redesign:** no step was reordered,
+delivery method was not moved, and no map-authoring surface moved (those are Wave 2 lanes S1/S3).
+No schema change, no migration, no endpoint change, no server file touched at all.
+
+Every claim below was measured on a fresh `traveloure_fp2` bench at 1280 (headless Chromium),
+before and after, over the same fixtures.
+
+- ~~**A1 — the "Publish Service" button did not publish, and providers were told only after
+  clicking.**~~ **CLOSED (client copy only).** Every create is clamped server-side to a
+  non-approved born state (F2 / migration 111 — `provider_services.approval_status` DEFAULTs
+  `'submitted'`), so the click submits for review; measured before, the provider's final button
+  read **"Publish Service"**, and the only statement of what would really happen was on the success
+  screen *after* the click. The button now reads **"Submit for review"** and an upfront notice
+  ("New listings are reviewed before they go live…") renders on **every step for both roles**, which
+  is the mock's A1 disposition — the expert branch already had a review card, but only on step 4.
+  **The SLA number is deliberately absent**: the mock's copy says "usually within 2 business days"
+  and the execution map's Gate **G5 #7** has *"review SLA — is '2 business days' real?"* open with
+  the disposition *"measure first, then commit or drop the number"* — so stating one here would be
+  exactly the §13 claim that gate exists to prevent. The expert card's own unmeasured **"within 48
+  hours"** is removed for the same reason. Nothing in the write path, the status logic or the gates
+  changed.
+- ~~**A2 — a Published/Draft switch wired to nothing.**~~ **CLOSED — removed, and `active` is gone
+  from the form state.** The switch bound `formData.active`, which was never put on the create or
+  update payload and which no gate consulted: flipping it changed nothing, while reading as the
+  control that puts a listing live. Replaced by a **read-only status pill over the real record**
+  (mock A2: "Draft → In review → Live … no control that pretends to set it"), and the field is
+  deleted from `FormData` so nothing can bind to it again.
+- ~~**A3 — four Catalog card mutations rendered raw JSON error blobs.**~~ **CLOSED (client mapping
+  only; no server response changed).** Measured before, flipping a listing to Active without a
+  meeting point showed the provider, verbatim:
+  `400: {"message":"In-person services need a meeting point before publishing. Save as draft to
+  finish later.","code":"MEETING_POINT_REQUIRED"}` — the server's sentence was already honest, just
+  buried inside `apiRequest`'s `"<status>: <body>"` string. New `client/src/lib/catalog-error-copy.ts`
+  unwraps it, names the action that failed, and flags the refusals a provider fixes **in the listing
+  editor** so the toast can carry the way out (the mock's "Add one →", shipped as a **Fix it**
+  action). After: *"Couldn't make this listing active / In-person services need a meeting point
+  before publishing. Save as draft to finish later. / Fix it"*. A `VERIFICATION_REQUIRED` refusal is
+  deliberately **not** flagged editor-fixable — it is fixed on Provider Status — and an
+  unrecognised code is never guessed at (§13).
+- ~~**A4 — Catalog's Delete fired on one click, with no confirmation.**~~ **CLOSED.** Measured
+  before: clicking Delete took the catalog from 13 listings to 12 with no dialog; the Workstation's
+  property and bundle deletes, two clicks away, both confirm. Catalog now uses the same
+  `AlertDialog` and **names the listing**. **Scope stated:** this is the plain confirm only — the
+  "refuse + archive when travelers have already booked it" half is **gap #18**, a Wave 3 lane with a
+  server side, so the dialog claims nothing about bookings it has not checked.
+- ~~**Package A item 3 — four unread logistics fields.**~~ **CLOSED — all four removed from the
+  form, every column untouched.** Each was re-verified by grep at this SHA rather than trusted from
+  the audit. Dispositions:
+  - **`durationMinutes`** ("Duration (minutes)") — **REMOVED.** Zero consumers on
+    `provider_services` (every other `durationMinutes` hit in the repo is `itinerary_items`, a
+    different row). It was also the duplicate half of the duration question — see item 8.
+  - **`bufferMinutes`** ("Setup / buffer (minutes)") — **REMOVED.** Zero consumers repo-wide.
+  - **`canAnchor`** ("Can this anchor a day?") — **REMOVED.** Zero consumers, and the label is
+    planner jargon a seller cannot interpret.
+  - **`pickupRadiusKm`** ("Pickup radius (km)") — **REMOVED.** Zero consumers, and it was the third
+    radius input on one form: the ring travelers see (`service-detail.tsx`), the Catalog map ring
+    and the flat-surcharge containment test all read **`service_radius`**. What replaces it is a
+    pointer at that number, so a provider choosing "Radius" is not left with an input that decides
+    nothing.
+  - **KEPT, with the reason stated: `transportProvision`.** It is the audit's "one of which
+    nevertheless decides what UI the provider sees" — it has no data consumer, but it gates both
+    the pickup-coverage block **and** the travel-surcharge block, and the surcharge is charged for
+    real at checkout. Removing it would have made live money config unauthorable. A field with no
+    consumer is a defect; a field whose consumer is a live gate is not.
+  - **Never-clobber:** all four stay in form state, loaded from the row and sent back unchanged, so
+    an edit saves the stored value rather than nulling it. This removes the question, never the
+    data — the same call FP-5 made on Settings. A control comes back with its consumer, never
+    before it.
+  - The card's **disclaimer was wrong in both directions** and is rewritten: it claimed "these
+    details aren't shown to travelers yet" while the start window, timezone and party-size pair are
+    what `booking-eligibility.service.ts` refuses a booking against and the surcharge inside it
+    charges money.
+- ~~**Package A item 4 — asterisks that never bound, and enforced blocks with no asterisk.**~~
+  **CLOSED, in both directions.** The predicate moved out of the 4,000-line component into
+  `client/src/lib/service-form-required.ts` (pure, unit-tested), because the rule it keeps —
+  **the asterisk set equals the enforced set** — is one nothing could check while it was prose.
+  **Newly bound:** **Price** (mirrors the server's `PRICE_REQUIRED` gate; provider-only, because
+  only a provider's final action sends `status:'active'` — an expert's submit writes
+  `status:'draft'`, which that gate exempts; a `package_tiers` listing is judged on its lowest
+  positive tier, exactly as the server recomputes it), **required category fields**
+  (`category_field_schema.required` draws the asterisk and nothing checked it), and **the
+  attestation confirmations** (already enforced by a server 403 and a disabled button, but wearing
+  no asterisk and named only in a `title` tooltip). **Newly un-asterisked:** **Description** and
+  **Duration**, which carried an asterisk while no layer required them — both columns are nullable
+  and no publish gate reads them — so binding them client-side would have invented a block the
+  server does not have; they now read "(recommended)", which is what they are (both are scored by
+  the owner health rail).
+- ~~**Package A item 7 — bundle Edit links dropped the bundle id.**~~ **CLOSED.** `listingEditHref`
+  resolved a bundle to a bare `/provider/workstation` — the right page with the identity dropped, so
+  the provider landed on a list of every bundle they own and had to find the one they had just
+  clicked. New `bundleEditorHref` → `/provider/workstation?bundle=<id>`, consumed by the Workstation
+  on the same `?param=` convention the property editor already uses, and waiting for **both** the
+  bundle and service reads before opening (the builder prefills its component list from
+  `eligibleComponents`; opening earlier would silently drop every component). A bundle id this
+  account does not own resolves to nothing and **says so** in the bundles section (§13). Measured:
+  before, the deep link opened no dialog at all; after, it opens "Edit bundle" prefilled with
+  "Kyoto Morning + Planning Call".
+- ~~**Package A item 8 — transport, duration and capacity each asked twice.**~~ **CLOSED; the
+  merge mapping, per pair:**
+  - **Duration.** Survivor: the free-text question on Details, which writes **`deliveryTimeframe`**
+    — the string the traveler detail page, Discover, the storefront and Catalog cards, the admin
+    queue and `envelopeFromProviderService` (which parses minutes out of that very text) all read.
+    The structured "Duration (minutes)" duplicate is removed (its column has no reader). Relabelled
+    "How long does it take?" with "Asked once — travelers see this exactly as you write it."
+  - **Capacity.** Survivor: the **party-size pair** in the Service-logistics card — the numbers the
+    SERVER enforces (`booking-eligibility.service.ts` refuses a booking outside
+    `party_size_min`/`party_size_max`). Removed: **"Max Concurrent Clients"** on step 4, a second
+    capacity number three steps and one vocabulary away, whose only consumer is the Catalog card's
+    "Up to N" chip — rendered beside a Users icon, so it reads as a group size too. Column
+    untouched; the chip still renders for rows that already carry a number. Concurrency comes back
+    as its own question, in its own words, with the Wave-2 Capacity step.
+  - **Transport — DEVIATION FROM THE MOCK, recorded.** The mock's fix **A6** proposes ONE question
+    with the `transportProvision` vocabulary and drops the yes/no disclosure. **Ruling 62** (see the
+    `transportProvisionEnum` block in `shared/schema.ts`) states the two columns answer DIFFERENT
+    questions and must not be collapsed — `transport_provision` is "how does the traveler get to the
+    start", `transport_provided` (migration 119, which carries a real DB CHECK) is "once you've met,
+    do you drive them" — and `transport_provided` is the one of the pair that is actually **read**
+    (`service-detail.tsx` renders it; `envelopeFromProviderService` carries it). Deriving either
+    from the other is the merge that ruling forbids, and §13 forbids inventing the half that is not
+    entailed. So **both are kept and both are now asked in ONE block** ("Getting there"), in one
+    order, with the distinction said out loud — the yes/no question MOVED out of the Meeting
+    Location card, which is what made them look like one question answered twice. Proven
+    structurally: after the fix, both controls are inside `logistics-section-transport` and **zero**
+    transport controls render outside it. **The mock's A6 swatch should be amended to match**
+    (mock-parity rule); it is a scratchpad artifact, not a committed file, so this note is the
+    record. Filed: `transport_provision` still has no traveler renderer — that belongs to **T-REP
+    (#13)**, the ratified "render or stop collecting" lane, not here.
+
+**Proof.** Pure units: `client/src/lib/__tests__/service-form-required.test.ts` **11/11**
+(negatives first — a complete listing is missing nothing; no un-enforced field can enter the list;
+an expert does not inherit the provider-only publish gates; a remote listing is never asked for a
+meeting point; a required BOOLEAN category field is never "missing" because `false` is an answer),
+`client/src/lib/__tests__/catalog-error-copy.test.ts` **8/8** (negatives first — the server's
+sentence survives word for word, a non-JSON body is never turned into an invented reason, an
+unrecognised code gets no "Fix it"), `client/src/lib/__tests__/property-editor-link.test.ts`
+**8/8** (extended with B1/B2 for the bundle link). Headless before/after at 1280 over the same
+fixtures, every fact flipping in the intended direction: review notice 0→1 · final button
+"Publish Service"→"Submit for review" · dead switch 1→0 with status pill 0→1 · `Description *` and
+`Duration *` true→false · duration-minutes / buffer / can-anchor inputs 1/1/1→0/0/0 · pickup-radius
+input 1→0 with the coverage-source note 0→1 · max-concurrent input 1→0 · Catalog toast raw JSON →
+human title + the server's sentence + "Fix it" · Delete 13→12 listings with no dialog → dialog
+shown and **16→16** (nothing deleted until confirmed) · bundle deep link no dialog → "Edit bundle"
+prefilled.
+
+**Not touched in this lane:** every server file (not one is in the diff), so no schema change, no
+migration, no endpoint, no `fee_bands` change, no money surface — the Replit deploy-push trap and
+`preflight-prod-constraints` are N/A. No step reordering, no method-first restructure, no
+map-authoring move (Wave 2 lanes S1/S3). No new guard: a required-field set and an error-copy map
+are shared modules, not invariants a grep can hold, and their unit suites are the enforcement.
+
+### Fixed here (lane QA-1 — ledger row 95)
+
+Two verified QA findings, both display-only — money/backend derivation is unchanged in both.
+
+- ~~**Cancelled/refunded/declined bookings vanish from the provider Inbox History tab.**~~
+  **CLOSED.** A provider's Decline puts a `service_bookings` row at `cancelled` (unpaid) or
+  `refunded` (a paid row made whole via `refundServiceBooking`), and History read
+  `RECORD_BOOKING_STATUSES` alone (ledger 90's `confirmed | deposit_paid | in_progress |
+  completed`), so a declined booking had **no home anywhere on the console** — correctly not
+  counted as money, but also not shown, so the earner had no visible record it ever happened.
+  `shared/booking-visibility.ts` gains a new **CLOSED** set (`cancelled`, `refunded` — exactly what
+  a Decline can produce) and a **HISTORY** set (`RECORD ∪ CLOSED`); both provider and expert Inbox
+  History now filter on `isHistoryBooking`. The expert console had its **own** hand-written
+  predicate (`status === "confirmed" || status === "completed"`, never the shared ledger-90
+  module at all) — same gap, same fix, one shared predicate rather than a second hand-kept copy.
+  **The FP-5 idiom held throughout:** each card's `StatusBadge` already renders `cancelled`/
+  `refunded` honestly (no new badge work needed), and the green "You earn $X" payout box — which
+  would otherwise show a stale dollar figure on a row that is no longer money — is now gated on
+  `isEarningBooking(status)` on both consoles; a closed row shows a neutral "No payout — this
+  booking was cancelled/refunded" line instead. History gained **Cancelled**/**Refunded** filter
+  buttons alongside the existing Confirmed/Completed ones. `failed` (a §15b claim whose Stripe
+  attempt never succeeded — it never became a real booking) and `disputed` (still open/contested,
+  not a closed outcome) are **deliberately excluded** from CLOSED, stated in the module rather than
+  silently omitted. No schema change, no migration, no server file touched — `GET
+  /api/provider/bookings` and `GET /api/expert/bookings` already return every status with no
+  filter; this was purely a client-side visibility gap.
+- ~~**The booking-row sanitizer's strip list missed the real payment-identity column.**~~
+  **CLOSED.** `server/utils/data-sanitizer.ts`'s `sanitizeBookingForExpert` stripped
+  `paymentIntentId` and `stripeSessionId` — neither is a real `service_bookings` column (the
+  nearest match, `reconciliationExceptions.paymentIntentId`, belongs to an unrelated admin table;
+  `stripeSessionId` appears nowhere in `shared/schema.ts`). The real columns are
+  `stripePaymentIntentId` / `stripeDepositIntentId` / `stripeBalanceIntentId` (§19a — written ONLY
+  by the shared promotion/balance-authorization paths, never client-settable, and by that same
+  posture never meant to round-trip to a non-full-access role). No live leak was observed —
+  enrichment nulls the real field before this sanitizer runs — but the strip list itself was wrong
+  as written, so a future caller that skips enrichment (or enriches from a raw row) would leak a
+  live PaymentIntent id to a provider/expert. **Strip-list sweep result:** the other three entries
+  in the same list (`paymentDetails`, `cardInfo`, `billingAddress`) are also not real
+  `service_bookings` columns — `billingAddress` exists only on the unrelated
+  `ea_client_relationships` table — so none of the five original entries matched a real column on
+  this table; all are kept (harmless belt-and-braces) alongside the three added real columns. The
+  file's separate `SENSITIVE_FIELDS` constant (`booking: ['paymentDetails', 'cardInfo',
+  'billingAddress']`) is exported but **consumed nowhere in the repo** — dead code with the same
+  wrong names, flagged here rather than touched (zero live behavior, out of this fix's scope).
+  New pinning suite `server/utils/__tests__/data-sanitizer.test.ts` (6/6): a raw row with every
+  column populated, including the three real Stripe columns, emits none of them for
+  `provider`/`expert` roles, while an `admin`/`executive_assistant` (canSeeFull) role is
+  untouched — proving the fix without changing the canSeeFull short-circuit.
+
+**Proof.** `client/src/lib/__tests__/booking-visibility.test.ts` **17/17** (11 original + 6 new:
+negatives first — a closed row is never earnings/actionable/provisional; a §15b claim and the bare
+`pending` state never reach CLOSED or HISTORY; `failed`/`disputed` stay out, stated not silent;
+positives — `cancelled`/`refunded` are exactly CLOSED and both reach HISTORY; HISTORY is exactly
+RECORD ∪ CLOSED; the four-way mutual-exclusivity invariant extended to include CLOSED so a decline
+still can't get a sixth answer). `server/utils/__tests__/data-sanitizer.test.ts` **6/6** (new).
+`server/__tests__/fp5-console-agreement.db.test.ts` **9/9** (unchanged — the earnings/actionable
+predicates this lane was told not to touch are still green). **KEEP-GREEN BATTERY** on a fresh
+`traveloure_qa1` bench (port 5009, `OBJECT_STORAGE_DRIVER=memory RATE_LIMIT_LOOPBACK_SKIP=1
+SESSION_SECRET=bench STRIPE_SECRET_KEY=[REDACTED_STRIPE_TEST_KEY]`, `scripts/seed-ci-test-users.ts` run first):
+sweep **9/9** · promotion **11/11** · detection **15/15** · provenance **7/7** ·
+`provider-money-hardening` **4/6** (the two failures are the already-documented P1/P2 fresh-bench
+`active_provider_commission_policy='tiered'` limitation noted above in this file — re-verified
+unrelated, nothing in this diff touches rate resolution). Five guards + self-tests exit 0
+(`check-money-endpoints`, `phase2-fee-gate`, `check-unmounted-routers`, `check-decision-guards`,
+`check-omit-schema-ratchet`). `tsc --noEmit` **170** = baseline (unchanged; zero errors in any
+touched file). Lockfile `replit.local` **0**.
+
+**Not touched in this lane:** no schema change, no migration, no `fee_bands`/rate change, no money
+derivation (server-side amount/authorization logic untouched on both fixes), no earnings/actionable
+semantics (`EARNING_BOOKING_STATUSES` / `ACTIONABLE_BOOKING_STATUSES` / ledger-90's tests are
+byte-identical), no new guard (a status predicate and a strip list are shared modules with their own
+unit suites, not invariants a grep can hold).
+
+
+### Fixed here (lane A1 — ledger row 93; execution-map Wave 2 S1+S3)
+
+The creation flow is **method-first and branches**; map authoring is its step 4, **"Logistics"**;
+Catalog's map is a **traveler preview**. Client-only — not one server file is in the diff, so no
+schema change, no migration, no endpoint, no `fee_bands` change, and **no new write rail** (the pin
+still goes out with the form save through `extractServiceLocation`; the stops still use the ruling-22a
+replace-list PUT).
+
+| # | Sev | Finding | What landed |
+|---|---|---|---|
+| **D2** | P3 | "Empty Meeting-pin card on the Catalog map view when no Maps key" — the card mounted the Google-keyed `LocationPointPicker`, which renders nothing without a key, leaving a titled card with no content and no explanation. | **CLOSED, structurally.** Catalog no longer authors pins at all: the card is now a read-only statement of the listing's real pin state ("Exact pin confirmed" / "Approximate area" / "No location yet") plus a link into the flow's Logistics step. There is no keyed widget on that surface to come up empty. |
+| — | — | *(New, from the restructure — recorded so the next lane does not re-file it.)* Two ratified steps have **no columns yet**: hybrid's **Online half** (where the call happens, its length, the provider's own join link) and the **async** branch's reply window / scope statement / engagement window. | **HONEST PANEL, not a stub control.** Both steps exist in the shape the mock ratified and say plainly that those fields are ratified-but-not-built (Wave 3 / lane **S9**, Gate G3), rather than showing controls that write nowhere (§13). This is the same disposition as B6 below, now visible in the flow instead of absent from it. |
+
+**Not touched in this lane:** the derived checklist + honest submit (**S2**), the pricing drawer
+(**S4**) and the one-door launcher (**S5**, running in parallel) — those are their own lanes; the
+call/video **Session details** step carries the existing fields **as-is** (the ratified additions are
+Wave 3 / **S9**). No field was deleted and none became unreachable: every control the form had before
+is still authored, on exactly one step per branch — which is what `service-form-steps.test.ts`'s N1
+asserts for all seven methods.
+
+### Open — the rest of the exercise's findings
+
+| # | Sev | Finding (abridged) | Status |
+|---|---|---|---|
+| **B1** | P1 | Verification failure renders the raw Stripe transport error ("500: Invalid JSON received from the Stripe API") to a business owner, with no support route on the page. | **OPEN** — needs a typed failure taxonomy on the identity/Connect rail; not a UI-only fix. |
+| **B6** | P1 | The async product has no SLA / response-window / scope field anywhere. | **OPEN — redesign-gated.** It is a NEW FIELD (the async rail is D3's documented third rail, unbuilt). FP-1 deliberately did not invent one. |
+| **B8** | P1 | No weekly/recurring availability and no blackout affordance for services (rooms have a date-range publisher; services have one dated slot at a time). | **OPEN — redesign-gated** (the C2 repair removed both sections because nothing backed them). |
+| **B9** | P1 | The property builder has five fields — no photo, cancellation policy, check-in/out, house rules, amenities, capacity, bed config, min-stay or cleaning fee. | **OPEN — redesign-gated** (a product spec, not a defect fix). |
+| **C1** | P2 | The traveler calendar opens on the CURRENT month and says "No availability published yet" while September slots exist. Most likely single cause of a lost booking. | **OPEN** — strong candidate for the next defect pack (read-side only). |
+| **C2** | P2 | A date calendar renders for products with no dates (pdf, async). | **OPEN** — same surface as C1; fix together. |
+| **C3** | P2 | New approved listings land on page 3–4 of browse; default sort is not recency. The pager's next/prev expose no accessible name. | **OPEN** (ranking/curation call + an a11y nit). |
+| **C4** | P2 | A second tracked link does not re-attribute (first-touch wins the stored ref, last link wins the URL). Recorded as behaviour needing a RULING, not asserted as a defect. | **OPEN — needs a decision-maker ruling** on the attribution rule, then a surface that states it. |
+| **C5** | P2 | The application funnel BLOCKS on insurance + licence attestations it never transmits, and maps the licence tick to `infoConfirmation`. | **OPEN** — needs schema columns; touches the application payload contract. |
+| **C6** | P2 | The admin review card shows 7 of ~15 collected application fields. | **OPEN** (admin surface). |
+| **C7** | P2 | The neighbourhood picker lists every neighbourhood for all ~20 launch cities, unscoped and unsearchable. | **OPEN** — worth pairing with B4: the same `city_neighborhoods.city` scoping FP-1 now derives from would scope this picker. |
+| **C8** | P2 | "Save Draft" writes `approval_status = 'submitted'` (the migration-111 born-submitted design), so a private draft sits in the review queue while its owner is told it is a draft. | **OPEN — copy or ruling**, not a code defect: the born state is ratified (F2/D1a). |
+| **C9** | P2 | Publishing does not leave the form (stays on `/provider/services/new`). | **CLOSED by lane S2 (ledger row 97).** A provider save — draft or submit, create or edit — now navigates to the listing home (`/provider/services/:id/edit`, hero + derived checklist), never back onto the create form. |
+| **C10** | P2 | `gallery_images` is stored and never rendered — the detail page draws exactly one `<img>`. | **OPEN** (read-side; pairs with B9's photo work). |
+| **C11** | P2 | The photography offering defaults to "Package tiers" with no base-price field until a dropdown is discovered. | **OPEN.** |
+| **C12** | P2 | Bundle components render as plain unlinked text — no link, price, method or image. | **OPEN** (read-side; the data is already linked via `bundle_components`). |
+| **D1, D3–D5** | P3 | `window.prompt()` admin override; `/provider-status` renders in the traveler shell; Distribute never displays the URL itself; free-text Duration stored in `delivery_timeframe` while `duration` stays NULL. | **OPEN — polish.** D5 is a documentation/consolidation item, not a bug. **D2 (empty Meeting-pin card on the Catalog map view) is CLOSED by lane A1** — see "Fixed here (lane A1 — ledger row 93)" above. |
+
+### Write-vs-read gap list (exercise §3) — status
+
+FP-1 closed the two "renders WRONG" rows (`delivery_method` on property/rooms/bundles; `location`
+"Unknown") and the `city`/Stay rows. **Still authored → rendered nowhere:** `party_size_min/max`,
+`lead_time`, `change_cutoff_hours`, `service_timezone`, `earliest/latest_start_time`,
+`buffer_minutes`, `neighborhood`, `transport_provision`, `gallery_images`, and the application's
+Tax ID / capacity / price range / amenities / insurance attestation (C5). Those are D7 **capture-only**
+by ruling 62 — the consumers are a later lane, not a defect to patch surface by surface. Note B5 makes
+the scheduling half of that set AUTHORABLE on remote products for the first time; it does not make any
+of it traveler-visible.
+
+### Bench observation (not an exercise finding)
+
+Also (FP-3, same class): `market-insights.db`, `booking-eligibility-gates.db` and
+`provider-office-location.db` all fail 100% on a FRESH bench DB until
+`npx tsx scripts/seed-ci-test-users.ts` is run — they log in as the `ci-provider@traveloure.test`
+fixture, which the boot seeders do not create (only `seed-ci-test-users.ts` does). Nothing is wrong
+with those suites; running that seeder is a bench precondition, worth stating in the battery recipe.
+
+`server/__tests__/provider-money-hardening.db.test.ts` P1/P2 cannot run on a FRESH bench DB: its
+precondition helper reads the band named by `platform_settings.active_provider_commission_policy`,
+which the boot seeders set to **`tiered`** — a value that names no `fee_bands` row (the suite's own
+comment expects `beta_flat`). Nothing in FP-1 touches rate resolution; filed for the fee lane to
+settle (either seed a `tiered` band or point the setting at a real one). The other 4 tests in that
+suite pass.
+
+Also observed while running the FP-1 keep-green battery (three runs on the same bench):
+`server/__tests__/deliverable-protected-rail.http.test.ts` **R4-c2 is INTERMITTENT** — 13/13 on two
+runs, 12/13 on a third, always the same test, always `500` with
+`[object-storage] Object not found` for the key `R4-c1` had just read successfully one line earlier.
+It is NOT a regression from FP-1: `server/infrastructure/object-storage.ts` and the upload/download
+endpoints are byte-identical across this lane's diff (which touches only the provider create/update
+handlers). Suspected mechanism to check when someone picks it up: the upload endpoint's best-effort
+`deleteObject(previous)` is fired UNAWAITED, and the suite uploads twice onto the same service
+(the `before()` driver probe, then R4-a5), so a mis-timed or mis-keyed delete lands on the live
+object. Worth an await or a keyed assertion; do not "fix" it by relaxing the test.
+
+### Fixed here (lane S5 — ledger row 94)
+
+Source: the **Service Creation Audit** (Aug 12–13, 2026, `<scratchpad>/service-creation-audit.html`)
+finding *"five separate create links all bypass the Workstation and land directly on the form"*
+(ruling 74 said "Add New Service → Workstation"; no lane had built it) — carried forward as
+**gap #19** in `docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md` lane S5.
+
+**CLOSED.** Every raw deep link into `/provider/services/new` found by grepping `client/src` now
+routes through the Workstation launcher first, with exactly one deliberate exception:
+
+- Catalog header "Add New Service" → now `/provider/workstation` (was `/provider/services/new`).
+- Catalog empty-state category tiles (the 30-tile grid) → REMOVED from Catalog; the same tiles now
+  live on the Workstation itself, under a new "Or start from what you do" section.
+- Catalog empty-state "Start from scratch" button → collapsed into the same "Add New Service"
+  button as the header, both pointing at `/provider/workstation`. The empty state is now a plain
+  title + one sentence + one button — no fake category picker duplicated in two places.
+- **Permitted exception:** the Workstation's own "Single service" tile still links straight to
+  `/provider/services/new` — that link IS the launcher's door, not a bypass of it.
+
+The audit's second half of the same finding — *"a first-time provider who did land on the
+Workstation would see two empty lists and a lock icon"* — is also addressed as a side effect: the
+screen now opens on an explicit "What are you building?" headline over the three-tile ladder
+(single service / bundle / property, from lane PB) before the two empty "Your bundles" / "Your
+properties" lists, so the door itself is the first thing a new provider sees, not the empty state
+underneath it.
+
+**Deliberately NOT touched:** the expert console. Experts have no bundle/property ladder (§17
+Product Builder is provider-only), so `client/src/pages/expert/catalog.tsx`'s direct "New Service"
+link stays a direct link — a one-tile "launcher" in front of it would be exactly the kind of fake
+gate the lane's scope forbade. `client/src/pages/expert/services.tsx` is confirmed dead (no
+`<Route>` in `App.tsx` renders it) and untouched.
+
+Full record: DECISIONS.md ruling 94.
+
+### Fixed here (lane QA-2 — ledger row 96)
+
+Three findings: notification durability, the missing proof, and a slot-leak investigation.
+
+**Finding A (durability) — CLOSED.** The owner rail's accept/decline transition
+(`PATCH /api/provider|expert/bookings/:id/status` → `storage.updateServiceBookingStatus`) committed
+the status flip and wrote the traveler's in-app notification as two separate statements: a crash (or
+just an ordering hiccup) between them left a status change with no notification, and the atomic
+transition guard turned a client retry into a bare 409 that could never repair it. Investigated the
+actual write first (an in-app `notifications` row insert — no email/push in this path), so per the
+brief the smallest durable shape applied: the notification insert now lives INSIDE the same
+transaction as the status flip in the canonical writer (the ruling-80 "flip-and-mint in one
+transaction" precedent, generalized), plus an idempotent dedupe — `notifications.dedupe_key`
+(nullable varchar, migration 209), a PARTIAL UNIQUE index (`WHERE dedupe_key IS NOT NULL`, the
+migration-155/203 precedent — legacy NULL rows never collide), `ON CONFLICT DO NOTHING`, key shaped
+`booking:<id>:<event>`. Same treatment for the accept path (which previously wrote NO traveler
+notification at all — a bigger gap than the one filed) and the decline/unpaid-cancel path (which
+had one, just not durably). No outbox worker: a full outbox is the wrong-sized fix for a same-process
+DB insert that only needed to move inside an existing transaction.
+
+**Finding B (the missing proof) — CLOSED.** `server/__tests__/qa2-notification-slot-durability.db.test.ts`
+(5/5, negatives first): P1 pending→confirmed produces EXACTLY ONE notification; N1 a concurrent
+second accept (the §18b atomic-conditional race loser) writes ZERO additional notifications and
+leaks no error (`Promise.allSettled` over 5 concurrent callers — 0 rejections, 1 winner); N2 a
+crash-simulating retry (re-running the exact same transition with no restrictive
+`expectedFromStatuses` — the real shape both `POST /api/bookings/:id/cancel`'s non-refund branch and
+a lost-response client retry take) is a no-op: one notification, one slot release, no throw.
+
+**Finding C (slot leak) — INVESTIGATED, mostly already covered, one real gap fixed.** Traced
+`voidClaim` (the §15b TTL sweep) — it already releases the claimed slot atomically with the void
+(`checkout-claim.service.ts`). Traced `refundServiceBooking` — it already releases the slot after a
+successful Stripe refund (`stripe-payment.service.ts:1012-1019`). So the stale comment in
+`payments.routes.ts` ("release on abandoned/refunded bookings is a filed follow-up") was CLOSED with
+a pointer to both, not re-filed. The actual gap: the NO-REFUND cancel/decline branches — the owner
+rail's unpaid decline and the traveler's non-refundable self-cancel — call
+`storage.updateServiceBookingStatus` directly and never touched the slot, so a paid, slot-bound
+booking cancelled with no refund due (a non-refundable policy, or a decline whose Stripe lookup could
+not confirm payment) permanently stranded its claimed capacity. Fixed IN the canonical writer, not a
+second reclaim rail (§18c): on the booking's FIRST transition into cancelled/refunded, if the row
+carries a `slotId`, the same floor-at-0 / re-open-if-under-capacity release `voidClaim` and
+`refundServiceBooking` already use runs atomically in the SAME transaction as the status flip.
+Proven DB-level (same suite, P2/N3): claim → cancel-no-refund → `booked_count` returns; a retried
+cancel (unconditional guard) releases once, never twice; a capacity-3 slot returns exactly one seat,
+leaving the other booking's seat held.
+
+**Migration:** `server/migrations/209_notification_dedupe_key.sql` — additive nullable
+`notifications.dedupe_key` + partial UNIQUE index, no CHECK. Declared in `shared/schema.ts`
+(publish-trap rule). Proven idempotent in a rolled-back transaction (run twice, both hit
+`IF NOT EXISTS`/`already exists, skipping`).
+
+**Negative space (ruling 43):** no second reclaim rail beside the claim machine (§18c) — the slot
+release is one more atomic step inside the EXISTING canonical writer, never a new scheduler/worker;
+no external-send-inside-a-transaction (this path has no email/push today — §15b's "irreversible
+effects follow authorization" posture is noted for if/when one is added); no outbox worker (not
+needed — the durable guarantee is the in-app row, written same-transaction); the paid-refund cancel
+branches (owner-rail refund, traveler-refund) are untouched — they already release the slot via
+`refundServiceBooking` and already fire their own notification after that external call completes,
+which is the correct best-effort-after-commit shape for an external-call-adjacent write, not this
+lane's target.
+
+Full record: DECISIONS.md ledger row 96.
+
+### Fixed here (lane S6 — ledger row 98)
+
+**Distribute in the sidebar + Catalog slim — records the ruling-74-disposition-6 clarification.**
+`/provider/distribute` existed (D1-D4/C6, ledger 76/77) but had no sidebar entry, and ruling
+74(6)/(7)'s original "storefront/share tools STAY on Catalog, Distribute deep-links to them" had
+been built by D1 as a literal SECOND MOUNT of `ProviderStorefrontHeader` — genuinely double-mounted
+across both pages — while C6 pointed the Promote block's *actions* at Distribute without moving the
+block itself. This lane resolves the ambiguity: **Distribute is the ONE home for every
+outward-facing distribution surface; Catalog is read/manage/triage only.**
+
+**(1) Sidebar.** `Distribute` added to the Business group, right after Catalog
+(`client/src/components/provider/provider-sidebar.tsx`), with an `nav.distribute` i18n key
+(EN "Distribute" / JA "配信") on the ruling-60-Phase-A convention. Proven headless: the entry
+renders, sits immediately after Catalog in DOM order, and navigates to `/provider/distribute`.
+
+**(2) Three blocks moved off Catalog, none duplicated:**
+- **Storefront header** — `ProviderStorefrontHeader` is no longer mounted on Catalog (it stays
+  `export`ed from `services.tsx` since Distribute imports the one authored copy); Distribute's
+  Storefront section is now its ONLY mount.
+- **Share-kit dialog launcher** — Catalog's per-card "Share" button + `OfferingShareDetail` Dialog
+  is gone. Distribute's Social-kit channel now mounts the SAME `<OfferingShareDetail/>` inline
+  (reuse, not reimplementation) — the Instagram-publish affordance that only lived in Catalog's
+  dialog is preserved rather than dropped, and a hand-rolled feed/story/route preview that had
+  been duplicated on Distribute is deleted in favor of the one real component.
+- **Promote block** — the `PostingOpportunitiesCard` (posting-opportunity nudges) no longer
+  renders on Catalog at all (the on-ramp *section* — header text, "Open Distribute" button — is
+  gone, not just re-pointed). It now renders as Distribute's own Promote section, called WITHOUT
+  `promoteHref` so the real inline share actions (Copy/WhatsApp/X/Instagram) render directly
+  instead of a second "Promote in Distribute" deep-link — that on-ramp mode (`promoteHref`,
+  `PromoteInDistributeLink`) is retired from `share-tools.tsx` since S6 removed its only caller.
+
+**(3) Catalog's one remaining outward pointer.** Every listing card carries a "Distribute this →"
+button (`button-distribute-<id>`) linking to `/provider/distribute?listing=<id>` — the id only
+PICKS a row out of the account's own listing read (the Workstation `?property=`/`?bundle=`
+deep-link convention); Distribute's selector falls back to the first listing on a missing/foreign
+id, never a dead end. Catalog's final outward-facing surface list: nothing — cards, list↔map
+(traveler preview), the availability section and per-card health remain, no distribution chrome.
+
+**(4) Measurement untouched.** No analytics were added to the moved Social-kit or Promote
+sections — `ChannelStateStrip`'s "View link performance" deep-link to Performance→Analytics is
+unchanged (§22d posture).
+
+**PROOF.** Playwright specs updated in place (bench-only, not CI-wired, same posture as the rest
+of the Catalog+Distribute suite): `distribute-channels.spec.ts` now asserts (a) the Social-kit
+channel renders the shared component's real testids + an Instagram-publish affordance + NO
+"Open share studio in Catalog" deep-link; (b) Distribute's own Promote section renders with NO
+self-referential "Promote in Distribute" link; (c) Catalog carries NONE of the storefront header /
+share dialog / Promote section testids, and its per-card pointer lands on Distribute with that
+listing preselected. `distribute-shell.spec.ts` needed no logic change (`ProviderStorefrontHeader`
+still renders the same way, just from one call site instead of two).
+
+**KEEP-GREEN**, serialized on a fresh `traveloure_w2d` bench (port 5012, `OBJECT_STORAGE_DRIVER=memory
+RATE_LIMIT_LOOPBACK_SKIP=1 SESSION_SECRET=bench` stub Stripe keys, `scripts/seed-ci-test-users.ts`
+run first): client unit battery 14/14 files, 0 failures; `fp1-console-defects` 12/12;
+`fp3-property-room-edit` 8/8; `short-links-frame` 12/12; `posting-opportunities-frame` 2/2; the two
+Distribute/Catalog Playwright specs pass at 1280 viewport. Five guards exit 0 (check-money-endpoints,
+phase2-fee-gate, check-unmounted-routers, check-decision-guards, check-omit-schema-ratchet); `tsc
+--noEmit` **170** = baseline (unchanged, zero new errors in any touched file); `replit.local` **0**;
+production build (client + server) clean.
+
+**Pre-existing, not this lane's regression:** `distribute-shell.spec.ts`'s blocked-listing assertion
+(`badge-marketplace-blocked` for "Business Document Translation") fails on a *fresh* bench because
+that seeded service is born approved+active there, not approved+draft as the spec's fixture comment
+assumes — a bench-state mismatch in code this lane never touched (`MarketplaceChannel`, the
+publish-readiness endpoint, the phase-d-kyoto-vendors seed). Also found in verification (not fixed,
+out of scope): the `phase-d-kyoto-vendors` seed creates provider rows with no password, no storefront
+handle and no terms-acceptance timestamp, so the pre-existing kyoto-interpreter-based specs cannot
+log in on a genuinely fresh bench without a manual DB stamp — worth a small follow-up in the seed
+itself (`server/seeds/phase-d-kyoto-vendors.seed.ts`) if this bench is meant to be reproducible
+from scratch for the whole Catalog+Distribute suite, not fixed here as out of this lane's scope.
+
+**NEGATIVE SPACE (ruling 43):** no schema change, no migration, no endpoint change, no money
+surface touched; S5's empty-state launcher and `ServiceForm` untouched (different lanes' scope);
+the expert Catalog (`client/src/pages/expert/catalog.tsx`) is untouched — it has no Distribute hub
+and keeps its own inline `PostingOpportunitiesCard` (no `promoteHref`, unaffected by the prop's
+removal since it never passed it).
+
+Full record: DECISIONS.md ledger row 98.
+
+### Fixed here (lane S4 — ledger row 99; execution-map Wave 2, LAST lane of the wave)
+
+**Money out of creation — the post-creation "Pricing & fees" surface.** Builds on the listing home
+S2 made the default view of `/provider/services/:id/edit`. Client-only — not one server file is in
+the diff, so no schema change, no migration, no endpoint, no `fee_bands` change, and no new write
+rail (every field already went out through `PATCH /api/provider/services/:id` and the existing
+owner-gated `PUT /api/provider/services/:id/surcharge-tiers`; this lane only moved which SURFACE
+calls them).
+
+**(1) What moved.** Travel-surcharge mode + amounts — all four modes (none/flat/zones/per_km),
+including the zones ring editor (B1/ruling 81) — the deposit/partial-payment opt-in (Lane 7,
+ruling 72), and the cancellation policy (type + free-text details, X1) all moved off
+`ServiceForm.tsx`'s wizard steps ("Getting there" and "Booking Terms") into a new
+"Pricing & fees" drawer (`client/src/components/provider/pricing-fees-drawer.tsx`), mounted on
+S2's listing home beside — never inside — the derived checklist. **What stayed:** base price
+(creation step 1) and `serviceRadius`, the map's own coverage/location geometry (still authored on
+the "Getting there" → Pickup block, still what `ServiceMapAuthoring` draws its ring from) — neither
+is a surcharge amount, so neither was in scope to move. Lead Time also stayed on the wizard's
+Booking Terms card (not fee-adjacent). Each vacated wizard card now carries a short note pointing
+at the drawer rather than silently going quiet (§13).
+
+**(2) The drawer.** Reads/writes ONLY through the existing rails (§19 allowlist posture verified
+against `shared/schema.ts`'s `insertProviderServiceSchema.extend()` block — every moved field is
+already accepted there, none is `.omit()`'d, `revenueShareRate` stays omitted and is never touched
+by this drawer): `PATCH /api/provider/services/:id` for the scalar fields, plus the pre-existing
+owner-gated child-row replace-list `PUT .../surcharge-tiers` when the mode is `zones`. Shows base
+price **read-only** (edited on the listing itself, never here) and a plain-language summary of what
+is configured. **No rate-bearing figure appears or is settable** (§18) — the drawer states, verbatim
+from the ratified mock, "Platform commission is not shown or set here — it is resolved from your
+category, not typed into a form"; there is no "You earn $X" resolver call in this drawer at all
+(the mock's own drawer design omits one, and inventing a NEW client-side commission preview for a
+lane whose whole point is keeping rate logic server-side would be the wrong direction — the
+existing per-booking "You earn" figures elsewhere are untouched). The pure hydrate/patch-building
+logic is split into `client/src/lib/pricing-fees.ts` (mirrors `service-form-required.ts`'s own
+split) so it is unit-testable without a DOM.
+
+**(3) Checklist integration.** Verified BEFORE moving anything: none of the three moved fields is
+in `service-form-required.ts`'s `buildRequiredItems` — they were never required-for-final on any
+method, so per the standing instruction ("if any moved field is required-for-final for its method,
+its checklist row now navigates to the drawer") there was nothing to redirect. **The required set
+and `ChecklistNavTarget` are byte-identical to what S2 landed** — no new `{kind:...}` variant, no
+new checklist row. "Pricing & fees" is a separate always-present card ("Manage →" button opens the
+drawer), matching the ratified mock's own "Listing settings" placement (a sidebar entry beside, not
+inside, the required checklist) and its own "not required to go live" copy.
+
+**PROOF.** Client unit battery **178/178** across **15 files** (14 pre-existing + **1 NEW**,
+`pricing-fees.test.ts`, 43 tests): pure round-trip tests for `pricingFeesFromService` /
+`buildPricingFeesPatch` / `buildSurchargeTiersPayload` / `pricingFeesSummary`, plus static-source
+proofs reading `ServiceForm.tsx` and `pricing-fees-drawer.tsx` directly — every moved control's
+`data-testid` is asserted ABSENT from the wizard and PRESENT in the drawer, Lead Time and Service
+Radius are asserted still present in the wizard, and `service-form-required.ts` is asserted to gain
+no `surcharge`/`deposit`/`cancellation` required-item id. `tsc --noEmit` **170** = baseline
+(unchanged, zero new errors in either new file or `ServiceForm.tsx`).
+
+**Server keep-green**, serialized on a fresh `traveloure_w2e` bench (port 5013,
+`OBJECT_STORAGE_DRIVER=memory RATE_LIMIT_LOOPBACK_SKIP=1 SESSION_SECRET=bench` stub Stripe keys,
+`NODE_ENV=development`, `scripts/seed-ci-test-users.ts` run first): `travel-surcharge` **13/13**,
+`deposit-checkout` **10/10**, `fp1-console-defects` **12/12**, `fp3-property-room-edit` **8/8**
+(fp2 has no dedicated DB suite — it was a client-only lane, covered by the client unit battery +
+`tsc`), `service-deliverable` **9/9**, `publish-verification-hold` **9/9**,
+`fee-resolution-authority` **13/13** — 74/74, zero regressions on any shared money-path consumer.
+Five guards exit 0 (`check-money-endpoints` — scans only `server/routes` + `server/services` +
+`server/routes.ts`, so this lane's client-only diff was outside its scope by construction, no
+`money-derive-ok` annotation was needed; `phase2-fee-gate`, `check-unmounted-routers`,
+`check-decision-guards`, `check-omit-schema-ratchet` — unchanged at 190). `replit.local` **0**;
+production build (client + server) clean.
+
+**API-level proof of the exact drawer round trip** (create a place-anchored listing with a pickup
+provision → `PATCH` surcharge mode=flat/amount/deposit/cancellation → `GET` confirms persistence →
+`PATCH` mode=zones → `PUT .../surcharge-tiers` → `GET .../surcharge-tiers` confirms the two saved
+rings) — run directly against the bench with the provider CI account, byte-identical to the request
+shape `buildPricingFeesPatch`/`buildSurchargeTiersPayload` produce.
+
+**Browser-driven headless UI proof — COMPLETED as a follow-up (same session).** The playwright-CDN
+download block reported below is real for `npx playwright install`, but a pre-installed Chromium at
+`/opt/pw-browsers/chromium` was available (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, launched
+with an explicit `executablePath`) — so the full click-through DID run, on a fresh `traveloure_w2e`
+bench (port 5013, same recipe, `setsid`, `scripts/seed-ci-test-users.ts`), logged in as
+`ci-provider@traveloure.test` through the real `/login` page. **23/23 assertions passed:** listing
+home renders with the Pricing & fees card beside the checklist; drawer opens, surcharge section
+shows (place-anchored + pickup-provisioned); editing surcharge mode → flat, amount → `33.00`, and
+cancellation policy → Strict + free-text details all hold in the form; Save fires the real
+`PATCH /api/provider/services/:id` (200, response body carries `surchargeMode:"flat"`,
+`surchargeFlatAmount:"33.00"`, `cancellationPolicyType:"strict"`); the drawer closes and the
+listing-home summary line updates in the RENDERED page; a **hard reload** (a real re-fetch from the
+server, not optimistic client state) still shows the persisted values; reopening the drawer shows
+the persisted values back in the actual form fields (not just the summary text); the Logistics step
+shows the "surcharge moved" pointer note, no longer renders the old surcharge-mode control, and
+still renders Service Radius (geometry, correctly not moved); the Review step shows the
+"cancellation/deposit moved" pointer note, no longer renders the old cancellation-policy select or
+deposit checkbox, and still renders Lead Time (not moved). Screenshots captured at 1280×900: drawer
+open (`s4-drawer-open.png`) and after-save with the "Pricing & fees saved" toast and the updated
+summary line (`s4-after-save.png`).
+
+**A real bug WAS found and fixed by this walkthrough** (not a code-review catch — the click-through
+is what caught it): the drawer's `Select` dropdowns (deposit type, cancellation policy) render
+through a Radix portal at the shared `select.tsx` component's `z-50`, which sits BELOW the Sheet
+component's own overlay at `z-[100]` — so a `Select` nested inside a `Sheet` had its dropdown
+options unclickable (Playwright's own error named it precisely: the Sheet's overlay div
+"intercepts pointer events"). No existing code in this repo nests a `Select` inside a `Sheet` (the
+two only-other files that import both never actually mount a `Select` inside a mounted `Sheet`), so
+this was a genuinely new interaction, not a latent bug this lane merely exposed. **Fixed narrowly**
+— `className="!z-[110]"` (Tailwind's important-modifier) on the two `SelectContent`s inside
+`pricing-fees-drawer.tsx` only; the shared `select.tsx` component is untouched (its `z-50` is
+correct everywhere else it's used, outside a `Sheet`). Re-verified after the fix: full 23/23
+re-run green, five guards exit 0, `tsc` **170** = baseline (unchanged), `replit.local` **0**,
+production build clean, `travel-surcharge` **13/13** and `deposit-checkout` **10/10** re-run green
+on the same bench.
+
+**NEGATIVE SPACE (ruling 43) — what this lane deliberately did NOT do:** no schema change and none
+needed (STOP-and-report was the standing instruction and never fired); no migration; no new
+endpoint; the server publish gates, `fee_bands`, resolvers, checkout, `ServiceForm`'s A1 branching,
+S5's launcher and S6's Distribute are all untouched; no rate/commission/split field appears or is
+settable anywhere in the new surface (§18); the required-for-final set is byte-identical to S2's
+(§13 — this lane routes existing config to a new home, it invents no new gate and removes none).
+**This closes Wave 2** (S1–S6, execution-map Gate G ratification) — Wave 3 was already unblocked by
+row 92's ratification and is unaffected by this lane's completion.
+
+Full record: DECISIONS.md ledger row 99.

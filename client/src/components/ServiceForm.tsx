@@ -17,7 +17,7 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
-  Users, Route, CalendarClock,
+  Users, Route, CalendarClock, Circle, ChevronRight,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -33,7 +33,7 @@ import {
 } from "@/components/backoffice/location-point-picker";
 // D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
 // the server scorers and console chips use, never a second local copy.
-import { isPlaceAnchored } from "@shared/service-fundamentals";
+import { isPlaceAnchored, needsScheduling } from "@shared/service-fundamentals";
 // D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
 // server re-runs on the write, so what this wizard renders and what the API will accept cannot
 // drift. The client calls it only to draw the card — it never decides what it may affirm.
@@ -43,6 +43,43 @@ import {
   type AttestationKey,
 } from "@shared/service-attestations";
 import { ServiceAttestationsCard } from "@/components/provider/service-attestations-card";
+// FP-3: a property / property_room row's editor is the Workstation property surface, never this
+// questionnaire. One home for that routing decision (Catalog uses the same module).
+import {
+  isPropertyEditorShape,
+  isPropertyRoom,
+  propertyEditorHref,
+} from "@/lib/property-editor-link";
+// FP-2: the final action's required-field set (pure + unit-tested — see the module header for
+// the "asterisk set = enforced set" rule it keeps).
+// WAVE 2 / S2: the SAME module now also derives the listing home's checklist rows
+// (`deriveServiceChecklist`) off the SAME required-item descriptors — one set, never forked.
+import {
+  missingRequiredForFinal,
+  deriveServiceChecklist,
+  effectivePriceScalar,
+  type ChecklistRow,
+} from "@/lib/service-form-required";
+// WAVE 2 / A1 (S1+S3): the flow's SHAPE, as data. Method-first — the step list is built from the
+// delivery method, and one module says which step holds which section (see its header for the
+// unreachability invariant a branching wizard has to keep).
+import {
+  clampStep,
+  flowForMethod,
+  stepForSection,
+  stepNumberOf,
+  STEP_LONG_TITLES,
+  STEP_SHORT_TITLES,
+  type SectionKey,
+  type StepKey,
+} from "@/lib/service-form-steps";
+// A1 / S3: the create flow's step 4 — the map authoring component (pin canvas + the ruling-22
+// replace-list route stops). Catalog's map is a traveler preview from this lane on.
+import { ServiceMapAuthoring } from "@/components/provider/service-map-authoring";
+// WAVE 2 / S4 (ledger row 99): the post-creation "Pricing & fees" drawer — surcharge mode +
+// amounts, deposit config and cancellation policy moved here from the wizard steps above.
+import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
+import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
 
 interface ServiceCategory {
   id: string;
@@ -123,8 +160,9 @@ interface ServiceFormData {
   // Provider-specific: which /earn service_offering_types row this listing IS
   // (migration 148 FK). "" = unlinked (legacy row, or not yet picked).
   serviceOfferingTypeId: string;
-  // Provider-specific: status + features
-  active: boolean;
+  // Provider-specific: features. FP-2 / A2: the `active` boolean is GONE — it backed the dead
+  // Published/Draft switch on step 4 and nothing else (never sent, never gated on). Status is
+  // the server's, read from the record; see the status pill on the provider step-4 card.
   revisionsIncluded: number;
   includesExpertNotes: boolean;
   contentAffinityTags: string[];
@@ -267,23 +305,10 @@ const intOrNull = (v: string): number | null => {
 
 // X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
 // shared/schema.ts cancellationPolicyTypeEnum. App-enforced (no DB CHECK, migration 144).
-//
-// SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-1): these
-// labels previously described the windows VAGUELY ("well in advance", "shorter notice",
-// "limited refund window") while the traveler-facing page (`service-detail.tsx`'s
-// CANCELLATION_POLICY_TYPE_LABELS) and the SERVER'S ACTUAL ENFORCEMENT
-// (`server/services/cancellation-policy.service.ts` refundPercentFor) both use concrete
-// hour thresholds. The seller therefore agreed to a refund schedule whose real terms were
-// never shown at the point of choosing. The strings below are now the same concrete windows
-// the buyer is shown and the server enforces — one vocabulary across all three surfaces.
-// Keep these in step with `refundPercentFor` and `shared/schema.ts`'s
-// CANCELLATION_POLICY_TYPE_LABELS if any of them changes.
-const CANCELLATION_POLICY_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "flexible", label: "Flexible — full refund if cancelled at least 24 hours before the start" },
-  { value: "moderate", label: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before" },
-  { value: "strict", label: "Strict — 50% refund if cancelled at least 7 days before the start" },
-  { value: "non_refundable", label: "Non-refundable — no refund once booked" },
-];
+// WAVE 2 / S4 (ledger row 99): the control this vocabulary fed moved to the post-creation
+// "Pricing & fees" drawer — `CANCELLATION_POLICY_TYPE_OPTIONS` now lives (as the sole copy) in
+// `client/src/lib/pricing-fees.ts`, imported by `pricing-fees-drawer.tsx`. This wizard no longer
+// renders the control, so it no longer needs the list either.
 
 function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
   return {
@@ -301,7 +326,6 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     expertOfferingTypeId: "",
     approvalStatus: "draft",
     serviceOfferingTypeId: "",
-    active: true,
     revisionsIncluded: 0,
     includesExpertNotes: false,
     contentAffinityTags: [],
@@ -408,7 +432,6 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     expertOfferingTypeId: s.expertOfferingTypeId || "",
     approvalStatus: s.approvalStatus || "draft",
     serviceOfferingTypeId: s.serviceOfferingTypeId || "",
-    active: s.status === "active",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
     includesExpertNotes: Boolean(s.includesExpertNotes),
     contentAffinityTags: Array.isArray(s.contentAffinityTags) ? s.contentAffinityTags : [],
@@ -544,24 +567,60 @@ function prettifyCategoryKey(key: string): string {
     .join(" ");
 }
 
+// WAVE 2 / S2: the listing home's hero needs a human method label. Same 7 canonical UI values
+// (and the same copy) as the Basics step's own method picker — kept as a small module-scope
+// map rather than a second inline array, so a future eighth branch can't drift between the two.
+const DELIVERY_METHOD_LABELS: Readonly<Record<string, string>> = {
+  "in-person": "In-Person",
+  "video-call": "Video Call",
+  hybrid: "Hybrid (In-Person + Video)",
+  pdf: "PDF Guide",
+  call: "Phone Call",
+  voice_notes: "Voice Notes",
+  async_messaging: "Async Messaging",
+};
+function deliveryMethodLabel(method: string): string {
+  return DELIVERY_METHOD_LABELS[method] ?? method;
+}
+
+// WAVE 2 / S2: ONE status-pill definition for a provider listing, shared by the wizard's own
+// "Current Status" card (FP-2 / A2) and the new listing home's hero — two different English
+// phrasings of the same record would be its own small dishonesty on the same page. NOTE: a
+// listing whose `status` came back "draft" reads as Draft REGARDLESS of `approvalStatus` — the
+// F2 / migration 111 "born submitted" default means `approvalStatus` is "submitted" from the
+// first save even for a plain Save Draft (QA_PUNCH_LIST finding C8, a ratified — if confusing —
+// platform default, not something this lane changes), so `status` is checked FIRST or every
+// fresh draft would misreport itself as already "In review".
+type ListingStatusTone = "unsaved" | "draft" | "review" | "rejected" | "approved-paused" | "live";
+function listingStatusPill(
+  existingService: { status?: string | null; approvalStatus?: string | null } | null | undefined,
+  isEditMode: boolean,
+): { label: string; tone: ListingStatusTone } {
+  if (!isEditMode) return { label: "Not saved yet", tone: "unsaved" };
+  if (existingService?.status === "draft") return { label: "Draft (not submitted)", tone: "draft" };
+  if (existingService?.approvalStatus === "approved") {
+    return existingService?.status === "active"
+      ? { label: "Live", tone: "live" }
+      : { label: "Approved — paused", tone: "approved-paused" };
+  }
+  if (existingService?.approvalStatus === "rejected") return { label: "Changes requested", tone: "rejected" };
+  return { label: "In review", tone: "review" };
+}
+
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
   const isEditMode = !!id;
-  const [creationSuccess, setCreationSuccess] = useState(false);
-  // TEST 3 (a11y): flipped on when a final submit/publish is attempted with required
-  // fields missing — gates the inline per-field role="alert" messages so screen
-  // readers hear the errors, without nagging before the user has tried to submit.
-  const [attemptedFinal, setAttemptedFinal] = useState(false);
-  // L2: the post-create success copy must reflect what actually happened server-side
-  // (the row's real status/approvalStatus), never just which button was pressed — a
-  // create is clamped server-side to a non-approved born state (D1a), so "Publish"
-  // does not mean "live" the way the old hardcoded copy claimed.
-  const [creationOutcome, setCreationOutcome] = useState<{ status?: string | null; approvalStatus?: string | null }>({});
   const [newIncluded, setNewIncluded] = useState("");
   const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
+  // FP-1 / B7: in-flight + succeeded state for the protected-deliverable upload (ruling 58 / R4).
+  // `deliverableUploaded` means "this session uploaded a file, so the row ALREADY carries an
+  // objstore: key" — it is what keeps the subsequent save from clobbering that key with an empty
+  // URL box, and what satisfies the publish gate without the owner having to paste anything.
+  const [deliverableUploading, setDeliverableUploading] = useState(false);
+  const [deliverableUploaded, setDeliverableUploaded] = useState(false);
   // L27-P3 (§13): only an explicit Confirm/Remove in the picker sends `locationPoint`.
   // Untouched ⇒ the key is omitted entirely ⇒ the server leaves latitude/longitude/
   // location_precision exactly as they are, so an unrelated edit can never turn a
@@ -583,6 +642,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // states + createMutation's own throws); the only addition is that a
   // submit-time miss jumps the user to the step that holds the field.
   const [currentStep, setCurrentStep] = useState(1);
+
+  // ── WAVE 2 / LANE S2 — the listing home ──────────────────────────────────────────────────────
+  // A saved listing (edit mode, provider role — the execution map's provider-console lane) lands
+  // on the checklist/hero view by DEFAULT; the wizard itself is entered only via a checklist row
+  // (or any other `?step=<key>` deep link, A1). `!isEditMode` (still on `/…/new`) always renders
+  // the wizard, same as before this lane — a draft that does not exist yet has no listing home to
+  // land on. Local state, not derived from the URL on every render, because a checklist-row click
+  // and a save-success both need to flip this WITHOUT waiting on a wouter route remount.
+  const [viewListingHome, setViewListingHome] = useState<boolean>(
+    () => isEditMode && role === "provider" && !new URLSearchParams(window.location.search).get("step"),
+  );
+
+  // WAVE 2 / S4 (ledger row 99): the "Pricing & fees" drawer, mounted beside the listing home's
+  // checklist — never inside it (none of the fields it edits is required-for-final; see
+  // pricing-fees.ts's module doc). Local open/close state only; the drawer owns its own fetch/save.
+  const [pricingDrawerOpen, setPricingDrawerOpen] = useState(false);
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -745,6 +820,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // succeeds — the affirmation is a child row and needs the service id to exist.
   const [attestationChecks, setAttestationChecks] = useState<Record<string, boolean>>({});
 
+  // WAVE 2 / S2: the listing home's "Publish some availability" row reads the REAL slot count —
+  // same endpoint Catalog's own AvailabilitySection already reads (`GET /api/me/services/:id/slots`,
+  // ownership resolved server-side against `provider_services.userId`, role-agnostic §14) — never a
+  // second implementation of "does this listing have any". Provider + edit mode only: the row (and
+  // the query) do not exist for a draft that has no id yet.
+  const { data: availabilitySlots } = useQuery<Array<{ id: string }>>({
+    queryKey: [`/api/me/services/${id}/slots`],
+    enabled: isEditMode && role === "provider",
+  });
+
   // Ruling 85: the provider's account-level office location — used ONLY to PRE-FILL a NEW listing's
   // map pin so they don't re-place it every time. Provider role + create mode only (an expert has
   // no provider form; an edit already carries its own pin, or deliberately lacks one). The office
@@ -799,6 +884,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // NULL/absent office location leaves the picker empty — behaves exactly as before (no pre-fill).
   // The pin is marked "touched" so the seeded point is actually SENT on create (see the submit
   // guard); it stays fully overridable/removable per listing.
+  // Ruling 86 (§13): "touched" is necessary but NOT sufficient — the submit guard also requires the
+  // listing to be place-anchored at submit time, so this seed can never reach a pdf/call/async
+  // listing whose Meeting Location card (and therefore the pin + its pre-fill note) never renders.
   useEffect(() => {
     if (role !== "provider" || isEditMode || officePreFilled.current) return;
     if (locationPointTouched || formData.locationPoint) return;
@@ -886,6 +974,34 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [existingService, role]);
 
+  // ── A1: `?step=<key>` deep link ────────────────────────────────────────────────────────────
+  // The checklist rows, Catalog's map preview and the pin-health rail all need to re-enter the
+  // flow AT a named step ("fix this listing's location" = the Logistics step), and a step NUMBER
+  // would be wrong the moment the delivery method changed the flow's shape. So the link carries
+  // the step's stable KEY and this resolves it against the loaded row's own method. Runs ONCE
+  // (guarded), after the row has hydrated — otherwise it would fight the provider's own
+  // navigation, and in edit mode it would resolve against the empty form's default method.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    if (isEditMode && !existingService) return; // wait for the real method
+    const requested = new URLSearchParams(window.location.search).get("step");
+    if (!requested) {
+      deepLinkApplied.current = true;
+      return;
+    }
+    const n = stepNumberOf(formData.deliveryMethod, requested as StepKey);
+    // An unknown key, or one this branch does not have, is NOT an error and never a guess: the
+    // provider simply stays on step 1 (§13 — a pdf listing has no Logistics step to land on).
+    if (n > 0) {
+      setCurrentStep(n);
+      // S2: a `?step=` link means "enter the flow here" — never the listing home, even for a
+      // provider whose default landing (see `viewListingHome`'s initializer) would otherwise be it.
+      setViewListingHome(false);
+    }
+    deepLinkApplied.current = true;
+  }, [isEditMode, existingService, formData.deliveryMethod]);
+
   // B1: merge the saved zone rings into the form once they load (after mapServiceToForm has set the
   // rest). Strings so the number inputs stay controlled; NULL/absent stays an empty list (§13).
   useEffect(() => {
@@ -960,6 +1076,49 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     },
   });
 
+  // ── FP-1 / B7: the protected-deliverable upload (ruling 58 / R4's first client caller) ────
+  // Raw bytes, not multipart — the server route is `express.raw({ type: ["application/pdf", …] })`
+  // scoped to itself, and no multipart plumbing exists anywhere in this codebase. The server
+  // validates the %PDF- magic bytes, caps at 20MB and NEVER echoes the storage key back, so all
+  // this handler learns is success/failure. On success the stored value becomes `objstore:<key>`;
+  // we mirror that locally as the sentinel the field already understands (`isManaged`), which
+  // flips the honest "platform-protected" copy and satisfies the publish gate — the same string
+  // the owner-gated read would hydrate on the next open.
+  const uploadDeliverable = async (file: File) => {
+    if (!id) return; // create mode has no row to attach to — the UI says so instead
+    setDeliverableUploading(true);
+    try {
+      const res = await fetch(`/api/provider/services/${id}/deliverable-file`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/pdf" },
+        body: file,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        // Honest, actionable failure — the server's own message (not a PDF, too large, storage
+        // unavailable), never a generic "something went wrong" and never a fake success.
+        throw new Error(body?.message ?? `Upload failed (${res.status})`);
+      }
+      // The upload has ALREADY written provider_services.serviceFile server-side. Record that
+      // locally and clear the URL box: from here the save must OMIT the field entirely, or an
+      // empty box (or a stale pasted link) would overwrite the protected key that was just
+      // stored. Deliberately NOT invalidating ["/api/provider/services", id] — that query's
+      // hydration effect resets the whole form, which would discard the provider's unsaved edits.
+      setDeliverableUploaded(true);
+      set("serviceFile", "");
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services/health"] });
+      toast({
+        title: "Deliverable uploaded",
+        description: "Buyers receive this file from platform-protected storage after their booking is confirmed.",
+      });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setDeliverableUploading(false);
+    }
+  };
+
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
       set("whatIncluded", [...formData.whatIncluded, newIncluded.trim()]);
@@ -1004,18 +1163,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleAddAnother = () => {
-    setCreationSuccess(false);
-    setCreationOutcome({});
-    setCurrentStep(1);
-    setFormData(buildEmptyForm(role));
-    setLocationPointTouched(false);
-    setNewIncluded("");
-    setNewRequirement("");
-    setRequestOfferingConfirmedName(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   const createMutation = useMutation({
     mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
       // In-person / hybrid services must tell the traveler WHERE to meet before they go live.
@@ -1026,6 +1173,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // "place-anchored" means the same thing here as it does in the server scorers and the
       // console chips (shared/service-fundamentals.ts).
       const isPlaceAnchoredListing = isPlaceAnchored({
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+        productShape: existingService?.productShape ?? null,
+      });
+      // FP-1 / B5: the timing/capacity/booking-rules half of the D7 capture follows the SCHEDULED
+      // predicate (call + video join in_person/hybrid), matching the card that now renders them.
+      // The transport/pickup/surcharge half stays place-anchored. Both halves keep ruling 62's
+      // never-clobber shape: keys are OMITTED (never null) when they do not apply, so a save on a
+      // listing that has since changed method leaves whatever was captured earlier untouched.
+      const isScheduledListing = needsScheduling({
         deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
         productShape: existingService?.productShape ?? null,
       });
@@ -1106,9 +1262,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
-        // Only sent for place-anchored listings (the shared isPlaceAnchored predicate) — the
-        // keys are OMITTED entirely otherwise, so a PATCH on a pdf/call listing leaves whatever
-        // was captured earlier untouched rather than wiping it (§13).
+        // Sent for PLACE-ANCHORED listings only — getting to a place, and charging for the
+        // distance to it, mean nothing on a remote session. The keys are OMITTED entirely
+        // otherwise, so a PATCH on a pdf/call listing leaves whatever was captured earlier
+        // untouched rather than wiping it (§13).
         ...(isPlaceAnchoredListing
           ? {
               transportProvision: formData.transportProvision || null,
@@ -1116,15 +1273,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               // when it no longer applies. This clears no DATA: `serviceRadius` above and the
               // `service_route_points` rows are both untouched by this write.
               pickupCoverageMode: isPickupProvision ? (formData.pickupCoverageMode || null) : null,
-              durationMinutes: intOrNull(formData.durationMinutes),
-              bufferMinutes: intOrNull(formData.bufferMinutes),
-              earliestStartTime: formData.earliestStartTime || null,
-              latestStartTime: formData.latestStartTime || null,
-              serviceTimezone: formData.serviceTimezone.trim() || null,
-              partySizeMin: intOrNull(formData.partySizeMin),
-              partySizeMax: intOrNull(formData.partySizeMax),
-              changeCutoffHours: intOrNull(formData.changeCutoffHours),
-              canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
               // ── B1 travel surcharge CONFIG (ruling 81) — §14 money lane, but this WRITE only sets
               // the listing config; the CHARGE is derived server-side at checkout from the traveler's
               // confirmed pickup, never off req.body. NEVER-CLOBBER (ruling 62): every field is sent
@@ -1134,6 +1282,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               surchargeFlatAmount: formData.surchargeFlatAmount.trim() === "" ? null : formData.surchargeFlatAmount.trim(),
               surchargePerKm: formData.surchargePerKm.trim() === "" ? null : formData.surchargePerKm.trim(),
               surchargeMaxKm: intOrNull(formData.surchargeMaxKm),
+            }
+          : {}),
+        // FP-1 / B5: timing, capacity and booking rules follow the SCHEDULED predicate — a live
+        // call/video session has a duration, a start window, a time zone, a party size and a
+        // change cutoff exactly as an in-person tour does. Same omit-when-absent contract.
+        ...(isScheduledListing
+          ? {
+              durationMinutes: intOrNull(formData.durationMinutes),
+              bufferMinutes: intOrNull(formData.bufferMinutes),
+              earliestStartTime: formData.earliestStartTime || null,
+              latestStartTime: formData.latestStartTime || null,
+              serviceTimezone: formData.serviceTimezone.trim() || null,
+              partySizeMin: intOrNull(formData.partySizeMin),
+              partySizeMax: intOrNull(formData.partySizeMax),
+              changeCutoffHours: intOrNull(formData.changeCutoffHours),
+              canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
             }
           : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
@@ -1159,7 +1323,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // stale value up for a listing that has since switched to a different delivery
         // method (a leftover file URL on a call/in-person row would be dead weight, and
         // could confuse the delivery_asset fundamentals check).
-        serviceFile: formData.deliveryMethod === "pdf" ? (formData.serviceFile || null) : null,
+        //
+        // FP-1 / B7 NEVER-CLOBBER: after a protected upload in this session the row already
+        // carries `objstore:<key>` — a key this client is never shown (by design: the rail's whole
+        // point is that the location is never disclosed). So while the URL box is empty and an
+        // upload has happened, the key is OMITTED from the payload entirely and the stored value
+        // survives. Typing a URL after uploading still replaces it, exactly as the field's own
+        // copy promises.
+        ...(formData.deliveryMethod === "pdf" && deliverableUploaded && !formData.serviceFile.trim()
+          ? {}
+          : { serviceFile: formData.deliveryMethod === "pdf" ? (formData.serviceFile || null) : null }),
         categoryAttributes: formData.categoryAttributes,
       };
 
@@ -1168,7 +1341,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // one. Omitted otherwise so the server leaves the stored coordinates/precision
       // untouched (§13). The client never sends latitude/longitude/locationPrecision
       // directly: the server strips those and derives `'exact'` from this field alone.
-      if (locationPointTouched) {
+      //
+      // Ruling 86 (§13): ALSO gated on the listing being place-anchored. `isInPerson` is the
+      // same predicate as `needsMeetingPoint`, which is what renders the Meeting Location card
+      // — the ONLY surface that shows a pin (picker + the ruling-85 "Pre-filled from your office
+      // location" note). Ruling 85's office seed marks the pin touched so it saves, with no
+      // delivery-method condition, so a pdf/call/async listing was getting the provider's office
+      // coordinates stamped on it with NO UI anywhere showing them: a location the provider never
+      // saw or confirmed, on a listing that has none. OMIT (never `null`) when not place-anchored:
+      // key-absent = untouched is the never-clobber contract (extractServiceLocation rule 3), so
+      // an edit-mode round trip cannot wipe a pin that is already stored; `null` would clobber it.
+      if (locationPointTouched && isInPerson) {
         payload.locationPoint = formData.locationPoint;
       }
 
@@ -1280,6 +1463,43 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
+
+      // ── WAVE 2 / LANE S2 — the listing home ──────────────────────────────────────────────
+      // A PROVIDER save — Save Draft or Submit for review, from the wizard OR the listing
+      // home's own button, create OR edit — lands on the listing home. This replaces both the
+      // old generic "View My Services / Add Another Service" create screen and the silent
+      // edit-mode bounce back to Catalog. L2's rule holds unchanged: the outcome copy reflects
+      // the RETURNED row, never the button label — a create is clamped server-side to a
+      // non-approved born state (F2 / migration 111), so "Submit for review" never claims live.
+      if (role === "provider") {
+        const approvalStatus: string | null | undefined =
+          service?.approvalStatus ?? (isEditMode ? existingService?.approvalStatus : undefined);
+        const isDraftOutcome = submitAction === "draft" || approvalStatus === "draft";
+        toast({
+          title: isDraftOutcome ? "Draft saved" : "Submitted for review",
+          description: isDraftOutcome
+            ? "Not yet visible to travelers — submit it for review when ready."
+            : "It goes live once approved. You'll be notified when it's reviewed.",
+        });
+        const savedId: string | undefined = service?.id ?? id;
+        if (onSuccess && savedId) onSuccess(savedId);
+        // `viewListingHome`'s useState INITIALIZER only ever runs once, at this component
+        // instance's true first mount — and wouter's `<Switch>` reuses the SAME `ServiceForm`
+        // instance across `/provider/services/new` → `/provider/services/:id/edit` (same
+        // component reference at the same tree position, only the `id` PROP changes), exactly
+        // the reason the old `handleAddAnother` had to hand-reset local state instead of relying
+        // on a remount. So this is set EXPLICITLY here rather than trusted to re-derive itself
+        // from the URL on a navigation that will not actually remount anything.
+        setViewListingHome(true);
+        if (!isEditMode && savedId) {
+          // The id did not exist a moment ago — give the row its own URL too (so a reload,
+          // bookmark or share lands back here), even though the state flip above already did
+          // the actual rendering work.
+          navigate(`/provider/services/${savedId}/edit`);
+        }
+        return;
+      }
+
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
@@ -1290,21 +1510,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // came back "approved" (grandfathered/edge case — never true for a fresh create).
       const approvalStatus: string = service?.approvalStatus ?? (submitAction === "draft" ? "draft" : "submitted");
       const isLive = approvalStatus === "approved" && service?.status !== "draft";
-      if (role === "expert") {
-        if (approvalStatus === "draft") {
-          toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
-        } else if (isLive) {
-          toast({ title: "Service published!", description: "Your service is now live." });
-        } else {
-          toast({ title: "Submitted for review", description: "It goes live once approved." });
-        }
-        queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
-        navigate("/expert/services");
-        return;
+      // role === "expert" from here on (provider already returned above).
+      if (approvalStatus === "draft") {
+        toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
+      } else if (isLive) {
+        toast({ title: "Service published!", description: "Your service is now live." });
+      } else {
+        toast({ title: "Submitted for review", description: "It goes live once approved." });
       }
-      setCreationOutcome({ status: service?.status ?? null, approvalStatus });
-      setCreationSuccess(true);
-      if (onSuccess && service?.id) onSuccess(service.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      navigate("/expert/services");
     },
     onError: (error: any) => {
       toast({
@@ -1340,11 +1555,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const expertVerification = useExpertVerificationStatus({ enabled: role === "expert" });
 
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
+  // ── FP-1 / A1 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P0) ──────────────────────────────
+  // Picking an offering makes Category a LOCKED, derived display. When the offering's
+  // `category_key` matches no `service_categories` row, that lock rendered "—",
+  // `formData.categoryId` stayed empty, and Publish was permanently disabled behind a bare
+  // "Still needed: Category (Step 1)" the provider had no way to satisfy — the custom-offering
+  // dead end. The DATA cause is fixed (seeder + migration 208); this is the RENDER half: an
+  // unresolvable key is now an explicit, honest error with a way out, never a silent dash on a
+  // dead button (§13 — say what is wrong rather than look merely incomplete).
+  const offeringCategoryUnresolved =
+    role === "provider" &&
+    !!formData.serviceOfferingTypeId &&
+    !!selectedProviderOffering &&
+    categories.length > 0 &&
+    !selectedCategory;
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
   // ── D7 (docs/DECISIONS.md ruling 62) ─────────────────────────────────────────────────────
   // Placement: the logistics/delivery step, shown ONLY for place-anchored methods, decided by
   // the SHARED predicate (shared/service-fundamentals.ts) rather than a local method list.
   const showLogisticsCapture = isPlaceAnchored({
+    deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+    productShape: existingService?.productShape ?? null,
+  });
+  // ── FP-1 / B5 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────────
+  // Picking Video Call or Phone removed the ENTIRE logistics card — all eight scheduling fields
+  // (duration, buffer, earliest/latest start, timezone, party size, change cutoff, can-anchor)
+  // vanished. But a live remote session is SCHEDULED: `SCHEDULED_METHODS`
+  // (shared/service-fundamentals.ts) already says call/video need bookable slots, and the health
+  // rail already scores them on availability. A Kyoto provider selling a 09:00 call to a New York
+  // buyer could not state WHICH 09:00. The timing / capacity / booking-rules sections are now
+  // gated on the SHARED scheduled predicate; place-anchored (`showLogisticsCapture`) still gates
+  // transport / pickup coverage / travel surcharge, which are meaningless without a place.
+  // isPlaceAnchored ⊂ needsScheduling, so an in-person listing sees exactly what it saw before.
+  const showScheduledLogistics = needsScheduling({
     deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
     productShape: existingService?.productShape ?? null,
   });
@@ -1425,42 +1668,88 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const expertIdentityKnown = role === "expert" && !expertVerification.isLoading && !expertVerification.isError;
   const expertVerificationGateBlocked = expertIdentityKnown && !expertVerification.isVerified;
 
-  // ── Step machinery (audit item #10) ──────────────────────────────────────
-  const STEP_TITLES = ["What you offer", "Details", "Photos", "Terms & requirements"];
-  const TOTAL_STEPS = STEP_TITLES.length;
+  // ── Step machinery — WAVE 2 / A1: METHOD-FIRST, BRANCHING (audit item #10 originally) ──────
+  // The four fixed steps are gone. `flowForMethod` (client/src/lib/service-form-steps.ts) is the
+  // ONE placement authority: it says which steps this listing has and which step holds which
+  // section, and the same module answers the "still needed" jump links (service-form-required.ts).
+  // Nothing here re-derives placement locally.
+  //
+  // The step INDEX is derived, never stored clamped: switching to a shorter branch (in-person → 5
+  // steps, pdf → 3) while standing on step 5 must not leave the form pointing off the end. It
+  // lands on the new branch's last step instead, and nothing in `formData` is touched — the
+  // never-clobber posture (FP-1 / B5): a hidden section's answers are still there, still sent, and
+  // reappear the moment the method comes back.
+  const flow = flowForMethod(formData.deliveryMethod);
+  const TOTAL_STEPS = flow.length;
+  const effectiveStep = clampStep(formData.deliveryMethod, currentStep);
+  const stepKey: StepKey = flow[effectiveStep - 1];
+  /** Is the wizard standing on this step right now? */
+  const onStep = (key: StepKey) => stepKey === key;
+  /** Does this step hold that section? (Placement only — VISIBILITY is still the shared
+   *  predicates: isPlaceAnchored / needsScheduling / the pdf gate.) */
+  const onSection = (section: SectionKey) => stepForSection(section, formData.deliveryMethod) === stepKey;
 
   const goToStep = (step: number) => {
-    setCurrentStep(Math.min(Math.max(step, 1), TOTAL_STEPS));
+    setCurrentStep(clampStep(formData.deliveryMethod, step));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const goToStepKey = (key: StepKey) => {
+    const n = stepNumberOf(formData.deliveryMethod, key);
+    if (n > 0) goToStep(n);
+  };
 
-  // Mirrors ONLY the checks already enforced elsewhere (button disabled states +
-  // createMutation's throws) — nothing new is required here. Used to (a) route a
-  // submit-time miss to the step holding the field and (b) explain a disabled
-  // final button. Draft saves stay check-free, exactly as before.
-  const missingForFinal: { step: number; label: string }[] = [];
-  if (!formData.name) missingForFinal.push({ step: 1, label: "Service name" });
-  if (!formData.categoryId) missingForFinal.push({ step: 1, label: "Category" });
-  if (role === "provider" && !isEditMode && !formData.serviceOfferingTypeId) {
-    missingForFinal.push({ step: 1, label: "An offering from the catalog" });
-  }
-  if (role === "expert" && !isEditMode && !formData.expertOfferingTypeId) {
-    missingForFinal.push({ step: 1, label: "Service tier" });
-  }
-  if (needsMeetingPoint && !formData.meetingPoint.trim()) {
-    missingForFinal.push({ step: 2, label: "Meeting point" });
-  }
+  // ── The wizard's required-field set — see client/src/lib/service-form-required.ts ──────────
+  // The predicate lives in that module (pure, unit-tested) rather than inline here, because the
+  // rule it keeps is a two-way one — THE ASTERISK SET EQUALS THE ENFORCED SET — and a rule
+  // stated only in prose inside this file is a rule nothing can check. Every entry mirrors an
+  // enforcement that already exists (a disabled-button condition, or a server publish gate);
+  // this list is the routing/explanation half. FP-2 / Package A item 4 added the three that were
+  // missing (price, required category fields, the attestation confirmations) and the same lane
+  // removed the two asterisks nothing required (Description, Duration). Draft saves stay
+  // check-free, exactly as before.
+  const requiredFieldInput = {
+    role,
+    isEditMode,
+    name: formData.name,
+    categoryId: formData.categoryId,
+    offeringCategoryUnresolved,
+    serviceOfferingTypeId: formData.serviceOfferingTypeId,
+    expertOfferingTypeId: formData.expertOfferingTypeId,
+    needsMeetingPoint,
+    meetingPoint: formData.meetingPoint,
+    deliveryMethod: formData.deliveryMethod,
+    serviceFile: formData.serviceFile,
+    deliverableUploaded,
+    priceType: formData.priceType,
+    basePrice: formData.basePrice,
+    pricingTiers: formData.pricingTiers,
+    categoryFields,
+    categoryAttributes: formData.categoryAttributes,
+    attestationGateBlocked,
+  };
+  const missingForFinal = missingRequiredForFinal(requiredFieldInput);
+
+  // WAVE 2 / S2: the listing home's checklist — the SAME `requiredFieldInput` above (never a
+  // forked set), plus the two facts only this surface needs: whether an attestation applies at
+  // all (so the row never renders hollow) and the real slot count (so "Publish some
+  // availability" ticks off the record, never off a click). Only meaningful once the row exists.
+  const checklistRows: ChecklistRow[] = isEditMode
+    ? deriveServiceChecklist({
+        ...requiredFieldInput,
+        attestationsApplicable: attestationResolution.applicable.length > 0,
+        availabilitySlotCount: Array.isArray(availabilitySlots) ? availabilitySlots.length : 0,
+      })
+    : [];
 
   const handleFinalSubmit = (action: "submit" | "publish") => {
     const firstMissing = missingForFinal[0];
     if (firstMissing) {
-      setAttemptedFinal(true);
       // Jump to the step that holds the invalid field; the mutation's own
       // checks remain the backstop and are unchanged.
       goToStep(firstMissing.step);
       toast({
         title: "A required field is missing",
-        description: `${firstMissing.label} (Step ${firstMissing.step}) is required before ${action === "publish" ? "publishing" : "submitting"}. You can Save Draft to finish later.`,
+        description: `${firstMissing.label} — on ${STEP_SHORT_TITLES[firstMissing.stepKey]} (step ${firstMissing.step}) — is required before you submit this for review. You can Save Draft to finish later.`,
         variant: "destructive",
       });
       return;
@@ -1476,48 +1765,259 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     );
   }
 
-  if (creationSuccess) {
-    // L2: copy reflects the actual returned row (creationOutcome), never a
-    // hardcoded "published/live" claim regardless of what really happened.
-    const { status: outcomeStatus, approvalStatus: outcomeApproval } = creationOutcome;
-    const isDraftOutcome = outcomeStatus === "draft" || outcomeApproval === "draft";
-    const isLiveOutcome = outcomeApproval === "approved" && outcomeStatus !== "draft";
-    const successTitle = isDraftOutcome
-      ? "Draft saved"
-      : isLiveOutcome
-        ? "Service published!"
-        : "Submitted for review";
-    const successBody = isDraftOutcome
-      ? "Not yet visible to travelers — submit it for review when ready."
-      : isLiveOutcome
-        ? "Your service is now live. You can add more services to build out your full catalog."
-        : "It goes live once approved. You'll be notified when it's reviewed.";
+  // ── FP-3 BACK DOOR: /provider/services/:id/edit opened with a property or property_room id ──
+  //
+  // Catalog no longer links here for those rows, but a deep link, a stale bookmark, a browser
+  // history entry or a hand-typed URL still can. The questionnaire below asks for a delivery
+  // method, a service checklist, "what's included", a meeting point — a guest room answers none
+  // of it, and worse, SAVING it would write those answers onto an accommodation row. So the form
+  // is never rendered for one; an honest interstitial names the shape and links to the surface
+  // that actually edits it.
+  //
+  // The classification is SERVER-DERIVED: `productShape` comes off the fetched
+  // GET /api/provider/services/:id row (owner-gated), never from the URL or any other
+  // client-supplied value — a crafted `?shape=` could not turn this guard off or on.
+  // `existingService` is undefined while the row is missing/404 (that path is unchanged).
+  const backDoorShape: string | null = isEditMode ? (existingService?.productShape ?? null) : null;
+  if (isPropertyEditorShape(backDoorShape)) {
+    const isRoom = isPropertyRoom(backDoorShape);
+    const editorHref =
+      propertyEditorHref({
+        id: id!,
+        productShape: backDoorShape,
+        parentServiceId: existingService?.parentServiceId ?? null,
+      }) ?? "/provider/workstation";
     return (
-      <div className="p-6 max-w-lg mx-auto">
+      <div className="p-6 max-w-lg mx-auto" data-testid="guard-property-shape">
         <Card>
-          <CardContent className="p-10 text-center space-y-4">
-            <div className="flex justify-center">
-              <CheckCircle className="w-16 h-16 text-green-500" />
+          <CardContent className="p-8 space-y-4">
+            <div className="flex items-center gap-2 text-console-darkest">
+              <Info className="w-5 h-5 flex-shrink-0 text-primary" />
+              <h2 className="text-lg font-semibold">
+                {isRoom ? "Rooms are edited on their property" : "Properties are edited in the Workstation"}
+              </h2>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {successTitle}
-            </h2>
-            <p className="text-gray-500 text-sm">
-              {successBody}
+            <p className="text-sm text-gray-500">
+              {isRoom
+                ? "This listing is a room type inside a property. A room has no delivery method and no service checklist of its own — it inherits them from its property — so the service form can't describe it honestly. Its name, nightly price, units and availability live on the property editor."
+                : "A property is an accommodation with room types priced per night, not a single service. Its details and its room types are edited together in the Workstation."}
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-              <Button variant="outline" onClick={() => navigate(`/${role}/services`)}>
-                View My Services
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Button
+                onClick={() => navigate(editorHref)}
+                data-testid="button-goto-property-editor"
+              >
+                {isRoom ? "Open the property editor" : "Open in the Workstation"}
               </Button>
               <Button
-                className="bg-primary hover:bg-primary/90"
-                onClick={handleAddAnother}
+                variant="outline"
+                onClick={() => navigate(`/${role}/services`)}
+                data-testid="button-guard-back-to-catalog"
               >
-                <Plus className="w-4 h-4 mr-2" /> Add Another Service
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back to Catalog
               </Button>
             </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // ── WAVE 2 / LANE S2 — THE LISTING HOME ───────────────────────────────────────────────────
+  // Reuses the SAME route that already owns per-listing editing (`/provider/services/:id/edit`,
+  // the ratified mock's "listing home" maps onto it rather than a new page) instead of the old
+  // generic post-create screen this replaced. Hero (name · method · price · status pill) + the
+  // derived checklist (`deriveServiceChecklist`, `client/src/lib/service-form-required.ts`) +
+  // Submit for review, gated on the SAME `missingForFinal` the wizard's own final step already
+  // uses (never a forked "is this ready" opinion) + links to the drawers this lane does not
+  // rebuild (photos, deliverable, availability — all pre-existing surfaces).
+  if (isEditMode && role === "provider" && viewListingHome && existingService) {
+    const price = effectivePriceScalar({
+      priceType: formData.priceType,
+      basePrice: formData.basePrice,
+      pricingTiers: formData.pricingTiers,
+    });
+    const statusPill = listingStatusPill(existingService, isEditMode);
+    // ONLY "review" freezes the checklist/button — a rejected listing needs to be
+    // resubmittable (that's the whole point of "changes requested"), and an already-live
+    // listing can still submit an edit for re-review (§17's edit-split, gap #17, Wave 3).
+    const frozen = statusPill.tone === "review";
+    const doneCount = checklistRows.filter((r) => r.done).length;
+    const leftCount = checklistRows.length - doneCount;
+    const openChecklistRow = (row: ChecklistRow) => {
+      if (row.target.kind === "availability") {
+        navigate(`/provider/services?availability=${encodeURIComponent(id!)}`);
+        return;
+      }
+      setViewListingHome(false);
+      goToStepKey(row.target.stepKey);
+    };
+    return (
+      <div className="p-6 max-w-3xl space-y-6" data-testid="view-listing-home">
+        <button
+          onClick={() => navigate(`/${role}/services`)}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-listing-home-back"
+        >
+          <ArrowLeft className="w-4 h-4" /> My Services
+        </button>
+
+        <Card data-testid="card-listing-hero">
+          <CardContent className="p-5 flex items-start gap-4 flex-wrap">
+            <CheckCircle className="w-8 h-8 text-green-500 flex-shrink-0" />
+            <div className="flex-1 min-w-[220px]">
+              <h2 className="text-lg font-semibold text-gray-900" data-testid="text-listing-hero-name">
+                {formData.name || "Untitled listing"}
+              </h2>
+              <p className="text-sm text-muted-foreground" data-testid="text-listing-hero-sub">
+                {deliveryMethodLabel(formData.deliveryMethod)}
+                {" · "}
+                {price != null ? `$${price}${formData.priceType !== "Fixed" ? ` (${formData.priceType})` : ""}` : "No price set yet"}
+              </p>
+            </div>
+            <Badge
+              variant={statusPill.tone === "live" ? "default" : "secondary"}
+              data-testid="badge-listing-hero-status"
+            >
+              {statusPill.label}
+            </Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base" data-testid="text-checklist-heading">
+              {frozen
+                ? leftCount === 0
+                  ? "Submitted — nothing outstanding"
+                  : `Submitted — ${leftCount} still outstanding`
+                : leftCount === 0
+                  ? "Nothing left — ready for review"
+                  : `${leftCount} ${leftCount === 1 ? "thing" : "things"} left before review`}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Derived from the draft — rows navigate to the surface that owns the work; nothing
+              here ticks itself.
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div data-testid="list-checklist">
+              {checklistRows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => openChecklistRow(row)}
+                  className="w-full flex items-start gap-3 px-5 py-3 text-left border-t first:border-t-0 hover:bg-muted/40 transition-colors"
+                  data-testid={`checklist-row-${row.id}`}
+                  aria-checked={row.done}
+                >
+                  <span
+                    className={`mt-0.5 flex-shrink-0 rounded-full ${row.done ? "text-green-600" : "text-muted-foreground/50"}`}
+                  >
+                    {row.done ? <CheckCircle className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">{row.label}</span>
+                    <span className="block text-xs text-muted-foreground">{row.hint}</span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── WAVE 2 / S4 (ledger row 99) — "Pricing & fees", BESIDE the checklist, never inside
+            it: none of the drawer's fields is required-for-final (verified in pricing-fees.ts's
+            module doc), so this card never gates Submit and never appears as a checklist row. */}
+        <Card data-testid="card-pricing-fees">
+          <CardContent className="p-5 flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Pricing &amp; fees</p>
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-pricing-fees-summary">
+                {pricingFeesSummary(
+                  pricingFeesFromService(existingService, (surchargeTierState as any)?.surchargeTiers),
+                  { surchargeApplicable: showLogisticsCapture && pickupProvisionChosen },
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Tune later — not required to go live.</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setPricingDrawerOpen(true)}
+              data-testid="button-open-pricing-fees"
+            >
+              Manage
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="p-5 space-y-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Ready when you are</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {frozen
+                  ? "Submitted for review. We'll email you when it's decided. You can keep editing while it waits — changes are re-checked before anything goes live."
+                  : "Reviewed by our team before it goes live. You can keep editing while it's in review."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/${role}/services`)}
+                data-testid="button-listing-home-finish-later"
+              >
+                Finish later
+              </Button>
+              <Button
+                onClick={() => handleFinalSubmit("publish")}
+                disabled={frozen || createMutation.isPending || missingForFinal.length > 0 || verificationGateBlocked || publishBlocked || attestationGateBlocked}
+                title={
+                  missingForFinal.length > 0
+                    ? `Still needed: ${missingForFinal.map((m) => m.label).join(", ")}`
+                    : verificationGateBlocked
+                    ? "Complete identity and business verification in your Provider Status page first"
+                    : publishBlocked
+                    ? "Complete background verification before submitting a listing in this category"
+                    : undefined
+                }
+                data-testid="button-listing-home-submit"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {frozen ? "Submitted" : statusPill.tone === "live" ? "Submit changes for review" : "Submit for review"}
+              </Button>
+            </div>
+          </div>
+          {!frozen && missingForFinal.length > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="text-listing-home-missing">
+              Still needed before you submit for review:{" "}
+              {missingForFinal.map((m, i) => (
+                <span key={`${m.step}-${m.label}`}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => openChecklistRow({ id: m.section, label: m.label, hint: "", done: false, target: { kind: "step", section: m.section, stepKey: m.stepKey, step: m.step } })}
+                  >
+                    {m.label}
+                  </button>
+                </span>
+              ))}
+              .
+            </p>
+          )}
+        </Card>
+
+        <PricingFeesDrawer
+          open={pricingDrawerOpen}
+          onOpenChange={setPricingDrawerOpen}
+          serviceId={id!}
+          surchargeApplicable={showLogisticsCapture && pickupProvisionChosen}
+          basePriceLabel={price != null ? `$${price}${formData.priceType !== "Fixed" ? ` (${formData.priceType})` : ""}` : "No price set yet"}
+          service={existingService}
+          surchargeTiers={(surchargeTierState as any)?.surchargeTiers}
+        />
       </div>
     );
   }
@@ -1592,12 +2092,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       {/* ── Breadcrumb / Back ── */}
       <div className="flex items-center gap-2 text-sm">
+        {/* WAVE 2 / S2: a provider who entered the flow FROM the listing home (a checklist row,
+            or any other `?step=` deep link) gets back to it without a round trip through the
+            server — the row it navigated from is what should be highlighted on return. Anyone
+            else (fresh create, or a direct deep link with no listing home to return to) keeps
+            the original "My Services" breadcrumb, unchanged. */}
         <button
-          onClick={() => navigate(`/${role}/services`)}
+          onClick={() =>
+            isEditMode && role === "provider" ? setViewListingHome(true) : navigate(`/${role}/services`)
+          }
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-form-back"
         >
           <ArrowLeft className="w-4 h-4" />
-          My Services
+          {isEditMode && role === "provider" ? "Listing home" : "My Services"}
         </button>
         <span className="text-muted-foreground">/</span>
         <span className="text-foreground font-medium">
@@ -1605,12 +2113,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </span>
       </div>
 
-      {/* ── Step indicator (audit item #10) — freely clickable in both modes ── */}
+      {/* ── Step indicator — freely clickable in both modes. A1: the list IS the branch, so it
+          grows and shrinks with the delivery method chosen on Basics. ── */}
+      {/* `flex-wrap` matters now that the list is branch-sized: hybrid's SIX steps overflowed the
+          column and hid "Review & submit" off the right edge behind a scroll nobody looks for. */}
       <nav aria-label="Form steps" className="overflow-x-auto" data-testid="service-form-steps">
-        <ol className="flex items-center gap-1 sm:gap-2">
-          {STEP_TITLES.map((title, i) => {
+        <ol className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-2">
+          {flow.map((key, i) => {
+            const title = STEP_SHORT_TITLES[key];
             const stepNum = i + 1;
-            const isActive = currentStep === stepNum;
+            const isActive = effectiveStep === stepNum;
             return (
               <li key={stepNum} className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {i > 0 && <div className="w-3 sm:w-6 h-px bg-border" aria-hidden="true" />}
@@ -1624,6 +2136,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                   data-testid={`button-step-${stepNum}`}
+                  data-step-key={key}
                 >
                   <span
                     className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold border ${
@@ -1640,7 +2153,43 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             );
           })}
         </ol>
+        {/* The mock's step-count line: say WHY this listing has these steps, so a shortened flow
+            reads as a deliberate branch rather than as missing questions (§13). */}
+        <p className="text-xs text-muted-foreground mt-2" data-testid="text-step-count">
+          <strong>{TOTAL_STEPS} steps</strong> for this delivery method.{" "}
+          {flow.includes("logistics")
+            ? "Scheduling, Capacity and Logistics are here because this one happens somewhere."
+            : "No location, transport or travel-surcharge questions in this flow — the Logistics step never appears."}
+        </p>
       </nav>
+
+      {/* ── FP-2 / A1 UPFRONT REVIEW NOTICE (Package A item 1; service-creation mock, fix A1) ────
+          The final action was labelled "Publish Service" while EVERY create is clamped
+          server-side to a non-approved born state (F2 / migration 111 — `approval_status`
+          DEFAULTs 'submitted'). The button is now "Submit for review", and this is the other
+          half of the same honesty: the expert branch already got a review card, but only on
+          step 4, and the provider branch found out only on the success screen AFTER clicking.
+          Same notice, up front, for BOTH roles, on every step.
+
+          NO SLA NUMBER, deliberately: the execution map's Gate G5 #7 has "review SLA — is
+          '2 business days' real?" OPEN with the disposition "measure first, then commit or
+          drop the number", so stating one here would be exactly the §13 claim that gate
+          exists to prevent. The mock's A1 copy is adopted without its "usually within 2
+          business days" clause until #7 is answered. This is COPY ONLY — no gate, no
+          lifecycle change; the write path is untouched. ── */}
+      {!isEditMode && (
+        <div
+          className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-900"
+          data-testid="notice-review-before-live"
+        >
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p>
+            <strong>New listings are reviewed before they go live.</strong> When you finish, this
+            goes to our team for review — you'll be notified when it's been looked at. You can
+            Save Draft at any point and come back.
+          </p>
+        </div>
+      )}
 
       {/* ── dispatch v1.3 R2 (ruling 53): expert identity-verification status, visible on
           EVERY step (not gated to step 1 or the final Publish click) — "the expert always
@@ -1698,7 +2247,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </div>
       )}
 
-      {currentStep === 1 && (<>
+      {onStep("basics") && (<>
 
       {/* ── Offering-first provider create (§17): pick the /earn offering FIRST — ────
           category derives from it below. Shown for both create and edit so an edited
@@ -1816,12 +2365,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         );
       })()}
 
-      {attemptedFinal && role === "provider" && !isEditMode && !formData.serviceOfferingTypeId && (
-        <p role="alert" className="text-xs text-destructive" data-testid="error-offering-required">
-          Pick an offering from the catalog above — it's required before publishing.
-        </p>
-      )}
-
       {/* ── Start from a template (expert create — absorbed from the wizard, Phase 2) ── */}
       {role === "expert" && !isEditMode && serviceTemplates.length > 0 && (
         <Card data-testid="service-template-gallery">
@@ -1873,14 +2416,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               onChange={(e) => set("name", e.target.value)}
               placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
               className="mt-2"
-              aria-invalid={attemptedFinal && !formData.name ? true : undefined}
-              aria-describedby={attemptedFinal && !formData.name ? "error-name-required" : undefined}
             />
-            {attemptedFinal && !formData.name && (
-              <p id="error-name-required" role="alert" className="text-xs text-destructive mt-1" data-testid="error-name-required">
-                Service name is required.
-              </p>
-            )}
           </div>
 
           {/* Category — single canonical taxonomy; derived + locked when a provider offering is selected (§17) */}
@@ -1889,7 +2425,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             {role === "provider" && formData.serviceOfferingTypeId ? (
               <div className="mt-2 flex items-center justify-between gap-3 rounded-md border bg-secondary/40 px-3 py-2">
                 <span className="text-sm font-medium" data-testid="text-derived-category">
-                  {selectedCategory?.name ?? "—"}
+                  {selectedCategory?.name ?? (offeringCategoryUnresolved ? "Not resolvable" : "—")}
                 </span>
                 <Button
                   type="button"
@@ -1908,12 +2444,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "", categoryAttributes: {} }));
                 }}
               >
-                <SelectTrigger
-                  id="category"
-                  className="mt-2"
-                  aria-invalid={attemptedFinal && !formData.categoryId ? true : undefined}
-                  aria-describedby={attemptedFinal && !formData.categoryId ? "error-category-required" : undefined}
-                >
+                <SelectTrigger id="category" className="mt-2">
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1925,16 +2456,35 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </SelectContent>
               </Select>
             )}
-            {role === "provider" && formData.serviceOfferingTypeId && (
+            {role === "provider" && formData.serviceOfferingTypeId && !offeringCategoryUnresolved && (
               <p className="text-xs text-muted-foreground mt-1">Derived from your selected /earn offering above.</p>
+            )}
+            {/* FP-1 / A1: the honest failure. Names the offering, says exactly what is missing and
+                who can fix it, and offers the one action that unblocks the provider right now —
+                instead of a silent "—" plus a Publish button that never enables. */}
+            {offeringCategoryUnresolved && (
+              <div
+                className="mt-2 flex items-start gap-3 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-200"
+                data-testid="banner-offering-category-unresolved"
+              >
+                <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+                <div>
+                  <p className="font-medium">
+                    We can't resolve a category for “{selectedProviderOffering?.display_name}”
+                  </p>
+                  <p className="text-xs mt-0.5 opacity-80">
+                    This offering points at a category this platform doesn't currently have, so we
+                    can't file your listing under one — and a listing without a category can't be
+                    published. This is our problem to fix, not yours: please contact support with
+                    this listing's name. In the meantime you can <strong>Save Draft</strong> to keep
+                    your work, or use <strong>Change offering</strong> to pick a different one and
+                    publish today.
+                  </p>
+                </div>
+              </div>
             )}
             {selectedCategory?.description && (
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
-            )}
-            {attemptedFinal && !formData.categoryId && (
-              <p id="error-category-required" role="alert" className="text-xs text-destructive mt-1" data-testid="error-category-required">
-                Category is required.
-              </p>
             )}
           </div>
 
@@ -2005,6 +2555,116 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </Select>
             </div>
           )}
+
+          {/* ── METHOD-FIRST (Wave 2 / A1, S1) ────────────────────────────────────────────────
+              THE question, asked SECOND — right after what you are offering and what it is
+              called, and before anything that depends on it. It used to sit halfway down step 2,
+              under "Details & Delivery", which meant a provider answered a screenful of
+              questions that the answer here would have removed. The step list above is built
+              from this answer, so changing it changes the flow immediately.
+
+              NEVER-CLOBBER (FP-1 / B5): switching the method only changes which steps and
+              sections RENDER. Nothing in `formData` is reset here, and the payload already omits
+              the keys a method does not apply to — so an in-person draft switched to PDF and back
+              still has its start window, party size and pin exactly as they were. ── */}
+          {/* Delivery Method */}
+          {(() => {
+            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
+            const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
+              ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
+              : null;
+            // T3-2: every canonical delivery value gets its own faithful UI option so
+            // editing an existing service always reopens showing the value actually
+            // stored (see fromCanonicalDelivery) instead of collapsing onto "In-Person".
+            const allMethods: { value: UiDelivery; label: string }[] = [
+              { value: "in-person", label: "In-Person" },
+              { value: "video-call", label: "Video Call" },
+              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
+              { value: "pdf", label: "PDF Guide" },
+              { value: "call", label: "Phone Call" },
+              { value: "voice_notes", label: "Voice Notes" },
+              { value: "async_messaging", label: "Async Messaging" },
+            ];
+            let visibleMethods = allowed
+              ? allMethods.filter((m) => allowed.has(m.value))
+              : allMethods;
+            // A tier's deliveryFormats filter (above) is a NEW-selection guardrail, not an
+            // editor for an existing row — an already-stored value must always stay visible
+            // and selected, or the Select silently falls back off it and a no-change save
+            // would corrupt the stored delivery_method (the exact T3-2 bug, one layer up).
+            if (allowed && !visibleMethods.some((m) => m.value === formData.deliveryMethod)) {
+              const current = allMethods.find((m) => m.value === formData.deliveryMethod);
+              if (current) visibleMethods = [...visibleMethods, current];
+            }
+            return (
+              <div>
+                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
+                <Select
+                  value={formData.deliveryMethod}
+                  onValueChange={(v: any) => set("deliveryMethod", v)}
+                >
+                  <SelectTrigger id="deliveryMethod" className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibleMethods.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                    {visibleMethods.length === 0 && (
+                      <SelectItem value="in-person">In-Person</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {allowed && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Options filtered to your selected tier's delivery formats.
+                  </p>
+                )}
+
+                {/* ── SS-6 delivery language (ruling 69 disposition 9, migration 199) ─────────
+                    Placed beside the delivery METHOD because it answers the sibling question:
+                    how it is delivered, and in what language. This is NOT ruling 60's chrome or
+                    content translation — it is a purchasable attribute of the experience itself
+                    (in Kyoto, an English-run session is commonly a different product from the
+                    shared Japanese one). Untouched ⇒ nothing is sent and nothing is shown. */}
+                <div className="mt-4">
+                  <Label>Delivered in (languages)</Label>
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-delivery-languages-hint">
+                    The language(s) you actually run this service in. Leave blank if you would
+                    rather not say — we will not guess one for you.
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {DELIVERY_LANGUAGE_OPTIONS.map((lang) => {
+                      const selected = formData.deliveryLanguages?.includes(lang) ?? false;
+                      return (
+                        <label key={lang} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              // The FIRST touch turns null (never captured) into a real array;
+                              // unticking the last one leaves [] (deliberately cleared), which is
+                              // a different fact and is preserved as such.
+                              const current = formData.deliveryLanguages ?? [];
+                              set(
+                                "deliveryLanguages",
+                                e.target.checked
+                                  ? [...current, lang]
+                                  : current.filter((l) => l !== lang),
+                              );
+                            }}
+                            className="h-4 w-4 rounded"
+                            data-testid={`checkbox-delivery-language-${lang}`}
+                          />
+                          {lang}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Pricing */}
           <div className="space-y-4">
@@ -2192,6 +2852,24 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
           </div>
 
+          {/* ── The fifth and last field of the fast path. Moved up from the old step 2 so that
+              Basics alone is a complete, resumable draft (mock ②). ── */}
+          {/* Description — FP-2 / item 4: the asterisk is GONE, not made to bind. Nothing
+              requires a description: `provider_services.description` is nullable, the insert
+              schema does not demand it and no publish gate checks it. It IS scored by the owner
+              health rail, which is what "recommended" means here. */}
+          <div>
+            <Label htmlFor="description">Description <span className="text-muted-foreground font-normal">(recommended)</span></Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
+              rows={4}
+              className="mt-2"
+            />
+          </div>
+
           {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
               lib/earn-roles.ts defines one (local_expert / travel_expert); otherwise
               shows the full unpartitioned catalog (see visibleExpertOfferingTypes). */}
@@ -2224,44 +2902,48 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   ))}
                 </div>
               )}
-              {attemptedFinal && !isEditMode && !formData.expertOfferingTypeId && (
-                <p role="alert" className="text-xs text-destructive mt-2" data-testid="error-tier-required">
-                  Select a service tier — it's required before submitting for approval.
-                </p>
-              )}
             </div>
           )}
+
+          {/* ── THE BASICS FAST PATH, STATED (mock ②) ────────────────────────────────────────
+              Nothing below this screen is required to keep your work: Save Draft is reachable
+              from every step and checks nothing (see client/src/lib/service-form-required.ts —
+              the required set is consulted by the FINAL action only). Saying so here is the
+              difference between a five-field draft and a provider who believes the whole form
+              has to be finished in one sitting. ── */}
+          <p className="text-sm text-muted-foreground border-t pt-4" data-testid="text-basics-fast-path">
+            <strong>This screen is enough to save.</strong> Name it, say how you deliver it, put a
+            price on it — then <strong>Save Draft</strong> and come back. The remaining steps are
+            built from the delivery method you picked, and none of them are needed to keep a draft.
+          </p>
 
         </CardContent>
       </Card>
 
       </>)}
 
-      {currentStep === 2 && (<>
-
-      {/* ── Details & Delivery ── */}
-      <Card>
+      {/* ── A1: THE BRANCH'S SECOND STEP ────────────────────────────────────────────────────
+          One card, titled by the step the branch is on: "Scheduling" (in-person/hybrid),
+          "Session details" (call/video), "What they get" (pdf), "Async delivery details"
+          (voice notes / async messaging). The duration question is the same question in all
+          four — how long it runs, or how long it takes to arrive — so it is asked once, here,
+          and `stepForSection` puts it on whichever of those steps this listing has. ── */}
+      {onSection("duration") && (
+      <Card data-testid="card-details-step">
         <CardHeader>
-          <CardTitle>Details & Delivery</CardTitle>
+          <CardTitle>{STEP_LONG_TITLES[stepKey]}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
 
-          {/* Description */}
+          {/* Duration — FP-2: the ONE duration question (Package A item 8). Its asterisk is gone
+              for the same reason as Description's: nothing requires it. It writes
+              `deliveryTimeframe`, which is the duration/turnaround string every reader uses —
+              the traveler detail page, Discover, the storefront and Catalog cards, the admin
+              queue, and `envelopeFromProviderService`, which parses minutes out of this very
+              text. The second, structured "Duration (minutes)" question that used to sit in the
+              Service-logistics card is removed (nothing read that column). */}
           <div>
-            <Label htmlFor="description">Description *</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
-              rows={4}
-              className="mt-2"
-            />
-          </div>
-
-          {/* Duration */}
-          <div>
-            <Label htmlFor="duration">Duration *</Label>
+            <Label htmlFor="duration">How long does it take? <span className="text-muted-foreground font-normal">(recommended)</span></Label>
             <Input
               id="duration"
               value={formData.duration}
@@ -2269,106 +2951,38 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               placeholder={role === "expert" ? "e.g., 2 hours, 3 days, 1 week" : "e.g., 30 minutes, 2 hours, same-day"}
               className="mt-2"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Asked once — travelers see this exactly as you write it.
+            </p>
           </div>
 
-          {/* Delivery Method */}
-          {(() => {
-            const selectedTier = expertOfferingTypes.find((t) => t.id === formData.expertOfferingTypeId);
-            const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
-              ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
-              : null;
-            // T3-2: every canonical delivery value gets its own faithful UI option so
-            // editing an existing service always reopens showing the value actually
-            // stored (see fromCanonicalDelivery) instead of collapsing onto "In-Person".
-            const allMethods: { value: UiDelivery; label: string }[] = [
-              { value: "in-person", label: "In-Person" },
-              { value: "video-call", label: "Video Call" },
-              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
-              { value: "pdf", label: "PDF Guide" },
-              { value: "call", label: "Phone Call" },
-              { value: "voice_notes", label: "Voice Notes" },
-              { value: "async_messaging", label: "Async Messaging" },
-            ];
-            let visibleMethods = allowed
-              ? allMethods.filter((m) => allowed.has(m.value))
-              : allMethods;
-            // A tier's deliveryFormats filter (above) is a NEW-selection guardrail, not an
-            // editor for an existing row — an already-stored value must always stay visible
-            // and selected, or the Select silently falls back off it and a no-change save
-            // would corrupt the stored delivery_method (the exact T3-2 bug, one layer up).
-            if (allowed && !visibleMethods.some((m) => m.value === formData.deliveryMethod)) {
-              const current = allMethods.find((m) => m.value === formData.deliveryMethod);
-              if (current) visibleMethods = [...visibleMethods, current];
-            }
-            return (
-              <div>
-                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
-                <Select
-                  value={formData.deliveryMethod}
-                  onValueChange={(v: any) => set("deliveryMethod", v)}
-                >
-                  <SelectTrigger id="deliveryMethod" className="mt-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleMethods.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                    ))}
-                    {visibleMethods.length === 0 && (
-                      <SelectItem value="in-person">In-Person</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-                {allowed && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Options filtered to your selected tier's delivery formats.
-                  </p>
-                )}
+          {/* §13: the async lane's own fields (reply window, scope statement, engagement window)
+              are RATIFIED but not built — they are Wave 3 / lane S9 (Gate G3), and there is no
+              column for them today. Say that plainly rather than showing a control that decides
+              nothing, or leaving the step looking empty by accident. */}
+          {(formData.deliveryMethod === "voice_notes" || formData.deliveryMethod === "async_messaging") && (
+            <p className="text-xs text-muted-foreground" data-testid="text-async-fields-pending">
+              Async listings have no slot to book and no session to attend, so this branch asks
+              nothing about timing. The reply window, scope statement and engagement window this
+              step will collect are ratified but not built yet — nothing here silently stands in
+              for them.
+            </p>
+          )}
 
-                {/* ── SS-6 delivery language (ruling 69 disposition 9, migration 199) ─────────
-                    Placed beside the delivery METHOD because it answers the sibling question:
-                    how it is delivered, and in what language. This is NOT ruling 60's chrome or
-                    content translation — it is a purchasable attribute of the experience itself
-                    (in Kyoto, an English-run session is commonly a different product from the
-                    shared Japanese one). Untouched ⇒ nothing is sent and nothing is shown. */}
-                <div className="mt-4">
-                  <Label>Delivered in (languages)</Label>
-                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-delivery-languages-hint">
-                    The language(s) you actually run this service in. Leave blank if you would
-                    rather not say — we will not guess one for you.
-                  </p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-2">
-                    {DELIVERY_LANGUAGE_OPTIONS.map((lang) => {
-                      const selected = formData.deliveryLanguages?.includes(lang) ?? false;
-                      return (
-                        <label key={lang} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(e) => {
-                              // The FIRST touch turns null (never captured) into a real array;
-                              // unticking the last one leaves [] (deliberately cleared), which is
-                              // a different fact and is preserved as such.
-                              const current = formData.deliveryLanguages ?? [];
-                              set(
-                                "deliveryLanguages",
-                                e.target.checked
-                                  ? [...current, lang]
-                                  : current.filter((l) => l !== lang),
-                              );
-                            }}
-                            className="h-4 w-4 rounded"
-                            data-testid={`checkbox-delivery-language-${lang}`}
-                          />
-                          {lang}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+        </CardContent>
+      </Card>
+      )}
+
+      {/* ── The deliverable — the pdf branch's own step ("What they get"). ── */}
+      {onSection("deliverable") && formData.deliveryMethod === "pdf" && (
+      <Card data-testid="card-deliverable">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            The file they receive
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
 
           {/* D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file —
               only relevant for pdf delivery. Buyers unlock this after a confirmed booking
@@ -2380,9 +2994,59 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               string never leaks into this text field). The copy below states which case THIS
               listing is actually in — factual, no spin. */}
           {formData.deliveryMethod === "pdf" && (() => {
-            const isManaged = formData.serviceFile.trim().startsWith("objstore:");
+            // FP-1 / B7: "managed" is either a stored objstore: value hydrated from the owner read,
+            // or an upload made in this session (whose key the client is deliberately never told).
+            const isManaged =
+              formData.serviceFile.trim().startsWith("objstore:") ||
+              (deliverableUploaded && !formData.serviceFile.trim());
             return (
               <div>
+                {/* ── FP-1 / B7 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────
+                    The protected-upload rail (ruling 58 / R4) had existed since it landed with
+                    ZERO client callers — it appeared in this file only inside the comment above,
+                    so every provider-authored PDF was necessarily a pasted, unrevokable link.
+                    This is that rail's first caller.
+
+                    SHAPE, STATED (the smallest honest one): the endpoint is
+                    POST /api/provider/services/:id/deliverable-file and therefore needs a row to
+                    hang the file on. In CREATE mode there is no id yet, so the control says so
+                    plainly and points at Save Draft — rather than inventing a draft behind the
+                    provider's back, or pretending an upload happened. In EDIT mode it uploads the
+                    raw bytes (Content-Type: application/pdf, the shape express.raw() expects) and
+                    the server validates the %PDF- magic bytes; on success the STORED value becomes
+                    `objstore:<key>` and the honest "platform-protected" copy below flips. The
+                    pasted-URL fallback is untouched and keeps its `protected: false` labeling. */}
+                {isEditMode ? (
+                  <div className="mb-3">
+                    <Label htmlFor="deliverableUpload">Upload the PDF (platform-protected)</Label>
+                    <input
+                      id="deliverableUpload"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="mt-2 block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-secondary file:px-3 file:py-1.5 file:text-sm"
+                      disabled={deliverableUploading}
+                      data-testid="input-deliverable-upload"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = ""; // allow re-picking the same file after a failure
+                        if (file) uploadDeliverable(file);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {deliverableUploading
+                        ? "Uploading…"
+                        : "PDF only, up to 20MB. We store it privately and stream it to buyers — you can replace it any time, and we can revoke access."}
+                    </p>
+                  </div>
+                ) : (
+                  <p
+                    className="text-xs text-muted-foreground mb-3"
+                    data-testid="text-deliverable-upload-after-save"
+                  >
+                    A protected upload attaches to a saved listing. <strong>Save Draft</strong>{" "}
+                    first, then reopen this listing to upload the PDF — or paste a link below.
+                  </p>
+                )}
                 <Label htmlFor="serviceFile">Deliverable File URL *</Label>
                 <Input
                   id="serviceFile"
@@ -2420,9 +3084,50 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
         </CardContent>
       </Card>
+      )}
 
-      {/* ── Category-Specific Dynamic Fields ── */}
-      {categoryFields.length > 0 && (
+      {/* ── The hybrid branch's extra step (mock: "The online half"). ─────────────────────────
+          Hybrid is the only method that gets both halves. The fields this step is ratified to
+          collect — where the online half happens, how long it runs, the provider's own join link
+          — have NO column on `provider_services` today, and this lane adds no schema (Wave 3 /
+          lane S9, Gate G3, owns them). So the step is here, in the shape the mock ratified, and
+          it says exactly what it does and does not yet ask (§13) rather than showing controls
+          that write nowhere. ── */}
+      {onStep("online") && (
+      <Card data-testid="card-online-half">
+        <CardHeader>
+          <CardTitle>{STEP_LONG_TITLES.online}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            You picked <strong>Hybrid</strong>, so this listing has an in-person half — the
+            Scheduling, Capacity and Logistics steps you just filled in — and an online half.
+          </p>
+          <p className="text-sm text-muted-foreground" data-testid="text-online-half-pending">
+            The online half's own questions (where the call happens, how long it runs, and your
+            own meeting link — shared with the traveler only after booking) are ratified but not
+            built yet. Until they are, describe the online half in your description on{" "}
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={() => goToStepKey("basics")}
+              data-testid="button-online-to-basics"
+            >
+              Basics
+            </button>{" "}
+            and in <strong>What&apos;s included</strong> on the last step. We would rather say
+            that than show you a field that saves nothing.
+          </p>
+        </CardContent>
+      </Card>
+      )}
+
+
+      {/* ── Category-Specific Dynamic Fields ──
+          A1: branch-independent content, so it sits on the last step with the rest of it. The
+          asterisks here still bind (FP-2), and "Still needed" links to the step this resolves to,
+          whichever branch the listing is on. */}
+      {onSection("categoryFields") && categoryFields.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>
@@ -2529,7 +3234,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── What's Included ── */}
+      {/* ── What's Included ── A1: branch-independent, so it lives on the last step. */}
+      {onSection("whatIncluded") && (
       <Card>
         <CardHeader>
           <CardTitle>What's Included</CardTitle>
@@ -2562,9 +3268,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {/* ── Logistics (conditional based on delivery method) ── */}
-      {needsMeetingPoint && (
+      {/* ── STEP 4 "LOGISTICS" — WHERE IT HAPPENS (Wave 2 / A1, S3; ruling of Aug 12, 2026) ─────
+          Everything spatial, on ONE step: the free-text meeting point, the confirm-gated pin, the
+          map canvas with its ordered route stops, the service radius, "Getting there"
+          (transport/pickup/drop-off — FP-2 merged those into one block and the block moved here
+          whole), and the travel-surcharge zones. Place-anchored and hybrid only; a remote listing
+          never sees this step at all (not disabled, absent — see the step-count line).
+
+          NO NEW WRITE RAILS. The pin is the same `LocationPointPicker` writing through the same
+          form save (`extractServiceLocation` on POST/PATCH /api/provider/services stays the ONE
+          pin writer, L27-P3); the stops are the same owner-gated replace-list
+          PUT /api/provider/services/:id/route-points (ruling 22a). What changed is WHERE the
+          authoring lives — Catalog's map is a traveler preview from this lane on. ── */}
+      {onSection("place") && needsMeetingPoint && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -2582,14 +3300,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 placeholder="Where will the service take place? (e.g., Hotel lobby, Specific landmark, Street address)"
                 rows={2}
                 className="mt-2"
-                aria-invalid={attemptedFinal && needsMeetingPoint && !formData.meetingPoint.trim() ? true : undefined}
-                aria-describedby={attemptedFinal && needsMeetingPoint && !formData.meetingPoint.trim() ? "error-meeting-point-required" : undefined}
               />
-              {attemptedFinal && needsMeetingPoint && !formData.meetingPoint.trim() && (
-                <p id="error-meeting-point-required" role="alert" className="text-xs text-destructive mt-1" data-testid="error-meeting-point-required">
-                  Meeting point is required for in-person services.
-                </p>
-              )}
             </div>
 
             {/* L27-P3: place/confirm the precise point behind the free-text meeting point.
@@ -2623,29 +3334,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               idPrefix="service-location"
             />
 
-            {/* Transport disclosure — travelers need to know if they must arrange their own transport */}
-            <div>
-              <Label htmlFor="transportProvided" className="flex items-center gap-2">
-                <Truck className="w-4 h-4" />
-                Do you provide transport during this service?
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1 mb-2">
-                Once you meet the traveler, will you transport them (e.g. car, van)? This is shown to travelers so they can plan.
-              </p>
-              <Select
-                value={formData.transportProvided}
-                onValueChange={(v: "yes" | "no" | "not_applicable") => set("transportProvided", v)}
-              >
-                <SelectTrigger id="transportProvided" data-testid="select-transport-provided">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yes">Yes — I provide transport</SelectItem>
-                  <SelectItem value="no">No — traveler arranges their own</SelectItem>
-                  <SelectItem value="not_applicable">Not applicable</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* FP-2 / Package A item 8 (transport): the "Do you provide transport during this
+                service?" disclosure MOVED from here into the Service-logistics card's "Getting
+                there" block, so both transport questions are asked once, together, in one
+                vocabulary. It used to sit here while "Transport provision" sat in another card
+                further down the same step — two controls that read as the same question and
+                could be answered inconsistently. Nothing about the field or its column changed;
+                only where it is asked. */}
 
             {/* Neighborhoods multi-select */}
             <div>
@@ -2712,6 +3407,51 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               />
             </div>
 
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── A1 / S3: THE MAP, INSIDE THE FLOW ────────────────────────────────────────────────
+          The canvas the pin above draws on, plus this listing's ordered route stops. The stop
+          editor needs a saved row to hang its replace-list PUT on, so in CREATE mode it says so
+          and points at Save Draft — the same honest shape the protected deliverable upload uses,
+          rather than inventing a row behind the provider's back. ── */}
+      {onSection("map") && needsMeetingPoint && (
+        <ServiceMapAuthoring
+          serviceId={isEditMode ? (id ?? null) : null}
+          pin={formData.locationPoint}
+          pinLabel={formData.meetingPoint || formData.name || null}
+          radiusKm={formData.serviceRadius > 0 ? formData.serviceRadius : null}
+          addressHint={formData.meetingPoint || formData.serviceArea || ""}
+          savedStops={(existingService?.routePoints as any) ?? []}
+        />
+      )}
+
+      {/* ── "Getting there" — the transport / pickup / surcharge block (FP-2 merged the two
+          transport questions into one; this lane moves the merged block onto the Logistics step
+          where the rest of the spatial questions now live). Place-anchored only: there is
+          nothing to get to, and no distance to charge for, on a call or a video session. ── */}
+      {onSection("transport") && showLogisticsCapture && (
+        <Card data-testid="card-getting-there">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5" />
+              Getting there
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              These answers are used: the travel surcharge below is charged at checkout from the
+              real pickup a traveler confirms. Leave anything you're unsure of blank — blank means
+              "not stated", never a guessed default.
+            </p>
+
+            {/* ── FP-2's merged "Getting there" block, completed (Wave 2 / A1) ───────────────
+                Pickup, drop-off and the service radius used to sit on the Meeting Location card
+                while the transport provision sat in a different card on a different part of the
+                same step. They are one question — WHERE this listing collects and returns people
+                — so they are now asked in one place, on the step named for it. Fields, columns
+                and payload are untouched; only the location of the question changed. ── */}
             {/* Pickup */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -2767,47 +3507,24 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </>
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── D7 service logistics (docs/DECISIONS.md ruling 62, migration 195) ──────────────────
-          CAPTURE ONLY. Nothing on this card is read by the transport resolver, the fundamentals
-          checks or any traveler surface yet — ruling 62 captures the field set NOW, while the
-          provider count is ~0, and wires consumers in later lanes. Every control offers a real
-          "not specified" state: an unanswered question stays unanswered (§13). */}
-      {showLogisticsCapture && (
-        <Card data-testid="card-service-logistics">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Service logistics
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <p className="text-xs text-muted-foreground">
-              These details aren't shown to travelers yet — we're capturing them now so the
-              planner can use them when that lands. Leave anything you're unsure of blank.
-            </p>
 
             {/* ── Getting there: transport provision + the ruling-62 AMENDMENT's coverage choice.
                 T1 (ruling 74) brings this to the mock: the provision is a SEGMENTED choice, the
                 coverage is an explicit radius/route TOGGLE, and the never-clobber notice states
                 out loud that the hidden side's data is preserved (ruling 62/64, §13). */}
+            {/* FP-1 / B5: transport, pickup coverage and the travel surcharge stay
+                PLACE-ANCHORED-ONLY — there is nothing to get to, and no distance to charge for,
+                on a call or a video session. Only the timing / capacity / booking-rules sections
+                below open up for scheduled remote methods. */}
+            {showLogisticsCapture && (
             <div className="space-y-4" data-testid="logistics-section-transport">
-              <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Truck className="w-4 h-4" />
-                  Getting there
-                </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  How does the traveler reach the start? Tap the one that fits — tap it again to
-                  leave it unset.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Everything about transport is asked here, and only here. Tap a choice again to
+                leave it unset.
+              </p>
 
               <div>
-                <Label className="text-sm">Transport provision</Label>
+                <Label className="text-sm">How does the traveler reach the start?</Label>
                 <ToggleGroup
                   type="single"
                   value={formData.transportProvision}
@@ -2833,6 +3550,50 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     ? TRANSPORT_PROVISION_OPTIONS.find((o) => o.value === formData.transportProvision)?.label
                     : "Not specified."}
                 </p>
+              </div>
+
+              {/* ── FP-2 / Package A item 8 (transport) — THE SECOND TRANSPORT QUESTION, MOVED
+                  HERE from the Meeting Location card above ────────────────────────────────────
+                  The audit's finding was "transport is asked twice in two vocabularies on the
+                  same screen", and it was: this yes/no/not-applicable disclosure lived on the
+                  Meeting Location card while the four-value provision toggle lived down here,
+                  and a provider could answer them inconsistently without ever seeing both at
+                  once.
+
+                  They are NOT MERGED, and that is deliberate: ruling 62 (see
+                  `shared/schema.ts`'s `transportProvisionEnum` block) states the two columns
+                  answer DIFFERENT questions and must not be collapsed — `transport_provision`
+                  is "how does the traveler get to the start", `transport_provided` (migration
+                  119, which carries a real DB CHECK) is "once you've met, do you drive them".
+                  Deriving one from the other would be exactly the merge that ruling forbids,
+                  and §13 forbids inventing the half that is not entailed. Both are still
+                  authored — now as one block, in one order, with the distinction said out loud.
+                  (The redesign mock's fix A6 proposes dropping this question entirely; that
+                  deviation is recorded in the ledger, because `transport_provided` is the one
+                  of the pair that is actually READ — `service-detail.tsx` renders it and
+                  `envelopeFromProviderService` carries it — while `transport_provision` has no
+                  consumer beyond this form's own gating.) ── */}
+              <div>
+                <Label htmlFor="transportProvided" className="text-sm">
+                  And once you've met — do you transport them?
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+                  A different question from the one above: this is about the service itself (a
+                  car, a van), not about how they arrive. Travelers see the answer.
+                </p>
+                <Select
+                  value={formData.transportProvided}
+                  onValueChange={(v: "yes" | "no" | "not_applicable") => set("transportProvided", v)}
+                >
+                  <SelectTrigger id="transportProvided" data-testid="select-transport-provided">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes">Yes — I provide transport during the service</SelectItem>
+                    <SelectItem value="no">No — travelers get themselves between stops</SelectItem>
+                    <SelectItem value="not_applicable">Not applicable</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
             {pickupProvisionChosen && (
@@ -2878,27 +3639,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
                 {formData.pickupCoverageMode === "radius" && (
                   <div>
-                    <Label htmlFor="coverageRadius">Pickup radius (km)</Label>
-                    <Input
-                      id="coverageRadius"
-                      type="number"
-                      min={0}
-                      value={formData.pickupRadiusKm}
-                      onChange={(e) => set("pickupRadiusKm", e.target.value)}
-                      placeholder="Not set"
-                      className="mt-1"
-                      data-testid="input-coverage-radius"
-                    />
-                    {/* SS-4 CLOSED (docs/DECISIONS.md ruling 69 disposition 9, migration 199).
-                        The six-sigma pass (finding M-3) measured this input and "Service Radius
-                        (km)" in the Pickup card above writing ONE column: typing 17 here made
-                        #serviceRadius read 17 instantly. They are now two columns
-                        (`pickup_radius_km` and `service_radius`), so the honesty notice that used
-                        to sit here — stating they were the same number — is RETIRED rather than
-                        reworded: it described a defect that no longer exists. NEVER-CLOBBER: the
-                        split added a column and backfilled nothing, so a listing saved under the
-                        old UI keeps its number on `service_radius` and shows "Not set" here until
-                        its owner says otherwise (§13 — never a guessed copy). */}
+                    {/* ── FP-2 / Package A item 3 — "Pickup radius (km)" (`pickupRadiusKm`)
+                        REMOVED. It was a THIRD radius input on this form (beside "Service
+                        Radius (km)" on the Pickup card and the surcharge's "Won't travel
+                        beyond") and the only one of the three that NOTHING reads: the ring
+                        travelers see (`service-detail.tsx`), the Catalog map ring
+                        (`catalog-map-view.tsx`) and the flat-surcharge containment test all
+                        read `service_radius`. Column untouched, value round-trips on edit.
+                        What replaces it is a pointer at the number that IS the coverage, so a
+                        provider setting "Radius" here is not left with an input that decides
+                        nothing (§13). ── */}
+                    <p className="text-xs text-muted-foreground" data-testid="text-coverage-radius-source">
+                      {savedRadiusKm > 0
+                        ? `Your coverage is the ${savedRadiusKm} km Service radius set above — that is the ring travelers see.`
+                        : "Set the Service radius above — that number is the ring travelers see. No radius is set yet."}
+                    </p>
+                    {/* HISTORY (SS-4, ruling 69 disposition 9, migration 199): the removed input
+                        and "Service Radius (km)" once wrote ONE column — the six-sigma pass
+                        (finding M-3) measured typing 17 here making #serviceRadius read 17
+                        instantly. Migration 199 split them into `pickup_radius_km` and
+                        `service_radius`; FP-2 finds the split half unread and stops asking for
+                        it, which leaves `service_radius` as the single coverage number again —
+                        this time as the one every consumer already reads. */}
                     {savedRouteStopCount > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                         {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
@@ -2913,8 +3675,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   <div>
                     <p className="text-xs text-muted-foreground" data-testid="text-route-coverage-hint">
                       {savedRouteStopCount > 0
-                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the Catalog map view.`
-                        : "No route stops saved yet — add them on the Catalog map view (Services → Map)."}
+                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the map on this step.`
+                        : "No route stops saved yet — add them on the map on this step."}
                     </p>
                     {savedRadiusKm > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
@@ -2927,169 +3689,42 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             )}
 
-            {/* ── B1 Travel surcharge (ruling 81) — PROVIDER-CHOSEN MODE. Only for a listing that
-                actually collects travelers in person (a pickup provision). The provider picks how
-                (if at all) distance changes the price; the CHARGE is derived server-side at checkout
-                from the traveler's confirmed pickup, never here. NEVER-CLOBBER: switching the mode
-                keeps every other mode's numbers (they are separate fields on the same form). */}
+            {/* ── WAVE 2 / S4 (ledger row 99): the travel-surcharge MODE + AMOUNTS moved off this
+                step into the post-creation "Pricing & fees" drawer (listing home) — moved, not
+                duplicated. `formData.surchargeMode`/`surchargeFlatAmount`/`surchargePerKm`/
+                `surchargeMaxKm`/`surchargeTiers` stay in this form's state and payload purely for
+                never-clobber round-trip fidelity (hydrated, sent unedited on every save); no
+                control here writes them any more. `serviceRadius` above is untouched — it is
+                coverage/location geometry, not a surcharge amount, and stays authored here. */}
             {pickupProvisionChosen && (
-              <div className="rounded-md border p-3 space-y-3" data-testid="block-travel-surcharge">
-                <Label className="flex items-center gap-2">
-                  <Radius className="w-4 h-4" />
-                  Travel surcharge — charge more for a distant pickup?
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Optional. When on, a traveler who books with a pickup location outside your area
-                  pays a travel fee, shown as its own line at checkout. We only ever charge it from
-                  the real pickup a traveler confirms — never a guess.
-                </p>
-                <ToggleGroup
-                  type="single"
-                  value={formData.surchargeMode || "none"}
-                  onValueChange={(v) => set("surchargeMode", (v || "none") as any)}
-                  variant="outline"
-                  className="justify-start gap-2 flex-wrap"
-                  data-testid="segmented-surcharge-mode"
-                >
-                  <ToggleGroupItem value="none" data-testid="toggle-surcharge-none"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">None</ToggleGroupItem>
-                  <ToggleGroupItem value="flat" data-testid="toggle-surcharge-flat"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Flat fee</ToggleGroupItem>
-                  <ToggleGroupItem value="zones" data-testid="toggle-surcharge-zones"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Zones</ToggleGroupItem>
-                  <ToggleGroupItem value="per_km" data-testid="toggle-surcharge-per-km"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Per km</ToggleGroupItem>
-                </ToggleGroup>
-
-                {formData.surchargeMode === "flat" && (
-                  <div data-testid="block-surcharge-flat">
-                    <Label htmlFor="surchargeFlatAmount">Flat travel fee ($)</Label>
-                    <Input
-                      id="surchargeFlatAmount"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={formData.surchargeFlatAmount}
-                      onChange={(e) => set("surchargeFlatAmount", e.target.value)}
-                      placeholder="e.g. 20.00"
-                      className="mt-1"
-                      data-testid="input-surcharge-flat-amount"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Charged once when the pickup is outside your coverage radius
-                      {savedRadiusKm > 0 ? ` (${savedRadiusKm} km)` : ` (set a Service radius on the Pickup card)`}.
-                      Inside it, no fee.
-                    </p>
-                  </div>
-                )}
-
-                {formData.surchargeMode === "per_km" && (
-                  <div data-testid="block-surcharge-per-km">
-                    <Label htmlFor="surchargePerKm">Rate per km ($)</Label>
-                    <Input
-                      id="surchargePerKm"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={formData.surchargePerKm}
-                      onChange={(e) => set("surchargePerKm", e.target.value)}
-                      placeholder="e.g. 1.50"
-                      className="mt-1"
-                      data-testid="input-surcharge-per-km"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Multiplied by the straight-line distance from your pin to the pickup —
-                      as-the-crow-flies, not driving distance.
-                    </p>
-                  </div>
-                )}
-
-                {formData.surchargeMode === "zones" && (
-                  <div className="space-y-2" data-testid="block-surcharge-zones">
-                    <p className="text-xs text-muted-foreground">
-                      Draw rings from smallest to largest. A pickup pays the fee of the first ring it
-                      falls inside. A pickup beyond the largest ring can't book.
-                    </p>
-                    {formData.surchargeTiers.map((tier, i) => (
-                      <div key={i} className="flex items-end gap-2" data-testid={`row-surcharge-tier-${i}`}>
-                        <div className="flex-1">
-                          <Label htmlFor={`tier-radius-${i}`}>Ring {i + 1} radius (km)</Label>
-                          <Input
-                            id={`tier-radius-${i}`}
-                            type="number"
-                            min={0}
-                            step="0.1"
-                            value={tier.radiusKm}
-                            onChange={(e) => {
-                              const next = [...formData.surchargeTiers];
-                              next[i] = { ...next[i], radiusKm: e.target.value };
-                              set("surchargeTiers", next);
-                            }}
-                            className="mt-1"
-                            data-testid={`input-tier-radius-${i}`}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <Label htmlFor={`tier-fee-${i}`}>Fee ($)</Label>
-                          <Input
-                            id={`tier-fee-${i}`}
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={tier.fee}
-                            onChange={(e) => {
-                              const next = [...formData.surchargeTiers];
-                              next[i] = { ...next[i], fee: e.target.value };
-                              set("surchargeTiers", next);
-                            }}
-                            className="mt-1"
-                            data-testid={`input-tier-fee-${i}`}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => set("surchargeTiers", formData.surchargeTiers.filter((_, j) => j !== i))}
-                          data-testid={`button-remove-tier-${i}`}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => set("surchargeTiers", [...formData.surchargeTiers, { radiusKm: "", fee: "" }])}
-                      data-testid="button-add-surcharge-tier"
-                    >
-                      Add a ring
-                    </Button>
-                  </div>
-                )}
-
-                {formData.surchargeMode !== "none" && (
-                  <div data-testid="block-surcharge-max-km">
-                    <Label htmlFor="surchargeMaxKm">Won't travel beyond (km) — optional</Label>
-                    <Input
-                      id="surchargeMaxKm"
-                      type="number"
-                      min={0}
-                      value={formData.surchargeMaxKm}
-                      onChange={(e) => set("surchargeMaxKm", e.target.value)}
-                      placeholder="No limit"
-                      className="mt-1"
-                      data-testid="input-surcharge-max-km"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      A pickup farther than this can't book at all. Leave blank for no limit.
-                    </p>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-surcharge-moved">
+                Travel surcharges are set in <b>Pricing &amp; fees</b>, on this listing's home page —
+                available once you've saved a draft. Not required to go live.
+              </p>
             )}
             </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── SCHEDULING — timing + booking rules (the step formerly called "Logistics"). ─────────
+          FP-1 / B5: gated on the SHARED scheduled predicate, so a live call/video session keeps
+          every one of these — it is scheduled too. ── */}
+      {onSection("timing") && showScheduledLogistics && (
+        <Card data-testid="card-service-logistics">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              {stepKey === "session" ? "When you are reachable" : "Timing & booking rules"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              These answers are used: the start window is checked when a traveler tries to book.
+              Leave anything you're unsure of blank — blank means "not stated", never a guessed
+              default.
+            </p>
 
             {/* ── Timing ── */}
             <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-timing">
@@ -3102,25 +3737,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   How long it runs, and the window it can start in.
                 </p>
               </div>
+              {/* ── FP-2 / Package A items 3 + 8 — TWO FIELDS REMOVED FROM THIS GRID ─────────
+                  "Duration (minutes)" (`durationMinutes`) was the SECOND duration question:
+                  "Duration *" on the Details card above asks the same thing in free text and
+                  writes `deliveryTimeframe`, which the traveler detail page, Discover, the
+                  storefront cards, the admin queue and `envelopeFromProviderService` (which
+                  parses minutes out of that very text) all read. `durationMinutes` on
+                  `provider_services` is read by NOTHING — the many `durationMinutes` hits
+                  elsewhere in the repo are `itinerary_items`, a different row. So the canonical
+                  duration question is the one on Details, and this duplicate is no longer asked.
+                  "Setup / buffer (minutes)" (`bufferMinutes`) is an unread D7 capture field with
+                  no consumer anywhere.
+                  BOTH COLUMNS ARE UNTOUCHED and both values still round-trip on an edit (they
+                  stay in form state, loaded from the row and sent back unchanged), so this
+                  removes the question, never the data (§13 / the FP-5 Settings precedent). A
+                  control comes back with its consumer, never before it. ── */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="durationMinutes">Duration (minutes)</Label>
-                <Input
-                  id="durationMinutes" type="number" min={0} placeholder="e.g. 180"
-                  value={formData.durationMinutes}
-                  onChange={(e) => set("durationMinutes", e.target.value)}
-                  className="mt-1" data-testid="input-duration-minutes"
-                />
-              </div>
-              <div>
-                <Label htmlFor="bufferMinutes">Setup / buffer (minutes)</Label>
-                <Input
-                  id="bufferMinutes" type="number" min={0} placeholder="e.g. 30"
-                  value={formData.bufferMinutes}
-                  onChange={(e) => set("bufferMinutes", e.target.value)}
-                  className="mt-1" data-testid="input-buffer-minutes"
-                />
-              </div>
               <div>
                 <Label htmlFor="earliestStartTime">Earliest start</Label>
                 <Input
@@ -3169,6 +3801,57 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
             </div>
 
+            {/* ── Booking rules ── */}
+            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-booking-rules">
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4" />
+                  Booking rules
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Lead time is set under Booking terms on the Review &amp; submit step — this is the
+                  change window.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
+                  <Input
+                    id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
+                    value={formData.changeCutoffHours}
+                    onChange={(e) => set("changeCutoffHours", e.target.value)}
+                    className="mt-1" data-testid="input-change-cutoff-hours"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When a traveler can still move the booking. Separate from your refund policy.
+                  </p>
+                </div>
+                {/* FP-2 / Package A item 3: "Can this anchor a day?" (`canAnchor`) removed —
+                    an unread D7 capture field (zero consumers repo-wide) whose label is also
+                    planner jargon a seller has no way to interpret. Column untouched; a stored
+                    value round-trips on edit. */}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── CAPACITY — its own step for a place-anchored listing (the step formerly called
+          "Group"); folded into Session details for a remote one, which has no separate step. ── */}
+      {onSection("capacityFields") && showScheduledLogistics && (
+        <Card data-testid="card-capacity">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Capacity
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">
+              The party size the checkout refuses a booking against — a traveler can never book a
+              party you cannot take.
+            </p>
+
             {/* ── Capacity ── */}
             <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-capacity">
               <div>
@@ -3202,57 +3885,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </div>
               </div>
             </div>
-
-            {/* ── Booking rules ── */}
-            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-booking-rules">
-              <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4" />
-                  Booking rules
-                </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Lead time is set under Booking terms — these are the change window and whether the
-                  day can be planned around this.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
-                  <Input
-                    id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
-                    value={formData.changeCutoffHours}
-                    onChange={(e) => set("changeCutoffHours", e.target.value)}
-                    className="mt-1" data-testid="input-change-cutoff-hours"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    When a traveler can still move the booking. Separate from your refund policy.
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="canAnchor">Can this anchor a day?</Label>
-                  <Select
-                    value={formData.canAnchor || "unspecified"}
-                    onValueChange={(v) => set("canAnchor", (v === "unspecified" ? "" : v) as "" | "yes" | "no")}
-                  >
-                    <SelectTrigger id="canAnchor" className="mt-1" data-testid="select-can-anchor">
-                      <SelectValue placeholder="Not specified" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unspecified">Not specified</SelectItem>
-                      <SelectItem value="yes">Yes — the day can be planned around it</SelectItem>
-                      <SelectItem value="no">No — it fits around other plans</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
 
-      </>)}
 
-      {currentStep === 4 && (<>
+
+      {onStep("review") && (<>
 
       {/* ── Booking Terms ── */}
       <Card>
@@ -3278,116 +3917,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             />
             <p className="text-xs text-muted-foreground mt-1">How far in advance must clients book?</p>
           </div>
-          <div>
-            <Label htmlFor="cancellationPolicyType">Cancellation Policy</Label>
-            <Select
-              value={formData.cancellationPolicyType || undefined}
-              onValueChange={(v) => set("cancellationPolicyType", v)}
-            >
-              <SelectTrigger id="cancellationPolicyType" className="mt-2" data-testid="select-cancellation-policy-type">
-                <SelectValue placeholder="Not declared — no policy shown to travelers" />
-              </SelectTrigger>
-              <SelectContent>
-                {CANCELLATION_POLICY_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              Shown to travelers as a real per-offering policy. Leave unset if you haven't decided — we never show a fabricated default.
-            </p>
-            {/* SIX-SIGMA PASS (Tier A / finding M-1): the option you pick is not advisory —
-                the server computes the refund from it. Say so where the choice is made. */}
-            <p className="text-xs text-muted-foreground mt-1" data-testid="text-cancellation-enforced-note">
-              These windows are applied automatically when a traveler cancels — the refund is
-              calculated from the option you pick here, not from the notes below.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="cancellationPolicy">Cancellation Policy Details (optional)</Label>
-            <Textarea
-              id="cancellationPolicy"
-              value={formData.cancellationPolicy}
-              onChange={(e) => set("cancellationPolicy", e.target.value)}
-              placeholder="e.g., Full refund if cancelled 48 hours before. 50% refund if cancelled 24 hours before. No refund within 12 hours."
-              rows={3}
-              className="mt-2"
-              data-testid="textarea-cancellation-policy"
-            />
-          </div>
-
-          {/* ── Deposits / partial payments (Lane 7, ruling 72) — PROVIDER OPT-IN ─────────────────
-              Off by default: the listing checks out at the full price, exactly as before. When on,
-              the traveler pays a deposit now and settles the balance in a second checkout before a
-              cutoff derived from your service date and change window. The deposit amount is computed
-              server-side at checkout from the values below. */}
-          <div className="rounded-md border p-4 space-y-3">
-            <label className="flex items-center gap-2 cursor-pointer" htmlFor="depositEnabled">
-              <input
-                id="depositEnabled"
-                type="checkbox"
-                checked={formData.depositEnabled}
-                onChange={(e) => set("depositEnabled", e.target.checked)}
-                data-testid="checkbox-deposit-enabled"
-              />
-              <span className="font-medium">Take a deposit for this listing</span>
-            </label>
-            <p className="text-xs text-muted-foreground">
-              When on, travelers pay a deposit at checkout and the remaining balance in a second
-              checkout before a cutoff. Leave off to collect the full price up front.
-            </p>
-            {formData.depositEnabled && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="depositType">Deposit type</Label>
-                  <Select
-                    value={formData.depositType || undefined}
-                    onValueChange={(v) => set("depositType", v as "percentage" | "flat")}
-                  >
-                    <SelectTrigger id="depositType" className="mt-2" data-testid="select-deposit-type">
-                      <SelectValue placeholder="Choose percentage or flat amount" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percentage">Percentage of the total</SelectItem>
-                      <SelectItem value="flat">Flat amount</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {formData.depositType === "percentage" && (
-                  <div>
-                    <Label htmlFor="depositPercentage">Deposit percentage (%)</Label>
-                    <Input
-                      id="depositPercentage"
-                      type="number"
-                      min={1}
-                      max={100}
-                      placeholder="e.g. 30"
-                      value={formData.depositPercentage}
-                      onChange={(e) => set("depositPercentage", e.target.value)}
-                      className="mt-2"
-                      data-testid="input-deposit-percentage"
-                    />
-                  </div>
-                )}
-                {formData.depositType === "flat" && (
-                  <div>
-                    <Label htmlFor="depositFlatAmount">Deposit amount</Label>
-                    <Input
-                      id="depositFlatAmount"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="e.g. 50.00"
-                      value={formData.depositFlatAmount}
-                      onChange={(e) => set("depositFlatAmount", e.target.value)}
-                      className="mt-2"
-                      data-testid="input-deposit-flat-amount"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* ── WAVE 2 / S4 (ledger row 99): Cancellation Policy (type + details) and the Deposit
+              opt-in moved off this step into the post-creation "Pricing & fees" drawer (listing
+              home) — moved, not duplicated. `formData.cancellationPolicy(Type)` and the four
+              `deposit*` fields stay in state/payload purely for never-clobber round-trip fidelity
+              (hydrated, sent unedited on every save); no control here writes them any more. */}
+          <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-cancellation-deposit-moved">
+            Cancellation policy and deposit are set in <b>Pricing &amp; fees</b>, on this listing's
+            home page — available once you've saved a draft. Not required to go live.
+          </p>
         </CardContent>
       </Card>
 
@@ -3426,7 +3964,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       </Card>
 
       {/* ── D9 attestations (ruling 62's D9 clause, executed by ruling 67) ──────────────────
-          Placement: the "Terms & requirements" step — the C9 precedent that puts per-listing
+          Placement: the last step, "Review & submit" (Wave 2 / A1 renamed it) — the C9 precedent
+          that puts per-listing
           curation on the "what I sell" module. The card renders ITSELF only when the SHARED
           resolver returns a non-empty applicable set for what is currently drafted; nothing
           here decides applicability locally. IT IS NOW A PUBLISH GATE (ruling 69 disposition
@@ -3448,7 +3987,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       </>)}
 
-      {currentStep === 3 && (<>
+      {onSection("photos") && (<>
 
       {/* ── Photos ── */}
       <Card>
@@ -3535,7 +4074,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       </>)}
 
       {/* ── Provider-Specific Features ── */}
-      {currentStep === 4 && role === "provider" && (
+      {onSection("roleExtras") && role === "provider" && (
         <Card>
           <CardHeader>
             <CardTitle>Additional Features</CardTitle>
@@ -3569,18 +4108,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               />
             </div>
 
-            {/* Max Concurrent */}
-            <div>
-              <Label htmlFor="maxClients">Max Concurrent Clients</Label>
-              <Input
-                id="maxClients"
-                type="number"
-                value={formData.maxConcurrentClients}
-                onChange={(e) => set("maxConcurrentClients", parseInt(e.target.value) || 1)}
-                min="1"
-                className="mt-2"
-              />
-            </div>
+            {/* ── FP-2 / Package A item 8 (capacity) — "Max Concurrent Clients" REMOVED ────────
+                It was the SECOND capacity number on this form, three steps and one vocabulary
+                away from "Minimum / Maximum party size" in the Service-logistics card. Party
+                size is the canonical question: it is the pair the SERVER enforces
+                (`booking-eligibility.service.ts` refuses a booking whose party is outside
+                `party_size_min`/`party_size_max`), so it is the one that decides anything.
+                `maxConcurrentBookings` is a different fact wearing the same clothes — how many
+                bookings may run at once — and its only consumer is the Catalog card's "Up to N"
+                chip, which renders it beside a Users icon and therefore reads as a group size
+                too. Column untouched, value round-trips on edit, and the chip keeps rendering
+                for rows that already carry a number. When concurrency is asked again it comes
+                back as its own question with its own words (filed for the Wave-2 Capacity
+                step). ── */}
 
             {/* Content Affinity Tags */}
             <div>
@@ -3610,16 +4150,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             </div>
 
-            {/* Active Toggle */}
-            <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
-              <Label htmlFor="active" className="cursor-pointer font-medium">
-                {formData.active ? "Published" : "Draft"}
-              </Label>
-              <Switch
-                id="active"
-                checked={formData.active}
-                onCheckedChange={(checked) => set("active", checked)}
-              />
+            {/* ── FP-2 / A2 (Package A item 2; mock fix A2) — THE DEAD PUBLISHED/DRAFT SWITCH ────
+                What was here: a `Switch` bound to `formData.active`, labelled "Published" /
+                "Draft". `active` was read by NOTHING else — it was never put on the create/update
+                payload and no gate consulted it — so flipping it changed no listing state
+                anywhere, while reading as the control that puts a listing live. The status a
+                listing actually has is decided by the server (`status` from the submit action,
+                `approval_status` clamped to `submitted` at birth by F2 / migration 111).
+                Per the mock: the control is replaced by a READ-ONLY pill over the real record,
+                and the `active` field is deleted from the form state entirely so nothing can
+                bind to it again. Edit mode reads `existingService`, the row as stored; a create
+                has no record yet and says so. ── */}
+            <div>
+              <Label className="text-sm font-medium">Current Status</Label>
+              <div className="mt-2">
+                <Badge
+                  variant={listingStatusPill(existingService, isEditMode).tone === "live" ? "default" : "secondary"}
+                  data-testid="badge-provider-listing-status"
+                >
+                  {listingStatusPill(existingService, isEditMode).label}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Set by the record, not by this form: a listing goes Draft → In review → Live, and
+                only our review moves it to Live.
+              </p>
             </div>
 
           </CardContent>
@@ -3627,15 +4182,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       )}
 
       {/* ── Expert-Specific Approval Workflow ── */}
-      {currentStep === 4 && role === "expert" && (
+      {onSection("roleExtras") && role === "expert" && (
         <Card>
           <CardHeader>
             <CardTitle>Submission & Approval</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* FP-2 / A1: the "within 48 hours" SLA claim is REMOVED, not reworded — the
+                execution map's Gate G5 #7 ("review SLA — is '2 business days' real?") is open
+                with the disposition "measure first, then commit or drop the number", and this
+                page had no measurement behind its 48. The review fact itself now leads the
+                form for both roles (the upfront notice above), so this card keeps only what
+                is specific to it: the record's real status. */}
             <div className="p-3 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-900">
-                Save your service as a draft, then submit it for approval. Our team will review and approve it within 48 hours.
+                Save your service as a draft at any point. Submitting sends it to our team for
+                review — it goes live once approved.
               </p>
             </div>
             <div>
@@ -3675,10 +4237,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               Cancel
             </Button>
 
-            {currentStep > 1 && (
+            {effectiveStep > 1 && (
               <Button
                 variant="outline"
-                onClick={() => goToStep(currentStep - 1)}
+                onClick={() => goToStep(effectiveStep - 1)}
                 disabled={createMutation.isPending}
                 data-testid="button-step-back"
               >
@@ -3714,20 +4276,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 : role === "expert" ? "Save as Draft" : "Save Draft"}
             </Button>
 
-            {currentStep < TOTAL_STEPS ? (
+            {effectiveStep < TOTAL_STEPS ? (
               <Button
                 className="bg-primary hover:bg-primary/90"
-                onClick={() => goToStep(currentStep + 1)}
+                onClick={() => goToStep(effectiveStep + 1)}
                 disabled={createMutation.isPending}
                 data-testid="button-step-next"
               >
-                Next: {STEP_TITLES[currentStep]}
+                Next: {STEP_SHORT_TITLES[flow[effectiveStep]]}
               </Button>
             ) : role === "expert" ? (
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("submit")}
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
                 title={
                   expertVerificationGateBlocked
                     ? "Submitting for review is fine while unverified — but it can't go live until your identity is verified in your Expert Status page"
@@ -3742,14 +4304,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("publish")}
-                disabled={createMutation.isPending || publishBlocked || verificationGateBlocked || attestationGateBlocked}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || attestationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
                 title={
                   verificationGateBlocked
-                    ? "Complete identity and business verification in your Provider Status page before publishing"
+                    ? "Complete identity and business verification in your Provider Status page before submitting this listing"
                     : publishBlocked
-                    ? "Complete background verification before publishing this category"
+                    ? "Complete background verification before submitting a listing in this category"
                     : attestationGateBlocked
-                    ? "Tick the confirmations on the Terms & requirements step before publishing"
+                    ? "Tick the confirmations on the Review & submit step before submitting"
                     : (!isEditMode && !formData.serviceOfferingTypeId)
                     ? "Pick an offering from the /earn catalog first"
                     : undefined
@@ -3761,7 +4323,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   ? "Verification Required"
                   : attestationGateBlocked
                   ? "Confirmations Required"
-                  : "Publish Service"}
+                  : "Submit for review"}
               </Button>
             )}
           </div>
@@ -3769,9 +4331,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {/* Final-step disabled explanation: name WHICH step holds each missing
               required field, with a jump link — mirrors the existing enforcement,
               adds none. */}
-          {currentStep === TOTAL_STEPS && missingForFinal.length > 0 && (
-            <p role={attemptedFinal ? "alert" : undefined} className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
-              Still needed before you {role === "expert" ? "submit" : "publish"}:{" "}
+          {effectiveStep === TOTAL_STEPS && missingForFinal.length > 0 && (
+            <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
+              Still needed before you submit for review:{" "}
               {missingForFinal.map((m, i) => (
                 <span key={`${m.step}-${m.label}`}>
                   {i > 0 && ", "}
@@ -3780,7 +4342,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     className="underline hover:text-foreground"
                     onClick={() => goToStep(m.step)}
                   >
-                    {m.label} (Step {m.step})
+                    {m.label} ({STEP_SHORT_TITLES[m.stepKey]}, step {m.step})
                   </button>
                 </span>
               ))}
@@ -3791,7 +4353,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {/* dispatch v1.3 R2: reinforce "what happens next" right at the submit action —
               submitting for review is never blocked while unverified (only going LIVE is
               gated, ruling 53), so this stays a note, not a disabled button. */}
-          {currentStep === TOTAL_STEPS && expertVerificationGateBlocked && (
+          {effectiveStep === TOTAL_STEPS && expertVerificationGateBlocked && (
             <p className="text-xs text-amber-700 sm:text-right" data-testid="text-expert-submit-verification-note">
               You can submit for review now — it just won't go live until you{" "}
               <a href="/expert-status" className="underline font-medium">verify your identity</a>.
@@ -3807,7 +4369,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               already had its escape, the provider branch did not. Copy only — this asserts no
               new state and changes no gate; it names the block the gate has ALREADY decided and
               points at the page that clears it. */}
-          {currentStep === TOTAL_STEPS && role === "provider" && (verificationGateBlocked || publishBlocked) && (
+          {effectiveStep === TOTAL_STEPS && role === "provider" && (verificationGateBlocked || publishBlocked) && (
             <p className="text-xs text-amber-700 sm:text-right" data-testid="text-provider-publish-verification-note">
               {verificationGateBlocked
                 ? "Publishing needs identity and business verification. "

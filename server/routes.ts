@@ -1,4 +1,4 @@
-import type { Express, RequestHandler, ErrorRequestHandler, Request, Response, NextFunction } from "express";
+import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
@@ -8,11 +8,15 @@ import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit }
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { redactTemplateContent } from "./utils/template-content-gate";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
+import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage } from "./storage";
+import { storage, type BookingStatusNotification } from "./storage";
 import { api } from "@shared/routes";
+// Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
+// see shared/booking-visibility.ts for why three tabs disagreed about one row.
+import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
@@ -21,7 +25,7 @@ import {
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
-  insertProviderServiceSchema, insertProviderServiceListingSchema, insertServiceCategorySchema,
+  insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
   insertServiceTemplateSchema, insertServiceBookingSchema, createBookingRequestSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
@@ -100,7 +104,7 @@ import { resolvePublishVerification } from "./services/publish-verification.serv
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EARNER_BOOKING_FIELDS, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -216,7 +220,6 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody, sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS, EXPERT_LISTING_TEXT_FIELDS } from "./utils/text-sanitizer";
 function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
   if (!slug) return "default";
   if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
@@ -384,8 +387,34 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const sanitizeInput = sanitizeText as (input: string) => string;
-const sanitizeObject = sanitizeObjectStrings;
+// Simple XSS sanitization - strips HTML tags and dangerous characters
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
+
+// Sanitize object string fields recursively
+function sanitizeObject<T extends Record<string, any>>(obj: T): T {
+  const result = { ...obj };
+  for (const key of Object.keys(result)) {
+    if (typeof result[key] === 'string') {
+      result[key] = sanitizeInput(result[key]);
+    }
+  }
+  return result;
+}
+
+// Migration 151 (§17 Product Builder): bundle_components.component_service_id is
+// ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
+// removed from the bundle. Postgres surfaces that as FK violation 23503; translate it into
+// an honest 409 naming the containing bundle(s) instead of an opaque 500. Returns true
+// when the response was sent (the error was this case), false to fall through.
 async function respondIfServiceInBundle(err: any, serviceId: string, res: any): Promise<boolean> {
   const code = err?.code ?? err?.cause?.code;
   if (code !== "23503") return false;
@@ -1854,7 +1883,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+          const input = insertLocalExpertFormSchema.parse(req.body);
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1876,7 +1905,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+      const input = insertLocalExpertFormSchema.parse(req.body);
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -1909,7 +1938,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+          const input = insertLocalExpertFormSchema.parse(req.body);
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1930,7 +1959,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
+      const input = insertLocalExpertFormSchema.parse(req.body);
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2010,7 +2039,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
+      const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2053,7 +2082,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           return res.status(400).json({ message: "officeLocation must carry numeric lat/lng within range, or be null to clear" });
         }
-        const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
+        const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
         officeLocation = { address, lat, lng };
       } else {
         return res.status(400).json({ message: "officeLocation must be an object with lat/lng, or null" });
@@ -2074,7 +2103,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
+      const input = insertServiceProviderFormSchema.parse(req.body);
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2581,18 +2610,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // is a hand-written zod ALLOWLIST of exactly the four translatable content fields (§19 — no
   // client-settable status/source/updatedBy/timestamp; status/source are set server-side by the
   // path, updatedBy from the session per §14). A PUT is replace-for-that-locale.
-  // Task 1135: translation content is provider prose — sanitized BEFORE the max checks
-  // (z.preprocess) so entity encoding can't push an accepted value past the length limit.
-  const sanitizedTranslationField = (max: number) =>
-    z.preprocess(
-      (v) => (typeof v === "string" ? sanitizeText(v) : v),
-      z.string().trim().max(max).nullish(),
-    );
   const translationContentBodySchema = z.object({
-    serviceName: sanitizedTranslationField(255),
-    shortDescription: sanitizedTranslationField(150),
-    description: sanitizedTranslationField(20000),
-    meetingPoint: sanitizedTranslationField(20000),
+    serviceName: z.string().trim().max(255).nullish(),
+    shortDescription: z.string().trim().max(150).nullish(),
+    description: z.string().trim().max(20000).nullish(),
+    meetingPoint: z.string().trim().max(20000).nullish(),
   });
   const normalizeContent = (b: z.infer<typeof translationContentBodySchema>) => ({
     serviceName: b.serviceName ?? null,
@@ -2738,9 +2760,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      // Task 1135: sanitize provider prose (incl. JSON prose — faqs/whatIncluded/requirements/
-      // pricingTiers) BEFORE schema parse, so length/min constraints validate the stored value.
-      const input = insertProviderServiceSchema.parse(sanitizeProviderServiceBody(bodyWithoutLocation));
+      const input = insertProviderServiceSchema.parse(bodyWithoutLocation);
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -2803,6 +2823,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // FP-1 / B7 DELIVERABLE PUBLISH GATE (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) —
+      // placed beside the price gate, on the same draft-exempt rule (ruling 56's placement
+      // discipline). The wizard labels the field "Deliverable File URL *" and warns in amber, but
+      // nothing enforced it: an $18 pdf guide published, went live and was sellable with the
+      // column empty, so a buyer could pay and receive nothing. Artifact-delivery only, via the
+      // SHARED predicate (isArtifactDelivery — pdf; shared/service-fundamentals.ts), so no other
+      // shape is newly blocked. Drafts still save incomplete.
+      if (input.status === "active" &&
+          isArtifactDelivery({
+            deliveryMethod: (input as any).deliveryMethod ?? null,
+            productShape: (input as any).productShape ?? null,
+          }) &&
+          !((input as any).serviceFile ?? "").toString().trim()) {
+        return res.status(400).json({
+          message: "A downloadable listing needs its deliverable file before publishing — upload the PDF or paste a link. Save as draft to finish later.",
+          code: "DELIVERABLE_FILE_REQUIRED",
+        });
+      }
+
       // F2 identity (+ business, provider-only) verification publish gate (Phase 0.5 —
       // docs/backoffice/EARN_PIPELINE_EVAL.md). Role-aware — see checkPublishVerificationGate
       // for the full rule (providers: service_provider_forms, both statuses; experts:
@@ -2848,7 +2887,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
       // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
       // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
-      const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
+      // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): `city` is SERVER-DERIVED from the
+      // neighborhood slug this write stores — the one structured location signal a listing carries
+      // — and only when that slug resolves to exactly one city. Never read from the body, never
+      // parsed out of the free-text `location`, NULL when unresolvable (§13; see
+      // utils/service-city.ts for the full rule set). Any client-sent `city` is dropped here.
+      const { city: _clientCity, ...inputWithoutCity } = input as any;
+      const cityPatch = await deriveCityPatch((input as any).neighborhood, {
+        neighborhoodPresent: (input as any).neighborhood !== undefined,
+      });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -2972,8 +3020,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      // Task 1135: sanitize provider prose (incl. JSON prose) BEFORE schema parse — see create.
-      const input = insertProviderServiceSchema.partial().parse(sanitizeProviderServiceBody(bodyWithoutLocation));
+      const input = insertProviderServiceSchema.partial().parse(bodyWithoutLocation);
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -2998,6 +3045,30 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({
             message: "Set a price greater than zero before publishing. Save as draft to finish later.",
             code: "PRICE_REQUIRED",
+          });
+        }
+      }
+
+      // FP-1 / B7 DELIVERABLE PUBLISH GATE — same rule as CREATE above, resolved from the patch or
+      // the existing row (the meeting-point/price gate shape). This is the arm that also catches a
+      // stored draft with an empty deliverable being flipped straight to active, and — because the
+      // effective value falls back to the stored one — a row whose file arrived through the
+      // owner-gated upload rail (POST .../deliverable-file writes serviceFile directly) publishes
+      // with no field in the body at all.
+      if (input.status === "active") {
+        const effMethodFile = (input as any).deliveryMethod ?? ownedService.deliveryMethod;
+        const effProductShape = (input as any).productShape ?? (ownedService as any).productShape ?? null;
+        // KEY-PRESENCE, not `??`: an explicit `serviceFile: null` in the body is a CLEAR, and the
+        // write below performs it — falling back to the stored value there would pass the gate on
+        // a file this very request is about to delete.
+        const fileFromBody = Object.prototype.hasOwnProperty.call(input, "serviceFile");
+        const effFile = ((fileFromBody ? (input as any).serviceFile : ownedService.serviceFile) ?? "")
+          .toString()
+          .trim();
+        if (isArtifactDelivery({ deliveryMethod: effMethodFile, productShape: effProductShape }) && !effFile) {
+          return res.status(400).json({
+            message: "A downloadable listing needs its deliverable file before publishing — upload the PDF or paste a link. Save as draft to finish later.",
+            code: "DELIVERABLE_FILE_REQUIRED",
           });
         }
       }
@@ -3091,8 +3162,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // discarding work. Do not "tidy up" by clearing the unused side here.
       //
       // Remove userId from input to prevent ownership transfer
-      const { userId: _, ...safeInputWithoutLocation } = input as any;
-      const safeInput = { ...safeInputWithoutLocation, ...locationPatch };
+      // FP-1 / B4: `city` is server-derived (utils/service-city.ts), never client-settable — the
+      // body's value is dropped and the column is re-derived ONLY when this PATCH carries a
+      // neighborhood. A patch that does not mention the neighborhood leaves the stored city
+      // exactly as it is (the extractServiceLocation rule-3 never-clobber posture); one that
+      // clears it clears the city with it, rather than keeping a city derived from a claim the
+      // listing no longer makes.
+      const { userId: _, city: _clientCityUpd, ...safeInputWithoutLocation } = input as any;
+      const cityPatchUpd = await deriveCityPatch((input as any).neighborhood, {
+        neighborhoodPresent: Object.prototype.hasOwnProperty.call(input, "neighborhood"),
+      });
+      const safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd };
       // A neighborhoods-only PATCH leaves no listing columns to update —
       // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
       // save before the coverage writer below could run. Skip the row update
@@ -3166,34 +3246,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return res.status(404).json({ message: "Service not found or not owned by you" });
     }
     try {
-      // Financial-history guard (mirrors DELETE /api/admin/services/:id): service_bookings.service_id
-      // is ON DELETE CASCADE, so a hard delete would silently destroy historical bookings and the
-      // platform_fee revenue snapshots. If any bookings reference this service, soft-delete instead —
-      // suspend it so it drops off public surfaces while every historical record keeps its reference.
-      // Single transaction with the row locked FOR UPDATE: a concurrent checkout's FK KEY SHARE lock
-      // conflicts with FOR UPDATE, so it can't slip a booking in between the count and the delete.
-      const outcome = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${req.params.id} FOR UPDATE`);
-        const [{ bookingCount }] = await tx
-          .select({ bookingCount: sql<number>`count(*)::int` })
-          .from(serviceBookings)
-          .where(eq(serviceBookings.serviceId, req.params.id));
-        if (bookingCount > 0) {
-          await tx
-            .update(providerServices)
-            .set({ status: "suspended", updatedAt: new Date() })
-            .where(eq(providerServices.id, req.params.id));
-          return { softDeleted: true as const, bookingCount };
-        }
-        await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
-        return { softDeleted: false as const, bookingCount: 0 };
-      });
-      if (outcome.softDeleted) {
-        return res.status(200).json({
-          softDeleted: true,
-          message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
-        });
-      }
+      await storage.deleteProviderService(req.params.id);
     } catch (err: any) {
       // Migration 151 RESTRICT: honest 409 when the service sits inside a bundle.
       if (await respondIfServiceInBundle(err, req.params.id, res)) return;
@@ -4136,39 +4189,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Expert access required" });
       }
 
-      const raw = req.body ?? {};
-      if (!raw.title || !raw.price) {
+      const { title, description, categoryName, existingCategoryId, price, duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes, isActive } = req.body;
+      
+      if (!title || !price) {
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      // Task 1135: sanitize expert prose FIRST, then parse the allow-listed schema — so a
-      // tag-only title ("<b></b>") sanitizes to "" and fails the schema's min(1) with a 400,
-      // and no unlisted field ever reaches the storage layer.
-      const body = insertProviderServiceListingSchema.parse(sanitizeTextFields(
-        {
-          title: raw.title,
-          description: raw.description,
-          categoryName: raw.categoryName,
-          existingCategoryId: raw.existingCategoryId,
-          price: String(raw.price),
-          duration: raw.duration,
-          deliverables: raw.deliverables,
-          cancellationPolicy: raw.cancellationPolicy,
-          leadTime: raw.leadTime,
-          imageUrl: raw.imageUrl,
-          galleryImages: raw.galleryImages,
-          experienceTypes: raw.experienceTypes,
-          isActive: raw.isActive !== false,
-        },
-        EXPERT_LISTING_TEXT_FIELDS,
-      ));
-
-      const service = await storage.createProviderServiceListing(userId, body);
+      const service = await storage.createProviderServiceListing(userId, {
+        title,
+        description,
+        categoryName,
+        existingCategoryId,
+        price: price.toString(),
+        duration,
+        deliverables,
+        cancellationPolicy,
+        leadTime,
+        imageUrl,
+        galleryImages,
+        experienceTypes,
+        isActive: isActive !== false,
+      });
       res.status(201).json(service);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service" });
-      }
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
     }
@@ -4190,18 +4233,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      // Task 1135: allow-list via the insert schema (partial) + sanitize expert prose BEFORE
-      // parse — never pass raw req.body through to the storage layer.
-      const patchInput = insertProviderServiceListingSchema.partial().parse(sanitizeTextFields(
-        { ...(req.body ?? {}) } as Record<string, any>,
-        EXPERT_LISTING_TEXT_FIELDS,
-      ));
-      const updated = await storage.updateProviderServiceListing(req.params.id, patchInput);
+      const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
       res.json(updated);
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service update" });
-      }
       console.error("Error updating custom service:", err);
       res.status(500).json({ message: "Failed to update custom service" });
     }
@@ -5113,19 +5147,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).from(serviceProviderForms)
         .where(eq(serviceProviderForms.userId, req.params.userId))
         .limit(1);
-      const [userRow] = await db.select({ handle: users.handle })
+      // Ledger 90 (FP-5, I3): `displayName` is additive here. The service-detail page's
+      // "Contact Provider" CTA needs the owner's display name to open a working chat thread —
+      // `/api/experts/:id` resolves EXPERT-FAMILY roles only, so a `service_provider` owner 404s
+      // there and chat.tsx's documented `?name=` fallback is the only way through (the same shape
+      // the storefront's Message CTA already uses). Derived exactly as storefront.routes.ts
+      // derives `earner.name`, so the two surfaces name the same person the same way. Nothing
+      // private is added: this name is already public on the storefront and every listing card.
+      const [userRow] = await db.select({
+        handle: users.handle,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
         .from(users)
         .where(eq(users.id, req.params.userId))
         .limit(1);
       const handle = userRow?.handle ?? null;
-      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle });
+      const displayName = userRow
+        ? ([userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || null)
+        : null;
+      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle, displayName });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
         businessVerified: form.businessVerificationStatus === "verified",
         handle,
+        displayName,
       });
     } catch {
-      res.json({ identityVerified: false, businessVerified: false, handle: null });
+      res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });
 
@@ -5439,20 +5488,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     "/api/provider/services/:id/deliverable-file",
     isAuthenticated,
     express.raw({ type: ["application/pdf", "application/octet-stream"], limit: "20mb" }) as RequestHandler,
-    // Route-scoped error mapper: express.raw rejects an over-limit body with a 413
-    // `entity.too.large` error that would otherwise fall through to the global handler as an
-    // opaque 500. Map it to the documented clean 400/DELIVERABLE_TOO_LARGE for THIS endpoint,
-    // for any oversized upload regardless of how far over the cap it is. Non-size errors pass through.
-    ((err: any, _req: Request, res: Response, next: NextFunction) => {
-      if (err && (err.type === "entity.too.large" || err.status === 413 || err.statusCode === 413)) {
-        return res.status(400).json({
-          message: "File exceeds the 20MB deliverable size limit",
-          code: "DELIVERABLE_TOO_LARGE",
-        });
-      }
-      return next(err);
-    }) as ErrorRequestHandler,
-    async (req: Request, res: Response) => {
+    async (req, res) => {
       try {
         const userId = getUserId(req)!;
         const service = await storage.getProviderServiceById(req.params.id);
@@ -5879,10 +5915,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              // Task-1137 leak audit: the requester here is the booking OWNER (provider/expert) —
-              // never the traveler — so the row must go through the earner allow-list, or the
-              // traveler's Stripe references (stripe*IntentId) and idempotencyKey leak.
-              return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: false, alreadyRefunded: true } });
+              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -5912,8 +5945,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
-            // Task-1137 leak audit: earner allow-list projection (see note above).
-            return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
           } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
             return res.status(502).json({
@@ -5924,46 +5956,43 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
+      // QA-2 (ledger 96, Finding A/B): the traveler notification for BOTH the accept and the
+      // unpaid-decline branches now travels IN the same transaction as the status flip (see
+      // storage.updateServiceBookingStatus) instead of a separate best-effort call after commit —
+      // a crash between the flip and the old separate write left a status change with no
+      // notification, and the atomic-conditional guard turned a client retry into a 409 that could
+      // never repair it. dedupeKey = `booking:<id>:<event>` makes a concurrent duplicate/retry of
+      // this SAME transition a no-op (ON CONFLICT DO NOTHING on notifications.dedupe_key).
+      const notify: BookingStatusNotification | undefined = booking.travelerId
+        ? status === "confirmed"
+          ? {
+              userId: booking.travelerId,
+              type: "booking_confirmed",
+              title: "Booking accepted",
+              message: `Your booking ${booking.trackingNumber ?? ""} was accepted by the provider.`,
+              data: { bookingId: req.params.id, acceptedBy: "provider" },
+              dedupeKey: `booking:${req.params.id}:accepted`,
+            }
+          : {
+              // Reached only for an UNPAID cancellation (a stamped-but-not-succeeded PI falls
+              // through to this same branch — see the piSucceeded check above) — the paid-refund
+              // branch above returns earlier with its own notification.
+              userId: booking.travelerId,
+              type: "booking_cancelled",
+              title: "Booking cancelled by provider",
+              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              dedupeKey: `booking:${req.params.id}:cancelled`,
+            }
+        : undefined;
+
+      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom, notify);
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
-        // caller wins; the loser changes nothing and fires no side-effects.
+        // caller wins; the loser changes nothing and fires no side-effects — including no
+        // notification (the notify insert lives inside the same transaction the lost race rolled
+        // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
-      }
-
-      // Acceptance tells the traveler too — symmetric with the cancellation notices below;
-      // no silent state changes in either direction.
-      if (status === "confirmed" && updated.travelerId) {
-        try {
-          await storage.createNotification({
-            userId: updated.travelerId,
-            type: "booking_confirmed",
-            title: "Booking confirmed",
-            message: `Your booking ${updated.trackingNumber ?? ""} was accepted by the provider.`,
-            relatedId: req.params.id,
-            relatedType: "booking",
-            data: { bookingId: req.params.id },
-          });
-        } catch (notifyErr) {
-          console.error("Failed to notify traveler of booking acceptance:", notifyErr);
-        }
-      }
-
-      // Unpaid cancellation still tells the traveler — no silent state changes.
-      if (status === "cancelled" && updated.travelerId) {
-        try {
-          await storage.createNotification({
-            userId: updated.travelerId,
-            type: "booking_cancelled",
-            title: "Booking cancelled by provider",
-            message: `Your booking ${updated.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-            relatedId: req.params.id,
-            relatedType: "booking",
-            data: { bookingId: req.params.id, cancelledBy: "provider" },
-          });
-        } catch (notifyErr) {
-          console.error("Failed to notify traveler of provider cancellation:", notifyErr);
-        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
@@ -6001,8 +6030,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // Task-1137 leak audit: earner allow-list projection (see note above).
-      res.json(pickPublicFields(updated, EARNER_BOOKING_FIELDS));
+      res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -6172,10 +6200,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }));
       }
       metadata.visaStatusUpdatedAt = new Date().toISOString();
-      const updatedRaw = await storage.updateServiceBookingMetadata(req.params.id, metadata);
-      // Task-1137 leak audit: this route is gated to the booking's PROVIDER, so the returned
-      // row must go through the earner allow-list (strips stripe*IntentId + idempotencyKey).
-      const updated = updatedRaw ? pickPublicFields(updatedRaw, EARNER_BOOKING_FIELDS) : updatedRaw;
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
 
       // Send notification to the traveler about the visa status change
       try {
@@ -6909,8 +6934,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ) || 0;
       
       const completedBookings = bookings.filter(b => b.status === "completed");
-      const pendingBookings = bookings.filter(b => b.status === "pending");
-      
+      // Ledger 90 (FP-5, X1): the ONE shared predicate (shared/booking-visibility.ts), so this
+      // tile, Today's Action Items and the Inbox queue count the same rows. `payment_pending` is
+      // excluded BY RULE — an unauthorized §15b claim is not provider-actionable (§18b) — and is
+      // reported separately, additively, so the surface can disclose it without banking it.
+      const pendingBookings = bookings.filter(b => isActionableBooking(b.status));
+      const awaitingPaymentBookings = bookings.filter(b => isProvisionalBooking(b.status));
+
       // Monthly breakdown from real booking data
       const now = new Date();
       const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
@@ -7006,6 +7036,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           avgRating,
           activeServices: services.filter(s => s.status === "active").length,
           pendingBookings: pendingBookings.length,
+          // Ledger 90 (FP-5, X1): additive — provisional §15b claims, counted separately so the
+          // console can DISCLOSE them without any surface treating them as actionable or as money.
+          awaitingPaymentBookings: awaitingPaymentBookings.length,
           completedBookings: completedBookings.length,
         },
         monthlyRevenue,
@@ -7475,7 +7508,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
             return res.status(400).json({ message: "pickupLocation must carry numeric lat/lng within range, or be null to clear" });
           }
-          const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
+          const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
           pickupLocationUpdate = { pickupLocation: { address, lat, lng } };
         } else {
           return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });

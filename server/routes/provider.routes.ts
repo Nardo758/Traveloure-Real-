@@ -6,24 +6,10 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { users, providerServices, bundleComponents } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { guardedDeleteProviderService, softDeleteMessage } from "../services/service-delete-guard";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
-import { sanitizeText } from "../utils/text-sanitizer";
-
-// Task 1135: provider prose sanitized on write (defense-in-depth for non-React sinks such as
-// emails, PDFs, and CSV/API exports). Applied as z.preprocess so min/max validate the SANITIZED
-// value — entity encoding can't push an accepted string past a varchar limit, and a tag-only
-// value that sanitizes to "" fails the required min(1) instead of persisting empty.
-const sanitizedText = (max: number) =>
-  z.preprocess(
-    (v) => (typeof v === "string" ? sanitizeText(v) : v),
-    z.string().trim().min(1).max(max),
-  );
-const sanitizedTextOptional = (max: number) =>
-  z.preprocess(
-    (v) => (typeof v === "string" ? sanitizeText(v) : v),
-    z.string().max(max).optional(),
-  );
+// Ledger 90 (FP-5, S2): the payout floor is quoted from its single source, never re-typed here.
+import { MIN_PAYOUT_DOLLARS } from "../config/payout.config";
+import { deriveCityPatch } from "../utils/service-city";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -38,8 +24,15 @@ const sanitizedTextOptional = (max: number) =>
  *
  * NOT money-path: settings are self-scoped by userId (unique per user); PATCH is a zod
  * allow-list of the seven editable fields only (never raw req.body), so ownership/identity
- * columns can't be mass-assigned. `payoutFrequency`/`minimumPayoutAmount` are provider
- * preferences, not a charge/transfer amount — no Stripe/earning write happens here.
+ * columns can't be mass-assigned. No Stripe/earning write happens here.
+ *
+ * ONE clause updated by ledger 90 (FP-5, S2), because it stopped being true: `minimumPayoutAmount`
+ * now BINDS IN A MONEY DECISION — `POST /api/payouts/request` gates on
+ * max(MIN_PAYOUT_CENTS, this value). The §14 posture holds and is worth stating: the value is READ
+ * server-side from the caller's own settings row, never accepted from the payout request's body,
+ * and it can only ever RAISE the bar on the owner's own withdrawal — it can never lower the
+ * platform floor, move an amount, or affect any other party. (`payoutFrequency` remains a
+ * preference with no consumer; its control was removed by S1 — see settings.tsx.)
  *
  * The /api/provider/earnings* family (also dark) is intentionally NOT mounted here: no client
  * consumer calls it (the earnings page derives from the live /api/provider/bookings), so
@@ -93,13 +86,20 @@ router.get("/api/provider/settings", isAuthenticated, async (req, res) => {
     const settings = await storage.getProviderSettings(userId);
     if (!settings) {
       // Sensible defaults so a first-time provider sees the form populated (no row yet).
+      //
+      // Ledger 90 (FP-5, S2): `minimumPayoutAmount` defaults to the PLATFORM FLOOR, not the old
+      // cosmetic "100". While the control was inert the value was decoration; now that it BINDS
+      // (POST /api/payouts/request enforces max(floor, this)), a form pre-filled with 100 would
+      // silently impose a $100 threshold on every provider who ever pressed Save without touching
+      // the field. The honest starting value is the threshold actually in force for a provider
+      // with no preference — the floor itself.
       return res.json({
         instantBooking: false,
         autoResponse: true,
         minimumLeadTimeDays: 7,
         targetResponseTimeHours: 2,
         payoutFrequency: "monthly",
-        minimumPayoutAmount: "100",
+        minimumPayoutAmount: MIN_PAYOUT_DOLLARS.toFixed(2),
         notificationsJson: {
           newBookings: true,
           bookingUpdates: true,
@@ -147,22 +147,51 @@ const bundlePriceField = z
 
 // Allow-list only — approvalStatus/userId/earnings columns are never accepted from the
 // client (the marketplace Gap-2 lesson; D1a clamps the born state server-side below).
-export const bundleCreateSchema = z.object({
-  serviceName: sanitizedText(255),
-  description: sanitizedTextOptional(10000),
+const bundleCreateSchema = z.object({
+  serviceName: z.string().trim().min(1).max(255),
+  description: z.string().max(10000).optional(),
   price: bundlePriceField,
   componentServiceIds: z.array(z.string().min(1)).min(2),
 });
 
 const bundlePatchSchema = z.object({
-  serviceName: sanitizedText(255).optional(),
-  description: sanitizedTextOptional(10000),
+  serviceName: z.string().trim().min(1).max(255).optional(),
+  description: z.string().max(10000).optional(),
   price: bundlePriceField.optional(),
   componentServiceIds: z.array(z.string().min(1)).min(2).optional(),
   status: z.enum(["active", "paused"]).optional(),
 });
 
 type ProviderServiceRow = typeof providerServices.$inferSelect;
+
+/**
+ * ── FP-1 / B2 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
+ * `provider_services.delivery_method` DEFAULTs to 'pdf' (shared/schema.ts). These Workstation
+ * builders never set the column, so every property, room and bundle they created was stored as
+ * 'pdf' — and that is NOT internal: the traveler-facing storefront card for a 1912 machiya guest
+ * room read "PDF guide", and a bundle mixing an in-person food walk with a video call printed the
+ * literal string `pdf`. The same column drives the D8 completion rule and the D2 fundamentals.
+ *
+ * The two honest values, from the canonical 7 ONLY (CLAUDE.md §3, deliveryMethodEnum):
+ *   property / property_room → `in_person`. An accommodation is consumed at the place it is.
+ *   bundle                   → DERIVED from its components: the method they all share when they
+ *                              agree, otherwise `hybrid` (a genuinely mixed bundle; the canonical
+ *                              vocabulary has exactly one word for that).
+ * A component set with no methods at all is not derivable, so `null` is returned and the caller
+ * leaves the column alone rather than guessing (§13). Migration 208 repairs rows already on disk
+ * under the same rules.
+ */
+const PROPERTY_DELIVERY_METHOD = "in_person";
+const MIXED_BUNDLE_DELIVERY_METHOD = "hybrid";
+
+function deriveBundleDeliveryMethod(components: ProviderServiceRow[]): string | null {
+  const methods = new Set(
+    components.map((c) => (c.deliveryMethod ?? "").trim()).filter((m) => m.length > 0),
+  );
+  if (methods.size === 0) return null;
+  if (methods.size === 1) return Array.from(methods)[0];
+  return MIXED_BUNDLE_DELIVERY_METHOD;
+}
 
 function toComponentSummary(rows: ProviderServiceRow[]) {
   // Owner console shape — the owner may see unapproved states of their own services.
@@ -226,6 +255,9 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
     const components = await validateBundleComponents(userId, body.componentServiceIds, res);
     if (!components) return;
 
+    // FP-1 / B2: an honest delivery method, derived from what the bundle actually contains.
+    const bundleDeliveryMethod = deriveBundleDeliveryMethod(components);
+
     // Transaction: the bundle row and its component rows exist together or not at all.
     const bundle = await db.transaction(async (tx) => {
       const [created] = await tx
@@ -236,6 +268,7 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
           description: body.description ?? null,
           price: body.price,
           productShape: "bundle",
+          ...(bundleDeliveryMethod ? { deliveryMethod: bundleDeliveryMethod } : {}),
           // D1a: born-submitted, server-clamped — approvalStatus is never read from the body.
           approvalStatus: "submitted",
           submittedAt: new Date(),
@@ -348,6 +381,13 @@ router.patch("/api/provider/bundles/:id", isAuthenticated, async (req, res) => {
       if (body.description !== undefined) patch.description = body.description;
       if (body.price !== undefined) patch.price = body.price;
       if (body.status !== undefined) patch.status = body.status;
+      // FP-1 / B2: a changed component set can change what the bundle IS — re-derive the delivery
+      // method from the new members so the traveler-facing label never goes stale. Only when the
+      // set actually changed, and only when it is derivable at all (§13).
+      if (components) {
+        const rederived = deriveBundleDeliveryMethod(components);
+        if (rederived) patch.deliveryMethod = rederived;
+      }
       if (reenteredReview) {
         patch.approvalStatus = "submitted";
         patch.submittedAt = new Date();
@@ -411,15 +451,7 @@ router.delete("/api/provider/bundles/:id", isAuthenticated, async (req, res) => 
     }
     // bundle_components.bundle_service_id is ON DELETE CASCADE (migration 151) —
     // deleting the bundle's provider_services row takes its component rows with it.
-    // Financial-history guard: bundles are bookable rows in the same table, so a bundle
-    // with bookings is suspended instead of deleted (service_bookings CASCADE hazard).
-    const outcome = await guardedDeleteProviderService(existing.id);
-    if (outcome.softDeleted) {
-      return res.status(200).json({
-        softDeleted: true,
-        message: softDeleteMessage("Bundle", outcome.bookingCount),
-      });
-    }
+    await db.delete(providerServices).where(eq(providerServices.id, existing.id));
     res.status(204).send();
   } catch (err) {
     console.error("[Provider] deleteBundle error:", err);
@@ -451,8 +483,8 @@ const roomPriceField = z
 // vendor_availability_slots.capacity, set per-night via the .../slots/range endpoint (which
 // defaults to this value when the caller omits capacity).
 const roomInputSchema = z.object({
-  roomName: sanitizedText(255),
-  description: sanitizedTextOptional(2000),
+  roomName: z.string().trim().min(1).max(255),
+  description: z.string().max(2000).optional(),
   price: roomPriceField,
   units: z.number().int().min(1).max(100).optional(),
 });
@@ -469,12 +501,12 @@ const locationPointSchema = z.object({
   lng: z.number().finite().min(-180).max(180),
 });
 
-export const propertyCreateSchema = z.object({
-  serviceName: sanitizedText(255),
-  description: sanitizedTextOptional(10000),
-  location: sanitizedTextOptional(255),
+const propertyCreateSchema = z.object({
+  serviceName: z.string().trim().min(1).max(255),
+  description: z.string().max(10000).optional(),
+  location: z.string().max(255).optional(),
   locationPoint: locationPointSchema.optional(),
-  neighborhood: sanitizedTextOptional(100),
+  neighborhood: z.string().max(100).optional(),
   categoryId: z.string().optional(),
   serviceImage: z.string().max(2000).optional(),
   galleryImages: z.array(z.string().max(2000)).max(20).optional(),
@@ -482,18 +514,18 @@ export const propertyCreateSchema = z.object({
 });
 
 const propertyPatchSchema = z.object({
-  serviceName: sanitizedText(255).optional(),
-  description: sanitizedTextOptional(10000),
-  location: sanitizedTextOptional(255),
-  neighborhood: sanitizedTextOptional(100),
+  serviceName: z.string().trim().min(1).max(255).optional(),
+  description: z.string().max(10000).optional(),
+  location: z.string().max(255).optional(),
+  neighborhood: z.string().max(100).optional(),
   serviceImage: z.string().max(2000).optional(),
   galleryImages: z.array(z.string().max(2000)).max(20).optional(),
   status: z.enum(["active", "paused"]).optional(),
 });
 
 const roomPatchSchema = z.object({
-  roomName: sanitizedText(255).optional(),
-  description: sanitizedTextOptional(2000),
+  roomName: z.string().trim().min(1).max(255).optional(),
+  description: z.string().max(2000).optional(),
   price: roomPriceField.optional(),
   units: z.number().int().min(1).max(100).optional(),
   status: z.enum(["active", "paused"]).optional(),
@@ -536,6 +568,13 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
         }
       : {};
 
+    // FP-1 / B4: server-derived city from the neighborhood slug (utils/service-city.ts) — the same
+    // ONE rule the listing wizard uses. NULL when the property names no neighborhood, or when the
+    // slug is ambiguous; never guessed from the free-text location (§13).
+    const cityPatch = await deriveCityPatch(body.neighborhood, {
+      neighborhoodPresent: body.neighborhood !== undefined,
+    });
+
     const { property, rooms } = await db.transaction(async (tx) => {
       const [createdProperty] = await tx
         .insert(providerServices)
@@ -546,10 +585,13 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
           ...coords,
           ...(body.location !== undefined ? { location: body.location } : {}),
           ...(body.neighborhood !== undefined ? { neighborhood: body.neighborhood } : {}),
+          ...cityPatch,
           ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
           serviceImage: body.serviceImage ?? null,
           galleryImages: body.galleryImages ?? [],
           productShape: "property",
+          // FP-1 / B2: an accommodation is place-anchored, not a PDF (see deriveBundleDeliveryMethod).
+          deliveryMethod: PROPERTY_DELIVERY_METHOD,
           // D1a: born-submitted, server-clamped — approvalStatus is never read from the body.
           approvalStatus: "submitted",
           submittedAt: new Date(),
@@ -568,10 +610,16 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
             price: r.price,
             pricingUnit: "per_night" as const,
             productShape: "property_room" as const,
+            // FP-1 / B2: a room inherits the property's place-anchored delivery, never the
+            // column DEFAULT 'pdf' that had guest rooms labelled "PDF guide" to travelers.
+            deliveryMethod: createdProperty.deliveryMethod ?? PROPERTY_DELIVERY_METHOD,
             parentServiceId: createdProperty.id,
             categoryId: createdProperty.categoryId,
             location: createdProperty.location,
             neighborhood: createdProperty.neighborhood,
+            // FP-1 / B4: a room sits in its property's city by construction — inherit the DERIVED
+            // value rather than re-deriving (or leaving the room out of its own market page).
+            city: createdProperty.city,
             // Rooms sit at the property's own confirmed point — inheriting the coordinates
             // (and its precision) is the same truthful claim, not a new one.
             latitude: createdProperty.latitude,
@@ -648,7 +696,12 @@ router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) =
     if (body.serviceName !== undefined) patch.serviceName = body.serviceName;
     if (body.description !== undefined) patch.description = body.description;
     if (body.location !== undefined) patch.location = body.location;
-    if (body.neighborhood !== undefined) patch.neighborhood = body.neighborhood;
+    if (body.neighborhood !== undefined) {
+      patch.neighborhood = body.neighborhood;
+      // FP-1 / B4: the city follows the neighborhood it was derived from — re-derived here, and
+      // set to NULL when the new value resolves to nothing (never left pointing at the old city).
+      Object.assign(patch, await deriveCityPatch(body.neighborhood, { neighborhoodPresent: true }));
+    }
     if (body.serviceImage !== undefined) patch.serviceImage = body.serviceImage;
     if (body.galleryImages !== undefined) patch.galleryImages = body.galleryImages;
     if (body.status !== undefined) patch.status = body.status;
@@ -679,15 +732,7 @@ router.delete("/api/provider/properties/:id", isAuthenticated, async (req, res) 
     if (!existing || existing.userId !== userId || existing.productShape !== "property") {
       return res.status(404).json({ message: "Property not found or not owned by you" });
     }
-    // Financial-history guard: a property with bookings is suspended, never hard-deleted
-    // (service_bookings.service_id CASCADE would wipe booking history + fee snapshots).
-    const outcome = await guardedDeleteProviderService(existing.id);
-    if (outcome.softDeleted) {
-      return res.status(200).json({
-        softDeleted: true,
-        message: softDeleteMessage("Property", outcome.bookingCount),
-      });
-    }
+    await db.delete(providerServices).where(eq(providerServices.id, existing.id));
     res.status(204).send();
   } catch (err) {
     if (await respondIfPropertyHasRooms(err, req.params.id, res)) return;
@@ -725,10 +770,14 @@ router.post("/api/provider/properties/:id/rooms", isAuthenticated, async (req, r
           price: body.price,
           pricingUnit: "per_night" as const,
           productShape: "property_room" as const,
+          // FP-1 / B2: same inheritance as the rooms created with the property.
+          deliveryMethod: property.deliveryMethod ?? PROPERTY_DELIVERY_METHOD,
           parentServiceId: property.id,
           categoryId: property.categoryId,
           location: property.location,
           neighborhood: property.neighborhood,
+          // FP-1 / B4: same inheritance as the rooms created with the property.
+          city: property.city,
           ...(body.units != null ? { categoryAttributes: { units: body.units } } : {}),
           // D1a: born-submitted, server-clamped.
           approvalStatus: "submitted",
@@ -821,11 +870,8 @@ router.delete("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
     // A3: removing a room type from an APPROVED property is also a room-set change —
     // re-enter the property's review, symmetric with the add-room trigger above.
     let propertyReenteredReview = false;
-    // Financial-history guard: a room with bookings is suspended, never hard-deleted
-    // (service_bookings.service_id CASCADE would wipe its booking history). Either way the
-    // room leaves the sellable roster, so the A3 property re-review trigger fires in both
-    // branches — atomically, inside the same guarded transaction.
-    const outcome = await guardedDeleteProviderService(existing.id, async (tx) => {
+    await db.transaction(async (tx) => {
+      await tx.delete(providerServices).where(eq(providerServices.id, existing.id));
       if (existing.parentServiceId) {
         const [property] = await tx
           .select()
@@ -841,14 +887,6 @@ router.delete("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
       }
     });
 
-    if (outcome.softDeleted) {
-      return res.json({
-        success: true,
-        softDeleted: true,
-        propertyReenteredReview,
-        message: softDeleteMessage("Room", outcome.bookingCount),
-      });
-    }
     res.json({ success: true, propertyReenteredReview });
   } catch (err) {
     console.error("[Provider] deleteRoom error:", err);

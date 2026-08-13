@@ -1,6 +1,5 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
@@ -139,6 +138,21 @@ import {
   type GuestTravelPlan,
   type InviteTemplate,
 } from "../shared/guest-invites-schema";
+
+// QA-2 (ledger 96, migration 209): the durable-notification shape a caller of
+// updateServiceBookingStatus may attach to a status transition. Inserted INSIDE the same
+// transaction as the status flip (the ruling-80 "flip-and-mint in one transaction" precedent,
+// applied to notifications), keyed by `dedupeKey` against notifications.dedupe_key's partial
+// UNIQUE index (ON CONFLICT DO NOTHING) so a crash-retry of the SAME transition never inserts a
+// duplicate row. `dedupeKey` should be shaped `booking:<id>:<event>` (e.g. `booking:<id>:accepted`).
+export interface BookingStatusNotification {
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: Record<string, unknown>;
+  dedupeKey: string;
+}
 
 export interface IStorage {
   // Trips
@@ -285,7 +299,7 @@ export interface IStorage {
   getServiceBookings(filters: { providerId?: string; travelerId?: string; status?: string }): Promise<ServiceBooking[]>;
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
-  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined>;
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
@@ -1648,9 +1662,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProviderService(id: string): Promise<void> {
-    // Financial-history guard: suspend instead of delete when bookings reference the row
-    // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
-    await guardedDeleteProviderService(id);
+    await db.delete(providerServices).where(eq(providerServices.id, id));
   }
 
   async upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void> {
@@ -2085,7 +2097,7 @@ export class DatabaseStorage implements IStorage {
    * promote. The `vendor_availability_slots.booked_count` taken at claim time was destroyed for
    * good, with no code path to give it back.
    */
-  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined> {
+  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
@@ -2103,36 +2115,90 @@ export class DatabaseStorage implements IStorage {
       ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
       : eq(serviceBookings.id, id);
 
-    // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
-    // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking
-    // stays in its prior status, so the traveler endpoint's retry re-attempts the whole thing —
-    // never a completed booking with no earnings. Mint is idempotent under conflict (partial
-    // unique indexes + ON CONFLICT DO NOTHING), which also fixes the latent dispute-reject
-    // double-mint (completed → disputed → re-completed).
+    // ONE transaction for the status flip and every same-commit side-effect (ruling 80's
+    // "flip-and-mint in one transaction" precedent, generalized): the completion earnings mint,
+    // the QA-2 durable notification (dedupe_key, ON CONFLICT DO NOTHING — see BookingStatusNotification),
+    // and — on the FIRST transition into cancelled/refunded — the slot release below (QA-2 Finding C).
+    // A crash mid-transaction rolls everything back, so a retry re-attempts the whole set; nothing
+    // here can land the status flip without its notification, or vice versa.
     let updated: ServiceBooking | undefined;
-    if (status === "completed") {
-      updated = await db.transaction(async (tx) => {
-        const [u] = await tx.update(serviceBookings)
-          .set(updates)
-          .where(guard)
-          .returning();
-        if (!u) return undefined;
-        await this.mintCompletionEarningsForBooking(u, tx);
-        return u;
-      });
-    } else {
-      [updated] = await db.update(serviceBookings)
+    updated = await db.transaction(async (tx) => {
+      const [u] = await tx.update(serviceBookings)
         .set(updates)
         .where(guard)
         .returning();
-    }
+      if (!u) return undefined;
+
+      // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
+      // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking
+      // stays in its prior status, so the traveler endpoint's retry re-attempts the whole thing —
+      // never a completed booking with no earnings. Mint is idempotent under conflict (partial
+      // unique indexes + ON CONFLICT DO NOTHING), which also fixes the latent dispute-reject
+      // double-mint (completed → disputed → re-completed).
+      if (status === "completed") {
+        await this.mintCompletionEarningsForBooking(u, tx);
+      }
+
+      // QA-2 Finding C: a booking that carries a claimed vendor_availability_slots row (the
+      // checkout spine's storage.bookSlot claim — request-rail bookings never carry a slotId, see
+      // shared/schema.ts's createBookingRequestSchema note) gives its capacity back on the FIRST
+      // transition into cancelled/refunded, exactly mirroring the sweep's voidClaim and
+      // refundServiceBooking's releaseSlot — same floor-at-0 / re-open-if-under-capacity shape,
+      // just inlined here so it commits atomically with the status flip instead of needing a
+      // second reclaim rail (§18c: no second writer on the claim/slot machinery). A row already
+      // past its first cancellation (priorStatus already cancelled/refunded) never re-releases —
+      // same guard as the pre-existing bookingsCount decrement below.
+      const cancelStatuses = ["cancelled", "refunded"];
+      const isFirstCancellation =
+        cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || "");
+      if (isFirstCancellation && u.slotId) {
+        await tx.execute(sql`
+          UPDATE vendor_availability_slots
+          SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
+              status = CASE
+                WHEN status = 'fully_booked'
+                     AND GREATEST(COALESCE(booked_count, 0) - 1, 0) < COALESCE(capacity, 1)
+                  THEN 'available'
+                ELSE status
+              END,
+              updated_at = NOW()
+          WHERE id = ${u.slotId}
+        `);
+      }
+
+      // QA-2 Finding A: the durable in-app notification, same transaction as the flip above.
+      // ON CONFLICT DO NOTHING against notifications.dedupe_key's partial UNIQUE index (migration
+      // 209) — a retried/duplicated call for the SAME event (same dedupeKey) inserts zero extra
+      // rows, so this is safe to call again after a crash or under a concurrent duplicate.
+      if (notify) {
+        await tx.insert(notifications).values({
+          userId: notify.userId,
+          type: notify.type,
+          title: notify.title,
+          message: notify.message,
+          relatedId: id,
+          relatedType: "booking",
+          data: notify.data ?? null,
+          dedupeKey: notify.dedupeKey,
+        }).onConflictDoNothing({
+          target: notifications.dedupeKey,
+          where: sql`dedupe_key IS NOT NULL`,
+        });
+      }
+
+      return u;
+    });
 
     // 0 rows: either the id vanished, or (with a guard) a concurrent writer moved the row out of
     // every expected state first. Either way this caller lost — and critically, NONE of the
-    // side-effects below run, so a lost race mints no earnings and no revenue row.
+    // side-effects above ran, so a lost race mints no earnings, releases no slot and writes no
+    // notification.
     if (!updated) return undefined;
 
-    // Only decrement bookingsCount on the FIRST transition to cancelled/refunded.
+    // Only decrement bookingsCount on the FIRST transition to cancelled/refunded. (Kept OUTSIDE
+    // the transaction above, unchanged from before this lane — a display counter, not a money or
+    // inventory invariant, so it does not need the same all-or-nothing guarantee as the slot
+    // release/notification/mint.)
     const cancelStatuses = ["cancelled", "refunded"];
     const isFirstCancellation =
       cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || '');
@@ -2141,7 +2207,7 @@ export class DatabaseStorage implements IStorage {
         .set({ bookingsCount: sql`GREATEST(${providerServices.bookingsCount} - 1, 0)` })
         .where(eq(providerServices.id, updated.serviceId));
     }
-    
+
     return updated;
   }
 
@@ -3304,18 +3370,11 @@ export class DatabaseStorage implements IStorage {
       .from(expertServiceOfferings)
       .where(eq(expertServiceOfferings.id, serviceOfferingId));
     if (!offering) return;
-    // Financial-history guard: this matches by owner+name, so resolve the concrete row ids
-    // first, then run each through the guarded delete (suspend when bookings exist —
-    // service_bookings.service_id is ON DELETE CASCADE).
-    const rows = await db.select({ id: providerServices.id })
-      .from(providerServices)
+    await db.delete(providerServices)
       .where(and(
         eq(providerServices.userId, expertId),
         eq(providerServices.serviceName, offering.name)
       ));
-    for (const row of rows) {
-      await guardedDeleteProviderService(row.id);
-    }
   }
 
   // Expert Specializations
@@ -3615,9 +3674,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProviderServiceListing(id: string): Promise<void> {
-    // Financial-history guard: suspend instead of delete when bookings reference the row
-    // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
-    await guardedDeleteProviderService(id);
+    await db.delete(providerServices).where(eq(providerServices.id, id));
   }
 
   async getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]> {

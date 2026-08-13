@@ -1,5 +1,4 @@
 import { db } from "../db";
-import { guardedDeleteProviderService } from "./service-delete-guard";
 import {
   users, contactSubmissions, notifications, accessAuditLogs,
   serviceBookings, providerServices, serviceReviews, reviewModerationLogs,
@@ -172,9 +171,7 @@ export async function updateProviderServiceAffinityTags(id: string, tags: string
 export async function checkAndDeleteProviderService(id: string) {
   const [row] = await db.select().from(providerServices).where(eq(providerServices.id, id)).limit(1);
   if (!row) return null;
-  // Financial-history guard: suspend instead of delete when bookings reference the row
-  // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
-  await guardedDeleteProviderService(id);
+  await db.delete(providerServices).where(eq(providerServices.id, id));
   return row;
 }
 
@@ -1626,7 +1623,5 @@ export async function getProviderServiceById(id: string) {
 }
 
 export async function deleteProviderService(id: string) {
-  // Financial-history guard: suspend instead of delete when bookings reference the row
-  // (service_bookings.service_id is ON DELETE CASCADE — see service-delete-guard).
-  return guardedDeleteProviderService(id);
+  return db.delete(providerServices).where(eq(providerServices.id, id));
 }

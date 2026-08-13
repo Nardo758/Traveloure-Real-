@@ -61,6 +61,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+// Ledger 90 (FP-5, I3): the SAME rail the storefront's Message CTA uses. "Contact Provider" used
+// to link to `/chat?provider=<userId>` — a param chat.tsx has never read — landing the traveler on
+// a directory of four seeded experts with no composer and no sign of the person they were reading
+// about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
+// and it works; the CTA was simply speaking a language the destination doesn't parse.
+import { useAskExpert } from "@/lib/use-ask-expert";
 
 interface PricingTier {
   label: string;
@@ -211,6 +217,9 @@ interface ProviderVerification {
   // A6: storefront handle (migration 136, users.handle) — null when the owner hasn't
   // claimed one yet. Backs the breadcrumb's "/p/:handle" link only when non-null.
   handle: string | null;
+  // Ledger 90 (FP-5, I3): the owner's public display name, needed by "Contact Provider" to open
+  // a real chat thread (chat.tsx's `?name=` fallback — `/api/experts/:id` is expert-family only).
+  displayName?: string | null;
 }
 
 // C2: public read-only availability calendar. Server (GET /api/services/:id/availability)
@@ -238,6 +247,10 @@ export default function ServiceDetailPage() {
   const { toast } = useToast();
   const { locale } = useLocale();
   const { t } = useTranslation("common");
+  // Ledger 90 (FP-5, I3) — see the import note. `useAskExpert` already gates on auth (opening the
+  // sign-in modal with a returnTo instead of bouncing to "/") and forwards the display-name
+  // fallback chat.tsx needs for a provider-role target.
+  const askExpert = useAskExpert();
 
   const { data: service, isLoading: serviceLoading, isError: serviceError } = useQuery<Service>({
     // Ruling 60 Phase B: the active chrome locale (Phase A resolution) rides the read as
@@ -493,6 +506,10 @@ export default function ServiceDetailPage() {
   }
 
   const rating = parseFloat(service.averageRating || "0") || 0;
+  // FP-1 / B3: the stored 'Unknown' default is ABSENCE, not a place — treat it as empty here so
+  // the location chip below simply does not render (§13). Same filter as cart.tsx / routes.ts.
+  const rawLocation = (service.location ?? "").trim();
+  const displayLocation = rawLocation && rawLocation !== "Unknown" ? rawLocation : null;
   const priceNum = parseFloat(service.price || "0") || 0;
   const fmtPrice = (n: number) =>
     new Intl.NumberFormat("en-US", {
@@ -623,10 +640,21 @@ export default function ServiceDetailPage() {
               </Badge>
             )}
             <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
-              <div className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                <span data-testid="text-location">{service.location || "Remote"}</span>
-              </div>
+              {/* ── FP-1 / B3 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P2) ─────────────────────
+                  `provider_services.location` DEFAULTs to the literal string 'Unknown', and the
+                  console only collects it for the delivery methods that render a "Service area"
+                  input — so five of one real provider's listings showed travelers a map-pin chip
+                  reading “Unknown”, asserting it as if it were a place. The chip now renders ONLY
+                  when there is a real location to state; nothing is shown otherwise (§13 — the
+                  same 'Unknown'-is-absence rule cart.tsx and routes.ts already apply). "Remote"
+                  is deliberately NOT substituted: we do not know that an unstated location means
+                  remote. */}
+              {displayLocation && (
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  <span data-testid="text-location">{displayLocation}</span>
+                </div>
+              )}
               <div className="flex items-center gap-1">
                 <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
                 {service.reviewCount > 0 ? (
@@ -1099,16 +1127,27 @@ export default function ServiceDetailPage() {
                     </>
                   )}
 
+                  {/* Ledger 90 (FP-5, I3): the working rail, with the listing name carried as the
+                      subject so the provider's Inbox thread arrives with context. The provider's
+                      display name comes from the public-verification read this page already makes;
+                      until it resolves the button is disabled rather than repeating the old
+                      dead-end (a CTA that cannot open a thread must not look like it can). */}
                   <Button
                     variant="ghost"
                     className="w-full"
-                    asChild
+                    disabled={!providerVerification?.displayName}
+                    onClick={() =>
+                      askExpert({
+                        expertId: service.userId,
+                        subject: service.serviceName,
+                        returnTo: `/services/${service.id}`,
+                        fallbackName: providerVerification?.displayName ?? null,
+                      })
+                    }
                     data-testid="button-contact-provider"
                   >
-                    <Link href={`/chat?provider=${service.userId}`}>
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Contact Provider
-                    </Link>
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Contact Provider
                   </Button>
                 </div>
 

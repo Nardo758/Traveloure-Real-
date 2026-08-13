@@ -24,6 +24,16 @@
  *     dialog below calls the EXISTING vendor_availability_slots rail
  *     (POST /api/me/services/:roomId/slots/range), the same table any dated service uses.
  *
+ *   - FP-3 (ratified from the service-creation redesign mock): "a property room's Edit opens
+ *     its property's editor at the Rooms step — a room has no service checklist/delivery-method
+ *     of its own, and sending it into the generic ServiceForm is a dishonest surface." The
+ *     property editor below is that surface: Basics (PATCH /api/provider/properties/:id) and
+ *     Rooms (PATCH /api/provider/rooms/:id per room), reached from Catalog by the
+ *     `?property=<id>&room=<id>` deep link — the same `?param=` convention the provider inbox
+ *     and settings seats already use. It edits exactly the fields those two ALREADY-EXISTING
+ *     endpoints accept; it adds no field an innkeeper still cannot state (that is the
+ *     redesign-gated B9 property-builder scope, deliberately untouched here).
+ *
  * Money-path honesty: the bundle/property/room price entered here is the owner-set listing
  * price like any service create — the checkout charge is server-derived from the stored row
  * (§14; a room's charge is nights × its stored nightly rate). A3 material-change rule: the
@@ -31,8 +41,8 @@
  * component set, or room set changes and returns `reenteredReview: true` — surfaced as a
  * toast so the provider knows their change paused sales pending re-review.
  */
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef } from "react";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
@@ -75,6 +85,32 @@ import {
   X,
   CalendarRange,
   Share2,
+  AlertCircle,
+  Camera,
+  Car,
+  ChefHat,
+  Map,
+  Heart,
+  Sparkles,
+  CalendarHeart,
+  UserCheck,
+  Languages,
+  Baby,
+  Music,
+  Mic2,
+  Flower2,
+  Palette,
+  Package,
+  BookOpen,
+  Scissors,
+  Shield,
+  Zap,
+  Briefcase,
+  UtensilsCrossed,
+  MapPin,
+  Users,
+  PartyPopper,
+  Award,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -163,6 +199,43 @@ function formatPrice(price: string | number | null | undefined): string {
   const n = Number(price);
   return Number.isFinite(n) ? `$${n.toFixed(2).replace(/\.00$/, "")}` : String(price);
 }
+
+// S5 (ruling 74 disp. 1): the category inspiration tiles, MOVED here from Catalog's empty
+// state (services.tsx) — this screen is now the one door, so the "start from what you do"
+// shortcut lives on it, not on Catalog. Same 30 live service categories, same slugs, same
+// ?category= query param the create flow already reads at step 1.
+const inspirationCards = [
+  { label: "Photography & Video", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
+  { label: "Transportation", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
+  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
+  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
+  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
+  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
+  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
+  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
+  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
+  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
+  { label: "Lodging", slug: "Lodging & Accommodation", icon: BedDouble, color: "bg-cyan-50 text-cyan-600" },
+  { label: "Music & Performance", slug: "Music & Performance", icon: Music, color: "bg-violet-50 text-violet-500" },
+  { label: "Entertainment", slug: "Entertainment", icon: Mic2, color: "bg-fuchsia-50 text-fuchsia-500" },
+  { label: "Floral & Decor", slug: "Floral & Decoration", icon: Flower2, color: "bg-pink-50 text-pink-400" },
+  { label: "Arts & Crafts", slug: "Arts & Crafts Instruction", icon: Palette, color: "bg-lime-50 text-lime-600" },
+  { label: "Rentals", slug: "Rental Services", icon: Package, color: "bg-stone-50 text-stone-500" },
+  { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
+  { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
+  { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
+  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
+  { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
+  { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
+  { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
+  { label: "Companionship", slug: "Companionship & Assistance", icon: Users, color: "bg-blue-50 text-blue-400" },
+  { label: "Stationery & Print", slug: "Stationery & Paper Goods", icon: Languages, color: "bg-indigo-50 text-indigo-400" },
+  { label: "Special Effects", slug: "Specialty Effects & Activities", icon: Zap, color: "bg-yellow-50 text-yellow-500" },
+  { label: "Send-Off & Post-Event", slug: "Send-Off & Post-Event", icon: PartyPopper, color: "bg-pink-50 text-pink-500" },
+  { label: "Unique Specialists", slug: "Unique Specialty Services", icon: Award, color: "bg-violet-50 text-violet-500" },
+  { label: "Spiritual & Wellness", slug: "Spiritual & Wellness", icon: Sparkles, color: "bg-teal-50 text-teal-400" },
+  { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
+];
 
 export default function ProviderWorkstation() {
   const { toast } = useToast();
@@ -465,6 +538,186 @@ export default function ProviderWorkstation() {
     },
   });
 
+  // ── FP-3: the PROPERTY EDITOR (Basics + Rooms), and the Catalog deep link into it ──────────
+  //
+  // Ratified design: a property room's Edit opens its property's editor at the Rooms step. This
+  // is that editor. It writes ONLY through the two owner-gated endpoints that already exist —
+  // PATCH /api/provider/properties/:id (name / location / description) and
+  // PATCH /api/provider/rooms/:id (room name / nightly price / units) — so no new write rail is
+  // introduced and the A3 material-change rule (a price change on an APPROVED room re-enters
+  // review) keeps its ONE server-side author. It deliberately adds NO new field: the missing
+  // innkeeper fields (photos, cancellation, check-in, house rules, amenities, capacity) are the
+  // redesign-gated B9 scope, and inventing half of them here would be the dishonest surface
+  // this lane exists to remove.
+  type PropertyEditorStep = "basics" | "rooms";
+  interface RoomEditDraft { roomName: string; price: string; units: string }
+
+  const [propertyEditorTarget, setPropertyEditorTarget] = useState<Property | null>(null);
+  const [propertyEditorStep, setPropertyEditorStep] = useState<PropertyEditorStep>("basics");
+  const [focusRoomId, setFocusRoomId] = useState<string | null>(null);
+  const [editPropName, setEditPropName] = useState("");
+  const [editPropLocation, setEditPropLocation] = useState("");
+  const [editPropDescription, setEditPropDescription] = useState("");
+  const [roomEdits, setRoomEdits] = useState<Record<string, RoomEditDraft>>({});
+  // §13: a deep link that names a property this account does not have (deleted, or never owned)
+  // is SAID so, never silently ignored and never resolved to some other property.
+  const [deepLinkMiss, setDeepLinkMiss] = useState<string | null>(null);
+  // FP-2 item 7: the bundle deep link gets its OWN miss state so the notice renders in the
+  // bundles section, beside the list it is talking about, rather than under "Your properties".
+  const [bundleLinkMiss, setBundleLinkMiss] = useState<string | null>(null);
+
+  function openPropertyEditor(property: Property, step: PropertyEditorStep, roomId?: string | null) {
+    setPropertyEditorTarget(property);
+    setPropertyEditorStep(step);
+    setFocusRoomId(roomId ?? null);
+    setEditPropName(property.serviceName ?? "");
+    setEditPropLocation(property.location ?? "");
+    setEditPropDescription(property.description ?? "");
+    setRoomEdits(
+      Object.fromEntries(
+        property.rooms.map((r) => [
+          r.id,
+          {
+            roomName: r.serviceName ?? "",
+            price: r.price == null ? "" : String(r.price),
+            units: r.categoryAttributes?.units != null ? String(r.categoryAttributes.units) : "",
+          },
+        ]),
+      ),
+    );
+  }
+
+  // Catalog's room/property Edit lands here: /provider/workstation?property=<id>[&room=<id>].
+  // The room id only FOCUSES a row — every write is still owner-gated server-side against the
+  // session, so a hand-edited query string can open nothing it does not own.
+  const search = useSearch();
+  const deepLinkProperty = new URLSearchParams(search).get("property");
+  const deepLinkRoom = new URLSearchParams(search).get("room");
+  // FP-2 / Package A item 7: and Catalog's bundle Edit lands here as ?bundle=<id>. Same
+  // convention, same owner gating (the id only picks a row out of THIS account's own bundle
+  // read — a bundle that is not in it opens nothing and is said out loud, never guessed at).
+  const deepLinkBundle = new URLSearchParams(search).get("bundle");
+  const consumedDeepLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (propertiesLoading) return;
+    const key = `${deepLinkProperty ?? ""}|${deepLinkRoom ?? ""}`;
+    if (key === "|" || consumedDeepLink.current === key) return;
+    consumedDeepLink.current = key;
+    const list = Array.isArray(properties) ? properties : [];
+    const target = list.find(
+      (p) =>
+        (deepLinkProperty != null && p.id === deepLinkProperty) ||
+        (deepLinkRoom != null && p.rooms.some((r) => r.id === deepLinkRoom)),
+    );
+    if (!target) {
+      setDeepLinkMiss(
+        deepLinkRoom
+          ? "That room type is no longer in your properties — it may have been deleted."
+          : "That property is no longer in your list — it may have been deleted.",
+      );
+      return;
+    }
+    setDeepLinkMiss(null);
+    openPropertyEditor(target, deepLinkRoom ? "rooms" : "basics", deepLinkRoom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertiesLoading, properties, deepLinkProperty, deepLinkRoom]);
+
+  // FP-2 / Package A item 7 — the bundle twin of the deep link above. `openEdit` prefills the
+  // builder from the bundle row AND from `eligibleComponents`, so this waits for BOTH reads
+  // (bundles + services); opening earlier would prefill a component list that is still empty and
+  // silently drop every component (the same class of bug as the FP-3 room re-route). §13: a
+  // bundle id this account does not own resolves to nothing and SAYS so.
+  const consumedBundleLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkBundle || bundlesLoading || servicesLoading) return;
+    if (consumedBundleLink.current === deepLinkBundle) return;
+    consumedBundleLink.current = deepLinkBundle;
+    const target = (Array.isArray(bundles) ? bundles : []).find((b) => b.id === deepLinkBundle);
+    if (!target) {
+      setBundleLinkMiss("That bundle is no longer in your list — it may have been deleted.");
+      return;
+    }
+    setBundleLinkMiss(null);
+    openEdit(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundlesLoading, servicesLoading, bundles, services, deepLinkBundle]);
+
+  const updatePropertyBasicsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/provider/properties/${propertyEditorTarget!.id}`, {
+        serviceName: editPropName.trim(),
+        location: editPropLocation.trim(),
+        description: editPropDescription.trim(),
+      });
+      return res.json();
+    },
+    onSuccess: (data: Property) => {
+      invalidatePropertyQueries();
+      setPropertyEditorTarget((prev) => (prev ? { ...prev, ...data, rooms: prev.rooms } : prev));
+      toast({ title: "Property updated" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not update property",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateRoomDetailsMutation = useMutation({
+    mutationFn: async (roomId: string): Promise<{ reenteredReview?: boolean }> => {
+      const draft = roomEdits[roomId];
+      const units = parseInt(draft.units, 10);
+      const res = await apiRequest("PATCH", `/api/provider/rooms/${roomId}`, {
+        roomName: draft.roomName.trim(),
+        price: draft.price.trim(),
+        ...(Number.isFinite(units) && units > 0 ? { units } : {}),
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      invalidatePropertyQueries();
+      toast({
+        title: "Room updated",
+        // A3, surfaced honestly: a price change on an APPROVED room pauses its sales pending
+        // re-review. The server decides this — the client only reports what it returned.
+        description: data?.reenteredReview
+          ? "Changing an approved room's price sends it back for review. It won't sell until re-approved."
+          : undefined,
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not update room",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Keep the open editor in step with the server after an add/delete room round trip.
+  useEffect(() => {
+    if (!propertyEditorTarget) return;
+    const list = Array.isArray(properties) ? properties : [];
+    const fresh = list.find((p) => p.id === propertyEditorTarget.id);
+    if (!fresh) return;
+    setPropertyEditorTarget((prev) => (prev && prev !== fresh ? { ...prev, rooms: fresh.rooms } : prev));
+    setRoomEdits((prev) => {
+      const next = { ...prev };
+      for (const r of fresh.rooms) {
+        if (next[r.id]) continue;
+        next[r.id] = {
+          roomName: r.serviceName ?? "",
+          price: r.price == null ? "" : String(r.price),
+          units: r.categoryAttributes?.units != null ? String(r.categoryAttributes.units) : "",
+        };
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties]);
+
   // ── Add a room to an existing (already-created) property ────────────────────
   const [addRoomTarget, setAddRoomTarget] = useState<Property | null>(null);
   const [newRoomName, setNewRoomName] = useState("");
@@ -594,6 +847,18 @@ export default function ProviderWorkstation() {
           }
         />
 
+        {/* S5 (ruling 74 disp. 1, executed): the one-door launcher headline. Every "Add New
+            Service" affordance in the provider console lands HERE first — this is the only
+            place a new listing is born. The three tiles below are that door. */}
+        <div data-testid="text-launcher-headline-block">
+          <h2 className="text-lg font-semibold text-console-darkest" data-testid="text-launcher-headline">
+            What are you building?
+          </h2>
+          <p className="text-sm text-console-mid mt-0.5">
+            Pick a shape to start — you can change most of it later.
+          </p>
+        </div>
+
         {/* ── The creation ladder (§17): single service → bundle → property ─────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="grid-product-ladder">
           {/* Rung 1 — single service: always available, the existing ServiceForm. */}
@@ -680,11 +945,59 @@ export default function ProviderWorkstation() {
           </Card>
         </div>
 
+        {/* S5: the category inspiration tiles MOVE here from Catalog's empty state (which now
+            just points at this screen — see services.tsx). Picking one jumps straight into the
+            single-service create flow with the category pre-selected; nothing here is a bundle
+            or property shortcut, so it lives under the "Single service" rung honestly. */}
+        <div data-testid="section-workstation-categories">
+          <h3 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-1">
+            Or start from what you do
+          </h3>
+          <p className="text-xs text-console-mid mb-3">
+            These are the live service categories. Picking one pre-selects it and jumps straight
+            into a single service.
+          </p>
+          <div
+            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3"
+            data-testid="grid-workstation-categories"
+          >
+            {inspirationCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Link
+                  key={card.slug}
+                  href={`/provider/services/new?category=${encodeURIComponent(card.slug)}`}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-primary hover:shadow-sm transition-all text-center group"
+                  data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                >
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium text-console-dark leading-tight">{card.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
         {/* ── Your bundles ──────────────────────────────────────────────────────── */}
         <section data-testid="section-workstation-bundles">
           <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
             Your bundles
           </h2>
+          {/* FP-2 §13: a ?bundle= deep link naming a bundle this account no longer has says so,
+              instead of opening some other bundle or silently doing nothing. */}
+          {bundleLinkMiss && (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              data-testid="notice-bundle-deeplink-miss"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{bundleLinkMiss}</span>
+            </div>
+          )}
           {bundlesLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-28 w-full rounded-lg" />
@@ -828,6 +1141,17 @@ export default function ProviderWorkstation() {
           <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
             Your properties
           </h2>
+          {/* FP-3 §13: a deep link that names a property/room this account no longer has says so,
+              instead of opening some other property or silently doing nothing. */}
+          {deepLinkMiss && (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              data-testid="notice-property-deeplink-miss"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{deepLinkMiss}</span>
+            </div>
+          )}
           {propertiesLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-28 w-full rounded-lg" />
@@ -920,6 +1244,16 @@ export default function ProviderWorkstation() {
                                       <StatusBadge status={room.status === "active" ? "active" : "paused"} />
                                     </div>
                                     <div className="flex items-center gap-1 flex-shrink-0">
+                                      {/* FP-3: the room's Edit — the property's editor, Rooms step. */}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs"
+                                        onClick={() => openPropertyEditor(property, "rooms", room.id)}
+                                        data-testid={`button-edit-room-${room.id}`}
+                                      >
+                                        <Edit className="w-3.5 h-3.5 mr-1" /> Edit
+                                      </Button>
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -974,6 +1308,16 @@ export default function ProviderWorkstation() {
                           </div>
                         </div>
                         <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                          {/* FP-3: the property's own Edit — Catalog's property card links to
+                              this same surface at its Basics step. */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openPropertyEditor(property, "basics")}
+                            data-testid={`button-edit-property-${property.id}`}
+                          >
+                            <Edit className="w-4 h-4 mr-1" /> Edit
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -1180,6 +1524,182 @@ export default function ProviderWorkstation() {
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── FP-3: property editor (Basics + Rooms) ────────────────────────────── */}
+        <Dialog
+          open={!!propertyEditorTarget}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPropertyEditorTarget(null);
+              setFocusRoomId(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-property-editor">
+            <DialogHeader>
+              <DialogTitle>Edit property</DialogTitle>
+              <DialogDescription>
+                {propertyEditorTarget?.serviceName} — a property and its room types are edited
+                together here. Rooms have no delivery method or service checklist of their own:
+                they inherit the property's location and are priced per night.
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* The two steps. A room's Edit lands directly on "Rooms". */}
+            <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
+              {(["basics", "rooms"] as const).map((step) => (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={() => setPropertyEditorStep(step)}
+                  aria-pressed={propertyEditorStep === step}
+                  className={
+                    "px-3 py-1.5 text-xs font-medium transition-colors " +
+                    (propertyEditorStep === step
+                      ? "bg-console-dark text-white"
+                      : "bg-white text-console-mid hover:bg-console-light/40")
+                  }
+                  data-testid={`tab-property-editor-${step}`}
+                >
+                  {/* Same vocabulary as the ratified mock's property builder steps. */}
+                  {step === "basics" ? "The property" : `Rooms (${propertyEditorTarget?.rooms.length ?? 0})`}
+                </button>
+              ))}
+            </div>
+
+            {propertyEditorStep === "basics" ? (
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!editPropName.trim() || updatePropertyBasicsMutation.isPending) return;
+                  updatePropertyBasicsMutation.mutate();
+                }}
+                data-testid="form-property-editor-basics"
+              >
+                <div>
+                  <Label htmlFor="edit-property-name" className="text-sm">Property name</Label>
+                  <Input
+                    id="edit-property-name"
+                    value={editPropName}
+                    onChange={(e) => setEditPropName(e.target.value)}
+                    maxLength={255}
+                    required
+                    data-testid="input-edit-property-name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-property-location" className="text-sm">Location</Label>
+                  <Input
+                    id="edit-property-location"
+                    value={editPropLocation}
+                    onChange={(e) => setEditPropLocation(e.target.value)}
+                    maxLength={255}
+                    data-testid="input-edit-property-location"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-property-description" className="text-sm">Description</Label>
+                  <Textarea
+                    id="edit-property-description"
+                    value={editPropDescription}
+                    onChange={(e) => setEditPropDescription(e.target.value)}
+                    rows={3}
+                    data-testid="input-edit-property-description"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={!editPropName.trim() || updatePropertyBasicsMutation.isPending}
+                    data-testid="button-save-property-basics"
+                  >
+                    {updatePropertyBasicsMutation.isPending ? "Saving…" : "Save basics"}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-3" data-testid="panel-property-editor-rooms">
+                {(propertyEditorTarget?.rooms.length ?? 0) === 0 ? (
+                  <p className="text-xs text-console-mid">No room types yet.</p>
+                ) : (
+                  propertyEditorTarget!.rooms.map((room) => {
+                    const draft = roomEdits[room.id] ?? { roomName: "", price: "", units: "" };
+                    const priceValue = parseFloat(draft.price);
+                    const draftValid = draft.roomName.trim().length > 0 && Number.isFinite(priceValue) && priceValue > 0;
+                    return (
+                      <div
+                        key={room.id}
+                        className={
+                          "rounded-lg border p-3 space-y-2 " +
+                          (focusRoomId === room.id
+                            ? "border-primary ring-1 ring-primary/30"
+                            : "border-console-light")
+                        }
+                        data-testid={`editor-room-${room.id}`}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-console-mid">Room type</span>
+                          {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
+                          <StatusBadge status={room.status === "active" ? "active" : "paused"} />
+                        </div>
+                        <Input
+                          value={draft.roomName}
+                          onChange={(e) =>
+                            setRoomEdits((prev) => ({ ...prev, [room.id]: { ...draft, roomName: e.target.value } }))
+                          }
+                          maxLength={255}
+                          placeholder="Room name"
+                          data-testid={`input-edit-room-name-${room.id}`}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={draft.price}
+                            onChange={(e) =>
+                              setRoomEdits((prev) => ({ ...prev, [room.id]: { ...draft, price: e.target.value } }))
+                            }
+                            placeholder="Price / night"
+                            data-testid={`input-edit-room-price-${room.id}`}
+                          />
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={draft.units}
+                            onChange={(e) =>
+                              setRoomEdits((prev) => ({ ...prev, [room.id]: { ...draft, units: e.target.value } }))
+                            }
+                            placeholder="Units (optional)"
+                            data-testid={`input-edit-room-units-${room.id}`}
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!draftValid || updateRoomDetailsMutation.isPending}
+                            onClick={() => updateRoomDetailsMutation.mutate(room.id)}
+                            data-testid={`button-save-room-${room.id}`}
+                          >
+                            {updateRoomDetailsMutation.isPending ? "Saving…" : "Save room"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <p className="text-xs text-console-mid">
+                  Changing an approved room's price sends that room back for review. Night
+                  availability and adding or removing room types are on the property card.
+                </p>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 

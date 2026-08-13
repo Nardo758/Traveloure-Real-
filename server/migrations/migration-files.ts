@@ -1004,4 +1004,27 @@ export const MIGRATION_FILES = [
   // money/identity/rate field. Additive-nullable, NO DB CHECK; DECLARED in shared/schema.ts
   // (publish-trap rule). Idempotent.
   "207_provider_office_location.sql",
+  // 208: FP-1 provider-console defect fix pack — the DATA half (docs/testing/PROVIDER_BATCH_EXERCISE.md
+  // findings A1/B2/B4). DATA ONLY: no columns, no CHECK, no index, no table — nothing for the Replit
+  // deploy-push to drop or reject (publish-trap rule), and preflight-prod-constraints is N/A.
+  // (1) A1: the "Custom / Other" service_categories row carries category_key='custom_other' — on a
+  //     fresh DB migration 189's identical UPDATE ran BEFORE seedCategories() created the row, so the
+  //     custom-offering wizard lock rendered "—" and Publish could never enable. The durable fix is in
+  //     the seeder; this repairs databases already holding the NULL row (guarded so a UNIQUE
+  //     category_key collision can't fail the migration).
+  // (2) B2: property/property_room -> 'in_person', bundle -> derived from its components (uniform
+  //     method, else 'hybrid') for rows still holding the column DEFAULT 'pdf' — the Workstation
+  //     builders never set one, so travelers saw "PDF guide" on guest rooms. Canonical 7 only (§3).
+  // (3) B4: provider_services.city from city_neighborhoods, slug match ONLY and ONLY where the slug
+  //     resolves to exactly one city (slug is not globally unique — the uniqueness is (city, country,
+  //     slug)). No free-text parsing, no fuzzy match, NULL stays NULL (§13).
+  "208_fp1_console_defect_data_repairs.sql",
+  // 209: notifications.dedupe_key — QA-2's notification-durability fix (DECISIONS.md ledger 96).
+  // Nullable varchar + a PARTIAL UNIQUE index (WHERE dedupe_key IS NOT NULL, migration-155/203
+  // precedent), keyed `booking:<id>:<event>`. Lets the booking-status canonical writer
+  // (storage.updateServiceBookingStatus) insert its accept/cancel notification INSIDE the same
+  // transaction as the status flip with ON CONFLICT DO NOTHING — a crash-retry of the same
+  // transition inserts zero duplicate rows. Additive, NO CHECK; DECLARED in shared/schema.ts
+  // (publish-trap rule).
+  "209_notification_dedupe_key.sql",
 ] as const;

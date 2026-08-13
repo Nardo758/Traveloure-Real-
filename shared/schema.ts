@@ -1266,7 +1266,21 @@ export const notifications = pgTable("notifications", {
   data: jsonb("data"), // Arbitrary payload e.g. { bookingId, serviceName, travelerName, amount }
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+  // QA-2 (migration 209): nullable idempotency key for a notification event, shaped
+  // `booking:<id>:<event>` (e.g. `booking:abc123:accepted`). NULL for every pre-209 row and every
+  // caller that has not opted in (message/review/etc. notifications keep firing exactly as before).
+  // A caller writing a durable, at-most-once notification (the booking-status canonical writer)
+  // supplies this and relies on the partial UNIQUE index below + ON CONFLICT DO NOTHING so a
+  // crash-retry of the SAME transition inserts zero duplicate rows. Declared here AND in migration
+  // SQL (publish-trap rule — the migration-155/203 precedent).
+  dedupeKey: varchar("dedupe_key", { length: 255 }),
+}, (table) => ({
+  // Migration 209 (QA-2): partial so legacy NULL rows (and any caller that never opts in) never
+  // collide with each other — only two ACTUAL dedupe keys colliding is a conflict.
+  dedupeKeyUniq: uniqueIndex("notifications_dedupe_key_uniq")
+    .on(table.dedupeKey)
+    .where(sql`${table.dedupeKey} IS NOT NULL`),
+}));
 
 // === Contact Submissions (landing page / contact page) ===
 
@@ -1898,10 +1912,6 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
 export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
-  // Task 1135: routes sanitize prose BEFORE this parse, so a tag-only name (`<b></b>`) arrives
-  // here as "" — min(1) rejects it instead of persisting a blank-named service. max(255) matches
-  // the varchar; field-level so both survive `.partial()` on the PATCH path.
-  serviceName: z.string().trim().min(1, "Service name is required").max(255),
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -2140,8 +2150,7 @@ export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializati
 // Expert Custom Services schemas and types
 // (table dropped in migration 013; type kept manually for storage adapter compatibility)
 export const insertProviderServiceListingSchema = z.object({
-  // Task 1135: routes sanitize before parse — a tag-only title arrives "" and min(1) rejects it.
-  title: z.string().trim().min(1, "Title is required").max(255),
+  title: z.string(),
   description: z.string().nullable().optional(),
   categoryName: z.string().nullable().optional(),
   existingCategoryId: z.string().nullable().optional(),

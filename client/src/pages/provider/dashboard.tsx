@@ -25,6 +25,14 @@ import { Link } from "wouter";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
 import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
 import { useAuth } from "@/hooks/use-auth";
+// Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared with Inbox, Customers, Money
+// and the server aggregations — see shared/booking-visibility.ts.
+import {
+  isActionableBooking,
+  isProvisionalBooking,
+  PROVISIONAL_BOOKING_LABEL,
+  PROVISIONAL_BOOKING_HINT,
+} from "@shared/booking-visibility";
 
 interface ProviderAnalytics {
   summary: {
@@ -211,8 +219,16 @@ export default function ProviderDashboard() {
   // Default expanded only when nothing is done yet; otherwise a compact summary row.
   const setupExpanded = setupManualExpanded !== null ? setupManualExpanded : setupDoneCount === 0;
 
-  const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
+  // Ledger 90 (FP-5, X1): the ONE shared predicate, not a hand-written `status === "pending"`.
+  // Today's answer was already the correct one of the three the exercise found (an unauthorized
+  // §15b claim is NOT provider-actionable, §18b) — it just reached it by its own private filter,
+  // which is how three tabs came to disagree about one row. The predicate is now the same object
+  // the Inbox queue, the Inbox tile and the server's `pendingBookings` count read.
+  const pendingBookings = bookings?.filter(b => isActionableBooking(b.status)) || [];
   const confirmedBookings = bookings?.filter(b => b.status === "confirmed") || [];
+  // Disclosed on the same surface so "did a traveler try to buy something?" is answerable HERE,
+  // rather than only on Customers — without ever being counted as an action item.
+  const awaitingPaymentBookings = bookings?.filter(b => isProvisionalBooking(b.status)) || [];
 
   // Compute repeat customers: travelers with >1 booking
   const repeatCustomers = (() => {
@@ -472,6 +488,15 @@ export default function ProviderDashboard() {
                   </div>
                 )) : (
                   <p className="text-console-mid text-center py-2 text-xs">No pending items</p>
+                )}
+                {/* Ledger 90 (FP-5, X1): provisional §15b claims are DISCLOSED here, below the
+                    action items and outside the "(N)" count — a traveler's abandoned/failed
+                    payment is news, but it is not something the provider can act on (§18b). */}
+                {awaitingPaymentBookings.length > 0 && (
+                  <p className="text-[11px] text-console-mid pt-1" data-testid="text-awaiting-payment">
+                    {awaitingPaymentBookings.length} {PROVISIONAL_BOOKING_LABEL.toLowerCase()} —{" "}
+                    {PROVISIONAL_BOOKING_HINT.replace("Awaiting the traveler's payment — ", "")}
+                  </p>
                 )}
               </CardContent>
             </Card>

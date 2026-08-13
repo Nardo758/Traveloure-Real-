@@ -1,4 +1,3 @@
-- [Booking sanitizer Stripe leak](booking-sanitizer-stripe-leak.md) — sanitizeBookingForExpert strips wrong field names; stripePaymentIntentId leaks to providers/experts (use allow-list projection).
 - [Migration chain root cause](migration-chain-root-cause.md) — null-id + missing-column bugs in 033/034/042 blocked all migrations 034-050; fixed with ALTER TABLE SET DEFAULT + VALUES column fixes
 - [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link
 - [Phase 1b neighborhood system](phase-1b-neighborhoods.md) — cityNeighborhoods table + neighborhood columns on gems/services; backfill is Haversine proximity; verify check [B] is a false-negative on empty dev DB.
@@ -28,6 +27,4 @@
 - [Cancellation refund policy](cancellation-refund-policy.md) — refund before terminal status; amount-scoped Stripe idempotency keys; partial refunds reverse ledger proportionally.
 - [Earnings mint path](earnings-mint-path.md) — earnings mint on booking → completed; production paths are traveler confirm-completion + PI-gated auto-complete scheduler; full fixture recipe inside.
 - [Payout-parity discriminators](payout-parity-discriminators.md) — all live bands are 0.25 so amount-based branch tests are vacuous; use the EXP-OVR override asymmetry to distinguish provider vs expert resolution.
-- [Write-time text sanitization](write-time-text-sanitization.md) — sanitize before zod min/max; cover JSONB prose deeply; drop script content, not just tags.
-- [ServiceForm a11y validation](service-form-a11y-validation.md) — final Submit/Publish stay clickable; missing-field checks live in handleFinalSubmit + inline role=alert, never in disabled props.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

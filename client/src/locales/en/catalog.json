@@ -14,8 +14,7 @@
   },
   "empty": {
     "title": "What will you offer?",
-    "body": "Pick a category below to get started, or build your own service from scratch.",
-    "fromScratch": "Start from scratch"
+    "body": "Every listing starts on the Workstation — pick a single service, a bundle, or a property."
   },
   "card": {
     "untitled": "Untitled Service",
