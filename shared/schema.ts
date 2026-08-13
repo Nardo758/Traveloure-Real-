@@ -1898,6 +1898,10 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
 export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
+  // Task 1135: routes sanitize prose BEFORE this parse, so a tag-only name (`<b></b>`) arrives
+  // here as "" — min(1) rejects it instead of persisting a blank-named service. max(255) matches
+  // the varchar; field-level so both survive `.partial()` on the PATCH path.
+  serviceName: z.string().trim().min(1, "Service name is required").max(255),
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -2136,7 +2140,8 @@ export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializati
 // Expert Custom Services schemas and types
 // (table dropped in migration 013; type kept manually for storage adapter compatibility)
 export const insertProviderServiceListingSchema = z.object({
-  title: z.string(),
+  // Task 1135: routes sanitize before parse — a tag-only title arrives "" and min(1) rejects it.
+  title: z.string().trim().min(1, "Title is required").max(255),
   description: z.string().nullable().optional(),
   categoryName: z.string().nullable().optional(),
   existingCategoryId: z.string().nullable().optional(),
