@@ -1659,3 +1659,65 @@ gate the lane's scope forbade. `client/src/pages/expert/services.tsx` is confirm
 `<Route>` in `App.tsx` renders it) and untouched.
 
 Full record: DECISIONS.md ruling 94.
+
+### Fixed here (lane QA-2 — ledger row 96)
+
+Three findings: notification durability, the missing proof, and a slot-leak investigation.
+
+**Finding A (durability) — CLOSED.** The owner rail's accept/decline transition
+(`PATCH /api/provider|expert/bookings/:id/status` → `storage.updateServiceBookingStatus`) committed
+the status flip and wrote the traveler's in-app notification as two separate statements: a crash (or
+just an ordering hiccup) between them left a status change with no notification, and the atomic
+transition guard turned a client retry into a bare 409 that could never repair it. Investigated the
+actual write first (an in-app `notifications` row insert — no email/push in this path), so per the
+brief the smallest durable shape applied: the notification insert now lives INSIDE the same
+transaction as the status flip in the canonical writer (the ruling-80 "flip-and-mint in one
+transaction" precedent, generalized), plus an idempotent dedupe — `notifications.dedupe_key`
+(nullable varchar, migration 209), a PARTIAL UNIQUE index (`WHERE dedupe_key IS NOT NULL`, the
+migration-155/203 precedent — legacy NULL rows never collide), `ON CONFLICT DO NOTHING`, key shaped
+`booking:<id>:<event>`. Same treatment for the accept path (which previously wrote NO traveler
+notification at all — a bigger gap than the one filed) and the decline/unpaid-cancel path (which
+had one, just not durably). No outbox worker: a full outbox is the wrong-sized fix for a same-process
+DB insert that only needed to move inside an existing transaction.
+
+**Finding B (the missing proof) — CLOSED.** `server/__tests__/qa2-notification-slot-durability.db.test.ts`
+(5/5, negatives first): P1 pending→confirmed produces EXACTLY ONE notification; N1 a concurrent
+second accept (the §18b atomic-conditional race loser) writes ZERO additional notifications and
+leaks no error (`Promise.allSettled` over 5 concurrent callers — 0 rejections, 1 winner); N2 a
+crash-simulating retry (re-running the exact same transition with no restrictive
+`expectedFromStatuses` — the real shape both `POST /api/bookings/:id/cancel`'s non-refund branch and
+a lost-response client retry take) is a no-op: one notification, one slot release, no throw.
+
+**Finding C (slot leak) — INVESTIGATED, mostly already covered, one real gap fixed.** Traced
+`voidClaim` (the §15b TTL sweep) — it already releases the claimed slot atomically with the void
+(`checkout-claim.service.ts`). Traced `refundServiceBooking` — it already releases the slot after a
+successful Stripe refund (`stripe-payment.service.ts:1012-1019`). So the stale comment in
+`payments.routes.ts` ("release on abandoned/refunded bookings is a filed follow-up") was CLOSED with
+a pointer to both, not re-filed. The actual gap: the NO-REFUND cancel/decline branches — the owner
+rail's unpaid decline and the traveler's non-refundable self-cancel — call
+`storage.updateServiceBookingStatus` directly and never touched the slot, so a paid, slot-bound
+booking cancelled with no refund due (a non-refundable policy, or a decline whose Stripe lookup could
+not confirm payment) permanently stranded its claimed capacity. Fixed IN the canonical writer, not a
+second reclaim rail (§18c): on the booking's FIRST transition into cancelled/refunded, if the row
+carries a `slotId`, the same floor-at-0 / re-open-if-under-capacity release `voidClaim` and
+`refundServiceBooking` already use runs atomically in the SAME transaction as the status flip.
+Proven DB-level (same suite, P2/N3): claim → cancel-no-refund → `booked_count` returns; a retried
+cancel (unconditional guard) releases once, never twice; a capacity-3 slot returns exactly one seat,
+leaving the other booking's seat held.
+
+**Migration:** `server/migrations/209_notification_dedupe_key.sql` — additive nullable
+`notifications.dedupe_key` + partial UNIQUE index, no CHECK. Declared in `shared/schema.ts`
+(publish-trap rule). Proven idempotent in a rolled-back transaction (run twice, both hit
+`IF NOT EXISTS`/`already exists, skipping`).
+
+**Negative space (ruling 43):** no second reclaim rail beside the claim machine (§18c) — the slot
+release is one more atomic step inside the EXISTING canonical writer, never a new scheduler/worker;
+no external-send-inside-a-transaction (this path has no email/push today — §15b's "irreversible
+effects follow authorization" posture is noted for if/when one is added); no outbox worker (not
+needed — the durable guarantee is the in-app row, written same-transaction); the paid-refund cancel
+branches (owner-rail refund, traveler-refund) are untouched — they already release the slot via
+`refundServiceBooking` and already fire their own notification after that external call completes,
+which is the correct best-effort-after-commit shape for an external-call-adjacent write, not this
+lane's target.
+
+Full record: DECISIONS.md ledger row 96.
