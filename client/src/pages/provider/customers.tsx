@@ -204,7 +204,9 @@ export default function ProviderCustomers() {
 
   return (
     <ProviderLayout title="Customers">
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {/* FP-4: normalized onto ProviderLayout's shared content container (its own
+          narrower `max-w-4xl mx-auto` is dropped, not stacked). */}
+      <div className="p-6 space-y-6">
         <PageHeader
           title="Customers"
           subtitle="Everyone you've actually worked with — derived from your real bookings"

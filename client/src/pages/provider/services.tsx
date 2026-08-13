@@ -1229,7 +1229,11 @@ export default function ProviderServices() {
     : null;
 
   return (
-    <ProviderLayout title="Catalog">
+    /* FP-4 full-bleed exception #1: the MAP view's canvas is a three-pane authoring
+       surface (selector rail · map · authoring cards) whose usable area IS the shell
+       width — capping it would shrink the map for no reading benefit. The LIST view is
+       ordinary card content and stays inside the shared container. */
+    <ProviderLayout title="Catalog" width={viewMode === "map" ? "full" : "contained"}>
       <div className="p-6 space-y-6">
         {/* C9: the /p/:handle storefront management header (the expert catalog C2 block). */}
         <ProviderStorefrontHeader />

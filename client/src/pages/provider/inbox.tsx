@@ -806,7 +806,9 @@ export default function ProviderInbox() {
 
   return (
     <ProviderLayout title="Inbox">
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {/* FP-4: normalized onto ProviderLayout's shared content container (its own
+          narrower `max-w-4xl mx-auto` is dropped, not stacked). */}
+      <div className="p-6 space-y-6">
         <PageHeader
           title="Inbox"
           subtitle="Everything that needs your response"

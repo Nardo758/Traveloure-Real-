@@ -1175,6 +1175,46 @@ be picked up piecemeal.
   two PATCH endpoints that already existed; **no new field** was invented, so B9 below stays
   redesign-gated exactly as filed.
 
+### Fixed here (lane FP-4 — ledger row 89)
+
+- **Provider-console content stretched to the full width of the shell on wide screens.**
+  Reported by the decision-maker ("some console content stretches too much horizontally on wide
+  screens"). This was NOT an exercise finding — no width item existed in this list before — so it is
+  recorded here as its own lane. Measured on the bench BEFORE the fix: at a **1920** viewport the
+  content region was **1700 px** wide on Catalog, Workstation and Money (and every other uncapped
+  page: Dashboard, Distribute, Performance, Playbook, Business Profile) — a single-line text input
+  on a form-heavy surface ran most of the screen. Root cause: the console had **no shared content
+  container**. Every page rolled its own wrapper and they disagreed — most had no cap at all,
+  Calendar capped at `max-w-6xl mx-auto`, Inbox/Customers at `max-w-4xl mx-auto`, and Settings at a
+  bare `max-w-4xl` with **no `mx-auto`**, so the most form-heavy page in the console hugged the left
+  edge and left a lopsided gutter.
+  **CLOSED** — ONE centered container (`w-full max-w-6xl mx-auto`) mounted once on `ProviderLayout`
+  (`client/src/components/provider/provider-layout.tsx`), and the four pages carrying their own
+  conflicting cap were normalized onto it rather than stacking a second container. `max-w-6xl`
+  (1152 px) is the console's own precedent — the Calendar page already capped at exactly that value.
+  **Full-bleed exceptions**, both deliberate and both declared through the layout's new
+  `width="full"` prop rather than by breaking out of the container: **(1)** the Catalog **map** view
+  (its three-pane authoring canvas IS the shell width; the list view stays contained), and
+  **(2)** `/chat` via `ConsoleAwareLayout` — a viewport-anchored two-pane frame rendered identically
+  for travelers and experts, which capping for providers alone would fork. The two `overflow-x-auto`
+  tables (Calendar's month grid, Business Profile's capacity table) were reviewed and left
+  untouched: they scroll inside the cap and need no bleed.
+  **Phone behaviour is untouched BY CONSTRUCTION, not by luck:** the container is fluid up to
+  1152 px, and the content region is 390 / 548 / 1060 px at the 390 / 768 / 1280 viewports (viewport
+  minus the 220 px desktop sidebar; the whole viewport below the sidebar's 768 px mobile
+  breakpoint), so the cap cannot bite at any of them — it first bites past ~1372 px. Horizontal
+  padding was deliberately **not** made responsive (`p-6` stays on the pages) for the same reason: a
+  `px-4 sm:px-6` would have changed phone layout, which this lane must not do.
+  **Evidence:** headless Chromium at 390 / 768 / 1280 / 1920 across Catalog (list AND map), a
+  ServiceForm step, Workstation, Settings, Calendar and Money — 28 page/width cells before and
+  after. No horizontal page overflow at any width (`scrollWidth == clientWidth` everywhere, both
+  runs), and the 390 and 768 screenshots are **byte-identical** before/after (SHA-256), which is the
+  mobile no-op assertion. **Not touched in this lane:** the sidebar, traveler-facing pages, admin
+  pages, the expert console (`ExpertLayout` and the shared `BackofficeShell` are byte-identical —
+  the container mounts on the PROVIDER layout, not the shared shell) and `ServiceForm` itself
+  (shared with the expert console; its own `max-w-3xl` is left as-is and simply centers inside the
+  new container).
+
 ### Open — the rest of the exercise's findings
 
 | # | Sev | Finding (abridged) | Status |

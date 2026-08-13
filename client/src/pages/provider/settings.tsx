@@ -492,7 +492,10 @@ export default function ProviderSettings() {
 
   return (
     <ProviderLayout title="Settings">
-      <div className="p-6 space-y-6 max-w-4xl">
+      {/* FP-4: normalized onto ProviderLayout's shared content container. The old
+          `max-w-4xl` carried no `mx-auto`, so this form-heavy page hugged the left edge
+          with a lopsided gutter on any wide screen; the shared container centers it. */}
+      <div className="p-6 space-y-6">
         <HandleClaimCard />
 
         <Tabs defaultValue={tabParam} className="w-full">
