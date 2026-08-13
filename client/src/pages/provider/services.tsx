@@ -84,7 +84,7 @@ import {
   CheckCircle2,
   Star,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -337,9 +337,28 @@ function AvailabilitySection() {
   // Collapsible section — default OPEN (this is a primary task), header states real
   // service/slot-count data so collapsing loses no information (§13).
   const [sectionOpen, setSectionOpen] = useState(true);
+  const sectionRef = useRef<HTMLDivElement>(null);
 
   const list = Array.isArray(services) ? services : [];
   const activeServiceId = selectedServiceId || list[0]?.id || "";
+
+  // WAVE 2 / S2: the listing home's "Publish some availability" checklist row deep-links here
+  // (`?availability=<serviceId>`) — this IS the C9 home for availability, so the row does not
+  // grow its own editor, it just needs to land on the right service and be visible. Runs once
+  // the real service list is loaded, so a row for a service on page 2 of a long catalog still
+  // resolves instead of silently falling back to the first one.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current || servicesLoading) return;
+    const requested = new URLSearchParams(window.location.search).get("availability");
+    if (requested && list.some((s) => s.id === requested)) {
+      setSelectedServiceId(requested);
+      setSectionOpen(true);
+      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    deepLinkApplied.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servicesLoading, list.length]);
 
   const { data: slots, isLoading: slotsLoading } = useQuery<AvailabilitySlot[]>({
     queryKey: [`/api/me/services/${activeServiceId}/slots`],
@@ -404,7 +423,7 @@ function AvailabilitySection() {
     : `${currentService?.serviceName ?? currentService?.name ?? "Untitled"} · ${slotCountLabel}`;
 
   return (
-    <section data-testid="section-catalog-availability">
+    <section data-testid="section-catalog-availability" ref={sectionRef}>
       <button
         type="button"
         onClick={() => setSectionOpen((o) => !o)}

@@ -17,7 +17,7 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
-  Users, Route, CalendarClock,
+  Users, Route, CalendarClock, Circle, ChevronRight,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -52,7 +52,14 @@ import {
 } from "@/lib/property-editor-link";
 // FP-2: the final action's required-field set (pure + unit-tested — see the module header for
 // the "asterisk set = enforced set" rule it keeps).
-import { missingRequiredForFinal } from "@/lib/service-form-required";
+// WAVE 2 / S2: the SAME module now also derives the listing home's checklist rows
+// (`deriveServiceChecklist`) off the SAME required-item descriptors — one set, never forked.
+import {
+  missingRequiredForFinal,
+  deriveServiceChecklist,
+  effectivePriceScalar,
+  type ChecklistRow,
+} from "@/lib/service-form-required";
 // WAVE 2 / A1 (S1+S3): the flow's SHAPE, as data. Method-first — the step list is built from the
 // delivery method, and one module says which step holds which section (see its header for the
 // unreachability invariant a branching wizard has to keep).
@@ -569,17 +576,51 @@ function prettifyCategoryKey(key: string): string {
     .join(" ");
 }
 
+// WAVE 2 / S2: the listing home's hero needs a human method label. Same 7 canonical UI values
+// (and the same copy) as the Basics step's own method picker — kept as a small module-scope
+// map rather than a second inline array, so a future eighth branch can't drift between the two.
+const DELIVERY_METHOD_LABELS: Readonly<Record<string, string>> = {
+  "in-person": "In-Person",
+  "video-call": "Video Call",
+  hybrid: "Hybrid (In-Person + Video)",
+  pdf: "PDF Guide",
+  call: "Phone Call",
+  voice_notes: "Voice Notes",
+  async_messaging: "Async Messaging",
+};
+function deliveryMethodLabel(method: string): string {
+  return DELIVERY_METHOD_LABELS[method] ?? method;
+}
+
+// WAVE 2 / S2: ONE status-pill definition for a provider listing, shared by the wizard's own
+// "Current Status" card (FP-2 / A2) and the new listing home's hero — two different English
+// phrasings of the same record would be its own small dishonesty on the same page. NOTE: a
+// listing whose `status` came back "draft" reads as Draft REGARDLESS of `approvalStatus` — the
+// F2 / migration 111 "born submitted" default means `approvalStatus` is "submitted" from the
+// first save even for a plain Save Draft (QA_PUNCH_LIST finding C8, a ratified — if confusing —
+// platform default, not something this lane changes), so `status` is checked FIRST or every
+// fresh draft would misreport itself as already "In review".
+type ListingStatusTone = "unsaved" | "draft" | "review" | "rejected" | "approved-paused" | "live";
+function listingStatusPill(
+  existingService: { status?: string | null; approvalStatus?: string | null } | null | undefined,
+  isEditMode: boolean,
+): { label: string; tone: ListingStatusTone } {
+  if (!isEditMode) return { label: "Not saved yet", tone: "unsaved" };
+  if (existingService?.status === "draft") return { label: "Draft (not submitted)", tone: "draft" };
+  if (existingService?.approvalStatus === "approved") {
+    return existingService?.status === "active"
+      ? { label: "Live", tone: "live" }
+      : { label: "Approved — paused", tone: "approved-paused" };
+  }
+  if (existingService?.approvalStatus === "rejected") return { label: "Changes requested", tone: "rejected" };
+  return { label: "In review", tone: "review" };
+}
+
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
   const isEditMode = !!id;
-  const [creationSuccess, setCreationSuccess] = useState(false);
-  // L2: the post-create success copy must reflect what actually happened server-side
-  // (the row's real status/approvalStatus), never just which button was pressed — a
-  // create is clamped server-side to a non-approved born state (D1a), so "Publish"
-  // does not mean "live" the way the old hardcoded copy claimed.
-  const [creationOutcome, setCreationOutcome] = useState<{ status?: string | null; approvalStatus?: string | null }>({});
   const [newIncluded, setNewIncluded] = useState("");
   const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
@@ -610,6 +651,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // states + createMutation's own throws); the only addition is that a
   // submit-time miss jumps the user to the step that holds the field.
   const [currentStep, setCurrentStep] = useState(1);
+
+  // ── WAVE 2 / LANE S2 — the listing home ──────────────────────────────────────────────────────
+  // A saved listing (edit mode, provider role — the execution map's provider-console lane) lands
+  // on the checklist/hero view by DEFAULT; the wizard itself is entered only via a checklist row
+  // (or any other `?step=<key>` deep link, A1). `!isEditMode` (still on `/…/new`) always renders
+  // the wizard, same as before this lane — a draft that does not exist yet has no listing home to
+  // land on. Local state, not derived from the URL on every render, because a checklist-row click
+  // and a save-success both need to flip this WITHOUT waiting on a wouter route remount.
+  const [viewListingHome, setViewListingHome] = useState<boolean>(
+    () => isEditMode && role === "provider" && !new URLSearchParams(window.location.search).get("step"),
+  );
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -771,6 +823,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // Locally checked-but-unsaved boxes. Written to the server only AFTER the listing save
   // succeeds — the affirmation is a child row and needs the service id to exist.
   const [attestationChecks, setAttestationChecks] = useState<Record<string, boolean>>({});
+
+  // WAVE 2 / S2: the listing home's "Publish some availability" row reads the REAL slot count —
+  // same endpoint Catalog's own AvailabilitySection already reads (`GET /api/me/services/:id/slots`,
+  // ownership resolved server-side against `provider_services.userId`, role-agnostic §14) — never a
+  // second implementation of "does this listing have any". Provider + edit mode only: the row (and
+  // the query) do not exist for a draft that has no id yet.
+  const { data: availabilitySlots } = useQuery<Array<{ id: string }>>({
+    queryKey: [`/api/me/services/${id}/slots`],
+    enabled: isEditMode && role === "provider",
+  });
 
   // Ruling 85: the provider's account-level office location — used ONLY to PRE-FILL a NEW listing's
   // map pin so they don't re-place it every time. Provider role + create mode only (an expert has
@@ -935,7 +997,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     const n = stepNumberOf(formData.deliveryMethod, requested as StepKey);
     // An unknown key, or one this branch does not have, is NOT an error and never a guess: the
     // provider simply stays on step 1 (§13 — a pdf listing has no Logistics step to land on).
-    if (n > 0) setCurrentStep(n);
+    if (n > 0) {
+      setCurrentStep(n);
+      // S2: a `?step=` link means "enter the flow here" — never the listing home, even for a
+      // provider whose default landing (see `viewListingHome`'s initializer) would otherwise be it.
+      setViewListingHome(false);
+    }
     deepLinkApplied.current = true;
   }, [isEditMode, existingService, formData.deliveryMethod]);
 
@@ -1097,18 +1164,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       title: "Loaded from template",
       description: "Review and edit below, then Save as draft or Submit for review — it is never auto-approved.",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleAddAnother = () => {
-    setCreationSuccess(false);
-    setCreationOutcome({});
-    setCurrentStep(1);
-    setFormData(buildEmptyForm(role));
-    setLocationPointTouched(false);
-    setNewIncluded("");
-    setNewRequirement("");
-    setRequestOfferingConfirmedName(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1412,6 +1467,43 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
+
+      // ── WAVE 2 / LANE S2 — the listing home ──────────────────────────────────────────────
+      // A PROVIDER save — Save Draft or Submit for review, from the wizard OR the listing
+      // home's own button, create OR edit — lands on the listing home. This replaces both the
+      // old generic "View My Services / Add Another Service" create screen and the silent
+      // edit-mode bounce back to Catalog. L2's rule holds unchanged: the outcome copy reflects
+      // the RETURNED row, never the button label — a create is clamped server-side to a
+      // non-approved born state (F2 / migration 111), so "Submit for review" never claims live.
+      if (role === "provider") {
+        const approvalStatus: string | null | undefined =
+          service?.approvalStatus ?? (isEditMode ? existingService?.approvalStatus : undefined);
+        const isDraftOutcome = submitAction === "draft" || approvalStatus === "draft";
+        toast({
+          title: isDraftOutcome ? "Draft saved" : "Submitted for review",
+          description: isDraftOutcome
+            ? "Not yet visible to travelers — submit it for review when ready."
+            : "It goes live once approved. You'll be notified when it's reviewed.",
+        });
+        const savedId: string | undefined = service?.id ?? id;
+        if (onSuccess && savedId) onSuccess(savedId);
+        // `viewListingHome`'s useState INITIALIZER only ever runs once, at this component
+        // instance's true first mount — and wouter's `<Switch>` reuses the SAME `ServiceForm`
+        // instance across `/provider/services/new` → `/provider/services/:id/edit` (same
+        // component reference at the same tree position, only the `id` PROP changes), exactly
+        // the reason the old `handleAddAnother` had to hand-reset local state instead of relying
+        // on a remount. So this is set EXPLICITLY here rather than trusted to re-derive itself
+        // from the URL on a navigation that will not actually remount anything.
+        setViewListingHome(true);
+        if (!isEditMode && savedId) {
+          // The id did not exist a moment ago — give the row its own URL too (so a reload,
+          // bookmark or share lands back here), even though the state flip above already did
+          // the actual rendering work.
+          navigate(`/provider/services/${savedId}/edit`);
+        }
+        return;
+      }
+
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
@@ -1422,21 +1514,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // came back "approved" (grandfathered/edge case — never true for a fresh create).
       const approvalStatus: string = service?.approvalStatus ?? (submitAction === "draft" ? "draft" : "submitted");
       const isLive = approvalStatus === "approved" && service?.status !== "draft";
-      if (role === "expert") {
-        if (approvalStatus === "draft") {
-          toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
-        } else if (isLive) {
-          toast({ title: "Service published!", description: "Your service is now live." });
-        } else {
-          toast({ title: "Submitted for review", description: "It goes live once approved." });
-        }
-        queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
-        navigate("/expert/services");
-        return;
+      // role === "expert" from here on (provider already returned above).
+      if (approvalStatus === "draft") {
+        toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
+      } else if (isLive) {
+        toast({ title: "Service published!", description: "Your service is now live." });
+      } else {
+        toast({ title: "Submitted for review", description: "It goes live once approved." });
       }
-      setCreationOutcome({ status: service?.status ?? null, approvalStatus });
-      setCreationSuccess(true);
-      if (onSuccess && service?.id) onSuccess(service.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      navigate("/expert/services");
     },
     onError: (error: any) => {
       toast({
@@ -1624,7 +1711,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // missing (price, required category fields, the attestation confirmations) and the same lane
   // removed the two asterisks nothing required (Description, Duration). Draft saves stay
   // check-free, exactly as before.
-  const missingForFinal = missingRequiredForFinal({
+  const requiredFieldInput = {
     role,
     isEditMode,
     name: formData.name,
@@ -1643,7 +1730,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     categoryFields,
     categoryAttributes: formData.categoryAttributes,
     attestationGateBlocked,
-  });
+  };
+  const missingForFinal = missingRequiredForFinal(requiredFieldInput);
+
+  // WAVE 2 / S2: the listing home's checklist — the SAME `requiredFieldInput` above (never a
+  // forked set), plus the two facts only this surface needs: whether an attestation applies at
+  // all (so the row never renders hollow) and the real slot count (so "Publish some
+  // availability" ticks off the record, never off a click). Only meaningful once the row exists.
+  const checklistRows: ChecklistRow[] = isEditMode
+    ? deriveServiceChecklist({
+        ...requiredFieldInput,
+        attestationsApplicable: attestationResolution.applicable.length > 0,
+        availabilitySlotCount: Array.isArray(availabilitySlots) ? availabilitySlots.length : 0,
+      })
+    : [];
 
   const handleFinalSubmit = (action: "submit" | "publish") => {
     const firstMissing = missingForFinal[0];
@@ -1727,47 +1827,165 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     );
   }
 
-  if (creationSuccess) {
-    // L2: copy reflects the actual returned row (creationOutcome), never a
-    // hardcoded "published/live" claim regardless of what really happened.
-    const { status: outcomeStatus, approvalStatus: outcomeApproval } = creationOutcome;
-    const isDraftOutcome = outcomeStatus === "draft" || outcomeApproval === "draft";
-    const isLiveOutcome = outcomeApproval === "approved" && outcomeStatus !== "draft";
-    const successTitle = isDraftOutcome
-      ? "Draft saved"
-      : isLiveOutcome
-        ? "Service published!"
-        : "Submitted for review";
-    const successBody = isDraftOutcome
-      ? "Not yet visible to travelers — submit it for review when ready."
-      : isLiveOutcome
-        ? "Your service is now live. You can add more services to build out your full catalog."
-        : "It goes live once approved. You'll be notified when it's reviewed.";
+  // ── WAVE 2 / LANE S2 — THE LISTING HOME ───────────────────────────────────────────────────
+  // Reuses the SAME route that already owns per-listing editing (`/provider/services/:id/edit`,
+  // the ratified mock's "listing home" maps onto it rather than a new page) instead of the old
+  // generic post-create screen this replaced. Hero (name · method · price · status pill) + the
+  // derived checklist (`deriveServiceChecklist`, `client/src/lib/service-form-required.ts`) +
+  // Submit for review, gated on the SAME `missingForFinal` the wizard's own final step already
+  // uses (never a forked "is this ready" opinion) + links to the drawers this lane does not
+  // rebuild (photos, deliverable, availability — all pre-existing surfaces).
+  if (isEditMode && role === "provider" && viewListingHome && existingService) {
+    const price = effectivePriceScalar({
+      priceType: formData.priceType,
+      basePrice: formData.basePrice,
+      pricingTiers: formData.pricingTiers,
+    });
+    const statusPill = listingStatusPill(existingService, isEditMode);
+    // ONLY "review" freezes the checklist/button — a rejected listing needs to be
+    // resubmittable (that's the whole point of "changes requested"), and an already-live
+    // listing can still submit an edit for re-review (§17's edit-split, gap #17, Wave 3).
+    const frozen = statusPill.tone === "review";
+    const doneCount = checklistRows.filter((r) => r.done).length;
+    const leftCount = checklistRows.length - doneCount;
+    const openChecklistRow = (row: ChecklistRow) => {
+      if (row.target.kind === "availability") {
+        navigate(`/provider/services?availability=${encodeURIComponent(id!)}`);
+        return;
+      }
+      setViewListingHome(false);
+      goToStepKey(row.target.stepKey);
+    };
     return (
-      <div className="p-6 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="p-10 text-center space-y-4">
-            <div className="flex justify-center">
-              <CheckCircle className="w-16 h-16 text-green-500" />
+      <div className="p-6 max-w-3xl space-y-6" data-testid="view-listing-home">
+        <button
+          onClick={() => navigate(`/${role}/services`)}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-listing-home-back"
+        >
+          <ArrowLeft className="w-4 h-4" /> My Services
+        </button>
+
+        <Card data-testid="card-listing-hero">
+          <CardContent className="p-5 flex items-start gap-4 flex-wrap">
+            <CheckCircle className="w-8 h-8 text-green-500 flex-shrink-0" />
+            <div className="flex-1 min-w-[220px]">
+              <h2 className="text-lg font-semibold text-gray-900" data-testid="text-listing-hero-name">
+                {formData.name || "Untitled listing"}
+              </h2>
+              <p className="text-sm text-muted-foreground" data-testid="text-listing-hero-sub">
+                {deliveryMethodLabel(formData.deliveryMethod)}
+                {" · "}
+                {price != null ? `$${price}${formData.priceType !== "Fixed" ? ` (${formData.priceType})` : ""}` : "No price set yet"}
+              </p>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {successTitle}
-            </h2>
-            <p className="text-gray-500 text-sm">
-              {successBody}
+            <Badge
+              variant={statusPill.tone === "live" ? "default" : "secondary"}
+              data-testid="badge-listing-hero-status"
+            >
+              {statusPill.label}
+            </Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base" data-testid="text-checklist-heading">
+              {frozen
+                ? leftCount === 0
+                  ? "Submitted — nothing outstanding"
+                  : `Submitted — ${leftCount} still outstanding`
+                : leftCount === 0
+                  ? "Nothing left — ready for review"
+                  : `${leftCount} ${leftCount === 1 ? "thing" : "things"} left before review`}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Derived from the draft — rows navigate to the surface that owns the work; nothing
+              here ticks itself.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-              <Button variant="outline" onClick={() => navigate(`/${role}/services`)}>
-                View My Services
-              </Button>
-              <Button
-                className="bg-primary hover:bg-primary/90"
-                onClick={handleAddAnother}
-              >
-                <Plus className="w-4 h-4 mr-2" /> Add Another Service
-              </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div data-testid="list-checklist">
+              {checklistRows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => openChecklistRow(row)}
+                  className="w-full flex items-start gap-3 px-5 py-3 text-left border-t first:border-t-0 hover:bg-muted/40 transition-colors"
+                  data-testid={`checklist-row-${row.id}`}
+                  aria-checked={row.done}
+                >
+                  <span
+                    className={`mt-0.5 flex-shrink-0 rounded-full ${row.done ? "text-green-600" : "text-muted-foreground/50"}`}
+                  >
+                    {row.done ? <CheckCircle className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">{row.label}</span>
+                    <span className="block text-xs text-muted-foreground">{row.hint}</span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                </button>
+              ))}
             </div>
           </CardContent>
+        </Card>
+
+        <Card className="p-5 space-y-3">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Ready when you are</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {frozen
+                  ? "Submitted for review. We'll email you when it's decided. You can keep editing while it waits — changes are re-checked before anything goes live."
+                  : "Reviewed by our team before it goes live. You can keep editing while it's in review."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/${role}/services`)}
+                data-testid="button-listing-home-finish-later"
+              >
+                Finish later
+              </Button>
+              <Button
+                onClick={() => handleFinalSubmit("publish")}
+                disabled={frozen || createMutation.isPending || missingForFinal.length > 0 || verificationGateBlocked || publishBlocked || attestationGateBlocked}
+                title={
+                  missingForFinal.length > 0
+                    ? `Still needed: ${missingForFinal.map((m) => m.label).join(", ")}`
+                    : verificationGateBlocked
+                    ? "Complete identity and business verification in your Provider Status page first"
+                    : publishBlocked
+                    ? "Complete background verification before submitting a listing in this category"
+                    : undefined
+                }
+                data-testid="button-listing-home-submit"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {frozen ? "Submitted" : statusPill.tone === "live" ? "Submit changes for review" : "Submit for review"}
+              </Button>
+            </div>
+          </div>
+          {!frozen && missingForFinal.length > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="text-listing-home-missing">
+              Still needed before you submit for review:{" "}
+              {missingForFinal.map((m, i) => (
+                <span key={`${m.step}-${m.label}`}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => openChecklistRow({ id: m.section, label: m.label, hint: "", done: false, target: { kind: "step", section: m.section, stepKey: m.stepKey, step: m.step } })}
+                  >
+                    {m.label}
+                  </button>
+                </span>
+              ))}
+              .
+            </p>
+          )}
         </Card>
       </div>
     );
@@ -1843,12 +2061,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       {/* ── Breadcrumb / Back ── */}
       <div className="flex items-center gap-2 text-sm">
+        {/* WAVE 2 / S2: a provider who entered the flow FROM the listing home (a checklist row,
+            or any other `?step=` deep link) gets back to it without a round trip through the
+            server — the row it navigated from is what should be highlighted on return. Anyone
+            else (fresh create, or a direct deep link with no listing home to return to) keeps
+            the original "My Services" breadcrumb, unchanged. */}
         <button
-          onClick={() => navigate(`/${role}/services`)}
+          onClick={() =>
+            isEditMode && role === "provider" ? setViewListingHome(true) : navigate(`/${role}/services`)
+          }
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-form-back"
         >
           <ArrowLeft className="w-4 h-4" />
-          My Services
+          {isEditMode && role === "provider" ? "Listing home" : "My Services"}
         </button>
         <span className="text-muted-foreground">/</span>
         <span className="text-foreground font-medium">
@@ -4158,18 +4384,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Label className="text-sm font-medium">Current Status</Label>
               <div className="mt-2">
                 <Badge
-                  variant={existingService?.status === "active" && existingService?.approvalStatus === "approved" ? "default" : "secondary"}
+                  variant={listingStatusPill(existingService, isEditMode).tone === "live" ? "default" : "secondary"}
                   data-testid="badge-provider-listing-status"
                 >
-                  {!isEditMode
-                    ? "Not saved yet"
-                    : existingService?.status === "draft"
-                      ? "Draft (not submitted)"
-                      : existingService?.approvalStatus === "approved"
-                        ? existingService?.status === "active" ? "Live" : "Approved — paused"
-                        : existingService?.approvalStatus === "rejected"
-                          ? "Changes requested"
-                          : "In review"}
+                  {listingStatusPill(existingService, isEditMode).label}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
