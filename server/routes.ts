@@ -14,6 +14,9 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
+// Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
+// see shared/booking-visibility.ts for why three tabs disagreed about one row.
+import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
@@ -5144,19 +5147,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).from(serviceProviderForms)
         .where(eq(serviceProviderForms.userId, req.params.userId))
         .limit(1);
-      const [userRow] = await db.select({ handle: users.handle })
+      // Ledger 90 (FP-5, I3): `displayName` is additive here. The service-detail page's
+      // "Contact Provider" CTA needs the owner's display name to open a working chat thread —
+      // `/api/experts/:id` resolves EXPERT-FAMILY roles only, so a `service_provider` owner 404s
+      // there and chat.tsx's documented `?name=` fallback is the only way through (the same shape
+      // the storefront's Message CTA already uses). Derived exactly as storefront.routes.ts
+      // derives `earner.name`, so the two surfaces name the same person the same way. Nothing
+      // private is added: this name is already public on the storefront and every listing card.
+      const [userRow] = await db.select({
+        handle: users.handle,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
         .from(users)
         .where(eq(users.id, req.params.userId))
         .limit(1);
       const handle = userRow?.handle ?? null;
-      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle });
+      const displayName = userRow
+        ? ([userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || null)
+        : null;
+      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle, displayName });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
         businessVerified: form.businessVerificationStatus === "verified",
         handle,
+        displayName,
       });
     } catch {
-      res.json({ identityVerified: false, businessVerified: false, handle: null });
+      res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });
 
@@ -6901,8 +6919,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ) || 0;
       
       const completedBookings = bookings.filter(b => b.status === "completed");
-      const pendingBookings = bookings.filter(b => b.status === "pending");
-      
+      // Ledger 90 (FP-5, X1): the ONE shared predicate (shared/booking-visibility.ts), so this
+      // tile, Today's Action Items and the Inbox queue count the same rows. `payment_pending` is
+      // excluded BY RULE — an unauthorized §15b claim is not provider-actionable (§18b) — and is
+      // reported separately, additively, so the surface can disclose it without banking it.
+      const pendingBookings = bookings.filter(b => isActionableBooking(b.status));
+      const awaitingPaymentBookings = bookings.filter(b => isProvisionalBooking(b.status));
+
       // Monthly breakdown from real booking data
       const now = new Date();
       const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
@@ -6998,6 +7021,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           avgRating,
           activeServices: services.filter(s => s.status === "active").length,
           pendingBookings: pendingBookings.length,
+          // Ledger 90 (FP-5, X1): additive — provisional §15b claims, counted separately so the
+          // console can DISCLOSE them without any surface treating them as actionable or as money.
+          awaitingPaymentBookings: awaitingPaymentBookings.length,
           completedBookings: completedBookings.length,
         },
         monthlyRevenue,

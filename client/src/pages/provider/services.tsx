@@ -103,6 +103,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
+// FP-3: property + property_room rows are edited on the Workstation property surface, never in
+// the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
+// guard imports the same module).
+import { listingEditHref, isPropertyRoom } from "@/lib/property-editor-link";
 
 interface Service {
   id: string;
@@ -132,7 +136,13 @@ interface Service {
   contentAffinityTags?: string[];
   // PB (§17 Product Builder): a bundle IS a provider_services row (product_shape='bundle',
   // migration 151) — it appears in this list like any listing; NULL = single service.
+  // Same for a property and each of its room types (product_shape='property'/'property_room',
+  // migration 153) — FP-3 groups the rooms under their parent card rather than letting them
+  // render as ordinary standalone listings.
   productShape?: string | null;
+  // FP-3: set on a property_room row — the provider_services.id of its parent property. Already
+  // on the wire (getProviderServices is an unfiltered db.select()); this only names it.
+  parentServiceId?: string | null;
   // Listing Health (below): these ride the EXISTING /api/provider/services row — storage.
   // getProviderServices does an unfiltered db.select(), so photo + pin fields are already on
   // the wire. Sourcing the thumbnail/pin chip from here (not the new health endpoint) is what
@@ -713,10 +723,12 @@ function pinStatus(service: Service): { labelKey: string; tone: keyof typeof TON
  *  call, voice notes, messaging…) gets a neutral delivery-method chip instead — its location
  *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
  *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
-function PinChip({ service, isBundle }: { service: Service; isBundle: boolean }) {
+function PinChip({ service }: { service: Service }) {
   const { t } = useTranslation("catalog");
   const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
-  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+  // FP-3: bundles and properties/rooms resolve to their Workstation surface; everything else
+  // keeps the ServiceForm edit route.
+  const editHref = listingEditHref(service);
 
   if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
     const method = service.deliveryMethod ?? "";
@@ -930,10 +942,72 @@ function CardShowsControl({
   );
 }
 
+// ─── FP-3: property rooms are not standalone listings ────────────────────────────────────────
+//
+// Ratified design (service-creation redesign mock, decision-maker Aug 2026): "a property room's
+// Edit opens its property's editor at the Rooms step — a room has no service checklist/delivery-
+// method of its own, and sending it into the generic ServiceForm is a dishonest surface."
+//
+// A room IS a provider_services row (migration 153) so it arrives on this owner read like any
+// listing — but it is a CHILD row: its category, location, pin and delivery method are inherited
+// from its property, and its price is a nightly rate. Rendering it as an ordinary service card
+// (with Duplicate, a pin chip and an Edit into the delivery questionnaire) states things about it
+// that are not true. It renders instead as a compact room row under its parent property's card,
+// showing exactly what a room is: its name, its nightly price, its own review/active state, and
+// an Edit that opens the property editor at the Rooms step.
+function RoomRow({
+  room,
+  parentName,
+  health,
+}: {
+  room: Service;
+  /** The parent property's name — stated on an ORPHAN row (its property card is not in view). */
+  parentName?: string | null;
+  health: ServiceHealth | undefined;
+}) {
+  const { t } = useTranslation("catalog");
+  const { t: tCommon } = useTranslation("common");
+  const rawPrice = room.price ?? room.basePrice;
+  const nightly = rawPrice == null || rawPrice === "" ? "—" : `$${rawPrice} / night`;
+  const isActive = room.status === "active";
+  return (
+    <div
+      className={`rounded-md border border-console-light px-3 py-2 ${!isActive ? "opacity-60" : ""}`}
+      data-testid={`row-catalog-room-${room.id}`}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+          <BedDouble className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
+          <span className="text-sm text-console-darkest truncate">
+            {room.serviceName || room.name || t("card.untitled")}
+          </span>
+          <span className="text-xs font-medium text-green-600" data-testid={`text-room-price-${room.id}`}>
+            {nightly}
+          </span>
+          {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
+          <StatusBadge status={isActive ? "active" : "paused"} />
+          {parentName && (
+            <span className="text-[11px] text-console-mid" data-testid={`text-room-parent-${room.id}`}>
+              Room in {parentName}
+            </span>
+          )}
+        </div>
+        <Link href={listingEditHref(room)}>
+          <Button variant="outline" size="sm" className="h-7" data-testid={`button-edit-room-${room.id}`}>
+            <Edit className="w-3.5 h-3.5 mr-1" /> {tCommon("actions.edit")}
+          </Button>
+        </Link>
+      </div>
+      <HealthRow health={health} />
+    </div>
+  );
+}
+
 function CatalogPreviewCard({ service }: { service: Service }) {
   const { t: tCommon } = useTranslation("common");
-  const isBundle = service.productShape === "bundle";
-  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+  // FP-3: Preview is "what travelers see", so a room KEEPS its traveler card here (a room really
+  // is a bookable public listing) — only the hover Edit affordance re-routes to its property.
+  const editHref = listingEditHref(service);
 
   const chips = service.deliveryMethod && PREVIEW_DELIVERY_LABELS[service.deliveryMethod]
     ? [PREVIEW_DELIVERY_LABELS[service.deliveryMethod]]
@@ -1101,6 +1175,28 @@ export default function ProviderServices() {
           return name === selectedCategory;
         });
 
+  // ── FP-3: property rooms are grouped under their parent property card ───────────────────────
+  // A room row is never a top-level card here. It renders as a compact RoomRow inside its
+  // property's card; if the property card is NOT in the current filtered view (a category filter
+  // that catches the room but not the property, or a property row missing from this read), the
+  // room still renders as its own row — an ORPHAN row that names its parent — rather than
+  // silently vanishing (§13) or reverting to a generic service card.
+  const roomsByParent = new globalThis.Map<string, Service[]>();
+  for (const s of filteredServices) {
+    if (!isPropertyRoom(s.productShape)) continue;
+    const key = s.parentServiceId ?? "";
+    roomsByParent.set(key, [...(roomsByParent.get(key) ?? []), s]);
+  }
+  const topLevelServices = filteredServices.filter((s) => !isPropertyRoom(s.productShape));
+  const topLevelIds = new Set(topLevelServices.map((s) => s.id));
+  const orphanRooms = filteredServices.filter(
+    (s) => isPropertyRoom(s.productShape) && !(s.parentServiceId && topLevelIds.has(s.parentServiceId)),
+  );
+  // Parent name for an orphan row — from the unfiltered read when the parent exists at all.
+  const serviceNameById = new globalThis.Map<string, string>(
+    (services ?? []).map((s) => [s.id, s.serviceName || s.name || ""]),
+  );
+
   // C2 Preview honesty filter (§13): a listing appears in Preview ONLY if it would appear on the
   // public /p/:handle storefront — the SAME predicate storefront.routes.ts loadStorefront applies
   // to lane 1 (approvalStatus='approved' AND status='active'; owner-scoping is implicit here since
@@ -1133,7 +1229,11 @@ export default function ProviderServices() {
     : null;
 
   return (
-    <ProviderLayout title="Catalog">
+    /* FP-4 full-bleed exception #1: the MAP view's canvas is a three-pane authoring
+       surface (selector rail · map · authoring cards) whose usable area IS the shell
+       width — capping it would shrink the map for no reading benefit. The LIST view is
+       ordinary card content and stays inside the shared container. */
+    <ProviderLayout title="Catalog" width={viewMode === "map" ? "full" : "contained"}>
       <div className="p-6 space-y-6">
         {/* C9: the /p/:handle storefront management header (the expert catalog C2 block). */}
         <ProviderStorefrontHeader />
@@ -1305,9 +1405,10 @@ export default function ProviderServices() {
             </div>
           )
         ) : (
-          /* Service cards */
+          /* Service cards. FP-3: rooms are NOT in this list — they render inside their
+             property's card below (or as orphan rows after the grid). */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredServices.map((service) => {
+            {topLevelServices.map((service) => {
               // The listing's own NAME is provider content (ruling 60 system B) and is never
               // translated; only the placeholder shown when there is no name is chrome.
               const displayName = service.serviceName || service.name || t("card.untitled");
@@ -1326,6 +1427,11 @@ export default function ProviderServices() {
               // PB: bundles are edited in the Workstation's bundle builder (components +
               // price live there), not the ServiceForm.
               const isBundle = service.productShape === "bundle";
+              // FP-3: a property is edited on the Workstation property surface — at its Basics —
+              // together with its room types; never in the ServiceForm questionnaire.
+              const isProperty = service.productShape === "property";
+              const childRooms = isProperty ? roomsByParent.get(service.id) ?? [] : [];
+              const editHref = listingEditHref(service);
 
               return (
                 <Card
@@ -1352,6 +1458,11 @@ export default function ProviderServices() {
                               {t("card.bundle")}
                             </Badge>
                           )}
+                          {isProperty && (
+                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-property-${service.id}`}>
+                              Property
+                            </Badge>
+                          )}
                           {service.isFeatured && (
                             <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
                               {t("card.featured")}
@@ -1370,7 +1481,7 @@ export default function ProviderServices() {
                           <span className="flex items-center gap-1 font-semibold text-green-600" data-testid={`text-price-${service.id}`}>
                             <DollarSign className="w-4 h-4" /> {priceDisplay}
                           </span>
-                          <PinChip service={service} isBundle={isBundle} />
+                          <PinChip service={service} />
                           {service.deliveryTimeframe && (
                             <span className="flex items-center gap-1 text-console-mid">
                               <Clock className="w-4 h-4" /> {service.deliveryTimeframe}
@@ -1440,16 +1551,41 @@ export default function ProviderServices() {
                       disabled={displayOptionsMutation.isPending}
                     />
 
+                    {/* FP-3: the property's room types, grouped here rather than scattered
+                        through the grid as standalone service cards. Each row states what a room
+                        really is — name, nightly rate, its own review/active state — and its Edit
+                        opens the property editor at the Rooms step. */}
+                    {isProperty && (
+                      <div className="mt-3 pt-3 border-t border-console-light" data-testid={`rooms-block-${service.id}`}>
+                        <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
+                          Room types
+                        </p>
+                        {childRooms.length === 0 ? (
+                          <p className="text-xs text-console-mid" data-testid={`rooms-empty-${service.id}`}>
+                            No room types yet — add one in the Workstation.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {childRooms.map((room) => (
+                              <RoomRow key={room.id} room={room} health={healthByServiceId.get(room.id)} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
-                      <Link href={isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`}>
+                      <Link href={editHref}>
                         <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
                           <Edit className="w-4 h-4 mr-1" /> {tCommon("actions.edit")}
                         </Button>
                       </Link>
                       {/* PB: no Duplicate for bundles — duplicateService copies the
                           provider_services row only, not bundle_components, so the copy
-                          would be a component-less bundle (filed server follow-up). */}
-                      {!isBundle && (
+                          would be a component-less bundle (filed server follow-up).
+                          FP-3: nor for a property — the same one-row copy would produce a
+                          property with no room types, which is not a sellable thing. */}
+                      {!isBundle && !isProperty && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1489,6 +1625,25 @@ export default function ProviderServices() {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {/* FP-3: rooms whose property card is NOT in the current view. They still render as room
+            rows — naming the property they belong to — never as generic service cards, and never
+            silently dropped (§13). Shown in the manage layout only; Preview is the traveler view. */}
+        {catalogMode === "manage" && viewMode === "list" && orphanRooms.length > 0 && (
+          <div className="space-y-1.5" data-testid="catalog-orphan-rooms">
+            <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide">
+              Room types
+            </p>
+            {orphanRooms.map((room) => (
+              <RoomRow
+                key={room.id}
+                room={room}
+                parentName={room.parentServiceId ? serviceNameById.get(room.parentServiceId) ?? null : null}
+                health={healthByServiceId.get(room.id)}
+              />
+            ))}
           </div>
         )}
 

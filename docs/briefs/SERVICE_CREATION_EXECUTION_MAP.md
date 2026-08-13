@@ -78,6 +78,11 @@ capacity story).
   check-in, house rules, amenities, capacity. **Q:** dedicated builder scope? **REC:** dedicated
   flow behind the one-door Property tile, rooms as child rows, per-night unit, the missing fields;
   stays on `provider_services` (canonical-table rule); gets its own mock tab before build.
+  **Location (DM raised Aug 12): the property is placed by the same confirm-gated PIN-DROP as
+  every other location write** — the pin is authoritative, an address line is optional display
+  text (Japanese addresses geocode badly; §13 forbids guessing coordinates from text), all rooms
+  inherit the property pin, and travelers see an approximate neighborhood circle pre-booking with
+  the exact pin revealed after booking (labeled privacy treatment, never a fake location).
   → unblocks **S8**.
 - **G3 · Live-session & async details.** **Q:** which fields become real? **REC:** scheduled
   remote: timezone, join-link (provider's own link, shown post-booking only), remote capacity;
@@ -104,8 +109,18 @@ capacity story).
 ## Wave 3 — gap-dependent lanes
 
 **S7** availability (G1) · **S8** property builder (G2) · **S9** session/async fields (G3) ·
-**S10** bundles (G4) · **T-REP** traveler representation sweep (#13) — each starts only when its
-gate answer is ratified; each updates the mock in the same wave.
+**S10** bundles (G4) · **T-REP** traveler representation sweep (#13) · **S11** traveler-side
+STAY BOOKING — the authoring lanes publish date-ranges with nightly prices, but the checkout
+spine claims *slots*; a traveler picking check-in/check-out, nightly-price math on the cart
+rail, and range claims under the §15 claim/promote/void rules is its own commerce lane
+(sequenced after S7+S8, before any stay is sold). Each lane starts only when its gate answer
+is ratified; each updates the mock in the same wave.
+
+**Schema ratification touchpoints:** S7 (availability ranges) and S8 (property↔room linkage,
+pin inheritance) begin with a short schema proposal back to the decision-maker — schema changes
+require explicit approval (CLAUDE.md), so the touchpoint is scheduled at lane start, not
+discovered mid-lane. All migrations follow the publish-trap rules (declared in
+`shared/schema.ts`, no CHECK over legacy values, preflight before publish).
 
 ---
 

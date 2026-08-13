@@ -157,7 +157,11 @@ export default function ProviderCalendar() {
 
   return (
     <ProviderLayout title="Calendar">
-      <div className="p-6 max-w-6xl mx-auto space-y-4">
+      {/* FP-4: the width cap lives on ProviderLayout now (one container for the whole
+          console) — this page's own `max-w-6xl mx-auto` was the same value and is dropped
+          rather than stacked. The month grid keeps its own `overflow-x-auto` + min-width
+          and scrolls INSIDE the cap; it is not a full-bleed exception. */}
+      <div className="p-6 space-y-4">
         <PageHeader
           title="Calendar"
           subtitle="Every channel, one timeline — each event links to its owning module."
