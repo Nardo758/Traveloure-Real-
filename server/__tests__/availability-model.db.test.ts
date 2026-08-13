@@ -376,9 +376,18 @@ test("P-DATERANGES: owner can save + read date-ranges on a property listing", as
   assert.equal(read.body.dateRanges.length, 1);
   assert.equal(read.body.dateRanges[0].startDate.slice(0, 10), start);
 
-  // No vendor_availability_slots row is created for a date-range save — S11 owns range claims.
+  // SUPERSEDED BY S11 (DECISIONS.md ledger row 107, migration 213): this used to assert that a
+  // date-range save materializes ZERO vendor_availability_slots rows — true under S7's ratified
+  // scope ("date-ranges are property/room authoring only THIS WAVE — S11 owns the range-claim
+  // machinery"), false now that S11 has landed the date-range materializer the S7 ballot itself
+  // named as its own future consumer. A 6-night range now materializes exactly 6 nights (one row
+  // per night, sentinel start_time='00:00', materialized_from='date_range') — see
+  // s11-stay-booking.db.test.ts for the full S11 proof (provenance, sentinel, mixed-rate pricing,
+  // redacted calendar, price-edit propagation). This assertion is updated in place, not deleted,
+  // so the route's OTHER S7-ratified behavior (ownership, shape gate, replace-list read) stays
+  // covered by this suite exactly as before.
   const slots = await db.execute(sql`SELECT count(*)::int AS n FROM vendor_availability_slots WHERE service_id = ${svc}`);
-  assert.equal((slots.rows[0] as any).n, 0, "date-ranges authoring never materializes a claimable slot this wave");
+  assert.equal((slots.rows[0] as any).n, 6, "S11: a 6-night date-range now materializes exactly 6 claimable slots");
 
   // property_room is accepted too (S8's shape).
   const room = await seedService(provider.id, "p7room", { productShape: "property_room" });
