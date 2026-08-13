@@ -99,6 +99,18 @@ export function formatTransportProvision(value: string | null | undefined): stri
   return TRANSPORT_PROVISION_LABELS[value] ?? value;
 }
 
+/**
+ * S9 (docs/DECISIONS.md ledger row 102) — the async lane's promised response time, in prose
+ * ("Replies within 24 hours"). Reuses `formatHours`'s own day/hour collapsing so this line reads
+ * the same way the lead-time/change-cutoff lines above do. Returns null when never captured or
+ * not a positive number (§13 — never a fabricated "as soon as possible").
+ */
+export function formatResponseWindow(hours: unknown): string | null {
+  const n = asFiniteNumber(hours);
+  if (n === null || n <= 0) return null;
+  return `Replies within ${formatHours(n)}`;
+}
+
 export interface DepositPreviewInput {
   depositEnabled?: boolean | null;
   depositType?: string | null;
