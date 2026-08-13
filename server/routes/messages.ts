@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { sanitizeText } from "../utils/text-sanitizer";
 import {
   buildConversationId,
   parseConversationId,
@@ -21,7 +22,14 @@ const router = Router();
 const sendMessageSchema = z.object({
   recipientId: z.string().optional(),
   conversationId: z.string().optional(),
-  message: z.string().min(1, "Message cannot be empty"),
+  // Task 1135: cap length and sanitize on write — message bodies reach non-React sinks
+  // (notification emails, exports), so stored HTML/script payloads are stripped here.
+  message: z
+    .string()
+    .min(1, "Message cannot be empty")
+    .max(10000, "Message is too long (10,000 character limit)")
+    .transform((v) => sanitizeText(v))
+    .refine((v) => v.length > 0, { message: "Message cannot be empty" }),
   attachment: z.string().url().optional(),
 });
 

@@ -8,6 +8,14 @@ import { users, providerServices, bundleComponents } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { guardedDeleteProviderService, softDeleteMessage } from "../services/service-delete-guard";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
+import { sanitizeText } from "../utils/text-sanitizer";
+
+// Task 1135: provider prose sanitized on write (defense-in-depth for non-React sinks such as
+// emails, PDFs, and CSV/API exports). Applied as a zod transform so every schema below shares it.
+const sanitizedText = (max: number) =>
+  z.string().trim().min(1).max(max).transform((v) => sanitizeText(v));
+const sanitizedTextOptional = (max: number) =>
+  z.string().max(max).transform((v) => sanitizeText(v)).optional();
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -132,15 +140,15 @@ const bundlePriceField = z
 // Allow-list only — approvalStatus/userId/earnings columns are never accepted from the
 // client (the marketplace Gap-2 lesson; D1a clamps the born state server-side below).
 const bundleCreateSchema = z.object({
-  serviceName: z.string().trim().min(1).max(255),
-  description: z.string().max(10000).optional(),
+  serviceName: sanitizedText(255),
+  description: sanitizedTextOptional(10000),
   price: bundlePriceField,
   componentServiceIds: z.array(z.string().min(1)).min(2),
 });
 
 const bundlePatchSchema = z.object({
-  serviceName: z.string().trim().min(1).max(255).optional(),
-  description: z.string().max(10000).optional(),
+  serviceName: sanitizedText(255).optional(),
+  description: sanitizedTextOptional(10000),
   price: bundlePriceField.optional(),
   componentServiceIds: z.array(z.string().min(1)).min(2).optional(),
   status: z.enum(["active", "paused"]).optional(),
@@ -435,8 +443,8 @@ const roomPriceField = z
 // vendor_availability_slots.capacity, set per-night via the .../slots/range endpoint (which
 // defaults to this value when the caller omits capacity).
 const roomInputSchema = z.object({
-  roomName: z.string().trim().min(1).max(255),
-  description: z.string().max(2000).optional(),
+  roomName: sanitizedText(255),
+  description: sanitizedTextOptional(2000),
   price: roomPriceField,
   units: z.number().int().min(1).max(100).optional(),
 });
@@ -454,11 +462,11 @@ const locationPointSchema = z.object({
 });
 
 const propertyCreateSchema = z.object({
-  serviceName: z.string().trim().min(1).max(255),
-  description: z.string().max(10000).optional(),
-  location: z.string().max(255).optional(),
+  serviceName: sanitizedText(255),
+  description: sanitizedTextOptional(10000),
+  location: sanitizedTextOptional(255),
   locationPoint: locationPointSchema.optional(),
-  neighborhood: z.string().max(100).optional(),
+  neighborhood: sanitizedTextOptional(100),
   categoryId: z.string().optional(),
   serviceImage: z.string().max(2000).optional(),
   galleryImages: z.array(z.string().max(2000)).max(20).optional(),
@@ -466,18 +474,18 @@ const propertyCreateSchema = z.object({
 });
 
 const propertyPatchSchema = z.object({
-  serviceName: z.string().trim().min(1).max(255).optional(),
-  description: z.string().max(10000).optional(),
-  location: z.string().max(255).optional(),
-  neighborhood: z.string().max(100).optional(),
+  serviceName: sanitizedText(255).optional(),
+  description: sanitizedTextOptional(10000),
+  location: sanitizedTextOptional(255),
+  neighborhood: sanitizedTextOptional(100),
   serviceImage: z.string().max(2000).optional(),
   galleryImages: z.array(z.string().max(2000)).max(20).optional(),
   status: z.enum(["active", "paused"]).optional(),
 });
 
 const roomPatchSchema = z.object({
-  roomName: z.string().trim().min(1).max(255).optional(),
-  description: z.string().max(2000).optional(),
+  roomName: sanitizedText(255).optional(),
+  description: sanitizedTextOptional(2000),
   price: roomPriceField.optional(),
   units: z.number().int().min(1).max(100).optional(),
   status: z.enum(["active", "paused"]).optional(),
