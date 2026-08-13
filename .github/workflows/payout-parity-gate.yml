@@ -152,3 +152,21 @@ jobs:
           NODE_ENV: test
           # Disposable-DB opt-in: same throwaway service container as the recipe suite above.
           JOURNEY_DB_WRITES_OK: '1'
+
+      # ── STRIPE-LEAK LEG (L1–L4): earner booking responses never expose Stripe refs ──────────
+      # Reuses the server already booted for the route leg. Pins the
+      # sanitizeBookingForExpert allow-list (EARNER_BOOKING_FIELDS): expert/provider
+      # booking surfaces must never expose stripePaymentIntentId /
+      # stripeDepositIntentId / stripeBalanceIntentId / idempotencyKey, while admin
+      # (canSeeFull) still sees the full row. A deliberate re-leak (e.g. adding a
+      # Stripe ref to EARNER_BOOKING_FIELDS) fails HERE.
+      - name: Stripe reference leak gate (L1–L4, earner booking surfaces)
+        run: npm run test:stripe-leak
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          # Disposable-DB opt-in: same throwaway service container as above.
+          JOURNEY_DB_WRITES_OK: '1'
