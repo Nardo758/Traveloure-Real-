@@ -28,3 +28,6 @@ playwright/.auth/
 # ./journey-out by default (overridable via --out / JOURNEY_OUT_DIR). Never commit;
 # the verdict JSON/table in the run's stdout is the artifact that matters.
 journey-out/
+
+# Claude Code agent scratch (session-local: isolated agent worktrees, local settings) — never commit
+.claude/

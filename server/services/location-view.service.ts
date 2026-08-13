@@ -19,11 +19,38 @@
 
 import { db } from "../db";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, expertTemplates, users } from "@shared/schema";
-import { eq, sql, and, ilike, inArray, asc } from "drizzle-orm";
+import { eq, sql, and, or, isNull, ilike, inArray, asc } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
 import { sortByFeaturedAdjusted } from "./featured-sort";
+
+/**
+ * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
+ * CITY SCOPING — prefer the STRUCTURED column, keep the old behavior as the fallback.
+ *
+ * This read used to be a single `ilike(location, '%<city>%')` over a free-text field the console
+ * does not always collect. On one real Kyoto catalog that excluded 7 of 11 listings: two because
+ * the provider typed neighbourhoods ("Arashiyama, Sagano, Kinkaku-ji") instead of the city name,
+ * five because their `location` is the literal column default `'Unknown'`.
+ *
+ * The predicate now reads:
+ *   city = '<city>'                       — the structured, server-derived column (utils/service-city.ts)
+ *   OR (city IS NULL AND location ILIKE …) — grandfathering: rows predating the derivation
+ *
+ * Two properties this shape has and the old one did not:
+ *  - A row whose `city` says OSAKA can no longer be dragged onto the Kyoto page by the word
+ *    "Kyoto" appearing anywhere in its prose. Structured wins where it exists.
+ *  - A row with NO city and NO matching prose stays honestly ABSENT rather than being guessed
+ *    into some city (§13). It becomes visible by its owner naming a neighborhood, not by us
+ *    inferring one.
+ */
+function cityScopePredicate(cityName: string) {
+  return or(
+    eq(providerServices.city, cityName),
+    and(isNull(providerServices.city), ilike(providerServices.location, `%${cityName}%`)),
+  );
+}
 
 export interface SectionResult<T> {
   data: T | null;
@@ -211,7 +238,8 @@ class LocationViewService {
           .where(
             and(
               eq(providerServices.status, "active"),
-              ilike(providerServices.location, `%${cityName}%`),
+              // FP-1 / B4: same structured-first scoping as the services query below.
+              cityScopePredicate(cityName),
             ),
           )
           .groupBy(providerServices.neighborhood),
@@ -336,6 +364,13 @@ class LocationViewService {
         price: providerServices.price,
         priceType: providerServices.priceType,
         deliveryMethod: providerServices.deliveryMethod,
+        // FP-1 / B4b: `productShape` is what lets the city feed route an accommodation listing
+        // into the STAY spine (a 2-room machiya with 60 published nights used to sit in this very
+        // payload while the Stay tab reported "No stay found in Kyoto"); `city` is the structured
+        // value the scoping above now prefers, exposed so a client can tell derived from
+        // grandfathered.
+        productShape: providerServices.productShape,
+        city: providerServices.city,
         neighborhood: providerServices.neighborhood,
         serviceImage: providerServices.serviceImage,
         location: providerServices.location,
@@ -367,7 +402,9 @@ class LocationViewService {
           // public city page. `status='active'` is the OWNER's on/off switch — it is NOT
           // an approval, and was never a substitute for one.
           eq(providerServices.approvalStatus, "approved"),
-          ilike(providerServices.location, `%${cityName}%`),
+          // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
+          // fallback for rows that predate the server-side derivation (see cityScopePredicate).
+          cityScopePredicate(cityName),
         ),
       )
       // CURATION ORDER. This replaced `.orderBy(providerServices.isFeatured)`, which was

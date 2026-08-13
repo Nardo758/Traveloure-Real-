@@ -3,7 +3,7 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { providerServices, vendorAvailabilitySlots } from "@shared/schema";
+import { providerServices, serviceCategories, vendorAvailabilitySlots } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, needsScheduling, isArtifactDelivery } from "@shared/service-fundamentals";
 
 /**
@@ -79,8 +79,14 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
         deliveryMethod: providerServices.deliveryMethod,
         productShape: providerServices.productShape,
         serviceFile: providerServices.serviceFile,
+        // FP-1 / B10: the two columns the commission-band NOTICE below is derived from. Read-only,
+        // and deliberately NOT a rate: the band KEY, never a percentage (§8/§18 — this lane does
+        // not touch rate resolution or any amount).
+        categoryId: providerServices.categoryId,
+        categoryCommissionBandKey: serviceCategories.commissionBandKey,
       })
       .from(providerServices)
+      .leftJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
       .where(eq(providerServices.userId, userId));
 
     const omitted: { key: string; reason: string }[] = [];
@@ -228,12 +234,38 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
             }),
       });
 
+      // ── FP-1 / B10 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────
+      // VISIBILITY ONLY. Five of twelve listings in a real catalog (a property, both its rooms and
+      // both bundles) carry categoryId = NULL, so service_categories.commission_band_key is
+      // unresolvable and the resolver falls through to the configured platform default — a band
+      // named for a different actor. Nothing here changes any rate, any amount or any resolution
+      // order (§8/§18 — the fee lanes own that); it makes an owner able to SEE that their listing
+      // resolves no category band, which nothing surfaced anywhere.
+      //
+      // Deliberately a NOTICE, not a scored check: the property and bundle builders currently ask
+      // for no category at all, and D3's own rule is that failing a provider on something the
+      // product gives them no way to fix is not honest scoring. It renders beside the meter and
+      // never moves the numerator or the denominator.
+      const bandResolved = !!s.categoryId && !!s.categoryCommissionBandKey;
+      const notices = bandResolved
+        ? []
+        : [
+            {
+              key: "commission_band_default",
+              detail: s.categoryId
+                ? "this listing's category has no commission band set — the platform default band applies"
+                : "no category on this listing — the platform default commission band applies",
+            },
+          ];
+
       const passed = checks.filter((c) => c.ok).length;
       return {
         serviceId: s.id,
         deliveryMethod: s.deliveryMethod,
         productShape: s.productShape,
         checks,
+        // FP-1 / B10: advisory notes — visible, never scored (see above).
+        notices,
         // D2: the denominator is the APPLICABLE check count — an omitted check never dilutes
         // or pads the score.
         score: { passed, total: checks.length },

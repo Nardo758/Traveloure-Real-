@@ -48,6 +48,7 @@ import {
   readyMadeTrips,
   expertTypeEnum,
   bundleComponents,
+  serviceCategories,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -2716,7 +2717,11 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
       { name: "Technology & Connectivity", slug: "technology-connectivity", description: "Tech support, social media management, photography editing", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 50, max: 150 }, sortOrder: 12 , commissionBandKey: "commercial" },
       { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 , commissionBandKey: "commercial" },
       { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 , commissionBandKey: "moderate" },
-      { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
+      // FP-1 / A1: `categoryKey` mirrors server/seed-categories.ts — the provider offering picker's
+      // catch-all (service_offering_types.custom_other_offering) points at 'custom_other', and a row
+      // created without it leaves the wizard's derived-category lock unresolvable and Publish
+      // permanently disabled. Keep the two lists in step.
+      { name: "Custom / Other", slug: "custom-other", categoryKey: "custom_other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
       // New categories from comprehensive directory
       { name: "Lodging & Accommodation", slug: "lodging-accommodation", description: "Vacation rentals, B&Bs, homestays, glamping, houseboat rentals, room hosts", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["property_license", "insurance"], priceRange: { min: 50, max: 1000 }, sortOrder: 16 , commissionBandKey: "commercial" },
       { name: "Music & Performance", slug: "music-performance", description: "Live musicians, bands, DJs, string quartets, vocalists, ceremony musicians, music instructors", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 2000 }, sortOrder: 17 , commissionBandKey: "moderate" },
@@ -3298,12 +3303,37 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
         : [];
       const providerMap = Object.fromEntries(providerRows.map(p => [p.id, p]));
 
+      // ── FP-1 / B10 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────
+      // VISIBILITY ONLY — zero behavior change to any charge. A listing with no category (every
+      // property, room and bundle the Workstation builders create) resolves no
+      // service_categories.commission_band_key, so the resolver falls through to the configured
+      // platform default band. Nothing surfaced that anywhere; an admin reviewing a catalog could
+      // not see which listings were on a default band. This annotates the row with the BAND KEY
+      // and whether it resolved — never a rate, never a percentage, and it does not participate in
+      // resolution (§8/§18: the fee lanes own rates and amounts; this read touches neither).
+      const catBandRows = await db
+        .select({ id: serviceCategories.id, commissionBandKey: serviceCategories.commissionBandKey })
+        .from(serviceCategories);
+      const bandByCategoryId = new Map(catBandRows.map((c) => [c.id, c.commissionBandKey ?? null]));
+
       let services = all.map(s => ({
         ...s,
         providerName: providerMap[s.userId]
           ? `${providerMap[s.userId].firstName ?? ""} ${providerMap[s.userId].lastName ?? ""}`.trim() || providerMap[s.userId].email
           : "Unknown",
         providerEmail: providerMap[s.userId]?.email,
+        commissionBand: (() => {
+          const bandKey = s.categoryId ? (bandByCategoryId.get(s.categoryId) ?? null) : null;
+          return {
+            resolved: !!bandKey,
+            bandKey,
+            reason: bandKey
+              ? null
+              : s.categoryId
+                ? "category has no commission band — platform default applies"
+                : "no category — platform default commission band applies",
+          };
+        })(),
       }));
 
       if (status && status !== "all") services = services.filter(s => s.status === status);

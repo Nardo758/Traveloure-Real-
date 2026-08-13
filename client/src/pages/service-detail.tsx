@@ -493,6 +493,10 @@ export default function ServiceDetailPage() {
   }
 
   const rating = parseFloat(service.averageRating || "0") || 0;
+  // FP-1 / B3: the stored 'Unknown' default is ABSENCE, not a place — treat it as empty here so
+  // the location chip below simply does not render (§13). Same filter as cart.tsx / routes.ts.
+  const rawLocation = (service.location ?? "").trim();
+  const displayLocation = rawLocation && rawLocation !== "Unknown" ? rawLocation : null;
   const priceNum = parseFloat(service.price || "0") || 0;
   const fmtPrice = (n: number) =>
     new Intl.NumberFormat("en-US", {
@@ -623,10 +627,21 @@ export default function ServiceDetailPage() {
               </Badge>
             )}
             <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
-              <div className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                <span data-testid="text-location">{service.location || "Remote"}</span>
-              </div>
+              {/* ── FP-1 / B3 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P2) ─────────────────────
+                  `provider_services.location` DEFAULTs to the literal string 'Unknown', and the
+                  console only collects it for the delivery methods that render a "Service area"
+                  input — so five of one real provider's listings showed travelers a map-pin chip
+                  reading “Unknown”, asserting it as if it were a place. The chip now renders ONLY
+                  when there is a real location to state; nothing is shown otherwise (§13 — the
+                  same 'Unknown'-is-absence rule cart.tsx and routes.ts already apply). "Remote"
+                  is deliberately NOT substituted: we do not know that an unstated location means
+                  remote. */}
+              {displayLocation && (
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  <span data-testid="text-location">{displayLocation}</span>
+                </div>
+              )}
               <div className="flex items-center gap-1">
                 <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
                 {service.reviewCount > 0 ? (
