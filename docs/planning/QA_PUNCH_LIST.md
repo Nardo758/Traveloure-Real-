@@ -1493,6 +1493,79 @@ migration, no endpoint, no `fee_bands` change, no money surface — the Replit d
 map-authoring move (Wave 2 lanes S1/S3). No new guard: a required-field set and an error-copy map
 are shared modules, not invariants a grep can hold, and their unit suites are the enforcement.
 
+### Fixed here (lane QA-1 — ledger row 95)
+
+Two verified QA findings, both display-only — money/backend derivation is unchanged in both.
+
+- ~~**Cancelled/refunded/declined bookings vanish from the provider Inbox History tab.**~~
+  **CLOSED.** A provider's Decline puts a `service_bookings` row at `cancelled` (unpaid) or
+  `refunded` (a paid row made whole via `refundServiceBooking`), and History read
+  `RECORD_BOOKING_STATUSES` alone (ledger 90's `confirmed | deposit_paid | in_progress |
+  completed`), so a declined booking had **no home anywhere on the console** — correctly not
+  counted as money, but also not shown, so the earner had no visible record it ever happened.
+  `shared/booking-visibility.ts` gains a new **CLOSED** set (`cancelled`, `refunded` — exactly what
+  a Decline can produce) and a **HISTORY** set (`RECORD ∪ CLOSED`); both provider and expert Inbox
+  History now filter on `isHistoryBooking`. The expert console had its **own** hand-written
+  predicate (`status === "confirmed" || status === "completed"`, never the shared ledger-90
+  module at all) — same gap, same fix, one shared predicate rather than a second hand-kept copy.
+  **The FP-5 idiom held throughout:** each card's `StatusBadge` already renders `cancelled`/
+  `refunded` honestly (no new badge work needed), and the green "You earn $X" payout box — which
+  would otherwise show a stale dollar figure on a row that is no longer money — is now gated on
+  `isEarningBooking(status)` on both consoles; a closed row shows a neutral "No payout — this
+  booking was cancelled/refunded" line instead. History gained **Cancelled**/**Refunded** filter
+  buttons alongside the existing Confirmed/Completed ones. `failed` (a §15b claim whose Stripe
+  attempt never succeeded — it never became a real booking) and `disputed` (still open/contested,
+  not a closed outcome) are **deliberately excluded** from CLOSED, stated in the module rather than
+  silently omitted. No schema change, no migration, no server file touched — `GET
+  /api/provider/bookings` and `GET /api/expert/bookings` already return every status with no
+  filter; this was purely a client-side visibility gap.
+- ~~**The booking-row sanitizer's strip list missed the real payment-identity column.**~~
+  **CLOSED.** `server/utils/data-sanitizer.ts`'s `sanitizeBookingForExpert` stripped
+  `paymentIntentId` and `stripeSessionId` — neither is a real `service_bookings` column (the
+  nearest match, `reconciliationExceptions.paymentIntentId`, belongs to an unrelated admin table;
+  `stripeSessionId` appears nowhere in `shared/schema.ts`). The real columns are
+  `stripePaymentIntentId` / `stripeDepositIntentId` / `stripeBalanceIntentId` (§19a — written ONLY
+  by the shared promotion/balance-authorization paths, never client-settable, and by that same
+  posture never meant to round-trip to a non-full-access role). No live leak was observed —
+  enrichment nulls the real field before this sanitizer runs — but the strip list itself was wrong
+  as written, so a future caller that skips enrichment (or enriches from a raw row) would leak a
+  live PaymentIntent id to a provider/expert. **Strip-list sweep result:** the other three entries
+  in the same list (`paymentDetails`, `cardInfo`, `billingAddress`) are also not real
+  `service_bookings` columns — `billingAddress` exists only on the unrelated
+  `ea_client_relationships` table — so none of the five original entries matched a real column on
+  this table; all are kept (harmless belt-and-braces) alongside the three added real columns. The
+  file's separate `SENSITIVE_FIELDS` constant (`booking: ['paymentDetails', 'cardInfo',
+  'billingAddress']`) is exported but **consumed nowhere in the repo** — dead code with the same
+  wrong names, flagged here rather than touched (zero live behavior, out of this fix's scope).
+  New pinning suite `server/utils/__tests__/data-sanitizer.test.ts` (6/6): a raw row with every
+  column populated, including the three real Stripe columns, emits none of them for
+  `provider`/`expert` roles, while an `admin`/`executive_assistant` (canSeeFull) role is
+  untouched — proving the fix without changing the canSeeFull short-circuit.
+
+**Proof.** `client/src/lib/__tests__/booking-visibility.test.ts` **17/17** (11 original + 6 new:
+negatives first — a closed row is never earnings/actionable/provisional; a §15b claim and the bare
+`pending` state never reach CLOSED or HISTORY; `failed`/`disputed` stay out, stated not silent;
+positives — `cancelled`/`refunded` are exactly CLOSED and both reach HISTORY; HISTORY is exactly
+RECORD ∪ CLOSED; the four-way mutual-exclusivity invariant extended to include CLOSED so a decline
+still can't get a sixth answer). `server/utils/__tests__/data-sanitizer.test.ts` **6/6** (new).
+`server/__tests__/fp5-console-agreement.db.test.ts` **9/9** (unchanged — the earnings/actionable
+predicates this lane was told not to touch are still green). **KEEP-GREEN BATTERY** on a fresh
+`traveloure_qa1` bench (port 5009, `OBJECT_STORAGE_DRIVER=memory RATE_LIMIT_LOOPBACK_SKIP=1
+SESSION_SECRET=bench STRIPE_SECRET_KEY=sk_test_dummy`, `scripts/seed-ci-test-users.ts` run first):
+sweep **9/9** · promotion **11/11** · detection **15/15** · provenance **7/7** ·
+`provider-money-hardening` **4/6** (the two failures are the already-documented P1/P2 fresh-bench
+`active_provider_commission_policy='tiered'` limitation noted above in this file — re-verified
+unrelated, nothing in this diff touches rate resolution). Five guards + self-tests exit 0
+(`check-money-endpoints`, `phase2-fee-gate`, `check-unmounted-routers`, `check-decision-guards`,
+`check-omit-schema-ratchet`). `tsc --noEmit` **170** = baseline (unchanged; zero errors in any
+touched file). Lockfile `replit.local` **0**.
+
+**Not touched in this lane:** no schema change, no migration, no `fee_bands`/rate change, no money
+derivation (server-side amount/authorization logic untouched on both fixes), no earnings/actionable
+semantics (`EARNING_BOOKING_STATUSES` / `ACTIONABLE_BOOKING_STATUSES` / ledger-90's tests are
+byte-identical), no new guard (a status predicate and a strip list are shared modules with their own
+unit suites, not invariants a grep can hold).
+
 
 ### Open — the rest of the exercise's findings
 

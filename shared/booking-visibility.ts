@@ -87,6 +87,38 @@ export const ACTIONABLE_BOOKING_STATUSES = ["pending"] as const;
  */
 export const RECORD_BOOKING_STATUSES = EARNING_BOOKING_STATUSES;
 
+/**
+ * CLOSED — a booking that reached a TERMINAL outcome without being (or after ceasing to be)
+ * money for the earner: `cancelled` (an owner decline, or any unpaid cancellation — the
+ * `OWNER_BOOKING_TRANSITIONS.cancelled` branch in `routes.ts`) and `refunded` (an owner
+ * decline/cancellation on a row that HAD been charged, made whole via
+ * `stripePaymentService.refundServiceBooking`). These are exactly the statuses a provider's
+ * "Decline" button can put a row into.
+ *
+ * QA-1 finding: History used `RECORD_BOOKING_STATUSES` alone, so a declined booking had NO
+ * home on the console — not counted (correctly — it is not money), but also not SHOWN, so a
+ * provider who declined a booking had no visible record that it ever happened. This set is the
+ * fix: a real terminal outcome that must be disclosed, never a live queue item and never money.
+ *
+ * DELIBERATELY ABSENT: `failed` (a §15b provisional claim whose Stripe attempt never
+ * succeeded — it never became a real booking the earner engaged with, the same reason
+ * `payment_pending` stays out of every set here) and `disputed` (still open/contested, not a
+ * closed outcome — it may resolve back to `confirmed` or forward to `refunded`). Widening this
+ * set is a deliberate edit, never a silent broadening of "history."
+ */
+export const CLOSED_BOOKING_STATUSES = ["cancelled", "refunded"] as const;
+
+/**
+ * HISTORY — everything that belongs on the earner's Inbox History tab: the real book of
+ * business (RECORD) plus its closed/declined outcomes (CLOSED). A provisional §15b claim
+ * (`payment_pending`) and the live `pending` request state are excluded by construction — those
+ * live on Queue, not History.
+ */
+export const HISTORY_BOOKING_STATUSES = [
+  ...RECORD_BOOKING_STATUSES,
+  ...CLOSED_BOOKING_STATUSES,
+] as const;
+
 export type BookingStatusLike = string | null | undefined;
 
 const has = (set: readonly string[], status: BookingStatusLike): boolean =>
@@ -107,6 +139,14 @@ export const isProvisionalBooking = (status: BookingStatusLike): boolean =>
 /** True for a row that belongs in the earner's booking record (Inbox History). */
 export const isRecordBooking = (status: BookingStatusLike): boolean =>
   has(RECORD_BOOKING_STATUSES, status);
+
+/** True for a declined/cancelled/refunded row — a real terminal outcome, never money. */
+export const isClosedBooking = (status: BookingStatusLike): boolean =>
+  has(CLOSED_BOOKING_STATUSES, status);
+
+/** True for any row that belongs on the Inbox History tab (RECORD ∪ CLOSED). */
+export const isHistoryBooking = (status: BookingStatusLike): boolean =>
+  has(HISTORY_BOOKING_STATUSES, status);
 
 /**
  * The one label every surface uses for a provisional claim, so the traveler-payment state reads

@@ -158,9 +158,25 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
 
   // For experts/providers: remove payment details but keep operational info
   const sanitized = { ...booking };
-  
-  // Remove sensitive payment/billing info
-  const sensitiveFields = ['paymentDetails', 'cardInfo', 'billingAddress', 'paymentIntentId', 'stripeSessionId'];
+
+  // Remove sensitive payment/billing info.
+  // QA-1 fix: the real `service_bookings` payment-identity columns are camelCase
+  // `stripePaymentIntentId` / `stripeDepositIntentId` / `stripeBalanceIntentId` (shared/schema.ts —
+  // §19a: written ONLY by the shared promotion / balance-authorization paths, never client-settable,
+  // and per that same posture must never round-trip to a non-full-access role either). The original
+  // list here named `paymentIntentId` (no `service_bookings` column of that name — the closest match,
+  // `reconciliationExceptions.paymentIntentId`, belongs to an unrelated admin table this function
+  // never touches) and `stripeSessionId` (no such column anywhere in shared/schema.ts). Both were
+  // dead strips: no live leak today only because `envelopeFromProviderService`/enrichment nulls the
+  // real field first, per the lane brief — but the list itself was wrong. `paymentDetails` /
+  // `cardInfo` / `billingAddress` are likewise not real `service_bookings` columns (the schema sweep
+  // found `billingAddress` only on the unrelated `ea_client_relationships` table); kept here as
+  // harmless belt-and-braces in case a future caller's shape ever grows one of those names.
+  const sensitiveFields = [
+    'paymentDetails', 'cardInfo', 'billingAddress',       // legacy/speculative — no live column, kept harmless
+    'paymentIntentId', 'stripeSessionId',                 // wrong-cased/nonexistent — kept harmless
+    'stripePaymentIntentId', 'stripeDepositIntentId', 'stripeBalanceIntentId', // the REAL columns (§19a)
+  ];
   for (const field of sensitiveFields) {
     if (field in sanitized) {
       delete (sanitized as any)[field];
