@@ -1059,4 +1059,10 @@ export const MIGRATION_FILES = [
   // merging. This migration's own DDL does not depend on 210/211 (a different table, a
   // different ALTER) so registration order among the three is immaterial to correctness.
   "212_session_async_service_fields.sql",
+  // 213: S11 stay-booking provenance marker (final Wave 3 lane — DECISIONS.md ledger row 107,
+  // ratifying docs/briefs/S11_STAY_BOOKING_PROPOSAL.md in full). ONE additive-nullable column,
+  // vendor_availability_slots.materialized_from ('pattern' | 'date_range' | NULL=manual), NO DB
+  // CHECK. Extends the ALREADY-LIVE §15 stay claim mechanism (candidate (a) — the ratified
+  // PROPERTY rung) with a date-range materializer; builds no second claim machine (§18c).
+  "213_stay_booking_provenance.sql",
 ] as const;
