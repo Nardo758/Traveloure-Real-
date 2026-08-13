@@ -320,6 +320,21 @@ interface AvailabilityResponse {
   days: AvailabilityDay[];
 }
 
+// S11 (DECISIONS.md ledger row 107): the REDACTED per-night stay calendar — never bookedCount/
+// capacity/providerId, mirroring the T-REP read-strip precedent. `nightlyRate` is null when the
+// provider hasn't set a per-range override for that night (§14 inherit case — checkout falls
+// back to the listing's own `price`, exactly as this estimate does below).
+interface StayAvailabilityNight {
+  date: string;
+  available: boolean;
+  nightlyRate: number | null;
+}
+interface StayAvailabilityResponse {
+  checkIn: string;
+  checkOut: string;
+  nights: StayAvailabilityNight[];
+}
+
 export default function ServiceDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -486,6 +501,27 @@ export default function ServiceDetailPage() {
   const roomStayReady = roomNights > 0 && roomNights <= 30;
   const roomStayAvailable = roomStayReady && !roomAvailabilityLoading && roomUnavailableDates.length === 0;
 
+  // S11 (§14, ledger row 107): the REAL per-night rate for the picked range, from the redacted
+  // stay-availability endpoint — replaces the pre-S11 flat `priceNum × nights` estimate below
+  // with each night's own materialized rate (falling back to the listing price per night when a
+  // night has no override, the exact §14 inherit rule `resolveStayNightlyRates` applies
+  // server-side at quote/charge). Purely a DISPLAY estimate — checkout re-derives the real charge
+  // server-side regardless; this only keeps what the traveler sees from disagreeing with it.
+  const { data: stayRates, isLoading: stayRatesLoading } = useQuery<StayAvailabilityResponse>({
+    queryKey: ["/api/services", id, "stay-availability", roomCheckIn, roomCheckOut],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/services/${id}/stay-availability?checkIn=${roomCheckIn}&checkOut=${roomCheckOut}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to fetch stay rates");
+      return res.json() as Promise<StayAvailabilityResponse>;
+    },
+    enabled: isRoom && roomNights > 0 && roomNights <= 30,
+  });
+  // roomEstimatedTotal/roomHasMixedRates (needs `priceNum`, declared further below with the rest
+  // of the price-display derivations) are computed just after that declaration.
+
   // D2 (UX audit Jul 29): plain two-input date entry gave no visibility into which nights
   // are actually open — the traveler could only find out after picking (roomUnavailableDates
   // above, still the authoritative pre-cart check). This adds a real calendar view, fed by
@@ -597,6 +633,18 @@ export default function ServiceDetailPage() {
       currency: "USD",
       maximumFractionDigits: n % 1 === 0 ? 0 : 2,
     }).format(n);
+  // S11 (§14, ledger row 107): the estimate shown BEFORE add-to-cart — each picked night's own
+  // materialized rate when the stay-availability fetch has resolved, falling back to the flat
+  // `priceNum` per night otherwise (byte-identical to the pre-S11 display). Purely cosmetic:
+  // checkout re-derives the authoritative charge server-side via the SAME resolver regardless.
+  const roomEstimatedTotal = (() => {
+    if (!stayRates || roomNightDates.length === 0) return priceNum * roomNights;
+    const byDate = new Map(stayRates.nights.map((n) => [n.date, n.nightlyRate]));
+    return roomNightDates.reduce((sum, d) => sum + (byDate.get(d) ?? priceNum), 0);
+  })();
+  const roomHasMixedRates =
+    !!stayRates &&
+    new Set(roomNightDates.map((d) => stayRates.nights.find((n) => n.date === d)?.nightlyRate ?? priceNum)).size > 1;
   const hasTiers = Array.isArray(service.pricingTiers) && service.pricingTiers.length > 0;
   // D5 (UX audit Jul 29): a per_night room fell through to the generic "per service" sub-label
   // (jargon that also reads as factually wrong for a nightly room rate) — give it its own branch.
@@ -1623,7 +1671,11 @@ export default function ServiceDetailPage() {
                     )}
                     {roomNights > 0 && (
                       <p className="text-sm" data-testid="text-room-nights">
-                        {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(priceNum * roomNights)} total
+                        {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(roomEstimatedTotal)}{" "}
+                        {stayRatesLoading ? "(estimating…)" : "estimated total"}
+                        {roomHasMixedRates && (
+                          <span className="text-muted-foreground"> (rates vary by night)</span>
+                        )}
                       </p>
                     )}
                     {roomNights > 30 && (
