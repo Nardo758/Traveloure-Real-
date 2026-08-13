@@ -388,6 +388,21 @@
     border:1px solid var(--hair);border-radius:100px;padding:3px 10px;font-size:11px;color:var(--muted);
   }
   .mapattr{position:absolute;bottom:6px;left:9px;font-size:10.5px;color:#8A8A80;}
+
+  /* the property pin canvas — the SAME component, shorter; not a second rail */
+  .bigmap.small{height:290px;}
+  .ring.approx{border:1.5px dashed var(--accent);background:rgba(53,96,90,.10);}
+  .privgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .privcard{border:1px solid var(--hair);border-radius:var(--radius);background:var(--paper);padding:10px 12px;}
+  .privcard.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .privcard h6{font-size:12px;font-weight:600;margin:0 0 4px;display:flex;align-items:center;gap:7px;}
+  .privcard p{font-size:11.5px;color:var(--muted);line-height:1.45;margin:7px 0 0;}
+  .privmini{position:relative;height:112px;border:1px solid var(--hair);border-radius:5px;overflow:hidden;background:#F1F0EA;}
+  .privmini > svg.base{display:block;width:100%;height:100%;}
+  .privseg{display:inline-flex;border:1px solid var(--hair);border-radius:100px;overflow:hidden;background:var(--paper);}
+  .privseg button{border:none;background:none;padding:5px 13px;font-size:11.5px;color:var(--muted);cursor:pointer;font-family:inherit;}
+  .privseg button[aria-pressed="true"]{background:var(--accent);color:#fff;}
+  @media (max-width:820px){ .privgrid{grid-template-columns:minmax(0,1fr);} }
   .maprail .rail-card{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius);margin-bottom:0;}
   .maprail .rail-hd{padding:11px 14px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:8px;}
   .maprail .rail-hd b{font-size:13px;font-weight:600;flex:1;}
@@ -1623,6 +1638,9 @@
       <div class="legendgrid">
         <div><span class="dot ghost">⑭</span><span><b>One availability editor</b>, whose semantics come from the delivery method — gap #2. Blackouts are first-class and subtractive; the grid opens where the availability is.</span></div>
         <div><span class="dot ghost">⑮</span><span><b>Property builder</b> — three steps, rooms as child rows — gap #1.</span></div>
+        <div><span class="dot ghost">⑳</span><span><b>Where is it</b> — the property pin: the flow's own confirm-gated
+          placement reused, never a second location rail, plus the optional directions line (display text, never a
+          coordinate source) and the pre-booking privacy circle — gap #1.</span></div>
         <div><span class="dot ghost">⑯</span><span><b>Bundle builder</b> — component picker, derived method, no auto-sum — gap #9.</span></div>
         <div><span class="dot ghost">⑲</span><span><b>Session &amp; async branches</b> — timezone, venue and capacity for live-remote (gap #4); reply window, scope and completion for the async lane (gap #3).</span></div>
         <div><span class="dot ghost">⑱</span><span><b>Delete with bookings</b> — refusal plus an Archive path that says what survives — gap #18.</span></div>
@@ -3124,7 +3142,11 @@
     rooms:[
       {n:'The Tatami Room', sleeps:'2', price:'180'},
       {n:'The Garden Room', sleeps:'3', price:'240'}
-    ]
+    ],
+    /* location — seeded UNPINNED on purpose, so the placement is experienced, not just described */
+    pin:null, pinConfirmed:false, armed:false, note:'',
+    addr:'',               /* optional display text — never a coordinate source */
+    priv:'before'          /* which side of the privacy illustration is being inspected */
   };
   var AMEN = [['wifi','Wi-Fi'],['kitchen','Kitchen'],['ac','Air conditioning'],
               ['washer','Washer'],['bath','Japanese bath (ofuro)'],['parking','Parking']];
@@ -3165,6 +3187,58 @@
         '<button class="photobox photoadd" type="button" id="prop-photo-add">+ Add</button>' +
       '</div>' +
       '<div class="help">Property photos are the building and the shared spaces. Each room carries its own photo on the next step.</div></div>' +
+
+    /* ── Where is it: the ONE sanctioned location write, reused ─────────────── */
+    '<div class="divider" style="margin:22px 0 16px;"></div>' +
+    '<h5 class="grouplabel">Where is it<span class="dot ghost dot-inline">⑳</span>' +
+      '<span class="propchip" style="margin-left:6px;">Proposed — gap #1 · ratify or amend</span></h5>' +
+    '<div class="note-quiet" style="margin-bottom:14px;">' +
+      'This is the <b style="color:var(--ink)">same confirm-gated pin</b> the create flow uses on its Logistics step — ' +
+      'arm, click, confirm — mounted here rather than invented again. One sanctioned location write, reused: there is ' +
+      'no second way to place a coordinate on this platform.</div>' +
+
+    '<div class="maplayout"><div style="min-width:0;">' +
+      '<div class="bigmap small" id="propmap">' +
+        '<div id="propmap-base"></div>' +
+        '<div class="overlay" id="propmap-overlay"></div>' +
+        '<div class="maplabel">Map preview — illustrative</div>' +
+        '<div class="mapattr">© OpenStreetMap contributors</div>' +
+        '<div class="armbar" id="prop-armbar">' +
+          '<span class="ab-txt" id="prop-armbar-text"></span>' +
+          '<button class="btn ghost sm" id="prop-arm-pin">Place the property pin</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="capline" id="propmap-caption"></div>' +
+    '</div>' +
+
+    '<aside class="maprail" style="grid-template-columns:repeat(2,minmax(0,1fr));">' +
+      '<div class="rail-card">' +
+        '<div class="rail-hd"><b>Property pin</b><span class="pill" id="prop-pin-pill">Not placed</span></div>' +
+        '<div class="rail-bd">' +
+          '<div class="field" style="margin-bottom:0;"><label>Address / directions line <span style="color:var(--muted);font-weight:400;">(optional)</span></label>' +
+            '<input class="inp" id="prop-addr" placeholder="e.g. Shimbashi-dori, Gion" value="'+esc(P.addr)+'" style="font-size:12.5px;">' +
+            '<div class="help">Display text — <b style="color:var(--ink)">shown to guests</b>. The pin is what places you ' +
+            'on the map; we never guess coordinates from text. Japanese addresses geocode poorly ' +
+            '(<i>chōme–banchi–gō</i>, not street-and-number), so the pin is authoritative and this line is prose beside it.</div></div>' +
+          '<div id="prop-pin-slot"></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="rail-card">' +
+        '<div class="rail-hd"><b>What guests see before booking</b>' +
+          '<span class="propchip" style="margin-left:auto;">Proposed — gap #1 · ratify or amend</span></div>' +
+        '<div class="rail-bd">' +
+          '<div class="privseg" id="prop-priv-seg" role="group" aria-label="Privacy states">' +
+            '<button type="button" data-priv="before">Before booking</button>' +
+            '<button type="button" data-priv="after">After booking</button>' +
+          '</div>' +
+          '<div class="privgrid" id="prop-priv-ill" style="margin-top:11px;"></div>' +
+          '<div class="capline" id="prop-priv-cap"></div>' +
+        '</div>' +
+      '</div>' +
+    '</aside></div>' +
+
+    '<div class="divider" style="margin:22px 0 16px;"></div>' +
 
     '<div class="row3">' +
       '<div class="field"><label>Check-in from</label><input class="inp" value="15:00"></div>' +
@@ -3209,6 +3283,15 @@
       'property is the parent record, and every room is a child row a traveler can book by the night — so a booking, ' +
       'a review and a payout all attach to a room, not to the building.</div>' +
 
+    '<div class="capline" id="prop-inherit-rooms" style="margin:0 0 14px;">' +
+      (P.pinConfirmed
+        ? '<b style="color:var(--ink)">All rooms take their location from the property pin</b> — one placement locates ' +
+          'the whole house. Nothing below asks for an address again.'
+        : '<b style="color:var(--ink)">All rooms take their location from the property pin</b> — one placement locates ' +
+          'the whole house. <span style="color:var(--warn-ink)">The pin is not placed yet, so no room is locatable.</span> ' +
+          '<button class="btn link" id="prop-goto-pin" style="font-size:11.5px;">Drop the pin on step 1 →</button>') +
+    '</div>' +
+
     '<div id="prop-rooms">' + rooms + '</div>' +
     '<button class="btn ghost sm" id="prop-add-room">+ Add a room</button>' +
 
@@ -3237,11 +3320,32 @@
     '<div class="sumrow"><div class="k">Property</div><div class="v">'+esc(P.name)+'</div></div>' +
     '<div class="sumrow"><div class="k">Rooms</div><div class="v">'+P.rooms.length+' — each one bookable on its own</div></div>' +
     '<div class="sumrow"><div class="k">Photos</div><div class="v">'+P.photos+' property photos</div></div>' +
+    '<div class="sumrow" id="prop-loc-sumrow"><div class="k">Location</div><div class="v">' +
+      (P.pinConfirmed
+        ? 'Pin confirmed at 35.0031, 135.7772 — all rooms take their location from the property pin.'
+        : '<span style="color:var(--warn-ink)">No pin placed.</span> A property with no pin is not on any map — and ' +
+          'neither are its rooms, which inherit it.') +
+      (P.addr.trim()
+        ? '<div class="capline" style="margin-top:4px;">Directions line shown to guests: “'+esc(P.addr.trim())+'”</div>'
+        : '<div class="capline" style="margin-top:4px;">No directions line — optional, and never a coordinate source. ' +
+          'The pin is what locates you.</div>') +
+    '</div></div>' +
     '<div class="sumrow"><div class="k">Amenities</div><div class="v">' +
       AMEN.filter(function(a){ return P.amen[a[0]]; }).map(function(a){ return a[1]; }).join(' · ') + '</div></div>' +
 
     '<h5 class="grouplabel" style="margin-top:20px;">Can a traveler book this?</h5>' +
-    '<div class="stops">' + rows + '</div>' +
+    '<div class="stops">' +
+      '<div class="stop" id="prop-loc-row"><span class="pos'+(P.pinConfirmed?'':' un')+'">'+(P.pinConfirmed?'✓':'–')+'</span>' +
+        '<span class="sname"><b>The property itself</b> · '+P.rooms.length+' rooms inherit this</span>' +
+        (P.pinConfirmed
+          ? '<span class="ok">Located — one placement locates the whole house</span>'
+          : '<span class="flag">Not yet locatable — drop the pin</span>') +
+      '</div>' +
+      rows + '</div>' +
+
+    '<div class="capline" id="prop-inherit-review" style="margin-top:10px;">' +
+      '<b style="color:var(--ink)">All rooms take their location from the property pin</b> — one placement locates the ' +
+      'whole house, so a room is never asked where it is and two rooms can never disagree about it.</div>' +
 
     '<div class="notice" style="margin-top:16px;">' +
       '<b>Not yet bookable.</b> A room with no published date range is a listing nobody can buy. Nightly dates live ' +
@@ -3294,10 +3398,140 @@
     document.querySelectorAll('[data-rprice]').forEach(function(inp){
       inp.addEventListener('input', function(){ P.rooms[+inp.dataset.rprice].price = inp.value; });
     });
+    var gp = $('prop-goto-pin');
+    if (gp) gp.addEventListener('click', function(){ P.step = 0; renderProperty(); armScrollEl('propmap'); });
+
+    /* ── the property pin: same arm → click → confirm gate as the flow's step 4 ── */
+    var pm = $('propmap');
+    if (pm){
+      pm.addEventListener('click', function(e){
+        if (e.target.closest('.armbar')) return;
+        var c = mapClickPct(this, e);
+        if (P.armed){
+          P.pin = c; P.pinConfirmed = false; P.armed = false; P.note = '';
+        } else {
+          P.note = 'That click did nothing — arm the pin first. A bare click must never place a property.';
+        }
+        renderPropMap();
+      });
+      $('prop-arm-pin').addEventListener('click', function(){
+        P.armed = !P.armed; P.note = ''; renderPropMap();
+      });
+      var pad = $('prop-addr');
+      pad.addEventListener('input', function(){ P.addr = pad.value; });
+      document.querySelectorAll('#prop-priv-seg [data-priv]').forEach(function(b){
+        b.addEventListener('click', function(){ P.priv = b.dataset.priv; renderPropPrivacy(); });
+      });
+      renderPropMap();
+    }
+
     var pta = $('prop-to-avail');
     if (pta) pta.addEventListener('click', function(){ goToAvailability('room'); });
     var ps = $('prop-submit');
     if (ps) ps.addEventListener('click', function(){ ps.textContent = 'Submitted'; ps.disabled = true; });
+  }
+
+  /* the property canvas — the flow's pin component, shorter and with one arm mode.
+     Nothing here is a second location rail: arm → click → confirm, and a bare click is a no-op. */
+  function renderPropMap(){
+    var box = $('propmap');
+    if (!box) return;
+    $('propmap-base').innerHTML = baseMapSvg(12);
+    box.classList.toggle('armed', !!P.armed);
+
+    var html = '';
+    if (P.pin && P.pinConfirmed){
+      html += '<div class="ring approx" style="left:'+P.pin.x+'%;top:'+P.pin.y+'%;width:132px;height:132px;"></div>';
+      html += '<div class="zonetag" style="left:'+P.pin.x+'%;top:calc('+P.pin.y+'% - 66px);">what guests see before booking</div>';
+    }
+    if (P.pin){
+      html += '<div class="mk" style="left:'+P.pin.x+'%;top:'+P.pin.y+'%;">' + pinSvg(P.pinConfirmed) +
+        '<span class="cap">' + (P.pinConfirmed ? 'The property' : 'Unconfirmed — press Confirm') + '</span></div>';
+    }
+    $('propmap-overlay').innerHTML = html;
+
+    var bar = $('prop-armbar'), txt = $('prop-armbar-text');
+    bar.classList.toggle('arm', !!P.armed);
+    if (P.armed)        txt.innerHTML = '<b>Armed.</b> Click the map to place the property.';
+    else if (P.note)    txt.innerHTML = '<span style="color:var(--warn-ink)">'+P.note+'</span>';
+    else                txt.innerHTML = 'Nothing armed. Arm the pin, then click the map.';
+    $('prop-arm-pin').textContent = P.pin ? 'Move the property pin' : 'Place the property pin';
+    $('prop-arm-pin').className   = 'btn ' + (P.armed ? 'accent' : 'ghost') + ' sm';
+
+    $('propmap-caption').innerHTML =
+      'A <b style="color:var(--ink)">bare map click does nothing</b> — the same gate as the flow\'s Logistics step. ' +
+      'Nothing is stored until you confirm, and no coordinate is ever derived from the address line.';
+
+    $('prop-pin-pill').textContent = !P.pin ? 'Not placed' : (P.pinConfirmed ? 'Confirmed' : 'Unconfirmed');
+    $('prop-pin-pill').className   = 'pill ' + (P.pinConfirmed ? 'live' : (P.pin ? 'draft' : ''));
+
+    var slot = $('prop-pin-slot');
+    if (P.pin && !P.pinConfirmed){
+      slot.innerHTML =
+        '<div class="notice" style="margin-top:10px;">Pin placed but <b>not saved</b>. Nothing is stored until you confirm.</div>' +
+        '<div style="display:flex;gap:8px;margin-top:9px;">' +
+          '<button class="btn accent sm" id="prop-pin-confirm">Confirm this location</button>' +
+          '<button class="btn ghost sm" id="prop-pin-discard">Discard</button></div>';
+      $('prop-pin-confirm').addEventListener('click', function(){
+        P.pinConfirmed = true; P.armed = false; P.note = ''; renderPropMap();
+      });
+      $('prop-pin-discard').addEventListener('click', function(){
+        P.pin = null; P.pinConfirmed = false; P.armed = false; P.note = ''; renderPropMap();
+      });
+    } else if (P.pin){
+      slot.innerHTML =
+        '<div style="margin-top:10px;font-size:12px;color:var(--accent)">Confirmed at 35.0031, 135.7772. ' +
+        'Every room inherits this.</div>' +
+        '<button class="btn ghost sm" id="prop-pin-remove" style="margin-top:8px;">Remove pin</button>';
+      $('prop-pin-remove').addEventListener('click', function(){
+        P.pin = null; P.pinConfirmed = false; renderPropMap();
+      });
+    } else {
+      slot.innerHTML =
+        '<div class="notice" style="margin-top:10px;"><b>Not yet locatable.</b> A property with no pin is on no map — ' +
+        'and neither are its rooms, which inherit it.</div>';
+    }
+    renderPropPrivacy();
+  }
+
+  function privMini(kind){
+    return '<div class="privmini">' + baseMapSvg(kind === 'after' ? 26 : 12) +
+      (kind === 'before'
+        ? '<div class="ring approx" style="left:50%;top:46%;width:82px;height:82px;"></div>' +
+          '<div class="zonetag" style="left:50%;top:46%;">approximate area</div>'
+        : '<div class="mk" style="left:50%;top:64%;">' + pinSvg(true) + '<span class="cap">exact address</span></div>') +
+      '<div class="mapattr">© OpenStreetMap contributors</div></div>';
+  }
+
+  function renderPropPrivacy(){
+    var host = $('prop-priv-ill');
+    if (!host) return;
+    host.innerHTML =
+      '<div class="privcard' + (P.priv === 'before' ? ' on' : '') + '" id="priv-ill-before">' +
+        '<h6>Before booking</h6>' + privMini('before') +
+        '<p><b style="color:var(--ink)">Approximate area — exact location after booking.</b> A neighbourhood circle, ' +
+        'not the pin. The traveler can tell it is Gion; they cannot tell which machiya.</p>' +
+      '</div>' +
+      '<div class="privcard' + (P.priv === 'after' ? ' on' : '') + '" id="priv-ill-after">' +
+        '<h6>After booking is confirmed</h6>' + privMini('after') +
+        '<p>The exact pin, plus your directions line if you wrote one. Released by the confirmed booking — not by ' +
+        'an enquiry, and not by a page view.</p>' +
+      '</div>';
+    document.querySelectorAll('#prop-priv-seg [data-priv]').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.dataset.priv === P.priv));
+    });
+    $('prop-priv-cap').innerHTML = P.priv === 'before'
+      ? 'Inspecting the <b style="color:var(--ink)">pre-booking</b> view. Both states are drawn above so the trade is ' +
+        'visible, not just described. Circle size is illustrative — it is not a measured radius.'
+      : 'Inspecting the <b style="color:var(--ink)">post-booking</b> view. Both states are drawn above so the trade is ' +
+        'visible, not just described. Illustrative — no real coordinates are shown in this mock.';
+  }
+
+  function armScrollEl(id){
+    var el = $(id);
+    if (!el) return;
+    var r = el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({block:'center'});
   }
 
   /* ═════════════ catalog listings ═════════════ */
@@ -4052,11 +4286,18 @@
     if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({block:'center'});
   }
 
+  /* one coordinate reader, shared by the flow's canvas and the property canvas */
+  function mapClickPct(el, e){
+    var r = el.getBoundingClientRect();
+    return {
+      x: Math.round(((e.clientX - r.left) / r.width) * 1000) / 10,
+      y: Math.round(((e.clientY - r.top) / r.height) * 1000) / 10
+    };
+  }
+
   $('bigmap').addEventListener('click', function(e){
     if (e.target.closest('.armbar')) return;
-    var r = this.getBoundingClientRect();
-    var x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10;
-    var y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10;
+    var c = mapClickPct(this, e), x = c.x, y = c.y;
     if (M.armed === 'pin'){
       M.pin = {x:x, y:y}; M.pinConfirmed = false; M.armed = null; M.note = '';
     } else if (M.armed === 'stop'){
