@@ -294,7 +294,12 @@ export function PricingFeesDrawer({
                     <SelectTrigger id="pfDepositType" className="mt-2" data-testid="select-pf-deposit-type">
                       <SelectValue placeholder="Choose percentage or flat amount" />
                     </SelectTrigger>
-                    <SelectContent>
+                    {/* z-[110] (important): Radix portals SelectContent to document.body at the
+                        base component's z-50, which sits BELOW this Sheet's own z-[100] overlay —
+                        found by the headless click-through proof, not a code review. Overridden
+                        here only (not in the shared select.tsx, which is fine at z-50 everywhere
+                        it isn't nested under a Sheet). */}
+                    <SelectContent className="!z-[110]">
                       <SelectItem value="percentage">Percentage of the total</SelectItem>
                       <SelectItem value="flat">Flat amount</SelectItem>
                     </SelectContent>
@@ -338,7 +343,9 @@ export function PricingFeesDrawer({
                 <SelectTrigger id="pfCancellationPolicyType" className="mt-2" data-testid="select-pf-cancellation-policy-type">
                   <SelectValue placeholder="Not declared — no policy shown to travelers" />
                 </SelectTrigger>
-                <SelectContent>
+                {/* z-[110] (important) — same Sheet-vs-Select z-index fix as the deposit-type
+                    Select above; see that comment. */}
+                <SelectContent className="!z-[110]">
                   {CANCELLATION_POLICY_TYPE_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}

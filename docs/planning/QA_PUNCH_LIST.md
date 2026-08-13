@@ -1894,17 +1894,41 @@ provision → `PATCH` surcharge mode=flat/amount/deposit/cancellation → `GET` 
 rings) — run directly against the bench with the provider CI account, byte-identical to the request
 shape `buildPricingFeesPatch`/`buildSurchargeTiersPayload` produce.
 
-**Environment limitation, honestly recorded:** the browser-driven headless UI walkthrough (open
-listing home → drawer → edit → save → re-fetch shows persisted values in the rendered page) could
-**not** be executed in this session — `npx playwright install` is blocked by this sandbox's egress
-policy (`cdn.playwright.dev` returns `403 request rejected: host not permitted`, an organization
-policy denial per the proxy's own instructions, not retried) and no system Chromium/Chrome binary
-was present to point Playwright at instead. Substituted: the API-level round trip above (proves the
-exact request/response the drawer's `useMutation` performs), the static-source tests (prove the
-JSX wiring — which testids render where), and `tsc`/production build (prove the component compiles
-and bundles). This is a tooling gap in this particular session's sandbox, not a defect in the
-drawer; a session with browser access should still run the full click-through before this lane is
-considered fully proven end-to-end.
+**Browser-driven headless UI proof — COMPLETED as a follow-up (same session).** The playwright-CDN
+download block reported below is real for `npx playwright install`, but a pre-installed Chromium at
+`/opt/pw-browsers/chromium` was available (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, launched
+with an explicit `executablePath`) — so the full click-through DID run, on a fresh `traveloure_w2e`
+bench (port 5013, same recipe, `setsid`, `scripts/seed-ci-test-users.ts`), logged in as
+`ci-provider@traveloure.test` through the real `/login` page. **23/23 assertions passed:** listing
+home renders with the Pricing & fees card beside the checklist; drawer opens, surcharge section
+shows (place-anchored + pickup-provisioned); editing surcharge mode → flat, amount → `33.00`, and
+cancellation policy → Strict + free-text details all hold in the form; Save fires the real
+`PATCH /api/provider/services/:id` (200, response body carries `surchargeMode:"flat"`,
+`surchargeFlatAmount:"33.00"`, `cancellationPolicyType:"strict"`); the drawer closes and the
+listing-home summary line updates in the RENDERED page; a **hard reload** (a real re-fetch from the
+server, not optimistic client state) still shows the persisted values; reopening the drawer shows
+the persisted values back in the actual form fields (not just the summary text); the Logistics step
+shows the "surcharge moved" pointer note, no longer renders the old surcharge-mode control, and
+still renders Service Radius (geometry, correctly not moved); the Review step shows the
+"cancellation/deposit moved" pointer note, no longer renders the old cancellation-policy select or
+deposit checkbox, and still renders Lead Time (not moved). Screenshots captured at 1280×900: drawer
+open (`s4-drawer-open.png`) and after-save with the "Pricing & fees saved" toast and the updated
+summary line (`s4-after-save.png`).
+
+**A real bug WAS found and fixed by this walkthrough** (not a code-review catch — the click-through
+is what caught it): the drawer's `Select` dropdowns (deposit type, cancellation policy) render
+through a Radix portal at the shared `select.tsx` component's `z-50`, which sits BELOW the Sheet
+component's own overlay at `z-[100]` — so a `Select` nested inside a `Sheet` had its dropdown
+options unclickable (Playwright's own error named it precisely: the Sheet's overlay div
+"intercepts pointer events"). No existing code in this repo nests a `Select` inside a `Sheet` (the
+two only-other files that import both never actually mount a `Select` inside a mounted `Sheet`), so
+this was a genuinely new interaction, not a latent bug this lane merely exposed. **Fixed narrowly**
+— `className="!z-[110]"` (Tailwind's important-modifier) on the two `SelectContent`s inside
+`pricing-fees-drawer.tsx` only; the shared `select.tsx` component is untouched (its `z-50` is
+correct everywhere else it's used, outside a `Sheet`). Re-verified after the fix: full 23/23
+re-run green, five guards exit 0, `tsc` **170** = baseline (unchanged), `replit.local` **0**,
+production build clean, `travel-surcharge` **13/13** and `deposit-checkout` **10/10** re-run green
+on the same bench.
 
 **NEGATIVE SPACE (ruling 43) — what this lane deliberately did NOT do:** no schema change and none
 needed (STOP-and-report was the standing instruction and never fired); no migration; no new
