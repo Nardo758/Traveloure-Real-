@@ -50,6 +50,9 @@ import {
   isPropertyRoom,
   propertyEditorHref,
 } from "@/lib/property-editor-link";
+// FP-2: the final action's required-field set (pure + unit-tested — see the module header for
+// the "asterisk set = enforced set" rule it keeps).
+import { missingRequiredForFinal } from "@/lib/service-form-required";
 
 interface ServiceCategory {
   id: string;
@@ -130,8 +133,9 @@ interface ServiceFormData {
   // Provider-specific: which /earn service_offering_types row this listing IS
   // (migration 148 FK). "" = unlinked (legacy row, or not yet picked).
   serviceOfferingTypeId: string;
-  // Provider-specific: status + features
-  active: boolean;
+  // Provider-specific: features. FP-2 / A2: the `active` boolean is GONE — it backed the dead
+  // Published/Draft switch on step 4 and nothing else (never sent, never gated on). Status is
+  // the server's, read from the record; see the status pill on the provider step-4 card.
   revisionsIncluded: number;
   includesExpertNotes: boolean;
   contentAffinityTags: string[];
@@ -308,7 +312,6 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     expertOfferingTypeId: "",
     approvalStatus: "draft",
     serviceOfferingTypeId: "",
-    active: true,
     revisionsIncluded: 0,
     includesExpertNotes: false,
     contentAffinityTags: [],
@@ -415,7 +418,6 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     expertOfferingTypeId: s.expertOfferingTypeId || "",
     approvalStatus: s.approvalStatus || "draft",
     serviceOfferingTypeId: s.serviceOfferingTypeId || "",
-    active: s.status === "active",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
     includesExpertNotes: Boolean(s.includesExpertNotes),
     contentAffinityTags: Array.isArray(s.contentAffinityTags) ? s.contentAffinityTags : [],
@@ -1553,47 +1555,35 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Mirrors ONLY the checks already enforced elsewhere (button disabled states +
-  // createMutation's throws) — nothing new is required here. Used to (a) route a
-  // submit-time miss to the step holding the field and (b) explain a disabled
-  // final button. Draft saves stay check-free, exactly as before.
-  const missingForFinal: { step: number; label: string }[] = [];
-  if (!formData.name) missingForFinal.push({ step: 1, label: "Service name" });
-  if (!formData.categoryId) {
-    // FP-1 / A1: when the category is missing BECAUSE the chosen offering resolves to none, say
-    // so — "Category" alone reads as a field the provider forgot to fill, and the field is locked.
-    missingForFinal.push({
-      step: 1,
-      label: offeringCategoryUnresolved
-        ? "Category — this offering resolves to no category (see Step 1)"
-        : "Category",
-    });
-  }
-  if (role === "provider" && !isEditMode && !formData.serviceOfferingTypeId) {
-    missingForFinal.push({ step: 1, label: "An offering from the catalog" });
-  }
-  if (role === "expert" && !isEditMode && !formData.expertOfferingTypeId) {
-    missingForFinal.push({ step: 1, label: "Service tier" });
-  }
-  if (needsMeetingPoint && !formData.meetingPoint.trim()) {
-    missingForFinal.push({ step: 2, label: "Meeting point" });
-  }
-  // ── FP-1 / B7 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ──────────────────────────────
-  // The field is labelled "Deliverable File URL *" and the card carries an amber warning, but
-  // nothing ever blocked: a $18 pdf guide published, went live and was sellable with the column
-  // empty, so a buyer could pay and receive nothing. Mirrors the SERVER publish gate added beside
-  // the existing price check (ruling 56's placement discipline) — this is the routing/explanation
-  // half, the server is the enforcement. Provider-only, because a provider's final action is
-  // PUBLISH (status:'active'); an expert's is "submit for approval", which does not go live and is
-  // the same draft-exempt rule the price/meeting-point gates use.
-  if (
-    role === "provider" &&
-    formData.deliveryMethod === "pdf" &&
-    !formData.serviceFile.trim() &&
-    !deliverableUploaded
-  ) {
-    missingForFinal.push({ step: 2, label: "Deliverable file (upload or link)" });
-  }
+  // ── The wizard's required-field set — see client/src/lib/service-form-required.ts ──────────
+  // The predicate lives in that module (pure, unit-tested) rather than inline here, because the
+  // rule it keeps is a two-way one — THE ASTERISK SET EQUALS THE ENFORCED SET — and a rule
+  // stated only in prose inside this file is a rule nothing can check. Every entry mirrors an
+  // enforcement that already exists (a disabled-button condition, or a server publish gate);
+  // this list is the routing/explanation half. FP-2 / Package A item 4 added the three that were
+  // missing (price, required category fields, the attestation confirmations) and the same lane
+  // removed the two asterisks nothing required (Description, Duration). Draft saves stay
+  // check-free, exactly as before.
+  const missingForFinal = missingRequiredForFinal({
+    role,
+    isEditMode,
+    name: formData.name,
+    categoryId: formData.categoryId,
+    offeringCategoryUnresolved,
+    serviceOfferingTypeId: formData.serviceOfferingTypeId,
+    expertOfferingTypeId: formData.expertOfferingTypeId,
+    needsMeetingPoint,
+    meetingPoint: formData.meetingPoint,
+    deliveryMethod: formData.deliveryMethod,
+    serviceFile: formData.serviceFile,
+    deliverableUploaded,
+    priceType: formData.priceType,
+    basePrice: formData.basePrice,
+    pricingTiers: formData.pricingTiers,
+    categoryFields,
+    categoryAttributes: formData.categoryAttributes,
+    attestationGateBlocked,
+  });
 
   const handleFinalSubmit = (action: "submit" | "publish") => {
     const firstMissing = missingForFinal[0];
@@ -1603,7 +1593,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       goToStep(firstMissing.step);
       toast({
         title: "A required field is missing",
-        description: `${firstMissing.label} (Step ${firstMissing.step}) is required before ${action === "publish" ? "publishing" : "submitting"}. You can Save Draft to finish later.`,
+        description: `${firstMissing.label} (Step ${firstMissing.step}) is required before you submit this for review. You can Save Draft to finish later.`,
         variant: "destructive",
       });
       return;
@@ -1842,6 +1832,34 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           })}
         </ol>
       </nav>
+
+      {/* ── FP-2 / A1 UPFRONT REVIEW NOTICE (Package A item 1; service-creation mock, fix A1) ────
+          The final action was labelled "Publish Service" while EVERY create is clamped
+          server-side to a non-approved born state (F2 / migration 111 — `approval_status`
+          DEFAULTs 'submitted'). The button is now "Submit for review", and this is the other
+          half of the same honesty: the expert branch already got a review card, but only on
+          step 4, and the provider branch found out only on the success screen AFTER clicking.
+          Same notice, up front, for BOTH roles, on every step.
+
+          NO SLA NUMBER, deliberately: the execution map's Gate G5 #7 has "review SLA — is
+          '2 business days' real?" OPEN with the disposition "measure first, then commit or
+          drop the number", so stating one here would be exactly the §13 claim that gate
+          exists to prevent. The mock's A1 copy is adopted without its "usually within 2
+          business days" clause until #7 is answered. This is COPY ONLY — no gate, no
+          lifecycle change; the write path is untouched. ── */}
+      {!isEditMode && (
+        <div
+          className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-900"
+          data-testid="notice-review-before-live"
+        >
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p>
+            <strong>New listings are reviewed before they go live.</strong> When you finish, this
+            goes to our team for review — you'll be notified when it's been looked at. You can
+            Save Draft at any point and come back.
+          </p>
+        </div>
+      )}
 
       {/* ── dispatch v1.3 R2 (ruling 53): expert identity-verification status, visible on
           EVERY step (not gated to step 1 or the final Publish click) — "the expert always
@@ -2443,9 +2461,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </CardHeader>
         <CardContent className="space-y-6">
 
-          {/* Description */}
+          {/* Description — FP-2 / item 4: the asterisk is GONE, not made to bind. Nothing
+              requires a description: `provider_services.description` is nullable, the insert
+              schema does not demand it and no publish gate checks it. It IS scored by the owner
+              health rail, which is what "recommended" means here. */}
           <div>
-            <Label htmlFor="description">Description *</Label>
+            <Label htmlFor="description">Description <span className="text-muted-foreground font-normal">(recommended)</span></Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -2456,9 +2477,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             />
           </div>
 
-          {/* Duration */}
+          {/* Duration — FP-2: the ONE duration question (Package A item 8). Its asterisk is gone
+              for the same reason as Description's: nothing requires it. It writes
+              `deliveryTimeframe`, which is the duration/turnaround string every reader uses —
+              the traveler detail page, Discover, the storefront and Catalog cards, the admin
+              queue, and `envelopeFromProviderService`, which parses minutes out of this very
+              text. The second, structured "Duration (minutes)" question that used to sit in the
+              Service-logistics card is removed (nothing read that column). */}
           <div>
-            <Label htmlFor="duration">Duration *</Label>
+            <Label htmlFor="duration">How long does it take? <span className="text-muted-foreground font-normal">(recommended)</span></Label>
             <Input
               id="duration"
               value={formData.duration}
@@ -2466,6 +2493,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               placeholder={role === "expert" ? "e.g., 2 hours, 3 days, 1 week" : "e.g., 30 minutes, 2 hours, same-day"}
               className="mt-2"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Asked once — travelers see this exactly as you write it.
+            </p>
           </div>
 
           {/* Delivery Method */}
@@ -2863,29 +2893,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               idPrefix="service-location"
             />
 
-            {/* Transport disclosure — travelers need to know if they must arrange their own transport */}
-            <div>
-              <Label htmlFor="transportProvided" className="flex items-center gap-2">
-                <Truck className="w-4 h-4" />
-                Do you provide transport during this service?
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1 mb-2">
-                Once you meet the traveler, will you transport them (e.g. car, van)? This is shown to travelers so they can plan.
-              </p>
-              <Select
-                value={formData.transportProvided}
-                onValueChange={(v: "yes" | "no" | "not_applicable") => set("transportProvided", v)}
-              >
-                <SelectTrigger id="transportProvided" data-testid="select-transport-provided">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yes">Yes — I provide transport</SelectItem>
-                  <SelectItem value="no">No — traveler arranges their own</SelectItem>
-                  <SelectItem value="not_applicable">Not applicable</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* FP-2 / Package A item 8 (transport): the "Do you provide transport during this
+                service?" disclosure MOVED from here into the Service-logistics card's "Getting
+                there" block, so both transport questions are asked once, together, in one
+                vocabulary. It used to sit here while "Transport provision" sat in another card
+                further down the same step — two controls that read as the same question and
+                could be answered inconsistently. Nothing about the field or its column changed;
+                only where it is asked. */}
 
             {/* Neighborhoods multi-select */}
             <div>
@@ -3025,9 +3039,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* ── FP-2 / Package A item 3 — THE DISCLAIMER WAS WRONG IN BOTH DIRECTIONS ────────
+                It said "these details aren't shown to travelers yet", under a card that holds
+                live gates: the start window + timezone and the party-size pair are what
+                `booking-eligibility.service.ts` refuses a booking against, the change cutoff
+                feeds the deposit/change window, and the travel surcharge inside it is charged
+                for real at checkout. Meanwhile four fields in here genuinely were capture-only
+                and are now removed (duration-in-minutes, setup/buffer, can-anchor, pickup
+                radius — see their own notes below). The card now states what it actually is. ── */}
             <p className="text-xs text-muted-foreground">
-              These details aren't shown to travelers yet — we're capturing them now so the
-              planner can use them when that lands. Leave anything you're unsure of blank.
+              These answers are used: the start window and party size are checked when a traveler
+              tries to book, and the travel surcharge is charged at checkout. Leave anything you're
+              unsure of blank — blank means "not stated", never a guessed default.
             </p>
 
             {/* ── Getting there: transport provision + the ruling-62 AMENDMENT's coverage choice.
@@ -3046,13 +3069,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   Getting there
                 </h4>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  How does the traveler reach the start? Tap the one that fits — tap it again to
+                  Everything about transport is asked here, and only here. Tap a choice again to
                   leave it unset.
                 </p>
               </div>
 
               <div>
-                <Label className="text-sm">Transport provision</Label>
+                <Label className="text-sm">How does the traveler reach the start?</Label>
                 <ToggleGroup
                   type="single"
                   value={formData.transportProvision}
@@ -3078,6 +3101,50 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     ? TRANSPORT_PROVISION_OPTIONS.find((o) => o.value === formData.transportProvision)?.label
                     : "Not specified."}
                 </p>
+              </div>
+
+              {/* ── FP-2 / Package A item 8 (transport) — THE SECOND TRANSPORT QUESTION, MOVED
+                  HERE from the Meeting Location card above ────────────────────────────────────
+                  The audit's finding was "transport is asked twice in two vocabularies on the
+                  same screen", and it was: this yes/no/not-applicable disclosure lived on the
+                  Meeting Location card while the four-value provision toggle lived down here,
+                  and a provider could answer them inconsistently without ever seeing both at
+                  once.
+
+                  They are NOT MERGED, and that is deliberate: ruling 62 (see
+                  `shared/schema.ts`'s `transportProvisionEnum` block) states the two columns
+                  answer DIFFERENT questions and must not be collapsed — `transport_provision`
+                  is "how does the traveler get to the start", `transport_provided` (migration
+                  119, which carries a real DB CHECK) is "once you've met, do you drive them".
+                  Deriving one from the other would be exactly the merge that ruling forbids,
+                  and §13 forbids inventing the half that is not entailed. Both are still
+                  authored — now as one block, in one order, with the distinction said out loud.
+                  (The redesign mock's fix A6 proposes dropping this question entirely; that
+                  deviation is recorded in the ledger, because `transport_provided` is the one
+                  of the pair that is actually READ — `service-detail.tsx` renders it and
+                  `envelopeFromProviderService` carries it — while `transport_provision` has no
+                  consumer beyond this form's own gating.) ── */}
+              <div>
+                <Label htmlFor="transportProvided" className="text-sm">
+                  And once you've met — do you transport them?
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+                  A different question from the one above: this is about the service itself (a
+                  car, a van), not about how they arrive. Travelers see the answer.
+                </p>
+                <Select
+                  value={formData.transportProvided}
+                  onValueChange={(v: "yes" | "no" | "not_applicable") => set("transportProvided", v)}
+                >
+                  <SelectTrigger id="transportProvided" data-testid="select-transport-provided">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes">Yes — I provide transport during the service</SelectItem>
+                    <SelectItem value="no">No — travelers get themselves between stops</SelectItem>
+                    <SelectItem value="not_applicable">Not applicable</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
             {pickupProvisionChosen && (
@@ -3123,27 +3190,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
                 {formData.pickupCoverageMode === "radius" && (
                   <div>
-                    <Label htmlFor="coverageRadius">Pickup radius (km)</Label>
-                    <Input
-                      id="coverageRadius"
-                      type="number"
-                      min={0}
-                      value={formData.pickupRadiusKm}
-                      onChange={(e) => set("pickupRadiusKm", e.target.value)}
-                      placeholder="Not set"
-                      className="mt-1"
-                      data-testid="input-coverage-radius"
-                    />
-                    {/* SS-4 CLOSED (docs/DECISIONS.md ruling 69 disposition 9, migration 199).
-                        The six-sigma pass (finding M-3) measured this input and "Service Radius
-                        (km)" in the Pickup card above writing ONE column: typing 17 here made
-                        #serviceRadius read 17 instantly. They are now two columns
-                        (`pickup_radius_km` and `service_radius`), so the honesty notice that used
-                        to sit here — stating they were the same number — is RETIRED rather than
-                        reworded: it described a defect that no longer exists. NEVER-CLOBBER: the
-                        split added a column and backfilled nothing, so a listing saved under the
-                        old UI keeps its number on `service_radius` and shows "Not set" here until
-                        its owner says otherwise (§13 — never a guessed copy). */}
+                    {/* ── FP-2 / Package A item 3 — "Pickup radius (km)" (`pickupRadiusKm`)
+                        REMOVED. It was a THIRD radius input on this form (beside "Service
+                        Radius (km)" on the Pickup card and the surcharge's "Won't travel
+                        beyond") and the only one of the three that NOTHING reads: the ring
+                        travelers see (`service-detail.tsx`), the Catalog map ring
+                        (`catalog-map-view.tsx`) and the flat-surcharge containment test all
+                        read `service_radius`. Column untouched, value round-trips on edit.
+                        What replaces it is a pointer at the number that IS the coverage, so a
+                        provider setting "Radius" here is not left with an input that decides
+                        nothing (§13). ── */}
+                    <p className="text-xs text-muted-foreground" data-testid="text-coverage-radius-source">
+                      {savedRadiusKm > 0
+                        ? `Your coverage is the ${savedRadiusKm} km Service radius set on the Pickup card above — that is the ring travelers see.`
+                        : "Set the Service radius on the Pickup card above — that number is the ring travelers see. No radius is set yet."}
+                    </p>
+                    {/* HISTORY (SS-4, ruling 69 disposition 9, migration 199): the removed input
+                        and "Service Radius (km)" once wrote ONE column — the six-sigma pass
+                        (finding M-3) measured typing 17 here making #serviceRadius read 17
+                        instantly. Migration 199 split them into `pickup_radius_km` and
+                        `service_radius`; FP-2 finds the split half unread and stops asking for
+                        it, which leaves `service_radius` as the single coverage number again —
+                        this time as the one every consumer already reads. */}
                     {savedRouteStopCount > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                         {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
@@ -3348,25 +3416,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   How long it runs, and the window it can start in.
                 </p>
               </div>
+              {/* ── FP-2 / Package A items 3 + 8 — TWO FIELDS REMOVED FROM THIS GRID ─────────
+                  "Duration (minutes)" (`durationMinutes`) was the SECOND duration question:
+                  "Duration *" on the Details card above asks the same thing in free text and
+                  writes `deliveryTimeframe`, which the traveler detail page, Discover, the
+                  storefront cards, the admin queue and `envelopeFromProviderService` (which
+                  parses minutes out of that very text) all read. `durationMinutes` on
+                  `provider_services` is read by NOTHING — the many `durationMinutes` hits
+                  elsewhere in the repo are `itinerary_items`, a different row. So the canonical
+                  duration question is the one on Details, and this duplicate is no longer asked.
+                  "Setup / buffer (minutes)" (`bufferMinutes`) is an unread D7 capture field with
+                  no consumer anywhere.
+                  BOTH COLUMNS ARE UNTOUCHED and both values still round-trip on an edit (they
+                  stay in form state, loaded from the row and sent back unchanged), so this
+                  removes the question, never the data (§13 / the FP-5 Settings precedent). A
+                  control comes back with its consumer, never before it. ── */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="durationMinutes">Duration (minutes)</Label>
-                <Input
-                  id="durationMinutes" type="number" min={0} placeholder="e.g. 180"
-                  value={formData.durationMinutes}
-                  onChange={(e) => set("durationMinutes", e.target.value)}
-                  className="mt-1" data-testid="input-duration-minutes"
-                />
-              </div>
-              <div>
-                <Label htmlFor="bufferMinutes">Setup / buffer (minutes)</Label>
-                <Input
-                  id="bufferMinutes" type="number" min={0} placeholder="e.g. 30"
-                  value={formData.bufferMinutes}
-                  onChange={(e) => set("bufferMinutes", e.target.value)}
-                  className="mt-1" data-testid="input-buffer-minutes"
-                />
-              </div>
               <div>
                 <Label htmlFor="earliestStartTime">Earliest start</Label>
                 <Input
@@ -3474,22 +3539,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     When a traveler can still move the booking. Separate from your refund policy.
                   </p>
                 </div>
-                <div>
-                  <Label htmlFor="canAnchor">Can this anchor a day?</Label>
-                  <Select
-                    value={formData.canAnchor || "unspecified"}
-                    onValueChange={(v) => set("canAnchor", (v === "unspecified" ? "" : v) as "" | "yes" | "no")}
-                  >
-                    <SelectTrigger id="canAnchor" className="mt-1" data-testid="select-can-anchor">
-                      <SelectValue placeholder="Not specified" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unspecified">Not specified</SelectItem>
-                      <SelectItem value="yes">Yes — the day can be planned around it</SelectItem>
-                      <SelectItem value="no">No — it fits around other plans</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* FP-2 / Package A item 3: "Can this anchor a day?" (`canAnchor`) removed —
+                    an unread D7 capture field (zero consumers repo-wide) whose label is also
+                    planner jargon a seller has no way to interpret. Column untouched; a stored
+                    value round-trips on edit. */}
               </div>
             </div>
           </CardContent>
@@ -3815,18 +3868,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               />
             </div>
 
-            {/* Max Concurrent */}
-            <div>
-              <Label htmlFor="maxClients">Max Concurrent Clients</Label>
-              <Input
-                id="maxClients"
-                type="number"
-                value={formData.maxConcurrentClients}
-                onChange={(e) => set("maxConcurrentClients", parseInt(e.target.value) || 1)}
-                min="1"
-                className="mt-2"
-              />
-            </div>
+            {/* ── FP-2 / Package A item 8 (capacity) — "Max Concurrent Clients" REMOVED ────────
+                It was the SECOND capacity number on this form, three steps and one vocabulary
+                away from "Minimum / Maximum party size" in the Service-logistics card. Party
+                size is the canonical question: it is the pair the SERVER enforces
+                (`booking-eligibility.service.ts` refuses a booking whose party is outside
+                `party_size_min`/`party_size_max`), so it is the one that decides anything.
+                `maxConcurrentBookings` is a different fact wearing the same clothes — how many
+                bookings may run at once — and its only consumer is the Catalog card's "Up to N"
+                chip, which renders it beside a Users icon and therefore reads as a group size
+                too. Column untouched, value round-trips on edit, and the chip keeps rendering
+                for rows that already carry a number. When concurrency is asked again it comes
+                back as its own question with its own words (filed for the Wave-2 Capacity
+                step). ── */}
 
             {/* Content Affinity Tags */}
             <div>
@@ -3856,16 +3910,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             </div>
 
-            {/* Active Toggle */}
-            <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
-              <Label htmlFor="active" className="cursor-pointer font-medium">
-                {formData.active ? "Published" : "Draft"}
-              </Label>
-              <Switch
-                id="active"
-                checked={formData.active}
-                onCheckedChange={(checked) => set("active", checked)}
-              />
+            {/* ── FP-2 / A2 (Package A item 2; mock fix A2) — THE DEAD PUBLISHED/DRAFT SWITCH ────
+                What was here: a `Switch` bound to `formData.active`, labelled "Published" /
+                "Draft". `active` was read by NOTHING else — it was never put on the create/update
+                payload and no gate consulted it — so flipping it changed no listing state
+                anywhere, while reading as the control that puts a listing live. The status a
+                listing actually has is decided by the server (`status` from the submit action,
+                `approval_status` clamped to `submitted` at birth by F2 / migration 111).
+                Per the mock: the control is replaced by a READ-ONLY pill over the real record,
+                and the `active` field is deleted from the form state entirely so nothing can
+                bind to it again. Edit mode reads `existingService`, the row as stored; a create
+                has no record yet and says so. ── */}
+            <div>
+              <Label className="text-sm font-medium">Current Status</Label>
+              <div className="mt-2">
+                <Badge
+                  variant={existingService?.status === "active" && existingService?.approvalStatus === "approved" ? "default" : "secondary"}
+                  data-testid="badge-provider-listing-status"
+                >
+                  {!isEditMode
+                    ? "Not saved yet"
+                    : existingService?.status === "draft"
+                      ? "Draft (not submitted)"
+                      : existingService?.approvalStatus === "approved"
+                        ? existingService?.status === "active" ? "Live" : "Approved — paused"
+                        : existingService?.approvalStatus === "rejected"
+                          ? "Changes requested"
+                          : "In review"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Set by the record, not by this form: a listing goes Draft → In review → Live, and
+                only our review moves it to Live.
+              </p>
             </div>
 
           </CardContent>
@@ -3879,9 +3956,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <CardTitle>Submission & Approval</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* FP-2 / A1: the "within 48 hours" SLA claim is REMOVED, not reworded — the
+                execution map's Gate G5 #7 ("review SLA — is '2 business days' real?") is open
+                with the disposition "measure first, then commit or drop the number", and this
+                page had no measurement behind its 48. The review fact itself now leads the
+                form for both roles (the upfront notice above), so this card keeps only what
+                is specific to it: the record's real status. */}
             <div className="p-3 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-900">
-                Save your service as a draft, then submit it for approval. Our team will review and approve it within 48 hours.
+                Save your service as a draft at any point. Submitting sends it to our team for
+                review — it goes live once approved.
               </p>
             </div>
             <div>
@@ -3991,11 +4075,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || attestationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
                 title={
                   verificationGateBlocked
-                    ? "Complete identity and business verification in your Provider Status page before publishing"
+                    ? "Complete identity and business verification in your Provider Status page before submitting this listing"
                     : publishBlocked
-                    ? "Complete background verification before publishing this category"
+                    ? "Complete background verification before submitting a listing in this category"
                     : attestationGateBlocked
-                    ? "Tick the confirmations on the Terms & requirements step before publishing"
+                    ? "Tick the confirmations on the Terms & requirements step before submitting"
                     : (!isEditMode && !formData.serviceOfferingTypeId)
                     ? "Pick an offering from the /earn catalog first"
                     : undefined
@@ -4007,7 +4091,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   ? "Verification Required"
                   : attestationGateBlocked
                   ? "Confirmations Required"
-                  : "Publish Service"}
+                  : "Submit for review"}
               </Button>
             )}
           </div>
@@ -4017,7 +4101,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               adds none. */}
           {currentStep === TOTAL_STEPS && missingForFinal.length > 0 && (
             <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
-              Still needed before you {role === "expert" ? "submit" : "publish"}:{" "}
+              Still needed before you submit for review:{" "}
               {missingForFinal.map((m, i) => (
                 <span key={`${m.step}-${m.label}`}>
                   {i > 0 && ", "}

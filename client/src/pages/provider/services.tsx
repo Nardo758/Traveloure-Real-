@@ -41,6 +41,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ToastAction } from "@/components/ui/toast";
 import { EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import {
   OfferingShareDetail,
@@ -107,6 +118,7 @@ import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
 // the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
 // guard imports the same module).
 import { listingEditHref, isPropertyRoom } from "@/lib/property-editor-link";
+import { describeCatalogRefusal, type CatalogAction } from "@/lib/catalog-error-copy";
 
 interface Service {
   id: string;
@@ -1070,6 +1082,10 @@ export default function ProviderServices() {
   // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
   const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
   const [shareTarget, setShareTarget] = useState<Service | null>(null);
+  // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate. Holding the target row (not
+  // just its id) lets the dialog name the listing it is about to remove — the Workstation's
+  // property/bundle deletes already work this way, and Catalog's was the odd one out.
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -1095,6 +1111,28 @@ export default function ProviderServices() {
     (healthData?.services ?? []).map((h) => [h.serviceId, h]),
   );
 
+  // ── FP-2 / Package A item 5: HUMAN ERRORS ON THE CATALOG MUTATIONS ─────────────────────────
+  // All four card mutations below used to render `error.message` — which `apiRequest` builds as
+  // `"<status>: <raw body>"`, so a refused activation showed the provider a JSON blob. The
+  // server's sentence was already honest; it was just wrapped. `describeCatalogRefusal` unwraps
+  // it, names the action that failed, and — for the refusals a provider fixes in the listing
+  // editor — hands back a `fixInEditor` flag so the toast can carry the way out (the mock's
+  // "Add one →"). No server response changed and no refusal is softened.
+  const toastRefusal = (action: CatalogAction, err: unknown, service?: { id: string; productShape?: string | null; parentServiceId?: string | null }) => {
+    const copy = describeCatalogRefusal(action, err);
+    const href = service ? listingEditHref(service) : null;
+    toast({
+      variant: "destructive",
+      title: copy.title,
+      description: copy.description,
+      action: copy.fixInEditor && href ? (
+        <ToastAction altText="Open this listing's editor" onClick={() => navigate(href)}>
+          Fix it
+        </ToastAction>
+      ) : undefined,
+    });
+  };
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const res = await apiRequest("PATCH", `/api/provider/services/${id}`, { status });
@@ -1104,8 +1142,9 @@ export default function ProviderServices() {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service updated" });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, vars) => {
+      const service = services?.find((s) => s.id === vars.id);
+      toastRefusal(vars.status === "active" ? "activate" : "pause", error, service);
     },
   });
 
@@ -1121,8 +1160,8 @@ export default function ProviderServices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, vars) => {
+      toastRefusal("display", error, services?.find((s) => s.id === vars.id));
     },
   });
 
@@ -1133,10 +1172,11 @@ export default function ProviderServices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      setDeleteTarget(null);
       toast({ title: "Service deleted" });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, id) => {
+      toastRefusal("delete", error, services?.find((s) => s.id === id));
     },
   });
 
@@ -1149,8 +1189,8 @@ export default function ProviderServices() {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({ title: "Service duplicated", description: "The copy is a draft awaiting review — edit and submit it." });
     },
-    onError: (error: Error) => {
-      toast({ variant: "destructive", description: error.message });
+    onError: (error: Error, id) => {
+      toastRefusal("duplicate", error, services?.find((s) => s.id === id));
     },
   });
 
@@ -1612,7 +1652,7 @@ export default function ProviderServices() {
                         variant="ghost"
                         size="sm"
                         className="text-red-500 hover:text-red-600"
-                        onClick={() => deleteMutation.mutate(service.id)}
+                        onClick={() => setDeleteTarget(service)}
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-${service.id}`}
                       >
@@ -1687,6 +1727,41 @@ export default function ProviderServices() {
             {shareOffering && <OfferingShareDetail offering={shareOffering} showImages />}
           </DialogContent>
         </Dialog>
+
+        {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────────
+            Catalog's Delete fired `deleteMutation.mutate(id)` straight off the click: one tap,
+            the listing gone, no confirmation and no undo — while the Workstation's property and
+            bundle deletes, two clicks away, both confirm. This is the same AlertDialog those use,
+            and it NAMES the listing so a mis-aimed click on a dense grid is visible before it
+            lands.
+            SCOPE (deliberate): this is the plain confirm only. The "refuse + archive when
+            travelers have already booked it" half is gap #18 on the execution map — a Wave 3
+            lane with a server side — so this dialog does NOT claim anything about bookings it
+            has not checked (§13). ── */}
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent data-testid="dialog-delete-service">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete "{deleteTarget?.serviceName || t("card.untitled")}"?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the listing from your catalog and from anywhere travelers can find
+                it. It can't be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-delete-service">
+                {tCommon("actions.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="bg-red-600 hover:bg-red-700"
+                data-testid="button-confirm-delete-service"
+              >
+                {tCommon("actions.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </ProviderLayout>
   );
