@@ -17,6 +17,7 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
+import { nightDatesInclusive } from "../services/availability-materializer.service";
 import { isContentLocale } from "../services/service-translation.service";
 // Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
 // Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
@@ -67,7 +68,7 @@ import {
   insertContentImpression, getDemandCountsForCity,
   filterOutAwayOwners,
 } from "../services/content-query.service";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -98,6 +99,7 @@ import {
   contentPlacementRules,
   type InsertContentPlacementRule,
   bundleComponents,
+  vendorAvailabilitySlots,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -2274,6 +2276,85 @@ router.get("/api/services/:id", async (req, res) => {
     } catch (err) {
       console.error("Error fetching service availability:", err);
       res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  // S11 (DECISIONS.md ledger row 107, docs/briefs/S11_STAY_BOOKING_PROPOSAL.md, Open Question 6
+  // — "recommend the new redacted route"): public REDACTED per-night calendar for a property/room
+  // stay. Deliberately a NEW endpoint rather than a second consumer of `GET
+  // /api/vendor-availability/:serviceId` (that route is provider/internal-shaped — it returns raw
+  // rows including `bookedCount`, `providerId`, internal `pricing`/`discounts`/`cancellationPolicy`
+  // — building a traveler-facing consumer on top of it would bake that leak in as a de facto
+  // public API; flagged, not fixed, per the ballot's Negative Space). Returns ONLY
+  // `{date, available, nightlyRate}` per night — mirrors the T-REP read-strip precedent (ledger
+  // row 101): never bookedCount/capacity/providerId/id/internal pricing keys.
+  //
+  // Same F2 read-gate as GET /api/services/:id (approved + active) and scoped to property/room
+  // shapes only — a scheduled-slot service has its own calendar contract at GET
+  // /api/services/:id/availability (C2) above; this endpoint answers "which NIGHTS can I book",
+  // not "which time slots".
+  router.get("/api/services/:id/stay-availability", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      if (service.productShape !== "property" && service.productShape !== "property_room") {
+        return res.status(400).json({ message: "Stay availability applies only to property or property_room listings" });
+      }
+      const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+      const checkInParam = typeof req.query.checkIn === "string" && DATE_RE.test(req.query.checkIn)
+        ? req.query.checkIn
+        : new Date().toISOString().slice(0, 10);
+      // Integrator default (S7-Q1 precedent, amendable): a 60-night forward window when no
+      // checkOut is given — a browsing calendar, not a specific stay request.
+      const defaultWindowEnd = (() => {
+        const d = new Date(`${checkInParam}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 60);
+        return d.toISOString().slice(0, 10);
+      })();
+      const checkOutParam = typeof req.query.checkOut === "string" && DATE_RE.test(req.query.checkOut)
+        ? req.query.checkOut
+        : defaultWindowEnd;
+      if (checkOutParam < checkInParam) {
+        return res.status(400).json({ message: "checkOut must be on or after checkIn" });
+      }
+      // Bounded response size (same 730-night ceiling as the date-ranges write rail) — a browsing
+      // window is never unbounded.
+      const allNights = nightDatesInclusive(checkInParam, checkOutParam).slice(0, 730);
+
+      const rows = await db
+        .select({
+          date: vendorAvailabilitySlots.date,
+          capacity: vendorAvailabilitySlots.capacity,
+          bookedCount: vendorAvailabilitySlots.bookedCount,
+          pricing: vendorAvailabilitySlots.pricing,
+        })
+        .from(vendorAvailabilitySlots)
+        .where(and(
+          eq(vendorAvailabilitySlots.serviceId, service.id),
+          gte(vendorAvailabilitySlots.date, checkInParam),
+          lte(vendorAvailabilitySlots.date, checkOutParam),
+        ));
+      const byDate = new Map(rows.map((r) => [String(r.date), r]));
+
+      const nights = allNights.map((date) => {
+        const row = byDate.get(date);
+        const capacity = row?.capacity ?? 0;
+        const bookedCount = row?.bookedCount ?? 0;
+        const nightlyRaw = (row?.pricing as any)?.nightlyRate;
+        const nightlyParsed = typeof nightlyRaw === "number" ? nightlyRaw : parseFloat(nightlyRaw);
+        return {
+          date,
+          available: Boolean(row) && bookedCount < capacity,
+          nightlyRate: Number.isFinite(nightlyParsed) ? nightlyParsed : null,
+        };
+      });
+
+      res.json({ checkIn: checkInParam, checkOut: checkOutParam, nights });
+    } catch (err) {
+      console.error("Error fetching stay availability:", err);
+      res.status(500).json({ message: "Failed to fetch stay availability" });
     }
   });
 

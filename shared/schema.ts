@@ -2406,6 +2406,14 @@ export const vendorAvailabilitySlots = pgTable("vendor_availability_slots", {
 
   confirmationMethod: varchar("confirmation_method", { length: 20 }).default("instant"),
 
+  // S11 (migration 213, DECISIONS.md ledger row 107): app-enforced provenance vocabulary
+  // ('pattern' | 'date_range' | NULL = manually created) — NO DB CHECK (migration-181/195
+  // posture). Lets a materializer-authored row be told apart from a manually-created one before
+  // a price-edit re-price or a future stale-slot cleanup pass ever touches it. Every pre-213 row
+  // (including every pre-213 S7 pattern-materialized row — not backfilled, §13: an honest NULL
+  // beats a guess) reads back NULL.
+  materializedFrom: varchar("materialized_from", { length: 20 }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
