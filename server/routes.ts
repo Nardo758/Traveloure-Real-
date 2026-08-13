@@ -99,7 +99,7 @@ import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
-import { isArtifactDelivery } from "@shared/service-fundamentals";
+import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
 import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
@@ -2269,7 +2269,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
     // getAllProviderServices() is shared with admin (which legitimately needs the full row),
     // so the strip happens here at the public call site, not in the storage function.
-    res.json(live.map((s) => omitFields(s, ["serviceFile"] as const)));
+    // S9 (ledger row 102): joinLink joins the strip for the same reason — no confirmed booking
+    // exists on this pre-purchase browse.
+    res.json(live.map((s) => omitFields(s, ["serviceFile", "joinLink"] as const)));
   });
   
   // Get provider's services
@@ -5453,13 +5455,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
         const service = await storage.getProviderServiceById(booking.serviceId);
         const provider = await storage.getUser(booking.providerId);
+        // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
+        // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
+        // the product itself and must never ride a general read. The one sanctioned reveal
+        // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
+        //
+        // S9 (ledger row 102): joinLink is the same shape of sensitive field, but handled here
+        // as a CONDITIONAL INCLUDE rather than a blanket strip — this IS the traveler's own
+        // confirmed-booking read (riding an existing read, per the ballot's REC, rather than a
+        // new endpoint), so each row carries its own reveal decision. The gate mirrors
+        // GET /api/service-bookings/:id/deliverable EXACTLY: booking.travelerId === session
+        // user (this whole list is already scoped to travelerId=userId above), booking.status
+        // === 'confirmed' (never 'payment_pending', §15b), and the service's deliveryMethod is
+        // a scheduled remote session (SESSION_END_METHODS — call/video). A PENDING advisor has
+        // no read path onto this endpoint at all (it is travelerId-scoped, not advisor-scoped),
+        // so no separate advisor exclusion is needed here.
+        const revealJoinLink =
+          !!service &&
+          booking.status === "confirmed" &&
+          SESSION_END_METHODS.has(service.deliveryMethod ?? "");
+        const strippedService = service ? omitFields(service, ["serviceFile", "joinLink"] as const) : service;
         return {
           ...booking,
-          // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
-          // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
-          // the product itself and must never ride a general read. The one sanctioned reveal
-          // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
-          service: service ? omitFields(service, ["serviceFile"] as const) : service,
+          service: strippedService && revealJoinLink ? { ...strippedService, joinLink: service!.joinLink ?? null } : strippedService,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
         };
       }));
