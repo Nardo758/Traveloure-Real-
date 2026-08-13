@@ -65,6 +65,7 @@ import {
 } from "@shared/content-surface-map";
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
+import { applyPropertyLocationPrivacy } from "./services/property-location-privacy.service";
 import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
@@ -5645,15 +5646,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-        const service = await storage.getProviderServiceById(booking.serviceId);
+        const rawService = await storage.getProviderServiceById(booking.serviceId);
         const provider = await storage.getUser(booking.providerId);
+        // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
+        // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
+        // the product itself and must never ride a general read. The one sanctioned reveal
+        // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
+        let service = rawService ? omitFields(rawService, ["serviceFile"] as const) : rawService;
+        // S8/G2 (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the property/room exact
+        // pin is a §15b-gated reveal too — a payment_pending (or any non-confirmed) claim on a
+        // property must NOT expose the exact coordinates just because it's the traveler's own
+        // booking. Mirrors the /deliverable gate's status check. Once confirmed, the row is left
+        // exactly as-is (the exact pin, honestly).
+        if (service && booking.status !== "confirmed") {
+          service = applyPropertyLocationPrivacy(service as any) as typeof service;
+        }
         return {
           ...booking,
-          // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
-          // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
-          // the product itself and must never ride a general read. The one sanctioned reveal
-          // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
-          service: service ? omitFields(service, ["serviceFile"] as const) : service,
+          service,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
         };
       }));

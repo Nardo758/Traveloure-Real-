@@ -863,6 +863,21 @@ export const providerServices = pgTable("provider_services", {
   pricingUnit: varchar("pricing_unit", { length: 20 }),
   parentServiceId: varchar("parent_service_id").references((): AnyPgColumn => providerServices.id, { onDelete: "restrict" }),
 
+  // S8 property builder (Gate G2, migration 211, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). check_in_time/check_out_time: "HH:MM" wall clock, same shape as
+  // earliestStartTime/latestStartTime above. house_rules: property-level ONLY — a room never
+  // carries its own (absolute inheritance, the same posture as the pin below: no per-room
+  // override). amenities: string array, the deliveryLanguages precedent (§13) — NULL = never
+  // captured (every pre-211 row), [] = deliberately cleared; the two states must not collapse.
+  // All three ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema
+  // (not money/identity/rate fields, §14/§18/§19 do not apply) — no new endpoint. Additive
+  // nullable, no DB CHECK (app-enforced HH:MM regex + amenities shape live on the zod schema
+  // below, the migration-195/199 posture).
+  checkInTime: varchar("check_in_time", { length: 5 }),
+  checkOutTime: varchar("check_out_time", { length: 5 }),
+  houseRules: text("house_rules"),
+  amenities: jsonb("amenities").$type<string[]>(),
+
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
   // NULL when unresolvable (NULL is the honest state — no city-center fallback). NOT read by the
@@ -1987,6 +2002,17 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
     { message: "Per-km surcharge rate must be a non-negative number" },
   ),
   surchargeMaxKm: z.coerce.number().int().min(0).max(100000).nullable().optional(),
+  // ── S8 property builder (Gate G2, migration 211) ────────────────────────────────────────────
+  // App-enforced vocabulary + shape floors (no DB CHECK, migration-211 publish-trap posture);
+  // field-level so each refinement survives `.partial()` on the PATCH path (update checked as
+  // hard as insert). Ordinary owner-authored listing facts — no amount/identity/rate reaches a
+  // money decision — so NOT omitted, exactly like deliveryLanguages/cancellationPolicy beside them.
+  checkInTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  checkOutTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  houseRules: z.string().max(10000).nullable().optional(),
+  // `null` is preserved as "never captured" and `[]` as "deliberately cleared" — the two must
+  // not collapse (§13), the same rule deliveryLanguages already states above.
+  amenities: z.array(z.string().trim().min(1).max(60)).max(50).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
