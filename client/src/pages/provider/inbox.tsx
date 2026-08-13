@@ -547,15 +547,16 @@ function QueueSection({
             testId="empty-inbox-queue"
           />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Bookings needing a response">
             {pending.map((booking) => (
-              <BookingCard
-                key={booking.id}
-                booking={booking}
-                onOpenVisaDialog={onOpenVisaDialog}
-                showAcceptDecline
-                statusMutation={statusMutation}
-              />
+              <div key={booking.id} role="listitem">
+                <BookingCard
+                  booking={booking}
+                  onOpenVisaDialog={onOpenVisaDialog}
+                  showAcceptDecline
+                  statusMutation={statusMutation}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -668,15 +669,16 @@ function HistorySection({
             testId="empty-inbox-history"
           />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Confirmed and completed bookings">
             {filtered.map((booking) => (
-              <BookingCard
-                key={booking.id}
-                booking={booking}
-                onOpenVisaDialog={onOpenVisaDialog}
-                showAcceptDecline={false}
-                statusMutation={noopMutation}
-              />
+              <div key={booking.id} role="listitem">
+                <BookingCard
+                  booking={booking}
+                  onOpenVisaDialog={onOpenVisaDialog}
+                  showAcceptDecline={false}
+                  statusMutation={noopMutation}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -750,9 +752,10 @@ function MessageThreadsSection() {
           testId="empty-inbox-messages"
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" role="list" aria-label="Recent conversations">
           {threads.map(([counterpartId, last]) => (
-            <Link key={counterpartId} href={`/chat?clientId=${counterpartId}`}>
+            <div key={counterpartId} role="listitem">
+            <Link href={`/chat?clientId=${counterpartId}`}>
               <Card
                 className="border border-console-light hover-elevate cursor-pointer"
                 data-testid={`inbox-thread-${counterpartId}`}
@@ -773,6 +776,7 @@ function MessageThreadsSection() {
                 </CardContent>
               </Card>
             </Link>
+            </div>
           ))}
         </div>
       )}

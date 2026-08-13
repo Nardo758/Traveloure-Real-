@@ -21,7 +21,7 @@ import {
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
-  insertProviderServiceSchema, insertServiceCategorySchema,
+  insertProviderServiceSchema, insertProviderServiceListingSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
   insertServiceTemplateSchema, insertServiceBookingSchema, createBookingRequestSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
@@ -100,7 +100,7 @@ import { resolvePublishVerification } from "./services/publish-verification.serv
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EARNER_BOOKING_FIELDS, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -216,6 +216,7 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
+import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody, sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS, EXPERT_LISTING_TEXT_FIELDS } from "./utils/text-sanitizer";
 function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
   if (!slug) return "default";
   if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
@@ -383,34 +384,8 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Simple XSS sanitization - strips HTML tags and dangerous characters
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
-
-// Sanitize object string fields recursively
-function sanitizeObject<T extends Record<string, any>>(obj: T): T {
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    if (typeof result[key] === 'string') {
-      result[key] = sanitizeInput(result[key]);
-    }
-  }
-  return result;
-}
-
-// Migration 151 (§17 Product Builder): bundle_components.component_service_id is
-// ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
-// removed from the bundle. Postgres surfaces that as FK violation 23503; translate it into
-// an honest 409 naming the containing bundle(s) instead of an opaque 500. Returns true
-// when the response was sent (the error was this case), false to fall through.
+const sanitizeInput = sanitizeText as (input: string) => string;
+const sanitizeObject = sanitizeObjectStrings;
 async function respondIfServiceInBundle(err: any, serviceId: string, res: any): Promise<boolean> {
   const code = err?.code ?? err?.cause?.code;
   if (code !== "23503") return false;
@@ -1879,7 +1854,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1901,7 +1876,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -1934,7 +1909,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1955,7 +1930,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      const input = insertLocalExpertFormSchema.parse(sanitizeBodyFields(req.body, EXPERT_APPLICATION_TEXT_FIELDS));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2035,7 +2010,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertServiceProviderFormSchema.parse(req.body);
+      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2078,7 +2053,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
           return res.status(400).json({ message: "officeLocation must carry numeric lat/lng within range, or be null to clear" });
         }
-        const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+        const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
         officeLocation = { address, lat, lng };
       } else {
         return res.status(400).json({ message: "officeLocation must be an object with lat/lng, or null" });
@@ -2099,7 +2074,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertServiceProviderFormSchema.parse(req.body);
+      const input = insertServiceProviderFormSchema.parse(sanitizeBodyFields(req.body, PROVIDER_APPLICATION_TEXT_FIELDS));
       const form = await storage.createServiceProviderForm({ ...input, userId });
       res.status(201).json(form);
     } catch (err) {
@@ -2606,11 +2581,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // is a hand-written zod ALLOWLIST of exactly the four translatable content fields (§19 — no
   // client-settable status/source/updatedBy/timestamp; status/source are set server-side by the
   // path, updatedBy from the session per §14). A PUT is replace-for-that-locale.
+  // Task 1135: translation content is provider prose — sanitized BEFORE the max checks
+  // (z.preprocess) so entity encoding can't push an accepted value past the length limit.
+  const sanitizedTranslationField = (max: number) =>
+    z.preprocess(
+      (v) => (typeof v === "string" ? sanitizeText(v) : v),
+      z.string().trim().max(max).nullish(),
+    );
   const translationContentBodySchema = z.object({
-    serviceName: z.string().trim().max(255).nullish(),
-    shortDescription: z.string().trim().max(150).nullish(),
-    description: z.string().trim().max(20000).nullish(),
-    meetingPoint: z.string().trim().max(20000).nullish(),
+    serviceName: sanitizedTranslationField(255),
+    shortDescription: sanitizedTranslationField(150),
+    description: sanitizedTranslationField(20000),
+    meetingPoint: sanitizedTranslationField(20000),
   });
   const normalizeContent = (b: z.infer<typeof translationContentBodySchema>) => ({
     serviceName: b.serviceName ?? null,
@@ -2756,7 +2738,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.parse(bodyWithoutLocation);
+      // Task 1135: sanitize provider prose (incl. JSON prose — faqs/whatIncluded/requirements/
+      // pricingTiers) BEFORE schema parse, so length/min constraints validate the stored value.
+      const input = insertProviderServiceSchema.parse(sanitizeProviderServiceBody(bodyWithoutLocation));
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -2988,7 +2972,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.partial().parse(bodyWithoutLocation);
+      // Task 1135: sanitize provider prose (incl. JSON prose) BEFORE schema parse — see create.
+      const input = insertProviderServiceSchema.partial().parse(sanitizeProviderServiceBody(bodyWithoutLocation));
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -4151,29 +4136,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Expert access required" });
       }
 
-      const { title, description, categoryName, existingCategoryId, price, duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes, isActive } = req.body;
-      
-      if (!title || !price) {
+      const raw = req.body ?? {};
+      if (!raw.title || !raw.price) {
         return res.status(400).json({ message: "Title and price are required" });
       }
 
-      const service = await storage.createProviderServiceListing(userId, {
-        title,
-        description,
-        categoryName,
-        existingCategoryId,
-        price: price.toString(),
-        duration,
-        deliverables,
-        cancellationPolicy,
-        leadTime,
-        imageUrl,
-        galleryImages,
-        experienceTypes,
-        isActive: isActive !== false,
-      });
+      // Task 1135: sanitize expert prose FIRST, then parse the allow-listed schema — so a
+      // tag-only title ("<b></b>") sanitizes to "" and fails the schema's min(1) with a 400,
+      // and no unlisted field ever reaches the storage layer.
+      const body = insertProviderServiceListingSchema.parse(sanitizeTextFields(
+        {
+          title: raw.title,
+          description: raw.description,
+          categoryName: raw.categoryName,
+          existingCategoryId: raw.existingCategoryId,
+          price: String(raw.price),
+          duration: raw.duration,
+          deliverables: raw.deliverables,
+          cancellationPolicy: raw.cancellationPolicy,
+          leadTime: raw.leadTime,
+          imageUrl: raw.imageUrl,
+          galleryImages: raw.galleryImages,
+          experienceTypes: raw.experienceTypes,
+          isActive: raw.isActive !== false,
+        },
+        EXPERT_LISTING_TEXT_FIELDS,
+      ));
+
+      const service = await storage.createProviderServiceListing(userId, body);
       res.status(201).json(service);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service" });
+      }
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
     }
@@ -4195,9 +4190,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
+      // Task 1135: allow-list via the insert schema (partial) + sanitize expert prose BEFORE
+      // parse — never pass raw req.body through to the storage layer.
+      const patchInput = insertProviderServiceListingSchema.partial().parse(sanitizeTextFields(
+        { ...(req.body ?? {}) } as Record<string, any>,
+        EXPERT_LISTING_TEXT_FIELDS,
+      ));
+      const updated = await storage.updateProviderServiceListing(req.params.id, patchInput);
       res.json(updated);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid service update" });
+      }
       console.error("Error updating custom service:", err);
       res.status(500).json({ message: "Failed to update custom service" });
     }
@@ -5875,7 +5879,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+              // Task-1137 leak audit: the requester here is the booking OWNER (provider/expert) —
+              // never the traveler — so the row must go through the earner allow-list, or the
+              // traveler's Stripe references (stripe*IntentId) and idempotencyKey leak.
+              return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -5905,7 +5912,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
-            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+            // Task-1137 leak audit: earner allow-list projection (see note above).
+            return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
           } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
             return res.status(502).json({
@@ -5993,7 +6001,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      // Task-1137 leak audit: earner allow-list projection (see note above).
+      res.json(pickPublicFields(updated, EARNER_BOOKING_FIELDS));
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -6163,7 +6172,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }));
       }
       metadata.visaStatusUpdatedAt = new Date().toISOString();
-      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+      const updatedRaw = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+      // Task-1137 leak audit: this route is gated to the booking's PROVIDER, so the returned
+      // row must go through the earner allow-list (strips stripe*IntentId + idempotencyKey).
+      const updated = updatedRaw ? pickPublicFields(updatedRaw, EARNER_BOOKING_FIELDS) : updatedRaw;
 
       // Send notification to the traveler about the visa status change
       try {
@@ -7463,7 +7475,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
             return res.status(400).json({ message: "pickupLocation must carry numeric lat/lng within range, or be null to clear" });
           }
-          const address = typeof raw.address === "string" ? raw.address.slice(0, 500) : null;
+          const address = typeof raw.address === "string" ? sanitizeText(raw.address).slice(0, 500) : null;
           pickupLocationUpdate = { pickupLocation: { address, lat, lng } };
         } else {
           return res.status(400).json({ message: "pickupLocation must be an object with lat/lng, or null" });

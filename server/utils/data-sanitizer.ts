@@ -141,13 +141,40 @@ export function sanitizeUsersForRole<T extends Record<string, any>>(
 }
 
 /**
- * Sanitize booking data for experts - they only need relevant trip info
+ * Allow-list of `service_bookings` fields an earner (expert/provider) surface may see.
+ *
+ * This deliberately replaces the old deny-list in `sanitizeBookingForExpert`, which
+ * stripped field names that don't exist on the table (`paymentIntentId`,
+ * `stripeSessionId`) while the real Stripe reference columns
+ * (`stripePaymentIntentId`, `stripeDepositIntentId`, `stripeBalanceIntentId`)
+ * leaked straight through to providers/experts. With an allow-list, any NEW
+ * sensitive column added to `service_bookings` later fails closed instead of
+ * leaking by default (same pick-over-omit posture as `pickPublicFields`).
+ *
+ * Excluded by construction: `stripePaymentIntentId`, `stripeDepositIntentId`,
+ * `stripeBalanceIntentId` (traveler's internal Stripe payment references) and
+ * `idempotencyKey` (internal write-dedup token — no earner surface reads it).
+ */
+export const EARNER_BOOKING_FIELDS = [
+  'id', 'trackingNumber', 'serviceId', 'travelerId', 'providerId', 'contractId',
+  'bookingDetails', 'tripId', 'status',
+  'totalAmount', 'platformFee', 'insuranceFee', 'providerEarnings',
+  'depositAmount', 'depositPaid', 'balanceAmount', 'balancePaid', 'balanceDueAt',
+  'bookingMetadata', 'source', 'crossSellSourceContentId', 'acquisitionRef', 'slotId',
+  'confirmedAt', 'completedAt', 'cancelledAt', 'cancellationReason',
+  'createdAt', 'updatedAt',
+] as const;
+
+/**
+ * Sanitize booking data for experts/providers - allow-list projection of the
+ * operational fields those surfaces need. Admin/EA (canSeeFull) responses are
+ * returned unchanged.
  */
 export function sanitizeBookingForExpert<T extends Record<string, any>>(
   booking: T,
   requesterRole: string,
   requesterId?: string
-): T {
+): Partial<T> {
   const role = (requesterRole || 'user') as UserRole;
   const permissions = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.user;
 
@@ -156,28 +183,25 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
     return booking;
   }
 
-  // For experts/providers: remove payment details but keep operational info
-  const sanitized = { ...booking };
-  
-  // Remove sensitive payment/billing info
-  const sensitiveFields = ['paymentDetails', 'cardInfo', 'billingAddress', 'paymentIntentId', 'stripeSessionId'];
-  for (const field of sensitiveFields) {
-    if (field in sanitized) {
-      delete (sanitized as any)[field];
+  // For experts/providers: allow-list projection — unknown/new fields fail closed
+  const sanitized: Record<string, any> = {};
+  for (const field of EARNER_BOOKING_FIELDS) {
+    if (field in booking) {
+      sanitized[field] = booking[field];
     }
   }
 
   // Sanitize nested traveler info if present
-  if ('traveler' in sanitized && (sanitized as any).traveler) {
-    const travelerData = (sanitized as any).traveler;
-    (sanitized as any).traveler = sanitizeUserForRole(
+  if ('traveler' in booking && (booking as any).traveler) {
+    const travelerData = (booking as any).traveler;
+    sanitized.traveler = sanitizeUserForRole(
       travelerData as Record<string, any>,
       requesterRole,
       travelerData.id === requesterId
     );
   }
 
-  return sanitized;
+  return sanitized as Partial<T>;
 }
 
 /**

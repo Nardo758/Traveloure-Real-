@@ -205,10 +205,11 @@ function LinkPerformanceCard() {
               <p className="text-xs text-console-mid mt-2">Lifetime totals.</p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2" role="list" aria-label="Distribution links">
               {links.map((row) => (
                 <div
                   key={row.code}
+                  role="listitem"
                   className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
                   data-testid={`row-link-${row.code}`}
                 >
@@ -314,10 +315,11 @@ function StatementsCard() {
             testId="empty-statements"
           />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Monthly statements">
             {months.map((row) => (
               <div
                 key={row.month}
+                role="listitem"
                 className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
                 data-testid={`row-statement-${row.month}`}
               >
@@ -846,10 +848,11 @@ export default function ProviderEarnings() {
             </CardHeader>
             <CardContent>
               {payouts && payouts.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-3" role="list" aria-label="Payout history">
                   {payouts.map((payout) => (
                     <div
                       key={payout.id}
+                      role="listitem"
                       className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
                       data-testid={`payout-${payout.id}`}
                     >

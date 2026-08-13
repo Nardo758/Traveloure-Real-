@@ -550,6 +550,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const { user } = useAuth();
   const isEditMode = !!id;
   const [creationSuccess, setCreationSuccess] = useState(false);
+  // TEST 3 (a11y): flipped on when a final submit/publish is attempted with required
+  // fields missing — gates the inline per-field role="alert" messages so screen
+  // readers hear the errors, without nagging before the user has tried to submit.
+  const [attemptedFinal, setAttemptedFinal] = useState(false);
   // L2: the post-create success copy must reflect what actually happened server-side
   // (the row's real status/approvalStatus), never just which button was pressed — a
   // create is clamped server-side to a non-approved born state (D1a), so "Publish"
@@ -1450,6 +1454,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const handleFinalSubmit = (action: "submit" | "publish") => {
     const firstMissing = missingForFinal[0];
     if (firstMissing) {
+      setAttemptedFinal(true);
       // Jump to the step that holds the invalid field; the mutation's own
       // checks remain the backstop and are unchanged.
       goToStep(firstMissing.step);
@@ -1811,6 +1816,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         );
       })()}
 
+      {attemptedFinal && role === "provider" && !isEditMode && !formData.serviceOfferingTypeId && (
+        <p role="alert" className="text-xs text-destructive" data-testid="error-offering-required">
+          Pick an offering from the catalog above — it's required before publishing.
+        </p>
+      )}
+
       {/* ── Start from a template (expert create — absorbed from the wizard, Phase 2) ── */}
       {role === "expert" && !isEditMode && serviceTemplates.length > 0 && (
         <Card data-testid="service-template-gallery">
@@ -1862,7 +1873,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               onChange={(e) => set("name", e.target.value)}
               placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
               className="mt-2"
+              aria-invalid={attemptedFinal && !formData.name ? true : undefined}
+              aria-describedby={attemptedFinal && !formData.name ? "error-name-required" : undefined}
             />
+            {attemptedFinal && !formData.name && (
+              <p id="error-name-required" role="alert" className="text-xs text-destructive mt-1" data-testid="error-name-required">
+                Service name is required.
+              </p>
+            )}
           </div>
 
           {/* Category — single canonical taxonomy; derived + locked when a provider offering is selected (§17) */}
@@ -1890,7 +1908,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "", categoryAttributes: {} }));
                 }}
               >
-                <SelectTrigger id="category" className="mt-2">
+                <SelectTrigger
+                  id="category"
+                  className="mt-2"
+                  aria-invalid={attemptedFinal && !formData.categoryId ? true : undefined}
+                  aria-describedby={attemptedFinal && !formData.categoryId ? "error-category-required" : undefined}
+                >
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1907,6 +1930,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
             {selectedCategory?.description && (
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
+            )}
+            {attemptedFinal && !formData.categoryId && (
+              <p id="error-category-required" role="alert" className="text-xs text-destructive mt-1" data-testid="error-category-required">
+                Category is required.
+              </p>
             )}
           </div>
 
@@ -2195,6 +2223,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     </button>
                   ))}
                 </div>
+              )}
+              {attemptedFinal && !isEditMode && !formData.expertOfferingTypeId && (
+                <p role="alert" className="text-xs text-destructive mt-2" data-testid="error-tier-required">
+                  Select a service tier — it's required before submitting for approval.
+                </p>
               )}
             </div>
           )}
@@ -2549,7 +2582,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 placeholder="Where will the service take place? (e.g., Hotel lobby, Specific landmark, Street address)"
                 rows={2}
                 className="mt-2"
+                aria-invalid={attemptedFinal && needsMeetingPoint && !formData.meetingPoint.trim() ? true : undefined}
+                aria-describedby={attemptedFinal && needsMeetingPoint && !formData.meetingPoint.trim() ? "error-meeting-point-required" : undefined}
               />
+              {attemptedFinal && needsMeetingPoint && !formData.meetingPoint.trim() && (
+                <p id="error-meeting-point-required" role="alert" className="text-xs text-destructive mt-1" data-testid="error-meeting-point-required">
+                  Meeting point is required for in-person services.
+                </p>
+              )}
             </div>
 
             {/* L27-P3: place/confirm the precise point behind the free-text meeting point.
@@ -3687,7 +3727,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("submit")}
-                disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
+                disabled={createMutation.isPending}
                 title={
                   expertVerificationGateBlocked
                     ? "Submitting for review is fine while unverified — but it can't go live until your identity is verified in your Expert Status page"
@@ -3702,7 +3742,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("publish")}
-                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || attestationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                disabled={createMutation.isPending || publishBlocked || verificationGateBlocked || attestationGateBlocked}
                 title={
                   verificationGateBlocked
                     ? "Complete identity and business verification in your Provider Status page before publishing"
@@ -3730,7 +3770,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               required field, with a jump link — mirrors the existing enforcement,
               adds none. */}
           {currentStep === TOTAL_STEPS && missingForFinal.length > 0 && (
-            <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
+            <p role={attemptedFinal ? "alert" : undefined} className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
               Still needed before you {role === "expert" ? "submit" : "publish"}:{" "}
               {missingForFinal.map((m, i) => (
                 <span key={`${m.step}-${m.label}`}>
