@@ -2634,13 +2634,24 @@ export class DatabaseStorage implements IStorage {
       // public search) — serviceFile is the pdf-delivery product itself and must never
       // surface pre-purchase. Redacted to null (not omitted) so the return type stays
       // ProviderService[].
-      // S9 (ledger row 102) flagged follow-up: this site strips ONLY serviceFile — unlike
-      // getAllActiveServices/the public detail read, it never picked up T-REP's 8-field
-      // revenueShareRate/approval-workflow strip either. Adding joinLink here closes THIS
-      // lane's leak; the pre-existing revenueShareRate/approval-workflow exposure on
-      // GET /api/discover is a real gap this lane found but is out of S9's scope to fix —
-      // flagged in the lane report for a follow-up (same class as the T-REP §18 finding).
-      services: enrichedServices.map((s) => ({ ...s, serviceFile: null, joinLink: null })),
+      // S9 (ledger row 102) + Wave-3 integration: this site had never picked up T-REP's 8-field
+      // strip (ledger row 101) — GET /api/discover was still carrying revenueShareRate and the
+      // approval-workflow internals on the public wire, the same §18 read-leak class T-REP closed
+      // on the detail and browse reads. Found by S9's strip audit, closed at integration (the
+      // T-REP precedent: verified and fixed in the same landing). Redacted-to-null so the return
+      // type is unchanged, exactly like getAllActiveServices.
+      services: enrichedServices.map((s) => ({
+        ...s,
+        serviceFile: null,
+        joinLink: null,
+        revenueShareRate: null,
+        reviewedBy: null,
+        rejectionReason: null,
+        formStatus: null,
+        submittedAt: null,
+        reviewedAt: null,
+        totalRevenue: null,
+      })),
       packages,
       total: filtered.length
     };

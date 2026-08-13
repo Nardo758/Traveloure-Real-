@@ -1995,6 +1995,10 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
     { message: "Join link must be a URL starting with http:// or https://" },
   ),
   responseWindowHours: z.coerce.number().int().min(1).max(8760).nullable().optional(),
+  // Same free-text-with-a-floor posture as houseRules (S8, beside it on this table): an SLA/promise
+  // statement is prose, not unbounded storage. Added at Wave-3 integration (the lane shipped the
+  // column without a length ceiling).
+  scopeStatement: z.string().max(10000).nullable().optional(),
   // ── SS-4 + SS-6 (ruling 69 disposition 9, migration 199) ────────────────────────────────────
   // Same treatment as the D7 block above and for the same reason: no DB CHECK exists (publish-trap
   // posture), so THIS is the enforcement, and field-level so it survives `.partial()` on PATCH.

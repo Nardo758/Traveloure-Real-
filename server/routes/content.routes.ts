@@ -2190,8 +2190,9 @@ router.get("/api/services/:id", async (req, res) => {
       // a property's exact confirmed pin never rides the public wire — the SAME deterministic
       // technique the Ready Made teaser map already uses, at a wider (~500m) radius, with an
       // explicit `locationApproximate` flag so the client labels the circle honestly (§13). The
-      // exact pin is revealed only on the confirmed-booking surface (GET
-      // /api/service-bookings/:id/location, mirroring the /deliverable gate).
+      // exact pin is revealed only on the confirmed-booking surface — the GET
+      // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
+      // confirmed booking's row exact (mirroring the /deliverable gate's status check).
       const jitteredProperty = applyPropertyLocationPrivacy(service);
       return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, surchargeTiers, neighborhoods }));
     }
