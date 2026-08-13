@@ -122,7 +122,7 @@ import { grokService } from "../services/grok.service";
 import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -1980,7 +1980,25 @@ router.get("/api/services/:id", async (req, res) => {
     // D3 leak-prevention: this is the public service-detail read — serviceFile is the
     // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
     // front, so every branch below (bundle/property/room/default) inherits the strip.
-    const service = omitFields(rawService, ["serviceFile"] as const);
+    // T-REP (G5 #13 audit): `storage.getProviderServiceById` is a bare `SELECT *`, so this was
+    // the only place standing between the full row and the public wire. §18's revenueShareRate
+    // strip already exists on the owner-write echoes (routes.ts CC-8/NEW-2) but was never applied
+    // to THIS public read — a rate-bearing field is never expose-able, no exceptions (§14/§18/§19).
+    // The rest of this list is the approval-workflow's internal bookkeeping (who reviewed it, when,
+    // why it was rejected, its pre-approval form status) — none of it is a traveler-facing fact
+    // about the LISTING; every row reaching this handler is already `approved`/`active` by the F2
+    // gate above, so these columns carry no information the traveler needs and some (rejectionReason,
+    // reviewedBy) are closer to provider-private notes than public content.
+    const service = omitFields(rawService, [
+      "serviceFile",
+      "revenueShareRate",
+      "reviewedBy",
+      "rejectionReason",
+      "formStatus",
+      "submittedAt",
+      "reviewedAt",
+      "totalRevenue",
+    ] as const);
     // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
     // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
     // away state as `away:{until,message}`; the service-detail read did not carry it at all,
@@ -2008,6 +2026,32 @@ router.get("/api/services/:id", async (req, res) => {
     const surchargeTiers = service.surchargeMode === "zones"
       ? await storage.getServiceSurchargeTiers(service.id)
       : [];
+
+    // T-REP (G5 #13): neighborhoods served — same derivation `GET /api/provider/services/:id`
+    // (the owner's own edit surface, routes.ts) already uses to pre-populate its multi-select, run
+    // here read-only for the public detail. `provider_neighborhood_coverage` is keyed on
+    // (providerId, categoryKey) — provider-level coverage for the category this LISTING belongs to,
+    // not a column on the listing itself, so there is no bare `service.neighborhoods` to spread; it
+    // has to be joined. Non-sensitive (a coverage-area list, not PII) — no gate beyond the F2 one
+    // already applied above. Absent category/coverage rows ⇒ an honest empty list, never a guess.
+    let neighborhoods: { slug: string; name: string }[] = [];
+    if (service.categoryId) {
+      const [cat] = await db
+        .select({ categoryKey: serviceCategories.categoryKey })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.id, service.categoryId));
+      if (cat?.categoryKey) {
+        neighborhoods = await db
+          .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name })
+          .from(providerNeighborhoodCoverage)
+          .innerJoin(cityNeighborhoods, eq(providerNeighborhoodCoverage.neighborhoodId, cityNeighborhoods.id))
+          .where(and(
+            eq(providerNeighborhoodCoverage.providerId, service.userId),
+            eq(providerNeighborhoodCoverage.categoryKey, cat.categoryKey),
+          ))
+          .orderBy(providerNeighborhoodCoverage.sortOrder);
+      }
+    }
 
     // Ruling 60 Phase B — provider CONTENT translation (system B). The active locale is the
     // client's resolved chrome locale (Phase A: account pref → localStorage → Accept-Language →
@@ -2114,6 +2158,7 @@ router.get("/api/services/:id", async (req, res) => {
         away,
         routePoints,
         surchargeTiers,
+        neighborhoods,
       }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
@@ -2135,7 +2180,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json(withTranslation({ ...service, rooms, away, routePoints, surchargeTiers }));
+      return res.json(withTranslation({ ...service, rooms, away, routePoints, surchargeTiers, neighborhoods }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2153,9 +2198,9 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints, surchargeTiers }));
+      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints, surchargeTiers, neighborhoods }));
     }
-    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers }));
+    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers, neighborhoods }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
