@@ -53,6 +53,42 @@ default for unmapped values, or `null` to force a manual decision — use `null`
 for content fields; a conservative constant only where one is genuinely safe,
 e.g. earnings → `held`).
 
+## Before every publish that includes a migration adding a UNIQUE index
+
+The deploy-push trap has a second variant: declaring a UNIQUE index in
+`shared/schema.ts` (required — see "CRITICAL: Replit deploy-push" in
+`CLAUDE.md`, the `sb_idempotency_key_idx` / migration-155 lesson) makes the
+push **enforce** it. If production already holds duplicate rows for that key,
+the push fails mid-deploy the same way a violated CHECK does, and offers the
+same destructive "copy dev database over production" option.
+
+1. **Run the UNIQUE-index preflight against production:**
+
+   ```bash
+   node scripts/preflight-prod-unique-indexes.cjs "<PROD_DATABASE_URL>"
+   ```
+
+   - **Exit 0 / "PASS"** → safe to publish.
+   - **Exit 1** → it lists every duplicated key value; de-duplicate on production
+     first (there is no generic remap — de-duplication is case-by-case, decide
+     which row wins), then re-run until clean.
+
+2. When a new migration declares a UNIQUE index in `shared/schema.ts` over a
+   column/table that previously had none, add an entry to `INDEX_MANIFEST` in
+   `scripts/preflight-prod-unique-indexes.cjs` (the index name, table, columns,
+   and the exact partial-index `where` predicate — it must mirror the
+   `shared/schema.ts` declaration verbatim, see that file's own note).
+
+3. **First application of this note:** migration 210 (S7 availability model,
+   DECISIONS.md ledger row 102) adds
+   `vendor_availability_slots_service_date_start_unique` — the availability
+   materializer's `ON CONFLICT DO NOTHING` upsert target. The migration itself
+   also runs this exact duplicate check inline and **fails loudly**
+   (`RAISE EXCEPTION`, not a silent skip) if it finds any, so a database that
+   runs the migration is already protected; this preflight step is for
+   confirming production is clean **before** publishing the `shared/schema.ts`
+   declaration (i.e., before the automatic drizzle-kit push runs against it).
+
 ## Staging (auth-dependent E2E)
 
 Production purges the seeded `@traveloure.test` accounts on every boot, so no

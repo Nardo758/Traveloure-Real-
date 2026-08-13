@@ -62,6 +62,7 @@ import { EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 // outward-facing surfaces moved to /provider/distribute (S6).
 import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
+import { ProviderAvailabilityManager } from "@/components/logistics/provider-availability-manager";
 import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -1042,7 +1043,9 @@ export default function ProviderServices() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
   // authoring surface (CatalogMapView); everything below the content block is untouched.
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  // S7 (DECISIONS.md ledger 102, G1 REC — "one editor... mounted on Catalog"): a third mode adds
+  // the availability editor (ProviderAvailabilityManager) alongside List/Map, on the same toggle.
+  const [viewMode, setViewMode] = useState<"list" | "map" | "availability">("list");
   // C2 (ruling 74): Manage ⇄ Preview is a SEPARATE axis from List/Map — it governs the LIST
   // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
   // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
@@ -1280,6 +1283,15 @@ export default function ProviderServices() {
               >
                 {t("header.viewMap")}
               </Button>
+              <Button
+                variant={viewMode === "availability" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none"
+                onClick={() => setViewMode("availability")}
+                data-testid="button-view-availability"
+              >
+                {t("header.viewAvailability")}
+              </Button>
             </div>
             {/* S5 (ruling 74 disp. 1): every "Add New Service" affordance routes through the
                 Workstation one-door launcher first — this is no longer a direct deep link into
@@ -1333,6 +1345,11 @@ export default function ProviderServices() {
         ) : viewMode === "map" ? (
           /* Ruling 22(b): the map authoring surface — selector rail, canvas, pin + route cards */
           <CatalogMapView services={services ?? []} />
+        ) : viewMode === "availability" ? (
+          /* S7 (DECISIONS.md ledger 102, G1): the availability editor — per-method semantics
+             (weekly patterns + blackouts for scheduled methods, date-ranges for property/room
+             shapes, an honest no-scheduling state for artifact/async methods). */
+          <ProviderAvailabilityManager />
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">
