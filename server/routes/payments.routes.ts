@@ -281,15 +281,82 @@ export function getRoomNights(item: any): { checkIn: string; checkOut: string; n
   return { checkIn, checkOut, nights };
 }
 
+// ── S11 (DECISIONS.md ledger row 107, docs/briefs/S11_STAY_BOOKING_PROPOSAL.md): ONE
+// preload+resolve pass for a stay's PER-NIGHT rate, on the B1 travel-surcharge precedent
+// (resolveCartSurcharges above — "ONE pass … so the amount quoted and the amount charged can
+// never disagree"). Reads ONLY persisted `vendor_availability_slots.pricing` — never req.body
+// (§14). A night with no materialized row (a manually-created slot with no range/no snapshot, or
+// a property that never adopted service_date_ranges) falls back to `provider_services.price`,
+// byte-identical to the pre-S11 flat-rate behavior — no regression for existing listings.
+export interface StayNightlyRateResult {
+  perNight: number[];
+  total: number;
+}
+
+export async function resolveStayNightlyRates(cartData: any[]): Promise<Map<string, StayNightlyRateResult>> {
+  const out = new Map<string, StayNightlyRateResult>();
+  const stays = cartData
+    .map((item) => ({ item, stay: getRoomNights(item) }))
+    .filter((x): x is { item: any; stay: { checkIn: string; checkOut: string; nights: number } } => x.stay !== null);
+  if (stays.length === 0) return out;
+
+  const serviceIds = Array.from(new Set(stays.map((x) => x.item.serviceId as string).filter(Boolean)));
+  const allDates = Array.from(new Set(stays.flatMap((x) => nightDatesBetween(x.stay.checkIn, x.stay.checkOut))));
+
+  const rateByServiceDate = new Map<string, number>();
+  if (serviceIds.length > 0 && allDates.length > 0) {
+    const rows = await db
+      .select({
+        serviceId: vendorAvailabilitySlots.serviceId,
+        date: vendorAvailabilitySlots.date,
+        pricing: vendorAvailabilitySlots.pricing,
+      })
+      .from(vendorAvailabilitySlots)
+      .where(and(
+        inArray(vendorAvailabilitySlots.serviceId, serviceIds),
+        inArray(vendorAvailabilitySlots.date, allDates),
+      ));
+    for (const row of rows) {
+      const nightly = (row.pricing as any)?.nightlyRate;
+      const parsed = typeof nightly === "number" ? nightly : parseFloat(nightly);
+      if (Number.isFinite(parsed)) {
+        rateByServiceDate.set(`${row.serviceId}|${String(row.date)}`, parsed);
+      }
+    }
+  }
+
+  for (const { item, stay } of stays) {
+    const fallbackRate = parseFloat(item?.service?.price || "0");
+    const dates = nightDatesBetween(stay.checkIn, stay.checkOut);
+    const perNight = dates.map((d) => rateByServiceDate.get(`${item.serviceId}|${d}`) ?? fallbackRate);
+    const total = perNight.reduce((a, b) => a + b, 0);
+    out.set(item.id, { perNight, total });
+  }
+  return out;
+}
+
 // §14: a room's charge is ALWAYS nights × the stored nightly rate — never quantity × price (a
 // room's cart "quantity" is meaningless; the client pins it to 1). Every other item keeps the
 // existing price × quantity math untouched, so this can replace that line everywhere it
 // appears (checkout totals, checkout booking-creation, the cart fee-preview) with no behavior
 // change for the rest of the catalog.
-export function resolveItemBaseAmount(item: any): number {
+//
+// S11: when `stayRates` (resolveStayNightlyRates' output) is passed AND carries an entry for
+// this item, a stay's charge is the SUM OF EACH NIGHT'S OWN MATERIALIZED RATE — never a flat
+// `price × nights` once real per-night rates exist. Every caller (checkout's charge loop, the
+// rails/quote pre-passes, GET /api/cart, GET /api/cart/fee-preview) resolves the SAME map ONCE
+// and threads it through here, so a quote and a charge can never disagree (§14, the B1
+// discipline). Omitting `stayRates` (or a miss) falls back to the pre-S11 flat computation,
+// byte-identical to today — this keeps the signature backward-compatible for any caller that
+// hasn't been threaded yet.
+export function resolveItemBaseAmount(item: any, stayRates?: Map<string, StayNightlyRateResult>): number {
   const stay = getRoomNights(item);
   const rate = parseFloat(item?.service?.price || "0");
-  if (stay) return rate * stay.nights;
+  if (stay) {
+    const resolved = stayRates?.get(item.id);
+    if (resolved) return resolved.total;
+    return rate * stay.nights;
+  }
   return rate * (item?.quantity || 1);
 }
 
@@ -1043,6 +1110,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         claimedSlotIds.push(itemSlotId);
       }
 
+      // S11 (§14, ledger row 107): ONE preload+resolve pass for every stay line's per-night rate,
+      // read AFTER the slot claim above so the queried rows are the exact nights just claimed.
+      // Every subsequent resolveItemBaseAmount call in this handler (the rails pre-pass, the
+      // quote loop, the charge loop) threads this SAME map — so the amount quoted and the amount
+      // charged, within this one request, can never disagree.
+      const stayRatesByItemId = await resolveStayNightlyRates(cartData);
+
       // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
       const safeParseRate = (value: any, fallback: number): number => {
         const n = parseFloat(value);
@@ -1136,7 +1210,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             serviceOwnerUserId: ownerId,
             ownerRole: ownerRoleById.get(ownerId ?? "") ?? null,
             categoryId: item.service.categoryId ?? null,
-            itemSubtotal: resolveItemBaseAmount(item),
+            itemSubtotal: resolveItemBaseAmount(item, stayRatesByItemId),
             preValidated: railsValidation,
           });
           railsByItemId.set(item.id, railsResolution);
@@ -1193,8 +1267,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       let checkoutSurchargeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
-        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
-        const itemPrice = resolveItemBaseAmount(item);
+        // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
+        // existing price × quantity.
+        const itemPrice = resolveItemBaseAmount(item, stayRatesByItemId);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
@@ -1258,8 +1333,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       for (const item of cartData) {
         if (!item.service) continue;
 
-        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
-        const price = resolveItemBaseAmount(item);
+        // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
+        // existing price × quantity. SAME map the quote loop above just read — the charge cannot
+        // diverge from the quote within this one request.
+        const price = resolveItemBaseAmount(item, stayRatesByItemId);
         const stay = roomStays.get(item.id);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory2 = item.service.categoryId
@@ -1422,6 +1499,16 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
                     checkOut: stay.checkOut,
                     nights: stay.nights,
                     nightlyRate: stay.nightlyRate,
+                    // S11 (§14, ledger row 107): the ACTUAL per-night rates the charge was
+                    // computed from — resolveStayNightlyRates' own per-item map, snapshotted so a
+                    // mixed-rate stay (e.g. spanning two service_date_ranges with different
+                    // nightly_price) is auditable on the row itself, not just re-derivable. The
+                    // legacy `nightlyRate` field above is left unchanged (the room's flat list
+                    // price at add-to-cart time) for backward compatibility with any existing
+                    // reader; this is additive, present only when a stay actually resolved rates.
+                    ...(stayRatesByItemId.get(item.id)
+                      ? { perNightRates: stayRatesByItemId.get(item.id)!.perNight }
+                      : {}),
                     // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `slotId` below stamps only the
                     // FIRST night's slot (backward compatibility — every existing reader keyed on
                     // `slotId` keeps working unchanged). The full per-night claim is persisted HERE
@@ -1752,11 +1839,15 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       // sees the travel line in the cart BEFORE Pay — the F1 disclosure posture. Pure preview: an
       // out-of-range pickup is NOT refused here (that is the checkout's 400), it simply shows 0.
       const previewSurcharges = await resolveCartSurcharges(cartData);
+      // S11 (§14, ledger row 107): the SAME resolver checkout's charge loop calls — a stay's
+      // preview cannot quote a number the checkout won't actually charge.
+      const previewStayRates = await resolveStayNightlyRates(cartData);
 
       for (const item of cartData) {
         if (!item.service) continue;
-        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
-        const itemPrice = resolveItemBaseAmount(item);
+        // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
+        // existing price × quantity.
+        const itemPrice = resolveItemBaseAmount(item, previewStayRates);
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
