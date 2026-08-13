@@ -1820,3 +1820,99 @@ and keeps its own inline `PostingOpportunitiesCard` (no `promoteHref`, unaffecte
 removal since it never passed it).
 
 Full record: DECISIONS.md ledger row 98.
+
+### Fixed here (lane S4 — ledger row 99; execution-map Wave 2, LAST lane of the wave)
+
+**Money out of creation — the post-creation "Pricing & fees" surface.** Builds on the listing home
+S2 made the default view of `/provider/services/:id/edit`. Client-only — not one server file is in
+the diff, so no schema change, no migration, no endpoint, no `fee_bands` change, and no new write
+rail (every field already went out through `PATCH /api/provider/services/:id` and the existing
+owner-gated `PUT /api/provider/services/:id/surcharge-tiers`; this lane only moved which SURFACE
+calls them).
+
+**(1) What moved.** Travel-surcharge mode + amounts — all four modes (none/flat/zones/per_km),
+including the zones ring editor (B1/ruling 81) — the deposit/partial-payment opt-in (Lane 7,
+ruling 72), and the cancellation policy (type + free-text details, X1) all moved off
+`ServiceForm.tsx`'s wizard steps ("Getting there" and "Booking Terms") into a new
+"Pricing & fees" drawer (`client/src/components/provider/pricing-fees-drawer.tsx`), mounted on
+S2's listing home beside — never inside — the derived checklist. **What stayed:** base price
+(creation step 1) and `serviceRadius`, the map's own coverage/location geometry (still authored on
+the "Getting there" → Pickup block, still what `ServiceMapAuthoring` draws its ring from) — neither
+is a surcharge amount, so neither was in scope to move. Lead Time also stayed on the wizard's
+Booking Terms card (not fee-adjacent). Each vacated wizard card now carries a short note pointing
+at the drawer rather than silently going quiet (§13).
+
+**(2) The drawer.** Reads/writes ONLY through the existing rails (§19 allowlist posture verified
+against `shared/schema.ts`'s `insertProviderServiceSchema.extend()` block — every moved field is
+already accepted there, none is `.omit()`'d, `revenueShareRate` stays omitted and is never touched
+by this drawer): `PATCH /api/provider/services/:id` for the scalar fields, plus the pre-existing
+owner-gated child-row replace-list `PUT .../surcharge-tiers` when the mode is `zones`. Shows base
+price **read-only** (edited on the listing itself, never here) and a plain-language summary of what
+is configured. **No rate-bearing figure appears or is settable** (§18) — the drawer states, verbatim
+from the ratified mock, "Platform commission is not shown or set here — it is resolved from your
+category, not typed into a form"; there is no "You earn $X" resolver call in this drawer at all
+(the mock's own drawer design omits one, and inventing a NEW client-side commission preview for a
+lane whose whole point is keeping rate logic server-side would be the wrong direction — the
+existing per-booking "You earn" figures elsewhere are untouched). The pure hydrate/patch-building
+logic is split into `client/src/lib/pricing-fees.ts` (mirrors `service-form-required.ts`'s own
+split) so it is unit-testable without a DOM.
+
+**(3) Checklist integration.** Verified BEFORE moving anything: none of the three moved fields is
+in `service-form-required.ts`'s `buildRequiredItems` — they were never required-for-final on any
+method, so per the standing instruction ("if any moved field is required-for-final for its method,
+its checklist row now navigates to the drawer") there was nothing to redirect. **The required set
+and `ChecklistNavTarget` are byte-identical to what S2 landed** — no new `{kind:...}` variant, no
+new checklist row. "Pricing & fees" is a separate always-present card ("Manage →" button opens the
+drawer), matching the ratified mock's own "Listing settings" placement (a sidebar entry beside, not
+inside, the required checklist) and its own "not required to go live" copy.
+
+**PROOF.** Client unit battery **178/178** across **15 files** (14 pre-existing + **1 NEW**,
+`pricing-fees.test.ts`, 43 tests): pure round-trip tests for `pricingFeesFromService` /
+`buildPricingFeesPatch` / `buildSurchargeTiersPayload` / `pricingFeesSummary`, plus static-source
+proofs reading `ServiceForm.tsx` and `pricing-fees-drawer.tsx` directly — every moved control's
+`data-testid` is asserted ABSENT from the wizard and PRESENT in the drawer, Lead Time and Service
+Radius are asserted still present in the wizard, and `service-form-required.ts` is asserted to gain
+no `surcharge`/`deposit`/`cancellation` required-item id. `tsc --noEmit` **170** = baseline
+(unchanged, zero new errors in either new file or `ServiceForm.tsx`).
+
+**Server keep-green**, serialized on a fresh `traveloure_w2e` bench (port 5013,
+`OBJECT_STORAGE_DRIVER=memory RATE_LIMIT_LOOPBACK_SKIP=1 SESSION_SECRET=bench` stub Stripe keys,
+`NODE_ENV=development`, `scripts/seed-ci-test-users.ts` run first): `travel-surcharge` **13/13**,
+`deposit-checkout` **10/10**, `fp1-console-defects` **12/12**, `fp3-property-room-edit` **8/8**
+(fp2 has no dedicated DB suite — it was a client-only lane, covered by the client unit battery +
+`tsc`), `service-deliverable` **9/9**, `publish-verification-hold` **9/9**,
+`fee-resolution-authority` **13/13** — 74/74, zero regressions on any shared money-path consumer.
+Five guards exit 0 (`check-money-endpoints` — scans only `server/routes` + `server/services` +
+`server/routes.ts`, so this lane's client-only diff was outside its scope by construction, no
+`money-derive-ok` annotation was needed; `phase2-fee-gate`, `check-unmounted-routers`,
+`check-decision-guards`, `check-omit-schema-ratchet` — unchanged at 190). `replit.local` **0**;
+production build (client + server) clean.
+
+**API-level proof of the exact drawer round trip** (create a place-anchored listing with a pickup
+provision → `PATCH` surcharge mode=flat/amount/deposit/cancellation → `GET` confirms persistence →
+`PATCH` mode=zones → `PUT .../surcharge-tiers` → `GET .../surcharge-tiers` confirms the two saved
+rings) — run directly against the bench with the provider CI account, byte-identical to the request
+shape `buildPricingFeesPatch`/`buildSurchargeTiersPayload` produce.
+
+**Environment limitation, honestly recorded:** the browser-driven headless UI walkthrough (open
+listing home → drawer → edit → save → re-fetch shows persisted values in the rendered page) could
+**not** be executed in this session — `npx playwright install` is blocked by this sandbox's egress
+policy (`cdn.playwright.dev` returns `403 request rejected: host not permitted`, an organization
+policy denial per the proxy's own instructions, not retried) and no system Chromium/Chrome binary
+was present to point Playwright at instead. Substituted: the API-level round trip above (proves the
+exact request/response the drawer's `useMutation` performs), the static-source tests (prove the
+JSX wiring — which testids render where), and `tsc`/production build (prove the component compiles
+and bundles). This is a tooling gap in this particular session's sandbox, not a defect in the
+drawer; a session with browser access should still run the full click-through before this lane is
+considered fully proven end-to-end.
+
+**NEGATIVE SPACE (ruling 43) — what this lane deliberately did NOT do:** no schema change and none
+needed (STOP-and-report was the standing instruction and never fired); no migration; no new
+endpoint; the server publish gates, `fee_bands`, resolvers, checkout, `ServiceForm`'s A1 branching,
+S5's launcher and S6's Distribute are all untouched; no rate/commission/split field appears or is
+settable anywhere in the new surface (§18); the required-for-final set is byte-identical to S2's
+(§13 — this lane routes existing config to a new home, it invents no new gate and removes none).
+**This closes Wave 2** (S1–S6, execution-map Gate G ratification) — Wave 3 was already unblocked by
+row 92's ratification and is unaffected by this lane's completion.
+
+Full record: DECISIONS.md ledger row 99.
