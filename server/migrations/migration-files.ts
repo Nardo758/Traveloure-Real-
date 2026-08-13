@@ -1027,4 +1027,17 @@ export const MIGRATION_FILES = [
   // transition inserts zero duplicate rows. Additive, NO CHECK; DECLARED in shared/schema.ts
   // (publish-trap rule).
   "209_notification_dedupe_key.sql",
+  // 211: property builder fields (S8, Gate G2 — docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). Four additive-nullable columns on provider_services: check_in_time/check_out_time
+  // ("HH:MM", the earliest/latestStartTime shape), house_rules (text, property-level only —
+  // absolute pin-style inheritance, no per-room override), amenities (jsonb string array, the
+  // deliveryLanguages NULL-vs-[] precedent). No DB CHECK, no new table — the property↔room
+  // linkage (productShape/pricingUnit/parentServiceId) already shipped in migration 153. All
+  // four ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema — no
+  // new endpoint. NUMBERING NOTE: lane S7 (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md) owns migration
+  // 210 (availability patterns/date-ranges/blackouts); it was not present in this worktree at
+  // S8 lane start, so this is registered directly after 209. The integrator resolves final
+  // registry ordering (210 before 211) at merge time — this migration has no dependency on 210's
+  // tables or columns, so either order applies cleanly.
+  "211_property_builder_fields.sql",
 ] as const;
