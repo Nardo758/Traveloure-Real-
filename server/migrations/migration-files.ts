@@ -1019,4 +1019,12 @@ export const MIGRATION_FILES = [
   //     resolves to exactly one city (slug is not globally unique — the uniqueness is (city, country,
   //     slug)). No free-text parsing, no fuzzy match, NULL stays NULL (§13).
   "208_fp1_console_defect_data_repairs.sql",
+  // 209: notifications.dedupe_key — QA-2's notification-durability fix (DECISIONS.md ledger 96).
+  // Nullable varchar + a PARTIAL UNIQUE index (WHERE dedupe_key IS NOT NULL, migration-155/203
+  // precedent), keyed `booking:<id>:<event>`. Lets the booking-status canonical writer
+  // (storage.updateServiceBookingStatus) insert its accept/cancel notification INSIDE the same
+  // transaction as the status flip with ON CONFLICT DO NOTHING — a crash-retry of the same
+  // transition inserts zero duplicate rows. Additive, NO CHECK; DECLARED in shared/schema.ts
+  // (publish-trap rule).
+  "209_notification_dedupe_key.sql",
 ] as const;

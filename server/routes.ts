@@ -12,7 +12,7 @@ import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage } from "./storage";
+import { storage, type BookingStatusNotification } from "./storage";
 import { api } from "@shared/routes";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
@@ -5956,28 +5956,43 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
+      // QA-2 (ledger 96, Finding A/B): the traveler notification for BOTH the accept and the
+      // unpaid-decline branches now travels IN the same transaction as the status flip (see
+      // storage.updateServiceBookingStatus) instead of a separate best-effort call after commit —
+      // a crash between the flip and the old separate write left a status change with no
+      // notification, and the atomic-conditional guard turned a client retry into a 409 that could
+      // never repair it. dedupeKey = `booking:<id>:<event>` makes a concurrent duplicate/retry of
+      // this SAME transition a no-op (ON CONFLICT DO NOTHING on notifications.dedupe_key).
+      const notify: BookingStatusNotification | undefined = booking.travelerId
+        ? status === "confirmed"
+          ? {
+              userId: booking.travelerId,
+              type: "booking_confirmed",
+              title: "Booking accepted",
+              message: `Your booking ${booking.trackingNumber ?? ""} was accepted by the provider.`,
+              data: { bookingId: req.params.id, acceptedBy: "provider" },
+              dedupeKey: `booking:${req.params.id}:accepted`,
+            }
+          : {
+              // Reached only for an UNPAID cancellation (a stamped-but-not-succeeded PI falls
+              // through to this same branch — see the piSucceeded check above) — the paid-refund
+              // branch above returns earlier with its own notification.
+              userId: booking.travelerId,
+              type: "booking_cancelled",
+              title: "Booking cancelled by provider",
+              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              dedupeKey: `booking:${req.params.id}:cancelled`,
+            }
+        : undefined;
+
+      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom, notify);
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
-        // caller wins; the loser changes nothing and fires no side-effects.
+        // caller wins; the loser changes nothing and fires no side-effects — including no
+        // notification (the notify insert lives inside the same transaction the lost race rolled
+        // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
-      }
-
-      // Unpaid cancellation still tells the traveler — no silent state changes.
-      if (status === "cancelled" && updated.travelerId) {
-        try {
-          await storage.createNotification({
-            userId: updated.travelerId,
-            type: "booking_cancelled",
-            title: "Booking cancelled by provider",
-            message: `Your booking ${updated.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-            relatedId: req.params.id,
-            relatedType: "booking",
-            data: { bookingId: req.params.id, cancelledBy: "provider" },
-          });
-        } catch (notifyErr) {
-          console.error("Failed to notify traveler of provider cancellation:", notifyErr);
-        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
