@@ -19,6 +19,7 @@ import {
   sanitizeProviderServiceBody,
   sanitizeTextFields,
   PROVIDER_SERVICE_TEXT_FIELDS,
+  EXPERT_LISTING_TEXT_FIELDS,
 } from "../utils/text-sanitizer";
 import { insertProviderServiceSchema, insertProviderServiceListingSchema } from "@shared/schema";
 import { bundleCreateSchema, propertyCreateSchema } from "../routes/provider.routes";
@@ -137,7 +138,7 @@ test("tag-only required names reject AFTER sanitization (never reach storage)", 
     insertProviderServiceListingSchema.parse(
       sanitizeTextFields(
         { title: "<img src=x onerror=alert(1)>", price: "10" },
-        ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
+        EXPERT_LISTING_TEXT_FIELDS,
       ),
     ),
   );
@@ -151,7 +152,7 @@ test("expert listing pipeline sanitizes prose fields", () => {
   const parsed = insertProviderServiceListingSchema.partial().parse(
     sanitizeTextFields(
       { title: `${XSS}Hidden Gems`, description: `<b>desc</b>`, deliverables: [`${SCRIPT}PDF guide`] },
-      ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
+      EXPERT_LISTING_TEXT_FIELDS,
     ),
   ) as Record<string, any>;
   assert.equal(parsed.title, "Hidden Gems");
@@ -236,6 +237,20 @@ test("provider/expert application pipelines sanitize prose and JSONB (route orde
   assert.equal(expert.certifications, "Guide license");
   assert.deepEqual(expert.knowledgeProofAnswers, [{ questionId: "q1", answer: "The temple opens at 6am" }]);
   assert.deepEqual(expert.specialties, ["food", "temples"]);
+});
+
+test("string-array JSONB fields (deliveryLanguages, listing experienceTypes) are sanitized", () => {
+  const svc = insertProviderServiceSchema.partial().parse(
+    sanitizeProviderServiceBody({ deliveryLanguages: [`${SCRIPT}English`, `<b>French</b>`] }),
+  ) as Record<string, any>;
+  assert.deepEqual(svc.deliveryLanguages, ["English", "French"]);
+
+  const listing = sanitizeTextFields(
+    { title: "Tour", price: "10", experienceTypes: [`<img src=x onerror=x()>food`, "culture"] },
+    EXPERT_LISTING_TEXT_FIELDS,
+  ) as Record<string, any>;
+  assert.deepEqual(listing.experienceTypes, ["food", "culture"]);
+  assert.ok(!JSON.stringify(listing).includes("<"));
 });
 
 test("officeLocation address sanitizes markup", () => {

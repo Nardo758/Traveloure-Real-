@@ -94,7 +94,16 @@ export const PROVIDER_SERVICE_TEXT_FIELDS = [
   "rejectionReason",
   "contentAffinityTags",
   "leadTime",
+  "deliveryLanguages",
+  "city",
+  "neighborhood",
+  "cancellationPolicyType",
+  "earliestStartTime",
+  "latestStartTime",
 ] as const;
+// Deliberately EXCLUDED (classification, not oversight): galleryImages/serviceImage/serviceFile
+// (URLs — entity-encoding quotes corrupts querystrings; validated as URLs elsewhere), enum-ish
+// status/mode/type fields constrained by zod enums, and FK/id columns.
 
 /**
  * Sanitize a raw provider-service write body BEFORE zod validation, so length/min
@@ -116,6 +125,21 @@ export function sanitizeBodyFields<T extends Record<string, any>>(
   }
   return result as T;
 }
+
+/**
+ * Expert custom-listing prose (provider_service_listings) — excludes imageUrl/galleryImages
+ * (URLs), price (numeric string), and boolean/id fields.
+ */
+export const EXPERT_LISTING_TEXT_FIELDS = [
+  "title",
+  "description",
+  "categoryName",
+  "duration",
+  "deliverables",
+  "cancellationPolicy",
+  "leadTime",
+  "experienceTypes",
+] as const;
 
 /**
  * Provider onboarding application prose (service_provider_forms) — excludes URLs

@@ -216,7 +216,7 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody, sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS } from "./utils/text-sanitizer";
+import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody, sanitizeBodyFields, PROVIDER_APPLICATION_TEXT_FIELDS, EXPERT_APPLICATION_TEXT_FIELDS, EXPERT_LISTING_TEXT_FIELDS } from "./utils/text-sanitizer";
 function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
   if (!slug) return "default";
   if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
@@ -4160,7 +4160,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           experienceTypes: raw.experienceTypes,
           isActive: raw.isActive !== false,
         },
-        ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
+        EXPERT_LISTING_TEXT_FIELDS,
       ));
 
       const service = await storage.createProviderServiceListing(userId, body);
@@ -4194,7 +4194,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // parse — never pass raw req.body through to the storage layer.
       const patchInput = insertProviderServiceListingSchema.partial().parse(sanitizeTextFields(
         { ...(req.body ?? {}) } as Record<string, any>,
-        ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
+        EXPERT_LISTING_TEXT_FIELDS,
       ));
       const updated = await storage.updateProviderServiceListing(req.params.id, patchInput);
       res.json(updated);
