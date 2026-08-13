@@ -129,6 +129,10 @@ import type {
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition } from "./services/item-transition-log.service";
+// RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
+// slot set (see its docblock in checkout-claim.service.ts) — used here so
+// updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
+import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -2163,10 +2167,18 @@ export class DatabaseStorage implements IStorage {
       // second reclaim rail (§18c: no second writer on the claim/slot machinery). A row already
       // past its first cancellation (priorStatus already cancelled/refunded) never re-releases —
       // same guard as the pre-existing bookingsCount decrement below.
+      //
+      // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `u.slotId` is only the FIRST night of a
+      // multi-night stay. `deriveClaimedSlotIds` returns the whole per-night list when the
+      // booking carries it (`bookingDetails.claimedSlotIds`) and falls back to the single
+      // `slotId` otherwise — a pre-fix row releases exactly as it always did.
       const cancelStatuses = ["cancelled", "refunded"];
       const isFirstCancellation =
         cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || "");
-      if (isFirstCancellation && u.slotId) {
+      const slotIdsToRelease = isFirstCancellation
+        ? deriveClaimedSlotIds(u.bookingDetails as Record<string, unknown> | null, u.slotId)
+        : [];
+      if (slotIdsToRelease.length > 0) {
         await tx.execute(sql`
           UPDATE vendor_availability_slots
           SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
@@ -2177,7 +2189,7 @@ export class DatabaseStorage implements IStorage {
                 ELSE status
               END,
               updated_at = NOW()
-          WHERE id = ${u.slotId}
+          WHERE id IN (${sql.join(slotIdsToRelease.map((id) => sql`${id}`), sql`, `)})
         `);
       }
 
