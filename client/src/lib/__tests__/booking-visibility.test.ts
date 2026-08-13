@@ -18,11 +18,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ACTIONABLE_BOOKING_STATUSES,
+  CLOSED_BOOKING_STATUSES,
   EARNING_BOOKING_STATUSES,
+  HISTORY_BOOKING_STATUSES,
   PROVISIONAL_BOOKING_STATUSES,
   RECORD_BOOKING_STATUSES,
   isActionableBooking,
+  isClosedBooking,
   isEarningBooking,
+  isHistoryBooking,
   isProvisionalBooking,
   isRecordBooking,
 } from "@shared/booking-visibility";
@@ -156,4 +160,68 @@ test("P6: the Money aggregations bank the paid row and only the paid row (M1)", 
   assert.equal(share, 176, "the $83.60 'lifetime earnings' that started this finding is gone");
   // The rate was always honest (share/gross, no literal — §8-clean); it is the AMOUNT that moved.
   assert.equal(Math.round((share / gross) * 100) / 100, 0.88);
+});
+
+// ── QA-1: cancelled/refunded/declined bookings vanish from Inbox History ───────────────────────
+//
+// A provider's Decline puts a row at `cancelled` (unpaid) or `refunded` (a paid row, made whole
+// via `refundServiceBooking`) — real terminal outcomes History had NO home for, because History
+// read `RECORD_BOOKING_STATUSES` alone. NEGATIVES FIRST: a closed row must never re-enter money
+// or action, because that absence is what made RECORD safe to reuse as half of HISTORY.
+
+test("N6: a closed (declined/cancelled/refunded) row is never money and never actionable", () => {
+  for (const status of CLOSED_BOOKING_STATUSES) {
+    assert.equal(isEarningBooking(status), false, `${status} must not count as earnings`);
+    assert.equal(isActionableBooking(status), false, `${status} must not be actionable`);
+    assert.equal(isProvisionalBooking(status), false, `${status} must not be provisional`);
+  }
+});
+
+test("N7: a §15b provisional claim and the legacy pending state are never CLOSED or HISTORY", () => {
+  // The whole point: History widens to include real declined outcomes, never a claim nobody
+  // paid or a request nobody has answered yet — those stay on Queue.
+  assert.equal(isClosedBooking("payment_pending"), false);
+  assert.equal(isClosedBooking("pending"), false);
+  assert.equal(isHistoryBooking("payment_pending"), false);
+  assert.equal(isHistoryBooking("pending"), false);
+});
+
+test("N8: `failed` and `disputed` are deliberately excluded from CLOSED (stated, not silent)", () => {
+  // `failed` never became a real booking (a §15b claim whose Stripe attempt didn't succeed);
+  // `disputed` is still open/contested, not a closed outcome. Widening CLOSED to cover either is
+  // a deliberate future edit, not something this fix does implicitly.
+  assert.equal(isClosedBooking("failed"), false);
+  assert.equal(isClosedBooking("disputed"), false);
+  assert.equal(isHistoryBooking("failed"), false);
+  assert.equal(isHistoryBooking("disputed"), false);
+});
+
+test("P7: cancelled and refunded are exactly the CLOSED set, and both appear in History", () => {
+  assert.deepEqual([...CLOSED_BOOKING_STATUSES].sort(), ["cancelled", "refunded"]);
+  for (const status of CLOSED_BOOKING_STATUSES) {
+    assert.equal(isClosedBooking(status), true);
+    assert.equal(isHistoryBooking(status), true, `${status} must reach the History tab`);
+  }
+});
+
+test("P8: HISTORY is exactly RECORD ∪ CLOSED — every authorized status still appears", () => {
+  for (const status of RECORD_BOOKING_STATUSES) {
+    assert.equal(isHistoryBooking(status), true, `${status} (RECORD) must still reach History`);
+  }
+  assert.deepEqual(
+    [...HISTORY_BOOKING_STATUSES].sort(),
+    [...RECORD_BOOKING_STATUSES, ...CLOSED_BOOKING_STATUSES].sort(),
+  );
+});
+
+test("P9: CLOSED stays outside ACTIONABLE/PROVISIONAL/EARNING — no sixth answer for a decline", () => {
+  for (const status of ALL_STATUSES) {
+    const memberships = [
+      isActionableBooking(status),
+      isProvisionalBooking(status),
+      isEarningBooking(status),
+      isClosedBooking(status),
+    ].filter(Boolean).length;
+    assert.ok(memberships <= 1, `${status} is claimed by ${memberships} sets — History and Queue will disagree`);
+  }
 });
