@@ -71,34 +71,9 @@ import {
   DollarSign,
   Clock,
   Users,
-  Camera,
-  Car,
-  ChefHat,
-  Map,
-  Heart,
-  Sparkles,
-  CalendarHeart,
-  UserCheck,
-  Languages,
-  Baby,
   BedDouble,
-  Music,
-  Mic2,
-  Flower2,
-  Palette,
-  Package,
-  BookOpen,
-  Scissors,
-  Shield,
-  Zap,
-  Briefcase,
-  UtensilsCrossed,
-  Wrench,
   MapPin,
   Truck,
-  PartyPopper,
-  Award,
-  Compass,
   Share2,
   ExternalLink,
   ArrowRight,
@@ -191,38 +166,9 @@ interface ServiceCategory {
   slug: string;
 }
 
-const inspirationCards = [
-  { label: "Photography & Video", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
-  { label: "Transportation", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
-  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
-  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
-  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
-  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
-  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
-  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
-  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
-  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
-  { label: "Lodging", slug: "Lodging & Accommodation", icon: BedDouble, color: "bg-cyan-50 text-cyan-600" },
-  { label: "Music & Performance", slug: "Music & Performance", icon: Music, color: "bg-violet-50 text-violet-500" },
-  { label: "Entertainment", slug: "Entertainment", icon: Mic2, color: "bg-fuchsia-50 text-fuchsia-500" },
-  { label: "Floral & Decor", slug: "Floral & Decoration", icon: Flower2, color: "bg-pink-50 text-pink-400" },
-  { label: "Arts & Crafts", slug: "Arts & Crafts Instruction", icon: Palette, color: "bg-lime-50 text-lime-600" },
-  { label: "Rentals", slug: "Rental Services", icon: Package, color: "bg-stone-50 text-stone-500" },
-  { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
-  { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
-  { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
-  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
-  { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
-  { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
-  { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
-  { label: "Companionship", slug: "Companionship & Assistance", icon: Users, color: "bg-blue-50 text-blue-400" },
-  { label: "Stationery & Print", slug: "Stationery & Paper Goods", icon: Languages, color: "bg-indigo-50 text-indigo-400" },
-  { label: "Special Effects", slug: "Specialty Effects & Activities", icon: Zap, color: "bg-yellow-50 text-yellow-500" },
-  { label: "Send-Off & Post-Event", slug: "Send-Off & Post-Event", icon: PartyPopper, color: "bg-pink-50 text-pink-500" },
-  { label: "Unique Specialists", slug: "Unique Specialty Services", icon: Award, color: "bg-violet-50 text-violet-500" },
-  { label: "Spiritual & Wellness", slug: "Spiritual & Wellness", icon: Sparkles, color: "bg-teal-50 text-teal-400" },
-  { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
-];
+// S5 (ruling 74 disp. 1): the category inspiration tiles MOVED to the Workstation launcher
+// (client/src/pages/provider/workstation.tsx) — this page's empty state now just points at
+// that screen instead of re-deriving the same 30-category list here.
 
 // ─── Storefront header (C9 — the expert catalog C2 block, provider lane only) ───────────
 //
@@ -1337,7 +1283,10 @@ export default function ProviderServices() {
                 {t("header.viewMap")}
               </Button>
             </div>
-            <Link href="/provider/services/new">
+            {/* S5 (ruling 74 disp. 1): every "Add New Service" affordance routes through the
+                Workstation one-door launcher first — this is no longer a direct deep link into
+                ServiceForm step 1. */}
+            <Link href="/provider/workstation">
               <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
                 <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
               </Button>
@@ -1370,39 +1319,18 @@ export default function ProviderServices() {
             ))}
           </div>
         ) : isFirstTimeEmpty ? (
-          /* First-time empty state: show all categories */
-          <div className="space-y-6">
-            <div className="text-center py-4">
-              <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
-              <p className="text-console-mid text-sm">{t("empty.body")}</p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-              {inspirationCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <button
-                    key={card.slug}
-                    onClick={() => navigate(`/provider/services/new?category=${encodeURIComponent(card.slug)}`)}
-                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-primary hover:shadow-sm transition-all text-center group"
-                    data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-                  >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-medium text-console-dark leading-tight">{card.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="text-center">
-              <Link href="/provider/services/new">
-                <Button variant="outline" data-testid="button-add-first-service">
-                  <Plus className="w-4 h-4 mr-2" /> {t("empty.fromScratch")}
-                </Button>
-              </Link>
-            </div>
+          /* S5 (ruling 74 disp. 1): first-time empty state is now a simple pointer at the
+             Workstation launcher — the 30-tile category picker that used to live here MOVED
+             to that screen (client/src/pages/provider/workstation.tsx) so there is exactly
+             ONE place a new listing is born. */
+          <div className="text-center py-10" data-testid="empty-state-catalog">
+            <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
+            <p className="text-console-mid text-sm mb-4">{t("empty.body")}</p>
+            <Link href="/provider/workstation">
+              <Button data-testid="button-add-first-service">
+                <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
+              </Button>
+            </Link>
           </div>
         ) : viewMode === "map" ? (
           /* Ruling 22(b): the map authoring surface — selector rail, canvas, pin + route cards */
