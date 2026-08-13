@@ -87,6 +87,13 @@ export const PROVIDER_SERVICE_TEXT_FIELDS = [
   "requirements",
   "faqs",
   "pricingTiers",
+  "deliverables",
+  "experienceTypes",
+  "availability",
+  "categoryAttributes",
+  "rejectionReason",
+  "contentAffinityTags",
+  "leadTime",
 ] as const;
 
 /**

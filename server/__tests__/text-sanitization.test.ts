@@ -83,6 +83,30 @@ test("provider service create pipeline sanitizes every prose field (route order:
   assert.ok(!JSON.stringify(sanitizeProviderServiceBody(body)).includes("<"));
 });
 
+test("deliverables and dynamic categoryAttributes text are sanitized on the service pipeline", () => {
+  const input = insertProviderServiceSchema.partial().parse(
+    sanitizeProviderServiceBody({
+      deliverables: [`${SCRIPT}PDF guide`, `<img src=x onerror=hack()>Map`],
+      categoryAttributes: {
+        vehicleType: `<b>Sedan</b>`,
+        notes: `${XSS}Meet at gate`,
+        nested: { freeText: `<script>x()</script>ok` },
+        maxSeats: 4,
+      },
+      availability: [{ day: `<i>Monday</i>`, slots: ["09:00"] }],
+    }),
+  ) as Record<string, any>;
+  assert.deepEqual(input.deliverables, ["PDF guide", "Map"]);
+  assert.deepEqual(input.categoryAttributes, {
+    vehicleType: "Sedan",
+    notes: "Meet at gate",
+    nested: { freeText: "ok" },
+    maxSeats: 4,
+  });
+  assert.deepEqual(input.availability, [{ day: "Monday", slots: ["09:00"] }]);
+  assert.ok(!JSON.stringify(input.deliverables).includes("<"));
+});
+
 test("provider service PATCH pipeline (partial) sanitizes too", () => {
   const patched = insertProviderServiceSchema
     .partial()
