@@ -1339,6 +1339,161 @@ findings are provider-console; the two SHARED server aggregations `/api/me/link-
 `/api/me/earnings-by-source` are fixed for both, and the bell is fixed for all three consoles because
 it lives on the shared shell); no schema change, no migration, no `fee_bands` change, no new guard.
 
+### Fixed here (lane FP-2 — ledger row 91)
+
+Source: the **Service Creation Audit** (Aug 12, 2026) **Package A**, sequenced as **Wave 1** of
+`docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md`, with the redesign mock's "Fix pack" (A1–A6) as the
+ratified design for each item. **Form fixes only — no structural redesign:** no step was reordered,
+delivery method was not moved, and no map-authoring surface moved (those are Wave 2 lanes S1/S3).
+No schema change, no migration, no endpoint change, no server file touched at all.
+
+Every claim below was measured on a fresh `traveloure_fp2` bench at 1280 (headless Chromium),
+before and after, over the same fixtures.
+
+- ~~**A1 — the "Publish Service" button did not publish, and providers were told only after
+  clicking.**~~ **CLOSED (client copy only).** Every create is clamped server-side to a
+  non-approved born state (F2 / migration 111 — `provider_services.approval_status` DEFAULTs
+  `'submitted'`), so the click submits for review; measured before, the provider's final button
+  read **"Publish Service"**, and the only statement of what would really happen was on the success
+  screen *after* the click. The button now reads **"Submit for review"** and an upfront notice
+  ("New listings are reviewed before they go live…") renders on **every step for both roles**, which
+  is the mock's A1 disposition — the expert branch already had a review card, but only on step 4.
+  **The SLA number is deliberately absent**: the mock's copy says "usually within 2 business days"
+  and the execution map's Gate **G5 #7** has *"review SLA — is '2 business days' real?"* open with
+  the disposition *"measure first, then commit or drop the number"* — so stating one here would be
+  exactly the §13 claim that gate exists to prevent. The expert card's own unmeasured **"within 48
+  hours"** is removed for the same reason. Nothing in the write path, the status logic or the gates
+  changed.
+- ~~**A2 — a Published/Draft switch wired to nothing.**~~ **CLOSED — removed, and `active` is gone
+  from the form state.** The switch bound `formData.active`, which was never put on the create or
+  update payload and which no gate consulted: flipping it changed nothing, while reading as the
+  control that puts a listing live. Replaced by a **read-only status pill over the real record**
+  (mock A2: "Draft → In review → Live … no control that pretends to set it"), and the field is
+  deleted from `FormData` so nothing can bind to it again.
+- ~~**A3 — four Catalog card mutations rendered raw JSON error blobs.**~~ **CLOSED (client mapping
+  only; no server response changed).** Measured before, flipping a listing to Active without a
+  meeting point showed the provider, verbatim:
+  `400: {"message":"In-person services need a meeting point before publishing. Save as draft to
+  finish later.","code":"MEETING_POINT_REQUIRED"}` — the server's sentence was already honest, just
+  buried inside `apiRequest`'s `"<status>: <body>"` string. New `client/src/lib/catalog-error-copy.ts`
+  unwraps it, names the action that failed, and flags the refusals a provider fixes **in the listing
+  editor** so the toast can carry the way out (the mock's "Add one →", shipped as a **Fix it**
+  action). After: *"Couldn't make this listing active / In-person services need a meeting point
+  before publishing. Save as draft to finish later. / Fix it"*. A `VERIFICATION_REQUIRED` refusal is
+  deliberately **not** flagged editor-fixable — it is fixed on Provider Status — and an
+  unrecognised code is never guessed at (§13).
+- ~~**A4 — Catalog's Delete fired on one click, with no confirmation.**~~ **CLOSED.** Measured
+  before: clicking Delete took the catalog from 13 listings to 12 with no dialog; the Workstation's
+  property and bundle deletes, two clicks away, both confirm. Catalog now uses the same
+  `AlertDialog` and **names the listing**. **Scope stated:** this is the plain confirm only — the
+  "refuse + archive when travelers have already booked it" half is **gap #18**, a Wave 3 lane with a
+  server side, so the dialog claims nothing about bookings it has not checked.
+- ~~**Package A item 3 — four unread logistics fields.**~~ **CLOSED — all four removed from the
+  form, every column untouched.** Each was re-verified by grep at this SHA rather than trusted from
+  the audit. Dispositions:
+  - **`durationMinutes`** ("Duration (minutes)") — **REMOVED.** Zero consumers on
+    `provider_services` (every other `durationMinutes` hit in the repo is `itinerary_items`, a
+    different row). It was also the duplicate half of the duration question — see item 8.
+  - **`bufferMinutes`** ("Setup / buffer (minutes)") — **REMOVED.** Zero consumers repo-wide.
+  - **`canAnchor`** ("Can this anchor a day?") — **REMOVED.** Zero consumers, and the label is
+    planner jargon a seller cannot interpret.
+  - **`pickupRadiusKm`** ("Pickup radius (km)") — **REMOVED.** Zero consumers, and it was the third
+    radius input on one form: the ring travelers see (`service-detail.tsx`), the Catalog map ring
+    and the flat-surcharge containment test all read **`service_radius`**. What replaces it is a
+    pointer at that number, so a provider choosing "Radius" is not left with an input that decides
+    nothing.
+  - **KEPT, with the reason stated: `transportProvision`.** It is the audit's "one of which
+    nevertheless decides what UI the provider sees" — it has no data consumer, but it gates both
+    the pickup-coverage block **and** the travel-surcharge block, and the surcharge is charged for
+    real at checkout. Removing it would have made live money config unauthorable. A field with no
+    consumer is a defect; a field whose consumer is a live gate is not.
+  - **Never-clobber:** all four stay in form state, loaded from the row and sent back unchanged, so
+    an edit saves the stored value rather than nulling it. This removes the question, never the
+    data — the same call FP-5 made on Settings. A control comes back with its consumer, never
+    before it.
+  - The card's **disclaimer was wrong in both directions** and is rewritten: it claimed "these
+    details aren't shown to travelers yet" while the start window, timezone and party-size pair are
+    what `booking-eligibility.service.ts` refuses a booking against and the surcharge inside it
+    charges money.
+- ~~**Package A item 4 — asterisks that never bound, and enforced blocks with no asterisk.**~~
+  **CLOSED, in both directions.** The predicate moved out of the 4,000-line component into
+  `client/src/lib/service-form-required.ts` (pure, unit-tested), because the rule it keeps —
+  **the asterisk set equals the enforced set** — is one nothing could check while it was prose.
+  **Newly bound:** **Price** (mirrors the server's `PRICE_REQUIRED` gate; provider-only, because
+  only a provider's final action sends `status:'active'` — an expert's submit writes
+  `status:'draft'`, which that gate exempts; a `package_tiers` listing is judged on its lowest
+  positive tier, exactly as the server recomputes it), **required category fields**
+  (`category_field_schema.required` draws the asterisk and nothing checked it), and **the
+  attestation confirmations** (already enforced by a server 403 and a disabled button, but wearing
+  no asterisk and named only in a `title` tooltip). **Newly un-asterisked:** **Description** and
+  **Duration**, which carried an asterisk while no layer required them — both columns are nullable
+  and no publish gate reads them — so binding them client-side would have invented a block the
+  server does not have; they now read "(recommended)", which is what they are (both are scored by
+  the owner health rail).
+- ~~**Package A item 7 — bundle Edit links dropped the bundle id.**~~ **CLOSED.** `listingEditHref`
+  resolved a bundle to a bare `/provider/workstation` — the right page with the identity dropped, so
+  the provider landed on a list of every bundle they own and had to find the one they had just
+  clicked. New `bundleEditorHref` → `/provider/workstation?bundle=<id>`, consumed by the Workstation
+  on the same `?param=` convention the property editor already uses, and waiting for **both** the
+  bundle and service reads before opening (the builder prefills its component list from
+  `eligibleComponents`; opening earlier would silently drop every component). A bundle id this
+  account does not own resolves to nothing and **says so** in the bundles section (§13). Measured:
+  before, the deep link opened no dialog at all; after, it opens "Edit bundle" prefilled with
+  "Kyoto Morning + Planning Call".
+- ~~**Package A item 8 — transport, duration and capacity each asked twice.**~~ **CLOSED; the
+  merge mapping, per pair:**
+  - **Duration.** Survivor: the free-text question on Details, which writes **`deliveryTimeframe`**
+    — the string the traveler detail page, Discover, the storefront and Catalog cards, the admin
+    queue and `envelopeFromProviderService` (which parses minutes out of that very text) all read.
+    The structured "Duration (minutes)" duplicate is removed (its column has no reader). Relabelled
+    "How long does it take?" with "Asked once — travelers see this exactly as you write it."
+  - **Capacity.** Survivor: the **party-size pair** in the Service-logistics card — the numbers the
+    SERVER enforces (`booking-eligibility.service.ts` refuses a booking outside
+    `party_size_min`/`party_size_max`). Removed: **"Max Concurrent Clients"** on step 4, a second
+    capacity number three steps and one vocabulary away, whose only consumer is the Catalog card's
+    "Up to N" chip — rendered beside a Users icon, so it reads as a group size too. Column
+    untouched; the chip still renders for rows that already carry a number. Concurrency comes back
+    as its own question, in its own words, with the Wave-2 Capacity step.
+  - **Transport — DEVIATION FROM THE MOCK, recorded.** The mock's fix **A6** proposes ONE question
+    with the `transportProvision` vocabulary and drops the yes/no disclosure. **Ruling 62** (see the
+    `transportProvisionEnum` block in `shared/schema.ts`) states the two columns answer DIFFERENT
+    questions and must not be collapsed — `transport_provision` is "how does the traveler get to the
+    start", `transport_provided` (migration 119, which carries a real DB CHECK) is "once you've met,
+    do you drive them" — and `transport_provided` is the one of the pair that is actually **read**
+    (`service-detail.tsx` renders it; `envelopeFromProviderService` carries it). Deriving either
+    from the other is the merge that ruling forbids, and §13 forbids inventing the half that is not
+    entailed. So **both are kept and both are now asked in ONE block** ("Getting there"), in one
+    order, with the distinction said out loud — the yes/no question MOVED out of the Meeting
+    Location card, which is what made them look like one question answered twice. Proven
+    structurally: after the fix, both controls are inside `logistics-section-transport` and **zero**
+    transport controls render outside it. **The mock's A6 swatch should be amended to match**
+    (mock-parity rule); it is a scratchpad artifact, not a committed file, so this note is the
+    record. Filed: `transport_provision` still has no traveler renderer — that belongs to **T-REP
+    (#13)**, the ratified "render or stop collecting" lane, not here.
+
+**Proof.** Pure units: `client/src/lib/__tests__/service-form-required.test.ts` **11/11**
+(negatives first — a complete listing is missing nothing; no un-enforced field can enter the list;
+an expert does not inherit the provider-only publish gates; a remote listing is never asked for a
+meeting point; a required BOOLEAN category field is never "missing" because `false` is an answer),
+`client/src/lib/__tests__/catalog-error-copy.test.ts` **8/8** (negatives first — the server's
+sentence survives word for word, a non-JSON body is never turned into an invented reason, an
+unrecognised code gets no "Fix it"), `client/src/lib/__tests__/property-editor-link.test.ts`
+**8/8** (extended with B1/B2 for the bundle link). Headless before/after at 1280 over the same
+fixtures, every fact flipping in the intended direction: review notice 0→1 · final button
+"Publish Service"→"Submit for review" · dead switch 1→0 with status pill 0→1 · `Description *` and
+`Duration *` true→false · duration-minutes / buffer / can-anchor inputs 1/1/1→0/0/0 · pickup-radius
+input 1→0 with the coverage-source note 0→1 · max-concurrent input 1→0 · Catalog toast raw JSON →
+human title + the server's sentence + "Fix it" · Delete 13→12 listings with no dialog → dialog
+shown and **16→16** (nothing deleted until confirmed) · bundle deep link no dialog → "Edit bundle"
+prefilled.
+
+**Not touched in this lane:** every server file (not one is in the diff), so no schema change, no
+migration, no endpoint, no `fee_bands` change, no money surface — the Replit deploy-push trap and
+`preflight-prod-constraints` are N/A. No step reordering, no method-first restructure, no
+map-authoring move (Wave 2 lanes S1/S3). No new guard: a required-field set and an error-copy map
+are shared modules, not invariants a grep can hold, and their unit suites are the enforcement.
+
+
 ### Open — the rest of the exercise's findings
 
 | # | Sev | Finding (abridged) | Status |
