@@ -1603,7 +1603,7 @@ asserts for all seven methods.
 | **C6** | P2 | The admin review card shows 7 of ~15 collected application fields. | **OPEN** (admin surface). |
 | **C7** | P2 | The neighbourhood picker lists every neighbourhood for all ~20 launch cities, unscoped and unsearchable. | **OPEN** — worth pairing with B4: the same `city_neighborhoods.city` scoping FP-1 now derives from would scope this picker. |
 | **C8** | P2 | "Save Draft" writes `approval_status = 'submitted'` (the migration-111 born-submitted design), so a private draft sits in the review queue while its owner is told it is a draft. | **OPEN — copy or ruling**, not a code defect: the born state is ratified (F2/D1a). |
-| **C9** | P2 | Publishing does not leave the form (stays on `/provider/services/new`). | **OPEN** (small, but a navigation/UX call). |
+| **C9** | P2 | Publishing does not leave the form (stays on `/provider/services/new`). | **CLOSED by lane S2 (ledger row 97).** A provider save — draft or submit, create or edit — now navigates to the listing home (`/provider/services/:id/edit`, hero + derived checklist), never back onto the create form. |
 | **C10** | P2 | `gallery_images` is stored and never rendered — the detail page draws exactly one `<img>`. | **OPEN** (read-side; pairs with B9's photo work). |
 | **C11** | P2 | The photography offering defaults to "Package tiers" with no base-price field until a dropdown is discovered. | **OPEN.** |
 | **C12** | P2 | Bundle components render as plain unlinked text — no link, price, method or image. | **OPEN** (read-side; the data is already linked via `bundle_components`). |

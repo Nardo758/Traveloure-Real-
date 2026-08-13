@@ -77,7 +77,11 @@ test.describe('ServiceForm — Transport & Logistics across the branched steps (
     const serviceId = await createFixtureService(page.request);
 
     try {
-      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit`, {
+      // WAVE 2 / LANE S2: `/provider/services/:id/edit` with no `?step=` now lands on the
+      // listing home (hero + derived checklist) instead of the wizard — this spec proves the
+      // wizard's OWN steps, so it enters the flow the same way a checklist row would, via the
+      // A1 deep link.
+      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit?step=scheduling`, {
         waitUntil: 'networkidle',
         timeout: 30_000,
       });
