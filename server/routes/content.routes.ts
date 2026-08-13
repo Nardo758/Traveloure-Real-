@@ -105,6 +105,11 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the write path
+// (provider.routes.ts) — read time re-derives from the components that are STILL visible on this
+// read rather than trusting the stored column, which can drift after a component is paused or
+// un-approved without the bundle itself ever being edited.
+import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
 import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { viatorService } from "../services/viator.service";
@@ -117,7 +122,7 @@ import { grokService } from "../services/grok.service";
 import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -1975,7 +1980,25 @@ router.get("/api/services/:id", async (req, res) => {
     // D3 leak-prevention: this is the public service-detail read — serviceFile is the
     // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
     // front, so every branch below (bundle/property/room/default) inherits the strip.
-    const service = omitFields(rawService, ["serviceFile"] as const);
+    // T-REP (G5 #13 audit): `storage.getProviderServiceById` is a bare `SELECT *`, so this was
+    // the only place standing between the full row and the public wire. §18's revenueShareRate
+    // strip already exists on the owner-write echoes (routes.ts CC-8/NEW-2) but was never applied
+    // to THIS public read — a rate-bearing field is never expose-able, no exceptions (§14/§18/§19).
+    // The rest of this list is the approval-workflow's internal bookkeeping (who reviewed it, when,
+    // why it was rejected, its pre-approval form status) — none of it is a traveler-facing fact
+    // about the LISTING; every row reaching this handler is already `approved`/`active` by the F2
+    // gate above, so these columns carry no information the traveler needs and some (rejectionReason,
+    // reviewedBy) are closer to provider-private notes than public content.
+    const service = omitFields(rawService, [
+      "serviceFile",
+      "revenueShareRate",
+      "reviewedBy",
+      "rejectionReason",
+      "formStatus",
+      "submittedAt",
+      "reviewedAt",
+      "totalRevenue",
+    ] as const);
     // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
     // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
     // away state as `away:{until,message}`; the service-detail read did not carry it at all,
@@ -2003,6 +2026,32 @@ router.get("/api/services/:id", async (req, res) => {
     const surchargeTiers = service.surchargeMode === "zones"
       ? await storage.getServiceSurchargeTiers(service.id)
       : [];
+
+    // T-REP (G5 #13): neighborhoods served — same derivation `GET /api/provider/services/:id`
+    // (the owner's own edit surface, routes.ts) already uses to pre-populate its multi-select, run
+    // here read-only for the public detail. `provider_neighborhood_coverage` is keyed on
+    // (providerId, categoryKey) — provider-level coverage for the category this LISTING belongs to,
+    // not a column on the listing itself, so there is no bare `service.neighborhoods` to spread; it
+    // has to be joined. Non-sensitive (a coverage-area list, not PII) — no gate beyond the F2 one
+    // already applied above. Absent category/coverage rows ⇒ an honest empty list, never a guess.
+    let neighborhoods: { slug: string; name: string }[] = [];
+    if (service.categoryId) {
+      const [cat] = await db
+        .select({ categoryKey: serviceCategories.categoryKey })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.id, service.categoryId));
+      if (cat?.categoryKey) {
+        neighborhoods = await db
+          .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name })
+          .from(providerNeighborhoodCoverage)
+          .innerJoin(cityNeighborhoods, eq(providerNeighborhoodCoverage.neighborhoodId, cityNeighborhoods.id))
+          .where(and(
+            eq(providerNeighborhoodCoverage.providerId, service.userId),
+            eq(providerNeighborhoodCoverage.categoryKey, cat.categoryKey),
+          ))
+          .orderBy(providerNeighborhoodCoverage.sortOrder);
+      }
+    }
 
     // Ruling 60 Phase B — provider CONTENT translation (system B). The active locale is the
     // client's resolved chrome locale (Phase A: account pref → localStorage → Accept-Language →
@@ -2037,25 +2086,80 @@ router.get("/api/services/:id", async (req, res) => {
       translation: translationMeta,
     });
 
-    // §17 bundles (migration 151): additive component list on the public detail. Same F2
-    // read-gate per component — only components STILL approved+active are exposed; an
-    // unapproved/paused component never leaks through the bundle's page.
+    // §17/S10 bundles (migrations 151, Gate G4): additive component list on the public detail.
+    // LEFT JOIN (not the old INNER JOIN) so a component that has been paused/un-approved SINCE
+    // the bundle was built still produces a row — §13 requires the bundle to say so honestly
+    // (name-only, no link) rather than silently shrinking the list with no explanation. The FK is
+    // ON DELETE RESTRICT (migration 151), so a component row going missing entirely is a
+    // referential-integrity break, not an expected case; it gets the same honest fallback rather
+    // than a thrown 500.
     if (service.productShape === "bundle") {
-      const components = await db
+      const rows = await db
         .select({
           id: providerServices.id,
           serviceName: providerServices.serviceName,
           shortDescription: providerServices.shortDescription,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          approvalStatus: providerServices.approvalStatus,
+          status: providerServices.status,
         })
         .from(bundleComponents)
-        .innerJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
-        .where(and(
-          eq(bundleComponents.bundleServiceId, service.id),
-          eq(providerServices.approvalStatus, "approved"),
-          eq(providerServices.status, "active"),
-        ))
+        .leftJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
+        .where(eq(bundleComponents.bundleServiceId, service.id))
         .orderBy(asc(bundleComponents.position));
-      return res.json(withTranslation({ ...service, bundleComponents: components, away, routePoints, surchargeTiers }));
+
+      // Same F2 predicate as every other public read-gate: still approved AND active, right now —
+      // never the state the component was in when it joined the bundle.
+      const isPublicComponent = (r: (typeof rows)[number]) =>
+        r.id != null && r.approvalStatus === "approved" && r.status === "active";
+      const publicRows = rows.filter(isPublicComponent);
+
+      // FABLE-REVIEW: response shape for GET /api/services/:id (bundle branch) — an unapproved,
+      // paused, or (theoretically) missing component now renders name-only with no `id` at all,
+      // so the client cannot construct a link to it and no non-public detail (image, description,
+      // method) ever rides the wire for it. §13: never a broken link, never invented detail.
+      const bundleComponentsOut = rows.map((r) =>
+        isPublicComponent(r)
+          ? {
+              available: true as const,
+              id: r.id!,
+              serviceName: r.serviceName!,
+              shortDescription: r.shortDescription,
+              deliveryMethod: r.deliveryMethod,
+              serviceImage: r.serviceImage,
+            }
+          : {
+              available: false as const,
+              // The FK guarantees the row exists (ON DELETE RESTRICT) even when it's hidden for
+              // approval/status reasons, so the real name is still honest to show; only the
+              // theoretical missing-row case falls back to a stated placeholder, never a blank.
+              serviceName: r.serviceName ?? "Unavailable listing",
+            },
+      );
+
+      // S10/Gate G4: the displayed method chip is DERIVED fresh on every read from the components
+      // still visible above — never trusted from the stored `delivery_method` column, which only
+      // reflects whatever was true at the bundle's last create/edit (migration 208's B2 repair
+      // fixed that once; a component paused afterwards, with the bundle itself never touched,
+      // would otherwise drift it right back to stale). This value is NEVER written back to the
+      // row — read-time-only, per CLAUDE.md §18 rule 1 (derivation delegates, never re-implements)
+      // sharing the identical predicate the write path (provider.routes.ts) uses at create/patch.
+      const derivedDeliveryMethod = deriveBundleDeliveryMethodFromMethods(
+        publicRows.map((r) => r.deliveryMethod),
+      );
+
+      return res.json(withTranslation({
+        ...service,
+        // No public component carries a derivable method (e.g. every one is currently hidden) ⇒
+        // keep the last-known stored value rather than guessing (§13) — never blank the chip.
+        deliveryMethod: derivedDeliveryMethod ?? service.deliveryMethod,
+        bundleComponents: bundleComponentsOut,
+        away,
+        routePoints,
+        surchargeTiers,
+        neighborhoods,
+      }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2076,7 +2180,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json(withTranslation({ ...service, rooms, away, routePoints, surchargeTiers }));
+      return res.json(withTranslation({ ...service, rooms, away, routePoints, surchargeTiers, neighborhoods }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2094,9 +2198,9 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints, surchargeTiers }));
+      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints, surchargeTiers, neighborhoods }));
     }
-    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers }));
+    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers, neighborhoods }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
