@@ -1940,3 +1940,51 @@ settable anywhere in the new surface (§18); the required-for-final set is byte-
 row 92's ratification and is unaffected by this lane's completion.
 
 Full record: DECISIONS.md ledger row 99.
+
+## Folded in Aug 13, 2026 — post-Wave 2 open queue (decision-maker dispatch after PR #468)
+
+Wave 2 is complete, merged, and verified in the Replit workspace (dev synced to `14f74c7b`,
+migrations stamped through 209, six spot-checks green). Wave 3 lanes (S7–S11, T-REP) are tracked in
+`docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md`, not duplicated here. Everything else open is below.
+
+### New [DM] decisions
+
+- **Expert-console create CTAs bypass the one-door launcher (found by the Replit Wave-2 spot-check;
+  verified in code).** S5 (ledger 94) rerouted the PROVIDER console's create entry points through
+  the Workstation "What are you building?" screen, and its launcher test guards only the provider
+  Catalog. The expert console still deep-links straight to `/expert/services/new` from
+  `client/src/pages/expert/catalog.tsx:521` and `client/src/pages/expert/services.tsx` (:292, :325,
+  :471). Scope gap, not a regression. **Q:** route expert creates through the same one-door
+  launcher, give the expert console its own door, or leave deliberately (expert creation is
+  method-first already via the shared ServiceForm)?
+- **Clerk auth migration, parked (workspace-sync rescue, Aug 13).** Commit `e4091766` "Migrate from
+  Replit Auth to Clerk" exists ONLY on the Replit workspace branches `clerk-work-recovered` /
+  `replit-backup-aug13` — never merged to GitHub. Auth is load-bearing (Passport serializers #133,
+  §2 admin default-deny, §14 session-derived identity), so: if wanted, it reconciles as its OWN lane
+  (rebase onto current `main`, resolve against SignInModal/Signup/identity.routes/storage, re-verify
+  auth invariants, land via PR, amend CLAUDE.md's auth decision in the same change); if abandoned,
+  the branch stays as archive. It must never enter `main` as a side effect of a workspace sync.
+
+### G5 batch (execution-map Gate G — ratified REC in parentheses, each still needs its lane or its measurement)
+
+- **#5** deliverable rail remainder — versioning + re-send rule (keep "no re-send", document it).
+- **#7** review SLA — is "2 business days" real? (measure first, then commit or drop the number;
+  A1 deliberately ships with NO SLA number until this is answered).
+- **#10** custom-offering redesign (keep flow, land in a real pending-category state).
+- **#11** category↔method rules incl. the Lodging/Property collision (explicit allow-matrix).
+- **#15** hybrid-with-artifact branch (defer unless a real provider asks).
+- **#16** photos/media — upload vs pasted URLs (extend the ruling-58 objstore rail to images).
+- **#17** edit-path for a live listing (back through review only for identity fields — define the
+  field list).
+- **#18** delete-with-bookings (refuse + archive, mirroring the shipped withdraw precedent).
+
+### Standing engineering queue (no [DM] needed; sequenced after/alongside Wave 3)
+
+- **Claims-only lookups sweep** — extend the claims-only posture across remaining lookup surfaces.
+- **tsc burn-down** — ratcheted baseline is 170 (down-only gate, ruling 54); burn toward 0 in
+  dedicated passes, re-locking the baseline each time.
+- **Itinerary-optimizer diagnosis** — investigate the reported optimizer quality issues before
+  changing code; diagnosis is the deliverable.
+- **Maps surface cleanup** — consolidate the remaining map-surface inconsistencies (post-S3: the
+  authoring home is the create flow's Logistics step; Catalog map is read-only preview).
+- **377-task backlog triage** — the imported historical task list needs a keep/fold/kill pass.
