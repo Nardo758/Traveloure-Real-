@@ -1552,3 +1552,37 @@ handlers). Suspected mechanism to check when someone picks it up: the upload end
 `deleteObject(previous)` is fired UNAWAITED, and the suite uploads twice onto the same service
 (the `before()` driver probe, then R4-a5), so a mis-timed or mis-keyed delete lands on the live
 object. Worth an await or a keyed assertion; do not "fix" it by relaxing the test.
+
+### Fixed here (lane S5 — ledger row 94)
+
+Source: the **Service Creation Audit** (Aug 12–13, 2026, `<scratchpad>/service-creation-audit.html`)
+finding *"five separate create links all bypass the Workstation and land directly on the form"*
+(ruling 74 said "Add New Service → Workstation"; no lane had built it) — carried forward as
+**gap #19** in `docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md` lane S5.
+
+**CLOSED.** Every raw deep link into `/provider/services/new` found by grepping `client/src` now
+routes through the Workstation launcher first, with exactly one deliberate exception:
+
+- Catalog header "Add New Service" → now `/provider/workstation` (was `/provider/services/new`).
+- Catalog empty-state category tiles (the 30-tile grid) → REMOVED from Catalog; the same tiles now
+  live on the Workstation itself, under a new "Or start from what you do" section.
+- Catalog empty-state "Start from scratch" button → collapsed into the same "Add New Service"
+  button as the header, both pointing at `/provider/workstation`. The empty state is now a plain
+  title + one sentence + one button — no fake category picker duplicated in two places.
+- **Permitted exception:** the Workstation's own "Single service" tile still links straight to
+  `/provider/services/new` — that link IS the launcher's door, not a bypass of it.
+
+The audit's second half of the same finding — *"a first-time provider who did land on the
+Workstation would see two empty lists and a lock icon"* — is also addressed as a side effect: the
+screen now opens on an explicit "What are you building?" headline over the three-tile ladder
+(single service / bundle / property, from lane PB) before the two empty "Your bundles" / "Your
+properties" lists, so the door itself is the first thing a new provider sees, not the empty state
+underneath it.
+
+**Deliberately NOT touched:** the expert console. Experts have no bundle/property ladder (§17
+Product Builder is provider-only), so `client/src/pages/expert/catalog.tsx`'s direct "New Service"
+link stays a direct link — a one-tile "launcher" in front of it would be exactly the kind of fake
+gate the lane's scope forbade. `client/src/pages/expert/services.tsx` is confirmed dead (no
+`<Route>` in `App.tsx` renders it) and untouched.
+
+Full record: DECISIONS.md ruling 94.
