@@ -10,6 +10,10 @@ Stripe PaymentIntent ID to the earner. Confirmed live Aug 2026: response carried
 **Why:** strip-list was written against assumed field names, never reconciled with the Drizzle schema.
 Traveler PII sanitization (sanitizeUserForRole) is correct — only this booking-level payment ref leaks.
 
+**Status:** FIXED Aug 13 2026 — sanitizeBookingForExpert now projects through the
+`EARNER_BOOKING_FIELDS` allow-list (stripe*IntentId + idempotencyKey excluded by construction);
+canSeeFull roles still get the raw row.
+
 **How to apply:** when auditing booking responses, grep the actual schema columns, not the sanitizer's
 list. Prefer an allow-list projection over a deny-list so new sensitive columns fail closed. SQLi is
 safe (Drizzle params) and stored-XSS is inert (React escapes; only DOMPurify'd dangerouslySetInnerHTML).
