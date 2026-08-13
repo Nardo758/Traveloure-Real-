@@ -1027,4 +1027,18 @@ export const MIGRATION_FILES = [
   // transition inserts zero duplicate rows. Additive, NO CHECK; DECLARED in shared/schema.ts
   // (publish-trap rule).
   "209_notification_dedupe_key.sql",
+  // 210: S7 availability model (DECISIONS.md ledger row 102, Wave 3 schema ballot ratified as
+  // recommended). Three additive child tables — service_availability_patterns (weekly repeat
+  // rule, natural-key UNIQUE service_id+day_of_week+start_time+end_time), service_date_ranges
+  // (property/room date-range authoring with nightly_price — S11's future checkout input, never
+  // charged from directly), service_availability_blackouts (applies to either shape; S7-Q3: BLOCKS
+  // future materialization only, never cancels an existing slot/booking). PLUS the ratified
+  // idempotency UNIQUE index (service_id, date, start_time) on the EXISTING vendor_availability_slots
+  // table (S7-Q2) — the materializer's ON CONFLICT DO NOTHING upsert target. Defensively verifies
+  // no pre-existing duplicates before creating that index; FAILS LOUDLY (RAISE EXCEPTION) rather
+  // than silently skipping or dropping rows if any are found. All additive, NO DB CHECK; every new
+  // object (three tables + the index) DECLARED in shared/schema.ts in the same commit
+  // (publish-trap rule). Preflight: node scripts/preflight-prod-unique-indexes.cjs before publish
+  // (docs/RELEASE.md).
+  "210_service_availability_model.sql",
 ] as const;

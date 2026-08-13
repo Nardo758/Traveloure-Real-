@@ -4,6 +4,7 @@
     "countSummary": "{{active}} of {{total}} services active",
     "viewList": "List",
     "viewMap": "Map",
+    "viewAvailability": "Availability",
     "addService": "Add New Service"
   },
   "filter": {
