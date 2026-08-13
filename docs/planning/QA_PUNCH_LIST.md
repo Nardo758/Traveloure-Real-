@@ -1151,6 +1151,30 @@ be picked up piecemeal.
   category and D3 forbids failing a provider on something they cannot fix), and the admin listing view
   shows a "default commission band" marker per row.
 
+### Fixed here (lane FP-3 — ledger row 88)
+
+- ~~**Package A item "property/room rows filtered or re-routed"**~~
+  (`docs/briefs/SERVICE_CREATION_EXECUTION_MAP.md` Wave 1) — **CLOSED.** The batch exercise's
+  two-room machiya (`docs/testing/PROVIDER_BATCH_EXERCISE.md` §4 DB block: S4 `product_shape=property`,
+  S4a/S4b `property_room` with `parent_service_id` set and `pricing_unit=per_night`) rendered on
+  Catalog as **three ordinary standalone service cards**, each with the generic Edit into
+  `/provider/services/:id/edit` — the ServiceForm delivery/checklist questionnaire, which a guest
+  room answers none of. Ratified design (service-creation redesign mock): *"a property room's Edit
+  opens its property's editor at the Rooms step — a room has no service checklist/delivery-method
+  of its own, and sending it into the generic ServiceForm is a dishonest surface."* Now: room rows
+  are **grouped under their parent property card** (name · nightly price · own approval/active
+  state · its own health line), the property card carries a **Property** badge and no Duplicate,
+  and Edit on both resolves through ONE module (`client/src/lib/property-editor-link.ts`) to the
+  Workstation property editor — `?property=<id>` (its basics) / `?property=<id>&room=<id>` (the
+  Rooms step). A room whose property card is not in the current filtered view still renders as a
+  room row naming its parent, never as a generic card and never dropped (§13). The **back door is
+  closed**: `/provider/services/:id/edit` opened with a property/property_room id renders an honest
+  interstitial linking to the property editor instead of the questionnaire — guarded on
+  `productShape` **server-derived from the owner-gated fetched row**, never from the URL. The
+  Workstation gained the property **editor** the re-route needs (Basics + Rooms steps) over the
+  two PATCH endpoints that already existed; **no new field** was invented, so B9 below stays
+  redesign-gated exactly as filed.
+
 ### Open — the rest of the exercise's findings
 
 | # | Sev | Finding (abridged) | Status |
@@ -1185,6 +1209,12 @@ the scheduling half of that set AUTHORABLE on remote products for the first time
 of it traveler-visible.
 
 ### Bench observation (not an exercise finding)
+
+Also (FP-3, same class): `market-insights.db`, `booking-eligibility-gates.db` and
+`provider-office-location.db` all fail 100% on a FRESH bench DB until
+`npx tsx scripts/seed-ci-test-users.ts` is run — they log in as the `ci-provider@traveloure.test`
+fixture, which the boot seeders do not create (only `seed-ci-test-users.ts` does). Nothing is wrong
+with those suites; running that seeder is a bench precondition, worth stating in the battery recipe.
 
 `server/__tests__/provider-money-hardening.db.test.ts` P1/P2 cannot run on a FRESH bench DB: its
 precondition helper reads the band named by `platform_settings.active_provider_commission_policy`,
