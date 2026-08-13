@@ -1050,4 +1050,13 @@ export const MIGRATION_FILES = [
   // four ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema — no
   // new endpoint. Registered after 210 (S7) at integration; no dependency on 210's objects.
   "211_property_builder_fields.sql",
+  // 212: S9 (Wave 3, Gate G3) session/async fields on provider_services — join_link,
+  // response_window_hours, scope_statement (DECISIONS.md ledger row 102, ratifying
+  // docs/briefs/WAVE3_SCHEMA_PROPOSALS.md's S9 section). Additive-nullable, NO DB CHECK.
+  // LANE-SEQUENCING NOTE: registered directly after 209 in this worktree because the
+  // sibling S7/S8 lanes (migrations 210/211) run in parallel worktrees and are not visible
+  // here — the integrator resolves final numeric/registry ordering across all three when
+  // merging. This migration's own DDL does not depend on 210/211 (a different table, a
+  // different ALTER) so registration order among the three is immaterial to correctness.
+  "212_session_async_service_fields.sql",
 ] as const;

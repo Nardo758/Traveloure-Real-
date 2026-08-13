@@ -33,7 +33,7 @@ import {
 } from "@/components/backoffice/location-point-picker";
 // D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
 // the server scorers and console chips use, never a second local copy.
-import { isPlaceAnchored, needsScheduling } from "@shared/service-fundamentals";
+import { isPlaceAnchored, needsScheduling, SESSION_END_METHODS } from "@shared/service-fundamentals";
 // D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
 // server re-runs on the write, so what this wizard renders and what the API will accept cannot
 // drift. The client calls it only to draw the card — it never decides what it may affirm.
@@ -212,6 +212,16 @@ interface ServiceFormData {
   partySizeMax: string;
   changeCutoffHours: string;
   canAnchor: "" | "yes" | "no";    // tri-state: "" = never declared
+  // ── S9 session/async fields (docs/DECISIONS.md ledger row 102, migration 212) ───────────────
+  // joinLink: the provider's OWN meeting link for a scheduled remote session (call/video).
+  // SENSITIVE — this client never receives another provider's stored value, only its own via the
+  // owner-gated GET /api/provider/services/:id read; the traveler-facing reveal is server-side
+  // (GET /api/service-bookings, confirmed bookings only) and is not this form's concern.
+  joinLink: string;
+  // responseWindowHours/scopeStatement: async (async_messaging/voice_notes) — the promised
+  // response time and an SLA/promise statement. "" = never captured (§13).
+  responseWindowHours: string;
+  scopeStatement: string;
   // Booking terms
   cancellationPolicy: string;
   // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
@@ -356,6 +366,9 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     partySizeMin: "",
     partySizeMax: "",
     changeCutoffHours: "",
+    joinLink: "",
+    responseWindowHours: "",
+    scopeStatement: "",
     depositEnabled: false,
     depositType: "",
     depositPercentage: "",
@@ -465,6 +478,11 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     partySizeMin: s.partySizeMin == null ? "" : String(s.partySizeMin),
     partySizeMax: s.partySizeMax == null ? "" : String(s.partySizeMax),
     changeCutoffHours: s.changeCutoffHours == null ? "" : String(s.changeCutoffHours),
+    // S9 (ledger row 102): joinLink hydrates from the owner-gated read only (this mapper's one
+    // caller); response window / scope statement round-trip like the D7 block above.
+    joinLink: s.joinLink || "",
+    responseWindowHours: s.responseWindowHours == null ? "" : String(s.responseWindowHours),
+    scopeStatement: s.scopeStatement || "",
     depositEnabled: !!s.depositEnabled,
     depositType: ((s.depositType as any) === "percentage" || (s.depositType as any) === "flat") ? (s.depositType as any) : "",
     depositPercentage: s.depositPercentage == null ? "" : String(s.depositPercentage),
@@ -1185,6 +1203,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
         productShape: existingService?.productShape ?? null,
       });
+      // isRemoteSessionListing / isAsyncListing (S9, ledger row 102) are computed once at
+      // component scope above — the JSX below reads the same values.
       const isPickupProvision = PICKUP_PROVISIONS.has(formData.transportProvision);
       if (submitAction !== "draft" && isInPerson && !formData.meetingPoint.trim()) {
         throw new Error("Add a meeting point — in-person services must show travelers where to meet. Save as draft to finish later.");
@@ -1298,6 +1318,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               partySizeMax: intOrNull(formData.partySizeMax),
               changeCutoffHours: intOrNull(formData.changeCutoffHours),
               canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
+            }
+          : {}),
+        // S9 (ledger row 102): joinLink sent for a scheduled remote session (call/video) only —
+        // omitted entirely otherwise, same never-clobber contract as the blocks above, so a
+        // method switch away from call/video never wipes a previously-saved link.
+        ...(isRemoteSessionListing
+          ? { joinLink: formData.joinLink.trim() || null }
+          : {}),
+        // S9: response window / scope statement sent for the two async methods only — omitted
+        // otherwise. Descriptive only; does not touch completionRuleFor or the completion
+        // machinery (shared/service-fundamentals.ts, server/services/booking-completion.service.ts).
+        ...(isAsyncListing
+          ? {
+              responseWindowHours: intOrNull(formData.responseWindowHours),
+              scopeStatement: formData.scopeStatement.trim() || null,
             }
           : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
@@ -1591,6 +1626,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
     productShape: existingService?.productShape ?? null,
   });
+  // S9 (docs/DECISIONS.md ledger row 102): joinLink applies to a scheduled REMOTE session only
+  // (call/video — SESSION_END_METHODS) — narrower than showScheduledLogistics above, which also
+  // covers in-person/hybrid (a physical meeting point, not a link). Async fields apply to the two
+  // provider-declared-completion methods (async_messaging/voice_notes — PROVIDER_DECLARED_METHODS).
+  // Computed here (component scope) rather than inside the mutation so both the JSX below and the
+  // submit payload can read the same value.
+  const isRemoteSessionListing = SESSION_END_METHODS.has(toCanonicalDelivery(formData.deliveryMethod));
+  const isAsyncListing = formData.deliveryMethod === "voice_notes" || formData.deliveryMethod === "async_messaging";
   const pickupProvisionChosen = PICKUP_PROVISIONS.has(formData.transportProvision);
 
   // ── D9 (ruling 62's D9 clause, executed by ruling 67) ────────────────────────────────────
@@ -2956,17 +2999,41 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </p>
           </div>
 
-          {/* §13: the async lane's own fields (reply window, scope statement, engagement window)
-              are RATIFIED but not built — they are Wave 3 / lane S9 (Gate G3), and there is no
-              column for them today. Say that plainly rather than showing a control that decides
-              nothing, or leaving the step looking empty by accident. */}
-          {(formData.deliveryMethod === "voice_notes" || formData.deliveryMethod === "async_messaging") && (
-            <p className="text-xs text-muted-foreground" data-testid="text-async-fields-pending">
-              Async listings have no slot to book and no session to attend, so this branch asks
-              nothing about timing. The reply window, scope statement and engagement window this
-              step will collect are ratified but not built yet — nothing here silently stands in
-              for them.
-            </p>
+          {/* S9 (docs/DECISIONS.md ledger row 102, migration 212): the async lane's promised
+              response time + scope statement. Async listings have no slot to book and no session
+              to attend, so this branch asks about the PROMISE instead — what these two fields
+              feed is the completion machinery's EXISTING 'provider_declared' rule
+              (shared/service-fundamentals.ts PROVIDER_DECLARED_METHODS/completionRuleFor,
+              server/services/booking-completion.service.ts): descriptive copy about the same
+              SLA/disputable window that rule already enforces, not a second completion path. */}
+          {isAsyncListing && (
+            <div className="space-y-4 pt-2" data-testid="section-async-fields">
+              <div>
+                <Label htmlFor="responseWindowHours">Response window (hours)</Label>
+                <Input
+                  id="responseWindowHours" type="number" min={1} placeholder="e.g. 24"
+                  value={formData.responseWindowHours}
+                  onChange={(e) => set("responseWindowHours", e.target.value)}
+                  className="mt-1" data-testid="input-response-window-hours"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  How long a traveler waits for your first reply. Shown to travelers before they book.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="scopeStatement">Scope statement</Label>
+                <Textarea
+                  id="scopeStatement" rows={3}
+                  placeholder="What's included in a reply, and what isn't — the promise a traveler can hold you to."
+                  value={formData.scopeStatement}
+                  onChange={(e) => set("scopeStatement", e.target.value)}
+                  className="mt-1" data-testid="input-scope-statement"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This is the SLA a completed booking is measured against, not marketing copy — keep it factual.
+                </p>
+              </div>
+            </div>
           )}
 
         </CardContent>
@@ -3799,6 +3866,26 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 The start times above are local wall-clock times in this zone.
               </p>
             </div>
+
+            {/* ── S9 (docs/DECISIONS.md ledger row 102): the provider's own join link ──────────
+                Scheduled REMOTE sessions only (call/video) — an in-person/hybrid meeting has a
+                place, not a link, so this is gated narrower than the timing card around it.
+                SENSITIVE: shown to the traveler only after their booking is confirmed (never on
+                any public/pre-booking read) — the reveal is server-side, not a client concern. */}
+            {isRemoteSessionListing && (
+              <div data-testid="section-join-link">
+                <Label htmlFor="joinLink">Your join link</Label>
+                <Input
+                  id="joinLink" type="url" placeholder="https://…"
+                  value={formData.joinLink}
+                  onChange={(e) => set("joinLink", e.target.value)}
+                  className="mt-1" data-testid="input-join-link"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Shown to the traveler only after their booking is confirmed — never before.
+                </p>
+              </div>
+            )}
             </div>
 
             {/* ── Booking rules ── */}

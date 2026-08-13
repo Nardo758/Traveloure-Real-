@@ -2025,6 +2025,9 @@ export class DatabaseStorage implements IStorage {
     // (reviewer, rejection reason, form status/timestamps, revenue counter) is not a public
     // fact about the listing. Every row here is already approved+active, so these carry no
     // traveler-relevant information.
+    // S9 (ledger row 102): joinLink joins the same never-expose list — it is the provider's
+    // OWN meeting link, revealed only to a CONFIRMED traveler + the owning provider (see
+    // GET /api/service-bookings), never on a public pre-purchase browse.
     return rows.map((r) => ({
       ...r,
       serviceFile: null,
@@ -2035,6 +2038,7 @@ export class DatabaseStorage implements IStorage {
       submittedAt: null,
       reviewedAt: null,
       totalRevenue: null,
+      joinLink: null,
     }));
   }
 
@@ -2630,7 +2634,13 @@ export class DatabaseStorage implements IStorage {
       // public search) — serviceFile is the pdf-delivery product itself and must never
       // surface pre-purchase. Redacted to null (not omitted) so the return type stays
       // ProviderService[].
-      services: enrichedServices.map((s) => ({ ...s, serviceFile: null })),
+      // S9 (ledger row 102) flagged follow-up: this site strips ONLY serviceFile — unlike
+      // getAllActiveServices/the public detail read, it never picked up T-REP's 8-field
+      // revenueShareRate/approval-workflow strip either. Adding joinLink here closes THIS
+      // lane's leak; the pre-existing revenueShareRate/approval-workflow exposure on
+      // GET /api/discover is a real gap this lane found but is out of S9's scope to fix —
+      // flagged in the lane report for a follow-up (same class as the T-REP §18 finding).
+      services: enrichedServices.map((s) => ({ ...s, serviceFile: null, joinLink: null })),
       packages,
       total: filtered.length
     };
@@ -2739,11 +2749,13 @@ export class DatabaseStorage implements IStorage {
         // has no confirmed booking yet) — serviceFile must never ride this read even though
         // it's the cart owner's own cart, or a buyer could add-to-cart, read the file URL, and
         // abandon the cart without ever paying.
+        // S9 (ledger row 102): joinLink is the same shape of leak — a cart item has no
+        // confirmed booking, so the provider's meeting link must not ride this read either.
         return {
           ...item,
           isCustomVenue: false,
           slot,
-          service: service ? omitFields({ ...service, providerName, categorySlug }, ["serviceFile"] as const) : null,
+          service: service ? omitFields({ ...service, providerName, categorySlug }, ["serviceFile", "joinLink"] as const) : null,
         };
       }
       return { ...item, service: null };
@@ -3446,6 +3458,8 @@ export class DatabaseStorage implements IStorage {
   // the owner view (above) ungated so an expert still sees their own submitted/draft listings.
   // D3 leak-prevention: every caller of this function is a public surface (verified — see the
   // two call sites), so serviceFile is stripped HERE rather than at each call site.
+  // S9 (ledger row 102): joinLink joins the strip — an expert's public profile listing card is
+  // a pre-purchase surface with no confirmed booking behind it.
   async getApprovedServicesForExpert(expertId: string): Promise<any[]> {
     const rows = await db.select().from(providerServices)
       .where(and(
@@ -3453,7 +3467,7 @@ export class DatabaseStorage implements IStorage {
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
       ));
-    return rows.map((r) => omitFields(r, ["serviceFile"] as const));
+    return rows.map((r) => omitFields(r, ["serviceFile", "joinLink"] as const));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {

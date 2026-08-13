@@ -1990,6 +1990,10 @@ router.get("/api/services/:id", async (req, res) => {
     // about the LISTING; every row reaching this handler is already `approved`/`active` by the F2
     // gate above, so these columns carry no information the traveler needs and some (rejectionReason,
     // reviewedBy) are closer to provider-private notes than public content.
+    // S9 (docs/DECISIONS.md ledger row 102): joinLink joins the never-expose list — it is the
+    // provider's OWN meeting link for a scheduled remote session (call/video), revealed only to
+    // a CONFIRMED traveler + the owning provider (see GET /api/service-bookings), never on this
+    // public pre-purchase read (§12's PENDING-advisor read grant does not extend to it either).
     const service = omitFields(rawService, [
       "serviceFile",
       "revenueShareRate",
@@ -1999,6 +2003,7 @@ router.get("/api/services/:id", async (req, res) => {
       "submittedAt",
       "reviewedAt",
       "totalRevenue",
+      "joinLink",
     ] as const);
     // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
     // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
