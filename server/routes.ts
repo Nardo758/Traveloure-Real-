@@ -21,7 +21,7 @@ import {
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
-  insertProviderServiceSchema, insertServiceCategorySchema,
+  insertProviderServiceSchema, insertProviderServiceListingSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
   insertServiceTemplateSchema, insertServiceBookingSchema, createBookingRequestSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,

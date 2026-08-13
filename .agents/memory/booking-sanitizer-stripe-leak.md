@@ -1,16 +1,9 @@
 ---
-name: Booking sanitizer field-name drift
-description: Deny-list sanitizers written against assumed field names silently leak; use allow-list projection reconciled with the schema
+name: Sanitizer deny-list drift
+description: Deny-list response sanitizers drift from real column names and fail open; prefer allow-list projection
 ---
-Booking responses to earners (providers/experts) once leaked Stripe PaymentIntent ids because the
-sanitizer's strip-list used assumed field names (`paymentIntentId`) while the real columns were
-`stripePaymentIntentId`/`stripeDepositIntentId`/`stripeBalanceIntentId`.
+Rule: response sanitizers must be allow-list projections, never deny-lists of assumed field names.
 
-**Why:** a deny-list drifts silently — a wrong or newly added column name fails OPEN.
+**Why:** a deny-list written against assumed names (e.g. `paymentIntentId` when the real columns are `stripe*IntentId`) fails OPEN — sensitive fields leak silently, and newly added columns leak by default.
 
-**How to apply:** when auditing responses, grep the actual Drizzle schema columns, never the
-sanitizer's own list. Prefer allow-list projection (e.g. the earner booking-fields allow-list in
-`server/utils/data-sanitizer.ts`) so new sensitive columns fail closed; `canSeeFullUserData` roles
-may still get the raw row.
-## Aug 2026 full audit result
-All endpoints returning service_bookings rows were enumerated. Leaks found & fixed with EARNER_BOOKING_FIELDS/pickPublicFields: handleOwnerBookingStatus (expert/provider status PATCH, 3 response sites) and the provider-gated visa-status PATCH. All other surfaces are traveler-own, admin-only, or already projected (expert/provider bookings lists, calendar, customers use explicit selects). Note: GET /api/bookings/:id is registered in BOTH server/routes/bookings.ts and server/routes.ts — mount order decides which answers.
+**How to apply:** when building or auditing a sanitized response, reconcile against the actual schema columns, not the sanitizer's own list; project through an explicit allow-list so anything new fails closed.
