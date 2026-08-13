@@ -803,6 +803,29 @@ export const providerServices = pgTable("provider_services", {
   partySizeMax: integer("party_size_max"),
   changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
 
+  // ══ S9 session/async fields (docs/DECISIONS.md ledger row 102, migration 212) ════════════════
+  // Ratifies docs/briefs/WAVE3_SCHEMA_PROPOSALS.md's S9 section (execution-map Wave 3, Gate G3).
+  // Additive nullable, no DB CHECK (app-enforced shape floors in insertProviderServiceSchema,
+  // the migration-195/181 posture). NULL = never captured (§13), never a default claim.
+  //
+  // `joinLink` is a SENSITIVE field — unlike the free-text logistics fields around it, it is NOT
+  // safe to read on any public/pre-booking surface. It is the provider's OWN meeting link for a
+  // scheduled remote session (call/video — shared/service-fundamentals.ts SESSION_END_METHODS)
+  // and is stripped everywhere `serviceFile` (the D3 pdf-deliverable precedent) is stripped, then
+  // revealed ONLY to the CONFIRMED traveler + the owning provider — mirroring the
+  // `GET /api/service-bookings/:id/deliverable` gate (booking.travelerId === session user AND
+  // booking.status === 'confirmed', never 'payment_pending', §15b). A PENDING advisor's read
+  // grant (§12) does NOT extend to this field (ballot ruling, ledger row 102 S9).
+  joinLink: text("join_link"),
+  // `responseWindowHours`/`scopeStatement` are async (async_messaging/voice_notes) fields: the
+  // promised response time and an SLA/promise statement distinct from `whatIncluded` (marketing
+  // copy). Both are ordinary public pre-purchase info (like earliestStartTime/serviceTimezone
+  // above) — DESCRIPTIVE ONLY. Neither feeds shared/service-fundamentals.ts's completionRuleFor
+  // (unchanged — async_messaging/voice_notes already route to 'provider_declared') or
+  // server/services/booking-completion.service.ts, which this lane does not touch.
+  responseWindowHours: integer("response_window_hours"),
+  scopeStatement: text("scope_statement"),
+
   // ══ Deposits / partial payments — CONFIG (Lane 7, docs/DECISIONS.md ruling 72, migration 200) ══
   // PROVIDER OPT-IN PER LISTING: no listing takes a deposit unless `depositEnabled` is on and a
   // percentage OR a flat amount is set. These are ordinary owner-authored LISTING facts, like
@@ -1940,6 +1963,23 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   partySizeMax: z.coerce.number().int().min(0).max(10000).nullable().optional(),
   changeCutoffHours: z.coerce.number().int().min(0).max(8760).nullable().optional(),
   canAnchor: z.boolean().nullable().optional(),
+  // ── S9 session/async fields (ledger row 102, migration 212) ────────────────────────────────
+  // No DB CHECK exists for either (publish-trap posture), so THIS is the enforcement, and
+  // field-level so both survive `.partial()` on the PATCH path (the update path is checked as
+  // hard as the insert). Neither is a §14/§18/§19-privileged field — ordinary owner-authored
+  // listing config, like the D7 block above — so they are NOT omitted.
+  //
+  // `joinLink` gets a BASIC URL-shape check only (https?://…), the same free-text-with-a-floor
+  // posture as meetingPoint/pickupAddress elsewhere on this table — reject garbage, don't
+  // over-constrain. The SENSITIVE half of this field (never reaching a public read; revealed only
+  // to the confirmed traveler + owning provider) is enforced on the READ side (server/routes.ts,
+  // server/routes/content.routes.ts, server/storage.ts), not here — this schema only governs the
+  // WRITE shape.
+  joinLink: z.string().trim().max(2048).nullable().optional().refine(
+    (v) => v == null || v === "" || /^https?:\/\/.+/i.test(v),
+    { message: "Join link must be a URL starting with http:// or https://" },
+  ),
+  responseWindowHours: z.coerce.number().int().min(1).max(8760).nullable().optional(),
   // ── SS-4 + SS-6 (ruling 69 disposition 9, migration 199) ────────────────────────────────────
   // Same treatment as the D7 block above and for the same reason: no DB CHECK exists (publish-trap
   // posture), so THIS is the enforcement, and field-level so it survives `.partial()` on PATCH.
