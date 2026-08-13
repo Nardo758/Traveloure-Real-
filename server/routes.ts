@@ -216,7 +216,7 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields } from "./utils/text-sanitizer";
+import { sanitizeText, sanitizeObjectStrings, sanitizeTextFields, sanitizeProviderServiceBody } from "./utils/text-sanitizer";
 function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
   if (!slug) return "default";
   if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
@@ -385,6 +385,7 @@ const anthropic = new Anthropic({
 });
 
 const sanitizeInput = sanitizeText as (input: string) => string;
+const sanitizeObject = sanitizeObjectStrings;
 async function respondIfServiceInBundle(err: any, serviceId: string, res: any): Promise<boolean> {
   const code = err?.code ?? err?.cause?.code;
   if (code !== "23503") return false;
@@ -2580,18 +2581,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // is a hand-written zod ALLOWLIST of exactly the four translatable content fields (§19 — no
   // client-settable status/source/updatedBy/timestamp; status/source are set server-side by the
   // path, updatedBy from the session per §14). A PUT is replace-for-that-locale.
+  // Task 1135: translation content is provider prose — sanitized BEFORE the max checks
+  // (z.preprocess) so entity encoding can't push an accepted value past the length limit.
+  const sanitizedTranslationField = (max: number) =>
+    z.preprocess(
+      (v) => (typeof v === "string" ? sanitizeText(v) : v),
+      z.string().trim().max(max).nullish(),
+    );
   const translationContentBodySchema = z.object({
-    serviceName: z.string().trim().max(255).nullish(),
-    shortDescription: z.string().trim().max(150).nullish(),
-    description: z.string().trim().max(20000).nullish(),
-    meetingPoint: z.string().trim().max(20000).nullish(),
+    serviceName: sanitizedTranslationField(255),
+    shortDescription: sanitizedTranslationField(150),
+    description: sanitizedTranslationField(20000),
+    meetingPoint: sanitizedTranslationField(20000),
   });
-  // Task 1135: translation content is provider prose — sanitize on write like the base fields.
   const normalizeContent = (b: z.infer<typeof translationContentBodySchema>) => ({
-    serviceName: b.serviceName != null ? sanitizeText(b.serviceName) : null,
-    shortDescription: b.shortDescription != null ? sanitizeText(b.shortDescription) : null,
-    description: b.description != null ? sanitizeText(b.description) : null,
-    meetingPoint: b.meetingPoint != null ? sanitizeText(b.meetingPoint) : null,
+    serviceName: b.serviceName ?? null,
+    shortDescription: b.shortDescription ?? null,
+    description: b.description ?? null,
+    meetingPoint: b.meetingPoint ?? null,
   });
   async function resolveOwnedService(req: any, res: any) {
     const userId = getUserId(req)!;
@@ -2731,11 +2738,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      // Task 1135: sanitize provider prose on write (defense-in-depth for non-React sinks).
-      const input = sanitizeTextFields(
-        insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, any>,
-        PROVIDER_SERVICE_TEXT_FIELDS,
-      ) as z.infer<typeof insertProviderServiceSchema>;
+      // Task 1135: sanitize provider prose (incl. JSON prose — faqs/whatIncluded/requirements/
+      // pricingTiers) BEFORE schema parse, so length/min constraints validate the stored value.
+      const input = insertProviderServiceSchema.parse(sanitizeProviderServiceBody(bodyWithoutLocation));
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -2967,11 +2972,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      // Task 1135: sanitize provider prose on write (defense-in-depth for non-React sinks).
-      const input = sanitizeTextFields(
-        insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, any>,
-        PROVIDER_SERVICE_TEXT_FIELDS,
-      ) as z.infer<ReturnType<typeof insertProviderServiceSchema.partial>>;
+      // Task 1135: sanitize provider prose (incl. JSON prose) BEFORE schema parse — see create.
+      const input = insertProviderServiceSchema.partial().parse(sanitizeProviderServiceBody(bodyWithoutLocation));
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -4179,13 +4181,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only update draft or rejected services" });
       }
 
-      // Task 1135: allow-list via the insert schema (partial) + sanitize expert prose on write —
-      // never pass raw req.body through to the storage layer.
-      const patchInput = insertProviderServiceListingSchema.partial().parse(req.body);
-      const updated = await storage.updateProviderServiceListing(req.params.id, sanitizeTextFields(
-        patchInput as Record<string, any>,
+      // Task 1135: allow-list via the insert schema (partial) + sanitize expert prose BEFORE
+      // parse — never pass raw req.body through to the storage layer.
+      const patchInput = insertProviderServiceListingSchema.partial().parse(sanitizeTextFields(
+        { ...(req.body ?? {}) } as Record<string, any>,
         ["title", "description", "categoryName", "duration", "deliverables", "cancellationPolicy", "leadTime"],
       ));
+      const updated = await storage.updateProviderServiceListing(req.params.id, patchInput);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -11051,17 +11053,3 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   return httpServer;
 }
-
-const sanitizeObject = sanitizeObjectStrings;
-
-const PROVIDER_SERVICE_TEXT_FIELDS = [
-  "serviceName",
-  "shortDescription",
-  "description",
-  "priceBasedOn",
-  "deliveryTimeframe",
-  "location",
-  "meetingPoint",
-  "pickupAddress",
-  "dropOffPoint",
-] as const;

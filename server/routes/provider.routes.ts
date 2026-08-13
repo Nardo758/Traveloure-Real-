@@ -11,11 +11,19 @@ import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 import { sanitizeText } from "../utils/text-sanitizer";
 
 // Task 1135: provider prose sanitized on write (defense-in-depth for non-React sinks such as
-// emails, PDFs, and CSV/API exports). Applied as a zod transform so every schema below shares it.
+// emails, PDFs, and CSV/API exports). Applied as z.preprocess so min/max validate the SANITIZED
+// value — entity encoding can't push an accepted string past a varchar limit, and a tag-only
+// value that sanitizes to "" fails the required min(1) instead of persisting empty.
 const sanitizedText = (max: number) =>
-  z.string().trim().min(1).max(max).transform((v) => sanitizeText(v));
+  z.preprocess(
+    (v) => (typeof v === "string" ? sanitizeText(v) : v),
+    z.string().trim().min(1).max(max),
+  );
 const sanitizedTextOptional = (max: number) =>
-  z.string().max(max).transform((v) => sanitizeText(v)).optional();
+  z.preprocess(
+    (v) => (typeof v === "string" ? sanitizeText(v) : v),
+    z.string().max(max).optional(),
+  );
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -139,7 +147,7 @@ const bundlePriceField = z
 
 // Allow-list only — approvalStatus/userId/earnings columns are never accepted from the
 // client (the marketplace Gap-2 lesson; D1a clamps the born state server-side below).
-const bundleCreateSchema = z.object({
+export const bundleCreateSchema = z.object({
   serviceName: sanitizedText(255),
   description: sanitizedTextOptional(10000),
   price: bundlePriceField,
@@ -461,7 +469,7 @@ const locationPointSchema = z.object({
   lng: z.number().finite().min(-180).max(180),
 });
 
-const propertyCreateSchema = z.object({
+export const propertyCreateSchema = z.object({
   serviceName: sanitizedText(255),
   description: sanitizedTextOptional(10000),
   location: sanitizedTextOptional(255),

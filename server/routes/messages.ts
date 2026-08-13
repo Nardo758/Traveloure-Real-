@@ -19,17 +19,19 @@ import {
 
 const router = Router();
 
-const sendMessageSchema = z.object({
+export const sendMessageSchema = z.object({
   recipientId: z.string().optional(),
   conversationId: z.string().optional(),
   // Task 1135: cap length and sanitize on write — message bodies reach non-React sinks
   // (notification emails, exports), so stored HTML/script payloads are stripped here.
-  message: z
-    .string()
-    .min(1, "Message cannot be empty")
-    .max(10000, "Message is too long (10,000 character limit)")
-    .transform((v) => sanitizeText(v))
-    .refine((v) => v.length > 0, { message: "Message cannot be empty" }),
+  // z.preprocess: min/max validate the SANITIZED value (a tag-only body fails min(1)).
+  message: z.preprocess(
+    (v) => (typeof v === "string" ? sanitizeText(v) : v),
+    z
+      .string()
+      .min(1, "Message cannot be empty")
+      .max(10000, "Message is too long (10,000 character limit)"),
+  ),
   attachment: z.string().url().optional(),
 });
 
