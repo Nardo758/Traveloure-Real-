@@ -100,7 +100,7 @@ import { resolvePublishVerification } from "./services/publish-verification.serv
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EARNER_BOOKING_FIELDS, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -5875,7 +5875,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+              // Task-1137 leak audit: the requester here is the booking OWNER (provider/expert) —
+              // never the traveler — so the row must go through the earner allow-list, or the
+              // traveler's Stripe references (stripe*IntentId) and idempotencyKey leak.
+              return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -5905,7 +5908,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
-            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+            // Task-1137 leak audit: earner allow-list projection (see note above).
+            return res.json({ ...(refreshed ? pickPublicFields(refreshed, EARNER_BOOKING_FIELDS) : refreshed), refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
           } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
             return res.status(502).json({
@@ -5993,7 +5997,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      // Task-1137 leak audit: earner allow-list projection (see note above).
+      res.json(pickPublicFields(updated, EARNER_BOOKING_FIELDS));
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -6163,7 +6168,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }));
       }
       metadata.visaStatusUpdatedAt = new Date().toISOString();
-      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+      const updatedRaw = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+      // Task-1137 leak audit: this route is gated to the booking's PROVIDER, so the returned
+      // row must go through the earner allow-list (strips stripe*IntentId + idempotencyKey).
+      const updated = updatedRaw ? pickPublicFields(updatedRaw, EARNER_BOOKING_FIELDS) : updatedRaw;
 
       // Send notification to the traveler about the visa status change
       try {

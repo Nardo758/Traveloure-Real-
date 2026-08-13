@@ -17,3 +17,6 @@ canSeeFull roles still get the raw row.
 **How to apply:** when auditing booking responses, grep the actual schema columns, not the sanitizer's
 list. Prefer an allow-list projection over a deny-list so new sensitive columns fail closed. SQLi is
 safe (Drizzle params) and stored-XSS is inert (React escapes; only DOMPurify'd dangerouslySetInnerHTML).
+
+## Aug 2026 full audit result
+All endpoints returning service_bookings rows were enumerated. Leaks found & fixed with EARNER_BOOKING_FIELDS/pickPublicFields: handleOwnerBookingStatus (expert/provider status PATCH, 3 response sites) and the provider-gated visa-status PATCH. All other surfaces are traveler-own, admin-only, or already projected (expert/provider bookings lists, calendar, customers use explicit selects). Note: GET /api/bookings/:id is registered in BOTH server/routes/bookings.ts and server/routes.ts — mount order decides which answers.
