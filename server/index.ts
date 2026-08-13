@@ -37,6 +37,7 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
@@ -603,6 +604,15 @@ if (process.env.NODE_ENV === "production") {
       runStripeReconciliation();
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+
+    // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
+    // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
+    setTimeout(() => {
+      void runAvailabilityMaterializationSweep();
+      setInterval(() => {
+        void runAvailabilityMaterializationSweep();
+      }, 24 * 60 * 60 * 1000);
+    }, 90 * 60 * 1000);
 
     // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
     // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method

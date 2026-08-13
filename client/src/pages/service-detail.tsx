@@ -61,12 +61,33 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+// T-REP (G5 #13): pure "Good to know" formatting/derivation helpers, unit-tested in
+// client/src/lib/__tests__/service-good-to-know.test.ts.
+import {
+  formatHours,
+  formatMinutes,
+  formatPartySize,
+  formatStartWindow,
+  formatCheckInOut,
+  hasAmenities,
+  formatTransportProvision,
+  resolveDepositPreview,
+  hasDepositTerms,
+  formatResponseWindow,
+} from "@/lib/service-good-to-know";
 // Ledger 90 (FP-5, I3): the SAME rail the storefront's Message CTA uses. "Contact Provider" used
 // to link to `/chat?provider=<userId>` — a param chat.tsx has never read — landing the traveler on
 // a directory of four seeded experts with no composer and no sign of the person they were reading
 // about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
 // and it works; the CTA was simply speaking a language the destination doesn't parse.
 import { useAskExpert } from "@/lib/use-ask-expert";
+// S10 (Gate G4): the shared bundle-component summary shape + pure link/label helpers, so the
+// available/unavailable rendering decision lives in exactly one place (unit-tested separately).
+import {
+  bundleComponentHref,
+  bundleComponentMethodLabel,
+  type BundleComponentSummary,
+} from "@/lib/bundle-component-display";
 
 interface PricingTier {
   label: string;
@@ -150,6 +171,66 @@ interface Service {
   // is DELIVERED in. Absent/null on every pre-199 listing and on every listing whose owner has
   // not said — which renders NOTHING at all, never a presumed "English" (§13).
   deliveryLanguages?: string[] | null;
+  // T-REP (G5 #13): D7 logistics-capture columns (migration 195) were already riding the wire
+  // (the endpoint spreads the whole row) but had no client type and no render — this lane's
+  // whole mandate. leadTimeHours/earliestStartTime/latestStartTime/serviceTimezone are the THREE
+  // fields `server/services/booking-eligibility.service.ts` already enforces at checkout
+  // (ruling 83) — a traveler could be silently refused for a constraint the page never stated.
+  // All nullable: NULL = the provider never declared it, render nothing (§13), never a guessed
+  // default (leadTimeHours' DB default of 24 is a real stored value once read back, not invented
+  // here).
+  partySizeMin?: number | null;
+  partySizeMax?: number | null;
+  leadTimeHours?: number | null;
+  changeCutoffHours?: number | null;
+  earliestStartTime?: string | null;
+  latestStartTime?: string | null;
+  serviceTimezone?: string | null;
+  bufferMinutes?: number | null;
+  durationMinutes?: number | null;
+  // D7 capture-only (no server consumer yet, unlike the three eligibility gates above) — the
+  // richer 4-value transport vocabulary (pickup_included/pickup_available/meet_at_point/
+  // not_applicable) alongside the legacy yes/no/not_applicable `transportProvided` already
+  // rendered in the Direct-Booking trust panel below.
+  transportProvision?: string | null;
+  // Deposits/partial payments (ruling 72, migration 200) — owner-authored LISTING config, not a
+  // platform rate (§8/§18 do not apply; see shared/schema.ts's own comment on the column).
+  depositEnabled?: boolean | null;
+  depositType?: string | null;
+  depositPercentage?: number | null;
+  depositFlatAmount?: string | number | null;
+  // Consultancy-style deliverable terms — present on any listing, most meaningful for pdf/call/
+  // async delivery methods.
+  revisionsIncluded?: number | null;
+  includesExpertNotes?: boolean | null;
+  // Photo gallery (distinct from the single serviceImage cover shown in the hero above).
+  galleryImages?: string[] | null;
+  // T-REP: provider-level coverage-area rows for THIS listing's category, joined server-side
+  // (GET /api/services/:id) from `provider_neighborhood_coverage` — there is no bare
+  // `neighborhoods` column on the row itself. Empty array = no declared coverage, never omitted
+  // vs. absent-field ambiguity (§13): always an array, so "no neighborhoods" and "not asked yet"
+  // read the same way here (there being no per-listing capture to distinguish them from).
+  neighborhoods?: { slug: string; name: string }[];
+  // S8 property builder (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102).
+  // check-in/out and house rules are property-level ONLY (absolute inheritance — a room's own
+  // detail read carries its property's values via the `property` field below, not its own).
+  // amenities: NULL = never captured, [] = deliberately cleared — both render nothing (§13; see
+  // hasAmenities in service-good-to-know.ts).
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  houseRules?: string | null;
+  amenities?: string[] | null;
+  // S8/G2 privacy circle: present (true) only for productShape 'property'/'property_room' when
+  // the pin on this response is the JITTERED approximate one, never the exact stored pin — the
+  // client MUST label the circle as approximate whenever this is true (§13 honesty). Absent on
+  // every other product shape and on a confirmed-booking reveal, where the pin is exact.
+  locationApproximate?: true;
+  // S9 (docs/DECISIONS.md ledger row 102, migration 212): async (async_messaging/voice_notes)
+  // fields — public pre-purchase info, same §13 posture as the D7 block above. `joinLink` is
+  // deliberately NOT declared here: it never rides this public read at all (see the strip
+  // comment on GET /api/services/:id) — it only ever appears on the confirmed-booking surface.
+  responseWindowHours?: number | null;
+  scopeStatement?: string | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -161,11 +242,10 @@ interface ServiceRoutePointRow {
   longitude: string | null;
 }
 
-interface BundleComponent {
-  id: string;
-  serviceName: string;
-  shortDescription: string;
-}
+// S10 (Gate G4): matches the server's per-component shape (server/routes/content.routes.ts,
+// GET /api/services/:id bundle branch) — see client/src/lib/bundle-component-display.ts for the
+// shared type and the pure link/label helpers this page renders through.
+type BundleComponent = BundleComponentSummary;
 
 interface RoomSummary {
   id: string;
@@ -238,6 +318,21 @@ interface AvailabilityDay {
 interface AvailabilityResponse {
   month: string;
   days: AvailabilityDay[];
+}
+
+// S11 (DECISIONS.md ledger row 107): the REDACTED per-night stay calendar — never bookedCount/
+// capacity/providerId, mirroring the T-REP read-strip precedent. `nightlyRate` is null when the
+// provider hasn't set a per-range override for that night (§14 inherit case — checkout falls
+// back to the listing's own `price`, exactly as this estimate does below).
+interface StayAvailabilityNight {
+  date: string;
+  available: boolean;
+  nightlyRate: number | null;
+}
+interface StayAvailabilityResponse {
+  checkIn: string;
+  checkOut: string;
+  nights: StayAvailabilityNight[];
 }
 
 export default function ServiceDetailPage() {
@@ -406,6 +501,27 @@ export default function ServiceDetailPage() {
   const roomStayReady = roomNights > 0 && roomNights <= 30;
   const roomStayAvailable = roomStayReady && !roomAvailabilityLoading && roomUnavailableDates.length === 0;
 
+  // S11 (§14, ledger row 107): the REAL per-night rate for the picked range, from the redacted
+  // stay-availability endpoint — replaces the pre-S11 flat `priceNum × nights` estimate below
+  // with each night's own materialized rate (falling back to the listing price per night when a
+  // night has no override, the exact §14 inherit rule `resolveStayNightlyRates` applies
+  // server-side at quote/charge). Purely a DISPLAY estimate — checkout re-derives the real charge
+  // server-side regardless; this only keeps what the traveler sees from disagreeing with it.
+  const { data: stayRates, isLoading: stayRatesLoading } = useQuery<StayAvailabilityResponse>({
+    queryKey: ["/api/services", id, "stay-availability", roomCheckIn, roomCheckOut],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/services/${id}/stay-availability?checkIn=${roomCheckIn}&checkOut=${roomCheckOut}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to fetch stay rates");
+      return res.json() as Promise<StayAvailabilityResponse>;
+    },
+    enabled: isRoom && roomNights > 0 && roomNights <= 30,
+  });
+  // roomEstimatedTotal/roomHasMixedRates (needs `priceNum`, declared further below with the rest
+  // of the price-display derivations) are computed just after that declaration.
+
   // D2 (UX audit Jul 29): plain two-input date entry gave no visibility into which nights
   // are actually open — the traveler could only find out after picking (roomUnavailableDates
   // above, still the authoritative pre-cart check). This adds a real calendar view, fed by
@@ -517,6 +633,18 @@ export default function ServiceDetailPage() {
       currency: "USD",
       maximumFractionDigits: n % 1 === 0 ? 0 : 2,
     }).format(n);
+  // S11 (§14, ledger row 107): the estimate shown BEFORE add-to-cart — each picked night's own
+  // materialized rate when the stay-availability fetch has resolved, falling back to the flat
+  // `priceNum` per night otherwise (byte-identical to the pre-S11 display). Purely cosmetic:
+  // checkout re-derives the authoritative charge server-side via the SAME resolver regardless.
+  const roomEstimatedTotal = (() => {
+    if (!stayRates || roomNightDates.length === 0) return priceNum * roomNights;
+    const byDate = new Map(stayRates.nights.map((n) => [n.date, n.nightlyRate]));
+    return roomNightDates.reduce((sum, d) => sum + (byDate.get(d) ?? priceNum), 0);
+  })();
+  const roomHasMixedRates =
+    !!stayRates &&
+    new Set(roomNightDates.map((d) => stayRates.nights.find((n) => n.date === d)?.nightlyRate ?? priceNum)).size > 1;
   const hasTiers = Array.isArray(service.pricingTiers) && service.pricingTiers.length > 0;
   // D5 (UX audit Jul 29): a per_night room fell through to the generic "per service" sub-label
   // (jargon that also reads as factually wrong for a nightly room rate) — give it its own branch.
@@ -559,6 +687,42 @@ export default function ServiceDetailPage() {
     hasMeetingPoint ||
     hasPickupAddress ||
     hasTransportSignal;
+
+  // T-REP (G5 #13) "Good to know" logistics — each line gated on its own real field, omitted
+  // (never defaulted) when absent (§13). The formatting/derivation itself lives in the pure,
+  // unit-tested `@/lib/service-good-to-know` module; this page only decides WHETHER to render.
+  const partySizeText = formatPartySize(service.partySizeMin, service.partySizeMax);
+  const hasLeadTime = typeof service.leadTimeHours === "number" && service.leadTimeHours > 0;
+  const hasChangeCutoff = typeof service.changeCutoffHours === "number" && service.changeCutoffHours > 0;
+  const startWindowText = formatStartWindow(service.earliestStartTime, service.latestStartTime, service.serviceTimezone);
+  const hasBuffer = typeof service.bufferMinutes === "number" && service.bufferMinutes > 0;
+  const hasDurationMinutes = typeof service.durationMinutes === "number" && service.durationMinutes > 0;
+  const hasNeighborhoods = Array.isArray(service.neighborhoods) && service.neighborhoods.length > 0;
+  const transportProvisionText = formatTransportProvision(service.transportProvision);
+  // Deposit terms are owner listing config, not a platform rate (§8/§18 do not apply — see
+  // shared/schema.ts). The dollar preview mirrors resolveDepositPlan's own formula
+  // (percentage-of-price or flat) for display only; checkout re-derives the real charge
+  // server-side from the confirmed line total (§14) — this is not a second source of truth.
+  const hasDeposit = hasDepositTerms(service);
+  const depositPreview = resolveDepositPreview(service, fmtPrice, priceNum);
+  const hasRevisions = typeof service.revisionsIncluded === "number" && service.revisionsIncluded > 0;
+  // S8 (Gate G2): property check-in/out + house rules + amenities — same gate-on-a-real-field
+  // posture as every other Good-to-know line above.
+  const checkInOutText = formatCheckInOut(service.checkInTime, service.checkOutTime);
+  const hasHouseRules = !!service.houseRules && service.houseRules.trim().length > 0;
+  const showAmenities = hasAmenities(service.amenities);
+  // S9 (docs/DECISIONS.md ledger row 102): response window / scope statement are PUBLIC
+  // pre-purchase info for the two async methods (async_messaging/voice_notes) — absent ⇒
+  // omitted (§13), never a guessed "we'll get back to you soon". joinLink is deliberately NOT
+  // rendered here: it only ever exists on the CONFIRMED-booking surface (server-side reveal),
+  // never on this public pre-purchase read at all.
+  const responseWindowText = formatResponseWindow(service.responseWindowHours);
+  const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
+  const hasGoodToKnow =
+    !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || hasBuffer ||
+    hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
+    !!checkInOutText || hasHouseRules || showAmenities ||
+    !!responseWindowText || !!scopeStatementText;
 
   // Vacation mode (mockup §08/§06b): the listing stays visible while the owner is away —
   // only new-booking CTAs are disabled. Existing confirmed bookings are untouched (this is
@@ -703,6 +867,21 @@ export default function ServiceDetailPage() {
           </div>
         )}
 
+        {/* T-REP (G5 #13): the gallery has been collectible (galleryImages) since the wizard's
+            Media step, and the column already rode the wire (`SELECT *`) — only the render was
+            missing. Only the cover (serviceImage) showed above; every other photo went nowhere.
+            A simple thumbnail strip, distinct from the hero, no lightbox/carousel added — that's
+            a bigger UI investment than this lane's honest-rendering mandate calls for. */}
+        {Array.isArray(service.galleryImages) && service.galleryImages.length > 0 && (
+          <div className="mb-6 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="section-gallery">
+            {service.galleryImages.map((url, idx) => (
+              <div key={idx} className="rounded-md overflow-hidden border aspect-square" data-testid={`img-gallery-${idx}`}>
+                <img src={url} alt={`${service.serviceName} photo ${idx + 1}`} className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Link-landing polish (mockup §08): on mobile the booking panel (price/rating/CTA)
             renders BEFORE the long-form content below via `order` — a texted link must put
             photo + price + CTA above the fold without a redesign of either column's content.
@@ -746,6 +925,119 @@ export default function ServiceDetailPage() {
               </CardContent>
             </Card>
 
+            {/* T-REP (G5 #13): "Good to know" — logistics the provider authored in ServiceForm
+                that had no home on this page. Every line is gated on a real field; an absent
+                value omits the row rather than guessing (§13). The three eligibility lines
+                (party size / start window / lead time) mirror the SAME constraints
+                booking-eligibility.service.ts already enforces server-side at checkout — stating
+                them here means a traveler finds out before trying to book, not after a silent
+                refusal. */}
+            {hasGoodToKnow && (
+              <Card data-testid="card-good-to-know">
+                <CardHeader>
+                  <CardTitle>Good to know</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2.5 text-sm">
+                    {partySizeText && (
+                      <li className="flex items-start gap-2" data-testid="text-party-size">
+                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Party size: {partySizeText}</span>
+                      </li>
+                    )}
+                    {startWindowText && (
+                      <li className="flex items-start gap-2" data-testid="text-start-window">
+                        <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{startWindowText}</span>
+                      </li>
+                    )}
+                    {hasLeadTime && (
+                      <li className="flex items-start gap-2" data-testid="text-lead-time">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Book at least {formatHours(service.leadTimeHours!)} ahead</span>
+                      </li>
+                    )}
+                    {hasChangeCutoff && (
+                      <li className="flex items-start gap-2" data-testid="text-change-cutoff">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Changes accepted up to {formatHours(service.changeCutoffHours!)} before the start</span>
+                      </li>
+                    )}
+                    {hasDurationMinutes && (
+                      <li className="flex items-start gap-2" data-testid="text-duration-minutes">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Duration: {formatMinutes(service.durationMinutes!)}</span>
+                      </li>
+                    )}
+                    {hasBuffer && (
+                      <li className="flex items-start gap-2" data-testid="text-buffer-minutes">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{formatMinutes(service.bufferMinutes!)} kept free around each booking</span>
+                      </li>
+                    )}
+                    {transportProvisionText && (
+                      <li className="flex items-start gap-2" data-testid="text-transport-provision">
+                        <Car className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{transportProvisionText}</span>
+                      </li>
+                    )}
+                    {hasNeighborhoods && (
+                      <li className="flex items-start gap-2" data-testid="text-neighborhoods">
+                        <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Serves: {service.neighborhoods!.map((n) => n.name).join(", ")}</span>
+                      </li>
+                    )}
+                    {hasDeposit && (
+                      <li className="flex items-start gap-2" data-testid="text-deposit-terms">
+                        <DollarSign className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{depositPreview ?? "Deposit required — details at checkout"}</span>
+                      </li>
+                    )}
+                    {checkInOutText && (
+                      <li className="flex items-start gap-2" data-testid="text-check-in-out">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{checkInOutText}</span>
+                      </li>
+                    )}
+                    {/* S9 (docs/DECISIONS.md ledger row 102): async delivery's promised response
+                        time + scope statement — public pre-purchase info, gated on the real
+                        field (§13). joinLink never appears here — see the comment on
+                        responseWindowText above. */}
+                    {responseWindowText && (
+                      <li className="flex items-start gap-2" data-testid="text-response-window">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{responseWindowText}</span>
+                      </li>
+                    )}
+                    {scopeStatementText && (
+                      <li className="flex items-start gap-2" data-testid="text-scope-statement">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{scopeStatementText}</span>
+                      </li>
+                    )}
+                  </ul>
+                  {hasHouseRules && (
+                    <div className="mt-4 pt-4 border-t" data-testid="text-house-rules">
+                      <p className="text-sm font-medium mb-1">House rules</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-line">{service.houseRules}</p>
+                    </div>
+                  )}
+                  {showAmenities && (
+                    <div className="mt-4 pt-4 border-t" data-testid="list-amenities">
+                      <p className="text-sm font-medium mb-2">Amenities</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {service.amenities!.map((a) => (
+                          <Badge key={a} variant="secondary" className="text-xs" data-testid={`badge-amenity-${a}`}>
+                            {a}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Ruling 22(c): Location & route — renders ONLY when the service has real
                 location facts (confirmed pin and/or route stops). Map draws located stops
                 only; unlocated stops stay listed with an honest "not on map" flag. The
@@ -762,17 +1054,34 @@ export default function ServiceDetailPage() {
               const radiusKm = coverageMode === "route" ? NaN : rawRadiusKm;
               if (!servicePin && routeStops.length === 0) return null;
               const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
+              // S8/G2 privacy circle: the server sends `locationApproximate: true` ONLY when this
+              // pin is the ~500m-jittered stand-in for a property/room's real confirmed pin
+              // (never for any other product shape). Label it honestly rather than let a
+              // traveler mistake the circle for the exact address (§13).
+              const isApproximate = service.locationApproximate === true;
               return (
                 <Card data-testid="card-location-route">
                   <CardHeader>
-                    <CardTitle>Location & route</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      Location & route
+                      {isApproximate && (
+                        <Badge variant="outline" className="text-[10px] font-normal" data-testid="badge-approximate-location">
+                          Approximate area
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    {isApproximate && (
+                      <p className="text-xs text-muted-foreground" data-testid="text-approximate-location-note">
+                        The exact address is shared after booking. This circle shows the general neighborhood only.
+                      </p>
+                    )}
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-lg overflow-hidden border">
                       <ServiceLocationMap
                         pin={servicePin}
-                        pinLabel={service.meetingPoint || service.serviceName}
-                        radiusKm={Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null}
+                        pinLabel={isApproximate ? "Approximate area" : (service.meetingPoint || service.serviceName)}
+                        radiusKm={isApproximate ? 0.5 : (Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null)}
                         stops={routeStops.map((s) => {
                           const p = parseLatLng(s.latitude, s.longitude);
                           return { id: s.id, position: s.position, name: s.name, lat: p?.lat ?? null, lng: p?.lng ?? null };
@@ -845,26 +1154,44 @@ export default function ServiceDetailPage() {
               </Card>
             )}
 
-            {service.whatIncluded && service.whatIncluded.length > 0 && (
+            {((service.whatIncluded && service.whatIncluded.length > 0) || hasRevisions || service.includesExpertNotes) && (
               <Card>
                 <CardHeader>
                   <CardTitle>What's Included</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {service.whatIncluded.map((item, index) => (
+                    {service.whatIncluded?.map((item, index) => (
                       <li key={index} className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
                         <span className="text-muted-foreground">{item}</span>
                       </li>
                     ))}
+                    {/* T-REP (G5 #13): revisionsIncluded/includesExpertNotes were authored on
+                        every consulting-style listing and rendered nowhere. */}
+                    {hasRevisions && (
+                      <li className="flex items-start gap-2" data-testid="text-revisions-included">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                        <span className="text-muted-foreground">
+                          {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"} included
+                        </span>
+                      </li>
+                    )}
+                    {service.includesExpertNotes && (
+                      <li className="flex items-start gap-2" data-testid="text-includes-expert-notes">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                        <span className="text-muted-foreground">Includes personalized expert notes</span>
+                      </li>
+                    )}
                   </ul>
                 </CardContent>
               </Card>
             )}
 
-            {/* §17 bundles (migration 151): components of this bundle, server-gated to only
-                still-approved+active items. No section at all for a non-bundle service. */}
+            {/* S10 (Gate G4): components of this bundle. The server (content.routes.ts) sends
+                EVERY component slot, not just the visible ones — an available:false row is
+                unapproved/paused/missing and renders name-only with no link (§13: never a broken
+                link, never invented detail). No section at all for a non-bundle service. */}
             {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
               <Card data-testid="card-bundle-components">
                 <CardHeader>
@@ -873,20 +1200,64 @@ export default function ServiceDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Same honest posture the Workstation bundle builder states to the provider
+                      ("component prices below are shown for reference only, nothing is
+                      auto-summed") — the traveler-facing equivalent: this is one bundle price,
+                      not a sum of what the components would cost booked separately. */}
+                  <p className="text-xs text-muted-foreground mb-3">
+                    This is one bundle price — it's not a sum of these components' individual prices.
+                  </p>
                   <div className="divide-y">
-                    {service.bundleComponents.map((component) => (
-                      <Link
-                        key={component.id}
-                        href={`/services/${component.id}`}
-                        data-testid={`bundle-component-${component.id}`}
-                        className="block py-3 hover-elevate rounded-md px-2 -mx-2"
-                      >
-                        <p className="font-medium">{component.serviceName}</p>
-                        {component.shortDescription && (
-                          <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
-                        )}
-                      </Link>
-                    ))}
+                    {service.bundleComponents.map((component, index) => {
+                      const href = bundleComponentHref(component);
+                      const methodLabel = bundleComponentMethodLabel(component);
+                      const key = component.available ? component.id : `unavailable-${index}`;
+                      const body = (
+                        <div className="flex items-start gap-3 py-3">
+                          {component.available && component.serviceImage && (
+                            <img
+                              src={component.serviceImage}
+                              alt=""
+                              className="w-14 h-14 rounded-md object-cover shrink-0"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-medium ${component.available ? "" : "text-muted-foreground"}`}>
+                                {component.serviceName}
+                              </p>
+                              {methodLabel && (
+                                <Badge variant="outline" className="capitalize">{methodLabel}</Badge>
+                              )}
+                            </div>
+                            {component.available && component.shortDescription && (
+                              <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
+                            )}
+                            {!component.available && (
+                              <p className="text-sm text-muted-foreground mt-0.5">Currently unavailable</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                      return href ? (
+                        <Link
+                          key={key}
+                          href={href}
+                          data-testid={`bundle-component-${component.available ? component.id : index}`}
+                          className="block hover-elevate rounded-md px-2 -mx-2"
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <div
+                          key={key}
+                          data-testid={`bundle-component-unavailable-${index}`}
+                          className="px-2 -mx-2"
+                        >
+                          {body}
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -1300,7 +1671,11 @@ export default function ServiceDetailPage() {
                     )}
                     {roomNights > 0 && (
                       <p className="text-sm" data-testid="text-room-nights">
-                        {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(priceNum * roomNights)} total
+                        {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(roomEstimatedTotal)}{" "}
+                        {stayRatesLoading ? "(estimating…)" : "estimated total"}
+                        {roomHasMixedRates && (
+                          <span className="text-muted-foreground"> (rates vary by night)</span>
+                        )}
                       </p>
                     )}
                     {roomNights > 30 && (

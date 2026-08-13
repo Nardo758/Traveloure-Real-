@@ -16,6 +16,8 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
+import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
+import { nightDatesInclusive } from "../services/availability-materializer.service";
 import { isContentLocale } from "../services/service-translation.service";
 // Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
 // Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
@@ -66,7 +68,7 @@ import {
   insertContentImpression, getDemandCountsForCity,
   filterOutAwayOwners,
 } from "../services/content-query.service";
-import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -97,6 +99,7 @@ import {
   contentPlacementRules,
   type InsertContentPlacementRule,
   bundleComponents,
+  vendorAvailabilitySlots,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -105,6 +108,11 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the write path
+// (provider.routes.ts) — read time re-derives from the components that are STILL visible on this
+// read rather than trusting the stored column, which can drift after a component is paused or
+// un-approved without the bundle itself ever being edited.
+import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
 import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { viatorService } from "../services/viator.service";
@@ -117,7 +125,7 @@ import { grokService } from "../services/grok.service";
 import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -1975,7 +1983,30 @@ router.get("/api/services/:id", async (req, res) => {
     // D3 leak-prevention: this is the public service-detail read — serviceFile is the
     // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
     // front, so every branch below (bundle/property/room/default) inherits the strip.
-    const service = omitFields(rawService, ["serviceFile"] as const);
+    // T-REP (G5 #13 audit): `storage.getProviderServiceById` is a bare `SELECT *`, so this was
+    // the only place standing between the full row and the public wire. §18's revenueShareRate
+    // strip already exists on the owner-write echoes (routes.ts CC-8/NEW-2) but was never applied
+    // to THIS public read — a rate-bearing field is never expose-able, no exceptions (§14/§18/§19).
+    // The rest of this list is the approval-workflow's internal bookkeeping (who reviewed it, when,
+    // why it was rejected, its pre-approval form status) — none of it is a traveler-facing fact
+    // about the LISTING; every row reaching this handler is already `approved`/`active` by the F2
+    // gate above, so these columns carry no information the traveler needs and some (rejectionReason,
+    // reviewedBy) are closer to provider-private notes than public content.
+    // S9 (docs/DECISIONS.md ledger row 102): joinLink joins the never-expose list — it is the
+    // provider's OWN meeting link for a scheduled remote session (call/video), revealed only to
+    // a CONFIRMED traveler + the owning provider (see GET /api/service-bookings), never on this
+    // public pre-purchase read (§12's PENDING-advisor read grant does not extend to it either).
+    const service = omitFields(rawService, [
+      "serviceFile",
+      "revenueShareRate",
+      "reviewedBy",
+      "rejectionReason",
+      "formStatus",
+      "submittedAt",
+      "reviewedAt",
+      "totalRevenue",
+      "joinLink",
+    ] as const);
     // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
     // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
     // away state as `away:{until,message}`; the service-detail read did not carry it at all,
@@ -2003,6 +2034,32 @@ router.get("/api/services/:id", async (req, res) => {
     const surchargeTiers = service.surchargeMode === "zones"
       ? await storage.getServiceSurchargeTiers(service.id)
       : [];
+
+    // T-REP (G5 #13): neighborhoods served — same derivation `GET /api/provider/services/:id`
+    // (the owner's own edit surface, routes.ts) already uses to pre-populate its multi-select, run
+    // here read-only for the public detail. `provider_neighborhood_coverage` is keyed on
+    // (providerId, categoryKey) — provider-level coverage for the category this LISTING belongs to,
+    // not a column on the listing itself, so there is no bare `service.neighborhoods` to spread; it
+    // has to be joined. Non-sensitive (a coverage-area list, not PII) — no gate beyond the F2 one
+    // already applied above. Absent category/coverage rows ⇒ an honest empty list, never a guess.
+    let neighborhoods: { slug: string; name: string }[] = [];
+    if (service.categoryId) {
+      const [cat] = await db
+        .select({ categoryKey: serviceCategories.categoryKey })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.id, service.categoryId));
+      if (cat?.categoryKey) {
+        neighborhoods = await db
+          .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name })
+          .from(providerNeighborhoodCoverage)
+          .innerJoin(cityNeighborhoods, eq(providerNeighborhoodCoverage.neighborhoodId, cityNeighborhoods.id))
+          .where(and(
+            eq(providerNeighborhoodCoverage.providerId, service.userId),
+            eq(providerNeighborhoodCoverage.categoryKey, cat.categoryKey),
+          ))
+          .orderBy(providerNeighborhoodCoverage.sortOrder);
+      }
+    }
 
     // Ruling 60 Phase B — provider CONTENT translation (system B). The active locale is the
     // client's resolved chrome locale (Phase A: account pref → localStorage → Accept-Language →
@@ -2037,25 +2094,80 @@ router.get("/api/services/:id", async (req, res) => {
       translation: translationMeta,
     });
 
-    // §17 bundles (migration 151): additive component list on the public detail. Same F2
-    // read-gate per component — only components STILL approved+active are exposed; an
-    // unapproved/paused component never leaks through the bundle's page.
+    // §17/S10 bundles (migrations 151, Gate G4): additive component list on the public detail.
+    // LEFT JOIN (not the old INNER JOIN) so a component that has been paused/un-approved SINCE
+    // the bundle was built still produces a row — §13 requires the bundle to say so honestly
+    // (name-only, no link) rather than silently shrinking the list with no explanation. The FK is
+    // ON DELETE RESTRICT (migration 151), so a component row going missing entirely is a
+    // referential-integrity break, not an expected case; it gets the same honest fallback rather
+    // than a thrown 500.
     if (service.productShape === "bundle") {
-      const components = await db
+      const rows = await db
         .select({
           id: providerServices.id,
           serviceName: providerServices.serviceName,
           shortDescription: providerServices.shortDescription,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          approvalStatus: providerServices.approvalStatus,
+          status: providerServices.status,
         })
         .from(bundleComponents)
-        .innerJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
-        .where(and(
-          eq(bundleComponents.bundleServiceId, service.id),
-          eq(providerServices.approvalStatus, "approved"),
-          eq(providerServices.status, "active"),
-        ))
+        .leftJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
+        .where(eq(bundleComponents.bundleServiceId, service.id))
         .orderBy(asc(bundleComponents.position));
-      return res.json(withTranslation({ ...service, bundleComponents: components, away, routePoints, surchargeTiers }));
+
+      // Same F2 predicate as every other public read-gate: still approved AND active, right now —
+      // never the state the component was in when it joined the bundle.
+      const isPublicComponent = (r: (typeof rows)[number]) =>
+        r.id != null && r.approvalStatus === "approved" && r.status === "active";
+      const publicRows = rows.filter(isPublicComponent);
+
+      // FABLE-REVIEW: response shape for GET /api/services/:id (bundle branch) — an unapproved,
+      // paused, or (theoretically) missing component now renders name-only with no `id` at all,
+      // so the client cannot construct a link to it and no non-public detail (image, description,
+      // method) ever rides the wire for it. §13: never a broken link, never invented detail.
+      const bundleComponentsOut = rows.map((r) =>
+        isPublicComponent(r)
+          ? {
+              available: true as const,
+              id: r.id!,
+              serviceName: r.serviceName!,
+              shortDescription: r.shortDescription,
+              deliveryMethod: r.deliveryMethod,
+              serviceImage: r.serviceImage,
+            }
+          : {
+              available: false as const,
+              // The FK guarantees the row exists (ON DELETE RESTRICT) even when it's hidden for
+              // approval/status reasons, so the real name is still honest to show; only the
+              // theoretical missing-row case falls back to a stated placeholder, never a blank.
+              serviceName: r.serviceName ?? "Unavailable listing",
+            },
+      );
+
+      // S10/Gate G4: the displayed method chip is DERIVED fresh on every read from the components
+      // still visible above — never trusted from the stored `delivery_method` column, which only
+      // reflects whatever was true at the bundle's last create/edit (migration 208's B2 repair
+      // fixed that once; a component paused afterwards, with the bundle itself never touched,
+      // would otherwise drift it right back to stale). This value is NEVER written back to the
+      // row — read-time-only, per CLAUDE.md §18 rule 1 (derivation delegates, never re-implements)
+      // sharing the identical predicate the write path (provider.routes.ts) uses at create/patch.
+      const derivedDeliveryMethod = deriveBundleDeliveryMethodFromMethods(
+        publicRows.map((r) => r.deliveryMethod),
+      );
+
+      return res.json(withTranslation({
+        ...service,
+        // No public component carries a derivable method (e.g. every one is currently hidden) ⇒
+        // keep the last-known stored value rather than guessing (§13) — never blank the chip.
+        deliveryMethod: derivedDeliveryMethod ?? service.deliveryMethod,
+        bundleComponents: bundleComponentsOut,
+        away,
+        routePoints,
+        surchargeTiers,
+        neighborhoods,
+      }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2076,7 +2188,15 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json(withTranslation({ ...service, rooms, away, routePoints, surchargeTiers }));
+      // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): pre-booking,
+      // a property's exact confirmed pin never rides the public wire — the SAME deterministic
+      // technique the Ready Made teaser map already uses, at a wider (~500m) radius, with an
+      // explicit `locationApproximate` flag so the client labels the circle honestly (§13). The
+      // exact pin is revealed only on the confirmed-booking surface — the GET
+      // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
+      // confirmed booking's row exact (mirroring the /deliverable gate's status check).
+      const jitteredProperty = applyPropertyLocationPrivacy(service);
+      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, surchargeTiers, neighborhoods }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2087,6 +2207,11 @@ router.get("/api/services/:id", async (req, res) => {
           serviceName: providerServices.serviceName,
           approvalStatus: providerServices.approvalStatus,
           status: providerServices.status,
+          // Read-time-only fallback source for the room's OWN pin (S8-Q3, absolute inheritance —
+          // a room never writes its own coordinates). Never re-exposed on `visibleProperty` below;
+          // used only to seed the jitter when the room's own latitude/longitude are NULL.
+          latitude: providerServices.latitude,
+          longitude: providerServices.longitude,
         })
         .from(providerServices)
         .where(eq(providerServices.id, service.parentServiceId));
@@ -2094,9 +2219,15 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json(withTranslation({ ...service, property: visibleProperty, away, routePoints, surchargeTiers }));
+      // S8/G2 privacy circle, room branch: `room.latitude ?? parent.latitude` at READ TIME ONLY
+      // (never written to either row), then jittered exactly like the property branch above.
+      const jitteredRoom = applyPropertyLocationPrivacy(service, {
+        fallbackLat: property?.latitude ?? null,
+        fallbackLon: property?.longitude ?? null,
+      });
+      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, surchargeTiers, neighborhoods }));
     }
-    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers }));
+    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers, neighborhoods }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
@@ -2148,13 +2279,97 @@ router.get("/api/services/:id", async (req, res) => {
     }
   });
 
+  // S11 (DECISIONS.md ledger row 107, docs/briefs/S11_STAY_BOOKING_PROPOSAL.md, Open Question 6
+  // — "recommend the new redacted route"): public REDACTED per-night calendar for a property/room
+  // stay. Deliberately a NEW endpoint rather than a second consumer of `GET
+  // /api/vendor-availability/:serviceId` (that route is provider/internal-shaped — it returns raw
+  // rows including `bookedCount`, `providerId`, internal `pricing`/`discounts`/`cancellationPolicy`
+  // — building a traveler-facing consumer on top of it would bake that leak in as a de facto
+  // public API; flagged, not fixed, per the ballot's Negative Space). Returns ONLY
+  // `{date, available, nightlyRate}` per night — mirrors the T-REP read-strip precedent (ledger
+  // row 101): never bookedCount/capacity/providerId/id/internal pricing keys.
+  //
+  // Same F2 read-gate as GET /api/services/:id (approved + active) and scoped to property/room
+  // shapes only — a scheduled-slot service has its own calendar contract at GET
+  // /api/services/:id/availability (C2) above; this endpoint answers "which NIGHTS can I book",
+  // not "which time slots".
+  router.get("/api/services/:id/stay-availability", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      if (service.productShape !== "property" && service.productShape !== "property_room") {
+        return res.status(400).json({ message: "Stay availability applies only to property or property_room listings" });
+      }
+      const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+      const checkInParam = typeof req.query.checkIn === "string" && DATE_RE.test(req.query.checkIn)
+        ? req.query.checkIn
+        : new Date().toISOString().slice(0, 10);
+      // Integrator default (S7-Q1 precedent, amendable): a 60-night forward window when no
+      // checkOut is given — a browsing calendar, not a specific stay request.
+      const defaultWindowEnd = (() => {
+        const d = new Date(`${checkInParam}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 60);
+        return d.toISOString().slice(0, 10);
+      })();
+      const checkOutParam = typeof req.query.checkOut === "string" && DATE_RE.test(req.query.checkOut)
+        ? req.query.checkOut
+        : defaultWindowEnd;
+      if (checkOutParam < checkInParam) {
+        return res.status(400).json({ message: "checkOut must be on or after checkIn" });
+      }
+      // Bounded response size (same 730-night ceiling as the date-ranges write rail) — a browsing
+      // window is never unbounded.
+      const allNights = nightDatesInclusive(checkInParam, checkOutParam).slice(0, 730);
+
+      const rows = await db
+        .select({
+          date: vendorAvailabilitySlots.date,
+          capacity: vendorAvailabilitySlots.capacity,
+          bookedCount: vendorAvailabilitySlots.bookedCount,
+          pricing: vendorAvailabilitySlots.pricing,
+        })
+        .from(vendorAvailabilitySlots)
+        .where(and(
+          eq(vendorAvailabilitySlots.serviceId, service.id),
+          gte(vendorAvailabilitySlots.date, checkInParam),
+          lte(vendorAvailabilitySlots.date, checkOutParam),
+        ));
+      const byDate = new Map(rows.map((r) => [String(r.date), r]));
+
+      const nights = allNights.map((date) => {
+        const row = byDate.get(date);
+        const capacity = row?.capacity ?? 0;
+        const bookedCount = row?.bookedCount ?? 0;
+        const nightlyRaw = (row?.pricing as any)?.nightlyRate;
+        const nightlyParsed = typeof nightlyRaw === "number" ? nightlyRaw : parseFloat(nightlyRaw);
+        return {
+          date,
+          available: Boolean(row) && bookedCount < capacity,
+          nightlyRate: Number.isFinite(nightlyParsed) ? nightlyParsed : null,
+        };
+      });
+
+      res.json({ checkIn: checkInParam, checkOut: checkOutParam, nights });
+    } catch (err) {
+      console.error("Error fetching stay availability:", err);
+      res.status(500).json({ message: "Failed to fetch stay availability" });
+    }
+  });
+
   // Public provider verification status (for service detail page badge)
 
 router.get("/api/services", async (req, res) => {
     const categoryId = req.query.categoryId as string | undefined;
     const location = req.query.location as string | undefined;
     const services = await storage.getAllActiveServices(categoryId, location);
-    res.json(services);
+    // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the same
+    // pre-booking jitter as the public detail read, applied here so the public BROWSE list never
+    // carries an exact property/room pin either. Every other product shape is returned untouched
+    // (applyPropertyLocationPrivacy is a no-op for them) — routePoints/serviceRadius rendering for
+    // non-property shapes is unaffected.
+    res.json(services.map((s) => applyPropertyLocationPrivacy(s)));
   });
 
   // Unified Discovery Search (public - with advanced filtering)

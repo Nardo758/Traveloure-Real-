@@ -1027,4 +1027,42 @@ export const MIGRATION_FILES = [
   // transition inserts zero duplicate rows. Additive, NO CHECK; DECLARED in shared/schema.ts
   // (publish-trap rule).
   "209_notification_dedupe_key.sql",
+  // 210: S7 availability model (DECISIONS.md ledger row 102, Wave 3 schema ballot ratified as
+  // recommended). Three additive child tables — service_availability_patterns (weekly repeat
+  // rule, natural-key UNIQUE service_id+day_of_week+start_time+end_time), service_date_ranges
+  // (property/room date-range authoring with nightly_price — S11's future checkout input, never
+  // charged from directly), service_availability_blackouts (applies to either shape; S7-Q3: BLOCKS
+  // future materialization only, never cancels an existing slot/booking). PLUS the ratified
+  // idempotency UNIQUE index (service_id, date, start_time) on the EXISTING vendor_availability_slots
+  // table (S7-Q2) — the materializer's ON CONFLICT DO NOTHING upsert target. Defensively verifies
+  // no pre-existing duplicates before creating that index; FAILS LOUDLY (RAISE EXCEPTION) rather
+  // than silently skipping or dropping rows if any are found. All additive, NO DB CHECK; every new
+  // object (three tables + the index) DECLARED in shared/schema.ts in the same commit
+  // (publish-trap rule). Preflight: node scripts/preflight-prod-unique-indexes.cjs before publish
+  // (docs/RELEASE.md).
+  "210_service_availability_model.sql",
+  // 211: property builder fields (S8, Gate G2 — docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). Four additive-nullable columns on provider_services: check_in_time/check_out_time
+  // ("HH:MM", the earliest/latestStartTime shape), house_rules (text, property-level only —
+  // absolute pin-style inheritance, no per-room override), amenities (jsonb string array, the
+  // deliveryLanguages NULL-vs-[] precedent). No DB CHECK, no new table — the property↔room
+  // linkage (productShape/pricingUnit/parentServiceId) already shipped in migration 153. All
+  // four ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema — no
+  // new endpoint. Registered after 210 (S7) at integration; no dependency on 210's objects.
+  "211_property_builder_fields.sql",
+  // 212: S9 (Wave 3, Gate G3) session/async fields on provider_services — join_link,
+  // response_window_hours, scope_statement (DECISIONS.md ledger row 102, ratifying
+  // docs/briefs/WAVE3_SCHEMA_PROPOSALS.md's S9 section). Additive-nullable, NO DB CHECK.
+  // LANE-SEQUENCING NOTE: registered directly after 209 in this worktree because the
+  // sibling S7/S8 lanes (migrations 210/211) run in parallel worktrees and are not visible
+  // here — the integrator resolves final numeric/registry ordering across all three when
+  // merging. This migration's own DDL does not depend on 210/211 (a different table, a
+  // different ALTER) so registration order among the three is immaterial to correctness.
+  "212_session_async_service_fields.sql",
+  // 213: S11 stay-booking provenance marker (final Wave 3 lane — DECISIONS.md ledger row 107,
+  // ratifying docs/briefs/S11_STAY_BOOKING_PROPOSAL.md in full). ONE additive-nullable column,
+  // vendor_availability_slots.materialized_from ('pattern' | 'date_range' | NULL=manual), NO DB
+  // CHECK. Extends the ALREADY-LIVE §15 stay claim mechanism (candidate (a) — the ratified
+  // PROPERTY rung) with a date-range materializer; builds no second claim machine (§18c).
+  "213_stay_booking_provenance.sql",
 ] as const;
