@@ -1,23 +1,32 @@
 /**
  * Provider Catalog — Console IA C9 (§17 17→9 collapse, the provider nine-module stamp).
  *
- * This page is the provider console's Catalog seat ("what I sell"). C9 completed the same
- * absorptions the expert catalog.tsx got in C2, reusing the shared pieces rather than
- * rebuilding them:
- *   - STOREFRONT HEADER: the /p/:handle management block (honest Live chip mirroring the
- *     storefront.routes.ts read-gate — services approved+active; 404 at zero — plus the
- *     storefront caption share tool via the shared StorefrontShareTools).
+ * This page is the provider console's Catalog seat ("what I sell") — read / manage / triage
+ * only. It carries NO outward-facing distribution chrome (S6, ruling-74-disposition-6
+ * clarification below):
  *   - AVAILABILITY: the ratified "availability editing belongs to Catalog" placement — the
  *     expert catalog's slot section transplanted onto /api/provider/services + the SAME
  *     session-ownership-scoped /api/me/services/:serviceId/slots CRUD (expert-console.routes.ts
  *     resolves ownership against provider_services.userId, so it is role-agnostic). This is
  *     the REAL slot editor; the old /provider/calendar "Edit Schedule"/"Block Dates" sheets it
  *     supersedes were non-persisting previews.
- *   - SHARE & PROMOTE absorption: per-service Share kit (Dialog + the shared
- *     OfferingShareDetail — approved+active only, the F2 gate share-images.routes.ts enforces)
- *     and the Posting Opportunities card (shared PostingOpportunitiesCard,
- *     /api/me/posting-opportunities — session-scoped, real rows only §13).
- *     /provider/share-promote now redirects here (its expert twin redirected in C2).
+ *   - LISTING HEALTH: the per-card health strip (photo/pin/description completeness) — a
+ *     triage signal, not a distribution surface.
+ *
+ * S6 (ruling-74-disposition-6 clarification, "Distribute is the ONE home for outward-facing
+ * distribution surfaces"): the storefront header, the per-service share-kit dialog and the
+ * Promote (posting-opportunities) block all MOVED to /provider/distribute — ruling 74(6)/(7)
+ * had left the storefront header double-mounted (this page AND Distribute both rendered
+ * `ProviderStorefrontHeader`) and left the Promote block's CONTAINER on Catalog even after C6
+ * pointed its actions at Distribute. This lane resolves both: `ProviderStorefrontHeader` stays
+ * `export`ed from this file (Distribute's storefront channel imports it) but is no longer
+ * mounted HERE; the per-card Share button + `OfferingShareDetail` dialog is gone (Distribute's
+ * Social kit channel now mounts the same shared component); the Promote section
+ * (`PostingOpportunitiesCard`) is gone (it now renders on Distribute). Each card keeps exactly
+ * one outward-facing pointer — "Distribute this →" — which lands on `/provider/distribute`
+ * with that listing preselected. /provider/share-promote still redirects here (unchanged); its
+ * expert twin (a separate, untouched lane) keeps the inline share surface on
+ * `/expert/catalog`.
  */
 import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
@@ -36,12 +45,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -53,13 +56,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
 import { EmptyState, StatusBadge } from "@/components/backoffice/primitives";
-import {
-  OfferingShareDetail,
-  type OfferingShareOption,
-  PostingOpportunitiesCard,
-  StorefrontShareTools,
-  ensureShortLink,
-} from "@/components/backoffice/share-tools";
+// S6: StorefrontShareTools + ensureShortLink stay imported — ProviderStorefrontHeader (below)
+// still composes them, it is just no longer MOUNTED on this page (moved to Distribute).
+// OfferingShareDetail / PostingOpportunitiesCard are gone from this file's imports — both
+// outward-facing surfaces moved to /provider/distribute (S6).
+import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
 import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
@@ -1027,7 +1028,6 @@ export default function ProviderServices() {
   // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
   // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
   const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
-  const [shareTarget, setShareTarget] = useState<Service | null>(null);
   // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate. Holding the target row (not
   // just its id) lets the dialog name the listing it is about to remove — the Workstation's
   // property/bundle deletes already work this way, and Catalog's was the odd one out.
@@ -1196,24 +1196,6 @@ export default function ProviderServices() {
   const isFirstTimeEmpty = !isLoading && totalServices === 0;
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
 
-  // C9: the per-service share kit rides the shared OfferingShareDetail; images render only
-  // for approved+active services — the same gate share-images.routes.ts enforces (a
-  // submitted/paused listing's share-image 404s, so surfacing it would be a dead preview).
-  const shareOffering: OfferingShareOption | null = shareTarget
-    ? {
-        id: shareTarget.id,
-        lane: "service",
-        laneLabel: "Service",
-        name: shareTarget.serviceName || shareTarget.name || "Untitled service",
-        city: null,
-        price:
-          shareTarget.price != null && shareTarget.price !== ""
-            ? `$${Number(shareTarget.price).toFixed(0)}`
-            : null,
-        publicHref: `/services/${shareTarget.id}`,
-      }
-    : null;
-
   return (
     /* FP-4 full-bleed exception #1: the MAP view's canvas is a three-pane authoring
        surface (selector rail · map · authoring cards) whose usable area IS the shell
@@ -1221,9 +1203,6 @@ export default function ProviderServices() {
        ordinary card content and stays inside the shared container. */
     <ProviderLayout title="Catalog" width={viewMode === "map" ? "full" : "contained"}>
       <div className="p-6 space-y-6">
-        {/* C9: the /p/:handle storefront management header (the expert catalog C2 block). */}
-        <ProviderStorefrontHeader />
-
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -1564,18 +1543,20 @@ export default function ProviderServices() {
                           <Copy className="w-4 h-4 mr-1" /> {tCommon("actions.duplicate")}
                         </Button>
                       )}
-                      {/* C9 Share & Promote absorption: share kit only for approved+active
-                          services — the F2 gate the public page + share image enforce. */}
-                      {service.approvalStatus === "approved" && isActive && (
+                      {/* S6: Catalog's ONE outward-facing pointer — storefront, share kit and
+                          promote all live on Distribute now. Shown for every listing (Distribute
+                          itself shows the honest not-live/blocked state for anything that isn't
+                          approved+active yet — no gate needed here). */}
+                      <Link href={`/provider/distribute?listing=${service.id}`}>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setShareTarget(service)}
-                          data-testid={`button-share-${service.id}`}
+                          data-testid={`button-distribute-${service.id}`}
                         >
-                          <Share2 className="w-4 h-4 mr-1" /> {tCommon("actions.share")}
+                          <Share2 className="w-4 h-4 mr-1" /> Distribute this
+                          <ArrowRight className="w-3.5 h-3.5 ml-1" />
                         </Button>
-                      )}
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1618,43 +1599,11 @@ export default function ProviderServices() {
         {/* C9: availability editing's ratified Catalog home (see header comment). */}
         <AvailabilitySection />
 
-        {/* C9 → C6 (ruling 74): Share & Promote's opportunity-scoped nudges — real rows only (§13)
-            — reworked into an ON-RAMP into the Distribute hub. The timely nudges STAY here
-            (valuable on the listing); the share/channels actions now deep-link into
-            /provider/distribute rather than opening a second share surface on Catalog (ruling 74:
-            "Promote → Distribute; no second share surface"). The storefront share tools stay on
-            Catalog (the header above), unchanged. */}
-        <section data-testid="section-catalog-promote">
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-            <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide">
-              {t("sections.promote")}
-            </h2>
-            <Link href="/provider/distribute">
-              <Button size="sm" variant="outline" data-testid="link-promote-distribute">
-                <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                Open Distribute
-                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-              </Button>
-            </Link>
-          </div>
-          <p className="text-xs text-console-mid mb-3" data-testid="text-promote-onramp">
-            Direct links, social kits and channel status all live in your Distribute hub. These
-            timely nudges point straight into it.
-          </p>
-          <PostingOpportunitiesCard promoteHref="/provider/distribute" />
-        </section>
-
-        {/* C9: the per-service share kit dialog (shared share-tools components — feed/story
-            images + caption + §16-safe actions; identical server calls to the retired
-            /provider/share-promote page). */}
-        <Dialog open={!!shareOffering} onOpenChange={(open) => !open && setShareTarget(null)}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-share-kit">
-            <DialogHeader>
-              <DialogTitle>{shareOffering?.name ?? t("shareDialog.fallbackTitle")}</DialogTitle>
-            </DialogHeader>
-            {shareOffering && <OfferingShareDetail offering={shareOffering} showImages />}
-          </DialogContent>
-        </Dialog>
+        {/* S6 (ruling-74-disposition-6 clarification): the storefront header, the per-service
+            share-kit dialog and the Promote (posting-opportunities) block all moved to
+            /provider/distribute — this page's own outward-facing pointer is now exactly the
+            per-card "Distribute this →" button above, nothing more. See the file header
+            comment for the full before/after. */}
 
         {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────────
             Catalog's Delete fired `deleteMutation.mutate(id)` straight off the click: one tap,

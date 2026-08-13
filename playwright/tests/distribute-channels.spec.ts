@@ -1,8 +1,8 @@
 /**
  * distribute-channels.spec.ts
  *
- * Catalog+Distribute ruling 74/77, lanes D2 · D3 · D4 · C6 proof — the per-listing channels that
- * slot into D1's `channels-container` seam, plus the Catalog Promote → Distribute on-ramp.
+ * Catalog+Distribute ruling 74/77 lanes D2 · D3 · D4, updated by lane S6 (ruling-74-disposition-6
+ * clarification — "Distribute is the ONE home for outward-facing distribution surfaces").
  *
  * Asserts (negatives first, per ruling 43):
  *   - D2 (Direct-link): the selected listing gets a REAL trackable link (get-link if none) + a
@@ -12,20 +12,26 @@
  *     performance" DEEP-LINK is present, and — the key negative — NO analytics panel/numbers are
  *     rendered inline on Distribute (measurement stays on Analytics/Earnings; this is a link, not
  *     a panel). Asserts the LinkAnalyticsPanel card + its stat tiles are ABSENT here.
- *   - D3 (Social-kit): the three format previews (feed/story/route) render for the approved+active
- *     listing, a caption is populated, and the "Open share studio in Catalog" deep-link is present
- *     (per-listing share authoring stays on Catalog, ruling 22b).
- *   - C6 (Promote → Distribute): on /provider/services the Promote block deep-links into the
- *     Distribute hub (no second share surface on Catalog).
+ *   - D3 (Social-kit, S6 reuse): the shared <OfferingShareDetail/> renders inline — the three
+ *     format previews (feed/story/route), a populated caption AND the Instagram-publish
+ *     affordance per format (the feature that used to live ONLY in Catalog's per-card share
+ *     dialog). NEGATIVE: no "Open share studio in Catalog" deep-link — Catalog carries no share
+ *     surface to send anyone to anymore.
+ *   - S6 (Catalog's ONE outward pointer): every listing card on /provider/services carries a
+ *     "Distribute this →" button that lands on Distribute with THAT listing preselected
+ *     (`?listing=<id>`); the old section-level Promote/share-kit/storefront surfaces are ABSENT
+ *     from Catalog.
+ *   - S6 (Promote section moved): /provider/distribute renders its own Promote section with the
+ *     real posting-opportunities card, inline share actions (no self-referential "Promote in
+ *     Distribute" link — that mode was retired with its only caller).
  *
  * Auth: seeded provider kyoto-interpreter@traveloure.test / TestPass123! (handle = kyoto-interpreter;
  * "Business Meeting Interpretation (Full Day)" is approved + active).
  *
  * Relevant source:
- *   client/src/pages/provider/distribute.tsx                (D2/D3/D4 channels + state strip)
- *   client/src/components/backoffice/share-tools.tsx         (C6 promoteHref on the opportunity cards)
- *   client/src/pages/provider/services.tsx                  (C6 Promote on-ramp section)
- *   client/src/lib/qrcode.ts                                (D2 QR generator, dependency-free)
+ *   client/src/pages/provider/distribute.tsx           (D2/D3/D4 channels + state strip + S6 Promote section)
+ *   client/src/components/backoffice/share-tools.tsx    (OfferingShareDetail, PostingOpportunitiesCard)
+ *   client/src/pages/provider/services.tsx              (S6: per-card "Distribute this →" pointer only)
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -51,7 +57,7 @@ async function serviceIdByName(page: Page, name: string): Promise<string> {
   return row!.id;
 }
 
-test.describe('/provider/distribute — Direct · Social · state strip (lanes D2/D3/D4)', () => {
+test.describe('/provider/distribute — Direct · Social · state strip · Promote (D2/D3/D4, S6)', () => {
   test('per-listing channels are honest, reuse-backed, and hold the caption', async ({ page }) => {
     await loginProvider(page);
     const liveId = await serviceIdByName(page, LIVE_SERVICE);
@@ -106,35 +112,61 @@ test.describe('/provider/distribute — Direct · Social · state strip (lanes D
     const qrSrc = await page.getByTestId('img-direct-qr').getAttribute('src');
     expect(qrSrc ?? '').toContain('data:image/svg+xml');
 
-    // ── D3: Social-kit — three format previews + caption + Catalog studio deep-link ─────────────
+    // ── D3 (S6 reuse): Social-kit — the SAME <OfferingShareDetail/> Catalog's dialog used to
+    // open, now mounted inline. Three format previews + populated caption + Instagram-publish
+    // per format (the feature Catalog's dialog carried and a hand-rolled Distribute preview
+    // would have dropped) — NO deep-link back to Catalog (there is nothing there to send anyone
+    // to anymore). ────────────────────────────────────────────────────────────────────────────
     const socialCard = page.getByTestId('card-channel-social');
     await expect(socialCard).toBeVisible();
-    await expect(page.getByTestId('tile-social-feed')).toBeVisible();
-    await expect(page.getByTestId('tile-social-story')).toBeVisible();
-    await expect(page.getByTestId('tile-social-route')).toBeVisible();
-    await expect(page.getByTestId('img-social-feed')).toBeVisible();
-    const caption = page.getByTestId('textarea-social-caption');
+    await expect(page.getByTestId(`img-share-feed-${liveId}`)).toBeVisible();
+    await expect(page.getByTestId(`img-share-story-${liveId}`)).toBeVisible();
+    // Route frame is honestly conditional (404 collapses it) — present or absent, never broken.
+    const caption = page.getByTestId('textarea-offering-caption');
     await expect(caption).toBeVisible();
     expect(((await caption.inputValue()) ?? '').length, 'social caption populated').toBeGreaterThan(0);
-    // Full share authoring stays on Catalog (ruling 22b) — this is a deep-link, not a second studio.
-    await expect(page.getByTestId('link-social-studio')).toBeVisible();
+    // Instagram-publish affordance survives the move (one of connect / publish / checking / disabled).
+    const igButtons = socialCard.locator('[data-testid*="-publish-ig"], [data-testid*="-connect-ig"]');
+    expect(await igButtons.count(), 'Instagram-publish affordance present on Distribute').toBeGreaterThan(0);
+    // NEGATIVE (S6): no deep-link back to Catalog for share authoring — Distribute is the home now.
+    await expect(page.getByTestId('link-social-studio')).toHaveCount(0);
     // Caption hold in the Social channel too.
     const socialText = ((await socialCard.textContent()) ?? '').toLowerCase();
     expect(socialText).not.toContain('skip');
     expect(socialText).not.toContain('waive');
     expect(socialText).not.toContain('service fee');
+
+    // ── S6: Promote section — moved here from Catalog, real inline actions, no self-link ───────
+    const promoteSection = page.getByTestId('section-channel-promote');
+    await expect(promoteSection).toBeVisible();
+    await expect(promoteSection.getByTestId('card-posting-opportunities')).toBeVisible();
+    // NEGATIVE: the promoteHref on-ramp mode is retired — no "Promote in Distribute" self-link.
+    await expect(page.locator('[data-testid*="-promote-distribute"]')).toHaveCount(0);
   });
 });
 
-test.describe('/provider/services — Promote → Distribute on-ramp (lane C6)', () => {
-  test('the Promote block deep-links into the Distribute hub', async ({ page }) => {
+test.describe('/provider/services — Catalog is slim; "Distribute this →" is the one pointer (S6)', () => {
+  test('every card points at Distribute with itself preselected; no other outward chrome remains', async ({ page }) => {
     await loginProvider(page);
-    await page.goto(`${BASE_URL}/provider/services`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const liveId = await serviceIdByName(page, LIVE_SERVICE);
 
-    const onramp = page.getByTestId('link-promote-distribute');
-    await onramp.scrollIntoViewIfNeeded();
-    await expect(onramp).toBeVisible({ timeout: 15_000 });
-    await onramp.click();
-    await expect(page).toHaveURL(/\/provider\/distribute/, { timeout: 10_000 });
+    await page.goto(`${BASE_URL}/provider/services`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await expect(page.getByTestId('text-services-title')).toBeVisible({ timeout: 15_000 });
+
+    // NEGATIVE (S6): the storefront header, the share-kit dialog and the Promote section are
+    // GONE from Catalog — Distribute is the only mount for all three now.
+    await expect(page.getByTestId('card-storefront-header')).toHaveCount(0);
+    await expect(page.getByTestId('dialog-share-kit')).toHaveCount(0);
+    await expect(page.getByTestId('section-catalog-promote')).toHaveCount(0);
+    await expect(page.getByTestId('card-posting-opportunities')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="button-share-"]')).toHaveCount(0);
+
+    // The per-card pointer lands on Distribute with the listing preselected.
+    const pointer = page.getByTestId(`button-distribute-${liveId}`);
+    await pointer.scrollIntoViewIfNeeded();
+    await expect(pointer).toBeVisible({ timeout: 15_000 });
+    await pointer.click();
+    await expect(page).toHaveURL(/\/provider\/distribute\?listing=/, { timeout: 10_000 });
+    await expect(page.getByTestId('select-listing')).toContainText(LIVE_SERVICE, { timeout: 15_000 });
   });
 });
