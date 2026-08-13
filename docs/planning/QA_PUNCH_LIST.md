@@ -1567,6 +1567,26 @@ byte-identical), no new guard (a status predicate and a strip list are shared mo
 unit suites, not invariants a grep can hold).
 
 
+### Fixed here (lane A1 — ledger row 93; execution-map Wave 2 S1+S3)
+
+The creation flow is **method-first and branches**; map authoring is its step 4, **"Logistics"**;
+Catalog's map is a **traveler preview**. Client-only — not one server file is in the diff, so no
+schema change, no migration, no endpoint, no `fee_bands` change, and **no new write rail** (the pin
+still goes out with the form save through `extractServiceLocation`; the stops still use the ruling-22a
+replace-list PUT).
+
+| # | Sev | Finding | What landed |
+|---|---|---|---|
+| **D2** | P3 | "Empty Meeting-pin card on the Catalog map view when no Maps key" — the card mounted the Google-keyed `LocationPointPicker`, which renders nothing without a key, leaving a titled card with no content and no explanation. | **CLOSED, structurally.** Catalog no longer authors pins at all: the card is now a read-only statement of the listing's real pin state ("Exact pin confirmed" / "Approximate area" / "No location yet") plus a link into the flow's Logistics step. There is no keyed widget on that surface to come up empty. |
+| — | — | *(New, from the restructure — recorded so the next lane does not re-file it.)* Two ratified steps have **no columns yet**: hybrid's **Online half** (where the call happens, its length, the provider's own join link) and the **async** branch's reply window / scope statement / engagement window. | **HONEST PANEL, not a stub control.** Both steps exist in the shape the mock ratified and say plainly that those fields are ratified-but-not-built (Wave 3 / lane **S9**, Gate G3), rather than showing controls that write nowhere (§13). This is the same disposition as B6 below, now visible in the flow instead of absent from it. |
+
+**Not touched in this lane:** the derived checklist + honest submit (**S2**), the pricing drawer
+(**S4**) and the one-door launcher (**S5**, running in parallel) — those are their own lanes; the
+call/video **Session details** step carries the existing fields **as-is** (the ratified additions are
+Wave 3 / **S9**). No field was deleted and none became unreachable: every control the form had before
+is still authored, on exactly one step per branch — which is what `service-form-steps.test.ts`'s N1
+asserts for all seven methods.
+
 ### Open — the rest of the exercise's findings
 
 | # | Sev | Finding (abridged) | Status |
@@ -1587,7 +1607,7 @@ unit suites, not invariants a grep can hold).
 | **C10** | P2 | `gallery_images` is stored and never rendered — the detail page draws exactly one `<img>`. | **OPEN** (read-side; pairs with B9's photo work). |
 | **C11** | P2 | The photography offering defaults to "Package tiers" with no base-price field until a dropdown is discovered. | **OPEN.** |
 | **C12** | P2 | Bundle components render as plain unlinked text — no link, price, method or image. | **OPEN** (read-side; the data is already linked via `bundle_components`). |
-| **D1–D5** | P3 | `window.prompt()` admin override; empty Meeting-pin card on the Catalog map view when no Maps key; `/provider-status` renders in the traveler shell; Distribute never displays the URL itself; free-text Duration stored in `delivery_timeframe` while `duration` stays NULL. | **OPEN — polish.** D5 is a documentation/consolidation item, not a bug. |
+| **D1, D3–D5** | P3 | `window.prompt()` admin override; `/provider-status` renders in the traveler shell; Distribute never displays the URL itself; free-text Duration stored in `delivery_timeframe` while `duration` stays NULL. | **OPEN — polish.** D5 is a documentation/consolidation item, not a bug. **D2 (empty Meeting-pin card on the Catalog map view) is CLOSED by lane A1** — see "Fixed here (lane A1 — ledger row 93)" above. |
 
 ### Write-vs-read gap list (exercise §3) — status
 

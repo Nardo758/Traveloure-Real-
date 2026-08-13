@@ -22,6 +22,7 @@ import {
   missingRequiredForFinal,
   type ServiceFormRequiredInput,
 } from "../service-form-required";
+import { flowForMethod, stepForSection } from "../service-form-steps";
 
 /** A complete, VALID provider listing — every test starts from "nothing is missing". */
 function completeProvider(over: Partial<ServiceFormRequiredInput> = {}): ServiceFormRequiredInput {
@@ -108,8 +109,12 @@ test("N5: a boolean category field marked required is never 'missing' — false 
 test("P1: PRICE now binds for a provider (mirrors the server's PRICE_REQUIRED gate)", () => {
   assert.deepEqual(labels(completeProvider({ basePrice: 0 })), ["Price"]);
   assert.deepEqual(labels(completeProvider({ basePrice: "" })), ["Price"]);
-  // The step is named so the "still needed" link can jump there.
-  assert.equal(missingRequiredForFinal(completeProvider({ basePrice: 0 }))[0].step, 1);
+  // The step is named so the "still needed" link can jump there. WAVE 2 / A1: the number is
+  // DERIVED from this listing's branch, so the assertion is on the section's identity (Basics is
+  // step 1 in every branch, which is the fast path's whole point).
+  const priceMiss = missingRequiredForFinal(completeProvider({ basePrice: 0 }))[0];
+  assert.equal(priceMiss.stepKey, "basics");
+  assert.equal(priceMiss.step, 1);
 });
 
 test("P2: a package-tiers listing is judged on its LOWEST POSITIVE TIER, as the server is", () => {
@@ -132,7 +137,10 @@ test("P3: a REQUIRED category field binds, by its own label", () => {
     categoryAttributes: { vehicle_type: "", seats: 6 },
   });
   assert.deepEqual(labels(transport), ["Vehicle Type"]);
-  assert.equal(missingRequiredForFinal(transport)[0].step, 2);
+  // A1: category details are branch-independent content, so they live on the last step.
+  const catMiss = missingRequiredForFinal(transport)[0];
+  assert.equal(catMiss.stepKey, "review");
+  assert.equal(catMiss.step, flowForMethod("in-person").length);
   // A multiselect with nothing picked is unanswered; one pick answers it.
   const multi = completeProvider({
     categoryFields: [{ fieldKey: "langs", label: "Languages", type: "multiselect", required: true }],
@@ -143,8 +151,34 @@ test("P3: a REQUIRED category field binds, by its own label", () => {
 
 test("P4: an ENFORCED block that wore no asterisk now names itself (attestations)", () => {
   const blocked = completeProvider({ attestationGateBlocked: true });
-  assert.deepEqual(labels(blocked), ["The confirmations on Terms & requirements"]);
-  assert.equal(missingRequiredForFinal(blocked)[0].step, 4);
+  assert.deepEqual(labels(blocked), ["The confirmations on Review & submit"]);
+  const miss = missingRequiredForFinal(blocked)[0];
+  assert.equal(miss.stepKey, "review");
+  // In-person is a 5-step flow, so "step 4" became step 5 — which is exactly why the module
+  // stopped hard-coding the number (Wave 2 / A1).
+  assert.equal(miss.step, 5);
+  // …and on a 3-step branch the SAME requirement resolves to step 3, not to a stale 4.
+  const remote = missingRequiredForFinal(
+    completeProvider({ attestationGateBlocked: true, deliveryMethod: "pdf", needsMeetingPoint: false, meetingPoint: "", deliverableUploaded: true }),
+  ).find((m) => m.stepKey === "review")!;
+  assert.equal(remote.step, 3);
+});
+
+test("P4b: A1 — the meeting point is routed to the LOGISTICS step, which only exists where it applies", () => {
+  // The spatial questions moved onto the flow's 4th step, named Logistics (ruling of Aug 12 2026).
+  const missingPoint = missingRequiredForFinal(completeProvider({ meetingPoint: "" }))[0];
+  assert.equal(missingPoint.label, "Meeting point");
+  assert.equal(missingPoint.stepKey, "logistics");
+  assert.equal(missingPoint.step, 4);
+  // A remote listing is never asked for one at all, so nothing points at a step it does not have
+  // (`needsMeetingPoint` is false there — the §13 negative N4 already covers the absence).
+  assert.equal(stepForSection("place", "pdf"), "artifact");
+  // The pdf deliverable rides its own branch step, "What they get".
+  const missingFile = missingRequiredForFinal(
+    completeProvider({ deliveryMethod: "pdf", needsMeetingPoint: false, meetingPoint: "", serviceFile: "" }),
+  )[0];
+  assert.equal(missingFile.stepKey, "artifact");
+  assert.equal(missingFile.step, 2);
 });
 
 // ── The pre-FP-2 checks are UNCHANGED (no regression on what already bound) ───────────────────
@@ -154,7 +188,7 @@ test("P5: name / category / offering / meeting point / deliverable still bind ex
   assert.deepEqual(labels(completeProvider({ categoryId: "" })), ["Category"]);
   assert.deepEqual(
     labels(completeProvider({ categoryId: "", offeringCategoryUnresolved: true })),
-    ["Category — this offering resolves to no category (see Step 1)"],
+    ["Category — this offering resolves to no category (see Basics)"],
   );
   assert.deepEqual(labels(completeProvider({ serviceOfferingTypeId: "" })), ["An offering from the catalog"]);
   assert.deepEqual(labels(completeProvider({ meetingPoint: "   " })), ["Meeting point"]);
@@ -185,8 +219,13 @@ test("P6: every entry carries a step in range, so the jump link can never point 
   });
   const missing = missingRequiredForFinal(everythingMissing);
   assert.ok(missing.length >= 7, `expected every gate to report, got ${missing.length}`);
+  // A1: "in range" is now branch-relative — the pdf flow is 3 steps long, so a link at step 4
+  // would point nowhere. The bound is the flow's own length, taken from the same module the
+  // renderer uses.
+  const steps = flowForMethod(everythingMissing.deliveryMethod).length;
   for (const m of missing) {
-    assert.ok(m.step >= 1 && m.step <= 4, `${m.label} points at step ${m.step}`);
+    assert.ok(m.step >= 1 && m.step <= steps, `${m.label} points at step ${m.step} of ${steps}`);
     assert.ok(m.label.trim().length > 0);
+    assert.equal(m.stepKey, stepForSection(m.section, everythingMissing.deliveryMethod));
   }
 });
