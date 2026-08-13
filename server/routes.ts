@@ -13,7 +13,13 @@ import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
 import { storage, type BookingStatusNotification } from "./storage";
-import { materializeServiceAvailability } from "./services/availability-materializer.service";
+import {
+  materializeServiceAvailability,
+  materializeDateRangeAvailability,
+  repriceDateRangeAvailability,
+  DATE_RANGE_MAX_NIGHTS,
+  nightDatesInclusive,
+} from "./services/availability-materializer.service";
 import { api } from "@shared/routes";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
@@ -152,7 +158,7 @@ import expertConsoleRoutes from "./routes/expert-console.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
-import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges } from "./routes/payments.routes";
+import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -2702,6 +2708,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (r.endDate < r.startDate) {
           return res.status(400).json({ message: "Each range's endDate must be on or after its startDate" });
         }
+        // S11-Q1 (DECISIONS.md ledger row 107): a range is bounded by its own dates — no rolling
+        // window — but a mistaken/malicious multi-decade range is REJECTED here (400), never
+        // silently truncated (§13). Inclusive both ends, matching nightDatesInclusive below.
+        if (nightDatesInclusive(r.startDate, r.endDate).length > DATE_RANGE_MAX_NIGHTS) {
+          return res.status(400).json({
+            message: `Each date range may span at most ${DATE_RANGE_MAX_NIGHTS} nights`,
+          });
+        }
       }
       const ranges = parsed.data.ranges.map((r) => ({
         startDate: r.startDate,
@@ -2710,7 +2724,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         capacity: r.capacity ?? 1,
       }));
       const saved = await storage.replaceServiceDateRanges(service.id, ranges);
-      res.json({ dateRanges: saved });
+      // S11 (ledger row 107): materialize each range's nights into claimable
+      // vendor_availability_slots rows (mirrors the pattern/blackout triggers above), then
+      // re-price any already-materialized, STILL-UNBOOKED night in the (possibly edited) range —
+      // a booked/claimed night is never touched (§18b posture).
+      const materialized = await materializeDateRangeAvailability(service.id);
+      const repriced = await repriceDateRangeAvailability(service.id);
+      res.json({ dateRanges: saved, materialized, repriced });
     } catch (err: any) {
       const pgCode = err?.code ?? err?.cause?.code;
       if (pgCode === "23505") {
@@ -2770,8 +2790,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // materialization only. This re-run never touches an already-materialized slot (ADD-ONLY,
       // ON CONFLICT DO NOTHING) — it only prevents newly-blacked-out dates from being generated
       // going forward, while any date that already has a row (booked or not) survives untouched.
+      // Blackouts apply to EITHER shape (scheduled-slot services or property date-ranges), so
+      // both materializers run — each is a no-op for a service with nothing of that shape to
+      // expand (a scheduled service has no date-ranges; a property has no weekly patterns).
       const materialized = await materializeServiceAvailability(service.id);
-      res.json({ blackouts: saved, materialized });
+      const materializedDateRanges = await materializeDateRangeAvailability(service.id);
+      res.json({ blackouts: saved, materialized, materializedDateRanges });
     } catch (err: any) {
       const pgCode = err?.code ?? err?.cause?.code;
       if (pgCode === "23505") {
@@ -7334,12 +7358,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // cart total already includes it and the traveler is never surprised at Pay (§13/§14, F1
     // disclosure). Out-of-range pickups show 0 here; the hard refusal is the checkout's 400.
     const cartSurcharges = await resolveCartSurcharges(items);
+    // S11 (§14, ledger row 107): the SAME per-night rate resolver /api/checkout and
+    // /api/cart/fee-preview call — a room's live cart total cannot diverge from the charge.
+    const cartStayRates = await resolveStayNightlyRates(items);
     for (const item of items) {
-      // §17 property rooms: nights × nightly rate, never quantity × price (a room's cart
-      // "quantity" is meaningless — the client pins it to 1). Reuses the exact same helper
-      // /api/checkout and /api/cart/fee-preview already use (payments.routes.ts) so this
-      // quote can never silently diverge from the charged total again.
-      const price = resolveItemBaseAmount(item);
+      // §17/§S11 property rooms: nights × each night's own materialized rate (never quantity ×
+      // price — a room's cart "quantity" is meaningless, the client pins it to 1). Reuses the
+      // exact same helper /api/checkout and /api/cart/fee-preview already use (payments.routes.ts)
+      // so this quote can never silently diverge from the charged total again.
+      const price = resolveItemBaseAmount(item, cartStayRates);
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
