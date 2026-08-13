@@ -11,6 +11,9 @@ import {
   localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
   type ServiceRoutePoint,
   serviceSurchargeTiers, type ServiceSurchargeTier,
+  serviceAvailabilityPatterns, type ServiceAvailabilityPattern,
+  serviceDateRanges, type ServiceDateRange,
+  serviceAvailabilityBlackouts, type ServiceAvailabilityBlackout,
   serviceAttestations, type ServiceAttestation,
   serviceTranslations, type ServiceTranslation,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
@@ -231,6 +234,14 @@ export interface IStorage {
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
   getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
   replaceServiceSurchargeTiers(serviceId: string, tiers: Array<{ radiusKm: number; fee: number }>): Promise<ServiceSurchargeTier[]>;
+  // S7 availability model (DECISIONS.md ledger 102) — replace-list write rails, patterns.md
+  // route-points precedent (delete+insert under a parent-row lock).
+  getServiceAvailabilityPatterns(serviceId: string): Promise<ServiceAvailabilityPattern[]>;
+  replaceServiceAvailabilityPatterns(serviceId: string, patterns: Array<{ dayOfWeek: number; startTime: string; endTime: string; capacity: number }>): Promise<ServiceAvailabilityPattern[]>;
+  getServiceDateRanges(serviceId: string): Promise<ServiceDateRange[]>;
+  replaceServiceDateRanges(serviceId: string, ranges: Array<{ startDate: string; endDate: string; nightlyPrice: number | null; capacity: number }>): Promise<ServiceDateRange[]>;
+  getServiceAvailabilityBlackouts(serviceId: string): Promise<ServiceAvailabilityBlackout[]>;
+  replaceServiceAvailabilityBlackouts(serviceId: string, blackouts: Array<{ startDate: string; endDate: string; reason: string | null }>): Promise<ServiceAvailabilityBlackout[]>;
   getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
   affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
 
@@ -1363,6 +1374,90 @@ export class DatabaseStorage implements IStorage {
           position: i + 1,
           radiusKm: String(t.radiusKm),
           fee: String(t.fee),
+        })),
+      ).returning();
+    });
+  }
+
+  // ── S7 availability model (DECISIONS.md ledger 102, migration 210) ─────────────────────────
+  // Three replace-list tables on the route-points/surcharge-tiers pattern: atomic delete+insert
+  // under a parent-row lock so a failed save can't half-replace and two parallel saves can't
+  // collide. UNLIKE route-points/surcharge-tiers these are natural-key UNIQUE (no `position`
+  // column — a weekly grid and a set of date ranges/blackouts have no inherent order), so no
+  // position is derived here; the caller-supplied array order becomes insertion order only.
+
+  async getServiceAvailabilityPatterns(serviceId: string): Promise<ServiceAvailabilityPattern[]> {
+    return await db.select().from(serviceAvailabilityPatterns)
+      .where(eq(serviceAvailabilityPatterns.serviceId, serviceId))
+      .orderBy(serviceAvailabilityPatterns.dayOfWeek, serviceAvailabilityPatterns.startTime);
+  }
+
+  async replaceServiceAvailabilityPatterns(
+    serviceId: string,
+    patterns: Array<{ dayOfWeek: number; startTime: string; endTime: string; capacity: number }>,
+  ): Promise<ServiceAvailabilityPattern[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceAvailabilityPatterns).where(eq(serviceAvailabilityPatterns.serviceId, serviceId));
+      if (patterns.length === 0) return [];
+      return await tx.insert(serviceAvailabilityPatterns).values(
+        patterns.map((p) => ({
+          serviceId,
+          dayOfWeek: p.dayOfWeek,
+          startTime: p.startTime,
+          endTime: p.endTime,
+          capacity: p.capacity,
+        })),
+      ).returning();
+    });
+  }
+
+  async getServiceDateRanges(serviceId: string): Promise<ServiceDateRange[]> {
+    return await db.select().from(serviceDateRanges)
+      .where(eq(serviceDateRanges.serviceId, serviceId))
+      .orderBy(serviceDateRanges.startDate);
+  }
+
+  async replaceServiceDateRanges(
+    serviceId: string,
+    ranges: Array<{ startDate: string; endDate: string; nightlyPrice: number | null; capacity: number }>,
+  ): Promise<ServiceDateRange[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceDateRanges).where(eq(serviceDateRanges.serviceId, serviceId));
+      if (ranges.length === 0) return [];
+      return await tx.insert(serviceDateRanges).values(
+        ranges.map((r) => ({
+          serviceId,
+          startDate: r.startDate,
+          endDate: r.endDate,
+          nightlyPrice: r.nightlyPrice === null ? null : String(r.nightlyPrice),
+          capacity: r.capacity,
+        })),
+      ).returning();
+    });
+  }
+
+  async getServiceAvailabilityBlackouts(serviceId: string): Promise<ServiceAvailabilityBlackout[]> {
+    return await db.select().from(serviceAvailabilityBlackouts)
+      .where(eq(serviceAvailabilityBlackouts.serviceId, serviceId))
+      .orderBy(serviceAvailabilityBlackouts.startDate);
+  }
+
+  async replaceServiceAvailabilityBlackouts(
+    serviceId: string,
+    blackouts: Array<{ startDate: string; endDate: string; reason: string | null }>,
+  ): Promise<ServiceAvailabilityBlackout[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceAvailabilityBlackouts).where(eq(serviceAvailabilityBlackouts.serviceId, serviceId));
+      if (blackouts.length === 0) return [];
+      return await tx.insert(serviceAvailabilityBlackouts).values(
+        blackouts.map((b) => ({
+          serviceId,
+          startDate: b.startDate,
+          endDate: b.endDate,
+          reason: b.reason,
         })),
       ).returning();
     });
