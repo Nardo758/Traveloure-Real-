@@ -2318,27 +2318,47 @@ export const vendorAvailabilitySlots = pgTable("vendor_availability_slots", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
   providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  
+
   date: date("date").notNull(),
   startTime: varchar("start_time", { length: 10 }), // "09:00", "14:00"
   endTime: varchar("end_time", { length: 10 }),
-  
+
   capacity: integer("capacity").default(1),
   bookedCount: integer("booked_count").default(0),
   status: varchar("status", { length: 20 }).default("available"),
-  
+
   pricing: jsonb("pricing").default({}),
   discounts: jsonb("discounts").default([]),
-  
+
   minimumNotice: varchar("minimum_notice", { length: 50 }).default("24 hours"),
   cancellationPolicy: varchar("cancellation_policy", { length: 100 }),
   specialRequirements: jsonb("special_requirements").default([]),
-  
+
   confirmationMethod: varchar("confirmation_method", { length: 20 }).default("instant"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // S7 (DECISIONS.md ledger 102, migration 210, S7-Q2): the availability materializer's
+  // idempotency target — `db.insert(vendorAvailabilitySlots).values(rows).onConflictDoNothing({
+  // target: [...] })` against this index is what lets re-materializing a pattern/blackout change
+  // never duplicate a slot and never touch an existing row's capacity/booked_count/status (manual
+  // edits and live bookings survive untouched). DELIBERATELY NOT PARTIAL (no WHERE clause), even
+  // though start_time is nullable: a plain composite unique index already tolerates multiple NULL
+  // start_times per (service_id, date) under standard SQL NULL semantics (NULL is never considered
+  // equal to NULL), so no WHERE predicate is needed for correctness — and Drizzle's
+  // `onConflictDoNothing({ target: [...] })` emits `ON CONFLICT (cols) DO NOTHING` with no WHERE,
+  // which Postgres can only use to infer a MATCHING arbiter index; pointing it at a partial index
+  // (tried during development) fails with "there is no unique or exclusion constraint matching the
+  // ON CONFLICT specification" because the inference clause's predicate must match the index's
+  // predicate verbatim. Declared here per the publish-trap rule (migration-155/sb_idempotency_key_idx
+  // lesson: an index the code depends on, absent from schema.ts, is dropped by the Replit
+  // deploy-push on the next publish once the migration is already stamped). Migration 210
+  // defensively verifies no pre-existing duplicates and FAILS LOUDLY if any are found — see its
+  // header and scripts/preflight-prod-unique-indexes.cjs for the required pre-publish check.
+  uniqueIndex("vendor_availability_slots_service_date_start_unique")
+    .on(table.serviceId, table.date, table.startTime),
+]);
 
 // === COORDINATION HUB: Itinerary Coordination State ===
 
@@ -8255,6 +8275,76 @@ export const serviceSurchargeTiers = pgTable("service_surcharge_tiers", {
   index("service_surcharge_tiers_service_idx").on(table.serviceId),
 ]);
 export type ServiceSurchargeTier = typeof serviceSurchargeTiers.$inferSelect;
+
+// S7 availability model — DECISIONS.md ledger row 102 (Wave 3 schema ballot, ratified as
+// recommended, decision-maker Aug 13, 2026; docs/briefs/WAVE3_SCHEMA_PROPOSALS.md; migration 210).
+// Three additive child tables. Patterns/blackouts are AUTHORING data, not the §15 claim surface —
+// server/services/availability-materializer.service.ts expands a pattern minus blackouts into
+// ordinary vendorAvailabilitySlots rows for a rolling window, so storage.bookSlot/releaseSlot/the
+// sweep need ZERO changes. service_date_ranges is property/room authoring only this wave; S11 owns
+// the range-claim machinery (checkout, §15 claim/promote/void).
+//
+// Weekly repeat rule ("every Tuesday 09:00-11:00, capacity 4"). Natural-key UNIQUE (service_id,
+// day_of_week, start_time, end_time) — a weekly grid has no sequence, only distinct slots, so this
+// deliberately does NOT follow the position-ordered service_route_points/service_surcharge_tiers
+// shape (the ballot's own note). day_of_week 0=Sun..6=Sat, app-enforced range, NO DB CHECK (the
+// migration-181/195 posture). Owner-gated replace-list write: PUT
+// /api/provider/services/:id/availability-patterns, hand-written ALLOWLIST body (§19 — no
+// createInsertSchema).
+export const serviceAvailabilityPatterns = pgTable("service_availability_patterns", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week").notNull(), // 0=Sun..6=Sat, app-enforced, NO DB CHECK
+  startTime: varchar("start_time", { length: 5 }).notNull(), // "HH:MM", matches earliestStartTime's shape
+  endTime: varchar("end_time", { length: 5 }).notNull(),
+  capacity: integer("capacity").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_availability_patterns_unique").on(table.serviceId, table.dayOfWeek, table.startTime, table.endTime),
+  index("service_availability_patterns_service_idx").on(table.serviceId),
+]);
+export type ServiceAvailabilityPattern = typeof serviceAvailabilityPatterns.$inferSelect;
+
+// Property/room date-range availability, per-night price (S11's future checkout input). S7-Q4
+// (ratified): nightlyPrice is provider-authored config like `price` — NULL = inherit
+// provider_services.price — but §14 stays in force: S11 must server-derive the stay charge from
+// THIS row, never req.body. capacity = units (rooms) available across the range. Owner-gated
+// replace-list write: PUT /api/provider/services/:id/date-ranges — the route validates
+// productShape is 'property'/'property_room' server-side before accepting a write. Natural-key
+// UNIQUE (service_id, start_date, end_date), NO DB CHECK.
+export const serviceDateRanges = pgTable("service_date_ranges", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  nightlyPrice: decimal("nightly_price", { precision: 10, scale: 2 }), // NULL = inherit provider_services.price
+  capacity: integer("capacity").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_date_ranges_unique").on(table.serviceId, table.startDate, table.endDate),
+  index("service_date_ranges_service_idx").on(table.serviceId),
+]);
+export type ServiceDateRange = typeof serviceDateRanges.$inferSelect;
+
+// Blackouts apply to EITHER shape (scheduled-slot services or property date-ranges). S7-Q3
+// (ratified): a blackout blocks FUTURE materialization/manual creation only — it NEVER cancels an
+// existing slot or booking (auto-cancelling a paid booking is a §15 violation waiting to happen).
+// Owner-gated replace-list write: PUT /api/provider/services/:id/blackouts. Natural-key UNIQUE
+// (service_id, start_date, end_date), NO DB CHECK.
+export const serviceAvailabilityBlackouts = pgTable("service_availability_blackouts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  reason: varchar("reason", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_availability_blackouts_unique").on(table.serviceId, table.startDate, table.endDate),
+  index("service_availability_blackouts_service_idx").on(table.serviceId),
+]);
+export type ServiceAvailabilityBlackout = typeof serviceAvailabilityBlackouts.$inferSelect;
 
 // D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
 // (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE
