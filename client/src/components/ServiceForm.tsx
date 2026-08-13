@@ -76,6 +76,10 @@ import {
 // A1 / S3: the create flow's step 4 — the map authoring component (pin canvas + the ruling-22
 // replace-list route stops). Catalog's map is a traveler preview from this lane on.
 import { ServiceMapAuthoring } from "@/components/provider/service-map-authoring";
+// WAVE 2 / S4 (ledger row 99): the post-creation "Pricing & fees" drawer — surcharge mode +
+// amounts, deposit config and cancellation policy moved here from the wizard steps above.
+import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
+import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
 
 interface ServiceCategory {
   id: string;
@@ -301,23 +305,10 @@ const intOrNull = (v: string): number | null => {
 
 // X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
 // shared/schema.ts cancellationPolicyTypeEnum. App-enforced (no DB CHECK, migration 144).
-//
-// SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-1): these
-// labels previously described the windows VAGUELY ("well in advance", "shorter notice",
-// "limited refund window") while the traveler-facing page (`service-detail.tsx`'s
-// CANCELLATION_POLICY_TYPE_LABELS) and the SERVER'S ACTUAL ENFORCEMENT
-// (`server/services/cancellation-policy.service.ts` refundPercentFor) both use concrete
-// hour thresholds. The seller therefore agreed to a refund schedule whose real terms were
-// never shown at the point of choosing. The strings below are now the same concrete windows
-// the buyer is shown and the server enforces — one vocabulary across all three surfaces.
-// Keep these in step with `refundPercentFor` and `shared/schema.ts`'s
-// CANCELLATION_POLICY_TYPE_LABELS if any of them changes.
-const CANCELLATION_POLICY_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "flexible", label: "Flexible — full refund if cancelled at least 24 hours before the start" },
-  { value: "moderate", label: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before" },
-  { value: "strict", label: "Strict — 50% refund if cancelled at least 7 days before the start" },
-  { value: "non_refundable", label: "Non-refundable — no refund once booked" },
-];
+// WAVE 2 / S4 (ledger row 99): the control this vocabulary fed moved to the post-creation
+// "Pricing & fees" drawer — `CANCELLATION_POLICY_TYPE_OPTIONS` now lives (as the sole copy) in
+// `client/src/lib/pricing-fees.ts`, imported by `pricing-fees-drawer.tsx`. This wizard no longer
+// renders the control, so it no longer needs the list either.
 
 function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
   return {
@@ -662,6 +653,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [viewListingHome, setViewListingHome] = useState<boolean>(
     () => isEditMode && role === "provider" && !new URLSearchParams(window.location.search).get("step"),
   );
+
+  // WAVE 2 / S4 (ledger row 99): the "Pricing & fees" drawer, mounted beside the listing home's
+  // checklist — never inside it (none of the fields it edits is required-for-final; see
+  // pricing-fees.ts's module doc). Local open/close state only; the drawer owns its own fetch/save.
+  const [pricingDrawerOpen, setPricingDrawerOpen] = useState(false);
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -1931,6 +1927,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </CardContent>
         </Card>
 
+        {/* ── WAVE 2 / S4 (ledger row 99) — "Pricing & fees", BESIDE the checklist, never inside
+            it: none of the drawer's fields is required-for-final (verified in pricing-fees.ts's
+            module doc), so this card never gates Submit and never appears as a checklist row. */}
+        <Card data-testid="card-pricing-fees">
+          <CardContent className="p-5 flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Pricing &amp; fees</p>
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-pricing-fees-summary">
+                {pricingFeesSummary(
+                  pricingFeesFromService(existingService, (surchargeTierState as any)?.surchargeTiers),
+                  { surchargeApplicable: showLogisticsCapture && pickupProvisionChosen },
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Tune later — not required to go live.</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setPricingDrawerOpen(true)}
+              data-testid="button-open-pricing-fees"
+            >
+              Manage
+            </Button>
+          </CardContent>
+        </Card>
+
         <Card className="p-5 space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-[220px]">
@@ -1987,6 +2008,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </p>
           )}
         </Card>
+
+        <PricingFeesDrawer
+          open={pricingDrawerOpen}
+          onOpenChange={setPricingDrawerOpen}
+          serviceId={id!}
+          surchargeApplicable={showLogisticsCapture && pickupProvisionChosen}
+          basePriceLabel={price != null ? `$${price}${formData.priceType !== "Fixed" ? ` (${formData.priceType})` : ""}` : "No price set yet"}
+          service={existingService}
+          surchargeTiers={(surchargeTierState as any)?.surchargeTiers}
+        />
       </div>
     );
   }
@@ -3658,167 +3689,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             )}
 
-            {/* ── B1 Travel surcharge (ruling 81) — PROVIDER-CHOSEN MODE. Only for a listing that
-                actually collects travelers in person (a pickup provision). The provider picks how
-                (if at all) distance changes the price; the CHARGE is derived server-side at checkout
-                from the traveler's confirmed pickup, never here. NEVER-CLOBBER: switching the mode
-                keeps every other mode's numbers (they are separate fields on the same form). */}
+            {/* ── WAVE 2 / S4 (ledger row 99): the travel-surcharge MODE + AMOUNTS moved off this
+                step into the post-creation "Pricing & fees" drawer (listing home) — moved, not
+                duplicated. `formData.surchargeMode`/`surchargeFlatAmount`/`surchargePerKm`/
+                `surchargeMaxKm`/`surchargeTiers` stay in this form's state and payload purely for
+                never-clobber round-trip fidelity (hydrated, sent unedited on every save); no
+                control here writes them any more. `serviceRadius` above is untouched — it is
+                coverage/location geometry, not a surcharge amount, and stays authored here. */}
             {pickupProvisionChosen && (
-              <div className="rounded-md border p-3 space-y-3" data-testid="block-travel-surcharge">
-                <Label className="flex items-center gap-2">
-                  <Radius className="w-4 h-4" />
-                  Travel surcharge — charge more for a distant pickup?
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Optional. When on, a traveler who books with a pickup location outside your area
-                  pays a travel fee, shown as its own line at checkout. We only ever charge it from
-                  the real pickup a traveler confirms — never a guess.
-                </p>
-                <ToggleGroup
-                  type="single"
-                  value={formData.surchargeMode || "none"}
-                  onValueChange={(v) => set("surchargeMode", (v || "none") as any)}
-                  variant="outline"
-                  className="justify-start gap-2 flex-wrap"
-                  data-testid="segmented-surcharge-mode"
-                >
-                  <ToggleGroupItem value="none" data-testid="toggle-surcharge-none"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">None</ToggleGroupItem>
-                  <ToggleGroupItem value="flat" data-testid="toggle-surcharge-flat"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Flat fee</ToggleGroupItem>
-                  <ToggleGroupItem value="zones" data-testid="toggle-surcharge-zones"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Zones</ToggleGroupItem>
-                  <ToggleGroupItem value="per_km" data-testid="toggle-surcharge-per-km"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">Per km</ToggleGroupItem>
-                </ToggleGroup>
-
-                {formData.surchargeMode === "flat" && (
-                  <div data-testid="block-surcharge-flat">
-                    <Label htmlFor="surchargeFlatAmount">Flat travel fee ($)</Label>
-                    <Input
-                      id="surchargeFlatAmount"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={formData.surchargeFlatAmount}
-                      onChange={(e) => set("surchargeFlatAmount", e.target.value)}
-                      placeholder="e.g. 20.00"
-                      className="mt-1"
-                      data-testid="input-surcharge-flat-amount"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Charged once when the pickup is outside your coverage radius
-                      {savedRadiusKm > 0 ? ` (${savedRadiusKm} km)` : ` (set a Service radius above)`}.
-                      Inside it, no fee.
-                    </p>
-                  </div>
-                )}
-
-                {formData.surchargeMode === "per_km" && (
-                  <div data-testid="block-surcharge-per-km">
-                    <Label htmlFor="surchargePerKm">Rate per km ($)</Label>
-                    <Input
-                      id="surchargePerKm"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={formData.surchargePerKm}
-                      onChange={(e) => set("surchargePerKm", e.target.value)}
-                      placeholder="e.g. 1.50"
-                      className="mt-1"
-                      data-testid="input-surcharge-per-km"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Multiplied by the straight-line distance from your pin to the pickup —
-                      as-the-crow-flies, not driving distance.
-                    </p>
-                  </div>
-                )}
-
-                {formData.surchargeMode === "zones" && (
-                  <div className="space-y-2" data-testid="block-surcharge-zones">
-                    <p className="text-xs text-muted-foreground">
-                      Draw rings from smallest to largest. A pickup pays the fee of the first ring it
-                      falls inside. A pickup beyond the largest ring can't book.
-                    </p>
-                    {formData.surchargeTiers.map((tier, i) => (
-                      <div key={i} className="flex items-end gap-2" data-testid={`row-surcharge-tier-${i}`}>
-                        <div className="flex-1">
-                          <Label htmlFor={`tier-radius-${i}`}>Ring {i + 1} radius (km)</Label>
-                          <Input
-                            id={`tier-radius-${i}`}
-                            type="number"
-                            min={0}
-                            step="0.1"
-                            value={tier.radiusKm}
-                            onChange={(e) => {
-                              const next = [...formData.surchargeTiers];
-                              next[i] = { ...next[i], radiusKm: e.target.value };
-                              set("surchargeTiers", next);
-                            }}
-                            className="mt-1"
-                            data-testid={`input-tier-radius-${i}`}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <Label htmlFor={`tier-fee-${i}`}>Fee ($)</Label>
-                          <Input
-                            id={`tier-fee-${i}`}
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={tier.fee}
-                            onChange={(e) => {
-                              const next = [...formData.surchargeTiers];
-                              next[i] = { ...next[i], fee: e.target.value };
-                              set("surchargeTiers", next);
-                            }}
-                            className="mt-1"
-                            data-testid={`input-tier-fee-${i}`}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => set("surchargeTiers", formData.surchargeTiers.filter((_, j) => j !== i))}
-                          data-testid={`button-remove-tier-${i}`}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => set("surchargeTiers", [...formData.surchargeTiers, { radiusKm: "", fee: "" }])}
-                      data-testid="button-add-surcharge-tier"
-                    >
-                      Add a ring
-                    </Button>
-                  </div>
-                )}
-
-                {formData.surchargeMode !== "none" && (
-                  <div data-testid="block-surcharge-max-km">
-                    <Label htmlFor="surchargeMaxKm">Won't travel beyond (km) — optional</Label>
-                    <Input
-                      id="surchargeMaxKm"
-                      type="number"
-                      min={0}
-                      value={formData.surchargeMaxKm}
-                      onChange={(e) => set("surchargeMaxKm", e.target.value)}
-                      placeholder="No limit"
-                      className="mt-1"
-                      data-testid="input-surcharge-max-km"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      A pickup farther than this can't book at all. Leave blank for no limit.
-                    </p>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-surcharge-moved">
+                Travel surcharges are set in <b>Pricing &amp; fees</b>, on this listing's home page —
+                available once you've saved a draft. Not required to go live.
+              </p>
             )}
             </div>
             )}
@@ -4035,116 +3917,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             />
             <p className="text-xs text-muted-foreground mt-1">How far in advance must clients book?</p>
           </div>
-          <div>
-            <Label htmlFor="cancellationPolicyType">Cancellation Policy</Label>
-            <Select
-              value={formData.cancellationPolicyType || undefined}
-              onValueChange={(v) => set("cancellationPolicyType", v)}
-            >
-              <SelectTrigger id="cancellationPolicyType" className="mt-2" data-testid="select-cancellation-policy-type">
-                <SelectValue placeholder="Not declared — no policy shown to travelers" />
-              </SelectTrigger>
-              <SelectContent>
-                {CANCELLATION_POLICY_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              Shown to travelers as a real per-offering policy. Leave unset if you haven't decided — we never show a fabricated default.
-            </p>
-            {/* SIX-SIGMA PASS (Tier A / finding M-1): the option you pick is not advisory —
-                the server computes the refund from it. Say so where the choice is made. */}
-            <p className="text-xs text-muted-foreground mt-1" data-testid="text-cancellation-enforced-note">
-              These windows are applied automatically when a traveler cancels — the refund is
-              calculated from the option you pick here, not from the notes below.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="cancellationPolicy">Cancellation Policy Details (optional)</Label>
-            <Textarea
-              id="cancellationPolicy"
-              value={formData.cancellationPolicy}
-              onChange={(e) => set("cancellationPolicy", e.target.value)}
-              placeholder="e.g., Full refund if cancelled 48 hours before. 50% refund if cancelled 24 hours before. No refund within 12 hours."
-              rows={3}
-              className="mt-2"
-              data-testid="textarea-cancellation-policy"
-            />
-          </div>
-
-          {/* ── Deposits / partial payments (Lane 7, ruling 72) — PROVIDER OPT-IN ─────────────────
-              Off by default: the listing checks out at the full price, exactly as before. When on,
-              the traveler pays a deposit now and settles the balance in a second checkout before a
-              cutoff derived from your service date and change window. The deposit amount is computed
-              server-side at checkout from the values below. */}
-          <div className="rounded-md border p-4 space-y-3">
-            <label className="flex items-center gap-2 cursor-pointer" htmlFor="depositEnabled">
-              <input
-                id="depositEnabled"
-                type="checkbox"
-                checked={formData.depositEnabled}
-                onChange={(e) => set("depositEnabled", e.target.checked)}
-                data-testid="checkbox-deposit-enabled"
-              />
-              <span className="font-medium">Take a deposit for this listing</span>
-            </label>
-            <p className="text-xs text-muted-foreground">
-              When on, travelers pay a deposit at checkout and the remaining balance in a second
-              checkout before a cutoff. Leave off to collect the full price up front.
-            </p>
-            {formData.depositEnabled && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="depositType">Deposit type</Label>
-                  <Select
-                    value={formData.depositType || undefined}
-                    onValueChange={(v) => set("depositType", v as "percentage" | "flat")}
-                  >
-                    <SelectTrigger id="depositType" className="mt-2" data-testid="select-deposit-type">
-                      <SelectValue placeholder="Choose percentage or flat amount" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percentage">Percentage of the total</SelectItem>
-                      <SelectItem value="flat">Flat amount</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {formData.depositType === "percentage" && (
-                  <div>
-                    <Label htmlFor="depositPercentage">Deposit percentage (%)</Label>
-                    <Input
-                      id="depositPercentage"
-                      type="number"
-                      min={1}
-                      max={100}
-                      placeholder="e.g. 30"
-                      value={formData.depositPercentage}
-                      onChange={(e) => set("depositPercentage", e.target.value)}
-                      className="mt-2"
-                      data-testid="input-deposit-percentage"
-                    />
-                  </div>
-                )}
-                {formData.depositType === "flat" && (
-                  <div>
-                    <Label htmlFor="depositFlatAmount">Deposit amount</Label>
-                    <Input
-                      id="depositFlatAmount"
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="e.g. 50.00"
-                      value={formData.depositFlatAmount}
-                      onChange={(e) => set("depositFlatAmount", e.target.value)}
-                      className="mt-2"
-                      data-testid="input-deposit-flat-amount"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* ── WAVE 2 / S4 (ledger row 99): Cancellation Policy (type + details) and the Deposit
+              opt-in moved off this step into the post-creation "Pricing & fees" drawer (listing
+              home) — moved, not duplicated. `formData.cancellationPolicy(Type)` and the four
+              `deposit*` fields stay in state/payload purely for never-clobber round-trip fidelity
+              (hydrated, sent unedited on every save); no control here writes them any more. */}
+          <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-cancellation-deposit-moved">
+            Cancellation policy and deposit are set in <b>Pricing &amp; fees</b>, on this listing's
+            home page — available once you've saved a draft. Not required to go live.
+          </p>
         </CardContent>
       </Card>
 
