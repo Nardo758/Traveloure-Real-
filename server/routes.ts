@@ -8,6 +8,7 @@ import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit }
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { redactTemplateContent } from "./utils/template-content-gate";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
+import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
@@ -2819,6 +2820,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // FP-1 / B7 DELIVERABLE PUBLISH GATE (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) —
+      // placed beside the price gate, on the same draft-exempt rule (ruling 56's placement
+      // discipline). The wizard labels the field "Deliverable File URL *" and warns in amber, but
+      // nothing enforced it: an $18 pdf guide published, went live and was sellable with the
+      // column empty, so a buyer could pay and receive nothing. Artifact-delivery only, via the
+      // SHARED predicate (isArtifactDelivery — pdf; shared/service-fundamentals.ts), so no other
+      // shape is newly blocked. Drafts still save incomplete.
+      if (input.status === "active" &&
+          isArtifactDelivery({
+            deliveryMethod: (input as any).deliveryMethod ?? null,
+            productShape: (input as any).productShape ?? null,
+          }) &&
+          !((input as any).serviceFile ?? "").toString().trim()) {
+        return res.status(400).json({
+          message: "A downloadable listing needs its deliverable file before publishing — upload the PDF or paste a link. Save as draft to finish later.",
+          code: "DELIVERABLE_FILE_REQUIRED",
+        });
+      }
+
       // F2 identity (+ business, provider-only) verification publish gate (Phase 0.5 —
       // docs/backoffice/EARN_PIPELINE_EVAL.md). Role-aware — see checkPublishVerificationGate
       // for the full rule (providers: service_provider_forms, both statuses; experts:
@@ -2864,7 +2884,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
       // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
       // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
-      const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
+      // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): `city` is SERVER-DERIVED from the
+      // neighborhood slug this write stores — the one structured location signal a listing carries
+      // — and only when that slug resolves to exactly one city. Never read from the body, never
+      // parsed out of the free-text `location`, NULL when unresolvable (§13; see
+      // utils/service-city.ts for the full rule set). Any client-sent `city` is dropped here.
+      const { city: _clientCity, ...inputWithoutCity } = input as any;
+      const cityPatch = await deriveCityPatch((input as any).neighborhood, {
+        neighborhoodPresent: (input as any).neighborhood !== undefined,
+      });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -3017,6 +3046,30 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // FP-1 / B7 DELIVERABLE PUBLISH GATE — same rule as CREATE above, resolved from the patch or
+      // the existing row (the meeting-point/price gate shape). This is the arm that also catches a
+      // stored draft with an empty deliverable being flipped straight to active, and — because the
+      // effective value falls back to the stored one — a row whose file arrived through the
+      // owner-gated upload rail (POST .../deliverable-file writes serviceFile directly) publishes
+      // with no field in the body at all.
+      if (input.status === "active") {
+        const effMethodFile = (input as any).deliveryMethod ?? ownedService.deliveryMethod;
+        const effProductShape = (input as any).productShape ?? (ownedService as any).productShape ?? null;
+        // KEY-PRESENCE, not `??`: an explicit `serviceFile: null` in the body is a CLEAR, and the
+        // write below performs it — falling back to the stored value there would pass the gate on
+        // a file this very request is about to delete.
+        const fileFromBody = Object.prototype.hasOwnProperty.call(input, "serviceFile");
+        const effFile = ((fileFromBody ? (input as any).serviceFile : ownedService.serviceFile) ?? "")
+          .toString()
+          .trim();
+        if (isArtifactDelivery({ deliveryMethod: effMethodFile, productShape: effProductShape }) && !effFile) {
+          return res.status(400).json({
+            message: "A downloadable listing needs its deliverable file before publishing — upload the PDF or paste a link. Save as draft to finish later.",
+            code: "DELIVERABLE_FILE_REQUIRED",
+          });
+        }
+      }
+
       // Verification publish-gate: block activating on gated categories
       if (input.status === "active") {
         const categoryId = ((input as any).categoryId ?? ownedService.categoryId) as string | undefined;
@@ -3106,8 +3159,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // discarding work. Do not "tidy up" by clearing the unused side here.
       //
       // Remove userId from input to prevent ownership transfer
-      const { userId: _, ...safeInputWithoutLocation } = input as any;
-      const safeInput = { ...safeInputWithoutLocation, ...locationPatch };
+      // FP-1 / B4: `city` is server-derived (utils/service-city.ts), never client-settable — the
+      // body's value is dropped and the column is re-derived ONLY when this PATCH carries a
+      // neighborhood. A patch that does not mention the neighborhood leaves the stored city
+      // exactly as it is (the extractServiceLocation rule-3 never-clobber posture); one that
+      // clears it clears the city with it, rather than keeping a city derived from a claim the
+      // listing no longer makes.
+      const { userId: _, city: _clientCityUpd, ...safeInputWithoutLocation } = input as any;
+      const cityPatchUpd = await deriveCityPatch((input as any).neighborhood, {
+        neighborhoodPresent: Object.prototype.hasOwnProperty.call(input, "neighborhood"),
+      });
+      const safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd };
       // A neighborhoods-only PATCH leaves no listing columns to update —
       // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
       // save before the coverage writer below could run. Skip the row update

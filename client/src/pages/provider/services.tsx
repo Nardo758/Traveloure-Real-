@@ -623,6 +623,11 @@ interface ServiceHealth {
   // D2 method-aware fundamentals: checks that don't apply to this service's shape, omitted
   // with a reason — rendered as a muted "n/a" note, never as a failure.
   omitted?: { key: string; reason: string }[];
+  // FP-1 / B10: advisory notes that are VISIBLE but NOT SCORED — today only the
+  // commission-band fallback ("no category → the platform default band applies"). They never
+  // move the meter: the property and bundle builders ask for no category, and failing an owner
+  // on something they cannot fix is not honest scoring (D3's own rule).
+  notices?: { key: string; detail: string }[];
 }
 interface HealthResponse {
   services: ServiceHealth[];
@@ -782,6 +787,20 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
         ) : (
           <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
         )}
+        {/* FP-1 / B10: the uncategorized-band fallback, stated plainly beside the meter. Amber
+            (worth knowing) rather than red (broken) — the listing sells fine, it just resolves no
+            category band, so the platform default applies. No rate or percentage is shown here;
+            this rail states the FACT, and the fee lanes own the number (§8/§18). */}
+        {(health.notices ?? []).map((n) => (
+          <span
+            key={n.key}
+            className="text-[11px] text-amber-700"
+            title={n.detail}
+            data-testid={`health-notice-${n.key}-${health.serviceId}`}
+          >
+            ⚠ {n.detail}
+          </span>
+        ))}
         {omitted.length > 0 && (
           <span
             className="text-[11px] italic text-console-mid/60"
