@@ -1041,4 +1041,13 @@ export const MIGRATION_FILES = [
   // (publish-trap rule). Preflight: node scripts/preflight-prod-unique-indexes.cjs before publish
   // (docs/RELEASE.md).
   "210_service_availability_model.sql",
+  // 211: property builder fields (S8, Gate G2 — docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
+  // row 102). Four additive-nullable columns on provider_services: check_in_time/check_out_time
+  // ("HH:MM", the earliest/latestStartTime shape), house_rules (text, property-level only —
+  // absolute pin-style inheritance, no per-room override), amenities (jsonb string array, the
+  // deliveryLanguages NULL-vs-[] precedent). No DB CHECK, no new table — the property↔room
+  // linkage (productShape/pricingUnit/parentServiceId) already shipped in migration 153. All
+  // four ride the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema — no
+  // new endpoint. Registered after 210 (S7) at integration; no dependency on 210's objects.
+  "211_property_builder_fields.sql",
 ] as const;

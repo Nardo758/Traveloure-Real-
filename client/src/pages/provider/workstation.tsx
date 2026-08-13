@@ -30,9 +30,16 @@
  *     property editor below is that surface: Basics (PATCH /api/provider/properties/:id) and
  *     Rooms (PATCH /api/provider/rooms/:id per room), reached from Catalog by the
  *     `?property=<id>&room=<id>` deep link — the same `?param=` convention the provider inbox
- *     and settings seats already use. It edits exactly the fields those two ALREADY-EXISTING
- *     endpoints accept; it adds no field an innkeeper still cannot state (that is the
- *     redesign-gated B9 property-builder scope, deliberately untouched here).
+ *     and settings seats already use.
+ *   - S8 (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102; migration 211): the
+ *     property editor gained a third step, Details — check-in/out time, house rules, amenities
+ *     (new columns), plus photos and cancellation policy (columns that already existed but had
+ *     no builder surface). Details rides the GENERIC PATCH /api/provider/services/:id (a
+ *     property/room IS a provider_services row) rather than propertyPatchSchema/roomPatchSchema
+ *     — the ratified write-rail decision, so no new endpoint and no allowlist edit was needed.
+ *     Per-room guest capacity reuses partySizeMin/partySizeMax (S8-Q2) the same way, scoped per
+ *     room. House rules and the pin stay property-level ONLY — absolute inheritance, no
+ *     per-room override (S8-Q3/Q4) — so neither field appears on a room's own card.
  *
  * Money-path honesty: the bundle/property/room price entered here is the owner-set listing
  * price like any service create — the checkout charge is server-derived from the stored row
@@ -156,6 +163,11 @@ interface Room {
   approvalStatus?: string | null;
   status: string;
   categoryAttributes?: { units?: number } | null;
+  // S8 (Gate G2): per-room guest capacity REUSES partySizeMin/partySizeMax (the ratified S8-Q2
+  // reuse decision) — no new "maxGuests" column. Room-level, not property-level (each room type
+  // sleeps a different count).
+  partySizeMin?: number | null;
+  partySizeMax?: number | null;
 }
 
 interface Property {
@@ -168,6 +180,18 @@ interface Property {
   status: string;
   rejectionReason?: string | null;
   rooms: Room[];
+  // S8 (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102) — already-existing
+  // columns the property builder never surfaced (photos/cancellation) plus the three genuinely
+  // new ones (check-in/out, house rules, amenities — migration 211). Property-level only: a room
+  // never carries its own house rules or check-in/out (absolute inheritance, S8-Q3/Q4).
+  serviceImage?: string | null;
+  galleryImages?: string[] | null;
+  cancellationPolicy?: string | null;
+  cancellationPolicyType?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  houseRules?: string | null;
+  amenities?: string[] | null;
 }
 
 interface RoomDraft {
@@ -549,8 +573,14 @@ export default function ProviderWorkstation() {
   // innkeeper fields (photos, cancellation, check-in, house rules, amenities, capacity) are the
   // redesign-gated B9 scope, and inventing half of them here would be the dishonest surface
   // this lane exists to remove.
-  type PropertyEditorStep = "basics" | "rooms";
-  interface RoomEditDraft { roomName: string; price: string; units: string }
+  // S8 (Gate G2): "details" is the new step — check-in/out, house rules, amenities, photos,
+  // cancellation. It rides PATCH /api/provider/services/:id (the generic listing editor's
+  // endpoint) rather than propertyPatchSchema, per the ratified write-rail decision (all four new
+  // columns + the previously-unsurfaced-here-but-already-existing photos/cancellation fields ride
+  // the EXISTING POST/PATCH /api/provider/services + insertProviderServiceSchema — no new
+  // endpoint, no propertyPatchSchema allowlist edit needed).
+  type PropertyEditorStep = "basics" | "details" | "rooms";
+  interface RoomEditDraft { roomName: string; price: string; units: string; partySizeMin: string; partySizeMax: string }
 
   const [propertyEditorTarget, setPropertyEditorTarget] = useState<Property | null>(null);
   const [propertyEditorStep, setPropertyEditorStep] = useState<PropertyEditorStep>("basics");
@@ -558,6 +588,15 @@ export default function ProviderWorkstation() {
   const [editPropName, setEditPropName] = useState("");
   const [editPropLocation, setEditPropLocation] = useState("");
   const [editPropDescription, setEditPropDescription] = useState("");
+  const [editPropServiceImage, setEditPropServiceImage] = useState("");
+  const [editPropGalleryImages, setEditPropGalleryImages] = useState(""); // newline-separated URLs
+  const [editPropCheckInTime, setEditPropCheckInTime] = useState("");
+  const [editPropCheckOutTime, setEditPropCheckOutTime] = useState("");
+  const [editPropHouseRules, setEditPropHouseRules] = useState("");
+  const [editPropCancellationPolicy, setEditPropCancellationPolicy] = useState("");
+  const [editPropCancellationPolicyType, setEditPropCancellationPolicyType] = useState("");
+  const [editPropAmenities, setEditPropAmenities] = useState<string[]>([]);
+  const [amenityDraft, setAmenityDraft] = useState("");
   const [roomEdits, setRoomEdits] = useState<Record<string, RoomEditDraft>>({});
   // §13: a deep link that names a property this account does not have (deleted, or never owned)
   // is SAID so, never silently ignored and never resolved to some other property.
@@ -573,6 +612,15 @@ export default function ProviderWorkstation() {
     setEditPropName(property.serviceName ?? "");
     setEditPropLocation(property.location ?? "");
     setEditPropDescription(property.description ?? "");
+    setEditPropServiceImage(property.serviceImage ?? "");
+    setEditPropGalleryImages((property.galleryImages ?? []).join("\n"));
+    setEditPropCheckInTime(property.checkInTime ?? "");
+    setEditPropCheckOutTime(property.checkOutTime ?? "");
+    setEditPropHouseRules(property.houseRules ?? "");
+    setEditPropCancellationPolicy(property.cancellationPolicy ?? "");
+    setEditPropCancellationPolicyType(property.cancellationPolicyType ?? "");
+    setEditPropAmenities(Array.isArray(property.amenities) ? property.amenities : []);
+    setAmenityDraft("");
     setRoomEdits(
       Object.fromEntries(
         property.rooms.map((r) => [
@@ -581,6 +629,8 @@ export default function ProviderWorkstation() {
             roomName: r.serviceName ?? "",
             price: r.price == null ? "" : String(r.price),
             units: r.categoryAttributes?.units != null ? String(r.categoryAttributes.units) : "",
+            partySizeMin: r.partySizeMin != null ? String(r.partySizeMin) : "",
+            partySizeMax: r.partySizeMax != null ? String(r.partySizeMax) : "",
           },
         ]),
       ),
@@ -665,6 +715,58 @@ export default function ProviderWorkstation() {
     },
   });
 
+  // S8 (Gate G2): the property's Details step (check-in/out, house rules, amenities, photos,
+  // cancellation). Rides the GENERIC PATCH /api/provider/services/:id — a property IS a
+  // provider_services row, so its own general editor endpoint accepts every field
+  // insertProviderServiceSchema exposes, including the four migration-211 columns and the
+  // previously-unsurfaced-here photos/cancellation columns. Amenities: an EMPTY array is a
+  // real "cleared" state and is sent as such — the NULL-vs-[] distinction (§13) is preserved by
+  // always sending the array, never omitting it once this form has been opened.
+  const updatePropertyDetailsMutation = useMutation({
+    mutationFn: async () => {
+      const galleryImages = editPropGalleryImages
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const res = await apiRequest("PATCH", `/api/provider/services/${propertyEditorTarget!.id}`, {
+        serviceImage: editPropServiceImage.trim() || null,
+        galleryImages,
+        checkInTime: editPropCheckInTime.trim() || null,
+        checkOutTime: editPropCheckOutTime.trim() || null,
+        houseRules: editPropHouseRules.trim() || null,
+        amenities: editPropAmenities,
+        cancellationPolicy: editPropCancellationPolicy.trim() || null,
+        cancellationPolicyType: editPropCancellationPolicyType || null,
+      });
+      return res.json();
+    },
+    onSuccess: (data: Property) => {
+      invalidatePropertyQueries();
+      setPropertyEditorTarget((prev) => (prev ? { ...prev, ...data, rooms: prev.rooms } : prev));
+      toast({ title: "Property details updated" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not update property details",
+        description: parseApiErrorMessage(err, "Please check the fields and try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  function addAmenity() {
+    const value = amenityDraft.trim();
+    if (!value || editPropAmenities.includes(value)) {
+      setAmenityDraft("");
+      return;
+    }
+    setEditPropAmenities((prev) => [...prev, value]);
+    setAmenityDraft("");
+  }
+  function removeAmenity(value: string) {
+    setEditPropAmenities((prev) => prev.filter((a) => a !== value));
+  }
+
   const updateRoomDetailsMutation = useMutation({
     mutationFn: async (roomId: string): Promise<{ reenteredReview?: boolean }> => {
       const draft = roomEdits[roomId];
@@ -696,6 +798,34 @@ export default function ProviderWorkstation() {
     },
   });
 
+  // S8 (Gate G2, S8-Q2): per-room guest capacity REUSES partySizeMin/partySizeMax — not on
+  // roomPatchSchema, so this rides the generic PATCH /api/provider/services/:id like the
+  // property Details step above, scoped to the one room row (never a property row — the room's
+  // own id is the target).
+  const updateRoomCapacityMutation = useMutation({
+    mutationFn: async (roomId: string) => {
+      const draft = roomEdits[roomId];
+      const min = parseInt(draft.partySizeMin, 10);
+      const max = parseInt(draft.partySizeMax, 10);
+      const res = await apiRequest("PATCH", `/api/provider/services/${roomId}`, {
+        partySizeMin: Number.isFinite(min) ? min : null,
+        partySizeMax: Number.isFinite(max) ? max : null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidatePropertyQueries();
+      toast({ title: "Room capacity updated" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not update room capacity",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
   // Keep the open editor in step with the server after an add/delete room round trip.
   useEffect(() => {
     if (!propertyEditorTarget) return;
@@ -711,6 +841,8 @@ export default function ProviderWorkstation() {
           roomName: r.serviceName ?? "",
           price: r.price == null ? "" : String(r.price),
           units: r.categoryAttributes?.units != null ? String(r.categoryAttributes.units) : "",
+          partySizeMin: r.partySizeMin != null ? String(r.partySizeMin) : "",
+          partySizeMax: r.partySizeMax != null ? String(r.partySizeMax) : "",
         };
       }
       return next;
@@ -1547,9 +1679,9 @@ export default function ProviderWorkstation() {
               </DialogDescription>
             </DialogHeader>
 
-            {/* The two steps. A room's Edit lands directly on "Rooms". */}
+            {/* The three steps. A room's Edit lands directly on "Rooms". */}
             <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
-              {(["basics", "rooms"] as const).map((step) => (
+              {(["basics", "details", "rooms"] as const).map((step) => (
                 <button
                   key={step}
                   type="button"
@@ -1564,7 +1696,7 @@ export default function ProviderWorkstation() {
                   data-testid={`tab-property-editor-${step}`}
                 >
                   {/* Same vocabulary as the ratified mock's property builder steps. */}
-                  {step === "basics" ? "The property" : `Rooms (${propertyEditorTarget?.rooms.length ?? 0})`}
+                  {step === "basics" ? "The property" : step === "details" ? "Details" : `Rooms (${propertyEditorTarget?.rooms.length ?? 0})`}
                 </button>
               ))}
             </div>
@@ -1621,13 +1753,154 @@ export default function ProviderWorkstation() {
                   </Button>
                 </div>
               </form>
+            ) : propertyEditorStep === "details" ? (
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (updatePropertyDetailsMutation.isPending) return;
+                  updatePropertyDetailsMutation.mutate();
+                }}
+                data-testid="form-property-editor-details"
+              >
+                <div>
+                  <Label htmlFor="edit-property-cover-image" className="text-sm">Cover photo URL</Label>
+                  <Input
+                    id="edit-property-cover-image"
+                    value={editPropServiceImage}
+                    onChange={(e) => setEditPropServiceImage(e.target.value)}
+                    placeholder="https://…"
+                    data-testid="input-edit-property-cover-image"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-property-gallery" className="text-sm">Gallery photo URLs (one per line)</Label>
+                  <Textarea
+                    id="edit-property-gallery"
+                    value={editPropGalleryImages}
+                    onChange={(e) => setEditPropGalleryImages(e.target.value)}
+                    rows={3}
+                    placeholder={"https://…\nhttps://…"}
+                    data-testid="input-edit-property-gallery"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="edit-property-checkin" className="text-sm">Check-in time</Label>
+                    <Input
+                      id="edit-property-checkin"
+                      type="time"
+                      value={editPropCheckInTime}
+                      onChange={(e) => setEditPropCheckInTime(e.target.value)}
+                      data-testid="input-edit-property-checkin"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-property-checkout" className="text-sm">Check-out time</Label>
+                    <Input
+                      id="edit-property-checkout"
+                      type="time"
+                      value={editPropCheckOutTime}
+                      onChange={(e) => setEditPropCheckOutTime(e.target.value)}
+                      data-testid="input-edit-property-checkout"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="edit-property-house-rules" className="text-sm">House rules</Label>
+                  <Textarea
+                    id="edit-property-house-rules"
+                    value={editPropHouseRules}
+                    onChange={(e) => setEditPropHouseRules(e.target.value)}
+                    rows={3}
+                    placeholder="No smoking, quiet hours after 22:00…"
+                    data-testid="input-edit-property-house-rules"
+                  />
+                  <p className="text-xs text-console-mid mt-1">
+                    Property-level only — rooms inherit these, there is no per-room override.
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm">Amenities</Label>
+                  <div className="flex flex-wrap gap-1.5 mb-2" data-testid="list-edit-property-amenities">
+                    {editPropAmenities.map((a) => (
+                      <Badge key={a} variant="secondary" className="text-xs gap-1" data-testid={`badge-edit-amenity-${a}`}>
+                        {a}
+                        <button
+                          type="button"
+                          onClick={() => removeAmenity(a)}
+                          aria-label={`Remove ${a}`}
+                          data-testid={`button-remove-amenity-${a}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={amenityDraft}
+                      onChange={(e) => setAmenityDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addAmenity();
+                        }
+                      }}
+                      placeholder="WiFi, Kitchen, Parking…"
+                      data-testid="input-add-amenity"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={addAmenity} data-testid="button-add-amenity">
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="edit-property-cancellation-type" className="text-sm">Cancellation policy</Label>
+                    <select
+                      id="edit-property-cancellation-type"
+                      value={editPropCancellationPolicyType}
+                      onChange={(e) => setEditPropCancellationPolicyType(e.target.value)}
+                      className="w-full h-9 rounded-md border border-console-light bg-white px-2 text-sm"
+                      data-testid="select-edit-property-cancellation-type"
+                    >
+                      <option value="">Not set</option>
+                      <option value="flexible">Flexible</option>
+                      <option value="moderate">Moderate</option>
+                      <option value="strict">Strict</option>
+                      <option value="non_refundable">Non-refundable</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-property-cancellation-detail" className="text-sm">Detail (optional)</Label>
+                    <Input
+                      id="edit-property-cancellation-detail"
+                      value={editPropCancellationPolicy}
+                      onChange={(e) => setEditPropCancellationPolicy(e.target.value)}
+                      placeholder="Full refund if cancelled 48h before"
+                      data-testid="input-edit-property-cancellation-detail"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={updatePropertyDetailsMutation.isPending}
+                    data-testid="button-save-property-details"
+                  >
+                    {updatePropertyDetailsMutation.isPending ? "Saving…" : "Save details"}
+                  </Button>
+                </div>
+              </form>
             ) : (
               <div className="space-y-3" data-testid="panel-property-editor-rooms">
                 {(propertyEditorTarget?.rooms.length ?? 0) === 0 ? (
                   <p className="text-xs text-console-mid">No room types yet.</p>
                 ) : (
                   propertyEditorTarget!.rooms.map((room) => {
-                    const draft = roomEdits[room.id] ?? { roomName: "", price: "", units: "" };
+                    const draft = roomEdits[room.id] ?? { roomName: "", price: "", units: "", partySizeMin: "", partySizeMax: "" };
                     const priceValue = parseFloat(draft.price);
                     const draftValid = draft.roomName.trim().length > 0 && Number.isFinite(priceValue) && priceValue > 0;
                     return (
@@ -1689,6 +1962,48 @@ export default function ProviderWorkstation() {
                           >
                             {updateRoomDetailsMutation.isPending ? "Saving…" : "Save room"}
                           </Button>
+                        </div>
+                        {/* S8-Q2: per-room guest capacity REUSES partySizeMin/partySizeMax —
+                            a separate save, since these ride the generic services PATCH rather
+                            than roomPatchSchema (§14/§18/§19 don't apply; ordinary listing fact). */}
+                        <div className="pt-2 border-t border-console-light/60">
+                          <span className="text-xs font-medium text-console-mid">Sleeps</span>
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={draft.partySizeMin}
+                              onChange={(e) =>
+                                setRoomEdits((prev) => ({ ...prev, [room.id]: { ...draft, partySizeMin: e.target.value } }))
+                              }
+                              placeholder="Min guests"
+                              data-testid={`input-edit-room-party-min-${room.id}`}
+                            />
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={draft.partySizeMax}
+                              onChange={(e) =>
+                                setRoomEdits((prev) => ({ ...prev, [room.id]: { ...draft, partySizeMax: e.target.value } }))
+                              }
+                              placeholder="Max guests"
+                              data-testid={`input-edit-room-party-max-${room.id}`}
+                            />
+                          </div>
+                          <div className="flex justify-end mt-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={updateRoomCapacityMutation.isPending}
+                              onClick={() => updateRoomCapacityMutation.mutate(room.id)}
+                              data-testid={`button-save-room-capacity-${room.id}`}
+                            >
+                              {updateRoomCapacityMutation.isPending ? "Saving…" : "Save capacity"}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );
