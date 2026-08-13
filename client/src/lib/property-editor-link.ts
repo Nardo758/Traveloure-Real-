@@ -64,15 +64,30 @@ export function propertyEditorHref(row: ProductShapeRow): string | null {
 }
 
 /**
- * The Edit destination for ANY owner-console listing row. Bundles keep their existing
- * Workstation destination (the bundle builder is a dialog with no deep link yet — filed as the
- * FP-2 "bundle edit links carrying ids" item); everything else keeps the ServiceForm route.
+ * FP-2 / Package A item 7 — the Workstation deep link for a BUNDLE row.
+ *
+ * Catalog's Edit on a bundle card used to resolve to a bare `/provider/workstation`: the right
+ * page, with the bundle's identity dropped on the floor. The provider landed on a list of every
+ * bundle they own and had to find the one they had just clicked. The bundle builder is a dialog
+ * with no route of its own, so it gets the same treatment the property editor already has —
+ * a `?param=` deep link the Workstation consumes on mount.
+ *
+ * Returns `null` for any other shape.
+ */
+export function bundleEditorHref(row: ProductShapeRow): string | null {
+  if (row.productShape !== "bundle") return null;
+  return `/provider/workstation?bundle=${encodeURIComponent(row.id)}`;
+}
+
+/**
+ * The Edit destination for ANY owner-console listing row: property/room → the Workstation
+ * property editor, bundle → the Workstation bundle builder opened ON that bundle, everything
+ * else → the ServiceForm route.
  */
 export function listingEditHref(row: ProductShapeRow): string {
   return (
     propertyEditorHref(row) ??
-    (row.productShape === "bundle"
-      ? "/provider/workstation"
-      : `/provider/services/${row.id}/edit`)
+    bundleEditorHref(row) ??
+    `/provider/services/${row.id}/edit`
   );
 }

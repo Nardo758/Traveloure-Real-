@@ -500,6 +500,9 @@ export default function ProviderWorkstation() {
   // §13: a deep link that names a property this account does not have (deleted, or never owned)
   // is SAID so, never silently ignored and never resolved to some other property.
   const [deepLinkMiss, setDeepLinkMiss] = useState<string | null>(null);
+  // FP-2 item 7: the bundle deep link gets its OWN miss state so the notice renders in the
+  // bundles section, beside the list it is talking about, rather than under "Your properties".
+  const [bundleLinkMiss, setBundleLinkMiss] = useState<string | null>(null);
 
   function openPropertyEditor(property: Property, step: PropertyEditorStep, roomId?: string | null) {
     setPropertyEditorTarget(property);
@@ -528,6 +531,10 @@ export default function ProviderWorkstation() {
   const search = useSearch();
   const deepLinkProperty = new URLSearchParams(search).get("property");
   const deepLinkRoom = new URLSearchParams(search).get("room");
+  // FP-2 / Package A item 7: and Catalog's bundle Edit lands here as ?bundle=<id>. Same
+  // convention, same owner gating (the id only picks a row out of THIS account's own bundle
+  // read — a bundle that is not in it opens nothing and is said out loud, never guessed at).
+  const deepLinkBundle = new URLSearchParams(search).get("bundle");
   const consumedDeepLink = useRef<string | null>(null);
   useEffect(() => {
     if (propertiesLoading) return;
@@ -552,6 +559,26 @@ export default function ProviderWorkstation() {
     openPropertyEditor(target, deepLinkRoom ? "rooms" : "basics", deepLinkRoom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertiesLoading, properties, deepLinkProperty, deepLinkRoom]);
+
+  // FP-2 / Package A item 7 — the bundle twin of the deep link above. `openEdit` prefills the
+  // builder from the bundle row AND from `eligibleComponents`, so this waits for BOTH reads
+  // (bundles + services); opening earlier would prefill a component list that is still empty and
+  // silently drop every component (the same class of bug as the FP-3 room re-route). §13: a
+  // bundle id this account does not own resolves to nothing and SAYS so.
+  const consumedBundleLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkBundle || bundlesLoading || servicesLoading) return;
+    if (consumedBundleLink.current === deepLinkBundle) return;
+    consumedBundleLink.current = deepLinkBundle;
+    const target = (Array.isArray(bundles) ? bundles : []).find((b) => b.id === deepLinkBundle);
+    if (!target) {
+      setBundleLinkMiss("That bundle is no longer in your list — it may have been deleted.");
+      return;
+    }
+    setBundleLinkMiss(null);
+    openEdit(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundlesLoading, servicesLoading, bundles, services, deepLinkBundle]);
 
   const updatePropertyBasicsMutation = useMutation({
     mutationFn: async () => {
@@ -849,6 +876,17 @@ export default function ProviderWorkstation() {
           <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
             Your bundles
           </h2>
+          {/* FP-2 §13: a ?bundle= deep link naming a bundle this account no longer has says so,
+              instead of opening some other bundle or silently doing nothing. */}
+          {bundleLinkMiss && (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              data-testid="notice-bundle-deeplink-miss"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{bundleLinkMiss}</span>
+            </div>
+          )}
           {bundlesLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-28 w-full rounded-lg" />
