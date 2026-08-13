@@ -10,6 +10,9 @@ import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 // Ledger 90 (FP-5, S2): the payout floor is quoted from its single source, never re-typed here.
 import { MIN_PAYOUT_DOLLARS } from "../config/payout.config";
 import { deriveCityPatch } from "../utils/service-city";
+// S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the read path
+// (content.routes.ts) so write-time and read-time can never resolve it two different ways.
+import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -182,15 +185,11 @@ type ProviderServiceRow = typeof providerServices.$inferSelect;
  * under the same rules.
  */
 const PROPERTY_DELIVERY_METHOD = "in_person";
-const MIXED_BUNDLE_DELIVERY_METHOD = "hybrid";
 
+// Delegates to the shared predicate (shared/bundle-delivery-method.ts) — see the S10 import
+// comment above. Kept as a thin row→methods adapter so every call site below is unchanged.
 function deriveBundleDeliveryMethod(components: ProviderServiceRow[]): string | null {
-  const methods = new Set(
-    components.map((c) => (c.deliveryMethod ?? "").trim()).filter((m) => m.length > 0),
-  );
-  if (methods.size === 0) return null;
-  if (methods.size === 1) return Array.from(methods)[0];
-  return MIXED_BUNDLE_DELIVERY_METHOD;
+  return deriveBundleDeliveryMethodFromMethods(components.map((c) => c.deliveryMethod));
 }
 
 function toComponentSummary(rows: ProviderServiceRow[]) {

@@ -105,6 +105,11 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the write path
+// (provider.routes.ts) — read time re-derives from the components that are STILL visible on this
+// read rather than trusting the stored column, which can drift after a component is paused or
+// un-approved without the bundle itself ever being edited.
+import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
 import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { viatorService } from "../services/viator.service";
@@ -2037,25 +2042,79 @@ router.get("/api/services/:id", async (req, res) => {
       translation: translationMeta,
     });
 
-    // §17 bundles (migration 151): additive component list on the public detail. Same F2
-    // read-gate per component — only components STILL approved+active are exposed; an
-    // unapproved/paused component never leaks through the bundle's page.
+    // §17/S10 bundles (migrations 151, Gate G4): additive component list on the public detail.
+    // LEFT JOIN (not the old INNER JOIN) so a component that has been paused/un-approved SINCE
+    // the bundle was built still produces a row — §13 requires the bundle to say so honestly
+    // (name-only, no link) rather than silently shrinking the list with no explanation. The FK is
+    // ON DELETE RESTRICT (migration 151), so a component row going missing entirely is a
+    // referential-integrity break, not an expected case; it gets the same honest fallback rather
+    // than a thrown 500.
     if (service.productShape === "bundle") {
-      const components = await db
+      const rows = await db
         .select({
           id: providerServices.id,
           serviceName: providerServices.serviceName,
           shortDescription: providerServices.shortDescription,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          approvalStatus: providerServices.approvalStatus,
+          status: providerServices.status,
         })
         .from(bundleComponents)
-        .innerJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
-        .where(and(
-          eq(bundleComponents.bundleServiceId, service.id),
-          eq(providerServices.approvalStatus, "approved"),
-          eq(providerServices.status, "active"),
-        ))
+        .leftJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
+        .where(eq(bundleComponents.bundleServiceId, service.id))
         .orderBy(asc(bundleComponents.position));
-      return res.json(withTranslation({ ...service, bundleComponents: components, away, routePoints, surchargeTiers }));
+
+      // Same F2 predicate as every other public read-gate: still approved AND active, right now —
+      // never the state the component was in when it joined the bundle.
+      const isPublicComponent = (r: (typeof rows)[number]) =>
+        r.id != null && r.approvalStatus === "approved" && r.status === "active";
+      const publicRows = rows.filter(isPublicComponent);
+
+      // FABLE-REVIEW: response shape for GET /api/services/:id (bundle branch) — an unapproved,
+      // paused, or (theoretically) missing component now renders name-only with no `id` at all,
+      // so the client cannot construct a link to it and no non-public detail (image, description,
+      // method) ever rides the wire for it. §13: never a broken link, never invented detail.
+      const bundleComponentsOut = rows.map((r) =>
+        isPublicComponent(r)
+          ? {
+              available: true as const,
+              id: r.id!,
+              serviceName: r.serviceName!,
+              shortDescription: r.shortDescription,
+              deliveryMethod: r.deliveryMethod,
+              serviceImage: r.serviceImage,
+            }
+          : {
+              available: false as const,
+              // The FK guarantees the row exists (ON DELETE RESTRICT) even when it's hidden for
+              // approval/status reasons, so the real name is still honest to show; only the
+              // theoretical missing-row case falls back to a stated placeholder, never a blank.
+              serviceName: r.serviceName ?? "Unavailable listing",
+            },
+      );
+
+      // S10/Gate G4: the displayed method chip is DERIVED fresh on every read from the components
+      // still visible above — never trusted from the stored `delivery_method` column, which only
+      // reflects whatever was true at the bundle's last create/edit (migration 208's B2 repair
+      // fixed that once; a component paused afterwards, with the bundle itself never touched,
+      // would otherwise drift it right back to stale). This value is NEVER written back to the
+      // row — read-time-only, per CLAUDE.md §18 rule 1 (derivation delegates, never re-implements)
+      // sharing the identical predicate the write path (provider.routes.ts) uses at create/patch.
+      const derivedDeliveryMethod = deriveBundleDeliveryMethodFromMethods(
+        publicRows.map((r) => r.deliveryMethod),
+      );
+
+      return res.json(withTranslation({
+        ...service,
+        // No public component carries a derivable method (e.g. every one is currently hidden) ⇒
+        // keep the last-known stored value rather than guessing (§13) — never blank the chip.
+        deliveryMethod: derivedDeliveryMethod ?? service.deliveryMethod,
+        bundleComponents: bundleComponentsOut,
+        away,
+        routePoints,
+        surchargeTiers,
+      }));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
