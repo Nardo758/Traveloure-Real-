@@ -23,7 +23,11 @@ export function ConsoleAwareLayout({ children, title }: ConsoleAwareLayoutProps)
     case "expert":
       return <ExpertLayout title={title}>{children}</ExpertLayout>;
     case "provider":
-      return <ProviderLayout title={title}>{children}</ProviderLayout>;
+      // FP-4 full-bleed exception #2: this shell's only consumer is /chat, a
+      // viewport-anchored two-pane messaging frame (h-[calc(100vh-52px)]) with its own
+      // responsive padding, rendered identically for travelers and experts. Capping it
+      // for providers alone would fork one shared surface into two widths.
+      return <ProviderLayout title={title} width="full">{children}</ProviderLayout>;
     case "ea":
       return <EALayout title={title}>{children}</EALayout>;
     default:
