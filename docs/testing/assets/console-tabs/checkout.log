@@ -1,0 +1,8 @@
+logged in as traveler
+clicking Proceed to Payment
+Complete Booking buttons: 1
+clicking Complete Booking
+  NET 503 POST /api/checkout => {"success":false,"error":"payment_unavailable","message":"We couldn't reach our payment provider, so nothing was charged and nothing was booked. Your cart is exactly as you left it — please try again.","retryable":true}
+url: /cart
+text: Skip to main content TRAVELOURE BETA Marketplace Experts & Services Experiences Planning Tools Ways to earn K Kyoto Your Trip 1 · $106 Edit › Cart Optimize Itinerary Payment Back Your Cart General 1 items Add your travel dates Edit trip Preview: up to 21% savings (~$0.20 less) Plan score 15/100 Optimize · $5.99 → Nishiki & Gion Evening Food Walk Central Kyoto — Nakagyo, Shimogyo, Higashiyama $95.00 1 Remove Order Summary USD – US Dollar Subtotal $95.00 Platform fee $11.40 Total $106.40 FREQUENTLY BOOKED TOGETHER Obanzai Cooking Class in a Nishijin Machiya Cooking Class Host · $130 recommended for this trip type Add Start Planning Your Trip Add your 1 saved item directly to a trip itinerary. Start Planning Plan & optimize this trip Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime. Continue — Optimize Proceed to Payment Traveloure Experience personalized travel planning with insider knowledge from local experts and trip planners, powered by advanced AI technology. PRODUCT Plan an Experience Marketplace Talk to Experts How It Works Pricing Features Global Calendar Executive Assistant COMPANY About
+toasts: []

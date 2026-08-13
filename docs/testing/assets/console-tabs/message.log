@@ -1,0 +1,15 @@
+== storefront message CTA
+Message CTAs: 2
+  NET 200 GET /api/messages/unread/count => {"count":0}
+  NET 200 GET /api/chats => []
+  NET 200 GET /api/messages/unread/count => {"count":0}
+  NET 200 GET /api/chats => []
+  NET 200 PATCH /api/messages/conversation/82373a50-ccc4-453c-804b-5b93d886bb7a_83287ec2-061d-4786-a134-bd8040b1a9e6/read-all => {"success":true,"updated":0}
+url: /chat?expertId=82373a50-ccc4-453c-804b-5b93d886bb7a&name=Haruka%20Ishikawa
+text: T Traveloure PLAN Home My plans AI planner MARKETPLACE Discover Experts Bookings My events Trip Cart INBOX Inbox ACCOUNT Profile KT Kyoto Traveler test-traveler-kyoto@traveloure.test Logout Toggle Sidebar Traveloure K Kyoto Expert Chat Connect with local experts for your trips YOUR CONVERSATIONS No conversations yet. Message an expert below to get started. EXPERTS H Haruka Ishikawa New M Maria Santos New Lisbon Cultural Tours Food & Wine K Kenji Tanaka New Tokyo Cultural Immersion Traditional Experiences I Isabella Rossi New Rome Luxury Travel Honeymoons C Carlos Mendez New San Jose Adventure Travel Wildlife Tours S Sophie Laurent New Paris Romance & Proposals Luxury Experiences A Ahmed Hass
+composer: 1
+send btns: 1
+  NET 201 POST /api/chats => {"id":"0f5e568f-1063-4b43-bc7c-8d5b75e570f5","trackingNumber":"TRV-202608-00010","senderId":"83287ec2-061d-4786-a134-bd8040b1a9e6","receiverId":"82373a50-ccc4-453c-804b-5b93d886bb7a","contractId":null,"message":"Hello Haruka — is the Sept 3 food walk open for 2? We are vegetarian, is that workable?"
+  NET 200 GET /api/chats => [{"id":"0f5e568f-1063-4b43-bc7c-8d5b75e570f5","trackingNumber":"TRV-202608-00010","senderId":"83287ec2-061d-4786-a134-bd8040b1a9e6","receiverId":"82373a50-ccc4-453c-804b-5b93d886bb7a","contractId":null,"message":"Hello Haruka — is the Sept 3 food walk open for 2? We are vegetarian, is that workable?
+  NET 200 GET /api/chats => [{"id":"0f5e568f-1063-4b43-bc7c-8d5b75e570f5","trackingNumber":"TRV-202608-00010","senderId":"83287ec2-061d-4786-a134-bd8040b1a9e6","receiverId":"82373a50-ccc4-453c-804b-5b93d886bb7a","contractId":null,"message":"Hello Haruka — is the Sept 3 food walk open for 2? We are vegetarian, is that workable?
+after: T Traveloure PLAN Home My plans AI planner MARKETPLACE Discover Experts Bookings My events Trip Cart INBOX Inbox ACCOUNT Profile KT Kyoto Traveler test-traveler-kyoto@traveloure.test Logout Toggle Sidebar Traveloure K Kyoto Expert Chat Connect with local experts for your trips YOUR CONVERSATIONS H Haruka Hello Haruka — is the Sept 3 food walk open for 2? We are vegetarian, is that workable? EXPERTS M Maria Santos New Lisbon Cultural Tours Food & Wine K Kenji Tanaka New Tokyo Cultural Immersion Traditional Experiences I Isabella Rossi New Rome Luxury Travel Honeymoons C Carlos Mendez New San Jose Adventure Travel Wildlife Tours S Sophie Laurent New Paris Romance & Proposals Luxury Experiences

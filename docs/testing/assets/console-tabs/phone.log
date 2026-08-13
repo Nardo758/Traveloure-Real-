@@ -1,0 +1,9 @@
+today            scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+calendar         scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+inbox            scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+customers        scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+performance      scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+perf-analytics   scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+money            scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+settings         scrollW=390 clientW=390 bodyScrollW=390 overflow=no
+playbook         scrollW=390 clientW=390 bodyScrollW=390 overflow=no

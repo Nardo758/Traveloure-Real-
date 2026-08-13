@@ -1,0 +1,24 @@
+== A. short-link clicks (anonymous)
+  /r/4pe1tdjh -> 200 /services/d950bbd2-7b94-4126-aba6-fbb03f698a91?ref=4pe1tdjh
+  /r/5nwr6ub6 -> 200 /services/21813fe5-d66f-429a-b44f-542035034a3c?ref=5nwr6ub6
+== B. traveler login
+  login 200 {"message":"Logged in successfully","user":{"id":"83287ec2-061d-4786-a134-bd8040b1a9e6","email":"test-traveler-kyoto@tra
+== C. add food walk to cart via UI
+  NET 200 GET /api/cart
+  add-to-cart present: 1
+  NET 201 POST /api/cart
+  NET 200 GET /api/cart
+  GET /api/cart items: 1 [{"id":"29539793-8203-48a0-ae2f-0153f278501e","serviceId":"d950bbd2-7b94-4126-aba6-fbb03f698a91","name":"Nishiki & Gion Evening Food Walk"}]
+== D. /cart -> checkout
+  NET 200 POST /api/cart/migrate
+  NET 200 GET /api/cart
+  visible buttons: ["Marketplace","Experts & Services","Experiences","Planning Tools","","","KKyoto","Edit ›","Cart","Optimize","Itinerary","Payment","Back","Edit trip","Preview: up to 21% savings (~$0.20 less)Plan score 15/100Optimize · $5.99 →","","","Remove","USD – US Dollar","Add","Start Planning","Continue — Optimize","Proceed to Payment"]
+  checkout candidates: 1
+  url now: /cart
+  page text: Skip to main content TRAVELOURE BETA Marketplace Experts & Services Experiences Planning Tools Ways to earn K Kyoto Your Trip 1 · $106 Edit › Cart Optimize Itinerary Payment Cart Complete Payment ADD TO YOUR BOOKING Cooking Class Host recommended for this trip type Craft Workshop Host recommended for this trip type Payment Method Credit / Debit Card Secure payment via Stripe Selected Your payment information is processed securely. We do not store your card details. Order Review Nishiki & Gion Evening Food Walk Qty: 1 $95.00 Complete Booking Subtotal $95.00 Platform fee $11.40 Total $106.40 Complete Booking Traveloure Experience personalized travel planning with insider knowledge from local e
+== E. contact provider / message rail
+  NET 200 POST /api/cart/migrate
+  NET 200 GET /api/messages/unread/count
+  chat url: /chat?provider=82373a50-ccc4-453c-804b-5b93d886bb7a
+  chat text: T Traveloure PLAN Home My plans AI planner MARKETPLACE Discover Experts Bookings My events Trip Cart INBOX Inbox ACCOUNT Profile KT Kyoto Traveler test-traveler-kyoto@traveloure.test Logout Toggle Sidebar Traveloure K Kyoto Expert Chat Connect with local experts for your trips YOUR CONVERSATIONS No conversations yet. Message an expert below to get started. EXPERTS M Maria Santos New Lisbon Cultural Tours Food & Wine K Kenji Tanaka New Tokyo Cultural Immersion Traditional Experiences I Isabella Rossi New Rome Luxury Travel Honeymoons C Carlos Mendez New San Jose Adventure Travel Wildlife Tours 
+  composer count: 0
