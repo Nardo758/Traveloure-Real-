@@ -1215,6 +1215,130 @@ be picked up piecemeal.
   (shared with the expert console; its own `max-w-3xl` is left as-is and simply centers inside the
   new container).
 
+### Fixed here (lane FP-5 — ledger row 90)
+
+Source: `docs/testing/CONSOLE_TABS_EXERCISE.md` (branch `lane/provider-batch-exercise`, as-of
+`f747d0a`) — the eight **P1** findings from the console-tabs assessment. That exercise drove one real
+checkout which failed at the Stripe boundary (`sk_test_dummy`) and left exactly one row behind: a
+`service_bookings` row at `status='payment_pending'` with `stripe_payment_intent_id IS NULL` — an
+**unauthorized claim by construction** (§15b). The money machinery handled it perfectly. Six console
+surfaces then described it **five different ways**, and that disagreement is most of what this lane
+closes.
+
+- ~~**M1 — Money gave four different answers about the same never-charged booking.**~~ **CLOSED.**
+  `revenueBreakdown` (`earnings.tsx`) summed `totalAmount`/`platformFee`/`providerEarnings` over
+  **every** row and `GET /api/me/earnings-by-source` grouped **every** row — neither carried a status
+  filter at all — so the page simultaneously read *Total Earnings $0.00* and *"Your lifetime
+  earnings" $83.60* and *Earnings by Source: Direct, 1 booking, $95.00*. The rate was always honest
+  (`share/gross`, no literal — §8-clean); the **amount** was the lie. Every earnings/summary
+  aggregation on the surface now derives from **one shared predicate**,
+  `EARNING_BOOKING_STATUSES` in the new `shared/booking-visibility.ts` — server and client read the
+  same arrays, never two hand-kept copies. Money's headline tiles, Recent Transactions, the monthly
+  series and the Revenue Share Breakdown all pass through it. The claim is not erased, it is
+  **disclosed**: a band on the page states "N bookings awaiting the traveler's payment — not counted
+  in any figure on this page", the idiom **Customers** invented and the other tabs now adopt.
+- ~~**M2 — the same missing predicate latent in link analytics.**~~ **CLOSED.**
+  `GET /api/me/link-analytics` aggregated `bookings`/`revenue` per share link with no status filter
+  either. It read `$0` on the bench only by luck (that claim was untagged, `acquisition_ref` NULL);
+  a checkout failing the same way *after* a tracked click would have reported unpaid revenue against
+  the link — the number a provider uses to decide where to spend. Same shared predicate, one fix.
+- ~~**X1 — Today / Inbox / Customers disagreed about one booking (0 / "1 Pending" / "1 pending
+  payment").**~~ **CLOSED — root fix, not three patches.** Each page had picked its own predicate for
+  the same `service_bookings` row. `shared/booking-visibility.ts` is now the single source, with the
+  per-surface semantics stated in one place: **ACTIONABLE** = `pending` only (Inbox queue + tile,
+  Today's Pending-Bookings tile + Action Items, and the server's `pendingBookings` count);
+  **PROVISIONAL** = `payment_pending`, disclosed on every surface and **actionable on none** —
+  §18b/ruling 42 SD-1 means the owner rail may not move a booking out of a provisional state, so
+  offering a provider the Accept button was the defect; **EARNING** = `confirmed | deposit_paid |
+  in_progress | completed`, the only rows whose amounts may appear under a money label;
+  **RECORD** = the same set, for Inbox History. `GET /api/provider/analytics/dashboard` gained an
+  additive `summary.awaitingPaymentBookings` so Today can disclose the claim without banking it, and
+  Customers' `pendingPaymentBookings` — the one honest counter the exercise found — now reads the
+  shared predicate instead of a local string compare, so it cannot drift from the idiom it invented.
+- ~~**I1 — Inbox showed "1 Pending" above "No bookings waiting", counting a row it could not
+  display.**~~ **CLOSED.** The exclusion from the queue was the *correct* half; the tile was the lie.
+  The count is now **structurally** the length of the displayed array (`actionable.length`, the same
+  array the list maps over), so counter and list cannot disagree. The claim gets its **own** tile
+  ("Awaiting payment") **and its own read-only section** with the honest line "Awaiting the
+  traveler's payment — nothing for you to do" — no Accept/Decline, deliberately. Total still equals
+  the sum of the tiles (the L10b property).
+- ~~**N1 — the notification bell's red dot was hardcoded always-on.**~~ **CLOSED — WIRED, not
+  removed.** `backoffice-shell.tsx` rendered the dot as an unconditional `<span>`: no count, no
+  query, no condition, lit for every provider, expert **and** EA on every page forever, including a
+  brand-new account with nothing at all. A **real source exists** and is the console's own —
+  `GET /api/notifications/unread-count`, the same user-scoped endpoint the traveler bell and the
+  traveler sidebar badge already read — so the honest fix was to connect it, not delete it. The
+  decision is one exported predicate, `shouldShowUnreadDot`, which **fails closed twice**: zero
+  unread ⇒ no dot, and an unanswered query (loading / 401 / network error) ⇒ no dot.
+- ~~**S1 — twelve Settings controls persisted to a table no server code reads.**~~ **CLOSED —
+  eleven controls REMOVED, one wired.** `provider_settings` was a closed loop: written and read only
+  by the GET/PATCH that this one page calls. Two were disproved *empirically* during the exercise,
+  not just by grep — `autoResponse: true` produced no auto-response to a real inquiry, and
+  `notificationsJson.messages: true` produced no notification of any kind. Removed: **Instant
+  Booking** (a real consumer exists but reads a *different* column,
+  `service_provider_forms.instant_booking`, so the switch wrote the twin nobody looks at),
+  **Auto-Response**, **Minimum Lead Time**, **Target Response Time**, the whole six-toggle
+  **Notification Preferences** card (New bookings · Booking updates · Messages · Reviews · Payouts ·
+  Marketing), and **Payout Frequency** (no consumer, and it also describes a scheduling mechanism
+  that does not exist — payouts are admin-processed on request). **Kept and wired:** Minimum Payout
+  Amount (see S2). **Kept, unaffected:** Vacation Mode (genuinely enforced server-side) and the
+  Language preference card. **No schema change, no migration:** the columns and the storage are
+  untouched and the PATCH allow-list still accepts all seven fields — this lane removes the *lie*,
+  not the data. The redesign decides which of these features get built; a control comes back with
+  its consumer, never before it. Same call this page already made when it deleted its
+  Change-Password/2FA card.
+- ~~**S2 — "Minimum Payout Amount" ignored; Money and server both enforced a hardcoded $10.**~~
+  **CLOSED.** This was the one control in S1's set with a real consumer waiting, so it was wired
+  rather than removed. New single resolver `effectivePayoutMinimumCents`
+  (`server/config/payout.config.ts`): **effective threshold = max(platform floor, the earner's own
+  configured minimum)** — the `MIN_PAYOUT_CENTS` floor is **never lowered** (it exists for Stripe's
+  transfer economics), a **stricter** preference **is** honoured, and any absent/garbage/negative
+  value degrades to the floor (the safe failure mode for a threshold). `POST /api/payouts/request`
+  gates on it and `GET /api/provider/earnings/summary` returns it, so the Money page prints the
+  figure actually in force — with "Your own minimum, set in Settings" and a link — instead of a
+  client-side `stats.available < 10` literal. §14: the preference is **read server-side from the
+  caller's own settings row**, never from a request body, and can only ever *raise* the bar on the
+  owner's own withdrawal. One consequence handled deliberately: the settings GET's no-row default
+  moved from a cosmetic `"100"` to the platform floor, because a form pre-filled with 100 would
+  silently impose a $100 threshold on every provider who pressed Save without touching the field.
+- ~~**I3 — "Contact Provider" passed `?provider=` which chat.tsx never reads.**~~ **CLOSED.**
+  Investigated first: there is **no separate traveler↔provider conversation system** to point at —
+  `/chat` **is** the rail, `provider_services` is role-agnostic so a listing's owner may be a
+  provider or an expert, and the storefront's Message CTA already proved the rail works end to end
+  (`POST /api/chats 201` → the provider's Inbox → Messages). The CTA was simply speaking a language
+  the destination does not parse, dropping the traveler on a directory of four seeded experts with
+  no composer. Fixed on **both** sides: the CTA now uses the canonical `useAskExpert` rail
+  (`?expertId=` + the `?name=` fallback chat.tsx documents for provider-role targets, since
+  `/api/experts/:id` resolves expert-family roles only), carrying the listing name as the subject so
+  the thread arrives with context; and `chat.tsx` **accepts `?provider=` as an alias** for
+  `?expertId=`, so every link already out in the world — a shared URL, a bookmark, a chat history —
+  stops dead-ending. `GET /api/providers/:userId/public-verification` gained an additive
+  `displayName` (derived exactly as the storefront derives `earner.name`; nothing private — the name
+  is already on the storefront and every listing card). Until it resolves the button is **disabled**
+  rather than repeating the old dead end.
+
+**Proof.** `server/__tests__/fp5-console-agreement.db.test.ts` (9/9, HTTP against the real dev
+server, negatives first: an unauthorized claim contributes zero to earnings-by-source and zero to a
+*tracked link's* attributed revenue — the case the bench never reached — is not "pending" on Today,
+is disclosed there, and Today's disclosure count **equals** Customers'; a genuinely authorized
+booking appears in every one of those numbers; the payout threshold is read from the settings row and
+never from the request body). Pure units:
+`client/src/lib/__tests__/booking-visibility.test.ts` (11/11, including the mutual-exclusivity
+invariant that makes a sixth answer unwritable), `server/__tests__/fp5-payout-threshold.test.ts`
+(7/7) and `client/src/lib/__tests__/backoffice-unread-dot.test.ts` (4/4).
+
+**Keep-green battery** serialized on a fresh `traveloure_fp5` bench (32 suites): **336 pass, 0 unexpected fail**;
+client unit tests 79/79. The only failures are the two already-documented bench limitations, both re-verified as
+unrelated to this lane — `provider-money-hardening` P1/P2 (the fresh-bench `active_provider_commission_policy='tiered'`
+naming no `fee_bands` row; ruling 42's P3–P6 are green) and the six `city-feed-card-recommendation.test.tsx` failures
+FP-4 verified identical on a clean tree. Five guards plus their self-tests exit 0; `tsc` **170** = baseline; lockfile
+`replit.local` **0**; production build clean.
+
+**Not touched in this lane:** the expert console's own Money page and analytics endpoints (the
+findings are provider-console; the two SHARED server aggregations `/api/me/link-analytics` and
+`/api/me/earnings-by-source` are fixed for both, and the bell is fixed for all three consoles because
+it lives on the shared shell); no schema change, no migration, no `fee_bands` change, no new guard.
+
 ### Open — the rest of the exercise's findings
 
 | # | Sev | Finding (abridged) | Status |

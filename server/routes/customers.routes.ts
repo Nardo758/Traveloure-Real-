@@ -39,6 +39,8 @@ import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { and, eq, ne } from "drizzle-orm";
+// Ledger 90 (FP-5, X1): the ONE booking-visibility predicate — see shared/booking-visibility.ts.
+import { isProvisionalBooking } from "@shared/booking-visibility";
 import {
   serviceBookings,
   providerServices,
@@ -246,7 +248,11 @@ router.get("/api/me/customers", isAuthenticated, async (req, res) => {
         b.travelerId ? realName(b.firstName, b.lastName, b.email, "Traveler") : "Guest",
       );
       row.bookings += 1;
-      if (b.status === "payment_pending") row.pendingPaymentBookings += 1;
+      // Ledger 90 (FP-5, X1): the shared predicate, not a local string compare. Customers was the
+      // ONLY surface the exercise found telling the truth about a provisional claim; the fix
+      // points it at the same object the other surfaces now read, so it cannot drift away from
+      // the idiom it invented.
+      if (isProvisionalBooking(b.status)) row.pendingPaymentBookings += 1;
       const amount = Number(b.totalAmount ?? 0);
       // Real interaction either way; only money that actually transacted counts as value.
       if (b.status !== "cancelled" && Number.isFinite(amount)) row.bookedValue += amount;

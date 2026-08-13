@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Bell,
   CreditCard,
   Shield,
   Clock,
@@ -45,14 +44,12 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+// Ledger 90 (FP-5, S1): only the fields this page still RENDERS are typed here. The other six
+// columns on `provider_settings` are untouched on disk and still accepted by the PATCH allow-list
+// — they simply have no control any more, because nothing on the platform reads them. See the
+// removal block below the Verification section for the list and the evidence.
 interface ProviderSettingsData {
-  instantBooking: boolean;
-  autoResponse: boolean;
-  minimumLeadTimeDays: number;
-  targetResponseTimeHours: number;
-  payoutFrequency: string;
   minimumPayoutAmount: string;
-  notificationsJson: Record<string, boolean>;
 }
 
 function VerificationPayoutsSection() {
@@ -437,48 +434,27 @@ export default function ProviderSettings() {
     queryKey: ["/api/provider/settings"],
   });
 
-  const [notifications, setNotifications] = useState({
-    newBookings: true,
-    bookingUpdates: true,
-    messages: true,
-    reviews: true,
-    payouts: true,
-    marketing: false,
-  });
-  const [autoResponse, setAutoResponse] = useState(true);
-  const [instantBooking, setInstantBooking] = useState(false);
-  const [leadTime, setLeadTime] = useState("7");
-  const [responseTime, setResponseTime] = useState("2");
-  const [payoutFrequency, setPayoutFrequency] = useState("monthly");
-  const [minPayout, setMinPayout] = useState("100");
+  // Ledger 90 (FP-5, S2): the ONE surviving preference on this card. The GET supplies the
+  // server's own default (the platform payout floor) when no row exists, so the field never shows
+  // a number the server would not honour.
+  const [minPayout, setMinPayout] = useState("");
 
   useEffect(() => {
     if (serverSettings) {
-      setInstantBooking(serverSettings.instantBooking ?? false);
-      setAutoResponse(serverSettings.autoResponse ?? true);
-      setLeadTime(String(serverSettings.minimumLeadTimeDays ?? 7));
-      setResponseTime(String(serverSettings.targetResponseTimeHours ?? 2));
-      setPayoutFrequency(serverSettings.payoutFrequency ?? "monthly");
-      setMinPayout(String(serverSettings.minimumPayoutAmount ?? "100"));
-      if (serverSettings.notificationsJson) {
-        setNotifications(serverSettings.notificationsJson as typeof notifications);
-      }
+      setMinPayout(String(serverSettings.minimumPayoutAmount ?? ""));
     }
   }, [serverSettings]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: () =>
       apiRequest("PATCH", "/api/provider/settings", {
-        instantBooking,
-        autoResponse,
-        minimumLeadTimeDays: parseInt(leadTime, 10),
-        targetResponseTimeHours: parseInt(responseTime, 10),
-        payoutFrequency,
         minimumPayoutAmount: minPayout,
-        notificationsJson: notifications,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/settings"] });
+      // The Money page's payout gate reads the effective threshold off the earnings summary —
+      // invalidate it so the button and its copy reflect a change made here immediately (S2).
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/earnings/summary"] });
       toast({ title: t("settings:save.successTitle"), description: t("settings:save.successBody") });
     },
     onError: () => {
@@ -555,127 +531,52 @@ export default function ProviderSettings() {
             an equally honest treatment; this page opts for removal per the same audit's
             explicit call.) */}
 
-        {/* Business Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building className="w-5 h-5 text-console-mid" />
-              {t("settings:business.title")}
-            </CardTitle>
-            <CardDescription>{t("settings:business.description")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-base">{t("settings:business.instantBooking")}</Label>
-                <p className="text-sm text-console-mid">
-                  {t("settings:business.instantBookingDesc")}
-                </p>
-              </div>
-              <Switch
-                checked={instantBooking}
-                onCheckedChange={setInstantBooking}
-                data-testid="switch-instant-booking"
-              />
-            </div>
+        {/* ═══ Ledger 90 (FP-5, S1) — ELEVEN CONTROLS REMOVED, not disabled ═══════════════════
+            Evidence: docs/testing/CONSOLE_TABS_EXERCISE.md finding S1 (as-of `f747d0a`). The
+            `provider_settings` table is a CLOSED LOOP: it is touched only by
+            `getProviderSettings`/`upsertProviderSettings` in `server/storage.ts`, called only by
+            the GET/PATCH in `server/routes/provider.routes.ts`, called only by this file. Nothing
+            anywhere on the platform reads the values back. Two of them were confirmed EMPIRICALLY
+            during the exercise, not just by grep: with `autoResponse: true` saved, a real traveler
+            inquiry produced NO auto-response (`user_and_expert_chats` held exactly one row, the
+            traveler's), and with `notificationsJson.messages: true` saved, no notification of any
+            kind was produced.
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-base">{t("settings:business.autoResponse")}</Label>
-                <p className="text-sm text-console-mid">
-                  {t("settings:business.autoResponseDesc")}
-                </p>
-              </div>
-              <Switch
-                checked={autoResponse}
-                onCheckedChange={setAutoResponse}
-                data-testid="switch-auto-response"
-              />
-            </div>
+            REMOVED (each persisted perfectly and was read by nothing):
+              Business Preferences —
+                1. Instant Booking          — worse than unread: a real consumer exists at
+                                              routes.ts, but it reads a DIFFERENT column
+                                              (`service_provider_forms.instant_booking`), so this
+                                              switch wrote the twin nobody looks at.
+                2. Auto-Response            — empirically proven inert (above).
+                3. Minimum Lead Time (days) — no consumer.
+                4. Target Response Time (h) — no consumer.
+              Notification Preferences (the whole `notificationsJson` card) —
+                5. New bookings   6. Booking updates   7. Messages
+                8. Reviews        9. Payouts          10. Marketing
+                                              — all six inert; #7 empirically proven (above).
+              Payment Settings —
+               11. Payout Frequency         — no consumer; payouts are admin-processed on request,
+                                              not on a schedule, so the control also describes a
+                                              mechanism that does not exist.
 
-            <div className="space-y-2">
-              <Label htmlFor="lead-time">{t("settings:business.leadTime")}</Label>
-              <div className="flex items-center gap-2">
-                <Input 
-                  id="lead-time" 
-                  type="number" 
-                  value={leadTime}
-                  onChange={(e) => setLeadTime(e.target.value)}
-                  className="w-24"
-                  data-testid="input-lead-time"
-                />
-                <span className="text-console-dark">{t("settings:business.leadTimeUnit")}</span>
-              </div>
-            </div>
+            KEPT AND WIRED: "Minimum Payout Amount" (below) — it was the one control in this set
+            with a real consumer waiting, and FP-5's S2 connected it: the payout-request check now
+            enforces max(platform floor, this value). See server/config/payout.config.ts.
 
-            <div className="space-y-2">
-              <Label htmlFor="response-time">
-                <Clock className="w-4 h-4 inline mr-1" />
-                {t("settings:business.responseTime")}
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input 
-                  id="response-time" 
-                  type="number" 
-                  value={responseTime}
-                  onChange={(e) => setResponseTime(e.target.value)}
-                  className="w-24"
-                  data-testid="input-response-time"
-                />
-                <span className="text-console-dark">{t("settings:business.responseTimeUnit")}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            KEPT, UNAFFECTED: Vacation Mode (writes `/api/me/vacation`, genuinely enforced
+            server-side) and the Language preference card.
+
+            THE COLUMNS AND THE STORAGE ARE UNTOUCHED — no migration, no schema change, and the
+            PATCH allow-list still accepts all seven fields. This lane removes the LIE (a switch
+            that silently does nothing), not the data; the redesign decides which of these features
+            get built, and a control comes back with its consumer, never before it. This is the
+            same call this page already made when it deleted its Change-Password/2FA card because
+            "the buttons had nothing behind them" — twelve controls with nothing behind them had
+            survived that audit. */}
 
         {/* Vacation Mode — mockup §06b */}
         <VacationModeSection />
-
-        {/* Notification Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-console-mid" />
-              {t("settings:notifications.title")}
-            </CardTitle>
-            <CardDescription>{t("settings:notifications.description")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {Object.entries(notifications).map(([key, value]) => {
-              // Ruling 60 Phase A: the notification keys are the persisted jsonb field names
-              // (notificationsJson) — data, never translated. Only their labels are.
-              const NOTIFICATION_KEYS = [
-                "newBookings",
-                "bookingUpdates",
-                "messages",
-                "reviews",
-                "payouts",
-                "marketing",
-              ];
-              const known = NOTIFICATION_KEYS.includes(key);
-              
-              return (
-                <div key={key} className="flex items-center justify-between py-2">
-                  <div className="space-y-0.5">
-                    <Label className="text-base">
-                      {known ? t(`settings:notifications.${key}`) : key}
-                    </Label>
-                    <p className="text-sm text-console-mid">
-                      {known ? t(`settings:notifications.${key}Desc`) : ""}
-                    </p>
-                  </div>
-                  <Switch
-                    checked={value}
-                    onCheckedChange={(checked) => 
-                      setNotifications(prev => ({ ...prev, [key]: checked }))
-                    }
-                    data-testid={`switch-notification-${key}`}
-                  />
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
 
         {/* Payment Settings */}
         <Card>
@@ -688,35 +589,25 @@ export default function ProviderSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>{t("settings:payment.frequency")}</Label>
-              <div className="flex gap-2">
-                {(["weekly", "biweekly", "monthly"] as const).map((freq) => (
-                  <Button
-                    key={freq}
-                    variant={payoutFrequency === freq ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setPayoutFrequency(freq)}
-                    data-testid={`button-payout-${freq}`}
-                  >
-                    {t(`settings:payment.${freq}`)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
               <Label>{t("settings:payment.minPayout")}</Label>
               <div className="flex items-center gap-2">
                 <span className="text-console-dark">$</span>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   value={minPayout}
                   onChange={(e) => setMinPayout(e.target.value)}
                   className="w-32"
                   data-testid="input-min-payout"
                 />
               </div>
+              {/* Ledger 90 (FP-5, S2): state the rule where the number is set, so the Money page's
+                  disabled payout button is never a mystery. No literal here — the platform floor
+                  is a server constant and is quoted by the server, on the surface that enforces it. */}
+              <p className="text-sm text-console-mid">
+                Payouts are held until your available balance reaches this amount. The platform has
+                its own floor below which a payout can't be sent; whichever is higher applies, and
+                your Money page shows the figure in force.
+              </p>
             </div>
           </CardContent>
         </Card>

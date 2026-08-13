@@ -150,7 +150,15 @@ export default function Chat() {
   const { toast } = useToast();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
-  const expertIdFromUrl = urlParams.get("expertId");
+  // Ledger 90 (FP-5, I3): `?provider=` is accepted as an ALIAS for `?expertId=`. The service-detail
+  // "Contact Provider" CTA linked to `/chat?provider=<userId>` for its whole life and this file has
+  // never read that param, so the most prominent way for a traveler to reach a provider dropped
+  // them on the browse directory with no composer. The CTA itself now uses the canonical rail
+  // (useAskExpert → `?expertId=` + `?name=`), and this alias catches every link already out in the
+  // world — a shared URL, a bookmark, a chat history. There is ONE conversation rail here, not two:
+  // `provider_services` is role-agnostic, so a listing's owner may be a provider or an expert, and
+  // the thread is the same `user_and_expert_chats` row either way.
+  const expertIdFromUrl = urlParams.get("expertId") ?? urlParams.get("provider");
   // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
   // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
   const clientIdFromUrl = urlParams.get("clientId");

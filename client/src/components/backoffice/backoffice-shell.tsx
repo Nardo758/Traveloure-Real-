@@ -2,8 +2,10 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { UserMenu } from "@/components/user-menu";
 import { LanguageMenu } from "@/components/language-menu";
+import { useAuth } from "@/hooks/use-auth";
 
 /**
  * BackofficeShell — the single console shell shared by the provider and expert
@@ -34,6 +36,24 @@ interface BackofficeShellProps {
   notificationsHref: string;
 }
 
+/**
+ * Ledger 90 (FP-5, N1) — the ONE rule that decides whether the bell shows its dot.
+ *
+ * Exported (and unit-pinned by client/src/lib/__tests__/backoffice-unread-dot.test.ts) because the
+ * defect it replaces was a hardcoded `<span>` with no condition at all: permanently lit for every
+ * provider, expert and EA, on every page, including a brand-new account with nothing at all.
+ *
+ * Both refusals are load-bearing and neither may be relaxed to "truthy":
+ *   • `count === 0` ⇒ NO dot — the whole point; an indicator that is always on carries no signal.
+ *   • `undefined`   ⇒ NO dot — a query that has not answered (loading, 401, network error) is not
+ *                     evidence of an alert. Failing OPEN here would silently restore the defect
+ *                     for every logged-out or offline render.
+ */
+export function shouldShowUnreadDot(unread: { count?: number } | null | undefined): boolean {
+  const count = unread?.count;
+  return typeof count === "number" && count > 0;
+}
+
 export function BackofficeShell({
   sidebar,
   children,
@@ -47,6 +67,26 @@ export function BackofficeShell({
     "--sidebar-width": "220px",
     "--sidebar-width-icon": "56px",
   };
+
+  // Ledger 90 (FP-5, N1). The red dot on this bell was a hardcoded `<span>` with no count, no
+  // query and no condition — permanently lit for every provider, expert and EA on every page,
+  // including a brand-new account with nothing at all. It therefore carried ZERO information and
+  // could never signal a real event (§13: never a fake indicator).
+  //
+  // A REAL source exists and is already the console's own: `GET /api/notifications/unread-count`
+  // — the same endpoint the traveler bell (notification-bell.tsx) and the traveler sidebar badge
+  // (dashboard-sidebar.tsx) read, user-scoped server-side. The dot is now that count > 0 and
+  // nothing else: zero unread ⇒ NO dot, a failed/unresolved fetch ⇒ NO dot (a request that did
+  // not answer is not evidence of an alert). Same 30s cadence as the traveler surfaces so the
+  // two bells cannot disagree about the same user.
+  const { user } = useAuth();
+  const { data: unread } = useQuery<{ count: number }>({
+    queryKey: ["/api/notifications/unread-count"],
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+  const hasUnread = shouldShowUnreadDot(unread);
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
@@ -88,7 +128,12 @@ export function BackofficeShell({
                   data-testid={notificationsTestId}
                 >
                   <Bell className="w-4 h-4" />
-                  <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] bg-[#E85D55] rounded-full" />
+                  {hasUnread && (
+                    <span
+                      className="absolute top-1.5 right-1.5 w-[7px] h-[7px] bg-[#E85D55] rounded-full"
+                      data-testid="indicator-backoffice-unread"
+                    />
+                  )}
                 </Button>
               </Link>
               <UserMenu />

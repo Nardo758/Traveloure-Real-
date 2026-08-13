@@ -7,6 +7,8 @@ import { storage } from "../storage";
 import { users, providerServices, bundleComponents } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
+// Ledger 90 (FP-5, S2): the payout floor is quoted from its single source, never re-typed here.
+import { MIN_PAYOUT_DOLLARS } from "../config/payout.config";
 import { deriveCityPatch } from "../utils/service-city";
 
 /**
@@ -22,8 +24,15 @@ import { deriveCityPatch } from "../utils/service-city";
  *
  * NOT money-path: settings are self-scoped by userId (unique per user); PATCH is a zod
  * allow-list of the seven editable fields only (never raw req.body), so ownership/identity
- * columns can't be mass-assigned. `payoutFrequency`/`minimumPayoutAmount` are provider
- * preferences, not a charge/transfer amount — no Stripe/earning write happens here.
+ * columns can't be mass-assigned. No Stripe/earning write happens here.
+ *
+ * ONE clause updated by ledger 90 (FP-5, S2), because it stopped being true: `minimumPayoutAmount`
+ * now BINDS IN A MONEY DECISION — `POST /api/payouts/request` gates on
+ * max(MIN_PAYOUT_CENTS, this value). The §14 posture holds and is worth stating: the value is READ
+ * server-side from the caller's own settings row, never accepted from the payout request's body,
+ * and it can only ever RAISE the bar on the owner's own withdrawal — it can never lower the
+ * platform floor, move an amount, or affect any other party. (`payoutFrequency` remains a
+ * preference with no consumer; its control was removed by S1 — see settings.tsx.)
  *
  * The /api/provider/earnings* family (also dark) is intentionally NOT mounted here: no client
  * consumer calls it (the earnings page derives from the live /api/provider/bookings), so
@@ -77,13 +86,20 @@ router.get("/api/provider/settings", isAuthenticated, async (req, res) => {
     const settings = await storage.getProviderSettings(userId);
     if (!settings) {
       // Sensible defaults so a first-time provider sees the form populated (no row yet).
+      //
+      // Ledger 90 (FP-5, S2): `minimumPayoutAmount` defaults to the PLATFORM FLOOR, not the old
+      // cosmetic "100". While the control was inert the value was decoration; now that it BINDS
+      // (POST /api/payouts/request enforces max(floor, this)), a form pre-filled with 100 would
+      // silently impose a $100 threshold on every provider who ever pressed Save without touching
+      // the field. The honest starting value is the threshold actually in force for a provider
+      // with no preference — the floor itself.
       return res.json({
         instantBooking: false,
         autoResponse: true,
         minimumLeadTimeDays: 7,
         targetResponseTimeHours: 2,
         payoutFrequency: "monthly",
-        minimumPayoutAmount: "100",
+        minimumPayoutAmount: MIN_PAYOUT_DOLLARS.toFixed(2),
         notificationsJson: {
           newBookings: true,
           bookingUpdates: true,
