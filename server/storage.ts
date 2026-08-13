@@ -1925,7 +1925,22 @@ export class DatabaseStorage implements IStorage {
     // D3 leak-prevention: this function's one caller is GET /api/services (unauthenticated
     // public browse) — serviceFile is the pdf-delivery product itself and must never surface
     // pre-purchase. Redacted to null (not omitted) so the return type stays ProviderService[].
-    return rows.map((r) => ({ ...r, serviceFile: null }));
+    // T-REP follow-up (§18): the same redaction the detail read applies — a rate-bearing field
+    // is never expose-able on any public surface, and the approval workflow's bookkeeping
+    // (reviewer, rejection reason, form status/timestamps, revenue counter) is not a public
+    // fact about the listing. Every row here is already approved+active, so these carry no
+    // traveler-relevant information.
+    return rows.map((r) => ({
+      ...r,
+      serviceFile: null,
+      revenueShareRate: null,
+      reviewedBy: null,
+      rejectionReason: null,
+      formStatus: null,
+      submittedAt: null,
+      reviewedAt: null,
+      totalRevenue: null,
+    }));
   }
 
   async toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined> {

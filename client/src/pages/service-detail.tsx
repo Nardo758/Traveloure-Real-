@@ -61,12 +61,30 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+// T-REP (G5 #13): pure "Good to know" formatting/derivation helpers, unit-tested in
+// client/src/lib/__tests__/service-good-to-know.test.ts.
+import {
+  formatHours,
+  formatMinutes,
+  formatPartySize,
+  formatStartWindow,
+  formatTransportProvision,
+  resolveDepositPreview,
+  hasDepositTerms,
+} from "@/lib/service-good-to-know";
 // Ledger 90 (FP-5, I3): the SAME rail the storefront's Message CTA uses. "Contact Provider" used
 // to link to `/chat?provider=<userId>` — a param chat.tsx has never read — landing the traveler on
 // a directory of four seeded experts with no composer and no sign of the person they were reading
 // about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
 // and it works; the CTA was simply speaking a language the destination doesn't parse.
 import { useAskExpert } from "@/lib/use-ask-expert";
+// S10 (Gate G4): the shared bundle-component summary shape + pure link/label helpers, so the
+// available/unavailable rendering decision lives in exactly one place (unit-tested separately).
+import {
+  bundleComponentHref,
+  bundleComponentMethodLabel,
+  type BundleComponentSummary,
+} from "@/lib/bundle-component-display";
 
 interface PricingTier {
   label: string;
@@ -150,6 +168,46 @@ interface Service {
   // is DELIVERED in. Absent/null on every pre-199 listing and on every listing whose owner has
   // not said — which renders NOTHING at all, never a presumed "English" (§13).
   deliveryLanguages?: string[] | null;
+  // T-REP (G5 #13): D7 logistics-capture columns (migration 195) were already riding the wire
+  // (the endpoint spreads the whole row) but had no client type and no render — this lane's
+  // whole mandate. leadTimeHours/earliestStartTime/latestStartTime/serviceTimezone are the THREE
+  // fields `server/services/booking-eligibility.service.ts` already enforces at checkout
+  // (ruling 83) — a traveler could be silently refused for a constraint the page never stated.
+  // All nullable: NULL = the provider never declared it, render nothing (§13), never a guessed
+  // default (leadTimeHours' DB default of 24 is a real stored value once read back, not invented
+  // here).
+  partySizeMin?: number | null;
+  partySizeMax?: number | null;
+  leadTimeHours?: number | null;
+  changeCutoffHours?: number | null;
+  earliestStartTime?: string | null;
+  latestStartTime?: string | null;
+  serviceTimezone?: string | null;
+  bufferMinutes?: number | null;
+  durationMinutes?: number | null;
+  // D7 capture-only (no server consumer yet, unlike the three eligibility gates above) — the
+  // richer 4-value transport vocabulary (pickup_included/pickup_available/meet_at_point/
+  // not_applicable) alongside the legacy yes/no/not_applicable `transportProvided` already
+  // rendered in the Direct-Booking trust panel below.
+  transportProvision?: string | null;
+  // Deposits/partial payments (ruling 72, migration 200) — owner-authored LISTING config, not a
+  // platform rate (§8/§18 do not apply; see shared/schema.ts's own comment on the column).
+  depositEnabled?: boolean | null;
+  depositType?: string | null;
+  depositPercentage?: number | null;
+  depositFlatAmount?: string | number | null;
+  // Consultancy-style deliverable terms — present on any listing, most meaningful for pdf/call/
+  // async delivery methods.
+  revisionsIncluded?: number | null;
+  includesExpertNotes?: boolean | null;
+  // Photo gallery (distinct from the single serviceImage cover shown in the hero above).
+  galleryImages?: string[] | null;
+  // T-REP: provider-level coverage-area rows for THIS listing's category, joined server-side
+  // (GET /api/services/:id) from `provider_neighborhood_coverage` — there is no bare
+  // `neighborhoods` column on the row itself. Empty array = no declared coverage, never omitted
+  // vs. absent-field ambiguity (§13): always an array, so "no neighborhoods" and "not asked yet"
+  // read the same way here (there being no per-listing capture to distinguish them from).
+  neighborhoods?: { slug: string; name: string }[];
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -161,11 +219,10 @@ interface ServiceRoutePointRow {
   longitude: string | null;
 }
 
-interface BundleComponent {
-  id: string;
-  serviceName: string;
-  shortDescription: string;
-}
+// S10 (Gate G4): matches the server's per-component shape (server/routes/content.routes.ts,
+// GET /api/services/:id bundle branch) — see client/src/lib/bundle-component-display.ts for the
+// shared type and the pure link/label helpers this page renders through.
+type BundleComponent = BundleComponentSummary;
 
 interface RoomSummary {
   id: string;
@@ -560,6 +617,28 @@ export default function ServiceDetailPage() {
     hasPickupAddress ||
     hasTransportSignal;
 
+  // T-REP (G5 #13) "Good to know" logistics — each line gated on its own real field, omitted
+  // (never defaulted) when absent (§13). The formatting/derivation itself lives in the pure,
+  // unit-tested `@/lib/service-good-to-know` module; this page only decides WHETHER to render.
+  const partySizeText = formatPartySize(service.partySizeMin, service.partySizeMax);
+  const hasLeadTime = typeof service.leadTimeHours === "number" && service.leadTimeHours > 0;
+  const hasChangeCutoff = typeof service.changeCutoffHours === "number" && service.changeCutoffHours > 0;
+  const startWindowText = formatStartWindow(service.earliestStartTime, service.latestStartTime, service.serviceTimezone);
+  const hasBuffer = typeof service.bufferMinutes === "number" && service.bufferMinutes > 0;
+  const hasDurationMinutes = typeof service.durationMinutes === "number" && service.durationMinutes > 0;
+  const hasNeighborhoods = Array.isArray(service.neighborhoods) && service.neighborhoods.length > 0;
+  const transportProvisionText = formatTransportProvision(service.transportProvision);
+  // Deposit terms are owner listing config, not a platform rate (§8/§18 do not apply — see
+  // shared/schema.ts). The dollar preview mirrors resolveDepositPlan's own formula
+  // (percentage-of-price or flat) for display only; checkout re-derives the real charge
+  // server-side from the confirmed line total (§14) — this is not a second source of truth.
+  const hasDeposit = hasDepositTerms(service);
+  const depositPreview = resolveDepositPreview(service, fmtPrice, priceNum);
+  const hasRevisions = typeof service.revisionsIncluded === "number" && service.revisionsIncluded > 0;
+  const hasGoodToKnow =
+    !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || hasBuffer ||
+    hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit;
+
   // Vacation mode (mockup §08/§06b): the listing stays visible while the owner is away —
   // only new-booking CTAs are disabled. Existing confirmed bookings are untouched (this is
   // a business-level flag, never a provider_services status change — CLAUDE.md §06b).
@@ -703,6 +782,21 @@ export default function ServiceDetailPage() {
           </div>
         )}
 
+        {/* T-REP (G5 #13): the gallery has been collectible (galleryImages) since the wizard's
+            Media step, and the column already rode the wire (`SELECT *`) — only the render was
+            missing. Only the cover (serviceImage) showed above; every other photo went nowhere.
+            A simple thumbnail strip, distinct from the hero, no lightbox/carousel added — that's
+            a bigger UI investment than this lane's honest-rendering mandate calls for. */}
+        {Array.isArray(service.galleryImages) && service.galleryImages.length > 0 && (
+          <div className="mb-6 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="section-gallery">
+            {service.galleryImages.map((url, idx) => (
+              <div key={idx} className="rounded-md overflow-hidden border aspect-square" data-testid={`img-gallery-${idx}`}>
+                <img src={url} alt={`${service.serviceName} photo ${idx + 1}`} className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Link-landing polish (mockup §08): on mobile the booking panel (price/rating/CTA)
             renders BEFORE the long-form content below via `order` — a texted link must put
             photo + price + CTA above the fold without a redesign of either column's content.
@@ -745,6 +839,79 @@ export default function ServiceDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* T-REP (G5 #13): "Good to know" — logistics the provider authored in ServiceForm
+                that had no home on this page. Every line is gated on a real field; an absent
+                value omits the row rather than guessing (§13). The three eligibility lines
+                (party size / start window / lead time) mirror the SAME constraints
+                booking-eligibility.service.ts already enforces server-side at checkout — stating
+                them here means a traveler finds out before trying to book, not after a silent
+                refusal. */}
+            {hasGoodToKnow && (
+              <Card data-testid="card-good-to-know">
+                <CardHeader>
+                  <CardTitle>Good to know</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2.5 text-sm">
+                    {partySizeText && (
+                      <li className="flex items-start gap-2" data-testid="text-party-size">
+                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Party size: {partySizeText}</span>
+                      </li>
+                    )}
+                    {startWindowText && (
+                      <li className="flex items-start gap-2" data-testid="text-start-window">
+                        <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{startWindowText}</span>
+                      </li>
+                    )}
+                    {hasLeadTime && (
+                      <li className="flex items-start gap-2" data-testid="text-lead-time">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Book at least {formatHours(service.leadTimeHours!)} ahead</span>
+                      </li>
+                    )}
+                    {hasChangeCutoff && (
+                      <li className="flex items-start gap-2" data-testid="text-change-cutoff">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Changes accepted up to {formatHours(service.changeCutoffHours!)} before the start</span>
+                      </li>
+                    )}
+                    {hasDurationMinutes && (
+                      <li className="flex items-start gap-2" data-testid="text-duration-minutes">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Duration: {formatMinutes(service.durationMinutes!)}</span>
+                      </li>
+                    )}
+                    {hasBuffer && (
+                      <li className="flex items-start gap-2" data-testid="text-buffer-minutes">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{formatMinutes(service.bufferMinutes!)} kept free around each booking</span>
+                      </li>
+                    )}
+                    {transportProvisionText && (
+                      <li className="flex items-start gap-2" data-testid="text-transport-provision">
+                        <Car className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{transportProvisionText}</span>
+                      </li>
+                    )}
+                    {hasNeighborhoods && (
+                      <li className="flex items-start gap-2" data-testid="text-neighborhoods">
+                        <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Serves: {service.neighborhoods!.map((n) => n.name).join(", ")}</span>
+                      </li>
+                    )}
+                    {hasDeposit && (
+                      <li className="flex items-start gap-2" data-testid="text-deposit-terms">
+                        <DollarSign className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>{depositPreview ?? "Deposit required — details at checkout"}</span>
+                      </li>
+                    )}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Ruling 22(c): Location & route — renders ONLY when the service has real
                 location facts (confirmed pin and/or route stops). Map draws located stops
@@ -845,26 +1012,44 @@ export default function ServiceDetailPage() {
               </Card>
             )}
 
-            {service.whatIncluded && service.whatIncluded.length > 0 && (
+            {((service.whatIncluded && service.whatIncluded.length > 0) || hasRevisions || service.includesExpertNotes) && (
               <Card>
                 <CardHeader>
                   <CardTitle>What's Included</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {service.whatIncluded.map((item, index) => (
+                    {service.whatIncluded?.map((item, index) => (
                       <li key={index} className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
                         <span className="text-muted-foreground">{item}</span>
                       </li>
                     ))}
+                    {/* T-REP (G5 #13): revisionsIncluded/includesExpertNotes were authored on
+                        every consulting-style listing and rendered nowhere. */}
+                    {hasRevisions && (
+                      <li className="flex items-start gap-2" data-testid="text-revisions-included">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                        <span className="text-muted-foreground">
+                          {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"} included
+                        </span>
+                      </li>
+                    )}
+                    {service.includesExpertNotes && (
+                      <li className="flex items-start gap-2" data-testid="text-includes-expert-notes">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                        <span className="text-muted-foreground">Includes personalized expert notes</span>
+                      </li>
+                    )}
                   </ul>
                 </CardContent>
               </Card>
             )}
 
-            {/* §17 bundles (migration 151): components of this bundle, server-gated to only
-                still-approved+active items. No section at all for a non-bundle service. */}
+            {/* S10 (Gate G4): components of this bundle. The server (content.routes.ts) sends
+                EVERY component slot, not just the visible ones — an available:false row is
+                unapproved/paused/missing and renders name-only with no link (§13: never a broken
+                link, never invented detail). No section at all for a non-bundle service. */}
             {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
               <Card data-testid="card-bundle-components">
                 <CardHeader>
@@ -873,20 +1058,64 @@ export default function ServiceDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Same honest posture the Workstation bundle builder states to the provider
+                      ("component prices below are shown for reference only, nothing is
+                      auto-summed") — the traveler-facing equivalent: this is one bundle price,
+                      not a sum of what the components would cost booked separately. */}
+                  <p className="text-xs text-muted-foreground mb-3">
+                    This is one bundle price — it's not a sum of these components' individual prices.
+                  </p>
                   <div className="divide-y">
-                    {service.bundleComponents.map((component) => (
-                      <Link
-                        key={component.id}
-                        href={`/services/${component.id}`}
-                        data-testid={`bundle-component-${component.id}`}
-                        className="block py-3 hover-elevate rounded-md px-2 -mx-2"
-                      >
-                        <p className="font-medium">{component.serviceName}</p>
-                        {component.shortDescription && (
-                          <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
-                        )}
-                      </Link>
-                    ))}
+                    {service.bundleComponents.map((component, index) => {
+                      const href = bundleComponentHref(component);
+                      const methodLabel = bundleComponentMethodLabel(component);
+                      const key = component.available ? component.id : `unavailable-${index}`;
+                      const body = (
+                        <div className="flex items-start gap-3 py-3">
+                          {component.available && component.serviceImage && (
+                            <img
+                              src={component.serviceImage}
+                              alt=""
+                              className="w-14 h-14 rounded-md object-cover shrink-0"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-medium ${component.available ? "" : "text-muted-foreground"}`}>
+                                {component.serviceName}
+                              </p>
+                              {methodLabel && (
+                                <Badge variant="outline" className="capitalize">{methodLabel}</Badge>
+                              )}
+                            </div>
+                            {component.available && component.shortDescription && (
+                              <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
+                            )}
+                            {!component.available && (
+                              <p className="text-sm text-muted-foreground mt-0.5">Currently unavailable</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                      return href ? (
+                        <Link
+                          key={key}
+                          href={href}
+                          data-testid={`bundle-component-${component.available ? component.id : index}`}
+                          className="block hover-elevate rounded-md px-2 -mx-2"
+                        >
+                          {body}
+                        </Link>
+                      ) : (
+                        <div
+                          key={key}
+                          data-testid={`bundle-component-unavailable-${index}`}
+                          className="px-2 -mx-2"
+                        >
+                          {body}
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
