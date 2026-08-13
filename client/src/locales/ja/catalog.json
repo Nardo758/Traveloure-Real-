@@ -4,6 +4,7 @@
     "countSummary": "{{total}}件中 {{active}}件を公開中です",
     "viewList": "リスト",
     "viewMap": "地図",
+    "viewAvailability": "空き状況",
     "addService": "サービスを追加"
   },
   "filter": {
