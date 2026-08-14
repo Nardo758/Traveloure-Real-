@@ -249,7 +249,8 @@ async function getSeasonalOpportunities(
       map.set((opp.serviceType ?? "").toLowerCase(), multiplier);
     }
     return map;
-  } catch {
+  } catch (err) {
+    console.warn("[content-matching] Failed to build demand multiplier map — returning empty map:", err);
     return new Map();
   }
 }

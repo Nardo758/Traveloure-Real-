@@ -7577,6 +7577,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
       const user = await storage.getUser(uid);
       return user?.role === "admin";
     } catch {
+      // Fail closed: if the admin-role lookup fails, deny access rather than accidentally granting it.
       return false;
     }
   };
