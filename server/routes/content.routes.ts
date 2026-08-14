@@ -5916,15 +5916,25 @@ router.get("/api/search/experiences", async (req, res) => {
 
       // Sources filter (default "all" — today's exact behavior, every existing caller untouched).
       // "platform" skips the Google Places arm entirely (no API spend); "google" skips the
-      // platform arm. Response shape is unchanged in every case.
-      const sourcesFilter = sources === "platform" || sources === "google" ? sources : "all";
-      const includePlatform = sourcesFilter !== "google";
-      const includeGoogle = sourcesFilter !== "platform";
+      // platform arm; "viator" returns only Viator bookable-activity results.
+      // Response shape is unchanged in every case.
+      const sourcesFilter = sources === "platform" || sources === "google" || sources === "viator" ? sources : "all";
+      const includePlatform = sourcesFilter !== "google" && sourcesFilter !== "viator";
+      const includeGoogle = sourcesFilter !== "platform" && sourcesFilter !== "viator";
+      const includeViator = sourcesFilter === "viator" || sourcesFilter === "all";
 
       // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
       // platform arm has nothing for this destination+category and fell through to Google Places
       // — a real occurrence of unmet platform-catalog demand. Fire-and-forget, minimal context
       // (no free-text query — §13 no-PII posture).
+      if (sourcesFilter === "viator") {
+        logDemandSignal({
+          kind: "places_fallthrough",
+          market: destination || null,
+          category: category || null,
+          context: { hasQuery: !!q, source: "viator" },
+        });
+      }
       if (sourcesFilter === "google") {
         logDemandSignal({
           kind: "places_fallthrough",
@@ -6054,6 +6064,43 @@ router.get("/api/search/experiences", async (req, res) => {
             });
           }
         }
+      }
+
+      // ── Viator bookable activities (tours & experiences) ──
+      if (includeViator) try {
+        const searchTerm = q || destination || "";
+        if (searchTerm) {
+          const catLower = (category || "").toLowerCase();
+          // Viator products are activities/experiences. Skip if the caller has filtered
+          // to a category that Viator never covers (dining=restaurant, hotels=lodging).
+          const viatorCatMatch = !catLower || catLower === "all" || catLower === "activities" || catLower === "transport";
+          if (viatorCatMatch) {
+            const viatorResult = await viatorService.searchByFreetext(searchTerm, "USD", 15);
+            const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+            for (const product of (viatorResult.products || [])) {
+              const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
+              const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
+              const fromPrice = product.pricing?.summary?.fromPrice;
+              results.push({
+                id: `vtr_${product.productCode}`,
+                source: "viator",
+                productCode: product.productCode,
+                name: product.title,
+                address: null,
+                category: "activity",
+                rating: product.reviews?.combinedAverageRating ?? null,
+                reviewCount: product.reviews?.totalReviews ?? null,
+                priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
+                location: null,
+                photoUrl: photoVariant?.url ?? null,
+                mapsUrl: null,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[viator] searchByFreetext failed in /api/search/experiences:", err);
+        // Non-fatal — Viator unavailable should never fail the whole search response
       }
 
       res.json({ results, count: results.length });

@@ -2403,6 +2403,7 @@ const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean
   { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
   { k: "google", l: "Google Places", caption: "Live Google Places search for this destination — nothing here is stored in Traveloure's catalog." },
+  { k: "viator", l: "Viator", caption: "Bookable tours and activities from Viator — add them straight to the itinerary." },
   { k: "partner", l: "Partner inventory", caption: "Browse tours & activities from Traveloure's partner networks, or jump straight to a network's booking site." },
   { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
@@ -3274,6 +3275,25 @@ export default function ExpertWorkspace() {
   // platform drawer's OWN query currently has cached (may be empty/stale if that drawer was never
   // opened this session — skip cleanly rather than firing a second fetch just for this).
   const [googleAddedDays, setGoogleAddedDays] = useState<Record<string, number>>({});
+
+  // ── Browse: Viator bookable-activities search (the "Viator" Add-panel pill). Shares
+  // browseQuery/debouncedQuery/cat with the other drawers (one search-box concept). Sources=viator
+  // so the server hits only the Viator arm — no Google or platform results mix in. ──
+  const viatorSearchEnabled = rightTab === "add" && addSource === "viator" && !!(debouncedQuery || destination);
+  const { data: viatorSearchData, isFetching: viatorSearchFetching } = useQuery<{ results: any[]; count: number }>({
+    queryKey: ["/api/search/experiences", "viator", debouncedQuery, destination, cat],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (destination) params.set("destination", destination);
+      if (cat && cat !== "all") params.set("category", cat);
+      params.set("sources", "viator");
+      return fetch(`/api/search/experiences?${params}`, { credentials: "include" }).then(r => r.json());
+    },
+    enabled: viatorSearchEnabled,
+    staleTime: 5 * 60 * 1000,
+  });
+  const viatorSearchResults = viatorSearchData?.results || [];
 
   // ── Browse: add result to itinerary (day-aware — targets a chosen day, defaulting to the
   // focused day). GOOGLE-PLACES-SOURCE-PILL: generalized from a hardcoded `focusDay` write to an
@@ -4432,6 +4452,121 @@ export default function ExpertWorkspace() {
 
               <div style={{ borderTop: `1px solid ${LINE}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
                 <span style={{ fontSize: 10, color: FAINT }}>Places results powered by Google · live search, nothing stored</span>
+              </div>
+            </div>
+          )}
+
+          {/* Add · Viator — live bookable-activities search. Writes through addFromSearchMutation
+              (same POST /api/trips/:tripId/itinerary-items rail as every other source). Results
+              carry source="viator" + productCode so the item description carries an honest
+              attribution note; no affiliate URL is ever embedded (§16). */}
+          {rightTab === "add" && addSource === "viator" && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Discovery-layer candidates for the canvas plan map (same contract as other
+                  drawers; Viator products carry no coordinates so this publisher emits an
+                  empty list — the map simply shows nothing, which is honest: §13). */}
+              <MapCandidatesPublisher
+                source="viator"
+                sourceLabel="Viator"
+                items={[]}
+                onAdd={() => {}}
+              />
+
+              {/* Search bar + category chips */}
+              <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${LINE}`, background: CARD, flexShrink: 0 }}>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: FAINT, pointerEvents: "none" }} />
+                  <input
+                    value={browseQuery}
+                    onChange={e => setBrowseQuery(e.target.value)}
+                    placeholder={`Search Viator in ${destination || "destination"}…`}
+                    data-testid="input-browse-search-viator"
+                    style={{ width: "100%", paddingLeft: 30, paddingRight: viatorSearchFetching ? 30 : 10, paddingTop: 7, paddingBottom: 7, borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box", background: GROUND, color: INK }}
+                  />
+                  {viatorSearchFetching && <Loader2 style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: FAINT }} className="animate-spin" />}
+                </div>
+                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+                  {[{ k: "all", l: "All" }, { k: "activities", l: "Activities" }, { k: "dining", l: "Dining" }, { k: "hotels", l: "Hotels" }, { k: "transport", l: "Transport" }].map(c => (
+                    <Chip key={c.k} active={cat === c.k} onClick={() => setCat(c.k)}>{c.l}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              {/* Results list */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                {viatorSearchFetching && viatorSearchResults.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[1, 2, 3].map(i => <div key={i} style={{ height: 72, borderRadius: 8, background: GROUND }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
+                  </div>
+                ) : !viatorSearchEnabled ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
+                    <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                      {destination ? `Search activities in ${destination}` : "Enter a destination to browse Viator"}
+                    </div>
+                    <div style={{ fontSize: 11, color: FAINT }}>Try "food tour", "day trip", "snorkelling"</div>
+                  </div>
+                ) : viatorSearchResults.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
+                    <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>No Viator results</div>
+                    <div style={{ fontSize: 11, color: FAINT }}>
+                      {cat !== "all" ? 'Try the "All" category or a different search term.' : "Try a different search or check the destination."}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, paddingLeft: 2 }}>
+                      {viatorSearchResults.length} result{viatorSearchResults.length !== 1 ? "s" : ""}
+                    </div>
+                    {viatorSearchResults.map((result: any) => (
+                      <div
+                        key={result.id}
+                        data-testid={`card-viator-result-${result.id}`}
+                        style={{ display: "flex", flexDirection: "column", gap: 6, padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, background: CARD, marginBottom: 7 }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 7, background: result.photoUrl ? "transparent" : GROUND, border: result.photoUrl ? "none" : `1px solid ${LINE}`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {result.photoUrl
+                              ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              : <MapPin style={{ width: 16, height: 16, color: FAINT }} />}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{result.name}</span>
+                              <StateChip tone="brand">Viator</StateChip>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 10.5, color: MID, flexWrap: "wrap" }}>
+                              {result.rating != null && (
+                                <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                  <Star style={{ width: 9, height: 9, color: WARN }} />
+                                  {result.rating.toFixed(1)}{result.reviewCount != null && ` (${result.reviewCount.toLocaleString()})`}
+                                </span>
+                              )}
+                              {result.rating != null && result.priceLabel && <span style={{ color: FAINT }}>·</span>}
+                              {result.priceLabel && <span style={{ fontWeight: 600, color: OK }}>{result.priceLabel}</span>}
+                              {(result.rating != null || result.priceLabel) && <span style={{ color: FAINT }}>·</span>}
+                              <span style={{ textTransform: "capitalize" }}>{result.category}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => addFromSearchMutation.mutate({ result, day: focusDay })}
+                            disabled={addFromSearchMutation.isPending}
+                            data-testid={`button-add-viator-${result.id}`}
+                            style={{ padding: "4px 10px", borderRadius: 8, background: BRAND_SOFT, color: BRAND, border: `1px solid ${BRAND}`, fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
+                          >
+                            + Day {focusDay}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              <div style={{ borderTop: `1px solid ${LINE}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: FAINT }}>Activity results from Viator · bookable tours and experiences</span>
               </div>
             </div>
           )}
