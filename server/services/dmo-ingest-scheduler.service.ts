@@ -33,8 +33,8 @@ class DmoIngestSchedulerService {
       return;
     }
     console.log("[DMOIngest] Starting Kyoto DMO ingestion scheduler (daily)");
-    setTimeout(() => { void this.run(); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { void this.run(); }, CHECK_INTERVAL_MS);
+    setTimeout(() => { this.run().catch(err => console.error("[DMOIngest] scheduled run rejected:", err)); }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => { this.run().catch(err => console.error("[DMOIngest] scheduled run rejected:", err)); }, CHECK_INTERVAL_MS);
   }
 
   stop(): void {
