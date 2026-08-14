@@ -47,6 +47,8 @@ const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
+
+const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
 const EAClients = lazy(() => import("@/pages/ea/clients"));
@@ -746,7 +748,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients/:id">
-        {() => <Redirect to="/expert/customers" />}
+        {() => <ProtectedRoute component={ExpertClientDetail} requiredRole="expert" />}
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
