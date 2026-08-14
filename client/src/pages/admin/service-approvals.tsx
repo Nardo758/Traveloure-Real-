@@ -9,6 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { CheckCircle2, XCircle, Clock } from "lucide-react";
 
 interface PendingService {
@@ -133,14 +144,37 @@ export default function ServiceApprovals() {
                   data-testid={`reject-reason-${s.id}`}
                 />
                 <div className="flex gap-2">
-                  <Button
-                    onClick={() => approveMutation.mutate(s.id)}
-                    disabled={approveMutation.isPending}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    data-testid={`button-approve-${s.id}`}
-                  >
-                    <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        disabled={approveMutation.isPending}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        data-testid={`button-approve-${s.id}`}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent data-testid={`dialog-approve-${s.id}`}>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Approve this service?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to approve "{s.title || "this service"}"?
+                          {(s as any).editReview
+                            ? " The pending changes will be applied to the live listing."
+                            : " It will immediately become live and bookable."}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel data-testid={`button-approve-cancel-${s.id}`}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => approveMutation.mutate(s.id)}
+                          data-testid={`button-approve-confirm-${s.id}`}
+                        >
+                          Approve
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                   <Button
                     variant="destructive"
                     onClick={() => rejectMutation.mutate({ id: s.id, reason: reasons[s.id] ?? "" })}
