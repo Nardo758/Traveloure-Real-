@@ -18,6 +18,7 @@ import {
   Send,
   Loader2,
   Calendar,
+  ShoppingCart,
 } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -95,6 +96,7 @@ interface UnifiedResultCardProps {
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
   showInquiryButton?: boolean;
+  onAddToCart?: (result: UnifiedResult) => void;
 }
 
 export function UnifiedResultCard({ 
@@ -102,7 +104,8 @@ export function UnifiedResultCard({
   template = "", 
   destination = "",
   onInquiry,
-  showInquiryButton = true
+  showInquiryButton = true,
+  onAddToCart,
 }: UnifiedResultCardProps) {
   const [clicked, setClicked] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
@@ -310,6 +313,21 @@ export function UnifiedResultCard({
             {renderPrice()}
             
             <div className="flex gap-2">
+              {onAddToCart && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToCart(result);
+                  }}
+                  data-testid={`button-add-to-cart-${result.id}`}
+                >
+                  <ShoppingCart className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
+              )}
+
               {showInquiryButton && !isPartner && onInquiry && (
                 <Button
                   size="sm"
@@ -399,13 +417,17 @@ export function UnifiedResultGrid({
   template, 
   destination,
   onInquiry,
-  isLoading = false
+  onAddToCart,
+  isLoading = false,
+  showInquiryButton,
 }: { 
   results: UnifiedResult[];
   template?: string;
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
+  onAddToCart?: (result: UnifiedResult) => void;
   isLoading?: boolean;
+  showInquiryButton?: boolean;
 }) {
   if (isLoading) {
     return (
@@ -447,6 +469,8 @@ export function UnifiedResultGrid({
           template={template}
           destination={destination}
           onInquiry={onInquiry}
+          onAddToCart={onAddToCart}
+          showInquiryButton={showInquiryButton}
         />
       ))}
     </div>
