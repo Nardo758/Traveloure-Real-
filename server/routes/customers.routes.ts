@@ -488,7 +488,12 @@ router.get("/api/me/customers/:userId", isAuthenticated, async (req, res) => {
         };
       });
 
-    const hasActiveTrip = tripItems.some((t) => isTripStillLive(t.startDate, now));
+    // §13: active-trip uses endDate (same as the list endpoint / customers.tsx) — a trip is
+    // still live while its endDate has not yet passed. startDate is past for every trip in
+    // progress, so using it would always report active regardless of end.
+    const hasActiveTrip = advisorRows
+      .filter((t) => !!t.ownerId)
+      .some((t) => isTripStillLive(t.endDate, now));
     const totalTransactions = bookingRows.length + purchaseRows.length;
     const relationship: CustomerRow["relationship"] = hasActiveTrip
       ? "active_trip"
