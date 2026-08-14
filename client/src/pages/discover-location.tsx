@@ -1589,7 +1589,7 @@ function TripComplementsStrip({
               target={addon.isExternal ? "_blank" : undefined}
               rel={addon.isExternal ? "noopener noreferrer" : undefined}
               onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
-              className="flex-1 min-w-0 bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
+              className="basis-full sm:basis-auto sm:flex-1 min-w-0 sm:min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
               data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
               <AddOnFace addon={addon} />
@@ -1643,7 +1643,7 @@ function AddOnAgentCard({ addon, city }: { addon: AddOn; city: string }) {
         agentBooking.book();
       }}
       disabled={agentBooking.isPending || agentBooking.requested}
-      className="flex-1 min-w-0 bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
+      className="basis-full sm:basis-auto sm:flex-1 min-w-0 sm:min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
       data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <AddOnFace
