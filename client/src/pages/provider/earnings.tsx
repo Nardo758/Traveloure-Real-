@@ -684,7 +684,9 @@ export default function ProviderEarnings() {
                   </div>
                   <Clock className="w-6 h-6 text-amber-600" />
                 </div>
-                <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">Clears after service completion</p>
+                <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+                Held for 7 days after booking completes — releases automatically once the dispute window closes
+              </p>
               </div>
             </CardContent>
           </Card>
