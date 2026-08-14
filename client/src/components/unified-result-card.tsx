@@ -48,6 +48,8 @@ export interface UnifiedResult {
   source: "native" | "serp" | "viator" | "amadeus" | "booking_com" | "opentable" | "fever" | "poi" | "transfer" | "safety" | "restaurant";
   isPartner?: boolean;
   category?: string | null;
+  /** Cuisine type — populated for restaurant / opentable results. */
+  cuisine?: string | null;
   /**
    * §16: partner feeds never ship a booking URL — the server strips it and ships this opaque
    * vault token instead; the agent-booking rail resolves it back to the URL server-side.
@@ -86,6 +88,7 @@ export function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
     isPartner: true,
     category: item.categories[0] ?? item.type,
     bookingToken: item.bookingToken ?? null,
+    cuisine: item.type === "restaurant" ? ((item as any).cuisine ?? item.categories[0] ?? null) : null,
   };
 }
 
@@ -117,6 +120,8 @@ export function UnifiedResultCard({
   const displayName = result.name || result.title || "Unknown";
   const imageUrl = result.imageUrl || result.thumbnail;
   const websiteUrl = result.websiteUrl || result.website;
+
+  const isRestaurant = result.source === "opentable" || result.source === "restaurant";
 
   const partnerName = result.source === "viator" ? "Viator"
     : result.source === "booking_com" ? "Booking.com"
@@ -214,7 +219,6 @@ export function UnifiedResultCard({
     // Prefer the numeric price (e.g. "$89" or "$89/night") over tier symbols.
     if (result.price != null && result.price > 0) {
       const currency = result.currency ?? "USD";
-      // Use a compact currency symbol when currency is USD/EUR/GBP/etc; fall back to code.
       const formatted = new Intl.NumberFormat("en-US", {
         style: "currency",
         currency,
@@ -284,6 +288,12 @@ export function UnifiedResultCard({
             {renderRating()}
           </div>
 
+          {result.cuisine && (
+            <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mb-1">
+              {result.cuisine}
+            </p>
+          )}
+
           {result.description && (
             <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
               {result.description}
@@ -337,7 +347,13 @@ export function UnifiedResultCard({
                   data-testid={`button-view-${result.id}`}
                 >
                   {hasPartnerBookingUrl ? (
-                    <><UserCheck className="h-3.5 w-3.5 mr-1" />{result.source === "booking_com" ? "Book on Booking.com" : "Request booking"}</>
+                    isRestaurant ? (
+                      <><ExternalLink className="h-3.5 w-3.5 mr-1" />Reserve on OpenTable</>
+                    ) : result.source === "booking_com" ? (
+                      <><UserCheck className="h-3.5 w-3.5 mr-1" />Book on Booking.com</>
+                    ) : (
+                      <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
+                    )
                   ) : (
                     <><ExternalLink className="h-3.5 w-3.5 mr-1" />{isPartner ? "Book" : "View"}</>
                   )}
