@@ -12,10 +12,11 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, and, or, ilike, gte, lte, asc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, gte, lte, asc, sql, inArray, lt } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
+import { feverService } from "./fever.service";
 
 // ─────────────────────────────────────────────
 // Discriminated union content model
@@ -386,9 +387,16 @@ class ExperienceCatalogService {
 
   private async searchEvents(params: CatalogSearchParams, limit: number, offset: number): Promise<EventItem[]> {
     const conditions = [];
-    
-    if (params.destination) {
-      conditions.push(ilike(feverEventCache.city, `%${params.destination}%`));
+
+    // Resolve raw destination (e.g. "Paris, France") to the canonical Fever city
+    // name ("Paris") so both the cache query and the live fetch use the same value.
+    // Falls back to the raw string when the destination is not a Fever-supported city
+    // (query will simply return nothing and the fetch-on-miss will also skip safely).
+    const feverCity = params.destination ? feverService.findCity(params.destination) : undefined;
+    const canonicalCity = feverCity?.name ?? params.destination;
+
+    if (canonicalCity) {
+      conditions.push(ilike(feverEventCache.city, `%${canonicalCity}%`));
     }
     if (params.query) {
       conditions.push(
@@ -412,13 +420,37 @@ class ExperienceCatalogService {
       conditions.push(inArray(feverEventCache.provider, normalized));
     }
 
+    // Always exclude expired cache rows so stale events are never surfaced.
+    conditions.push(gte(feverEventCache.expiresAt, new Date()));
+
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const events = await db.select()
+    let events = await db.select()
       .from(feverEventCache)
       .where(whereClause)
       .limit(limit)
       .offset(offset);
+
+    // Fetch-on-miss: if no fresh (non-expired) events are cached for this
+    // destination, trigger a live Fever API call and re-query.  The expired-row
+    // filter above means an empty result set unambiguously means "no live data".
+    const wantsFeverEvents =
+      !params.providers || params.providers.length === 0 || params.providers.includes("fever");
+
+    if (wantsFeverEvents && canonicalCity && events.length === 0) {
+      try {
+        const upserted = await feverService.upsertEventsToCache(canonicalCity);
+        if (upserted > 0) {
+          events = await db.select()
+            .from(feverEventCache)
+            .where(whereClause)
+            .limit(limit)
+            .offset(offset);
+        }
+      } catch (err: any) {
+        this.catalogLogger.warn({ err }, "Fever fetch-on-miss failed, using existing cache");
+      }
+    }
 
     return events.map(e => ({
       id: e.id,
