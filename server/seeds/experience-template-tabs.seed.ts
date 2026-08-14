@@ -412,6 +412,50 @@ const bachelorTabs: TabDef[] = [
     ]
   },
   {
+    name: "Transfers",
+    slug: "transfers",
+    description: "Airport and hotel transfer options for the group",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transfer Type",
+        slug: "transfer_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Airport Pickup", value: "airport_pickup" },
+          { label: "Airport Drop-off", value: "airport_dropoff" },
+          { label: "Hotel Transfer", value: "hotel" },
+          { label: "Point-to-Point", value: "point_to_point" },
+        ]
+      },
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "single_select",
+        icon: "Car",
+        options: [
+          { label: "Sedan", value: "sedan" },
+          { label: "SUV", value: "suv" },
+          { label: "Van/Minibus", value: "van" },
+          { label: "Luxury", value: "luxury" },
+          { label: "Party Bus", value: "party_bus" },
+        ]
+      },
+      {
+        name: "Service Level",
+        slug: "service_level",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Shared Shuttle", value: "shared" },
+          { label: "Private", value: "private" },
+          { label: "Premium", value: "premium" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Daytime Activities",
     slug: "daytime-activities",
     description: "Energy expenditure planning, transportation needs, timing coordination",
@@ -525,6 +569,40 @@ const bachelorTabs: TabDef[] = [
           { label: "Private Only", value: "private_only" },
           { label: "Can Book Private", value: "can_book_private" },
           { label: "Shared Tours", value: "shared" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Events",
+    slug: "events",
+    description: "Local events, shows, and entertainment to attend during the trip",
+    icon: "Ticket",
+    filters: [
+      {
+        name: "Event Type",
+        slug: "event_type",
+        filterType: "multi_select",
+        icon: "Calendar",
+        options: [
+          { label: "Concerts & Music", value: "concerts" },
+          { label: "Comedy Shows", value: "comedy" },
+          { label: "Sports Events", value: "sports" },
+          { label: "Theater & Arts", value: "theater" },
+          { label: "Festivals & Markets", value: "festivals" },
+          { label: "Food & Wine Events", value: "food_wine" },
+          { label: "Club Nights", value: "club_nights" },
+        ]
+      },
+      {
+        name: "Time of Event",
+        slug: "time_of_event",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Daytime", value: "daytime" },
+          { label: "Evening", value: "evening" },
+          { label: "Late Night", value: "late_night" },
         ]
       },
     ]
@@ -2698,6 +2776,40 @@ const birthdayTabs: TabDef[] = [
     ]
   },
   {
+    name: "Events",
+    slug: "events",
+    description: "Shows, concerts, and local events to celebrate the occasion",
+    icon: "Ticket",
+    filters: [
+      {
+        name: "Event Type",
+        slug: "event_type",
+        filterType: "multi_select",
+        icon: "Calendar",
+        options: [
+          { label: "Concerts & Music", value: "concerts" },
+          { label: "Comedy Shows", value: "comedy" },
+          { label: "Sports Events", value: "sports" },
+          { label: "Theater & Arts", value: "theater" },
+          { label: "Festivals & Markets", value: "festivals" },
+          { label: "Food & Wine Events", value: "food_wine" },
+          { label: "Club Nights", value: "club_nights" },
+        ]
+      },
+      {
+        name: "Time of Event",
+        slug: "time_of_event",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Daytime", value: "daytime" },
+          { label: "Evening", value: "evening" },
+          { label: "Late Night", value: "late_night" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Dining",
     slug: "dining",
     description: "Birthday dinner and catering options",
@@ -2776,6 +2888,50 @@ const birthdayTabs: TabDef[] = [
           { label: "Vacation Rental", value: "rental" },
           { label: "Resort", value: "resort" },
           { label: "Unique Stay", value: "unique" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Transfers",
+    slug: "transfers",
+    description: "Airport and hotel transfer options for guests",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transfer Type",
+        slug: "transfer_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Airport Pickup", value: "airport_pickup" },
+          { label: "Airport Drop-off", value: "airport_dropoff" },
+          { label: "Hotel Transfer", value: "hotel" },
+          { label: "Point-to-Point", value: "point_to_point" },
+        ]
+      },
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "single_select",
+        icon: "Car",
+        options: [
+          { label: "Sedan", value: "sedan" },
+          { label: "SUV", value: "suv" },
+          { label: "Van/Minibus", value: "van" },
+          { label: "Luxury", value: "luxury" },
+          { label: "Party Bus", value: "party_bus" },
+        ]
+      },
+      {
+        name: "Service Level",
+        slug: "service_level",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Shared Shuttle", value: "shared" },
+          { label: "Private", value: "private" },
+          { label: "Premium", value: "premium" },
         ]
       },
     ]
@@ -2979,6 +3135,39 @@ const corporateTabs: TabDef[] = [
     ]
   },
   {
+    name: "Events",
+    slug: "events",
+    description: "Keynotes, shows, and external events relevant to the corporate agenda",
+    icon: "Ticket",
+    filters: [
+      {
+        name: "Event Type",
+        slug: "event_type",
+        filterType: "multi_select",
+        icon: "Calendar",
+        options: [
+          { label: "Industry Conferences", value: "conferences" },
+          { label: "Networking Events", value: "networking" },
+          { label: "Awards Ceremonies", value: "awards" },
+          { label: "Team Entertainment", value: "entertainment" },
+          { label: "Concerts & Shows", value: "concerts" },
+          { label: "Sports Events", value: "sports" },
+        ]
+      },
+      {
+        name: "Time of Event",
+        slug: "time_of_event",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Morning/Daytime", value: "daytime" },
+          { label: "Evening", value: "evening" },
+          { label: "Full Day", value: "full_day" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Services",
     slug: "services",
     description: "Catering, A/V, and event services",
@@ -3057,6 +3246,50 @@ const corporateTabs: TabDef[] = [
           { label: "Mid-Range", value: "midrange" },
           { label: "Upscale", value: "upscale" },
           { label: "Luxury", value: "luxury" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Transfers",
+    slug: "transfers",
+    description: "Airport and hotel transfer options for attendees",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transfer Type",
+        slug: "transfer_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Airport Pickup", value: "airport_pickup" },
+          { label: "Airport Drop-off", value: "airport_dropoff" },
+          { label: "Hotel Transfer", value: "hotel" },
+          { label: "Point-to-Point", value: "point_to_point" },
+        ]
+      },
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "single_select",
+        icon: "Car",
+        options: [
+          { label: "Sedan", value: "sedan" },
+          { label: "SUV", value: "suv" },
+          { label: "Van/Minibus", value: "van" },
+          { label: "Luxury", value: "luxury" },
+          { label: "Coach Bus", value: "coach_bus" },
+        ]
+      },
+      {
+        name: "Service Level",
+        slug: "service_level",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Shared Shuttle", value: "shared" },
+          { label: "Private", value: "private" },
+          { label: "Premium", value: "premium" },
         ]
       },
     ]
@@ -3618,6 +3851,39 @@ const boysTripTabs: TabDef[] = [
     ]
   },
   {
+    name: "Events",
+    slug: "events",
+    description: "Concerts, sports, shows, and local events for the group",
+    icon: "Ticket",
+    filters: [
+      {
+        name: "Event Type",
+        slug: "event_type",
+        filterType: "multi_select",
+        icon: "Calendar",
+        options: [
+          { label: "Concerts & Music", value: "concerts" },
+          { label: "Sports Events", value: "sports" },
+          { label: "Comedy Shows", value: "comedy" },
+          { label: "Festivals & Markets", value: "festivals" },
+          { label: "Club Nights", value: "club_nights" },
+          { label: "Food & Drink Events", value: "food_drink" },
+        ]
+      },
+      {
+        name: "Time of Event",
+        slug: "time_of_event",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Daytime", value: "daytime" },
+          { label: "Evening", value: "evening" },
+          { label: "Late Night", value: "late_night" },
+        ]
+      },
+    ]
+  },
+  {
     name: "Nightlife",
     slug: "nightlife",
     description: "Evening entertainment",
@@ -3721,6 +3987,39 @@ const girlsTripTabs: TabDef[] = [
         { label: "Wine/Food Tours", value: "food_tours" }, { label: "Beach/Pool", value: "beach" },
         { label: "Classes/Workshops", value: "classes" }
       ]}
+    ]
+  },
+  {
+    name: "Events",
+    slug: "events",
+    description: "Concerts, shows, festivals, and local events for the group",
+    icon: "Ticket",
+    filters: [
+      {
+        name: "Event Type",
+        slug: "event_type",
+        filterType: "multi_select",
+        icon: "Calendar",
+        options: [
+          { label: "Concerts & Music", value: "concerts" },
+          { label: "Comedy Shows", value: "comedy" },
+          { label: "Theater & Arts", value: "theater" },
+          { label: "Festivals & Markets", value: "festivals" },
+          { label: "Food & Wine Events", value: "food_wine" },
+          { label: "Club Nights", value: "club_nights" },
+        ]
+      },
+      {
+        name: "Time of Event",
+        slug: "time_of_event",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Daytime", value: "daytime" },
+          { label: "Evening", value: "evening" },
+          { label: "Late Night", value: "late_night" },
+        ]
+      },
     ]
   },
   {
