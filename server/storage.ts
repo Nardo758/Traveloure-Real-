@@ -2734,50 +2734,67 @@ export class DatabaseStorage implements IStorage {
     let packages: ExpertTemplate[] = [];
     let packagesTotal = 0;
     if (!filters.categoryId) {
-      const pkgConditions = [
+      const pkgBaseConditions = [
         eq(expertTemplates.approvalStatus, "approved"),
         eq(expertTemplates.isPublished, true),
       ];
-      if (filters.query) {
-        pkgConditions.push(
-          or(
-            ilike(expertTemplates.title, `%${filters.query}%`),
-            ilike(expertTemplates.description, `%${filters.query}%`),
-            ilike(expertTemplates.destination, `%${filters.query}%`)
-          )!
-        );
-      }
       if (filters.location) {
-        pkgConditions.push(ilike(expertTemplates.destination, `%${filters.location}%`));
+        pkgBaseConditions.push(ilike(expertTemplates.destination, `%${filters.location}%`));
       }
       // Search-quality task: price filters pushed into SQL (decimal column, numeric compare)
       // so the six-result cap can no longer be silently underfilled by post-limit filtering.
       if (filters.minPrice) {
-        pkgConditions.push(sqlOp`${expertTemplates.price} >= ${filters.minPrice}`);
+        pkgBaseConditions.push(sqlOp`${expertTemplates.price} >= ${filters.minPrice}`);
       }
       if (filters.maxPrice) {
-        pkgConditions.push(sqlOp`${expertTemplates.price} <= ${filters.maxPrice}`);
+        pkgBaseConditions.push(sqlOp`${expertTemplates.price} <= ${filters.maxPrice}`);
       }
-      // packagesTotal: actual unfiltered-by-LIMIT match count (pre-cap), not the page size.
-      const [{ value: pkgCount }] = await db
-        .select({ value: count() })
-        .from(expertTemplates)
-        .where(and(...pkgConditions));
-      packagesTotal = pkgCount;
-      packages = await db
-        .select()
-        .from(expertTemplates)
-        .where(and(...pkgConditions))
-        .orderBy(
-          // Remediation P2: standardize package quality ordering to match the recommender +
-          // upsell-query (featured → salesCount → averageRating → recency). unifiedSearch was the
-          // one site dropping the averageRating tier, so search silently ranked packages differently.
-          desc(expertTemplates.isFeatured),
-          desc(expertTemplates.salesCount),
-          desc(expertTemplates.averageRating),
-          desc(expertTemplates.createdAt)
-        )
-        .limit(6);
+
+      // Same layered strategy as services: weighted FTS (title/destination 'A' > description
+      // 'B', matching migration 217's idx_expert_templates_fts expression) with a trigram
+      // fallback on title/destination when the tsquery matches nothing.
+      const pkgTsVector = sqlOp`(setweight(to_tsvector('english', coalesce(${expertTemplates.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${expertTemplates.destination}, '')), 'A') || setweight(to_tsvector('english', coalesce(${expertTemplates.description}, '')), 'B'))`;
+
+      const runPkgSearch = async (matchCondition: ReturnType<typeof sqlOp> | null, relevance: ReturnType<typeof sqlOp> | null) => {
+        const where = matchCondition ? and(...pkgBaseConditions, matchCondition) : and(...pkgBaseConditions);
+        // packagesTotal: actual pre-LIMIT match count, not the post-cap page size.
+        const [{ value: pkgCount }] = await db
+          .select({ value: count() })
+          .from(expertTemplates)
+          .where(where);
+        if (pkgCount === 0) return 0;
+        packages = await db
+          .select()
+          .from(expertTemplates)
+          .where(where)
+          .orderBy(
+            // Relevance first when searching; then the Remediation-P2 standardized package
+            // quality ordering (featured → salesCount → averageRating → recency), matching
+            // the recommender + upsell-query.
+            ...(relevance ? [desc(relevance)] : []),
+            desc(expertTemplates.isFeatured),
+            desc(expertTemplates.salesCount),
+            desc(expertTemplates.averageRating),
+            desc(expertTemplates.createdAt)
+          )
+          .limit(6);
+        return pkgCount;
+      };
+
+      if (filters.query) {
+        const pkgTsQuery = sqlOp`websearch_to_tsquery('english', ${filters.query})`;
+        packagesTotal = await runPkgSearch(
+          sqlOp`${pkgTsVector} @@ ${pkgTsQuery}`,
+          sqlOp`ts_rank(${pkgTsVector}, ${pkgTsQuery})`,
+        );
+        if (packagesTotal === 0) {
+          // Trigram typo-tolerance fallback against title and destination.
+          const pkgSim = sqlOp`GREATEST(word_similarity(${filters.query}, ${expertTemplates.title}), similarity(${expertTemplates.title}, ${filters.query}), word_similarity(${filters.query}, ${expertTemplates.destination}), similarity(${expertTemplates.destination}, ${filters.query}))`;
+          packagesTotal = await runPkgSearch(sqlOp`${pkgSim} > 0.3`, pkgSim);
+        }
+      } else {
+        packagesTotal = await runPkgSearch(null, null);
+      }
     }
 
     // Enrich page results with real provider name and profile image from users table

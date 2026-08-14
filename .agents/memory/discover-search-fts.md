@@ -1,9 +1,9 @@
 ---
-name: Discover search FTS design
-description: How unifiedSearch's full-text + trigram search is layered and its thresholds
+name: Discover search design
+description: Layered search strategy decision for public discovery search
 ---
-Discover search (`storage.unifiedSearch`, GET /api/discover) is layered: (1) weighted tsvector FTS (name 'A' > description 'B', `websearch_to_tsquery`) ranked by ts_rank; (2) if zero matches, pg_trgm fallback on service_name (`word_similarity > 0.35` OR `similarity > 0.3`); (3) if still zero, a "Did you mean" `suggestion` field from the closest name with `similarity > 0.2`.
+Public discovery search is layered by design: full-text search (name/title weighted above description) ranked by relevance first; a trigram-similarity fuzzy pass only when full-text matches nothing; a "did you mean" suggestion only when both miss. Applies to both services and packages.
 
-**Why:** raw ILIKE gave no typo tolerance and no relevance order; thresholds chosen so multi-word typo queries still hit fuzzy without garbage suggestions.
+**Why:** raw substring matching gave no typo tolerance and no relevance order; the layering keeps exact-match queries fast and fuzzy results out of good result sets.
 
-**How to apply:** GIN indexes live in migration 217 — if the tsvector expression in storage.ts changes, the index expression must change in lockstep or the index is unused. Price/rating filters are SQL-side (decimal columns compare numerically). Response also carries `packagesTotal` (pre-LIMIT count).
+**How to apply:** if the search document composition changes (which fields, which weights), update the matching expression index in the same commit or the index goes unused — the index expression must be byte-identical to the query expression.
