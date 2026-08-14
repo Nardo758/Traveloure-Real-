@@ -1,3 +1,4 @@
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1084,4 +1085,10 @@ export const MIGRATION_FILES = [
   // (/api/exchange-rates literal + the dead FALLBACK_COORDINATES map). Idempotent
   // (IF NOT EXISTS + ON CONFLICT DO NOTHING); declared in shared/schema.ts same commit.
   "217_fx_rates_geocode_fallbacks.sql",
+  // 218: missing B-tree indexes on hot query columns (service_bookings, itinerary_items,
+  // notifications, provider_services, service_reviews). Pure CREATE INDEX IF NOT EXISTS —
+  // no table/column changes. Every index is also declared in shared/schema.ts (deploy-push
+  // durability rule) so the publish-time drizzle push never drops them. (Renumbered from
+  // 217 during rebase: main already shipped 217_fx_rates_geocode_fallbacks.sql.)
+  "218_hot_query_column_indexes.sql",
 ] as const;
