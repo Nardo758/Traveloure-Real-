@@ -21,7 +21,9 @@ import { desc } from "drizzle-orm";
 import { storage } from "../storage";
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
-const FX_CURRENCIES = ["EUR", "GBP", "JPY", "AUD", "SGD"];
+// Full set of currencies the budget converter supports. Must stay in sync with the
+// fx_rates seed rows in migrations 217 and 220.
+const FX_CURRENCIES = ["EUR", "GBP", "JPY", "AUD", "SGD", "CAD", "CHF", "CNY", "INR", "MXN", "BRL", "THB"];
 
 class FxRateRefreshService {
   private timer: NodeJS.Timeout | null = null;
