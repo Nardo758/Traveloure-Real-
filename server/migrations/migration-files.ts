@@ -1099,4 +1099,10 @@ export const MIGRATION_FILES = [
   // BRL, THB). Migration 217 only seeded EUR/GBP/JPY/AUD/SGD; the daily FX refresh is also
   // updated (same commit) to fetch all twelve currencies going forward.
   "220_fx_rates_full_currency_set.sql",
+  // 221: unique index on fever_event_cache(event_id) so concurrent cache-miss fetches cannot
+  // insert duplicate rows for the same Fever event. Duplicate rows from the pre-index era
+  // are removed before the index is created (keep most-recently-updated copy per event_id).
+  // Pure DDL + DELETE — no column/table changes. Declared in shared/schema.ts same commit
+  // (deploy-push durability rule — drizzle push will not drop it).
+  "221_fever_event_cache_unique_event_id.sql",
 ] as const;
