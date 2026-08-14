@@ -400,10 +400,11 @@ router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req,
       return res.json({ mode: "authoring", trip: authored, listing: listing ?? null });
     }
 
-    // Booking-request mode: a provider who has received a service booking on this trip may
-    // view the workspace so they can start building before the formal advisor assignment
-    // is created (which only happens after the booking is confirmed). Read-only context
-    // sufficient for the notification deep-link to land meaningfully instead of 403.
+    // Booking-request mode: a provider who has an ACTIVE (pending or payment-in-progress)
+    // service booking on this trip may view a scoped workspace context so the notification
+    // deep-link lands meaningfully. Only active statuses qualify — cancelled, completed, or
+    // historical bookings do not grant trip access (access-control boundary).
+    const ACTIVE_BOOKING_STATUSES = ["pending", "payment_pending", "deposit_paid"];
     const [pendingBooking] = await db
       .select({ id: serviceBookings.id })
       .from(serviceBookings)
@@ -411,6 +412,7 @@ router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req,
         and(
           eq(serviceBookings.providerId, userId),
           eq(serviceBookings.tripId, tripId),
+          inArray(serviceBookings.status as any, ACTIVE_BOOKING_STATUSES),
         ),
       )
       .limit(1);

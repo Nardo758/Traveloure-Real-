@@ -31,7 +31,7 @@ import {
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
-  Trash2, RefreshCw, Route, Building2,
+  Trash2, RefreshCw, Route, Building2, Briefcase,
 } from "lucide-react";
 // L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
@@ -2937,19 +2937,22 @@ export default function ExpertWorkspace() {
     suggestion_count: 0,
   } : undefined);
 
+  // booking_request mode: provider landed via a notification link with an active booking but
+  // no advisor assignment yet. Disable all trip-scoped sub-queries that gate on the advisor
+  // or owner role — the workspace-context endpoint is the ONLY authorized read for this mode.
   const { data: itineraryData, isLoading: itemsLoading } = useQuery<ItineraryData>({
     queryKey: [`/api/trips/${tripId}/itinerary-items`],
-    enabled: !!tripId,
+    enabled: !!tripId && !isBookingRequest,
   });
 
   const { data: assignment, isLoading: assignmentLoading } = useQuery<MyAssignment>({
     queryKey: [`/api/trips/${tripId}/my-assignment`],
-    enabled: !!tripId && !isAuthoring,
+    enabled: !!tripId && !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
-    enabled: !!tripId,
+    enabled: !!tripId && !isBookingRequest,
   });
 
   // CLAUDE.md §21 — the trip-level traveler-facing note's INITIAL value. There is no dedicated
@@ -2960,14 +2963,14 @@ export default function ExpertWorkspace() {
   // invalidates, so this stays in sync for free rather than adding a second cache to babysit.
   const { data: plancardForNote } = useQuery<{ trip?: { expertTravelerNote?: string | null } }>({
     queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: !!tripId,
+    enabled: !!tripId && !isBookingRequest,
     staleTime: 30 * 1000,
     retry: false,
   });
 
   const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
-    enabled: !!tripId,
+    enabled: !!tripId && !isBookingRequest,
     staleTime: 30 * 1000,
   });
 
@@ -3747,6 +3750,51 @@ export default function ExpertWorkspace() {
       </div>
     </ExpertLayout>
   );
+
+  // Booking-request mode: the provider has an active booking on this trip but is not yet an
+  // assigned advisor. Show a scoped landing view — no itinerary/notes/plancard data is fetched
+  // (those queries are disabled above); all information here comes solely from workspace-context.
+  if (isBookingRequest && trip) {
+    const brTitle = trip.trip_title || trip.destination || `Trip ${tripId}`;
+    const brDest  = trip.destination || "";
+    return (
+      <ExpertLayout title="Booking Request">
+        <div style={{ maxWidth: 520, margin: "40px auto", padding: "0 16px" }}>
+          <div style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Briefcase style={{ width: 22, height: 22, color: BRAND }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: INK }}>{brTitle}</div>
+                {brDest && <div style={{ fontSize: 13, color: MID, marginTop: 2 }}>{brDest}</div>}
+              </div>
+            </div>
+            <div style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: MID, lineHeight: 1.6 }}>
+              A traveler has sent you a booking request for this trip. Review and respond in your bookings dashboard.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                data-testid="button-booking-request-go-to-bookings"
+                onClick={() => safeNavigate("/expert/bookings")}
+                style={{ ...btnPrimaryStyle, flex: 1, padding: "9px 16px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+              >
+                <Briefcase style={{ width: 15, height: 15 }} />
+                Review Booking Request
+              </button>
+              <button
+                data-testid="button-booking-request-back"
+                onClick={() => safeNavigate("/expert/workspace")}
+                style={{ ...btnQuietStyle, padding: "9px 16px", fontSize: 14 }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </ExpertLayout>
+    );
+  }
 
   const tripTitle = trip?.trip_title || trip?.destination || `Trip ${tripId}`;
   const travelerCode = trip?.trip_id?.slice(-6)?.toUpperCase() || "??????";
