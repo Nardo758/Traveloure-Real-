@@ -71,6 +71,8 @@ import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { CatalogItem } from "@/types/catalog";
 
 type ServiceCategory = {
   id: string;
@@ -652,6 +654,22 @@ export default function DiscoverPage() {
     queryKey: [expertsApiUrl],
     enabled: showExperts,
   });
+
+  // Partner catalog activities — fetched when the user has narrowed to a location.
+  // Results are shown below the native service grid so real prices (e.g. "$89") are
+  // visible instead of tier symbols; uses catalogItemToUnifiedResult + UnifiedResultGrid.
+  const { data: catalogActivityData, isLoading: catalogActivitiesLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/activities-gyg", locationFilter],
+    enabled: !!locationFilter && activeTab === "services",
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination: locationFilter, limit: "8" });
+      const res = await fetch(`/api/catalog/activities-gyg?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Catalog fetch failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const catalogActivities = (catalogActivityData?.items ?? []).map(catalogItemToUnifiedResult);
   
   // Auto-scroll to experts section when coming from quick-start
   useEffect(() => {
@@ -1366,6 +1384,29 @@ export default function DiscoverPage() {
                         </Button>
                       </div>
                     )}
+
+                  {/* Partner catalog activities — only shown when a location is filtered.
+                      Uses UnifiedResultGrid + catalogItemToUnifiedResult so real numeric
+                      prices (e.g. "$89") are displayed instead of tier symbols. */}
+                  {locationFilter && (catalogActivitiesLoading || catalogActivities.length > 0) && (
+                    <div className="mt-10" data-testid="section-partner-activities">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Ticket className="h-4 w-4 text-primary" />
+                        <h2 className="text-lg font-semibold">
+                          Activities in {locationFilter}
+                        </h2>
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                          via Partners
+                        </Badge>
+                      </div>
+                      <UnifiedResultGrid
+                        results={catalogActivities}
+                        destination={locationFilter}
+                        isLoading={catalogActivitiesLoading}
+                        showInquiryButton={false}
+                      />
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
