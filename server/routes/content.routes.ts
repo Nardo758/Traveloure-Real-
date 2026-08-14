@@ -6034,7 +6034,9 @@ router.get("/api/search/experiences", async (req, res) => {
             });
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('[catalog-filter] platform-catalog filtering failed (GET place search):', err);
+      }
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
       if (includeGoogle && apiKey) {
