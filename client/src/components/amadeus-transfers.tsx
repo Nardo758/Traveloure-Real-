@@ -112,15 +112,19 @@ export function AmadeusTransfers({
 
   const handleAddToCart = (transfer: TransferOffer) => {
     if (onAddToCart) {
+      const seats = transfer.vehicle.seats?.[0]?.count;
+      const routeDetail = `${transfer.start.locationCode} → ${destination}`;
+      const seatsDetail = seats ? ` · ${seats} seats` : "";
       onAddToCart({
         id: `transfer-${transfer.id}`,
         type: "transportation",
-        name: `${transfer.transferType} Transfer - ${transfer.vehicle.description}`,
+        name: `${transfer.vehicle.description}`,
         price: parseFloat(transfer.quotation.monetaryAmount),
         quantity: 1,
         provider: "Amadeus Transfers",
-        details: `From ${transfer.start.locationCode} to ${destination}`,
-        isExternal: false,
+        details: `${transfer.transferType} · ${routeDetail}${seatsDetail}`,
+        // External items are stored client-side (no platform service ID)
+        isExternal: true,
       });
     }
   };

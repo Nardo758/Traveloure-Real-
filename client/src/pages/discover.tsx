@@ -341,14 +341,7 @@ function ServiceCard({
                   {service.serviceName}
                 </h3>
                 <div className="flex items-center gap-2 text-white/90 text-sm">
-                  <Link
-                    href={`/experts/${service.userId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="font-medium hover:underline"
-                    data-testid={`text-provider-name-${service.id}`}
-                  >
-                    {providerName}
-                  </Link>
+                  <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
                   <span className="text-white/60">•</span>
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
