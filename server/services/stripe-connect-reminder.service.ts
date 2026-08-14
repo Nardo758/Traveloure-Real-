@@ -78,85 +78,97 @@ class StripeConnectReminderService {
       }
 
       setTimeout(() => {
-        this.runReminders();
-        this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
+        this.runRemindersLogged();
+        this.timer = setInterval(() => this.runRemindersLogged(), CHECK_INTERVAL_MS);
       }, initialDelayMs);
     } catch (err) {
       // If the DB query fails, fall back to the safe default (full interval delay)
       console.error("[StripeConnectReminder] Failed to determine last run time — defaulting to 72h delay:", err);
       setTimeout(() => {
-        this.runReminders();
-        this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
+        this.runRemindersLogged();
+        this.timer = setInterval(() => this.runRemindersLogged(), CHECK_INTERVAL_MS);
       }, CHECK_INTERVAL_MS);
     }
   }
 
-  private async runReminders(): Promise<void> {
+  /**
+   * Fire-and-forget wrapper used by the scheduler timers.
+   * Catches and logs errors so the interval keeps running on failure.
+   */
+  private async runRemindersLogged(): Promise<void> {
     try {
-      // Find approved providers/experts without a complete Stripe Connect account
-      // stripe_account_id / stripe_account_status live on the users table in the DB
-      // but are not yet reflected in the Drizzle TypeScript model — use raw SQL fragments.
-      const pendingUsers = await db
-        .select({ id: users.id, role: users.role })
-        .from(users)
-        .where(
-          and(
-            or(
-              eq(users.role, "service_provider"),
-              eq(users.role, "travel_expert")
-            ),
-            sql`("users"."stripe_account_id" is null or "users"."stripe_account_status" is null or "users"."stripe_account_status" not in ('complete', 'active'))`
-          )
-        );
-
-      if (pendingUsers.length === 0) {
-        console.log("[StripeConnectReminder] No users pending Stripe Connect setup");
-        return;
-      }
-
-      const userIds = pendingUsers.map(u => u.id);
-
-      // Find users who already received a reminder in the cooldown window
-      const cooldownCutoff = new Date(Date.now() - REMINDER_COOLDOWN_MS);
-      const recentlyNotified = await db
-        .select({ userId: notifications.userId })
-        .from(notifications)
-        .where(
-          and(
-            inArray(notifications.userId, userIds),
-            eq(notifications.type, REMINDER_TYPE),
-            gte(notifications.createdAt, cooldownCutoff)
-          )
-        );
-
-      const recentlyNotifiedSet = new Set(recentlyNotified.map(r => r.userId));
-
-      const toNotify = pendingUsers.filter(u => !recentlyNotifiedSet.has(u.id));
-
-      if (toNotify.length === 0) {
-        console.log("[StripeConnectReminder] All pending users notified recently — skipping");
-        return;
-      }
-
-      const notificationRows = toNotify.map(u => ({
-        userId: u.id,
-        type: REMINDER_TYPE,
-        title: "Set up payouts to get paid",
-        message:
-          "You have been approved but haven't connected your Stripe account yet. Complete Stripe Connect setup so you can receive payouts for your bookings.",
-        // C8/C9: the Earnings module is renamed Money on BOTH consoles (§17) —
-        // /expert/earnings → /expert/money (C8) and /provider/earnings → /provider/money (C9).
-        data: { link: u.role === "local_expert" ? "/expert/money" : "/provider/money" } as Record<string, unknown>,
-      }));
-
-      await db.insert(notifications).values(notificationRows);
-
-      console.log(
-        `[StripeConnectReminder] Sent ${notificationRows.length} reminder(s) to users pending Stripe Connect`
-      );
+      await this.runReminders();
     } catch (err) {
       console.error("[StripeConnectReminder] Failed to run reminders:", err);
     }
+  }
+
+  /**
+   * Core reminder dispatch — public so tests can invoke it directly.
+   * Throws on DB or insert errors; callers are responsible for error handling.
+   */
+  async runReminders(): Promise<void> {
+    // Find approved providers/experts without a complete Stripe Connect account.
+    // stripe_account_id / stripe_account_status live on the users table in the DB
+    // but are not yet reflected in the Drizzle TypeScript model — use raw SQL fragments.
+    const pendingUsers = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(
+        and(
+          or(
+            eq(users.role, "service_provider"),
+            eq(users.role, "travel_expert")
+          ),
+          sql`("users"."stripe_account_id" is null or "users"."stripe_account_status" is null or "users"."stripe_account_status" not in ('complete', 'active'))`
+        )
+      );
+
+    if (pendingUsers.length === 0) {
+      console.log("[StripeConnectReminder] No users pending Stripe Connect setup");
+      return;
+    }
+
+    const userIds = pendingUsers.map(u => u.id);
+
+    // Find users who already received a reminder in the cooldown window
+    const cooldownCutoff = new Date(Date.now() - REMINDER_COOLDOWN_MS);
+    const recentlyNotified = await db
+      .select({ userId: notifications.userId })
+      .from(notifications)
+      .where(
+        and(
+          inArray(notifications.userId, userIds),
+          eq(notifications.type, REMINDER_TYPE),
+          gte(notifications.createdAt, cooldownCutoff)
+        )
+      );
+
+    const recentlyNotifiedSet = new Set(recentlyNotified.map(r => r.userId));
+
+    const toNotify = pendingUsers.filter(u => !recentlyNotifiedSet.has(u.id));
+
+    if (toNotify.length === 0) {
+      console.log("[StripeConnectReminder] All pending users notified recently — skipping");
+      return;
+    }
+
+    const notificationRows = toNotify.map(u => ({
+      userId: u.id,
+      type: REMINDER_TYPE,
+      title: "Set up payouts to get paid",
+      message:
+        "You have been approved but haven't connected your Stripe account yet. Complete Stripe Connect setup so you can receive payouts for your bookings.",
+      // C8/C9: the Earnings module is renamed Money on BOTH consoles (§17) —
+      // /expert/earnings → /expert/money (C8) and /provider/earnings → /provider/money (C9).
+      data: { link: u.role === "local_expert" ? "/expert/money" : "/provider/money" } as Record<string, unknown>,
+    }));
+
+    await db.insert(notifications).values(notificationRows);
+
+    console.log(
+      `[StripeConnectReminder] Sent ${notificationRows.length} reminder(s) to users pending Stripe Connect`
+    );
   }
 }
 

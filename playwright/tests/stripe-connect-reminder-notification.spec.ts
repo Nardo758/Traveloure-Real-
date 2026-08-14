@@ -16,6 +16,10 @@ import crypto from "crypto";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
 
+// Secret required by the test-only scheduler trigger endpoint.
+// Must match the RATE_LIMIT_BYPASS_KEY env var configured on the dev server.
+const TEST_SECRET = process.env.RATE_LIMIT_BYPASS_KEY || "";
+
 const REMINDER_TYPE = "stripe_connect_reminder";
 const REMINDER_TITLE = "Set up payouts to get paid";
 
@@ -190,6 +194,62 @@ test.describe("Stripe Connect Reminder — notification feed surfacing", () => {
         // ── 8. Cleanup ──────────────────────────────────────────────────────
         if (notifId) sql(`DELETE FROM notifications WHERE id = '${notifId}'`);
         if (userId) sql(`DELETE FROM users WHERE id = '${userId}'`);
+      }
+    }
+  );
+
+  test(
+    "Scheduler: provider with stripeAccountStatus='complete' receives no reminder after scheduler runs",
+    async ({ page }) => {
+      const email = `e2e-sc-complete-${uid()}@example.com`;
+      const password = "TestPass123!";
+      let userId = "";
+
+      try {
+        // ── 1. Register a fresh user ──────────────────────────────────────────
+        userId = await registerUser(page, email, password, "Complete", "Provider");
+
+        // ── 2. Promote to service_provider and mark Stripe Connect as complete ─
+        //    Setting both stripe_account_id and stripe_account_status = 'complete'
+        //    mirrors what the Stripe Connect onboarding flow writes on completion.
+        sql(
+          `UPDATE users SET role = 'service_provider', stripe_account_id = 'acct_testcomplete', stripe_account_status = 'complete' WHERE id = '${userId}'`
+        );
+
+        // ── 3. Invoke the real scheduler via the test-only endpoint ───────────
+        //    POST /api/test/stripe-reminder-run calls runReminders() directly,
+        //    so this exercises the actual service query + insert path —
+        //    not a reimplementation of the WHERE clause.
+        //    The endpoint requires X-Test-Secret matching RATE_LIMIT_BYPASS_KEY
+        //    and returns 500 if the scheduler throws, so a 200 with ok:true
+        //    confirms the scheduler ran successfully.
+        const triggerRes = await page.request.post(
+          `${BASE_URL}/api/test/stripe-reminder-run`,
+          { headers: { "x-test-secret": TEST_SECRET } }
+        );
+        expect(
+          triggerRes.status(),
+          "Test trigger endpoint should return 200 — a 5xx means the scheduler threw an unexpected error"
+        ).toBe(200);
+        const triggerBody = await triggerRes.json();
+        expect(triggerBody.ok, "Scheduler must complete without error before checking notification absence").toBe(true);
+
+        // ── 4. Assert no stripe_connect_reminder was inserted for this user ───
+        //    If the scheduler incorrectly selected the complete provider, a row
+        //    would now exist in notifications.
+        const notifCount = sql(
+          `SELECT COUNT(*) FROM notifications WHERE user_id = '${userId}' AND type = '${REMINDER_TYPE}'`
+        );
+        expect(
+          parseInt(notifCount, 10),
+          "Scheduler must not insert a stripe_connect_reminder for a provider whose stripeAccountStatus is 'complete'"
+        ).toBe(0);
+      } finally {
+        // ── 5. Cleanup ────────────────────────────────────────────────────────
+        if (userId) {
+          sql(`DELETE FROM notifications WHERE user_id = '${userId}' AND type = '${REMINDER_TYPE}'`);
+          sql(`DELETE FROM users WHERE id = '${userId}'`);
+        }
       }
     }
   );
