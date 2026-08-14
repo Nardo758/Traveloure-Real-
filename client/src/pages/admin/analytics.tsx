@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   BarChart3,
   TrendingUp,
@@ -26,9 +29,33 @@ interface AnalyticsData {
 }
 
 export default function AdminAnalytics() {
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState(false);
   const { data: analytics, isLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics/overview"],
   });
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const r = await fetch("/api/admin/analytics/export?format=csv", { credentials: "include" });
+      if (!r.ok) throw new Error(`Export failed: ${r.status}`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export complete", description: "Analytics CSV downloaded." });
+    } catch (e: any) {
+      toast({ title: "Export failed", description: e.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const metrics = analytics?.metrics ?? [];
   const topDestinations = analytics?.topDestinations ?? [];
@@ -77,12 +104,20 @@ export default function AdminAnalytics() {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
-          <Button data-testid="button-export-data">
-            <Download className="w-4 h-4 mr-2" /> Export Data
+          <Button data-testid="button-export-data" onClick={handleExport} disabled={exporting}>
+            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+            Export Data
           </Button>
-          <Button variant="outline" data-testid="button-custom-report">
-            Custom Report
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>
+                <Button variant="outline" disabled data-testid="button-custom-report">
+                  Custom Report
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Custom reporting coming soon</TooltipContent>
+          </Tooltip>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
