@@ -2435,6 +2435,13 @@ export default function ExperienceTemplatePage() {
                 destination={destination}
                 startDate={startDate?.toISOString().split('T')[0]}
                 endDate={endDate?.toISOString().split('T')[0]}
+                onAddToCart={(item) => {
+                  addToCart({
+                    ...item,
+                    type: "event",
+                    isExternal: true,
+                  });
+                }}
               />
             </div>
           )}
@@ -2785,6 +2792,7 @@ export default function ExperienceTemplatePage() {
                     price: i.price,
                     quantity: i.quantity,
                     provider: i.provider,
+                    details: i.details,
                   }))}
                   total={cartTotal}
                   onRemove={removeFromCart}

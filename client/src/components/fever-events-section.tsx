@@ -19,6 +19,7 @@ import {
   Star,
   AlertCircle,
   Loader2,
+  Plus,
 } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
@@ -58,10 +59,22 @@ function FeverTicketsButton({ event }: { event: EventItem }) {
   );
 }
 
+interface AddToCartPayload {
+  id: string;
+  type: string;
+  name: string;
+  price: number;
+  quantity: number;
+  provider?: string;
+  details?: string;
+  isExternal: boolean;
+  metadata?: Record<string, unknown>;
+}
 interface FeverEventsSectionProps {
   destination?: string;
   startDate?: string;
   endDate?: string;
+  onAddToCart?: (item: AddToCartPayload) => void;
 }
 
 type SortOption = "popular" | "price_low" | "price_high" | "rating" | "date";
@@ -97,7 +110,7 @@ function formatEventDate(dates: { start: string | Date | null; end: string | Dat
   return start.toLocaleDateString("en-US", options);
 }
 
-export function FeverEventsSection({ destination, startDate, endDate }: FeverEventsSectionProps) {
+export function FeverEventsSection({ destination, startDate, endDate, onAddToCart }: FeverEventsSectionProps) {
   const [sortBy, setSortBy] = useState<SortOption>("popular");
 
   const params = useMemo(() => {
@@ -307,14 +320,55 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
                     )}
                   </div>
 
-                  {event.bookingToken && !event.isSoldOut && (
-                    <FeverTicketsButton event={event} />
-                  )}
-                  {event.isSoldOut && (
-                    <Badge variant="destructive" className="text-xs">
-                      Sold Out
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {onAddToCart && !event.isSoldOut && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() =>
+                          onAddToCart({
+                            id: `event-${event.id}`,
+                            type: "event",
+                            name: event.title,
+                            price: event.price || 0,
+                            quantity: 1,
+                            provider: event.provider || "Fever",
+                            details: [
+                              event.venueName,
+                              event.dates?.start
+                                ? formatEventDate(event.dates as any)
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || undefined,
+                            isExternal: true,
+                            metadata: {
+                              affiliateUrl: (event as any).affiliateUrl ?? undefined,
+                              startDate: event.dates?.start
+                                ? String(event.dates.start)
+                                : undefined,
+                              endDate: event.dates?.end
+                                ? String(event.dates.end)
+                                : undefined,
+                            },
+                          })
+                        }
+                        data-testid={`button-add-event-${event.id}`}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add to trip
+                      </Button>
+                    )}
+                    {event.bookingToken && !event.isSoldOut && (
+                      <FeverTicketsButton event={event} />
+                    )}
+                    {event.isSoldOut && (
+                      <Badge variant="destructive" className="text-xs">
+                        Sold Out
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </div>
