@@ -58,7 +58,6 @@ import {
   Zap,
   Trophy,
   CheckCircle,
-  Trash2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -72,14 +71,9 @@ import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
-import { UnifiedResultGrid, catalogItemToUnifiedResult, type UnifiedResult } from "@/components/unified-result-card";
+import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
 import type { CatalogItem } from "@/types/catalog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+
 type ServiceCategory = {
   id: string;
   name: string;
@@ -125,13 +119,6 @@ interface CartData {
   total: string;
 }
 
-interface BrowseCartItem {
-  id: string;
-  name: string;
-  price: string;
-  provider: string;
-  type: string;
-}
 type ExpertTemplate = {
   id: string;
   expertId: string;
@@ -172,19 +159,6 @@ const categoryIcons: Record<string, React.ElementType> = {
   "specialty-services": Award,
   "custom-other": HelpCircle,
   "visa-assistance": Globe,
-};
-
-const CATALOG_PROVIDER_TO_SOURCE: Record<string, UnifiedResult["source"]> = {
-  viator: "viator",
-  fever: "fever",
-  opentable: "opentable",
-  booking_com: "booking_com",
-  "booking.com": "booking_com",
-  amadeus: "amadeus",
-  poi: "poi",
-  transfer: "transfer",
-  safety: "safety",
-  restaurant: "restaurant",
 };
 
 const tripCategories = [
@@ -367,14 +341,7 @@ function ServiceCard({
                   {service.serviceName}
                 </h3>
                 <div className="flex items-center gap-2 text-white/90 text-sm">
-                  <Link
-                    href={`/experts/${service.userId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="font-medium hover:underline"
-                    data-testid={`text-provider-name-${service.id}`}
-                  >
-                    {providerName}
-                  </Link>
+                  <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
                   <span className="text-white/60">•</span>
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
@@ -502,7 +469,6 @@ function ServiceCard({
   );
 }
 
-// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -544,10 +510,6 @@ export default function DiscoverPage() {
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
-
-  // Browse cart state — holds live catalog items (Viator, Fever, etc.) added from UnifiedResultCards
-  const [browseCartItems, setBrowseCartItems] = useState<BrowseCartItem[]>([]);
-  const [browseCartOpen, setBrowseCartOpen] = useState(false);
   
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
@@ -824,30 +786,6 @@ export default function DiscoverPage() {
       return;
     }
     addToCartMutation.mutate(serviceId);
-  };
-
-  // Handler for adding live catalog items (Viator, Fever, etc.) from UnifiedResultCard
-  const handleBrowseAddToCart = (result: UnifiedResult) => {
-    setBrowseCartItems(prev => {
-      if (prev.find(i => i.id === result.id)) return prev;
-      const providerLabel =
-        result.source === "viator" ? "Viator"
-        : result.source === "fever" ? "Fever"
-        : result.source === "booking_com" ? "Booking.com"
-        : result.source === "opentable" ? "OpenTable"
-        : result.source === "amadeus" ? "Amadeus"
-        : result.source;
-      return [...prev, {
-        id: result.id,
-        name: result.name || result.title || "Unknown",
-        price: result.price != null
-          ? (() => { try { return new Intl.NumberFormat("en-US", { style: "currency", currency: result.currency ?? "USD", maximumFractionDigits: 0 }).format(result.price!); } catch { return `${result.currency ?? "USD"} ${result.price}`; } })()
-          : (result.priceLevel ?? "Request Quote"),
-        provider: providerLabel,
-        type: result.category ?? result.source,
-      }];
-    });
-    toast({ title: "Added to cart", description: `${result.name || result.title} added to your cart` });
   };
 
   const createComparison = async () => {
@@ -1289,6 +1227,7 @@ export default function DiscoverPage() {
                   />
                 )}
 
+
                 {/* Unified Filter Bar — one earn-styled bar (mirrors the /experts filter
                     bar) replacing the old desktop sidebar Card + scattered Location/Sort
                     row + mobile filter Sheet. Every control inline; wraps on small screens. */}
@@ -1509,8 +1448,6 @@ export default function DiscoverPage() {
                         results={catalogActivities}
                         destination={locationFilter}
                         isLoading={catalogActivitiesLoading}
-                        showInquiryButton={false}
-                        onAddToCart={handleBrowseAddToCart}
                       />
                     </div>
                   )}
@@ -1939,130 +1876,6 @@ export default function DiscoverPage() {
         </section>
       </div>
       <TripQueueIndicator />
-
-      {/* Floating browse-cart badge — visible when live catalog items have been added */}
-      {browseCartItems.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setBrowseCartOpen(true)}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-3 rounded-full shadow-lg hover:bg-primary/90 transition-all"
-          data-testid="button-browse-cart-float"
-        >
-          <ShoppingCart className="h-5 w-5" />
-          <Badge className="bg-white text-primary font-bold px-2 py-0.5 text-xs rounded-full">
-            {browseCartItems.length}
-          </Badge>
-          <span className="hidden sm:inline font-medium">Browse Cart</span>
-        </button>
-      )}
-
-      {/* Browse cart sheet */}
-      <Sheet open={browseCartOpen} onOpenChange={setBrowseCartOpen}>
-        <SheetContent className="w-full sm:max-w-md" data-testid="browse-cart-sheet">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              Browse Cart
-              {browseCartItems.length > 0 && (
-                <Badge variant="secondary">{browseCartItems.length}</Badge>
-              )}
-            </SheetTitle>
-          </SheetHeader>
-
-          {browseCartItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center">
-              <ShoppingCart className="h-12 w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No items yet. Browse live catalog results and click Add.</p>
-            </div>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {browseCartItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-start gap-3 p-3 rounded-lg border bg-card"
-                  data-testid={`browse-cart-item-${item.id}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm line-clamp-1">{item.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {item.provider} · {item.type}
-                    </p>
-                    <p className="text-xs font-medium text-green-700 dark:text-green-400 mt-1">
-                      {item.price}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setBrowseCartItems((prev) => prev.filter((i) => i.id !== item.id))
-                    }
-                    className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0 mt-0.5"
-                    data-testid={`browse-cart-remove-${item.id}`}
-                    aria-label="Remove item"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-
-              <div className="pt-3 border-t space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  These are live partner results. An expert can help you book them.
-                </p>
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    setBrowseCartOpen(false);
-                    toast({ title: "Tip", description: "Connect with a local expert to book these items." });
-                  }}
-                  data-testid="button-browse-cart-checkout"
-                >
-                  Get Expert Help
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground"
-                  onClick={() => setBrowseCartItems([])}
-                  data-testid="button-browse-cart-clear"
-                >
-                  Clear cart
-                </Button>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
     </>
   );
 }
-
-/** Convert a numeric price to the $ symbol string rendered by UnifiedResultCard. */
-function toPriceTier(price: number | null | undefined): string | null {
-  if (price == null) return null;
-  if (price < 25) return "$";
-  if (price < 75) return "$$";
-  if (price < 150) return "$$$";
-  return "$$$$";
-}
-
-const PARTNER_PROVIDERS = new Set([
-  "viator", "fever", "opentable", "booking_com", "booking.com", "amadeus",
-]);
-
-/** Format a numeric price + ISO currency code into a human-readable string for cart display. */
-function formatCatalogPrice(price: number | null | undefined, currency: string): string {
-  if (price == null) return "Request Quote";
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: 0,
-    }).format(price);
-  } catch {
-    return `${currency || "USD"} ${price}`;
-  }
-}
-
-// hint: Structural and logic conflict. Both design and behavior differ.
