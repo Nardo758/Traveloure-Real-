@@ -156,6 +156,8 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+import { handleExchangeRates } from "./exchange-rate.handler";
+import { makeGeocodePostHandler } from "./geocode-post.handler";
 import instagramRoutes from "./instagram";
 import bookingsRoutes from "./bookings";
 import bookingActionsRoutes from "./booking-actions";
@@ -3875,46 +3877,13 @@ router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
     }
   });
 
-  // Google Maps Geocoding API - Convert place name to coordinates
-  const geocodeSchema = z.object({
-    address: z.string().min(1),
-  });
-
   // Geocoding endpoint - public access since it's just a geographic lookup.
-  // Routes through the single server geocode path (server/utils/geocode.ts) — same one
-  // GET /api/geocode uses — instead of hand-rolling its own fetch. No fabricated fallback:
-  // a substring-matched hardcoded city-centre dictionary (FALLBACK_COORDINATES) used to stand
-  // in here on a Google miss, which contradicted the §13 / migration-129 no-fabrication
-  // posture (docs/briefs/PROVIDER_LOGISTICS_DISTRIBUTION_SPEC.md D4). A miss now returns an
-  // honest 404 — never a guessed coordinate. Both known callers already treat a non-ok
-  // response as "no location", not a crash (client/src/components/provider/catalog-map-view.tsx,
-  // client/src/pages/experience-template.tsx).
-
-router.post("/api/geocode", async (req, res) => {
-    try {
-      const parsed = geocodeSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const { address } = parsed.data;
-      const result = await geocodeAddress(address);
-      if (result) {
-        return res.json(result);
-      }
-      // DB-backed fallback (migration 217): admin-curated city-centre coordinates in
-      // geocode_fallbacks — curated data, not fabrication, so the §13 posture holds.
-      // A miss there too stays an honest 404, never a guessed coordinate.
-      const dbFallback = await storage.getGeocodeFallback(address);
-      if (dbFallback) {
-        return res.json({ ...dbFallback, fallback: true });
-      }
-      return res.status(404).json({ message: "Location not found" });
-    } catch (error: any) {
-      console.error('Geocoding API error:', error);
-      res.status(500).json({ message: error.message || "Geocoding failed" });
-    }
-  });
+  // Handler extracted to server/routes/geocode-post.handler.ts for testability.
+  // Three-tier path: Google geocode → geocode_fallbacks DB row (fallback:true) → 404.
+  // No fabricated coordinate ever — §13 / migration-129 no-fabrication posture.
+  // Both known callers already treat a non-ok response as "no location", not a crash
+  // (client/src/components/provider/catalog-map-view.tsx, client/src/pages/experience-template.tsx).
+router.post("/api/geocode", makeGeocodePostHandler());
 
   // === GROK AI INTEGRATION ROUTES ===
 
@@ -8574,40 +8543,7 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
 } // end registerDiscoveryRoutes
 
 // === Exchange Rate Endpoint (top-level, always registered) ===
-let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
-const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
-
-router.get("/api/exchange-rates", async (_req, res) => {
-  try {
-    const now = Date.now();
-    if (_exchangeRateCache && now - _exchangeRateCache.fetchedAt < EXCHANGE_RATE_TTL_MS) {
-      return res.json({ base: "USD", rates: _exchangeRateCache.rates, cachedAt: _exchangeRateCache.fetchedAt });
-    }
-    const resp = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,AUD,SGD");
-    if (!resp.ok) throw new Error(`Frankfurter API error: ${resp.status}`);
-    const data = await resp.json() as { rates: Record<string, number> };
-    _exchangeRateCache = { rates: data.rates, fetchedAt: now };
-    res.json({ base: "USD", rates: data.rates, cachedAt: now });
-  } catch (err) {
-    console.error("Exchange rate fetch error:", err);
-    // DB-backed fallback (migration 217): fx_rates is seeded at migration time and
-    // refreshed daily by fx-rate-refresh.service.ts — never a hardcoded literal that
-    // goes stale between deploys. If the DB has no rows either, say so honestly.
-    try {
-      const dbRates = await storage.getLatestFxRates();
-      if (dbRates) {
-        return res.json({
-          base: "USD",
-          rates: dbRates.rates,
-          cachedAt: dbRates.updatedAt ? new Date(dbRates.updatedAt).getTime() : Date.now(),
-          fallback: true,
-        });
-      }
-    } catch (dbErr) {
-      console.error("Exchange rate DB fallback error:", dbErr);
-    }
-    res.status(503).json({ base: "USD", rates: null, error: "Exchange rates unavailable" });
-  }
-});
+// Handler extracted to server/routes/exchange-rate.handler.ts for testability.
+router.get("/api/exchange-rates", handleExchangeRates);
 
 export default router;
