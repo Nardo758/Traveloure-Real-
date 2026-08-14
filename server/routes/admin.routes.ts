@@ -105,6 +105,7 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+import { travelpayoutsCache } from "@shared/schema";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -7664,6 +7665,39 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
+  }
+});
+
+// ─── Travelpayouts cache status ────────────────────────────────────────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Returns one entry per cached
+// brand/key pair so operators can see whether displayed eSIM, transport, and
+// activity cards are fresh or stale. No data payload is returned — only the
+// metadata fields needed for the freshness indicator.
+router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
+  try {
+    const now = new Date();
+    const rows = await db
+      .select({
+        brand: travelpayoutsCache.brand,
+        cacheKey: travelpayoutsCache.cacheKey,
+        expiresAt: travelpayoutsCache.expiresAt,
+        createdAt: travelpayoutsCache.createdAt,
+      })
+      .from(travelpayoutsCache)
+      .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
+
+    const entries = rows.map((row) => ({
+      brand: row.brand,
+      cacheKey: row.cacheKey,
+      expiresAt: row.expiresAt,
+      cachedAt: row.createdAt,
+      isStale: row.expiresAt < now,
+    }));
+
+    res.json({ entries, retrievedAt: now });
+  } catch (error: any) {
+    console.error("[admin/travelpayouts-cache/status] error:", error);
+    res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
   }
 });
 
