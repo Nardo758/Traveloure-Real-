@@ -3930,6 +3930,50 @@ const boysTripTabs: TabDef[] = [
         { label: "Limo", value: "limo" }
       ]}
     ]
+  },
+  {
+    name: "Transfers",
+    slug: "transfers",
+    description: "Airport and hotel transfer options for the group",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transfer Type",
+        slug: "transfer_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Airport Pickup", value: "airport_pickup" },
+          { label: "Airport Drop-off", value: "airport_dropoff" },
+          { label: "Hotel Transfer", value: "hotel" },
+          { label: "Point-to-Point", value: "point_to_point" },
+        ]
+      },
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "single_select",
+        icon: "Car",
+        options: [
+          { label: "Sedan", value: "sedan" },
+          { label: "SUV", value: "suv" },
+          { label: "Van/Minibus", value: "van" },
+          { label: "Luxury", value: "luxury" },
+          { label: "Party Bus", value: "party_bus" },
+        ]
+      },
+      {
+        name: "Service Level",
+        slug: "service_level",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Shared Shuttle", value: "shared" },
+          { label: "Private", value: "private" },
+          { label: "Premium", value: "premium" },
+        ]
+      },
+    ]
   }
 ];
 
@@ -4068,6 +4112,50 @@ const girlsTripTabs: TabDef[] = [
         { label: "Brunch Spots", value: "brunch" }, { label: "Trendy/Instagram", value: "trendy" },
         { label: "Wine Dining", value: "wine" }, { label: "Healthy/Organic", value: "healthy" }
       ]}
+    ]
+  },
+  {
+    name: "Transfers",
+    slug: "transfers",
+    description: "Airport and hotel transfer options for the group",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transfer Type",
+        slug: "transfer_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Airport Pickup", value: "airport_pickup" },
+          { label: "Airport Drop-off", value: "airport_dropoff" },
+          { label: "Hotel Transfer", value: "hotel" },
+          { label: "Point-to-Point", value: "point_to_point" },
+        ]
+      },
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "single_select",
+        icon: "Car",
+        options: [
+          { label: "Sedan", value: "sedan" },
+          { label: "SUV", value: "suv" },
+          { label: "Van/Minibus", value: "van" },
+          { label: "Luxury", value: "luxury" },
+          { label: "Party Bus", value: "party_bus" },
+        ]
+      },
+      {
+        name: "Service Level",
+        slug: "service_level",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Shared Shuttle", value: "shared" },
+          { label: "Private", value: "private" },
+          { label: "Premium", value: "premium" },
+        ]
+      },
     ]
   }
 ];
