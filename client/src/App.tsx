@@ -109,6 +109,7 @@ const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
 const ExpertsPage = lazy(() => import("@/pages/experts"));
 const DiscoverPage = lazy(() => import("@/pages/discover"));
+const ExperienceDiscoveryPage = lazy(() => import("@/pages/experience-discovery"));
 const DiscoverLocationPage = lazy(() => import("@/pages/discover-location"));
 const ContactPage = lazy(() => import("@/pages/contact"));
 const FAQPage = lazy(() => import("@/pages/faq"));
@@ -506,7 +507,7 @@ function Router() {
         <ExperienceTemplatePage />
       </Route>
       <Route path="/discover-experiences">
-        <Redirect to="/discover" />
+        <ExperienceDiscoveryPage />
       </Route>
       {/* /deals kept: unique content (flash sales, seasonal, last-minute, bundle listings)
           with countdown timers and discount data not surfaced inside /discover. */}
