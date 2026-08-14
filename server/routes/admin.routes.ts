@@ -162,7 +162,7 @@ import {
   getLocationSummary, getLocationSummaryData, getDestinationDemandReport, getProviderMarketReport,
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
-  getUsersBasicByIds, getProviderServiceById, deleteProviderService,
+  getUsersBasicByIds, getProviderServiceById, getProviderServicesByIds, deleteProviderService,
 } from "../services/admin-query.service";
 
 const router = Router();
@@ -337,17 +337,33 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const allBookings = await storage.getServiceBookings(status ? { status } : {});
-      const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
-        const traveler = booking.travelerId ? await storage.getUser(booking.travelerId) : null;
-        const provider = booking.providerId ? await storage.getUser(booking.providerId) : null;
-        const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
+
+      // Batch-fetch users and services with IN-clause queries instead of per-row lookups
+      const travelerIds = Array.from(new Set(allBookings.map(b => b.travelerId).filter(Boolean) as string[]));
+      const providerIds = Array.from(new Set(allBookings.map(b => b.providerId).filter(Boolean) as string[]));
+      const serviceIds  = Array.from(new Set(allBookings.map(b => b.serviceId).filter(Boolean)  as string[]));
+
+      const [travelerRows, providerRows, serviceRows] = await Promise.all([
+        getUsersBasicByIds(travelerIds),
+        getUsersBasicByIds(providerIds),
+        getProviderServicesByIds(serviceIds),
+      ]);
+
+      const travelerMap = new Map(travelerRows.map(u => [u.id, u]));
+      const providerMap = new Map(providerRows.map(u => [u.id, u]));
+      const serviceMap  = new Map(serviceRows.map(s => [s.id, s]));
+
+      const enrichedBookings = allBookings.map((booking) => {
+        const traveler = booking.travelerId ? travelerMap.get(booking.travelerId) ?? null : null;
+        const provider = booking.providerId ? providerMap.get(booking.providerId) ?? null : null;
+        const service  = booking.serviceId  ? serviceMap.get(booking.serviceId)   ?? null : null;
         return {
           ...booking,
           traveler: traveler ? { id: traveler.id, firstName: traveler.firstName, lastName: traveler.lastName, email: traveler.email } : null,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, email: provider.email } : null,
-          service: service ? { id: service.id, serviceName: service.serviceName } : null,
+          service:  service  ? { id: service.id,  serviceName: service.serviceName } : null,
         };
-      }));
+      });
       res.json(enrichedBookings);
     } catch (err) {
       console.error("Admin bookings error:", err);
@@ -1046,10 +1062,25 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     const { bookingId } = req.params;
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     await storage.updateServiceBookingStatus(bookingId, "completed");
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_rejected",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_rejected on booking ${bookingId}: ${err?.message ?? "unknown error"}. Status change was applied but this action has no audit trail.`;
+    });
     res.json({
       success: true,
       cleared,
       note: "Dispute rejected; earnings resume release.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute reject error:", err);
@@ -1092,6 +1123,27 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_refunded",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: {
+        reason: String(reason ?? "").slice(0, 2000) || "dispute_upheld",
+        reversedEarnings: earnings.reversed,
+        skippedPaidOut: earnings.skippedPaidOut,
+        reversedRevenueRows: revenueRows,
+        revertedPlanItems: routingReversal.reverted,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. Ledger reversal and Stripe refund were applied but this action has no audit trail.`;
+    });
+
     res.json({
       success: true,
       revertedPlanItems: routingReversal.reverted,
@@ -1102,6 +1154,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       note: earnings.skippedPaidOut > 0
         ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
         : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute uphold error:", err);
@@ -4892,8 +4945,14 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
 
       const now = new Date();
 
-      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
-        const owner = await storage.getUser(t.userId || '');
+      // N+1 fix: one batched WHERE id = ANY(...) user lookup for every trip owner,
+      // instead of one storage.getUser round-trip per trip.
+      const ownerIds = Array.from(new Set(allTrips.map((t) => t.userId).filter(Boolean))) as string[];
+      const owners = await getUsersBasicByIds(ownerIds);
+      const ownerById = new Map(owners.map((u) => [u.id, u]));
+
+      const enrichedTrips = allTrips.map((t) => {
+        const owner = t.userId ? ownerById.get(t.userId) : undefined;
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -4908,7 +4967,7 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
-      }));
+      });
 
       const phaseFiltered = phaseFilter
         ? enrichedTrips.filter(t => t.status === phaseFilter)
@@ -5005,6 +5064,85 @@ router.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) =>
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
+
+// GET /api/admin/analytics/export?from=&to=&format=csv — CSV download of the same data the
+// analytics overview shows, optionally filtered to a created-at date range. Additive; the
+// overview endpoint is untouched.
+router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const fromParam = typeof req.query.from === "string" && req.query.from ? new Date(req.query.from) : null;
+    const toParam = typeof req.query.to === "string" && req.query.to ? new Date(req.query.to) : null;
+    const from = fromParam && !isNaN(fromParam.getTime()) ? fromParam : null;
+    const to = toParam && !isNaN(toParam.getTime()) ? toParam : null;
+    const inRange = (d: Date | string | null | undefined) => {
+      if (!from && !to) return true;
+      if (!d) return false;
+      const t = new Date(d).getTime();
+      if (from && t < from.getTime()) return false;
+      if (to && t > to.getTime()) return false;
+      return true;
+    };
+
+    const allUsers = (await getAllUsersBasic()).filter(u => inRange(u.createdAt as any));
+    const allBookings = (await storage.getServiceBookings({})).filter(b => inRange(b.createdAt as any));
+    const allTrips = (await getAllTrips()).filter((t: any) => inRange(t.createdAt));
+    const allReviews = (await getAllServiceReviews()).filter((r: any) => inRange(r.createdAt));
+
+    const completedBookings = allBookings.filter(b => b.status === "completed");
+    const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+    const avgRating = allReviews.length > 0
+      ? allReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / allReviews.length
+      : 0;
+
+    const destCounts: Record<string, { bookings: number; revenue: number }> = {};
+    allTrips.forEach((t: any) => {
+      const dest = t.destination || "Unknown";
+      if (!destCounts[dest]) destCounts[dest] = { bookings: 0, revenue: 0 };
+      destCounts[dest].bookings++;
+      destCounts[dest].revenue += Number(t.budget || 0);
+    });
+
+    const roleCounts: Record<string, number> = {};
+    allUsers.forEach(u => {
+      const role = u.role || "user";
+      roleCounts[role] = (roleCounts[role] || 0) + 1;
+    });
+
+    const esc = (v: unknown) => {
+      let s = String(v ?? "");
+      // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR would be
+      // evaluated by Excel/Sheets even inside a quoted cell. Prefix with an apostrophe.
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines: string[] = [];
+    lines.push("Section,Label,Value");
+    lines.push(`Range,From,${esc(from ? from.toISOString() : "all time")}`);
+    lines.push(`Range,To,${esc(to ? to.toISOString() : "now")}`);
+    lines.push(`Metrics,Total Users,${allUsers.length}`);
+    lines.push(`Metrics,Total Bookings,${allBookings.length}`);
+    lines.push(`Metrics,Completed Bookings,${completedBookings.length}`);
+    lines.push(`Metrics,Total Revenue,${totalRevenue.toFixed(2)}`);
+    lines.push(`Metrics,Avg Rating,${avgRating.toFixed(2)}`);
+    lines.push(`Metrics,Total Reviews,${allReviews.length}`);
+    Object.entries(destCounts)
+      .sort((a, b) => b[1].bookings - a[1].bookings)
+      .forEach(([name, d]) => lines.push(`Top Destinations,${esc(name)},${d.bookings} trips / $${d.revenue.toFixed(2)}`));
+    Object.entries(roleCounts).forEach(([role, count]) => lines.push(`User Roles,${esc(role)},${count}`));
+
+    const filename = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(lines.join("\n"));
+  } catch (err) {
+    console.error("Admin analytics export error:", err);
+    res.status(500).json({ message: "Failed to export analytics" });
+  }
+});
 
   // Country/Region Analytics
 

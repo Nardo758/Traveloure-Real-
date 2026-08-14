@@ -161,6 +161,24 @@ export default function ExpertEarnings() {
 
         <StripeConnectCard />
 
+        {/* 7-day hold explainer — shown whenever the earner has held funds so they understand
+            why the "Available to pay out" figure differs from their total earned.
+            Hold window from earnings-hold.config.ts: 7 days for service_booking (the default).
+            Template sales are 14 days; tips clear immediately — so the note stays generic. */}
+        {(summary?.pendingEarnings ?? 0) > 0 && (
+          <div
+            className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            data-testid="banner-hold-explainer"
+          >
+            <Clock className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+            <span>
+              <strong>Why are some earnings held?</strong> Funds are held in escrow for 7 days after
+              a booking completes. This covers dispute and refund windows. Once the hold clears, the
+              balance moves to <em>Available to pay out</em> automatically.
+            </span>
+          </div>
+        )}
+
         {/* Honest four-card ledger split — held/releasable are never conflated (§13). */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard

@@ -237,8 +237,15 @@ router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
   // expert_service_offerings is the canonical template catalog.
   // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
 
-router.get("/api/revenue-splits", async (req, res) => {
+// Task 1151: revenue splits expose commercially sensitive rates — admin-only.
+router.get("/api/revenue-splits", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       const splits = await storage.getRevenueSplits();
       res.json(splits);
     } catch (err) {
@@ -374,10 +381,14 @@ export async function resolveCartSurcharges(cartData: any[]): Promise<Map<string
       .map((i) => i.service.id as string)
       .filter(Boolean),
   ));
+  // N+1 fix: ONE IN-clause query for every zones-mode service's tiers, grouped by serviceId.
   const tiersByService = new Map<string, Array<{ radiusKm: string; fee: string }>>();
-  for (const sid of zonesServiceIds) {
-    const tiers = await storage.getServiceSurchargeTiers(sid);
-    tiersByService.set(sid, tiers.map((t) => ({ radiusKm: t.radiusKm, fee: t.fee })));
+  if (zonesServiceIds.length > 0) {
+    const allTiers = await storage.getSurchargeTiersByServiceIds(zonesServiceIds);
+    for (const sid of zonesServiceIds) tiersByService.set(sid, []);
+    for (const t of allTiers) {
+      tiersByService.get(t.serviceId)!.push({ radiusKm: t.radiusKm, fee: t.fee });
+    }
   }
   for (const item of cartData) {
     if (!item.service) continue;
@@ -2040,6 +2051,11 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
 
 
 router.get("/stripe/connect/return", (req, res) => {
+    // Task 1151: require an authenticated session before processing redirect state.
+    // Unauthenticated hits bounce to login and come back here afterwards.
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return res.redirect("/login?returnTo=" + encodeURIComponent("/stripe/connect/return"));
+    }
     // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
     const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
     if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=connected");
@@ -2049,6 +2065,10 @@ router.get("/stripe/connect/return", (req, res) => {
 
 
 router.get("/stripe/connect/refresh", (req, res) => {
+    // Task 1151: require an authenticated session before processing redirect state.
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return res.redirect("/login?returnTo=" + encodeURIComponent("/stripe/connect/refresh"));
+    }
     // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
     const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
     if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=refresh");
@@ -2059,9 +2079,13 @@ router.get("/stripe/connect/refresh", (req, res) => {
   // === Admin Payouts Management ===
 
 
-router.get("/api/booking-fee-config", async (req, res) => {
+router.get("/api/booking-fee-config", isAuthenticated, async (req, res) => {
     try {
       const category = (req.query.category as string) || "default";
+      // Task 1151: authenticated-only; per-expert/provider rate context is only
+      // visible to an admin or the identified expert/provider themselves (IDOR guard).
+      const sessionUserId = getUserId(req);
+      if (!sessionUserId) return res.status(401).json({ message: "Authentication required" });
       // Forward the SAME context the checkout charge resolves with (category +
       // per-expert override id + early-adopter/provider id) — not a generic default —
       // so display == charge for the SAME booking context, not merely same-source.
@@ -2069,6 +2093,15 @@ router.get("/api/booking-fee-config", async (req, res) => {
       // expertId: service.userId }); this mirrors those inputs.
       const expertId = (req.query.expertId as string) || null;
       const providerId = (req.query.providerId as string) || null;
+      if (expertId || providerId) {
+        const requestedIds = [expertId, providerId].filter(Boolean) as string[];
+        if (requestedIds.some((id) => id !== sessionUserId)) {
+          const sessionUser = await storage.getUser(sessionUserId);
+          if (!sessionUser || sessionUser.role !== "admin") {
+            return res.status(403).json({ message: "Forbidden" });
+          }
+        }
+      }
       // Canonical source: fee_bands via the commission resolver. Previously read
       // booking_fee_configs directly, which diverged from the charge once Phase 1.3
       // made fee_bands canonical (12% fallback on prod, where the table was absent).
@@ -2081,11 +2114,17 @@ router.get("/api/booking-fee-config", async (req, res) => {
     }
   });
 
-  // ─── Phase 1.4: GET /api/fee-bands/:bandKey (public; read-only) ──────────────
-  // Returns the live default_rate for a fee_bands row. Used by client-side
-  // pricing surfaces (optimize.tsx, etc.) so admin edits propagate without redeploy.
+  // ─── Phase 1.4: GET /api/fee-bands/:bandKey ──────────────────────────────────
+  // INTENTIONALLY PUBLIC (no isAuthenticated guard) — audit ref: Task 1163.
+  // Rationale: fee-band rows carry only the platform's own posted rates (e.g.
+  // "PLATFORM_FEE = 0.25"). They contain no user-specific data, no PII, and no
+  // commercially sensitive per-account overrides (those live in booking_fee_configs
+  // and are gated by GET /api/booking-fee-config, which IS authenticated + IDOR-
+  // guarded). This endpoint is used by client-side pricing surfaces (optimize.tsx,
+  // cart fee-preview) so admin edits propagate without a redeploy.
   // Percent bands return rate as a fraction (0.25 = 25 %); flat bands return rate
-  // as USD dollars (49.99 = $49.99). The rateType field disambiguates. // fee-literal-ok: comment example, fee resolves from config
+  // as USD dollars (49.99 = $49.99). The rateType field disambiguates.
+  // fee-literal-ok: comment example, fee resolves from config
 router.get("/api/fee-bands/:bandKey", async (req, res) => {
     try {
       const bandKey = String(req.params.bandKey || "").trim();

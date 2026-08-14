@@ -1079,4 +1079,24 @@ export const MIGRATION_FILES = [
   // (source_locale, 'en'|'ja' app-enforced, NO DB CHECK), declared in shared/schema.ts same
   // commit. NULL = pre-216 row = English (ruling 60's baked-in assumption made explicit).
   "216_source_locale.sql",
+  // 217: DB-backed fallbacks for FX rates + geocode city coordinates. Two new tables
+  // (fx_rates, geocode_fallbacks), both seeded with the values the code used to hardcode
+  // (/api/exchange-rates literal + the dead FALLBACK_COORDINATES map). Idempotent
+  // (IF NOT EXISTS + ON CONFLICT DO NOTHING); declared in shared/schema.ts same commit.
+  "217_fx_rates_geocode_fallbacks.sql",
+  // 218: missing B-tree indexes on hot query columns (service_bookings, itinerary_items,
+  // notifications, provider_services, service_reviews). Pure CREATE INDEX IF NOT EXISTS —
+  // no table/column changes. Every index is also declared in shared/schema.ts (deploy-push
+  // durability rule) so the publish-time drizzle push never drops them. (Renumbered from
+  // 217 during rebase: main already shipped 217_fx_rates_geocode_fallbacks.sql.)
+  "218_hot_query_column_indexes.sql",
+  // 219: search quality — pg_trgm extension + GIN indexes for the tsvector/trigram search in
+  // storage.unifiedSearch (typo tolerance, relevance ranking, "did you mean" suggestions).
+  // All idempotent (CREATE EXTENSION/INDEX IF NOT EXISTS), no table/column changes.
+  // (Renumbered from 217→218→219 at merge — main's 217 is fx_rates, 218 is hot-query indexes.)
+  "219_search_fts_trgm.sql",
+  // 220: seed the full currency set the budget converter supports (CAD, CHF, CNY, INR, MXN,
+  // BRL, THB). Migration 217 only seeded EUR/GBP/JPY/AUD/SGD; the daily FX refresh is also
+  // updated (same commit) to fetch all twelve currencies going forward.
+  "220_fx_rates_full_currency_set.sql",
 ] as const;

@@ -128,7 +128,7 @@ import { partnerEventsCacheService } from "../services/partner-events-cache.serv
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
-import { budgetService } from "../services/budget.service";
+import { budgetService, BudgetValidationError } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
 import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
@@ -3899,10 +3899,17 @@ router.post("/api/geocode", async (req, res) => {
 
       const { address } = parsed.data;
       const result = await geocodeAddress(address);
-      if (!result) {
-        return res.status(404).json({ message: "Location not found" });
+      if (result) {
+        return res.json(result);
       }
-      res.json(result);
+      // DB-backed fallback (migration 217): admin-curated city-centre coordinates in
+      // geocode_fallbacks — curated data, not fabrication, so the §13 posture holds.
+      // A miss there too stays an honest 404, never a guessed coordinate.
+      const dbFallback = await storage.getGeocodeFallback(address);
+      if (dbFallback) {
+        return res.json({ ...dbFallback, fallback: true });
+      }
+      return res.status(404).json({ message: "Location not found" });
     } catch (error: any) {
       console.error('Geocoding API error:', error);
       res.status(500).json({ message: error.message || "Geocoding failed" });
@@ -6027,7 +6034,9 @@ router.get("/api/search/experiences", async (req, res) => {
             });
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('[catalog-filter] platform-catalog filtering failed (GET place search):', err);
+      }
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
       if (includeGoogle && apiKey) {
@@ -6604,6 +6613,9 @@ router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) =>
       const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
       res.json(conversion);
     } catch (error) {
+      if (error instanceof BudgetValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to convert currency" });
     }
   });
@@ -8578,8 +8590,23 @@ router.get("/api/exchange-rates", async (_req, res) => {
     res.json({ base: "USD", rates: data.rates, cachedAt: now });
   } catch (err) {
     console.error("Exchange rate fetch error:", err);
-    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
-    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+    // DB-backed fallback (migration 217): fx_rates is seeded at migration time and
+    // refreshed daily by fx-rate-refresh.service.ts — never a hardcoded literal that
+    // goes stale between deploys. If the DB has no rows either, say so honestly.
+    try {
+      const dbRates = await storage.getLatestFxRates();
+      if (dbRates) {
+        return res.json({
+          base: "USD",
+          rates: dbRates.rates,
+          cachedAt: dbRates.updatedAt ? new Date(dbRates.updatedAt).getTime() : Date.now(),
+          fallback: true,
+        });
+      }
+    } catch (dbErr) {
+      console.error("Exchange rate DB fallback error:", dbErr);
+    }
+    res.status(503).json({ base: "USD", rates: null, error: "Exchange rates unavailable" });
   }
 });
 

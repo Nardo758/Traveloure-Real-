@@ -1009,7 +1009,21 @@ export const providerServices = pgTable("provider_services", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 218 — provider-owned service lookups / browse predicate. Declared here per the
+  // deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
+  psUserIdStatusIdx: index("idx_provider_services_user_id_status").on(table.userId, table.status),
+  // Migration 219 — full-text search (weighted tsvector) + trigram similarity for search quality.
+  // GIN indexes declared here so publish-time drizzle push does not plan a DROP.
+  psFtsIdx: index("idx_provider_services_fts").using(
+    "gin",
+    sql`(setweight(to_tsvector('english', coalesce(service_name, '')), 'A') || setweight(to_tsvector('english', coalesce(description, '')), 'B'))`,
+  ),
+  psNameTrgmIdx: index("idx_provider_services_name_trgm").using(
+    "gin",
+    sql`service_name gin_trgm_ops`,
+  ),
+}));
 
 // === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
 // A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,
@@ -1205,6 +1219,13 @@ export const serviceBookings = pgTable("service_bookings", {
   sbIdempotencyKeyIdx: uniqueIndex("service_bookings_idempotency_key_idx")
     .on(table.idempotencyKey)
     .where(sql`${table.idempotencyKey} IS NOT NULL`),
+  // Migration 217 — hot-query FK indexes. Declared here (deploy-push durability rule): the
+  // publish-time drizzle push drops indexes that exist only in migration SQL. Composites lead
+  // with the FK so they also serve bare traveler_id/provider_id lookups (leftmost prefix).
+  sbServiceIdIdx: index("idx_service_bookings_service_id").on(table.serviceId),
+  sbTravelerIdStatusIdx: index("idx_service_bookings_traveler_id_status").on(table.travelerId, table.status),
+  sbProviderIdStatusIdx: index("idx_service_bookings_provider_id_status").on(table.providerId, table.status),
+  sbTripIdIdx: index("idx_service_bookings_trip_id").on(table.tripId),
 }));
 
 // === Service Reviews ===
@@ -1232,7 +1253,11 @@ export const serviceReviews = pgTable("service_reviews", {
   moderatedBy: varchar("moderated_by", { length: 255 }),
   moderatedAt: timestamp("moderated_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 217 — declared here per the deploy-push durability rule (see service_bookings note).
+  srServiceIdStatusIdx: index("idx_service_reviews_service_id_status").on(table.serviceId, table.status),
+  srProviderIdIdx: index("idx_service_reviews_provider_id").on(table.providerId),
+}));
 
 // === Review Moderation Logs ===
 export const reviewModerationLogs = pgTable("review_moderation_logs", {
@@ -1337,6 +1362,8 @@ export const notifications = pgTable("notifications", {
   dedupeKeyUniq: uniqueIndex("notifications_dedupe_key_uniq")
     .on(table.dedupeKey)
     .where(sql`${table.dedupeKey} IS NOT NULL`),
+  // Migration 217 — user-scoped unread reads ordered by recency (deploy-push durability rule).
+  notificationsUserReadCreatedIdx: index("idx_notifications_user_id_is_read_created_at").on(table.userId, table.isRead, table.createdAt),
 }));
 
 // === Contact Submissions (landing page / contact page) ===
@@ -4006,6 +4033,9 @@ export const itineraryItems = pgTable("itinerary_items", {
   // index that exists only in migration SQL — after which the stamped migration never recreates
   // it. This index serves the refund/cancel reversal lookup (find the item for a booking).
   itineraryItemsBookingIdIdx: index("idx_itinerary_items_booking_id").on(table.bookingId),
+  // Migration 217 — per-trip loads/deletes + routing predicates. Leading trip_id also serves
+  // bare trip_id lookups (leftmost prefix), so no separate single-column index is needed.
+  itineraryItemsTripRoutingIdx: index("idx_itinerary_items_trip_id_routing_status").on(table.tripId, table.routingStatus),
 }));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
@@ -4797,7 +4827,14 @@ export const expertTemplates = pgTable("expert_templates", {
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, () => ({
+  // Migration 219 — full-text search on title+destination+description. GIN index declared here
+  // per the deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
+  etFtsIdx: index("idx_expert_templates_fts").using(
+    "gin",
+    sql`(setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('english', coalesce(destination, '')), 'A') || setweight(to_tsvector('english', coalesce(description, '')), 'B'))`,
+  ),
+}));
 
 // Template purchases - tracks when users buy templates
 export const templatePurchases = pgTable("template_purchases", {
@@ -8542,3 +8579,30 @@ export const deliverableDownloads = pgTable("deliverable_downloads", {
   index("deliverable_downloads_service_idx").on(table.serviceId),
 ]);
 export type DeliverableDownload = typeof deliverableDownloads.$inferSelect;
+
+// Task: DB-backed fallbacks for FX rates and geocode coordinates (migration 217).
+// fx_rates: one row per currency, rate expressed as units-per-USD. Refreshed daily by
+// server/services/fx-rate-refresh.service.ts (Frankfurter API); seeded by migration 217 so a
+// fresh deploy is never rate-less. The /api/exchange-rates fallback path reads these rows —
+// the old hardcoded literal is gone; if this table is empty AND the live fetch failed, the
+// endpoint returns an honest 503, never silently-stale baked-in numbers.
+export const fxRates = pgTable("fx_rates", {
+  currencyCode: varchar("currency_code", { length: 8 }).primaryKey(),
+  rateToUsd: doublePrecision("rate_to_usd").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FxRate = typeof fxRates.$inferSelect;
+
+// geocode_fallbacks: admin-curated city-centre coordinates used ONLY when the live Google
+// geocode misses. Seeded by migration 217 with the former hardcoded FALLBACK_COORDINATES set;
+// admins add/update rows via SQL (no deploy needed). A miss here too returns an honest
+// null/404 — never a guessed coordinate (§13 posture: curated data is not fabrication).
+export const geocodeFallbacks = pgTable("geocode_fallbacks", {
+  slug: varchar("slug", { length: 120 }).primaryKey(), // normalized lowercase city key
+  cityName: varchar("city_name", { length: 120 }).notNull(),
+  lat: doublePrecision("lat").notNull(),
+  lng: doublePrecision("lng").notNull(),
+  formattedAddress: varchar("formatted_address", { length: 255 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type GeocodeFallback = typeof geocodeFallbacks.$inferSelect;
