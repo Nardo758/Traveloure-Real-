@@ -1,3 +1,4 @@
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1111,4 +1112,10 @@ export const MIGRATION_FILES = [
   // accurate freshness signal via GET /api/admin/travelpayouts-cache/status. No default so
   // pre-migration rows carry NULL (surfaced as "unknown" by the status endpoint).
   "222_travelpayouts_cache_refreshed_at.sql",
+  // 223: One-time backfill of bookings_count and total_revenue on provider_services from
+  // existing service_bookings rows. The live code keeps these counters in sync for new
+  // bookings; this recalculates both fields for any pre-existing bookings that were created
+  // before the sync logic was in place. Fully idempotent UPDATE (re-derives from source of
+  // truth; safe to re-run). Only updates services that have at least one booking row.
+  "223_backfill_service_booking_counters.sql",
 ] as const;
