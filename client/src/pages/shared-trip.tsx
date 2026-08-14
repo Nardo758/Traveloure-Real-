@@ -2,6 +2,7 @@ import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Calendar, MapPin, Users, Coffee, Camera, Utensils, Bed, Plane, ArrowRight, ShoppingCart, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { format, differenceInDays } from "date-fns";
@@ -109,6 +110,12 @@ export default function SharedTripPage() {
         {/* Branding */}
         <div className="absolute top-4 left-4">
           <span className="text-white font-semibold text-lg tracking-tight">Traveloure</span>
+        </div>
+        {/* Ruling 116 (distribution-language audit P3): the shared-trip link is a distribution
+            surface — the recipient can switch the UI language (chrome only). White trigger over
+            the dark hero; same ONE selector (ruling 60 (b)). */}
+        <div className="absolute top-3 right-3 rounded-lg bg-black/25 backdrop-blur-sm">
+          <LanguageMenu className="text-white hover:text-white hover:bg-white/20" />
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 container mx-auto px-4 pb-6">

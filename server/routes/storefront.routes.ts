@@ -23,9 +23,10 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations } from "@shared/schema";
+import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
 // providerServices/expertTemplates/readyMadeTrips rows or their approval/status columns.
@@ -524,7 +525,13 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
   }
 });
 
-async function loadStorefront(handle: string) {
+// `activeLocale` (ruling 116 / P1 of the distribution-language audit): the viewer's resolved
+// chrome locale, passed by the SPA as ?locale=. Applies the SAME ruling-60/115 content overlay
+// GET /api/services/:id uses — an approved translation replaces the card's text when the viewer's
+// locale differs from the listing's own source_locale; otherwise the honest original renders,
+// flagged `shownInOriginal` so the client can label it (§13 — never silent, never machine-
+// translated). Omitted (the OG-injection caller, crawlers) ⇒ no overlay, canonical content.
+async function loadStorefront(handle: string, activeLocale?: string) {
   const normalized = handle.trim().toLowerCase();
   if (!HANDLE_RE.test(normalized)) return null;
 
@@ -578,6 +585,9 @@ async function loadStorefront(handle: string) {
       // below (the ONE derivation site), never returned null.
       showPrice: providerServices.showPrice,
       bookingMode: providerServices.bookingMode,
+      // Ruling 115: the listing's declared source language (NULL = en) — drives the per-card
+      // translation overlay below.
+      sourceLocale: providerServices.sourceLocale,
     })
     .from(providerServices)
     .where(
@@ -600,11 +610,47 @@ async function loadStorefront(handle: string) {
     .where(eq(serviceProviderForms.userId, owner.id))
     .limit(1);
   const ownerInstantBooking = ownerForm?.instantBooking ?? false;
-  const resolvedServices = services.map((s) => ({
+  let resolvedServices = services.map((s) => ({
     ...s,
     showPrice: s.showPrice ?? true,
     bookingMode: resolveBookingMode(s.bookingMode, ownerInstantBooking),
+    // Set true below only when the viewer's locale differs from the card's source and no
+    // approved translation exists — the client renders the honest one-line note (§13).
+    shownInOriginal: false,
   }));
+
+  // Ruling 115/116 content overlay — the storefront card follows the same rules as the detail
+  // page it links to: approved rows only (a draft/AI-draft is NEVER shown to a traveler), name
+  // overlaid where translated, honest original + flag where not. One batched query, not N.
+  if (isContentLocale(activeLocale)) {
+    const needing = resolvedServices.filter(
+      (s) => effectiveSourceLocale(s.sourceLocale) !== activeLocale,
+    );
+    if (needing.length > 0) {
+      const rows = await db
+        .select({
+          serviceId: serviceTranslations.serviceId,
+          serviceName: serviceTranslations.serviceName,
+        })
+        .from(serviceTranslations)
+        .where(
+          and(
+            inArray(serviceTranslations.serviceId, needing.map((s) => s.id)),
+            eq(serviceTranslations.locale, activeLocale),
+            eq(serviceTranslations.status, "approved"),
+          ),
+        );
+      const byId = new Map(rows.map((r) => [r.serviceId, r]));
+      resolvedServices = resolvedServices.map((s) => {
+        if (effectiveSourceLocale(s.sourceLocale) === activeLocale) return s;
+        const t = byId.get(s.id);
+        // An approved row with a translated name overlays; an untranslated FIELD falls back to
+        // the original (never blanked) — same field-level rule as the detail read.
+        if (t?.serviceName) return { ...s, serviceName: t.serviceName };
+        return { ...s, shownInOriginal: true };
+      });
+    }
+  }
 
   // Lane 2: itinerary templates — approved + expert-published (§10 read-gate). Teaser fields only
   // (the content-gate: no itineraryData here, ever).
@@ -719,7 +765,8 @@ async function loadStorefront(handle: string) {
 
 router.get("/api/storefront/:handle", async (req, res) => {
   try {
-    const data = await loadStorefront(req.params.handle);
+    const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
+    const data = await loadStorefront(req.params.handle, rawLocale);
     if (!data) return res.status(404).json({ message: "Storefront not found" });
     return res.json(data);
   } catch (error: any) {
