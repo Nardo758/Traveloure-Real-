@@ -1009,7 +1009,11 @@ export const providerServices = pgTable("provider_services", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 217 — provider-owned service lookups / browse predicate. Declared here per the
+  // deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
+  psUserIdStatusIdx: index("idx_provider_services_user_id_status").on(table.userId, table.status),
+}));
 
 // === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
 // A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,
@@ -1205,6 +1209,13 @@ export const serviceBookings = pgTable("service_bookings", {
   sbIdempotencyKeyIdx: uniqueIndex("service_bookings_idempotency_key_idx")
     .on(table.idempotencyKey)
     .where(sql`${table.idempotencyKey} IS NOT NULL`),
+  // Migration 217 — hot-query FK indexes. Declared here (deploy-push durability rule): the
+  // publish-time drizzle push drops indexes that exist only in migration SQL. Composites lead
+  // with the FK so they also serve bare traveler_id/provider_id lookups (leftmost prefix).
+  sbServiceIdIdx: index("idx_service_bookings_service_id").on(table.serviceId),
+  sbTravelerIdStatusIdx: index("idx_service_bookings_traveler_id_status").on(table.travelerId, table.status),
+  sbProviderIdStatusIdx: index("idx_service_bookings_provider_id_status").on(table.providerId, table.status),
+  sbTripIdIdx: index("idx_service_bookings_trip_id").on(table.tripId),
 }));
 
 // === Service Reviews ===
@@ -1232,7 +1243,11 @@ export const serviceReviews = pgTable("service_reviews", {
   moderatedBy: varchar("moderated_by", { length: 255 }),
   moderatedAt: timestamp("moderated_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 217 — declared here per the deploy-push durability rule (see service_bookings note).
+  srServiceIdStatusIdx: index("idx_service_reviews_service_id_status").on(table.serviceId, table.status),
+  srProviderIdIdx: index("idx_service_reviews_provider_id").on(table.providerId),
+}));
 
 // === Review Moderation Logs ===
 export const reviewModerationLogs = pgTable("review_moderation_logs", {
@@ -1337,6 +1352,8 @@ export const notifications = pgTable("notifications", {
   dedupeKeyUniq: uniqueIndex("notifications_dedupe_key_uniq")
     .on(table.dedupeKey)
     .where(sql`${table.dedupeKey} IS NOT NULL`),
+  // Migration 217 — user-scoped unread reads ordered by recency (deploy-push durability rule).
+  notificationsUserReadCreatedIdx: index("idx_notifications_user_id_is_read_created_at").on(table.userId, table.isRead, table.createdAt),
 }));
 
 // === Contact Submissions (landing page / contact page) ===
@@ -4006,6 +4023,9 @@ export const itineraryItems = pgTable("itinerary_items", {
   // index that exists only in migration SQL — after which the stamped migration never recreates
   // it. This index serves the refund/cancel reversal lookup (find the item for a booking).
   itineraryItemsBookingIdIdx: index("idx_itinerary_items_booking_id").on(table.bookingId),
+  // Migration 217 — per-trip loads/deletes + routing predicates. Leading trip_id also serves
+  // bare trip_id lookups (leftmost prefix), so no separate single-column index is needed.
+  itineraryItemsTripRoutingIdx: index("idx_itinerary_items_trip_id_routing_status").on(table.tripId, table.routingStatus),
 }));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
