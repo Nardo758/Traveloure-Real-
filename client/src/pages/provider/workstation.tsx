@@ -283,7 +283,7 @@ const WORKSTATION_MOCK_CSS = `
 .ws-mock .ws-screen-sub{color:var(--ws-muted);font-size:13px;margin:0 0 18px;max-width:70ch;}
 .ws-mock .ws-grouplabel{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ws-muted);font-weight:600;margin:0 0 10px;}
 .ws-mock .ws-doortiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
-@media (max-width:900px){.ws-mock .ws-doortiles{grid-template-columns:1fr;}}
+@media (max-width:56.25rem){.ws-mock .ws-doortiles{grid-template-columns:1fr;}}
 .ws-mock .ws-doortiles>a{display:contents;}
 .ws-mock .ws-doortile{
   border:1px solid var(--ws-hair);border-radius:var(--ws-radius);background:var(--ws-paper);padding:20px;
