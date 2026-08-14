@@ -413,6 +413,9 @@ class ExperienceCatalogService {
       conditions.push(inArray(feverEventCache.provider, normalized));
     }
 
+    // Always exclude expired cache rows so stale events are never surfaced.
+    conditions.push(gte(feverEventCache.expiresAt, new Date()));
+
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     let events = await db.select()
@@ -421,29 +424,24 @@ class ExperienceCatalogService {
       .limit(limit)
       .offset(offset);
 
-    // Fetch-on-miss: if no events are cached for this destination, or all cached
-    // entries are stale (expiresAt in the past), trigger a live Fever API call and
-    // re-query so users always see real data without a prior cache warm-up.
+    // Fetch-on-miss: if no fresh (non-expired) events are cached for this
+    // destination, trigger a live Fever API call and re-query.  The expired-row
+    // filter above means an empty result set unambiguously means "no live data".
     const wantsFeverEvents =
       !params.providers || params.providers.length === 0 || params.providers.includes("fever");
 
-    if (wantsFeverEvents && params.destination) {
-      const now = new Date();
-      const hasLiveResults = events.some(e => e.expiresAt > now);
-
-      if (!hasLiveResults) {
-        try {
-          const upserted = await feverService.upsertEventsToCache(params.destination);
-          if (upserted > 0) {
-            events = await db.select()
-              .from(feverEventCache)
-              .where(whereClause)
-              .limit(limit)
-              .offset(offset);
-          }
-        } catch (err: any) {
-          this.catalogLogger.warn({ err }, "Fever fetch-on-miss failed, using existing cache");
+    if (wantsFeverEvents && params.destination && events.length === 0) {
+      try {
+        const upserted = await feverService.upsertEventsToCache(params.destination);
+        if (upserted > 0) {
+          events = await db.select()
+            .from(feverEventCache)
+            .where(whereClause)
+            .limit(limit)
+            .offset(offset);
         }
+      } catch (err: any) {
+        this.catalogLogger.warn({ err }, "Fever fetch-on-miss failed, using existing cache");
       }
     }
 

@@ -15,7 +15,7 @@
 
 import { db } from "../db";
 import { feverEventCache } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 
 export interface FeverEvent {
   id: string;
@@ -421,6 +421,36 @@ class FeverService {
   }
 
   /**
+   * Fetch live events for a city directly from the Impact.com catalog API —
+   * NO mock fallback. Returns null when:
+   *   - credentials or catalog ID are unavailable, OR
+   *   - the HTTP request fails for any reason.
+   * Callers must treat null as "upstream unavailable — do not cache anything".
+   */
+  private async fetchLiveEventsForCity(
+    cityNameOrCode: string,
+  ): Promise<{ city: FeverCity; events: FeverEvent[] } | null> {
+    if (!this.isCatalogReady()) return null;
+
+    const city = this.findCity(cityNameOrCode);
+    if (!city) {
+      console.warn(`[Fever] fetchLiveEventsForCity: city not found for "${cityNameOrCode}"`);
+      return null;
+    }
+
+    // getCatalogItems returns null on any HTTP/parse error (already logs the error).
+    const items = await this.getCatalogItems(this.feverCatalogId!, {
+      keyword: city.name,
+      pageSize: 30,
+    });
+
+    if (!items) return null; // upstream failure — caller must not cache
+
+    const events = items.map(item => this.transformCatalogItemToEvent(item, city));
+    return { city, events };
+  }
+
+  /**
    * Search events by city and optional filters
    */
   public async searchEvents(params: FeverSearchParams): Promise<FeverSearchResponse | null> {
@@ -547,7 +577,9 @@ class FeverService {
     this.inFlightRefreshes.add(lockKey);
 
     try {
-      const result = await this.searchEvents({ city: cityNameOrCode, limit: 30 });
+      // Use the live-only fetch path — never falls back to mock data.
+      // Returns null when credentials/catalog are missing or the HTTP call fails.
+      const result = await this.fetchLiveEventsForCity(cityNameOrCode);
       if (!result || result.events.length === 0) return 0;
 
       const { city, events } = result;
@@ -641,6 +673,26 @@ class FeverService {
           upserted++;
         } catch (err: any) {
           console.error(`[Fever] Upsert error for event ${event.id}:`, err?.message);
+        }
+      }
+
+      // Retire stale rows for this city that were not refreshed (events no longer
+      // returned by the live API).  Rows whose event_id was in the live response
+      // now have an updated expiresAt; any remaining expired rows for the same
+      // cityCode are no longer active and would otherwise linger until the cache
+      // cleanup job (task #1190) removes them.
+      if (upserted > 0) {
+        try {
+          await db
+            .delete(feverEventCache)
+            .where(
+              and(
+                eq(feverEventCache.cityCode, city.code),
+                lt(feverEventCache.expiresAt, new Date()),
+              )
+            );
+        } catch (err: any) {
+          console.warn(`[Fever] Stale-row cleanup failed for ${city.name}:`, err?.message);
         }
       }
 
