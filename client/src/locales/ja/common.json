@@ -29,6 +29,7 @@
     "shownInEnglishHint": "この出品はまだ翻訳されていません。サービス事業者の原文を表示しています。",
     "shownInJapanese": "原文（日本語）",
     "shownInJapaneseHint": "この出品はまだ翻訳されていません。サービス事業者の原文（日本語）を表示しています。",
+    "someInOriginal": "一部の出品はまだ翻訳されておらず、原文のまま表示されています。",
     "aiDraft": "AI下書き — 公開前に確認してください",
     "machineDraftNotice": "機械翻訳による下書きです。旅行者に表示する前に内容を確認して承認してください。",
     "approveDraft": "翻訳を承認する",
