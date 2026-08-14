@@ -100,6 +100,73 @@ interface InboxBooking {
 const formatDate = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
 
+// ─── Notifications tab (ruling 112 / R3): the bell's unread dot finally resolves somewhere ──
+// Run-2 finding R3: the wizard promises "you'll be notified when it's been looked at", the
+// decision writers now create the rows (admin.routes.ts notifyListingDecision), and THIS is
+// where a provider reads them. Real rows only — an empty list says so (§13).
+function NotificationsSection() {
+  const { data: notifs = [], isLoading } = useQuery<Array<{
+    id: string; type: string; title: string; message: string; isRead: boolean | null; createdAt: string | null;
+  }>>({ queryKey: ["/api/notifications"] });
+
+  const markAllRead = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/notifications/mark-all-read", {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+    },
+  });
+
+  const unread = notifs.filter((n) => !n.isRead).length;
+  return (
+    <Card data-testid="section-inbox-notifications">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium">
+            Notifications{unread > 0 ? ` · ${unread} unread` : ""}
+          </p>
+          {unread > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => markAllRead.mutate()}
+              disabled={markAllRead.isPending}
+              data-testid="button-mark-all-read"
+            >
+              Mark all read
+            </Button>
+          )}
+        </div>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : notifs.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-no-notifications">
+            Nothing yet. Review decisions on your listings land here.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {notifs.map((n) => (
+              <li
+                key={n.id}
+                className={`rounded-md border px-3 py-2 ${n.isRead ? "opacity-70" : "border-l-2 border-l-primary"}`}
+                data-testid={`notification-${n.id}`}
+              >
+                <p className="text-sm font-medium">{n.title}</p>
+                <p className="text-sm text-muted-foreground">{n.message}</p>
+                {n.createdAt && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {new Date(n.createdAt).toLocaleString()}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Visa status: shared dialog (Queue + History both open it) ─────────────
 // Endpoint unchanged: PATCH /api/service-bookings/:id/visa-status (ownership-gated on
 // booking.providerId, role-agnostic — same handler the expert Inbox uses). The retired
@@ -926,6 +993,7 @@ export default function ProviderInbox() {
             <TabsTrigger value="queue" data-testid="tab-inbox-queue">Queue</TabsTrigger>
             <TabsTrigger value="history" data-testid="tab-inbox-history">History</TabsTrigger>
             <TabsTrigger value="messages" data-testid="tab-inbox-messages">Messages</TabsTrigger>
+            <TabsTrigger value="notifications" data-testid="tab-inbox-notifications">Notifications</TabsTrigger>
           </TabsList>
 
           <TabsContent value="queue">
@@ -938,6 +1006,10 @@ export default function ProviderInbox() {
 
           <TabsContent value="messages">
             <MessageThreadsSection />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationsSection />
           </TabsContent>
         </Tabs>
       </div>

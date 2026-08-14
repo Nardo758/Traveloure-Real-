@@ -294,11 +294,10 @@ export function PricingFeesDrawer({
                     <SelectTrigger id="pfDepositType" className="mt-2" data-testid="select-pf-deposit-type">
                       <SelectValue placeholder="Choose percentage or flat amount" />
                     </SelectTrigger>
-                    {/* z-[110] (important): Radix portals SelectContent to document.body at the
-                        base component's z-50, which sits BELOW this Sheet's own z-[100] overlay —
-                        found by the headless click-through proof, not a code review. Overridden
-                        here only (not in the shared select.tsx, which is fine at z-50 everywhere
-                        it isn't nested under a Sheet). */}
+                    {/* Sheet overlay sits at z-[100]; SelectContent must clear it. The shared
+                        select.tsx is now z-[110] (ruling 112 Q5 — the availability drawer was the
+                        second Select-under-a-Sheet this bit, making it a class, not an instance);
+                        the explicit override here is kept as belt-and-braces. */}
                     <SelectContent className="!z-[110]">
                       <SelectItem value="percentage">Percentage of the total</SelectItem>
                       <SelectItem value="flat">Flat amount</SelectItem>

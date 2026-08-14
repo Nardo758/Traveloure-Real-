@@ -68,6 +68,7 @@ function nextDraftKey(): string {
 }
 
 export function ServiceMapAuthoring({
+  surchargeZones,
   serviceId,
   pin,
   pinLabel,
@@ -82,6 +83,9 @@ export function ServiceMapAuthoring({
   pinLabel?: string | null;
   /** `serviceRadius` in km — a display-only ring around the confirmed pin (§22c). */
   radiusKm?: number | null;
+  /** Ruling 112 Q3: travel-surcharge zones (ruling 81 rows) — display-only dashed rings;
+   *  amounts are authored in Pricing & fees, never here. */
+  surchargeZones?: ReadonlyArray<{ radiusKm: number; fee: string | number }> | null;
   /** Geocode context for "find this stop by name". */
   addressHint?: string;
   savedStops: SavedRoutePoint[];
@@ -227,7 +231,8 @@ export function ServiceMapAuthoring({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">
-          The pin you confirmed above, the ring your service radius draws around it, and the stops
+          The pin you confirmed above, the ring your service radius draws around it, your
+          travel-surcharge zones (display only — the amounts live in Pricing &amp; fees), and the stops
           this service visits in order. Connectors are drawn as a straight dashed line showing{" "}
           <strong>sequence, not travel routing</strong> — no distance or duration is invented (§13).
         </p>
@@ -239,6 +244,7 @@ export function ServiceMapAuthoring({
               pin={pin}
               pinLabel={pinLabel}
               radiusKm={radiusKm ?? null}
+              surchargeZones={surchargeZones ?? null}
               stops={stopsForMap}
               height={400}
               testIdPrefix="flow-map-canvas"
