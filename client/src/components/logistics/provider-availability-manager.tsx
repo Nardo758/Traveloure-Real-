@@ -441,9 +441,21 @@ function WeeklyPatternsEditor({ serviceId }: { serviceId: string }) {
       });
     },
     onError: (error: any) => {
+      // Replit assessment note (post-ruling-116): the two failure modes are different acts and
+      // deserve different words — 400 is "this payload repeats a window" (fix the rows), 409 is
+      // "someone else saved meanwhile" (reload, then reapply). apiRequest throws "STATUS: body".
+      const msg: string = error?.message ?? "";
+      const serverMessage = (() => {
+        try { return JSON.parse(msg.replace(/^\d{3}:\s*/, "")).message as string; } catch { return null; }
+      })();
+      const description = msg.startsWith("409")
+        ? "This schedule was changed elsewhere (another tab or device). Reload to pick up the latest version, then reapply your edit."
+        : msg.startsWith("400")
+          ? (serverMessage ?? "Two windows in this schedule overlap or repeat — fix the highlighted rows and save again.")
+          : (serverMessage ?? msg) || "Please check the fields and try again.";
       toast({
         title: "Could not save weekly schedule",
-        description: error?.message || "Please check the fields and try again.",
+        description,
         variant: "destructive",
       });
     },
