@@ -23,10 +23,21 @@
  * mounted HERE; the per-card Share button + `OfferingShareDetail` dialog is gone (Distribute's
  * Social kit channel now mounts the same shared component); the Promote section
  * (`PostingOpportunitiesCard`) is gone (it now renders on Distribute). Each card keeps exactly
- * one outward-facing pointer — "Distribute this →" — which lands on `/provider/distribute`
- * with that listing preselected. /provider/share-promote still redirects here (unchanged); its
- * expert twin (a separate, untouched lane) keeps the inline share surface on
- * `/expert/catalog`.
+ * one outward-facing pointer — "Distribute this →" (now labeled "Promote this →" on the card,
+ * see below) — which lands on `/provider/distribute` with that listing preselected.
+ * /provider/share-promote still redirects here (unchanged); its expert twin (a separate,
+ * untouched lane) keeps the inline share surface on `/expert/catalog`.
+ *
+ * CATALOG VISUAL PARITY (docs/design/service-creation-mock.html, "Catalog after" panel):
+ * functionality above is unchanged; this pass restyled the Manage-mode card into the mock's
+ * slim `.listing` row — small thumb, name, ONE meta line (category · price/unit · booking-mode
+ * word), a right rail of a click-to-open health bar + unified status pill, and a two-item
+ * primary action row (Edit + "Promote this →") with Duplicate/Delete collapsed into an overflow
+ * menu and the C3 "Card shows" control (CardShowsControl) moved into its own gear popover
+ * (CardShowsPopover). The category button row became a compact dropdown beside new All/Live/In
+ * review/Draft status filter chips (STATUS_FILTERS). The embedded single-slot
+ * AvailabilitySection block is deleted; the ?availability=<id> deep-link now switches this page
+ * into the "availability" view-mode with that service preselected (ONE availability surface).
  */
 import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
@@ -35,8 +46,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -44,6 +53,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// Catalog visual parity (mock: docs/design/service-creation-mock.html "Catalog after") — the
+// slim `.listing` row moves the health detail and the C3 "Card shows" control off the card face
+// and into click-to-open popovers; Duplicate/Delete collapse into an overflow menu.
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,7 +74,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
-import { EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 // S6: StorefrontShareTools + ensureShortLink stay imported — ProviderStorefrontHeader (below)
 // still composes them, it is just no longer MOUNTED on this page (moved to Distribute).
 // OfferingShareDetail / PostingOpportunitiesCard are gone from this file's imports — both
@@ -70,27 +88,23 @@ import {
   Edit,
   Copy,
   Trash2,
-  DollarSign,
-  Clock,
-  Users,
   BedDouble,
-  MapPin,
-  Truck,
-  Share2,
   ExternalLink,
   ArrowRight,
-  CalendarClock,
   ChevronDown,
+  ChevronRight,
   ImageOff,
   CheckCircle2,
   Star,
+  Settings2,
+  MoreHorizontal,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
+import { isPlaceAnchored } from "@shared/service-fundamentals";
 // FP-3: property + property_room rows are edited on the Workstation property surface, never in
 // the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
 // guard imports the same module).
@@ -288,309 +302,6 @@ export function ProviderStorefrontHeader() {
   );
 }
 
-// ─── Availability section (C9 — the expert catalog section on the provider query) ────────
-//
-// vendor_availability_slots is the canonical dated-slot model; the /api/me/… CRUD resolves
-// ownership against provider_services.userId server-side (role-agnostic, §14). The Channel
-// Calendar's availability lane reads exactly what this section writes.
-
-interface AvailabilitySlot {
-  id: string;
-  date: string;
-  startTime: string | null;
-  capacity: number | null;
-  bookedCount: number | null;
-  status: string | null;
-}
-
-/** apiRequest throws `Error("<status>: <body>")` — pull the server's honest message out of it
- *  (falling back to the raw text) so a 409 booked-slot refusal reads as prose, not a status code. */
-function parseApiErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) {
-    const match = err.message.match(/^\d+:\s*([\s\S]*)$/);
-    const body = match ? match[1] : err.message;
-    try {
-      const parsed = JSON.parse(body);
-      if (parsed?.message) return parsed.message as string;
-    } catch {
-      // not JSON — use the raw body text
-    }
-    return body || fallback;
-  }
-  return fallback;
-}
-
-function formatSlotDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-}
-
-function AvailabilitySection() {
-  const { toast } = useToast();
-  const { data: services, isLoading: servicesLoading } = useQuery<Service[]>({
-    queryKey: ["/api/provider/services"],
-  });
-  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
-  const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [capacity, setCapacity] = useState("");
-  // Collapsible section — default OPEN (this is a primary task), header states real
-  // service/slot-count data so collapsing loses no information (§13).
-  const [sectionOpen, setSectionOpen] = useState(true);
-  const sectionRef = useRef<HTMLDivElement>(null);
-
-  const list = Array.isArray(services) ? services : [];
-  const activeServiceId = selectedServiceId || list[0]?.id || "";
-
-  // WAVE 2 / S2: the listing home's "Publish some availability" checklist row deep-links here
-  // (`?availability=<serviceId>`) — this IS the C9 home for availability, so the row does not
-  // grow its own editor, it just needs to land on the right service and be visible. Runs once
-  // the real service list is loaded, so a row for a service on page 2 of a long catalog still
-  // resolves instead of silently falling back to the first one.
-  const deepLinkApplied = useRef(false);
-  useEffect(() => {
-    if (deepLinkApplied.current || servicesLoading) return;
-    const requested = new URLSearchParams(window.location.search).get("availability");
-    if (requested && list.some((s) => s.id === requested)) {
-      setSelectedServiceId(requested);
-      setSectionOpen(true);
-      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    deepLinkApplied.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servicesLoading, list.length]);
-
-  const { data: slots, isLoading: slotsLoading } = useQuery<AvailabilitySlot[]>({
-    queryKey: [`/api/me/services/${activeServiceId}/slots`],
-    enabled: !!activeServiceId,
-  });
-
-  const createSlotMutation = useMutation({
-    mutationFn: async () => {
-      const body: Record<string, unknown> = { date };
-      if (startTime.trim()) body.startTime = startTime.trim();
-      if (capacity.trim()) body.capacity = Number(capacity);
-      const res = await apiRequest("POST", `/api/me/services/${activeServiceId}/slots`, body);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/me/services/${activeServiceId}/slots`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/me/next-availability"] });
-      toast({ title: "Slot added", description: "Travelers can now book this date." });
-      setDate("");
-      setStartTime("");
-      setCapacity("");
-    },
-    onError: (err) => {
-      toast({
-        title: "Could not add slot",
-        description: parseApiErrorMessage(err, "Please check the date and try again."),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteSlotMutation = useMutation({
-    mutationFn: async (slotId: string) => {
-      const res = await apiRequest("DELETE", `/api/me/slots/${slotId}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/me/services/${activeServiceId}/slots`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/me/next-availability"] });
-      toast({ title: "Slot removed" });
-    },
-    onError: (err) => {
-      // 409 booked-slot refusal surfaces here, honestly, as the server wrote it.
-      toast({
-        title: "Could not remove slot",
-        description: parseApiErrorMessage(err, "Please try again."),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const currentService = list.find((s) => s.id === activeServiceId);
-  const slotCountLabel = slotsLoading
-    ? "…"
-    : slots && slots.length > 0
-    ? `${slots.length} slot${slots.length === 1 ? "" : "s"}`
-    : "none yet";
-  const headerSummary = servicesLoading
-    ? ""
-    : list.length === 0
-    ? "no services yet"
-    : `${currentService?.serviceName ?? currentService?.name ?? "Untitled"} · ${slotCountLabel}`;
-
-  return (
-    <section data-testid="section-catalog-availability" ref={sectionRef}>
-      <button
-        type="button"
-        onClick={() => setSectionOpen((o) => !o)}
-        className="w-full flex items-center justify-between mb-2 py-1 group"
-        data-testid="button-toggle-availability"
-      >
-        <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide flex items-center gap-1.5">
-          Availability
-          {headerSummary && (
-            <span className="normal-case font-normal text-console-mid/80" data-testid="text-availability-summary">
-              · {headerSummary}
-            </span>
-          )}
-        </h2>
-        <ChevronDown
-          className={`w-4 h-4 text-console-mid transition-transform ${sectionOpen ? "rotate-180" : ""}`}
-        />
-      </button>
-      {sectionOpen && (
-      <Card className="border border-console-light">
-        <CardContent className="p-3 space-y-3">
-          {servicesLoading ? (
-            <Skeleton className="h-9 w-64" />
-          ) : list.length === 0 ? (
-            <EmptyState
-              icon={CalendarClock}
-              title="No services yet"
-              body="Create a service first, then publish dates travelers can book."
-              testId="empty-catalog-no-services"
-            />
-          ) : (
-            <>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Label htmlFor="catalog-service-picker" className="text-sm text-console-mid whitespace-nowrap">
-                  Service
-                </Label>
-                <Select value={activeServiceId} onValueChange={setSelectedServiceId}>
-                  <SelectTrigger id="catalog-service-picker" className="w-64" data-testid="select-catalog-service">
-                    <SelectValue placeholder="Choose a service" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {list.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.serviceName ?? s.name ?? "Untitled service"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {(() => {
-                  const current = list.find((s) => s.id === activeServiceId);
-                  return current?.approvalStatus ? <StatusBadge status={current.approvalStatus} /> : null;
-                })()}
-              </div>
-
-              {slotsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : !slots || slots.length === 0 ? (
-                <div
-                  className="flex items-center gap-2 rounded-lg border border-dashed border-console-light px-3 py-2.5 text-sm text-console-mid"
-                  data-testid="empty-catalog-no-slots"
-                >
-                  <CalendarClock className="w-4 h-4 flex-shrink-0 text-console-mid/60" />
-                  <span>No availability published yet — travelers can't pick a time until you add slots.</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {slots.map((slot) => (
-                    <div
-                      key={slot.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-console-light p-3"
-                      data-testid={`catalog-slot-${slot.id}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-console-darkest">
-                          {formatSlotDate(slot.date)}
-                          {slot.startTime && <span className="text-console-mid"> · {slot.startTime}</span>}
-                        </p>
-                        <p className="text-xs text-console-mid">
-                          {(slot.bookedCount ?? 0)} / {slot.capacity ?? 1} booked
-                          {slot.status ? ` · ${slot.status}` : ""}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-600 hover:bg-red-50 flex-shrink-0"
-                        disabled={deleteSlotMutation.isPending}
-                        onClick={() => deleteSlotMutation.mutate(slot.id)}
-                        data-testid={`button-delete-slot-${slot.id}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <form
-                className="flex items-end gap-2 flex-wrap pt-1.5 border-t border-console-light"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!date || !activeServiceId) return;
-                  createSlotMutation.mutate();
-                }}
-              >
-                <div>
-                  <Label htmlFor="catalog-slot-date" className="text-xs text-console-mid">Date</Label>
-                  <Input
-                    id="catalog-slot-date"
-                    type="date"
-                    className="h-8"
-                    min={new Date().toISOString().slice(0, 10)}
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    required
-                    data-testid="input-slot-date"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="catalog-slot-time" className="text-xs text-console-mid">Start time (optional)</Label>
-                  <Input
-                    id="catalog-slot-time"
-                    type="time"
-                    className="h-8"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    data-testid="input-slot-start-time"
-                  />
-                </div>
-                <div className="w-24">
-                  <Label htmlFor="catalog-slot-capacity" className="text-xs text-console-mid">Capacity</Label>
-                  <Input
-                    id="catalog-slot-capacity"
-                    type="number"
-                    className="h-8"
-                    min={1}
-                    max={100}
-                    placeholder="1"
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value)}
-                    data-testid="input-slot-capacity"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={createSlotMutation.isPending || !date || !activeServiceId}
-                  data-testid="button-add-slot"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add slot
-                </Button>
-              </form>
-            </>
-          )}
-        </CardContent>
-      </Card>
-      )}
-    </section>
-  );
-}
-
 // ─── Listing Health (ratified "Listing Health" layer, CLAUDE.md §13/§16/§18) ─────────────
 //
 // Audit finding: ~97% of provider listings ride the approximate neighborhood-centroid
@@ -638,27 +349,16 @@ const HEALTH_CHECK_KEYS = [
   "delivery_asset",
 ] as const;
 
-const TONE_CLASSNAMES = {
-  ok: "bg-green-100 text-green-700 border-green-200",
-  warn: "bg-amber-100 text-amber-700 border-amber-200",
-  bad: "bg-red-100 text-red-700 border-red-200",
-  neutral: "bg-console-bg text-console-mid border-console-light",
-} as const;
-
 // Short "n/a" labels for method-omitted checks (D2) — the muted note beside the health meter.
 // Translated under health.omitted.* (ruling 60 Phase A).
 const OMITTED_CHECK_KEYS = ["exact_pin", "availability"] as const;
 
-// Delivery-method chip for non-place-anchored services — shown INSTEAD of a pin chip, because
-// scoring a PDF guide red for "no location" was exactly the unfairness D2 removes.
-// The seven canonical delivery methods are a DATA vocabulary (CLAUDE.md §3) — the keys below
-// are those values verbatim and are never translated; only their display labels are
-// (delivery.* in catalog.json).
-const DELIVERY_CHIP_KEYS = ["pdf", "video", "call", "voice_notes", "async_messaging"] as const;
-
-/** 62×46 rounded thumbnail from serviceImage/galleryImages[0]; an honest neutral placeholder
- *  tile (muted icon, no fake image) when neither is present. Sourced from the services list
- *  row directly — no dependency on the health endpoint. */
+/** Catalog visual parity: 74×56 to match the mock's `.thumb`. Rounded thumbnail from
+ *  serviceImage/galleryImages[0]; an honest neutral placeholder tile (muted icon, no fake image)
+ *  when neither is present. Sourced from the services list row directly — no dependency on the
+ *  health endpoint. (The pin-status chip this used to sit beside is retired — a service's exact
+ *  pin status is one of the health checks in the same popover the health bar now opens, so it is
+ *  not repeated as a second inline chip.) */
 function ServiceThumb({ service }: { service: Service }) {
   const gallery = Array.isArray(service.galleryImages) ? service.galleryImages : [];
   const src = service.serviceImage || gallery[0] || null;
@@ -667,148 +367,17 @@ function ServiceThumb({ service }: { service: Service }) {
       <img
         src={src}
         alt=""
-        className="w-[62px] h-[46px] rounded-md object-cover flex-shrink-0 border border-console-light bg-console-bg"
+        className="w-[74px] h-[56px] rounded-md object-cover flex-shrink-0 border border-console-light bg-console-bg"
         data-testid={`img-service-thumb-${service.id}`}
       />
     );
   }
   return (
     <div
-      className="w-[62px] h-[46px] rounded-md flex-shrink-0 border border-dashed border-console-light bg-console-bg flex items-center justify-center"
+      className="w-[74px] h-[56px] rounded-md flex-shrink-0 border border-dashed border-console-light bg-console-bg flex items-center justify-center"
       data-testid={`img-service-thumb-${service.id}`}
     >
       <ImageOff className="w-4 h-4 text-console-mid/50" />
-    </div>
-  );
-}
-
-/** Pin-status chip. Semantics mirror the server's exact_pin health check exactly (exact pin =
- *  lat+lng present AND locationPrecision='exact'; else approximate-vs-none by coordinate
- *  presence), computed locally from the services-list row so it renders pre-mount too. */
-function pinStatus(service: Service): { labelKey: string; tone: keyof typeof TONE_CLASSNAMES; titleKey: string } {
-  const hasCoords = service.latitude != null && service.longitude != null && service.latitude !== "" && service.longitude !== "";
-  const isExact = hasCoords && service.locationPrecision === "exact";
-  if (isExact) {
-    return { labelKey: "pin.exact", tone: "ok", titleKey: "pin.exactTitle" };
-  }
-  if (hasCoords) {
-    return { labelKey: "pin.approximate", tone: "warn", titleKey: "pin.approximateTitle" };
-  }
-  return { labelKey: "pin.none", tone: "bad", titleKey: "pin.noneTitle" };
-}
-
-/** Pin chip: clicking it opens the service's Edit (the existing edit navigation) — the pin
- *  picker lives in the form, not here. D2 method-aware: a non-place-anchored service (PDF,
- *  call, voice notes, messaging…) gets a neutral delivery-method chip instead — its location
- *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
- *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
-function PinChip({ service }: { service: Service }) {
-  const { t } = useTranslation("catalog");
-  const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
-  // FP-3: bundles and properties/rooms resolve to their Workstation surface; everything else
-  // keeps the ServiceForm edit route.
-  const editHref = listingEditHref(service);
-
-  if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
-    const method = service.deliveryMethod ?? "";
-    const label = (DELIVERY_CHIP_KEYS as readonly string[]).includes(method)
-      ? t(`delivery.${method}`)
-      : t("delivery.fallback");
-    return (
-      <Badge
-        variant="outline"
-        title={t("pin.remoteTitle")}
-        className={`text-[10px] ${TONE_CLASSNAMES.neutral}`}
-        data-testid={`chip-pin-${service.id}`}
-      >
-        {label}
-      </Badge>
-    );
-  }
-
-  const { labelKey, tone, titleKey } = pinStatus(service);
-  return (
-    <Link href={editHref}>
-      <Badge
-        variant="outline"
-        title={t(titleKey)}
-        className={`text-[10px] cursor-pointer ${TONE_CLASSNAMES[tone]}`}
-        data-testid={`chip-pin-${service.id}`}
-      >
-        {t(labelKey)}
-      </Badge>
-    </Link>
-  );
-}
-
-/** "Health N/M" meter + failing-check names. Renders NOTHING when the health endpoint hasn't
- *  returned data for this service (endpoint unavailable pre-mount, or the service is missing
- *  from the response) — honest absence per §13, never a skeleton or a guess. */
-function HealthRow({ health }: { health: ServiceHealth | undefined }) {
-  const { t } = useTranslation("catalog");
-  if (!health) return null;
-  const { passed, total } = health.score;
-  if (total <= 0) return null;
-  const allPassing = passed === total;
-  const failingLabels = health.checks
-    .filter((c) => !c.ok)
-    .map((c) =>
-      (HEALTH_CHECK_KEYS as readonly string[]).includes(c.key) ? t(`health.checks.${c.key}`) : c.key,
-    );
-  // D2: method-omitted checks render as a muted "n/a" note (reason on hover) — visibly not
-  // counted, never presented as failures.
-  const omitted = health.omitted ?? [];
-
-  return (
-    <div className="mt-3 pt-3 border-t border-console-light" data-testid={`health-row-${health.serviceId}`}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-medium text-console-darkest">
-          {t("health.meter", { passed, total })}
-        </span>
-        <div className="w-24 h-1.5 rounded-full bg-console-light overflow-hidden">
-          <div
-            className={`h-full rounded-full ${allPassing ? "bg-green-500" : "bg-amber-500"}`}
-            style={{ width: `${Math.round((passed / total) * 100)}%` }}
-          />
-        </div>
-        {allPassing ? (
-          <Badge className={`text-[10px] ${TONE_CLASSNAMES.ok}`} variant="outline">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> {t("health.ready")}
-          </Badge>
-        ) : (
-          <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
-        )}
-        {/* FP-1 / B10: the uncategorized-band fallback, stated plainly beside the meter. Amber
-            (worth knowing) rather than red (broken) — the listing sells fine, it just resolves no
-            category band, so the platform default applies. No rate or percentage is shown here;
-            this rail states the FACT, and the fee lanes own the number (§8/§18). */}
-        {(health.notices ?? []).map((n) => (
-          <span
-            key={n.key}
-            className="text-[11px] text-amber-700"
-            title={n.detail}
-            data-testid={`health-notice-${n.key}-${health.serviceId}`}
-          >
-            ⚠ {n.detail}
-          </span>
-        ))}
-        {omitted.length > 0 && (
-          <span
-            className="text-[11px] italic text-console-mid/60"
-            title={omitted.map((o) => o.reason).join("; ")}
-            data-testid={`health-omitted-${health.serviceId}`}
-          >
-            {t("health.naPrefix")}:{" "}
-            {omitted
-              .map((o) =>
-                (OMITTED_CHECK_KEYS as readonly string[]).includes(o.key)
-                  ? t(`health.omitted.${o.key}`)
-                  : o.key,
-              )
-              .join(", ")}
-          </span>
-        )}
-      </div>
     </div>
   );
 }
@@ -880,10 +449,11 @@ function CardShowsControl({
   const showPrice = service.showPrice ?? true;
   const bookingMode = service.bookingMode ?? "instant";
   return (
-    <div
-      className="mt-3 pt-3 border-t border-console-light flex flex-wrap items-center gap-x-4 gap-y-2"
-      data-testid={`cardshows-${service.id}`}
-    >
+    // Catalog visual parity, item 2: this control now renders INSIDE a settings popover (see
+    // CardShowsPopover below) rather than inline on the card face, so the old inline border/
+    // margin (meant to separate it from the card content above it) is gone — a stacked layout
+    // reads better at popover width. Same testids, same mutations, same behavior.
+    <div className="flex flex-col gap-3" data-testid={`cardshows-${service.id}`}>
       <span className="text-[10px] font-medium text-console-mid uppercase tracking-wide">Card shows</span>
       <div className="flex items-center gap-2">
         <Switch
@@ -921,6 +491,164 @@ function CardShowsControl({
   );
 }
 
+/** Catalog visual parity, item 2: the gear trigger that opens CardShowsControl in a popover
+ *  instead of showing it inline on every card face. Same mutation, same PATCH — only WHERE it
+ *  renders changed. */
+function CardShowsPopover({
+  service,
+  onPatch,
+  disabled,
+}: {
+  service: Service;
+  onPatch: (patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" }) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-console-mid"
+          title="Card shows"
+          data-testid={`button-cardshows-toggle-${service.id}`}
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72">
+        <CardShowsControl service={service} onPatch={onPatch} disabled={disabled} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Catalog visual parity: unified listing status (mock's Live / In review / Draft chips) ──
+//
+// The card already carried the true state as TWO badges (approvalStatus + active/paused). The
+// mock's filter bar collapses that into one vocabulary. Judgment call (documented in the lane
+// report): the mock ships exactly 3 status chips + All, so "Draft" is a FILTER BUCKET covering
+// draft + paused + rejected (none of them are live, none are in review) — but each ROW's own
+// pill always shows its true, specific state (Live/In review/Draft/Paused/Rejected), never the
+// bucket name. §13: no state is hidden, only the filter groups them coarser than the row does.
+type ListingStatus = "live" | "in_review" | "draft" | "paused" | "rejected";
+
+function deriveListingStatus(service: Service): ListingStatus {
+  const approval = service.approvalStatus;
+  const isActive = service.status === "active";
+  if (approval === "approved" && isActive) return "live";
+  if (approval === "approved" && !isActive) return "paused";
+  if (approval === "submitted") return "in_review";
+  if (approval === "rejected") return "rejected";
+  return "draft";
+}
+
+// Reuses the exact colors DEFAULT_STATUS_MAP already assigns to these same real states
+// (active/submitted/draft/paused/rejected) — no new palette invented for this pill.
+const LISTING_STATUS_META: Record<ListingStatus, { label: string; className: string }> = {
+  live: { label: "Live", className: "bg-green-100 text-green-700 border-green-200" },
+  in_review: { label: "In review", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  draft: { label: "Draft", className: "bg-muted text-muted-foreground border-transparent" },
+  paused: { label: "Paused", className: "bg-amber-100 text-amber-700 border-amber-200" },
+  rejected: { label: "Rejected", className: "bg-red-100 text-red-700 border-red-200" },
+};
+
+function ListingStatusPill({ service }: { service: Service }) {
+  const meta = LISTING_STATUS_META[deriveListingStatus(service)];
+  return (
+    <Badge variant="outline" className={`text-[10px] ${meta.className}`} data-testid={`status-pill-${service.id}`}>
+      {meta.label}
+    </Badge>
+  );
+}
+
+type StatusFilterKey = "all" | "live" | "in_review" | "draft";
+const STATUS_FILTERS: Array<{ key: StatusFilterKey; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "live", label: "Live" },
+  { key: "in_review", label: "In review" },
+  { key: "draft", label: "Draft" },
+];
+function matchesStatusFilter(service: Service, filter: StatusFilterKey): boolean {
+  if (filter === "all") return true;
+  const status = deriveListingStatus(service);
+  if (filter === "draft") return status === "draft" || status === "paused" || status === "rejected";
+  return status === filter;
+}
+
+/** Catalog visual parity, item 1: the health meter + failing-check list moves off the card face
+ *  and into a click-to-open popover on the health bar — same data, same §13 honest-absence rule
+ *  (renders nothing when the health endpoint hasn't returned this service), never inline text. */
+function HealthDetail({ health }: { health: ServiceHealth | undefined }) {
+  const { t } = useTranslation("catalog");
+  if (!health) {
+    return <p className="text-xs text-console-mid">No health data yet.</p>;
+  }
+  const failing = health.checks.filter((c) => !c.ok);
+  const omitted = health.omitted ?? [];
+  const notices = health.notices ?? [];
+  return (
+    <div className="space-y-2 text-xs">
+      <p className="font-medium text-console-darkest">{t("health.meter", health.score)}</p>
+      {failing.length === 0 ? (
+        <div className="flex items-center gap-1.5 text-green-700">
+          <CheckCircle2 className="w-3.5 h-3.5" /> {t("health.ready")}
+        </div>
+      ) : (
+        <ul className="space-y-1">
+          {failing.map((c) => (
+            <li key={c.key} className="text-console-mid">
+              • {(HEALTH_CHECK_KEYS as readonly string[]).includes(c.key) ? t(`health.checks.${c.key}`) : c.key}
+            </li>
+          ))}
+        </ul>
+      )}
+      {notices.map((n) => (
+        <p key={n.key} className="text-amber-700" data-testid={`health-notice-${n.key}-${health.serviceId}`}>
+          ⚠ {n.detail}
+        </p>
+      ))}
+      {omitted.length > 0 && (
+        <p className="italic text-console-mid/70" data-testid={`health-omitted-${health.serviceId}`}>
+          {t("health.naPrefix")}:{" "}
+          {omitted
+            .map((o) => ((OMITTED_CHECK_KEYS as readonly string[]).includes(o.key) ? t(`health.omitted.${o.key}`) : o.key))
+            .join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The mock's 56px slim bar + status pill, right-aligned on the row. Renders nothing when the
+ *  health endpoint has no data for this service yet (§13 honest absence — same rule HealthRow
+ *  used to apply inline). */
+function HealthBar({ service, health }: { service: Service; health: ServiceHealth | undefined }) {
+  if (!health || health.score.total <= 0) return null;
+  const { passed, total } = health.score;
+  const allPassing = passed === total;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="flex items-center gap-1.5" data-testid={`health-row-${service.id}`}>
+          <span className="w-14 h-[5px] rounded-full bg-console-light overflow-hidden inline-block">
+            <span
+              className={`block h-full rounded-full ${allPassing ? "bg-green-500" : "bg-amber-500"}`}
+              style={{ width: `${Math.round((passed / total) * 100)}%` }}
+            />
+          </span>
+          <span className="text-[11px] text-console-mid">
+            {passed}/{total}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64">
+        <HealthDetail health={health} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── FP-3: property rooms are not standalone listings ────────────────────────────────────────
 //
 // Ratified design (service-creation redesign mock, decision-maker Aug 2026): "a property room's
@@ -950,34 +678,34 @@ function RoomRow({
   const nightly = rawPrice == null || rawPrice === "" ? "—" : `$${rawPrice} / night`;
   const isActive = room.status === "active";
   return (
+    // Catalog visual parity, item 1: "expanded rooms use the same slim row shape" — one unified
+    // status pill (was two StatusBadges) + the health bar's click-to-open detail (was inline
+    // HealthRow text).
     <div
-      className={`rounded-md border border-console-light px-3 py-2 ${!isActive ? "opacity-60" : ""}`}
+      className={`flex items-center gap-3 rounded-md border border-console-light px-3 py-2 ${!isActive ? "opacity-60" : ""}`}
       data-testid={`row-catalog-room-${room.id}`}
     >
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0 flex items-center gap-2 flex-wrap">
-          <BedDouble className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
-          <span className="text-sm text-console-darkest truncate">
-            {room.serviceName || room.name || t("card.untitled")}
+      <BedDouble className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
+      <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-console-darkest truncate">
+          {room.serviceName || room.name || t("card.untitled")}
+        </span>
+        <span className="text-xs font-medium text-green-600" data-testid={`text-room-price-${room.id}`}>
+          {nightly}
+        </span>
+        {parentName && (
+          <span className="text-[11px] text-console-mid" data-testid={`text-room-parent-${room.id}`}>
+            Room in {parentName}
           </span>
-          <span className="text-xs font-medium text-green-600" data-testid={`text-room-price-${room.id}`}>
-            {nightly}
-          </span>
-          {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
-          <StatusBadge status={isActive ? "active" : "paused"} />
-          {parentName && (
-            <span className="text-[11px] text-console-mid" data-testid={`text-room-parent-${room.id}`}>
-              Room in {parentName}
-            </span>
-          )}
-        </div>
-        <Link href={listingEditHref(room)}>
-          <Button variant="outline" size="sm" className="h-7" data-testid={`button-edit-room-${room.id}`}>
-            <Edit className="w-3.5 h-3.5 mr-1" /> {tCommon("actions.edit")}
-          </Button>
-        </Link>
+        )}
       </div>
-      <HealthRow health={health} />
+      <HealthBar service={room} health={health} />
+      <ListingStatusPill service={room} />
+      <Link href={listingEditHref(room)}>
+        <Button variant="outline" size="sm" className="h-7 flex-shrink-0" data-testid={`button-edit-room-${room.id}`}>
+          <Edit className="w-3.5 h-3.5 mr-1" /> {tCommon("actions.edit")}
+        </Button>
+      </Link>
     </div>
   );
 }
@@ -1041,11 +769,27 @@ export default function ProviderServices() {
   // and is also the source of the `button-category-filter-*` testids. Only the "All" pill's
   // DISPLAY is translated.
   const [selectedCategory, setSelectedCategory] = useState("All");
+  // Catalog visual parity, item 3: the unified Live/In review/Draft status filter — a SEPARATE
+  // axis from category, applied on top of it (both are AND'd into filteredServices below).
+  const [selectedStatus, setSelectedStatus] = useState<StatusFilterKey>("all");
+  // Catalog visual parity, item 1: a property's room types collapse to one summary line by
+  // default; this tracks which property cards have been expanded to their full room rows.
+  const [expandedProperties, setExpandedProperties] = useState<Set<string>>(new Set());
+  // Catalog visual parity, item 4: ?availability=<serviceId> (produced by ServiceForm's
+  // checklist row) used to be consumed by the now-deleted embedded AvailabilitySection. It now
+  // switches THIS view into "availability" mode with that service preselected — one surface,
+  // same behavior. Parsed once on mount; §13 — an id that doesn't resolve to a real service is
+  // just ignored, never guessed at.
+  const initialAvailabilityServiceId = useState(
+    () => new URLSearchParams(window.location.search).get("availability") ?? undefined,
+  )[0];
   // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
   // authoring surface (CatalogMapView); everything below the content block is untouched.
   // S7 (DECISIONS.md ledger 102, G1 REC — "one editor... mounted on Catalog"): a third mode adds
   // the availability editor (ProviderAvailabilityManager) alongside List/Map, on the same toggle.
-  const [viewMode, setViewMode] = useState<"list" | "map" | "availability">("list");
+  const [viewMode, setViewMode] = useState<"list" | "map" | "availability">(
+    initialAvailabilityServiceId ? "availability" : "list",
+  );
   // C2 (ruling 74): Manage ⇄ Preview is a SEPARATE axis from List/Map — it governs the LIST
   // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
   // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
@@ -1174,7 +918,9 @@ export default function ProviderServices() {
   const usedCategoryIds = Array.from(new Set((services || []).map(s => s.categoryId).filter(Boolean))) as string[];
   const filterLabels = ["All", ...usedCategoryIds.map(id => categoryNameById[id] || id)];
 
-  const filteredServices = !services
+  // Catalog visual parity, item 3: category (dropdown) and status (chips) are two independent
+  // filters, AND'd together — narrowing one never resets the other.
+  const categoryFilteredServices = !services
     ? []
     : selectedCategory === "All"
       ? services
@@ -1182,6 +928,15 @@ export default function ProviderServices() {
           const name = s.categoryId ? categoryNameById[s.categoryId] : undefined;
           return name === selectedCategory;
         });
+  const filteredServices = categoryFilteredServices.filter((s) => matchesStatusFilter(s, selectedStatus));
+  // Status chip counts are computed against the CATEGORY-filtered set only, so picking a status
+  // chip never moves the other chips' counts out from under the provider.
+  const statusCounts: Record<StatusFilterKey, number> = {
+    all: categoryFilteredServices.length,
+    live: categoryFilteredServices.filter((s) => matchesStatusFilter(s, "live")).length,
+    in_review: categoryFilteredServices.filter((s) => matchesStatusFilter(s, "in_review")).length,
+    draft: categoryFilteredServices.filter((s) => matchesStatusFilter(s, "draft")).length,
+  };
 
   // ── FP-3: property rooms are grouped under their parent property card ───────────────────────
   // A room row is never a top-level card here. It renders as a compact RoomRow inside its
@@ -1304,20 +1059,43 @@ export default function ProviderServices() {
           </div>
         </div>
 
-        {/* Category Filter — only show when there are services (list view only) */}
-        {viewMode === "list" && totalServices > 0 && filterLabels.length > 1 && (
-          <div className="flex gap-2 flex-wrap">
-            {filterLabels.map((label) => (
-              <Button
-                key={label}
-                variant={selectedCategory === label ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory(label)}
-                data-testid={`button-category-filter-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-              >
-                {label === "All" ? t("filter.all") : label}
-              </Button>
-            ))}
+        {/* Catalog visual parity, item 3: the mock's All/Live/In review/Draft status chips
+            (counts derived client-side) replace the old category button row; category filtering
+            stays available as a compact dropdown beside the chips. */}
+        {viewMode === "list" && totalServices > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex rounded-lg border border-console-light overflow-hidden">
+              {STATUS_FILTERS.map((f) => (
+                <Button
+                  key={f.key}
+                  variant={selectedStatus === f.key ? "default" : "ghost"}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setSelectedStatus(f.key)}
+                  data-testid={`button-status-filter-${f.key}`}
+                >
+                  {f.label} <span className="ml-1 opacity-70">{statusCounts[f.key]}</span>
+                </Button>
+              ))}
+            </div>
+            {filterLabels.length > 1 && (
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="h-8 w-48" data-testid="select-category-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {filterLabels.map((label) => (
+                    <SelectItem
+                      key={label}
+                      value={label}
+                      data-testid={`option-category-filter-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                    >
+                      {label === "All" ? t("filter.all") : label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         )}
 
@@ -1348,8 +1126,10 @@ export default function ProviderServices() {
         ) : viewMode === "availability" ? (
           /* S7 (DECISIONS.md ledger 102, G1): the availability editor — per-method semantics
              (weekly patterns + blackouts for scheduled methods, date-ranges for property/room
-             shapes, an honest no-scheduling state for artifact/async methods). */
-          <ProviderAvailabilityManager />
+             shapes, an honest no-scheduling state for artifact/async methods). Item 4: preselects
+             the service named by ?availability=<id> (parsed once, above), the ONE availability
+             surface's replacement for the deleted embedded section. */
+          <ProviderAvailabilityManager initialServiceId={initialAvailabilityServiceId} />
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">
@@ -1358,7 +1138,10 @@ export default function ProviderServices() {
               <Button
                 variant="outline"
                 className="mt-4"
-                onClick={() => setSelectedCategory("All")}
+                onClick={() => {
+                  setSelectedCategory("All");
+                  setSelectedStatus("all");
+                }}
                 data-testid="button-clear-filter"
               >
                 {t("filter.clear")}
@@ -1388,9 +1171,13 @@ export default function ProviderServices() {
             </div>
           )
         ) : (
-          /* Service cards. FP-3: rooms are NOT in this list — they render inside their
-             property's card below (or as orphan rows after the grid). */
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          /* Catalog visual parity, item 1: the mock's slim `.listing` row shape — small thumb,
+             name, ONE meta line (category · price/unit · booking-mode word), a right rail of
+             health bar + status pill, and a two-item primary action row (Edit + "Promote this →")
+             with Duplicate/Delete collapsed into an overflow menu. FP-3: rooms are NOT in this
+             list — they render as a one-line summary under their property (or as orphan rows
+             after the list). */
+          <div className="rounded-lg border border-console-light divide-y divide-console-light bg-white overflow-hidden">
             {topLevelServices.map((service) => {
               // The listing's own NAME is provider content (ruling 60 system B) and is never
               // translated; only the placeholder shown when there is no name is chrome.
@@ -1415,199 +1202,176 @@ export default function ProviderServices() {
               const isProperty = service.productShape === "property";
               const childRooms = isProperty ? roomsByParent.get(service.id) ?? [] : [];
               const editHref = listingEditHref(service);
+              const bookingModeLabel = BOOKING_MODE_OPTIONS.find(
+                (o) => o.value === (service.bookingMode ?? "instant"),
+              )?.label;
+              const metaLine = [categoryName, priceDisplay !== "—" ? priceDisplay : null, bookingModeLabel]
+                .filter(Boolean)
+                .join(" · ");
+              const roomPrices = childRooms
+                .map((r) => {
+                  const p = r.price ?? r.basePrice;
+                  return p == null || p === "" ? null : Number(p);
+                })
+                .filter((n): n is number => n != null && !Number.isNaN(n));
+              const roomsExpanded = expandedProperties.has(service.id);
+              const propertySummaryLine =
+                childRooms.length === 0
+                  ? "No room types yet — add one in the Workstation."
+                  : `${childRooms.length} room type${childRooms.length === 1 ? "" : "s"}` +
+                    (roomPrices.length > 0 ? ` · from $${Math.min(...roomPrices)}/night` : "");
 
               return (
-                <Card
+                <div
                   key={service.id}
-                  className={!isActive ? "opacity-60" : ""}
+                  className={`px-4 py-3 ${!isActive ? "opacity-60" : ""}`}
                   data-testid={`card-service-${service.id}`}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <ServiceThumb service={service} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
-                          {/* L10a: the real approval + active/paused state is the primary badge on
-                              every card (same StatusBadge vocabulary as the Workstation list) —
-                              previously only a category chip showed here, so a draft/submitted/
-                              rejected listing looked identical to an approved one. */}
-                          {service.approvalStatus && (
-                            <StatusBadge status={service.approvalStatus} />
-                          )}
-                          <StatusBadge status={isActive ? "active" : "paused"} />
-                          {isBundle && (
-                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
-                              {t("card.bundle")}
-                            </Badge>
-                          )}
-                          {isProperty && (
-                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-property-${service.id}`}>
-                              Property
-                            </Badge>
-                          )}
-                          {service.isFeatured && (
-                            <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
-                              {t("card.featured")}
-                            </Badge>
-                          )}
-                          {categoryName && (
-                            <Badge variant="outline" className="text-[10px]">{categoryName}</Badge>
-                          )}
-                        </div>
-
-                        {service.description && (
-                          <p className="text-sm text-console-mid mt-1 line-clamp-2">{service.description}</p>
+                  <div className="flex items-center gap-3">
+                    <ServiceThumb service={service} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-semibold text-console-darkest truncate">{displayName}</h3>
+                        {isBundle && (
+                          <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
+                            {t("card.bundle")}
+                          </Badge>
                         )}
-
-                        <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
-                          <span className="flex items-center gap-1 font-semibold text-green-600" data-testid={`text-price-${service.id}`}>
-                            <DollarSign className="w-4 h-4" /> {priceDisplay}
-                          </span>
-                          <PinChip service={service} />
-                          {service.deliveryTimeframe && (
-                            <span className="flex items-center gap-1 text-console-mid">
-                              <Clock className="w-4 h-4" /> {service.deliveryTimeframe}
-                            </span>
-                          )}
-                          {service.maxConcurrentBookings && service.maxConcurrentBookings > 1 && (
-                            <span className="flex items-center gap-1 text-console-mid">
-                              <Users className="w-4 h-4" />{" "}
-                              {t("card.upTo", { count: service.maxConcurrentBookings })}
-                            </span>
-                          )}
-                          {service.meetingPoint && (
-                            <span className="flex items-center gap-1 text-console-mid truncate max-w-[160px]">
-                              <MapPin className="w-4 h-4 flex-shrink-0" /> {service.meetingPoint}
-                            </span>
-                          )}
-                          {service.pickupAvailable && (
-                            <span className="flex items-center gap-1 text-blue-500">
-                              <Truck className="w-4 h-4" /> {t("card.pickupAvailable")}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Affinity tag chips */}
-                        {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
-                          <div className="mt-3" data-testid={`affinity-tags-${service.id}`}>
-                            <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
-                              {t("card.affinityHeading")}
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {service.contentAffinityTags.map((tag) => (
-                                <Badge
-                                  key={tag}
-                                  variant="secondary"
-                                  className="text-[10px] py-0 px-1.5 bg-primary/8 text-primary border border-primary/20"
-                                  data-testid={`chip-affinity-${service.id}-${tag}`}
-                                >
-                                  {AFFINITY_TAG_LABELS[tag] ?? tag}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
+                        {isProperty && (
+                          <Badge variant="outline" className="text-[10px]" data-testid={`badge-property-${service.id}`}>
+                            Property
+                          </Badge>
+                        )}
+                        {service.isFeatured && (
+                          <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
+                            {t("card.featured")}
+                          </Badge>
                         )}
                       </div>
-
-                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                        <Switch
-                          checked={isActive}
-                          onCheckedChange={(checked) =>
-                            toggleMutation.mutate({ id: service.id, status: checked ? "active" : "paused" })
+                      {/* ONE meta line — category · price/unit · booking-mode word. Everything
+                          else the old card showed inline (description, timeframe, meeting point,
+                          affinity tags) is still on the listing's Edit screen; it is not repeated
+                          here (mock's compact-row anatomy). */}
+                      {metaLine && (
+                        <p className="text-xs text-console-mid truncate mt-0.5" data-testid={`text-meta-${service.id}`}>
+                          {metaLine}
+                        </p>
+                      )}
+                      {isProperty && (
+                        <button
+                          type="button"
+                          className="text-xs text-console-mid underline decoration-dotted mt-0.5 inline-flex items-center gap-1"
+                          onClick={() =>
+                            setExpandedProperties((prev) => {
+                              const next = new globalThis.Set(prev);
+                              next.has(service.id) ? next.delete(service.id) : next.add(service.id);
+                              return next;
+                            })
                           }
-                          disabled={toggleMutation.isPending}
-                          data-testid={`switch-active-${service.id}`}
-                        />
-                        <span className="text-xs text-console-mid">
-                          {isActive ? tCommon("state.active") : tCommon("state.paused")}
-                        </span>
-                      </div>
+                          data-testid={`button-toggle-rooms-${service.id}`}
+                        >
+                          {roomsExpanded ? (
+                            <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3" />
+                          )}
+                          {propertySummaryLine}
+                        </button>
+                      )}
                     </div>
+                    {/* Right rail — slim health bar (click for detail) + the unified status pill,
+                        with the active/paused switch kept directly clickable (not folded into a
+                        popover) since it is the single most frequent action on this row. */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <Switch
+                        checked={isActive}
+                        onCheckedChange={(checked) =>
+                          toggleMutation.mutate({ id: service.id, status: checked ? "active" : "paused" })
+                        }
+                        disabled={toggleMutation.isPending}
+                        data-testid={`switch-active-${service.id}`}
+                      />
+                      <HealthBar service={service} health={healthByServiceId.get(service.id)} />
+                      <ListingStatusPill service={service} />
+                    </div>
+                  </div>
 
-                    {/* C3: per-listing "Card shows" control (Show price + Booking mode). Bundles
-                        are edited in the Workstation, but their storefront card honors the same two
-                        prefs, so the control belongs on every listing card. */}
-                    <CardShowsControl
+                  {/* Expanded room types — same slim row shape, one level down. */}
+                  {isProperty && roomsExpanded && (
+                    <div className="mt-2 pl-[86px] space-y-1.5" data-testid={`rooms-block-${service.id}`}>
+                      {childRooms.length === 0 ? (
+                        <p className="text-xs text-console-mid" data-testid={`rooms-empty-${service.id}`}>
+                          No room types yet — add one in the Workstation.
+                        </p>
+                      ) : (
+                        childRooms.map((room) => (
+                          <RoomRow key={room.id} room={room} health={healthByServiceId.get(room.id)} />
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Primary action row: Edit + "Promote this →" — the existing Distribute-this
+                      wiring, restyled. Duplicate/Delete fold into the overflow menu; the C3 "Card
+                      shows" control is its own gear popover. */}
+                  <div className="flex items-center gap-2 mt-2 pl-[86px]">
+                    <Link href={editHref}>
+                      <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
+                        <Edit className="w-3.5 h-3.5 mr-1" /> {tCommon("actions.edit")}
+                      </Button>
+                    </Link>
+                    {/* S6: Catalog's ONE outward-facing pointer — storefront, share kit and
+                        promote all live on Distribute now. Shown for every listing (Distribute
+                        itself shows the honest not-live/blocked state for anything that isn't
+                        approved+active yet — no gate needed here). */}
+                    <Link href={`/provider/distribute?listing=${service.id}`}>
+                      <Button variant="outline" size="sm" data-testid={`button-distribute-${service.id}`}>
+                        Promote this <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
+                    </Link>
+                    <CardShowsPopover
                       service={service}
                       onPatch={(patch) => displayOptionsMutation.mutate({ id: service.id, patch })}
                       disabled={displayOptionsMutation.isPending}
                     />
-
-                    {/* FP-3: the property's room types, grouped here rather than scattered
-                        through the grid as standalone service cards. Each row states what a room
-                        really is — name, nightly rate, its own review/active state — and its Edit
-                        opens the property editor at the Rooms step. */}
-                    {isProperty && (
-                      <div className="mt-3 pt-3 border-t border-console-light" data-testid={`rooms-block-${service.id}`}>
-                        <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
-                          Room types
-                        </p>
-                        {childRooms.length === 0 ? (
-                          <p className="text-xs text-console-mid" data-testid={`rooms-empty-${service.id}`}>
-                            No room types yet — add one in the Workstation.
-                          </p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {childRooms.map((room) => (
-                              <RoomRow key={room.id} room={room} health={healthByServiceId.get(room.id)} />
-                            ))}
-                          </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-console-mid"
+                          data-testid={`button-more-${service.id}`}
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {/* PB: no Duplicate for bundles — duplicateService copies the
+                            provider_services row only, not bundle_components, so the copy would
+                            be a component-less bundle (filed server follow-up). FP-3: nor for a
+                            property — the same one-row copy would produce a property with no room
+                            types, which is not a sellable thing. */}
+                        {!isBundle && !isProperty && (
+                          <DropdownMenuItem
+                            onClick={() => duplicateMutation.mutate(service.id)}
+                            disabled={duplicateMutation.isPending}
+                            data-testid={`button-duplicate-${service.id}`}
+                          >
+                            <Copy className="w-3.5 h-3.5 mr-2" /> {tCommon("actions.duplicate")}
+                          </DropdownMenuItem>
                         )}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
-                      <Link href={editHref}>
-                        <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
-                          <Edit className="w-4 h-4 mr-1" /> {tCommon("actions.edit")}
-                        </Button>
-                      </Link>
-                      {/* PB: no Duplicate for bundles — duplicateService copies the
-                          provider_services row only, not bundle_components, so the copy
-                          would be a component-less bundle (filed server follow-up).
-                          FP-3: nor for a property — the same one-row copy would produce a
-                          property with no room types, which is not a sellable thing. */}
-                      {!isBundle && !isProperty && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => duplicateMutation.mutate(service.id)}
-                          disabled={duplicateMutation.isPending}
-                          data-testid={`button-duplicate-${service.id}`}
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600"
+                          onClick={() => setDeleteTarget(service)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-${service.id}`}
                         >
-                          <Copy className="w-4 h-4 mr-1" /> {tCommon("actions.duplicate")}
-                        </Button>
-                      )}
-                      {/* S6: Catalog's ONE outward-facing pointer — storefront, share kit and
-                          promote all live on Distribute now. Shown for every listing (Distribute
-                          itself shows the honest not-live/blocked state for anything that isn't
-                          approved+active yet — no gate needed here). */}
-                      <Link href={`/provider/distribute?listing=${service.id}`}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          data-testid={`button-distribute-${service.id}`}
-                        >
-                          <Share2 className="w-4 h-4 mr-1" /> Distribute this
-                          <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:text-red-600"
-                        onClick={() => setDeleteTarget(service)}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`button-delete-${service.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" /> {tCommon("actions.delete")}
-                      </Button>
-                    </div>
-
-                    <HealthRow health={healthByServiceId.get(service.id)} />
-                  </CardContent>
-                </Card>
+                          <Trash2 className="w-3.5 h-3.5 mr-2" /> {tCommon("actions.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -1632,8 +1396,10 @@ export default function ProviderServices() {
           </div>
         )}
 
-        {/* C9: availability editing's ratified Catalog home (see header comment). */}
-        <AvailabilitySection />
+        {/* Catalog visual parity, item 4: the embedded single-slot AvailabilitySection block
+            (section-catalog-availability) is DELETED — availability editing now has exactly ONE
+            surface, the "availability" view-mode above (S7's ProviderAvailabilityManager), which
+            the header toggle and the ?availability=<id> deep-link both land on. */}
 
         {/* S6 (ruling-74-disposition-6 clarification): the storefront header, the per-service
             share-kit dialog and the Promote (posting-opportunities) block all moved to
