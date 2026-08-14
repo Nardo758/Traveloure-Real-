@@ -387,9 +387,16 @@ class ExperienceCatalogService {
 
   private async searchEvents(params: CatalogSearchParams, limit: number, offset: number): Promise<EventItem[]> {
     const conditions = [];
-    
-    if (params.destination) {
-      conditions.push(ilike(feverEventCache.city, `%${params.destination}%`));
+
+    // Resolve raw destination (e.g. "Paris, France") to the canonical Fever city
+    // name ("Paris") so both the cache query and the live fetch use the same value.
+    // Falls back to the raw string when the destination is not a Fever-supported city
+    // (query will simply return nothing and the fetch-on-miss will also skip safely).
+    const feverCity = params.destination ? feverService.findCity(params.destination) : undefined;
+    const canonicalCity = feverCity?.name ?? params.destination;
+
+    if (canonicalCity) {
+      conditions.push(ilike(feverEventCache.city, `%${canonicalCity}%`));
     }
     if (params.query) {
       conditions.push(
@@ -430,9 +437,9 @@ class ExperienceCatalogService {
     const wantsFeverEvents =
       !params.providers || params.providers.length === 0 || params.providers.includes("fever");
 
-    if (wantsFeverEvents && params.destination && events.length === 0) {
+    if (wantsFeverEvents && canonicalCity && events.length === 0) {
       try {
-        const upserted = await feverService.upsertEventsToCache(params.destination);
+        const upserted = await feverService.upsertEventsToCache(canonicalCity);
         if (upserted > 0) {
           events = await db.select()
             .from(feverEventCache)

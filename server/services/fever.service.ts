@@ -131,8 +131,12 @@ class FeverService {
   private config: ImpactApiConfig;
   private isConfigured: boolean = false;
   private feverCatalogId: string | null = null;
-  /** Cities currently being refreshed — prevents concurrent duplicate fetches */
-  private readonly inFlightRefreshes = new Set<string>();
+  /**
+   * In-flight cache-refresh promises keyed by normalised city name.
+   * Concurrent cache-miss requests for the same city await the same Promise
+   * instead of each triggering a separate live fetch.
+   */
+  private readonly inFlightRefreshes = new Map<string, Promise<number>>();
 
   // Fever operates in these cities (launch markets)
   private static readonly SUPPORTED_CITIES: FeverCity[] = [
@@ -259,16 +263,36 @@ class FeverService {
   }
 
   /**
-   * Find city by name or code
+   * Find a supported Fever city by name, IATA code, or a compound string
+   * (e.g. "Paris, France" or "New York, United States").  Matching is tried
+   * in order: exact code, exact name, name-contains, then — for compound
+   * "City, Country" strings — the part before the first comma.
    */
   public findCity(nameOrCode: string): FeverCity | undefined {
     const normalized = nameOrCode.toLowerCase().trim();
-    return FeverService.SUPPORTED_CITIES.find(
-      city => 
+
+    const match = FeverService.SUPPORTED_CITIES.find(
+      city =>
         city.code.toLowerCase() === normalized ||
         city.name.toLowerCase() === normalized ||
-        city.name.toLowerCase().includes(normalized)
+        city.name.toLowerCase().includes(normalized),
     );
+    if (match) return match;
+
+    // "City, Country" / "City, State, Country" format — try the part before
+    // the first comma so "Paris, France" resolves to "Paris".
+    const commaIdx = normalized.indexOf(',');
+    if (commaIdx > 0) {
+      const cityPart = normalized.slice(0, commaIdx).trim();
+      return FeverService.SUPPORTED_CITIES.find(
+        city =>
+          city.code.toLowerCase() === cityPart ||
+          city.name.toLowerCase() === cityPart ||
+          city.name.toLowerCase().includes(cityPart),
+      );
+    }
+
+    return undefined;
   }
 
   /**
@@ -554,11 +578,10 @@ class FeverService {
    *  1. Bails immediately when the Fever catalog has not been discovered (i.e.
    *     credentials are missing or the Impact.com catalog lookup failed).  This
    *     prevents mock/fallback data from being persisted to the cache.
-   *  2. Per-city in-flight lock: concurrent cache-miss requests for the same
-   *     destination are coalesced — only the first caller performs the fetch,
-   *     subsequent callers return 0 immediately.
+   *  2. Per-city in-flight coalescing: concurrent cache-miss requests for the
+   *     same destination await the same Promise — only one live fetch is made.
    *  3. Race-safe upsert via ON CONFLICT (event_id) DO UPDATE (backed by
-   *     migration 221's unique index), so two concurrent inserts for the same
+   *     migration 221's unique index), so concurrent inserts for the same
    *     event_id resolve cleanly at the database level.
    */
   public async upsertEventsToCache(cityNameOrCode: string): Promise<number> {
@@ -568,21 +591,40 @@ class FeverService {
       return 0;
     }
 
-    // Guard 2: coalesce concurrent refreshes for the same destination.
-    const lockKey = cityNameOrCode.toLowerCase().trim();
-    if (this.inFlightRefreshes.has(lockKey)) {
-      console.log(`[Fever] Refresh already in progress for: ${cityNameOrCode}`);
+    // Resolve to canonical city first so "Paris, France" and "Paris" share the same lock key.
+    const city = this.findCity(cityNameOrCode);
+    if (!city) {
+      console.warn(`[Fever] upsertEventsToCache: no supported city found for "${cityNameOrCode}"`);
       return 0;
     }
-    this.inFlightRefreshes.add(lockKey);
+    const lockKey = city.code.toLowerCase();
 
+    // Guard 2: coalesce concurrent refreshes — return the in-flight Promise directly
+    // so every waiter receives the same result without triggering a second fetch.
+    const existing = this.inFlightRefreshes.get(lockKey);
+    if (existing) {
+      console.log(`[Fever] Coalescing concurrent refresh for: ${city.name}`);
+      return existing;
+    }
+
+    const refreshPromise = this._doUpsertCity(city);
+    this.inFlightRefreshes.set(lockKey, refreshPromise);
     try {
-      // Use the live-only fetch path — never falls back to mock data.
-      // Returns null when credentials/catalog are missing or the HTTP call fails.
-      const result = await this.fetchLiveEventsForCity(cityNameOrCode);
-      if (!result || result.events.length === 0) return 0;
+      return await refreshPromise;
+    } finally {
+      this.inFlightRefreshes.delete(lockKey);
+    }
+  }
 
-      const { city, events } = result;
+  /** Internal: performs the actual live fetch + cache write for a resolved city. */
+  private async _doUpsertCity(city: FeverCity): Promise<number> {
+    // Use the live-only fetch path — never falls back to mock data.
+    // Returns null when credentials/catalog are missing or the HTTP call fails.
+    const result = await this.fetchLiveEventsForCity(city.name);
+    if (!result || result.events.length === 0) return 0;
+
+    {
+      const { events } = result;
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       let upserted = 0;
 
@@ -698,8 +740,6 @@ class FeverService {
 
       console.log(`[Fever] Upserted ${upserted} events for city: ${city.name}`);
       return upserted;
-    } finally {
-      this.inFlightRefreshes.delete(lockKey);
     }
   }
 
