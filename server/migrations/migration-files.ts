@@ -1122,4 +1122,8 @@ export const MIGRATION_FILES = [
   // business email for booking alert emails; falls back to users.email when NULL.
   // Never touches auth flows. Idempotent (ADD COLUMN IF NOT EXISTS).
   "224_notification_email.sql",
+  // 225: add email_booking_alerts boolean (default true) to users. Experts can disable
+  // booking-alert emails from Settings → Notifications; the flag is checked at all
+  // sendBookingAlertEmail call sites before the email is dispatched.
+  "225_email_booking_alerts.sql",
 ] as const;

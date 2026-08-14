@@ -72,7 +72,7 @@ const claimSchema = z.object({
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
-    const parsed = claimSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid handle" });
     }
@@ -86,7 +86,16 @@ router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
       return res.status(400).json({ message: "That handle is reserved." });
     }
 
-    const [me] = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+    const [me] = await db
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
     if (!me) return res.status(401).json({ message: "Authentication required" });
     if (!EARNER_ROLES.has(me.role ?? "")) {
       return res.status(403).json({ message: "Only expert and provider accounts can claim a storefront handle." });
@@ -216,20 +225,33 @@ const settingsPatchSchema = z.object({
   // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
   // now a real persisted preference (display opt-in only, no money/ranking semantics here).
   showOnLeaderboard: z.boolean().optional(),
+  // Migration 223: DB-backed column on users (not JSONB). Written to users.email_booking_alerts.
+  emailBookingAlerts: z.boolean().optional(),
 }).strict();
 
 router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
+
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
     if (!me) return res.status(401).json({ message: "Authentication required" });
     const prefs = (me.preferences as any) ?? {};
-    res.json(prefs.settings ?? {});
+    // Merge the DB-backed emailBookingAlerts column into the settings payload so the
+    // client sees it alongside the JSONB preferences (migration 223).
+    res.json({
+      ...(prefs.settings ?? {}),
+      emailBookingAlerts: me.emailBookingAlerts ?? true,
+    });
   } catch (err) {
     console.error("[me/preferences] read error:", err);
     res.status(500).json({ message: "Failed to load preferences" });
@@ -241,13 +263,18 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -266,25 +293,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         : {}),
     };
 
-    await db
-      .update(users)
-      .set({ preferences: { ...current, settings: nextSettings } })
-      .where(eq(users.id, userId));
-
-    res.json(nextSettings);
-  } catch (err) {
-    console.error("[me/preferences] write error:", err);
-    res.status(500).json({ message: "Failed to save preferences" });
-  }
-});
-
-// ─── Storefront cover image (identity-hero rebuild) ──────────────────────────────────────────
-//
-// users.preferences is a namespaced jsonb; this owns ONLY its `storefront` key — the exact
-// shallow-merge pattern ea.routes.ts uses for its `ea` sub-key (never the unrelated `settings`
-// key /api/me/preferences above owns). §14: user from session only. No new column/migration —
-// the cover image is optional earner-chosen decoration; gradient fallback renders when unset.
-
+    const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
 const httpsUrlSchema = z
   .string()
   .trim()
@@ -311,19 +320,24 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid storefront settings", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
     if (!me) return res.status(401).json({ message: "Authentication required" });
 
-    const current = (me.preferences as any) ?? {};
+    const current = ((me.preferences as any) ?? {});
     const currentStorefront = current.storefront ?? {};
     const patch = parsed.data;
     const nextStorefront = {
@@ -370,8 +384,14 @@ router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) 
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
+
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -392,13 +412,18 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -767,7 +792,7 @@ async function loadStorefront(handle: string, activeLocale?: string) {
 router.get("/api/storefront/:handle", async (req, res) => {
   try {
     const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
-    const data = await loadStorefront(req.params.handle, rawLocale);
+    const data = await loadStorefront(req.params.handle);
     if (!data) return res.status(404).json({ message: "Storefront not found" });
     return res.json(data);
   } catch (error: any) {
@@ -784,23 +809,18 @@ router.get("/p/:handle", async (req, res, next) => {
     if (!data) return next(); // SPA renders its own not-found
 
     const count = data.services.length + data.templates.length + data.readyMade.length;
-    const title = `${data.earner.name} — Book local experiences | Traveloure`;
-    const description =
-      data.earner.bio ??
-      `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
+    const title = `${listing.title} | Traveloure`;
+    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
-      data.earner.coverImageUrl ??
-      data.readyMade[0]?.heroImageUrl ??
-      data.templates[0]?.coverImage ??
-      data.earner.profileImageUrl ??
+      listing.heroImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
-      `<meta property="og:type" content="profile" />`,
+      `<meta property="og:type" content="website" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -862,13 +882,11 @@ router.get("/services/:id", async (req, res, next) => {
 
     if (!service) return next(); // SPA renders its own not-found
 
-    const title = `${service.serviceName} | Traveloure`;
-    const description =
-      service.description?.substring(0, 160) ??
-      `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    const title = `${listing.title} | Traveloure`;
+    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
-      service.serviceImage ??
+      listing.heroImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
