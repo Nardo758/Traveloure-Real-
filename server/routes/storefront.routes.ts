@@ -20,7 +20,6 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
-import { isEarnerRole } from "@shared/roles";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
