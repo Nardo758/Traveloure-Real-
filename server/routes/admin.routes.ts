@@ -7673,7 +7673,8 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
 // brand so operators can see whether displayed eSIM, transport, and activity
 // cards are fresh or stale. refreshedAt (migration 221, stamped on every upsert
 // by shared-cache.service.ts) is the accurate last-refresh time — createdAt is
-// immutable after first insert and is not surfaced here.
+// immutable after first insert and is not surfaced here. Pre-migration rows with
+// null refreshedAt are represented as lastRefreshedAt: null ("unknown").
 router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
   try {
     const now = new Date();
@@ -7687,58 +7688,8 @@ router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req
       .from(travelpayoutsCache)
       .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
 
-    // Aggregate per-brand: a brand may have many query/city keys, so we report
-    // the newest refresh time, the soonest expiry, and stale/total key counts.
-    const brandMap = new Map<string, {
-      brand: string;
-      totalKeys: number;
-      staleKeys: number;
-      freshKeys: number;
-      lastRefreshedAt: Date | null;
-      earliestExpiresAt: Date | null;
-      latestExpiresAt: Date | null;
-      isStale: boolean;
-      keys: Array<{ cacheKey: string; refreshedAt: Date | null; expiresAt: Date; isStale: boolean }>;
-    }>();
-
-    for (const row of rows) {
-      const stale = row.expiresAt < now;
-      if (!brandMap.has(row.brand)) {
-        brandMap.set(row.brand, {
-          brand: row.brand,
-          totalKeys: 0,
-          staleKeys: 0,
-          freshKeys: 0,
-          lastRefreshedAt: null,
-          earliestExpiresAt: null,
-          latestExpiresAt: null,
-          isStale: false,
-          keys: [],
-        });
-      }
-      const entry = brandMap.get(row.brand)!;
-      entry.totalKeys += 1;
-      if (stale) entry.staleKeys += 1;
-      else entry.freshKeys += 1;
-      if (row.refreshedAt && (entry.lastRefreshedAt === null || row.refreshedAt > entry.lastRefreshedAt)) {
-        entry.lastRefreshedAt = row.refreshedAt;
-      }
-      if (entry.earliestExpiresAt === null || row.expiresAt < entry.earliestExpiresAt) {
-        entry.earliestExpiresAt = row.expiresAt;
-      }
-      if (entry.latestExpiresAt === null || row.expiresAt > entry.latestExpiresAt) {
-        entry.latestExpiresAt = row.expiresAt;
-      }
-      entry.keys.push({ cacheKey: row.cacheKey, refreshedAt: row.refreshedAt, expiresAt: row.expiresAt, isStale: stale });
-    }
-
-    // A brand is considered stale when ALL of its keys are expired (no fresh data available).
-    const brandEntries = Array.from(brandMap.values());
-    for (const entry of brandEntries) {
-      entry.isStale = entry.freshKeys === 0;
-    }
-
-    const brands = brandEntries.sort((a, b) => a.brand.localeCompare(b.brand));
+    const { aggregateBrandStatus } = await import("../services/travelpayouts/travelpayouts-cache-status");
+    const brands = aggregateBrandStatus(rows, now);
     res.json({ brands, retrievedAt: now });
   } catch (error: any) {
     console.error("[admin/travelpayouts-cache/status] error:", error);
