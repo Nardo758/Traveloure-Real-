@@ -2114,11 +2114,17 @@ router.get("/api/booking-fee-config", isAuthenticated, async (req, res) => {
     }
   });
 
-  // ─── Phase 1.4: GET /api/fee-bands/:bandKey (public; read-only) ──────────────
-  // Returns the live default_rate for a fee_bands row. Used by client-side
-  // pricing surfaces (optimize.tsx, etc.) so admin edits propagate without redeploy.
+  // ─── Phase 1.4: GET /api/fee-bands/:bandKey ──────────────────────────────────
+  // INTENTIONALLY PUBLIC (no isAuthenticated guard) — audit ref: Task 1163.
+  // Rationale: fee-band rows carry only the platform's own posted rates (e.g.
+  // "PLATFORM_FEE = 0.25"). They contain no user-specific data, no PII, and no
+  // commercially sensitive per-account overrides (those live in booking_fee_configs
+  // and are gated by GET /api/booking-fee-config, which IS authenticated + IDOR-
+  // guarded). This endpoint is used by client-side pricing surfaces (optimize.tsx,
+  // cart fee-preview) so admin edits propagate without a redeploy.
   // Percent bands return rate as a fraction (0.25 = 25 %); flat bands return rate
-  // as USD dollars (49.99 = $49.99). The rateType field disambiguates. // fee-literal-ok: comment example, fee resolves from config
+  // as USD dollars (49.99 = $49.99). The rateType field disambiguates.
+  // fee-literal-ok: comment example, fee resolves from config
 router.get("/api/fee-bands/:bandKey", async (req, res) => {
     try {
       const bandKey = String(req.params.bandKey || "").trim();
