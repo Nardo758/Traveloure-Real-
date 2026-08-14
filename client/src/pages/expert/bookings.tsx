@@ -20,6 +20,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -449,6 +459,7 @@ export default function ExpertBookings() {
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
   const [selectedVisaBooking, setSelectedVisaBooking] = useState<Booking | null>(null);
   const [planBooking, setPlanBooking] = useState<Booking | null>(null);
+  const [declineBooking, setDeclineBooking] = useState<Booking | null>(null);
   const { toast } = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -717,7 +728,7 @@ export default function ExpertBookings() {
                               variant="outline"
                               className="text-red-600 border-red-300 hover:bg-red-50"
                               disabled={statusMutation.isPending}
-                              onClick={() => statusMutation.mutate({ id: booking.id, status: "cancelled" })}
+                              onClick={() => setDeclineBooking(booking)}
                               data-testid={`button-decline-booking-${booking.id}`}
                             >
                               Decline
@@ -782,6 +793,34 @@ export default function ExpertBookings() {
         travelerName={planBooking?.travelerName}
         onOpenChange={(open) => { if (!open) setPlanBooking(null); }}
       />
+
+      <AlertDialog open={!!declineBooking} onOpenChange={(open) => { if (!open) setDeclineBooking(null); }}>
+        <AlertDialogContent data-testid="dialog-decline-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Decline this booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to decline the booking
+              {declineBooking?.travelerName ? ` from ${declineBooking.travelerName}` : ""}?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-decline-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="button-decline-confirm"
+              onClick={() => {
+                if (declineBooking) {
+                  statusMutation.mutate({ id: declineBooking.id, status: "cancelled" });
+                  setDeclineBooking(null);
+                }
+              }}
+            >
+              Decline Booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ExpertLayout>
   );
 }
