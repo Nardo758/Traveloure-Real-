@@ -8,6 +8,7 @@ export interface PreviewItem {
   price: number;
   quantity: number;
   provider?: string;
+  details?: string;
 }
 
 /**
@@ -109,7 +110,10 @@ export function ItineraryPreviewPanel({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{item.name}</div>
-                        {item.provider && (
+                        {item.details && (
+                          <div className="text-[11px] text-muted-foreground truncate">{item.details}</div>
+                        )}
+                        {item.provider && !item.details && (
                           <div className="text-[11px] text-muted-foreground truncate">{item.provider}</div>
                         )}
                       </div>
