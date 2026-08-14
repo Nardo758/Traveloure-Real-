@@ -162,7 +162,7 @@ import {
   getLocationSummary, getLocationSummaryData, getDestinationDemandReport, getProviderMarketReport,
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
-  getUsersBasicByIds, getProviderServiceById, deleteProviderService,
+  getUsersBasicByIds, getProviderServiceById, getProviderServicesByIds, deleteProviderService,
 } from "../services/admin-query.service";
 
 const router = Router();
@@ -337,17 +337,33 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const allBookings = await storage.getServiceBookings(status ? { status } : {});
-      const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
-        const traveler = booking.travelerId ? await storage.getUser(booking.travelerId) : null;
-        const provider = booking.providerId ? await storage.getUser(booking.providerId) : null;
-        const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
+
+      // Batch-fetch users and services with IN-clause queries instead of per-row lookups
+      const travelerIds = Array.from(new Set(allBookings.map(b => b.travelerId).filter(Boolean) as string[]));
+      const providerIds = Array.from(new Set(allBookings.map(b => b.providerId).filter(Boolean) as string[]));
+      const serviceIds  = Array.from(new Set(allBookings.map(b => b.serviceId).filter(Boolean)  as string[]));
+
+      const [travelerRows, providerRows, serviceRows] = await Promise.all([
+        getUsersBasicByIds(travelerIds),
+        getUsersBasicByIds(providerIds),
+        getProviderServicesByIds(serviceIds),
+      ]);
+
+      const travelerMap = new Map(travelerRows.map(u => [u.id, u]));
+      const providerMap = new Map(providerRows.map(u => [u.id, u]));
+      const serviceMap  = new Map(serviceRows.map(s => [s.id, s]));
+
+      const enrichedBookings = allBookings.map((booking) => {
+        const traveler = booking.travelerId ? travelerMap.get(booking.travelerId) ?? null : null;
+        const provider = booking.providerId ? providerMap.get(booking.providerId) ?? null : null;
+        const service  = booking.serviceId  ? serviceMap.get(booking.serviceId)   ?? null : null;
         return {
           ...booking,
           traveler: traveler ? { id: traveler.id, firstName: traveler.firstName, lastName: traveler.lastName, email: traveler.email } : null,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, email: provider.email } : null,
-          service: service ? { id: service.id, serviceName: service.serviceName } : null,
+          service:  service  ? { id: service.id,  serviceName: service.serviceName } : null,
         };
-      }));
+      });
       res.json(enrichedBookings);
     } catch (err) {
       console.error("Admin bookings error:", err);
