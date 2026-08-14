@@ -3648,6 +3648,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const photoUrl = pexelsPhotos[0]?.url ?? null;
           return res.json({ photoUrl });
         } catch {
+          // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
         }
       }
@@ -5463,6 +5464,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         displayName,
       });
     } catch {
+      // Fail closed: if the verification profile cannot be read, report as unverified.
       res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });

@@ -1725,7 +1725,8 @@ export class DatabaseStorage implements IStorage {
         ownerIsProvider,
         feeCategory,
       });
-    } catch {
+    } catch (err) {
+      console.warn("[storage] Failed to resolve service owner share rate — returning null:", err);
       return null;
     }
   }

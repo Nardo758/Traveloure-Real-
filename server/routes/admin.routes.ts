@@ -5385,6 +5385,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       try {
         await pingDb();
       } catch {
+        // DB ping failure is represented as degraded status — never abort the health response.
         dbStatus = "degraded";
       }
       const dbLatency = Date.now() - dbStart;
