@@ -3899,10 +3899,17 @@ router.post("/api/geocode", async (req, res) => {
 
       const { address } = parsed.data;
       const result = await geocodeAddress(address);
-      if (!result) {
-        return res.status(404).json({ message: "Location not found" });
+      if (result) {
+        return res.json(result);
       }
-      res.json(result);
+      // DB-backed fallback (migration 217): admin-curated city-centre coordinates in
+      // geocode_fallbacks — curated data, not fabrication, so the §13 posture holds.
+      // A miss there too stays an honest 404, never a guessed coordinate.
+      const dbFallback = await storage.getGeocodeFallback(address);
+      if (dbFallback) {
+        return res.json({ ...dbFallback, fallback: true });
+      }
+      return res.status(404).json({ message: "Location not found" });
     } catch (error: any) {
       console.error('Geocoding API error:', error);
       res.status(500).json({ message: error.message || "Geocoding failed" });
@@ -8578,8 +8585,23 @@ router.get("/api/exchange-rates", async (_req, res) => {
     res.json({ base: "USD", rates: data.rates, cachedAt: now });
   } catch (err) {
     console.error("Exchange rate fetch error:", err);
-    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
-    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+    // DB-backed fallback (migration 217): fx_rates is seeded at migration time and
+    // refreshed daily by fx-rate-refresh.service.ts — never a hardcoded literal that
+    // goes stale between deploys. If the DB has no rows either, say so honestly.
+    try {
+      const dbRates = await storage.getLatestFxRates();
+      if (dbRates) {
+        return res.json({
+          base: "USD",
+          rates: dbRates.rates,
+          cachedAt: dbRates.updatedAt ? new Date(dbRates.updatedAt).getTime() : Date.now(),
+          fallback: true,
+        });
+      }
+    } catch (dbErr) {
+      console.error("Exchange rate DB fallback error:", dbErr);
+    }
+    res.status(503).json({ base: "USD", rates: null, error: "Exchange rates unavailable" });
   }
 });
 

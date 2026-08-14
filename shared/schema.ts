@@ -8542,3 +8542,30 @@ export const deliverableDownloads = pgTable("deliverable_downloads", {
   index("deliverable_downloads_service_idx").on(table.serviceId),
 ]);
 export type DeliverableDownload = typeof deliverableDownloads.$inferSelect;
+
+// Task: DB-backed fallbacks for FX rates and geocode coordinates (migration 217).
+// fx_rates: one row per currency, rate expressed as units-per-USD. Refreshed daily by
+// server/services/fx-rate-refresh.service.ts (Frankfurter API); seeded by migration 217 so a
+// fresh deploy is never rate-less. The /api/exchange-rates fallback path reads these rows —
+// the old hardcoded literal is gone; if this table is empty AND the live fetch failed, the
+// endpoint returns an honest 503, never silently-stale baked-in numbers.
+export const fxRates = pgTable("fx_rates", {
+  currencyCode: varchar("currency_code", { length: 8 }).primaryKey(),
+  rateToUsd: doublePrecision("rate_to_usd").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FxRate = typeof fxRates.$inferSelect;
+
+// geocode_fallbacks: admin-curated city-centre coordinates used ONLY when the live Google
+// geocode misses. Seeded by migration 217 with the former hardcoded FALLBACK_COORDINATES set;
+// admins add/update rows via SQL (no deploy needed). A miss here too returns an honest
+// null/404 — never a guessed coordinate (§13 posture: curated data is not fabrication).
+export const geocodeFallbacks = pgTable("geocode_fallbacks", {
+  slug: varchar("slug", { length: 120 }).primaryKey(), // normalized lowercase city key
+  cityName: varchar("city_name", { length: 120 }).notNull(),
+  lat: doublePrecision("lat").notNull(),
+  lng: doublePrecision("lng").notNull(),
+  formattedAddress: varchar("formatted_address", { length: 255 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type GeocodeFallback = typeof geocodeFallbacks.$inferSelect;

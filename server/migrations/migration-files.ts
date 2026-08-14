@@ -1079,4 +1079,9 @@ export const MIGRATION_FILES = [
   // (source_locale, 'en'|'ja' app-enforced, NO DB CHECK), declared in shared/schema.ts same
   // commit. NULL = pre-216 row = English (ruling 60's baked-in assumption made explicit).
   "216_source_locale.sql",
+  // 217: DB-backed fallbacks for FX rates + geocode city coordinates. Two new tables
+  // (fx_rates, geocode_fallbacks), both seeded with the values the code used to hardcode
+  // (/api/exchange-rates literal + the dead FALLBACK_COORDINATES map). Idempotent
+  // (IF NOT EXISTS + ON CONFLICT DO NOTHING); declared in shared/schema.ts same commit.
+  "217_fx_rates_geocode_fallbacks.sql",
 ] as const;
