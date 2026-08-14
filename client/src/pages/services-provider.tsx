@@ -423,7 +423,7 @@ export default function ServicesProviderPage() {
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">Registration Number</Label>
                     <Input
@@ -444,7 +444,7 @@ export default function ServicesProviderPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">Email</Label>
                     <Input
@@ -492,7 +492,7 @@ export default function ServicesProviderPage() {
                   <Label className="text-[#374151] mb-3 block">
                     Select all categories that apply to your business
                   </Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {serviceCategories.map((category) => (
                       <button
                         key={category}
@@ -556,7 +556,7 @@ export default function ServicesProviderPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">City</Label>
                     <Input
@@ -577,7 +577,7 @@ export default function ServicesProviderPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">Capacity (if applicable)</Label>
                     <Input
@@ -654,7 +654,7 @@ export default function ServicesProviderPage() {
                 <CardTitle className="text-2xl text-foreground">Review Your Registration</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Business Name:</span>
                     <span className="ml-2 text-foreground font-medium">{formData.businessName}</span>
@@ -688,7 +688,7 @@ export default function ServicesProviderPage() {
 
                 <div className="p-4 bg-[#F3F4F6] rounded-lg">
                   <h4 className="font-medium text-foreground mb-2">Platform Benefits:</h4>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {benefits.map((benefit) => (
                       <div key={benefit.text} className="flex items-center gap-2 text-sm text-muted-foreground">
                         <benefit.icon className="w-4 h-4 text-primary" />
