@@ -666,6 +666,7 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
     SELECT sb.id,
            sb.service_id,
            sb.provider_id,
+           sb.trip_id,
            sb.total_amount,
            sb.booking_details->>'itineraryItemId' AS itinerary_item_id,
            ps.service_name
@@ -707,6 +708,13 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
     // email is the one effect no rollback or TTL can take back.
     try {
       if (raw.provider_id) {
+        const provider = await storage.getUser(String(raw.provider_id));
+        // Route deep-link based on the service owner's role: experts land on their workspace
+        // (booking-request scoped view); providers land on their bookings inbox.
+        // /expert/workspace is expert-role-gated on the client, so providers must not receive tripId.
+        const notifTripId = raw.trip_id && isExpertRole(provider?.role) ? String(raw.trip_id) : undefined;
+        // Providers always land on their own bookings inbox; /expert/workspace is expert-role-gated.
+        const notifWorkspacePath = isProviderRole(provider?.role) ? "/provider/bookings" : undefined;
         await storage.createNotification({
           userId: String(raw.provider_id),
           type: "booking_request",
@@ -719,10 +727,10 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
             serviceName: raw.service_name ?? null,
             travelerName,
             amount: price.toFixed(2),
+            ...(notifTripId ? { tripId: notifTripId } : {}),
+            ...(notifWorkspacePath ? { workspacePath: notifWorkspacePath } : {}),
           },
         });
-
-        const provider = await storage.getUser(String(raw.provider_id));
         if (provider?.email) {
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;

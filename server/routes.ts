@@ -1662,7 +1662,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               serviceName: service.serviceName,
               travelerName,
               amount: totalAmount.toFixed(2),
-              ...(tripId ? { tripId } : {}),
+              // Route deep-link based on the service owner's role. Experts land on their
+              // workspace for the trip (a booking-request scoped view). Providers land on
+              // their bookings inbox — /expert/workspace is expert-role-gated on the client.
+              ...(tripId && isExpertRole(ownerRow?.role)
+                ? { tripId }
+                : { workspacePath: isProviderRole(ownerRow?.role) ? "/provider/bookings" : undefined }),
             },
           });
 
