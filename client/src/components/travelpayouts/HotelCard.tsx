@@ -7,8 +7,9 @@ import { BookWithExpertButton } from "./BookWithExpertButton";
 import { useAgentBooking } from "./useAgentBooking";
 
 const PROVIDER_META: Record<string, { label: string; color: string }> = {
-  hotellook:  { label: "HotelLook", color: "bg-blue-100 text-blue-700" },
-  agoda:      { label: "Agoda", color: "bg-orange-100 text-orange-700" },
+  hotellook:   { label: "HotelLook",   color: "bg-blue-100 text-blue-700" },
+  agoda:       { label: "Agoda",       color: "bg-orange-100 text-orange-700" },
+  booking_com: { label: "Booking.com", color: "bg-indigo-100 text-indigo-700" },
 };
 
 export function HotelCard({ item, className }: { item: CatalogItem; className?: string }) {
@@ -59,8 +60,8 @@ export function HotelCard({ item, className }: { item: CatalogItem; className?: 
                 </span>
               )}
             </div>
-            <Button size="sm" onClick={handleBook} variant="outline" className="h-7 text-xs gap-1" disabled={bookPending || bookRequested} data-testid={`button-book-hotel-${item.id}`}>
-              <Building2 className="h-3 w-3" />{bookRequested ? "Requested ✓" : "Book via agent"}
+            <Button size="sm" onClick={handleBook} variant="outline" className="h-7 text-xs gap-1" disabled={bookPending || bookRequested || !item.bookingToken} data-testid={`button-book-hotel-${item.id}`}>
+              <Building2 className="h-3 w-3" />{bookRequested ? "Requested ✓" : item.provider === "booking_com" ? "Book on Booking.com" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton
