@@ -6180,7 +6180,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const { status, reason } = req.body;
+      const { status } = req.body;
+      // Normalize reason: must be a string when provided, trimmed, blank treated as absent.
+      // Server-enforced 500-char cap mirrors the UI limit and prevents arbitrarily large
+      // user-controlled content from reaching the DB or notification payload.
+      const rawReason = req.body.reason;
+      let reason: string | undefined;
+      if (rawReason !== undefined && rawReason !== null) {
+        if (typeof rawReason !== "string") {
+          return res.status(400).json({ message: "reason must be a string" });
+        }
+        const trimmed = rawReason.trim();
+        if (trimmed.length > 500) {
+          return res.status(400).json({ message: "reason must be 500 characters or fewer" });
+        }
+        reason = trimmed || undefined; // blank → absent
+      }
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
@@ -6251,10 +6266,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                   userId: booking.travelerId,
                   type: "booking_cancelled",
                   title: "Booking cancelled by provider — full refund issued",
-                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  message: reason
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
