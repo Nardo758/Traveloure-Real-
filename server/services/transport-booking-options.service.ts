@@ -585,6 +585,154 @@ async function findAffiliateTransportOptions(
   return results;
 }
 
+// ============================================================================
+// Destination-level transport options (no trip leg required)
+// Used by GET /api/transport-options for the standalone Transfers tab.
+// ============================================================================
+
+export interface DestinationTransportOption {
+  id: string;
+  source: string;
+  title: string;
+  description: string;
+  modeType: string;
+  icon: string;
+  priceDisplay: string;
+  priceCentsLow: number | null;
+  currency: string;
+  externalUrl?: string;
+  isExternal: boolean;
+}
+
+/**
+ * Returns curated transport options for a destination without needing a trip
+ * leg. Includes affiliate deep-links (12Go, Omio, DiscoverCars) and any
+ * platform providers registered for that destination.
+ */
+export async function getDestinationTransportOptions(
+  destination: string,
+  travelers: number = 1,
+): Promise<DestinationTransportOption[]> {
+  const token = getTravelpayoutsToken();
+  const results: DestinationTransportOption[] = [];
+
+  // 1. Platform providers tagged for transport in this destination
+  try {
+    const destLower = destination.toLowerCase();
+    const rows = await db.execute(sql`
+      SELECT id, service_name AS "businessName", short_description AS "serviceDescription",
+             price, price_type AS "priceType"
+      FROM provider_services
+      WHERE status = 'active'
+        AND (
+          content_affinity_tags @> ARRAY['transport']::text[]
+          OR content_affinity_tags @> ARRAY['airport_transfer']::text[]
+          OR content_affinity_tags @> ARRAY['private_driver']::text[]
+          OR service_type = 'transportation'
+        )
+        AND location ILIKE ${'%' + destLower + '%'}
+      ORDER BY bookings_count DESC NULLS LAST
+      LIMIT 5
+    `);
+    for (const row of (rows.rows || []) as any[]) {
+      const price = row.price ? parseFloat(String(row.price)) : null;
+      results.push({
+        id: `platform-${row.id}`,
+        source: "traveloure",
+        title: row.businessName,
+        description: row.serviceDescription || `Private transport in ${destination}`,
+        modeType: "private_driver",
+        icon: "🚐",
+        priceDisplay: price ? `From $${price}` : "Request quote",
+        priceCentsLow: price ? Math.round(price * 100) : null,
+        currency: "USD",
+        isExternal: false,
+      });
+    }
+  } catch {
+    // content_affinity_tags may be absent on older dev DBs — not fatal
+  }
+
+  // 2. 12Go — trains, buses, ferries to destination
+  results.push({
+    id: "affiliate-12go",
+    source: "12go",
+    title: `Trains & buses to ${destination}`,
+    description: "Book trains, buses & ferries with 12Go — strong Asia & global coverage",
+    modeType: "transit",
+    icon: "🚄",
+    priceDisplay: "From $5",
+    priceCentsLow: 500,
+    currency: "USD",
+    externalUrl: buildTwelveGoUrl(destination, destination, token),
+    isExternal: true,
+  });
+
+  // 3. Omio — coaches & trains to destination
+  results.push({
+    id: "affiliate-omio",
+    source: "omio",
+    title: `Coaches & trains to ${destination}`,
+    description: "Compare trains, buses & coaches with Omio — great for European routes",
+    modeType: "train",
+    icon: "🚌",
+    priceDisplay: "Compare prices",
+    priceCentsLow: null,
+    currency: "EUR",
+    externalUrl: buildOmioUrl(destination, destination, token),
+    isExternal: true,
+  });
+
+  // 4. DiscoverCars — car rental at destination
+  results.push({
+    id: "affiliate-discovercars",
+    source: "discovercars",
+    title: `Rent a car in ${destination}`,
+    description: "Compare 500+ rental providers with DiscoverCars — free cancellation options",
+    modeType: "car",
+    icon: "🚙",
+    priceDisplay: "From $25/day",
+    priceCentsLow: 2_500,
+    currency: "USD",
+    externalUrl: buildDiscoverCarsUrl(destination, token),
+    isExternal: true,
+  });
+
+  // 5. Partnerize-sourced transport partners for this destination
+  try {
+    const partnerizeRows = await db.execute(sql`
+      SELECT id, name, external_campaign_id, commission_rate, website_url
+      FROM affiliate_partners
+      WHERE source = 'partnerize'
+        AND is_active = true
+        AND category = 'transportation'
+      ORDER BY last_synced_at DESC NULLS LAST
+      LIMIT 2
+    `);
+    for (const row of (partnerizeRows.rows || []) as any[]) {
+      const url = buildPartnerizeTrackingLink(row.external_campaign_id, row.website_url, { destination });
+      if (!url) continue;
+      results.push({
+        id: `partnerize-${row.id}`,
+        source: "partnerize",
+        title: String(row.name),
+        description: `Book ${row.name} — completed on their site`,
+        modeType: "car",
+        icon: "🚗",
+        priceDisplay: "View pricing",
+        priceCentsLow: null,
+        currency: "USD",
+        externalUrl: url,
+        isExternal: true,
+      });
+    }
+  } catch {
+    // affiliate_partners table may be absent on dev — not fatal
+  }
+
+  return results;
+}
+
 /**
  * Gets rideshare apps available in destination
  */

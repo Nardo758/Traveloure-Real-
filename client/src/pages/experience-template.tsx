@@ -96,7 +96,6 @@ import { PlanCard } from "@/components/plancard/PlanCard";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
-import { AmadeusTransfers } from "@/components/amadeus-transfers";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
@@ -106,6 +105,7 @@ import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { updateTripContext, useTripContext, switchTripContextPreservingId, getTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
+import { DestinationTransfersSection } from "@/components/destination-transfers-section";
 
 interface VenueResult {
   id: string;
@@ -2447,10 +2447,10 @@ export default function ExperienceTemplatePage() {
           )}
 
           {/* P5: tabType-registry driven — any tab with tabType "transport" */}
-          {currentTabType === "transport" && (
+          {currentTabType === "transport" && destination && (
             <div className="mb-6">
-              <AmadeusTransfers
-                destination={destination || ""}
+              <DestinationTransfersSection
+                destination={destination}
                 startDate={startDate?.toISOString().split('T')[0]}
                 travelers={adults + kids}
                 onAddToCart={(item) => {
@@ -2462,7 +2462,7 @@ export default function ExperienceTemplatePage() {
                     quantity: item.quantity,
                     provider: item.provider,
                     details: item.details,
-                    isExternal: item.isExternal,
+                    isExternal: true,
                   });
                 }}
               />
