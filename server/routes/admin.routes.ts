@@ -5081,8 +5081,11 @@ router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
     });
 
     const esc = (v: unknown) => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      let s = String(v ?? "");
+      // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR would be
+      // evaluated by Excel/Sheets even inside a quoted cell. Prefix with an apostrophe.
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const lines: string[] = [];
     lines.push("Section,Label,Value");
