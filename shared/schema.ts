@@ -2731,7 +2731,7 @@ export const locationCache = pgTable("location_cache", {
 
 export const feverEventCache = pgTable("fever_event_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  eventId: varchar("event_id", { length: 100 }).notNull(),
+  eventId: varchar("event_id", { length: 100 }).notNull().unique(),
   title: varchar("title", { length: 500 }).notNull(),
   slug: varchar("slug", { length: 500 }),
   description: text("description"),
