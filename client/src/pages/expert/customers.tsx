@@ -21,7 +21,7 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { PageHeader, EmptyState, StatusBadge, type StatusBadgeEntry } from "@/components/backoffice/primitives";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, ChevronDown, ChevronRight, Calendar, Map, Package } from "lucide-react";
+import { Users, ChevronDown, ChevronRight, Calendar, Map, Package, ExternalLink } from "lucide-react";
 
 interface CustomerBookingItem {
   id: string;
@@ -224,7 +224,7 @@ export default function ExpertCustomers() {
                 return (
                   <div
                     key={key}
-                    className={i > 0 ? "border-t border-console-light" : undefined}
+                    className={`relative group${i > 0 ? " border-t border-console-light" : ""}`}
                     data-testid={`customer-row-${key}`}
                   >
                     <button
@@ -249,6 +249,17 @@ export default function ExpertCustomers() {
                         {factsLine(c)}
                       </span>
                     </button>
+                    {c.userId && (
+                      <Link
+                        href={`/expert/clients/${c.userId}`}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 text-xs text-console-mid hover:text-primary px-2 py-1 rounded hover:bg-console-bg transition-colors"
+                        data-testid={`link-client-detail-${c.userId}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        View
+                      </Link>
+                    )}
                     {isOpen && <CustomerDetail customer={c} />}
                   </div>
                 );
