@@ -5,6 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -167,11 +178,32 @@ function ReviewRow({ review, onAction, isFeatured, onToggleFeature }: {
       {!showReason && (
         <div className="flex gap-2 flex-wrap">
           {review.status !== "approved" && (
-            <Button size="sm" variant="outline" className="text-green-700 border-green-200 hover:bg-green-50"
-              onClick={() => handleAction("approved")} data-testid={`button-approve-${review.id}`}>
-              <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-              Approve
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" className="text-green-700 border-green-200 hover:bg-green-50"
+                  data-testid={`button-approve-${review.id}`}>
+                  <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
+                  Approve
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-testid={`dialog-approve-${review.id}`}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Approve this review?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to approve this review? It will become publicly visible on the service page.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid={`button-approve-cancel-${review.id}`}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => handleAction("approved")}
+                    data-testid={`button-approve-confirm-${review.id}`}
+                  >
+                    Approve
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           {review.status !== "flagged" && (
             <Button size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50"

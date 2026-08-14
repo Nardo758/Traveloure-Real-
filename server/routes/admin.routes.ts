@@ -1046,6 +1046,16 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     const { bookingId } = req.params;
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     await storage.updateServiceBookingStatus(bookingId, "completed");
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_rejected",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/disputes] audit log failed (non-fatal):", err));
     res.json({
       success: true,
       cleared,
@@ -1091,6 +1101,23 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // copy). Returns the refunded item to `in_planning` so the Trip Card stops showing it as
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
+
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_refunded",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: {
+        reason: String(reason ?? "").slice(0, 2000) || "dispute_upheld",
+        reversedEarnings: earnings.reversed,
+        skippedPaidOut: earnings.skippedPaidOut,
+        reversedRevenueRows: revenueRows,
+        revertedPlanItems: routingReversal.reverted,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/disputes] audit log failed (non-fatal):", err));
 
     res.json({
       success: true,
@@ -5005,6 +5032,85 @@ router.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) =>
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
+
+// GET /api/admin/analytics/export?from=&to=&format=csv — CSV download of the same data the
+// analytics overview shows, optionally filtered to a created-at date range. Additive; the
+// overview endpoint is untouched.
+router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const fromParam = typeof req.query.from === "string" && req.query.from ? new Date(req.query.from) : null;
+    const toParam = typeof req.query.to === "string" && req.query.to ? new Date(req.query.to) : null;
+    const from = fromParam && !isNaN(fromParam.getTime()) ? fromParam : null;
+    const to = toParam && !isNaN(toParam.getTime()) ? toParam : null;
+    const inRange = (d: Date | string | null | undefined) => {
+      if (!from && !to) return true;
+      if (!d) return false;
+      const t = new Date(d).getTime();
+      if (from && t < from.getTime()) return false;
+      if (to && t > to.getTime()) return false;
+      return true;
+    };
+
+    const allUsers = (await getAllUsersBasic()).filter(u => inRange(u.createdAt as any));
+    const allBookings = (await storage.getServiceBookings({})).filter(b => inRange(b.createdAt as any));
+    const allTrips = (await getAllTrips()).filter((t: any) => inRange(t.createdAt));
+    const allReviews = (await getAllServiceReviews()).filter((r: any) => inRange(r.createdAt));
+
+    const completedBookings = allBookings.filter(b => b.status === "completed");
+    const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+    const avgRating = allReviews.length > 0
+      ? allReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / allReviews.length
+      : 0;
+
+    const destCounts: Record<string, { bookings: number; revenue: number }> = {};
+    allTrips.forEach((t: any) => {
+      const dest = t.destination || "Unknown";
+      if (!destCounts[dest]) destCounts[dest] = { bookings: 0, revenue: 0 };
+      destCounts[dest].bookings++;
+      destCounts[dest].revenue += Number(t.budget || 0);
+    });
+
+    const roleCounts: Record<string, number> = {};
+    allUsers.forEach(u => {
+      const role = u.role || "user";
+      roleCounts[role] = (roleCounts[role] || 0) + 1;
+    });
+
+    const esc = (v: unknown) => {
+      let s = String(v ?? "");
+      // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR would be
+      // evaluated by Excel/Sheets even inside a quoted cell. Prefix with an apostrophe.
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines: string[] = [];
+    lines.push("Section,Label,Value");
+    lines.push(`Range,From,${esc(from ? from.toISOString() : "all time")}`);
+    lines.push(`Range,To,${esc(to ? to.toISOString() : "now")}`);
+    lines.push(`Metrics,Total Users,${allUsers.length}`);
+    lines.push(`Metrics,Total Bookings,${allBookings.length}`);
+    lines.push(`Metrics,Completed Bookings,${completedBookings.length}`);
+    lines.push(`Metrics,Total Revenue,${totalRevenue.toFixed(2)}`);
+    lines.push(`Metrics,Avg Rating,${avgRating.toFixed(2)}`);
+    lines.push(`Metrics,Total Reviews,${allReviews.length}`);
+    Object.entries(destCounts)
+      .sort((a, b) => b[1].bookings - a[1].bookings)
+      .forEach(([name, d]) => lines.push(`Top Destinations,${esc(name)},${d.bookings} trips / $${d.revenue.toFixed(2)}`));
+    Object.entries(roleCounts).forEach(([role, count]) => lines.push(`User Roles,${esc(role)},${count}`));
+
+    const filename = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(lines.join("\n"));
+  } catch (err) {
+    console.error("Admin analytics export error:", err);
+    res.status(500).json({ message: "Failed to export analytics" });
+  }
+});
 
   // Country/Region Analytics
 
