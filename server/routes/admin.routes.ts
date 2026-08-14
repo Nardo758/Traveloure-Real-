@@ -4919,8 +4919,14 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
 
       const now = new Date();
 
-      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
-        const owner = await storage.getUser(t.userId || '');
+      // N+1 fix: one batched WHERE id = ANY(...) user lookup for every trip owner,
+      // instead of one storage.getUser round-trip per trip.
+      const ownerIds = Array.from(new Set(allTrips.map((t) => t.userId).filter(Boolean))) as string[];
+      const owners = await getUsersBasicByIds(ownerIds);
+      const ownerById = new Map(owners.map((u) => [u.id, u]));
+
+      const enrichedTrips = allTrips.map((t) => {
+        const owner = t.userId ? ownerById.get(t.userId) : undefined;
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -4935,7 +4941,7 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
-      }));
+      });
 
       const phaseFiltered = phaseFilter
         ? enrichedTrips.filter(t => t.status === phaseFilter)

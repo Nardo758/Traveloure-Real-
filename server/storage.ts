@@ -235,8 +235,10 @@ export interface IStorage {
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
   getAllProviderServices(): Promise<ProviderService[]>;
   getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
+  getRoutePointsByServiceIds(serviceIds: string[]): Promise<ServiceRoutePoint[]>;
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
   getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
+  getSurchargeTiersByServiceIds(serviceIds: string[]): Promise<ServiceSurchargeTier[]>;
   replaceServiceSurchargeTiers(serviceId: string, tiers: Array<{ radiusKm: number; fee: number }>): Promise<ServiceSurchargeTier[]>;
   // S7 availability model (DECISIONS.md ledger 102) — replace-list write rails, patterns.md
   // route-points precedent (delete+insert under a parent-row lock).
@@ -1328,6 +1330,15 @@ export class DatabaseStorage implements IStorage {
       .orderBy(serviceRoutePoints.position);
   }
 
+  // Batched variant (N+1 fix): one IN-clause query for many services' route points, still
+  // position-ascending within each service. Callers group rows by serviceId.
+  async getRoutePointsByServiceIds(serviceIds: string[]): Promise<ServiceRoutePoint[]> {
+    if (serviceIds.length === 0) return [];
+    return await db.select().from(serviceRoutePoints)
+      .where(inArray(serviceRoutePoints.serviceId, serviceIds))
+      .orderBy(serviceRoutePoints.serviceId, serviceRoutePoints.position);
+  }
+
   // Ruling 22: replace-list write — the route editor submits the full ordered list and the
   // server derives 1-based positions from array order (never client-numbered). Atomic
   // delete+insert so a failed save can't leave a half-replaced route. lat/lng arrive already
@@ -1364,6 +1375,15 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(serviceSurchargeTiers)
       .where(eq(serviceSurchargeTiers.serviceId, serviceId))
       .orderBy(serviceSurchargeTiers.position);
+  }
+
+  // Batched variant (N+1 fix): one IN-clause query for many services' surcharge tiers,
+  // still position-ascending within each service. Callers group rows by serviceId.
+  async getSurchargeTiersByServiceIds(serviceIds: string[]): Promise<ServiceSurchargeTier[]> {
+    if (serviceIds.length === 0) return [];
+    return await db.select().from(serviceSurchargeTiers)
+      .where(inArray(serviceSurchargeTiers.serviceId, serviceIds))
+      .orderBy(serviceSurchargeTiers.serviceId, serviceSurchargeTiers.position);
   }
 
   // Replace-list write (ruling 81; the route-points precedent). The owner submits the full ordered
