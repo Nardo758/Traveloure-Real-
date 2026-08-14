@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
 
-import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
+import { Camera, Mail, Bell, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -31,6 +31,34 @@ export default function Profile() {
   const [isLoading, setIsLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Notification email — for expert/provider roles only
+  const isEarner = user?.role && ["travel_expert","local_expert","event_planner","service_provider","executive_assistant","expert"].includes(user.role);
+  const [notificationEmail, setNotificationEmail] = useState<string>("");
+  const hydratedNotifEmail = useRef(false);
+
+  const { data: savedNotificationEmail } = useQuery<{ notificationEmail: string | null }>({
+    queryKey: ["/api/me/notification-email"],
+    enabled: !!isEarner,
+  });
+
+  useEffect(() => {
+    if (!savedNotificationEmail || hydratedNotifEmail.current) return;
+    hydratedNotifEmail.current = true;
+    setNotificationEmail(savedNotificationEmail.notificationEmail ?? "");
+  }, [savedNotificationEmail]);
+
+  const saveNotificationEmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/me/notification-email", {
+        notificationEmail: notificationEmail.trim() || null,
+      });
+      return res.json() as Promise<{ notificationEmail: string | null }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/notification-email"] });
+    },
+  });
 
   // H8: Travel Preferences — persisted via GET/PATCH /api/me/travel-preferences
   // (users.preferences.travelPreferences, no schema change). Hydrates once from the saved
@@ -98,14 +126,16 @@ export default function Profile() {
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      await saveTravelPreferencesMutation.mutateAsync();
+      const saves: Promise<any>[] = [saveTravelPreferencesMutation.mutateAsync()];
+      if (isEarner) saves.push(saveNotificationEmailMutation.mutateAsync());
+      await Promise.all(saves);
       toast({
         title: "Profile updated",
         description: "Your profile has been saved successfully.",
       });
     } catch (err: any) {
       toast({
-        title: "Couldn't save your travel preferences",
+        title: "Couldn't save your profile",
         description: err?.message || "Please try again.",
         variant: "destructive",
       });
@@ -247,6 +277,41 @@ export default function Profile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Notification email — experts and providers only */}
+        {isEarner && (
+          <Card className="border border-border">
+            <CardHeader>
+              <CardTitle className="text-lg text-foreground dark:text-white flex items-center gap-2">
+                <Bell className="w-4 h-4 text-muted-foreground" />
+                Booking Notifications
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Choose where booking alert emails are delivered
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="notificationEmail" className="text-foreground dark:text-white flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  Notification email
+                </Label>
+                <Input
+                  id="notificationEmail"
+                  type="email"
+                  placeholder={user?.email || "your@business.com"}
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  className="border-border"
+                  data-testid="input-notification-email"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Booking alerts will go here instead of your account email. Leave blank to use your account email.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Payment Methods (FP-2) */}
         <PaymentMethodsCard />
