@@ -7058,6 +7058,10 @@ export const travelpayoutsCache = pgTable("travelpayouts_cache", {
   cacheKey: varchar("cache_key", { length: 500 }).notNull().unique(),
   data: jsonb("data").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+  // refreshedAt is stamped on every upsert (onConflictDoUpdate) by shared-cache.service.ts.
+  // It reflects the true last-refresh time, unlike createdAt which is immutable after first insert.
+  // No default: pre-migration rows carry NULL, surfaced as "unknown" by the status endpoint.
+  refreshedAt: timestamp("refreshed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

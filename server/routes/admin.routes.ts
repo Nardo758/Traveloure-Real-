@@ -105,6 +105,7 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+import { travelpayoutsCache } from "@shared/schema";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -7521,6 +7522,35 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
+  }
+});
+
+// ─── Travelpayouts cache status ────────────────────────────────────────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Aggregates all cache rows by
+// brand so operators can see whether displayed eSIM, transport, and activity
+// cards are fresh or stale. refreshedAt (migration 221, stamped on every upsert
+// by shared-cache.service.ts) is the accurate last-refresh time — createdAt is
+// immutable after first insert and is not surfaced here. Pre-migration rows with
+// null refreshedAt are represented as lastRefreshedAt: null ("unknown").
+router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
+  try {
+    const now = new Date();
+    const rows = await db
+      .select({
+        brand: travelpayoutsCache.brand,
+        cacheKey: travelpayoutsCache.cacheKey,
+        expiresAt: travelpayoutsCache.expiresAt,
+        refreshedAt: travelpayoutsCache.refreshedAt,
+      })
+      .from(travelpayoutsCache)
+      .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
+
+    const { aggregateBrandStatus } = await import("../services/travelpayouts/travelpayouts-cache-status");
+    const brands = aggregateBrandStatus(rows, now);
+    res.json({ brands, retrievedAt: now });
+  } catch (error: any) {
+    console.error("[admin/travelpayouts-cache/status] error:", error);
+    res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
   }
 });
 
