@@ -1,5 +1,12 @@
 # Provider batch exercise — a full Kyoto catalog, authored through the real console
 
+> **SUPERSEDED FOR CURRENT STATE — historical record (Run 1).** The console was rebuilt after this run
+> (Wave 3 lanes S7/S8/S9/S11 + Catalog/Workstation rebuilds, ledger rows 103–111): the P0 (A1) and findings
+> B2/B3/B4b/B5/B6/B7/B8/B9/C1(part)/C9/C12/D2/D4 are **verified fixed** in
+> **`PROVIDER_BATCH_EXERCISE_RUN2.md`** (Aug 14, 2026), which re-executed the full exercise at SHA `2737569`
+> and is the current-state document. This file stays as-was: its findings carry this run's as-of SHA and its
+> fixture DB (`traveloure_batch`) lived on a bench container that no longer exists.
+
 **As-of SHA:** `127ffb5eb21f0c533db4c5b4da28aaed1259faa1` (branch `lane/provider-batch-exercise`, doc/asset commits only — zero product-code changes).
 **Run date:** Aug 12, 2026. **Assets:** `docs/testing/assets/provider-batch/`.
 
