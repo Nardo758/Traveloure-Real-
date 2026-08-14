@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { createChildLogger, databaseQueryDuration } from "../infrastructure";
+import { storage } from "../storage";
 
 export interface BudgetSummary {
   totalBudget: number;
@@ -51,20 +52,31 @@ export interface CurrencyConversion {
   exchangeRate: number;
 }
 
-const EXCHANGE_RATES: Record<string, number> = {
-  "USD": 1.0,
-  "EUR": 0.92,
-  "GBP": 0.79,
-  "JPY": 149.5,
-  "CAD": 1.36,
-  "AUD": 1.53,
-  "CHF": 0.88,
-  "CNY": 7.24,
-  "INR": 83.12,
-  "MXN": 17.15,
-  "BRL": 4.97,
-  "THB": 35.5,
-};
+/**
+ * In-memory FX rate cache — refreshed at most every 5 minutes so that repeated
+ * convertCurrency calls within a request burst do not hammer the database while
+ * still picking up the daily fx_rates refresh promptly.
+ */
+const FX_CACHE_TTL_MS = 5 * 60 * 1000;
+let fxCacheRates: Record<string, number> | null = null;
+let fxCacheExpiresAt = 0;
+
+/**
+ * Fetch the latest FX rates (units-per-USD) from the DB-backed fx_rates table,
+ * with a short in-memory cache. USD itself is always 1.0.
+ * Throws if the DB returns no rows (table not yet seeded).
+ */
+async function getDbFxRates(): Promise<Record<string, number>> {
+  if (fxCacheRates && Date.now() < fxCacheExpiresAt) return fxCacheRates;
+  const result = await storage.getLatestFxRates();
+  if (!result || Object.keys(result.rates).length === 0) {
+    throw new Error("FX rate table is empty — cannot perform currency conversion");
+  }
+  const rates: Record<string, number> = { USD: 1.0, ...result.rates };
+  fxCacheRates = rates;
+  fxCacheExpiresAt = Date.now() + FX_CACHE_TTL_MS;
+  return rates;
+}
 
 const TIP_PERCENTAGES: Record<string, { restaurant: number; taxi: number; hotel: number }> = {
   "US": { restaurant: 18, taxi: 15, hotel: 5 },
@@ -246,17 +258,33 @@ export class BudgetService {
     fromCurrency: string, 
     toCurrency: string
   ): Promise<CurrencyConversion> {
-    const fromRate = EXCHANGE_RATES[fromCurrency.toUpperCase()] || 1;
-    const toRate = EXCHANGE_RATES[toCurrency.toUpperCase()] || 1;
-    
+    const from = fromCurrency.toUpperCase();
+    const to = toCurrency.toUpperCase();
+
+    const rates = await getDbFxRates();
+
+    if (!(from in rates)) {
+      throw new BudgetValidationError(
+        `Unsupported currency "${from}" — no FX rate found in the database`,
+      );
+    }
+    if (!(to in rates)) {
+      throw new BudgetValidationError(
+        `Unsupported currency "${to}" — no FX rate found in the database`,
+      );
+    }
+
+    const fromRate = rates[from]; // units of `from` per 1 USD
+    const toRate = rates[to];     // units of `to` per 1 USD
+
     const usdAmount = amount / fromRate;
     const convertedAmount = usdAmount * toRate;
     const exchangeRate = toRate / fromRate;
 
     return {
       amount,
-      fromCurrency: fromCurrency.toUpperCase(),
-      toCurrency: toCurrency.toUpperCase(),
+      fromCurrency: from,
+      toCurrency: to,
       convertedAmount: Math.round(convertedAmount * 100) / 100,
       exchangeRate: Math.round(exchangeRate * 10000) / 10000,
     };
