@@ -114,6 +114,7 @@ import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -6181,21 +6182,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
       const { status } = req.body;
-      // Normalize reason: must be a string when provided, trimmed, blank treated as absent.
-      // Server-enforced 500-char cap mirrors the UI limit and prevents arbitrarily large
-      // user-controlled content from reaching the DB or notification payload.
-      const rawReason = req.body.reason;
-      let reason: string | undefined;
-      if (rawReason !== undefined && rawReason !== null) {
-        if (typeof rawReason !== "string") {
-          return res.status(400).json({ message: "reason must be a string" });
-        }
-        const trimmed = rawReason.trim();
-        if (trimmed.length > 500) {
-          return res.status(400).json({ message: "reason must be 500 characters or fewer" });
-        }
-        reason = trimmed || undefined; // blank → absent
+      // Normalize and validate the optional decline reason via the shared utility so the
+      // server-side check and the unit-tested production code are the same code path.
+      const reasonResult = normalizeDeclineReason(req.body.reason);
+      if (!reasonResult.ok) {
+        return res.status(reasonResult.status).json({ message: reasonResult.message });
       }
+      const reason = reasonResult.reason;
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
