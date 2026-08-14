@@ -1179,7 +1179,7 @@ export async function registerRoutes(
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks trip creation */ });
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1444,7 +1444,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks itinerary response */ });
 
       // Rebuild itinerary_items — delete old, insert new.
       // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
@@ -1644,7 +1644,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           eventType: "revenue",
           funnelStage: "T6",
           eventData: { amount: totalAmount },
-        }).catch(() => {});
+        }).catch(() => { /* fire-and-forget funnel event — never blocks booking confirmation */ });
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -3659,6 +3659,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const photoUrl = pexelsPhotos[0]?.url ?? null;
           return res.json({ photoUrl });
         } catch {
+          // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
         }
       }
@@ -5474,6 +5475,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         displayName,
       });
     } catch {
+      // Fail closed: if the verification profile cannot be read, report as unverified.
       res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });
@@ -8596,7 +8598,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
         eventType: "cart_populated",
         funnelStage: "T4",
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks cart response */ });
 
       res.json({
         message:
@@ -9219,12 +9221,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       } catch (inner) {
         // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
-        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch(() => {});
+        // Best-effort rollback — if either step fails, log but still re-throw the original error
+        // so the outer handler can surface it; a partial rollback is better than a silent hang.
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) => {
+          console.warn("[coordination/payment] Could not release claimed credit during rollback:", rollbackErr);
+        });
         await db
           .update(coordinationStates)
           .set({ feePaymentStatus: "unpaid" })
           .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
-          .catch(() => {});
+          .catch((rollbackErr) => {
+            console.warn("[coordination/payment] Could not reset feePaymentStatus to 'unpaid' during rollback:", rollbackErr);
+          });
         throw inner;
       }
     } catch (error: any) {
