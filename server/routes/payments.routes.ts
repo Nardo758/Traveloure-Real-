@@ -237,8 +237,15 @@ router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
   // expert_service_offerings is the canonical template catalog.
   // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
 
-router.get("/api/revenue-splits", async (req, res) => {
+// Task 1151: revenue splits expose commercially sensitive rates — admin-only.
+router.get("/api/revenue-splits", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       const splits = await storage.getRevenueSplits();
       res.json(splits);
     } catch (err) {
@@ -2044,6 +2051,11 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
 
 
 router.get("/stripe/connect/return", (req, res) => {
+    // Task 1151: require an authenticated session before processing redirect state.
+    // Unauthenticated hits bounce to login and come back here afterwards.
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return res.redirect("/login?returnTo=" + encodeURIComponent("/stripe/connect/return"));
+    }
     // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
     const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
     if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=connected");
@@ -2053,6 +2065,10 @@ router.get("/stripe/connect/return", (req, res) => {
 
 
 router.get("/stripe/connect/refresh", (req, res) => {
+    // Task 1151: require an authenticated session before processing redirect state.
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return res.redirect("/login?returnTo=" + encodeURIComponent("/stripe/connect/refresh"));
+    }
     // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
     const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
     if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=refresh");
@@ -2063,9 +2079,13 @@ router.get("/stripe/connect/refresh", (req, res) => {
   // === Admin Payouts Management ===
 
 
-router.get("/api/booking-fee-config", async (req, res) => {
+router.get("/api/booking-fee-config", isAuthenticated, async (req, res) => {
     try {
       const category = (req.query.category as string) || "default";
+      // Task 1151: authenticated-only; per-expert/provider rate context is only
+      // visible to an admin or the identified expert/provider themselves (IDOR guard).
+      const sessionUserId = getUserId(req);
+      if (!sessionUserId) return res.status(401).json({ message: "Authentication required" });
       // Forward the SAME context the checkout charge resolves with (category +
       // per-expert override id + early-adopter/provider id) — not a generic default —
       // so display == charge for the SAME booking context, not merely same-source.
@@ -2073,6 +2093,15 @@ router.get("/api/booking-fee-config", async (req, res) => {
       // expertId: service.userId }); this mirrors those inputs.
       const expertId = (req.query.expertId as string) || null;
       const providerId = (req.query.providerId as string) || null;
+      if (expertId || providerId) {
+        const requestedIds = [expertId, providerId].filter(Boolean) as string[];
+        if (requestedIds.some((id) => id !== sessionUserId)) {
+          const sessionUser = await storage.getUser(sessionUserId);
+          if (!sessionUser || sessionUser.role !== "admin") {
+            return res.status(403).json({ message: "Forbidden" });
+          }
+        }
+      }
       // Canonical source: fee_bands via the commission resolver. Previously read
       // booking_fee_configs directly, which diverged from the charge once Phase 1.3
       // made fee_bands canonical (12% fallback on prod, where the table was absent).
