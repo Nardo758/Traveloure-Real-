@@ -1118,4 +1118,8 @@ export const MIGRATION_FILES = [
   // before the sync logic was in place. Fully idempotent UPDATE (re-derives from source of
   // truth; safe to re-run). Only updates services that have at least one booking row.
   "223_backfill_service_booking_counters.sql",
+  // 224: add notification_email to users. Experts/providers can set a separate
+  // business email for booking alert emails; falls back to users.email when NULL.
+  // Never touches auth flows. Idempotent (ADD COLUMN IF NOT EXISTS).
+  "224_notification_email.sql",
 ] as const;

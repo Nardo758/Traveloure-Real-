@@ -32,8 +32,9 @@ export default function Profile() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Notification email — for expert/provider roles only
-  const isEarner = user?.role && ["travel_expert","local_expert","event_planner","service_provider","executive_assistant","expert"].includes(user.role);
+  // Notification email — for earner roles only (expert-family + service_provider; NOT executive_assistant)
+  const EARNER_ROLES = new Set(["expert","local_expert","travel_expert","event_planner","service_provider"]);
+  const isEarner = user?.role != null && EARNER_ROLES.has(user.role);
   const [notificationEmail, setNotificationEmail] = useState<string>("");
   const hydratedNotifEmail = useRef(false);
 

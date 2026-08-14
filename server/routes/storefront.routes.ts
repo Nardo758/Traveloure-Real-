@@ -20,6 +20,7 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { isEarnerRole } from "@shared/roles";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
@@ -1016,6 +1017,10 @@ const notificationEmailSchema = z.object({
 
 router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
   try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
     const userId = getUserId(req)!;
     const [row] = await db
       .select({ notificationEmail: users.notificationEmail })
@@ -1031,6 +1036,10 @@ router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) 
 
 router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
   try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
     const userId = getUserId(req)!;
     const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
