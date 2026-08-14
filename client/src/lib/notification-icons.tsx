@@ -152,6 +152,11 @@ export function resolveNotificationLink(n: ApiNotification): ResolvedNotificatio
             : "Open",
     };
   }
+  // workspacePath without tripId: provider booking-request notifications route here
+  // (/provider/bookings) because /expert/workspace is expert-role-gated on the client.
+  if (n.data?.workspacePath && !n.data.tripId) {
+    return { href: n.data.workspacePath, label: "View Booking" };
+  }
   if (n.type === "message_received") {
     return { href: n.data?.clientId ? `/chat?clientId=${n.data.clientId}` : "/chat", label: "Open Chat" };
   }

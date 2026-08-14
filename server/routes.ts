@@ -1551,6 +1551,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         let platformFeeAmt: string;
         let providerEarningsAmt: string;
         let bookingType: BookingType;
+        // Hoisted outside if (providerId) so the notification block below can read it.
+        let ownerRole: string | null = null;
 
         if (providerId) {
           const [ownerRow] = await db
@@ -1558,7 +1560,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .from(users)
             .where(eq(users.id, providerId))
             .limit(1);
-          const ownerRole = ownerRow?.role ?? null;
+          ownerRole = ownerRow?.role ?? null;
 
           // isNewExpert: registered within the last 90 days
           const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
@@ -1665,9 +1667,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Route deep-link based on the service owner's role. Experts land on their
               // workspace for the trip (a booking-request scoped view). Providers land on
               // their bookings inbox — /expert/workspace is expert-role-gated on the client.
-              ...(tripId && isExpertRole(ownerRow?.role)
+              // ownerRole is hoisted above the if (providerId) block so it is always in scope.
+              ...(tripId && isExpertRole(ownerRole)
                 ? { tripId }
-                : { workspacePath: isProviderRole(ownerRow?.role) ? "/provider/bookings" : undefined }),
+                : { workspacePath: isProviderRole(ownerRole) ? "/provider/bookings" : undefined }),
             },
           });
 
