@@ -448,6 +448,10 @@ count), branch `claude/provider-console-batch-exercise-viater` (content == origi
 Provider fixture: cartagena-concierge@traveloure.test; admin: test-admin@traveloure.test.
 Note: dispatch cites CLAUDE.md §23, which does not exist in this checkout (sections stop at §19);
 flagged here rather than blocking.
+*Flag resolved:* §23 IS on this branch — it is item **23 in the Locked Decisions list** (CLAUDE.md
+line ~112, "Edit-split on approved listings"), not a `### §` governing-rule section header. The
+doc's convention cites locked-decision items with the same § prefix (§20/§21/§22 throughout); the
+governing-rule sections separately run §13–§19. Nothing is missing.
 
 | Check | Result | Evidence |
 |---|---|---|
