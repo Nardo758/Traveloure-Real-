@@ -303,11 +303,84 @@ What does exist, for Leon's disposition:
   Settings, the storefront and detail pages, at desktop and phone widths — so once the mockup export is
   committed, Part 3 is a comparison pass over existing assets, not a re-drive of the console.
 
-**§Q1 (for Leon):** commit the mockup export to `docs/design/provider-console-mockup/` (HTML + one full-page
-screenshot per distinct screen/state + one-line README stating authority scope), then re-dispatch Part 3 only.
-**§Q2 (for Leon):** whether the two committed `mock-reference.png` files should be treated as the ratified
-fragments of that directory in the meantime (they were authoritative enough to rebuild against — rows
-110–111).
+*(The above was the state at first publish. The decision-maker then supplied the artifact URL and directed
+its use — the export now exists and Part 3 follows.)*
+
+## 6b. Mockup conformance — graded against the exported click-through mock
+
+The mock (`d1c16852-4f7e-483b-916c-fe00ce7e5a76`, "Provider console — service creation redesign") was
+exported to **`docs/design/provider-console-mockup/`** — `mockup.html` (self-contained, clickable) + 20
+per-view screenshots + a README stating authority scope — and Part 3 was run as a comparison pass against
+this run's live screenshots.
+
+**Headline: the live console was visibly built FROM this mock.** The shell matches element-for-element (same
+three sidebar groups, same eleven stations, Distribute present); the create flow's method-derived step rails
+match **verbatim** — In person → `Basics / Scheduling / Capacity / Logistics / Review & submit`, Video →
+`Session details`, Async → `Async details`, PDF → `What they get` — and the mock's signature copy ("rows
+navigate, they do not tick", the §13 route-connector language, "Measurement stays on Performance") appears in
+the build nearly word-for-word. Divergences cluster in two places: surfaces where a **later ratified ruling**
+moved past the mock (availability's form, the property builder's scope), and the mock's **self-labelled
+proposals** (gaps #1/#2/#17/#18), which are Leon's to ratify, not build defects. Two genuine BUILD-GAPs
+matter: the Logistics consolidation is half-done, and autosave was never built.
+
+### Conformance matrix
+
+Desktop 1440px throughout (the mock is a fixed desktop shell — no phone-width claims to grade; the live phone
+pass is §2 P+16). Mock refs: `docs/design/provider-console-mockup/mock-*.png`; live refs:
+`docs/testing/assets/provider-batch-run2/*.png`.
+
+| Surface | Grade | Mock ↔ live | One-line delta |
+|---|---|---|---|
+| Console shell / sidebar | **MATCH** | `mock-01` ↔ `30-catalog-list` | WORK/BUSINESS/ACCOUNT groups, all 11 stations, order identical; Distribute (the mock's one proposed nav entry) is built and live. |
+| Catalog — list | **MATCH** + BUILD-AHEAD | `mock-01`, `mock-13` (top) ↔ `30-catalog-list` | Card anatomy identical (thumb · name · method·place·price · status pill · storefront toggle · health note · Availability → · Promote this → · Edit); build adds Manage/Preview modes and the CARD SHOWS block (price toggle, Instant/Request/Hidden) the mock never drew. |
+| Catalog — map view | **MATCH** | mock's Aug-12 note: authoring on Logistics, Catalog read-only ↔ `31-catalog-map-view` | Both agree post-ruling; live's honesty copy ("nothing is dropped on the city centre") exceeds the mock's. |
+| Workstation (one door) | **MATCH** | `mock-03-workstation` ↔ `27-workstation` | Headline + 3-tile ladder + category quick-start verbatim; mock's Property tile still reads "gap #1 — builder not yet specified" while the build has a real builder → that half **MOCKUP-STALE**. |
+| Create — Basics/Scheduling/Capacity | **MATCH** | `mock-04/05/06` ↔ `s1-1-basics`, `s1-2-scheduling`, `s1-3-capacity` | Step rails and the self-explaining step-count note match verbatim; field sets align (duration, earliest/latest, timezone, cutoff, party min/max). |
+| Create — Logistics (map canvas) | **BUILD-GAP (P2)** + MOCKUP-STALE | `mock-07-create-step4-logistics` ↔ `33-s1-logistics-step`, `s1-4-logistics` | Mock's core idea — *"one card, one vocabulary": six questions collapsed into one canvas + one rail* — is half-built: armed pin/stop placement, §13 connector copy and the confirm-gated pin are there, but the build **retains** the free-text Service Area and the global neighborhood wall the mock deletes (→ R7/R12), lacks the display-only travel-surcharge-zones layer, and authors route stops after save rather than in-flow. Transport: mock has one pickup toggle, build a richer 4-state control (**MOCKUP-STALE**, plausibly better). §Q1–§Q3. |
+| Create — Review & submit | **MATCH** | `mock-08` ↔ `s1-5-review-filled` | Attestation gate + explicit missing-required copy in both. |
+| Create — Video/Async/PDF variants | **MATCH** | `mock-10-create-{video,async,pdf}-step2` ↔ `s6-2-step`, `s7-2-step`, `s5-2-step` | Step names verbatim; join-link, response-window/scope and deliverable fields all present — the S9 lane implemented these screens. |
+| Draft autosave | **BUILD-GAP (P2)** | `mock-07` ("Draft · autosaved… closing this tab keeps everything") ↔ R22 | Mock specifies autosave; build has manual Save Draft and loses wizard state on revisit (known punch-list). §Q4. |
+| Listing home | **MATCH** + inventory | `mock-12-listing-home` ↔ `32-s1-edit-page` | Draft hero, plain-language checklist ("rows navigate, they do not tick" ↔ live "nothing here ticks itself"), availability-makes-it-bookable row, Pricing & fees "tune later" card: all built. Mock's rail adds Photos & media + Availability settings cards (live: checklist rows only — §Q7); mock's "Editing a live listing" split is **gap #17, a proposal** — live implements the pre-#17 blanket re-check posture (§Q8; not graded a defect). |
+| Availability engine | **MOCKUP-STALE** (ratified S7 lane) + 1 felt gap | `mock-13-availability` ↔ `52-availability-drawer`, `54b/55b/56/57` | Semantics match exactly — three primitives (weekly repeats / one-off slots / subtract-only blackouts), one editor, Catalog as its home, deep-linked from rows. Form diverges: mock is a month-grid editor with a **"Next available:" chip**; the ratified S7 build is a drawer with list rows. The chip's absence is the same hole R5 found on the traveler calendar; the drawer's own R4 defects are regressions against either design. §Q5. |
+| Property builder | **MOCKUP-STALE** (ratified row 102) + **BUILD-GAP (P2/P3)** | `mock-14-property-0`, `mock-15-property-*` ↔ `36/37/39/40/41` | Mock = full-page 3-step flow (gap #1, proposed); build = ratified dialog whose migration deliberately added only check-in/out + house rules + amenities. Deltas that survive the ruling: **minimum stay** absent (P2), cancellation free text vs the mock's stay-shaped band select (P3), pin/privacy card not in the dialog — though the privacy circle IS built server-side (`locationApproximate` + approximate badge on the traveler page; unobservable this run, no Maps key). §Q6. |
+| Bundle builder | *(ungraded)* | mock's bundle tile is locked in its seed; no bundle view exportable | Live builder (`50-bundle-builder-blank`) matches the mock tile's contract (unlock at 2 approved, one price, no auto-sum). |
+| Calendar | **MATCH** + BUILD-AHEAD | `mock-17-calendar` ↔ `81-calendar` | Both read-only month grids whose chips deep-link to the owning editor ("Nothing on this page edits anything"); build adds All/Bookings/Availability channel filters. Chip deep-link not click-verified this run. |
+| Distribute | **MATCH** + 1 divergence | `mock-18-distribute` ↔ `62-distribute`, `65-shortlink-*` | Storefront card, three share frames (Feed/Story/**Route** with the same no-invented-distance note), copy-link + QR, Promote opportunities with reasons, "measurement stays on Performance": all built. Divergence: mock edits handle & bio on Distribute; build sends you to Settings (§Q9). |
+| Dashboard / Inbox / Money / Customers / Performance / Settings / Playbook | **BUILD-AHEAD** | `mock-19-stub-*` ↔ `46`, `47`, `81-*`, `63` | The mock stubs all seven ("proposed structure — Distribute is the one new entry"); the build has real pages for every one. Inventory, not defects. |
+| Traveler surfaces (storefront, detail pages) | *(out of mock scope)* | — ↔ `70/71-*` | The mock draws no traveler-facing pages; Part 2's read-path verdicts stand on their own. |
+| Visual styling | **MATCH** (token question) | all | Build's console chrome uses the mock's exact palette (#1A1A18 ink / #FAFAF8 ground / #35605A teal accent). The dispatch named Navy `#1E3A5F` / Teal `#2E8B8B` / Gold `#E8B339` as brand tokens; mock and build agree with each other, not with that triple. §Q10. |
+
+### §-numbered questions for Leon (which side moves)
+
+- **§Q1 — Logistics consolidation (BUILD-GAP P2).** The mock's "one card, one vocabulary" deletes the
+  free-text Service Area and the neighborhood picker in favour of pin + radius; the build kept both old
+  controls beside the new canvas (and the picker is the R7 scalar-column / R12 global-wall offender). Finish
+  the consolidation, or amend the mock?
+- **§Q2 — Transport vocabulary.** Mock: one "I collect travelers and drop them back" toggle. Build: 4-state
+  segmented control (pickup included / pickup available / meet at point / n-a). The build looks richer —
+  ratify it and mark the mock stale?
+- **§Q3 — Travel-surcharge zones layer.** Mock draws display-only zone rings on the Logistics map with
+  amounts living in Pricing & fees. Nothing in the build. Build it, or drop it from the mock?
+- **§Q4 — Autosave (BUILD-GAP P2).** Mock: "Draft · autosaved… closing this tab keeps everything." Build:
+  manual Save Draft, wizard state lost on revisit (punch-list). The mock has picked a side; ratify?
+- **§Q5 — Availability editor form.** S7's ratified drawer vs the mock's month-grid (gap #2 proposal). At
+  minimum: adopt the mock's **"Next available"** chip — its absence is the same hole R5 found on the traveler
+  calendar — and fix the drawer's R4 interaction bugs regardless of which form wins.
+- **§Q6 — Property builder deltas.** Minimum-stay field (mock has it, build doesn't — P2) and stay-shaped
+  cancellation *bands* vs free text (P3). Row 102 scoped these out; does the mock's fuller field set get a
+  follow-up ballot?
+- **§Q7 — Listing-home rail.** Mock: Pricing & fees + Availability + Photos & media as three settings cards.
+  Build: Pricing & fees card only, the rest as checklist rows. Cosmetic; which layout is the target?
+- **§Q8 — Edit-split policy (mock gap #17, proposal).** Mock proposes safe edits go live immediately while
+  identity-changing edits re-enter review with the approved version staying live; build re-checks everything.
+  The mock itself says "ratify or amend" — this is the ruling it was waiting for.
+- **§Q9 — Where handle & bio are edited.** Mock: on Distribute ("Catalog is what you sell; this is how you
+  sell it"). Build: Settings, with Distribute linking out. Pick one.
+- **§Q10 — Which token set governs the provider console.** Mock and build both use the earthy User-Console
+  palette (#1A1A18/#FAFAF8/#35605A); the dispatch's brand tokens are Navy/Teal/Gold. If the earthy set is the
+  console's ratified palette, record it in the mockup README so future conformance passes don't flag it.
+- *(Standing, from §2:)* both mock and build promise a decision notification ("you'll be notified" / "We'll
+  email you when it's decided") and neither delivers one on this bench — R3 is a defect under either design.
 
 ---
 
