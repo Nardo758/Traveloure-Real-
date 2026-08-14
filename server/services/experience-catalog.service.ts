@@ -12,10 +12,11 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, and, or, ilike, gte, lte, asc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, gte, lte, asc, sql, inArray, lt } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
+import { feverService } from "./fever.service";
 
 // ─────────────────────────────────────────────
 // Discriminated union content model
@@ -414,11 +415,37 @@ class ExperienceCatalogService {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const events = await db.select()
+    let events = await db.select()
       .from(feverEventCache)
       .where(whereClause)
       .limit(limit)
       .offset(offset);
+
+    // Fetch-on-miss: if no events are cached for this destination, or all cached
+    // entries are stale (expiresAt in the past), trigger a live Fever API call and
+    // re-query so users always see real data without a prior cache warm-up.
+    const wantsFeverEvents =
+      !params.providers || params.providers.length === 0 || params.providers.includes("fever");
+
+    if (wantsFeverEvents && params.destination) {
+      const now = new Date();
+      const hasLiveResults = events.some(e => e.expiresAt > now);
+
+      if (!hasLiveResults) {
+        try {
+          const upserted = await feverService.upsertEventsToCache(params.destination);
+          if (upserted > 0) {
+            events = await db.select()
+              .from(feverEventCache)
+              .where(whereClause)
+              .limit(limit)
+              .offset(offset);
+          }
+        } catch (err: any) {
+          this.catalogLogger.warn({ err }, "Fever fetch-on-miss failed, using existing cache");
+        }
+      }
+    }
 
     return events.map(e => ({
       id: e.id,

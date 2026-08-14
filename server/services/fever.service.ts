@@ -13,6 +13,10 @@
  * - Affiliate tracking for commission via Impact.com
  */
 
+import { db } from "../db";
+import { feverEventCache } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
 export interface FeverEvent {
   id: string;
   title: string;
@@ -499,6 +503,87 @@ class FeverService {
     });
 
     return result?.events || [];
+  }
+
+  /**
+   * Fetch live events for a city from the Fever API and upsert them into the
+   * fever_event_cache table.  Returns the number of rows written.
+   *
+   * Mirrors the pattern used by BookingComService.upsertHotelsToCache so that
+   * ExperienceCatalogService can trigger a fetch-on-miss and a 24 h stale-refresh
+   * without duplicating HTTP logic here.
+   */
+  public async upsertEventsToCache(cityNameOrCode: string): Promise<number> {
+    const result = await this.searchEvents({ city: cityNameOrCode, limit: 30 });
+    if (!result || result.events.length === 0) return 0;
+
+    const { city, events } = result;
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    let upserted = 0;
+
+    for (const event of events) {
+      try {
+        const existing = await db
+          .select({ id: feverEventCache.id })
+          .from(feverEventCache)
+          .where(eq(feverEventCache.eventId, event.id))
+          .limit(1);
+
+        const values = {
+          eventId: event.id,
+          title: event.title,
+          slug: event.slug,
+          description: event.description ?? null,
+          shortDescription: event.shortDescription ?? null,
+          imageUrl: event.imageUrl ?? null,
+          thumbnailUrl: event.thumbnailUrl ?? null,
+          category: event.category,
+          subcategory: event.subcategory ?? null,
+          city: city.name,
+          cityCode: city.code,
+          country: city.country,
+          countryCode: city.countryCode,
+          venueName: event.venue?.name ?? null,
+          venueAddress: event.venue?.address ?? null,
+          latitude: event.venue?.coordinates?.lat?.toString() ?? null,
+          longitude: event.venue?.coordinates?.lng?.toString() ?? null,
+          startDate: event.dates.startDate ? new Date(event.dates.startDate) : null,
+          endDate: event.dates.endDate ? new Date(event.dates.endDate) : null,
+          sessions: event.dates.sessions ?? [],
+          currency: event.pricing.currency,
+          minPrice: event.pricing.minPrice?.toString() ?? null,
+          maxPrice: event.pricing.maxPrice?.toString() ?? null,
+          priceRange: event.pricing.priceRange ?? null,
+          isFree: event.isFree,
+          isSoldOut: event.isSoldOut,
+          rating: event.rating?.toString() ?? null,
+          reviewCount: event.reviewCount ?? 0,
+          bookingUrl: event.bookingUrl,
+          affiliateUrl: event.affiliateUrl ?? null,
+          tags: event.tags ?? [],
+          highlights: event.highlights ?? [],
+          provider: "fever",
+          rawData: {},
+          expiresAt,
+          lastUpdated: new Date(),
+        };
+
+        if (existing.length > 0) {
+          await db
+            .update(feverEventCache)
+            .set(values)
+            .where(eq(feverEventCache.eventId, event.id));
+        } else {
+          await db.insert(feverEventCache).values(values);
+        }
+        upserted++;
+      } catch (err: any) {
+        console.error(`[Fever] Upsert error for event ${event.id}:`, err?.message);
+      }
+    }
+
+    console.log(`[Fever] Upserted ${upserted} events for city: ${city.name}`);
+    return upserted;
   }
 
   /**
