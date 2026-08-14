@@ -1095,4 +1095,8 @@ export const MIGRATION_FILES = [
   // All idempotent (CREATE EXTENSION/INDEX IF NOT EXISTS), no table/column changes.
   // (Renumbered from 217→218→219 at merge — main's 217 is fx_rates, 218 is hot-query indexes.)
   "219_search_fts_trgm.sql",
+  // 220: seed the full currency set the budget converter supports (CAD, CHF, CNY, INR, MXN,
+  // BRL, THB). Migration 217 only seeded EUR/GBP/JPY/AUD/SGD; the daily FX refresh is also
+  // updated (same commit) to fetch all twelve currencies going forward.
+  "220_fx_rates_full_currency_set.sql",
 ] as const;
