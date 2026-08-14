@@ -20,22 +20,24 @@ import * as fs from 'node:fs';
 
 /**
  * WebKit's bundled libsoup2 has no TLS backend on NixOS — we must point GIO at a
- * glib-networking module dir. Resolve it portably: env override first, then the
- * path recorded at setup time, and fail with a clear prerequisite error if gone
- * (a Nixpkgs rebuild can invalidate store hashes).
+ * glib-networking module dir. Resolved portably: env override first, then the path
+ * recorded by scripts/setup-crossbrowser.sh (which rediscovers it after Nix rebuilds).
+ * No store hash is pinned in code.
  */
 function glibNetworkingGioModules(): string {
-  const candidates = [
-    process.env.GLIB_NETWORKING_GIO_MODULES,
-    '/nix/store/0nflg54vsjqwijig30p1x9n952jqdblb-glib-networking-2.76.0/lib/gio/modules',
-  ].filter(Boolean) as string[];
+  const candidates = [process.env.GLIB_NETWORKING_GIO_MODULES];
+  try {
+    candidates.push(JSON.parse(fs.readFileSync('.cache/crossbrowser-env.json', 'utf8')).gioModules);
+  } catch {
+    /* not provisioned yet */
+  }
   for (const c of candidates) {
-    if (fs.existsSync(`${c}/libgiognutls.so`)) return c;
+    if (c && fs.existsSync(`${c}/libgiognutls.so`)) return c;
   }
   throw new Error(
     'crossbrowser config: no glib-networking GIO module dir found (WebKit would run without TLS ' +
-      'and Stripe checkout would silently break). Install the "glib-networking" Nix package and ' +
-      'set GLIB_NETWORKING_GIO_MODULES=<store-path>/lib/gio/modules.',
+      'and Stripe checkout would silently break). Run scripts/setup-crossbrowser.sh, or set ' +
+      'GLIB_NETWORKING_GIO_MODULES=<store-path>/lib/gio/modules.',
   );
 }
 

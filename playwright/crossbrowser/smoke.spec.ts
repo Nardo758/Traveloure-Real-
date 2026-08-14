@@ -212,6 +212,14 @@ test('full booking checkout with Stripe test card 4242', async ({ page }) => {
   test.setTimeout(240_000);
   const { errors } = trackConsole(page);
   const db = localDbPool();
+  // SAFETY GATE: this test creates a user/trip/booking through the app. Refuse to create
+  // any fixture unless we verifiably have a cleanup path (local dev DB, or explicit
+  // JOURNEY_DB_WRITES_OK=1 opt-in for a non-local DB).
+  expect(
+    db,
+    'checkout smoke refused to run: no cleanup-capable DATABASE_URL (local dev DB required, ' +
+      'or set JOURNEY_DB_WRITES_OK=1 to explicitly authorize fixture writes+cleanup)',
+  ).toBeTruthy();
 
   // Seed via the app's own APIs through the PAGE's cookie jar so the browser session is logged in.
   const uid = Math.random().toString(36).slice(2, 10);

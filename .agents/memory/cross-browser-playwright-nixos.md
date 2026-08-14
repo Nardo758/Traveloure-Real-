@@ -1,16 +1,15 @@
 ---
 name: Cross-browser Playwright on NixOS
-description: How firefox/webkit Playwright browsers were made to run in this Replit workspace, and the traps.
+description: Durable lessons from enabling firefox/webkit Playwright browsers in this workspace.
 ---
 
-Firefox + WebKit Playwright browsers DO work in this workspace (the old "network restrictions" comment in playwright.config.ts is obsolete). Recipe lives in `docs/testing/CROSS_BROWSER_SMOKE_2026-08-14.md`; matrix config is `playwright.crossbrowser.config.ts` + `playwright/crossbrowser/smoke.spec.ts`.
+Firefox + WebKit Playwright browsers DO work here — the old "disabled due to network restrictions" belief is obsolete. Rerun mechanics live in `docs/testing/CROSS_BROWSER_SMOKE_2026-08-14.md` + `scripts/setup-crossbrowser.sh`; don't duplicate them.
 
-**Rules:**
-- Run with `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1` and `LD_LIBRARY_PATH=$PWD/.cache/pw-extra-libs` (host-dep validation always fails on NixOS even when launch works).
-- WebKit MUST launch with a sanitized env: strip `GST_*`/`GIO_*`/`XDG_*`/`GDK/GTK` vars (Nix profile paths pull libsoup3 into the libsoup2 MiniBrowser → `libsoup-ERROR ... not supported` crash) and set `GIO_EXTRA_MODULES` to a glib-networking module dir, or all HTTPS fails with "TLS support is not available" (breaks Stripe).
-- WebKit's `minibrowser-wpe/MiniBrowser` wrapper OVERWRITES `LD_LIBRARY_PATH`; missing libs must be copied into `minibrowser-wpe/sys/lib` (re-do after any `playwright install webkit`).
-- Nix store has both 32-bit and 64-bit gcc lib dirs — check `file -L` before symlinking libstdc++/libatomic (ELFCLASS32 error otherwise).
+**Durable lessons:**
+- On NixOS, Playwright's host-dependency *validation* fails even when browsers launch fine — skip validation rather than chasing phantom missing deps.
+- WebKit's launcher wrapper clobbers `LD_LIBRARY_PATH`, and the Nix profile's GIO/GST env poisons it with a libsoup2/3 conflict; the fix is a sanitized launch env plus an explicit TLS (glib-networking) module — "TLS support is not available" console errors are the tell, and they silently break Stripe.
+- Never pin `/nix/store` hashes in config — rebuilds invalidate them; discover at setup time and cache.
+- The store carries 32-bit and 64-bit copies of gcc libs; always `file -L` before symlinking.
+- Any test that creates users/bookings through the app must gate on a verified cleanup path BEFORE creating fixtures (this repo's convention: `JOURNEY_DB_WRITES_OK=1` opt-in, delete the fresh user in `finally`, and assert the DB fact — a confirmation URL alone can be a false positive).
 
-**Why:** took many attempts (host validation, wrapper env clobber, 32-bit libs, libsoup conflict, missing TLS backend) — each failure mode looks like a different dead end.
-
-**App facts learned:** cart flow reaches payment via `button-skip-to-payment` (optimize-preview sidebar) or `button-proceed-payment` (plain sidebar) → payment step → `button-complete-booking` fires POST /api/checkout → Stripe PaymentElement sheet → unlabeled `form button[type=submit]`. Benign console noise incl. "Failed to send error to Vite server" and unauth 401 probes.
+**Why:** each failure mode above looked like a different dead end and cost multiple attempts; and completion review rejects harnesses with pinned store hashes or uncleaned fixtures.

@@ -5,10 +5,19 @@
 **Run command:**
 
 ```bash
+bash scripts/setup-crossbrowser.sh   # idempotent; provisions WebKit TLS module + helper libs
+
+JOURNEY_DB_WRITES_OK=1 \
 PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 \
 LD_LIBRARY_PATH=$PWD/.cache/pw-extra-libs \
 npx playwright test -c playwright.crossbrowser.config.ts --workers=1
 ```
+
+`JOURNEY_DB_WRITES_OK=1` explicitly authorizes the checkout test's fixture writes (same
+convention as the journey suite — the Replit dev DB is remote, not localhost). The checkout
+test refuses to create any fixture without a cleanup-capable DB connection, asserts the
+booking row actually landed in `service_bookings`, and deletes its fresh `xbrowser-*` user
+(cascading trips/items/bookings) in a `finally` block.
 
 ## Verdict
 
@@ -61,7 +70,7 @@ Firefox/WebKit were historically disabled in `playwright.config.ts` ("network re
 3. Odd-ball libs symlinked into `.cache/pw-extra-libs` (libstdc++, libatomic — must be x86-64, the store also has 32-bit copies — libharfbuzz-icu, libjpeg.so.8, libGLESv2, libx264) and copied into `webkit-2248/minibrowser-wpe/sys/lib` (the WebKit wrapper overwrites `LD_LIBRARY_PATH`).
 4. WebKit launches with a sanitized env (config strips `GST_*`/`GIO_*`/`XDG_*` — the Nix profile's paths pull libsoup3 into the libsoup2-linked MiniBrowser and crash it) plus `GIO_EXTRA_MODULES` pointed at glib-networking's gnutls module for TLS.
 
-Note: re-running `npx playwright install webkit` replaces the browser folder — re-copy `.cache/pw-extra-libs/*` into `minibrowser-wpe/sys/lib` afterwards.
+All of the above is automated by `scripts/setup-crossbrowser.sh` (idempotent — re-run it after a Nixpkgs rebuild or `npx playwright install webkit`). The glib-networking path is discovered dynamically and cached in `.cache/crossbrowser-env.json`; nothing is hash-pinned in code, and `GLIB_NETWORKING_GIO_MODULES` overrides it.
 
 ## Flags / caveats
 
