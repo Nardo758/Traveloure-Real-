@@ -1105,4 +1105,10 @@ export const MIGRATION_FILES = [
   // Pure DDL + DELETE — no column/table changes. Declared in shared/schema.ts same commit
   // (deploy-push durability rule — drizzle push will not drop it).
   "221_fever_event_cache_unique_event_id.sql",
+  // 222: add refreshed_at to travelpayouts_cache. created_at is immutable (set on first insert
+  // and not overwritten by onConflictDoUpdate), so it cannot serve as a last-refresh indicator.
+  // refreshed_at is stamped on every upsert by shared-cache.service.ts, giving operators an
+  // accurate freshness signal via GET /api/admin/travelpayouts-cache/status. No default so
+  // pre-migration rows carry NULL (surfaced as "unknown" by the status endpoint).
+  "222_travelpayouts_cache_refreshed_at.sql",
 ] as const;
