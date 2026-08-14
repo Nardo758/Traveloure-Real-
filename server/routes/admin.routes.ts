@@ -5404,14 +5404,18 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         const { aiUsageService: aiSvc } = await import('../services/ai-usage.service');
         const summary = await aiSvc.getSummary();
         aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCostDollars || 0).toFixed(2)}` };
-      } catch {}
+      } catch (aiErr) {
+        console.warn("[admin/system-health] Could not load AI usage summary — returning defaults:", aiErr);
+      }
 
       try {
         const allBookings = await storage.getServiceBookings({});
         const completedBookings = allBookings.filter(b => b.status === "completed");
         const volume = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
         apiUsage = { transactions: allBookings.length, volume: `$${volume.toLocaleString()}` };
-      } catch {}
+      } catch (bookingErr) {
+        console.warn("[admin/system-health] Could not load booking usage stats — returning defaults:", bookingErr);
+      }
 
       res.json({
         services,
