@@ -278,7 +278,7 @@ export function UnifiedResultCard({
                   data-testid={`button-view-${result.id}`}
                 >
                   {hasPartnerBookingUrl ? (
-                    <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
+                    <><UserCheck className="h-3.5 w-3.5 mr-1" />{result.source === "booking_com" ? "Book on Booking.com" : "Request booking"}</>
                   ) : (
                     <><ExternalLink className="h-3.5 w-3.5 mr-1" />{isPartner ? "Book" : "View"}</>
                   )}
