@@ -153,7 +153,10 @@ export function DestinationTransfersSection({
             <div className="text-right shrink-0 flex flex-col items-end gap-1">
               <p className="font-bold text-sm">{option.priceDisplay}</p>
               <div className="flex items-center gap-1">
-                {onAddToCart && (
+                {/* Only show "Add" for options with a known price.
+                    Quote-only options (priceCentsLow === null) must not be
+                    added as $0 items — that would corrupt the running total. */}
+                {onAddToCart && option.priceCentsLow !== null && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -162,9 +165,7 @@ export function DestinationTransfersSection({
                         id: `transport-${option.id}`,
                         type: "transportation",
                         name: option.title,
-                        price: option.priceCentsLow
-                          ? option.priceCentsLow / 100
-                          : 0,
+                        price: option.priceCentsLow! / 100,
                         quantity: 1,
                         provider:
                           SOURCE_LABELS[option.source] ?? option.source,

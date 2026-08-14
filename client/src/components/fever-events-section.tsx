@@ -326,25 +326,45 @@ export function FeverEventsSection({ destination, startDate, endDate, onAddToCar
                         size="sm"
                         variant="outline"
                         className="text-xs"
-                        onClick={() =>
+                        onClick={() => {
+                          // Only include a numeric price in the cart total when the
+                          // currency is USD (or unknown — assume USD). Non-USD prices
+                          // are logged in `details` so users see the real value, but
+                          // they contribute $0 to the running USD total to avoid
+                          // corrupting the budget with unconverted foreign amounts.
+                          const isUsd =
+                            !event.currency ||
+                            event.currency.toUpperCase() === "USD";
+                          const cartPrice = isUsd ? event.price || 0 : 0;
+
+                          const dateStr = event.dates?.start
+                            ? formatEventDate(event.dates as any)
+                            : null;
+                          const priceStr =
+                            !isUsd && event.price
+                              ? `${event.currency} ${event.price}`
+                              : null;
+                          const detailParts = [
+                            event.venueName,
+                            dateStr,
+                            priceStr ? `Price: ${priceStr}` : null,
+                          ].filter(Boolean);
+
                           onAddToCart({
                             id: `event-${event.id}`,
                             type: "event",
                             name: event.title,
-                            price: event.price || 0,
+                            price: cartPrice,
                             quantity: 1,
                             provider: event.provider || "Fever",
-                            details: [
-                              event.venueName,
-                              event.dates?.start
-                                ? formatEventDate(event.dates as any)
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ") || undefined,
+                            details:
+                              detailParts.join(" · ") || undefined,
                             isExternal: true,
                             metadata: {
-                              affiliateUrl: (event as any).affiliateUrl ?? undefined,
+                              affiliateUrl:
+                                (event as any).affiliateUrl ?? undefined,
+                              currency: event.currency ?? "USD",
+                              originalPrice: event.price ?? undefined,
                               startDate: event.dates?.start
                                 ? String(event.dates.start)
                                 : undefined,
@@ -352,8 +372,8 @@ export function FeverEventsSection({ destination, startDate, endDate, onAddToCar
                                 ? String(event.dates.end)
                                 : undefined,
                             },
-                          })
-                        }
+                          });
+                        }}
                         data-testid={`button-add-event-${event.id}`}
                       >
                         <Plus className="h-3 w-3 mr-1" />

@@ -653,7 +653,14 @@ export async function getDestinationTransportOptions(
     // content_affinity_tags may be absent on older dev DBs — not fatal
   }
 
-  // 2. 12Go — trains, buses, ferries to destination
+  // 2. 12Go — destination search page (user enters their own origin)
+  // Passing destination as both from/to would produce a nonsensical same-city
+  // route. Instead we link to the 12Go destination hub so the user can search
+  // from wherever they're travelling from.
+  const destSlug = encodeURIComponent(
+    destination.toLowerCase().replace(/\s+/g, "-")
+  );
+  const go12Ref = token ? `?z=${token}` : "";
   results.push({
     id: "affiliate-12go",
     source: "12go",
@@ -664,11 +671,12 @@ export async function getDestinationTransportOptions(
     priceDisplay: "From $5",
     priceCentsLow: 500,
     currency: "USD",
-    externalUrl: buildTwelveGoUrl(destination, destination, token),
+    externalUrl: `https://12go.asia/en/travel/to/${destSlug}${go12Ref}`,
     isExternal: true,
   });
 
-  // 3. Omio — coaches & trains to destination
+  // 3. Omio — destination search page (user enters their own origin)
+  const omioRef = token ? `&ref=${token}` : "";
   results.push({
     id: "affiliate-omio",
     source: "omio",
@@ -676,10 +684,11 @@ export async function getDestinationTransportOptions(
     description: "Compare trains, buses & coaches with Omio — great for European routes",
     modeType: "train",
     icon: "🚌",
+    // Omio is price-compare only — priceCentsLow null means no Add button shown
     priceDisplay: "Compare prices",
     priceCentsLow: null,
     currency: "EUR",
-    externalUrl: buildOmioUrl(destination, destination, token),
+    externalUrl: `https://www.omio.com/results?to=${encodeURIComponent(destination)}${omioRef}`,
     isExternal: true,
   });
 
