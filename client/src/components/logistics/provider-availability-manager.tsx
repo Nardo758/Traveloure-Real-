@@ -85,7 +85,14 @@ function isPropertyShaped(service: ProviderService | undefined): boolean {
   return service?.productShape === "property" || service?.productShape === "property_room";
 }
 
-export function ProviderAvailabilityManager() {
+export function ProviderAvailabilityManager({
+  initialServiceId,
+}: {
+  /** CATALOG REBUILD (mock `?availability=<id>` deep-link + the Catalog "Edit slots"
+   *  affordance): preselect this service once the real service list has loaded. A stale
+   *  id (not in this owner's list) is simply never applied — no guessed fallback. */
+  initialServiceId?: string;
+} = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -98,6 +105,14 @@ export function ProviderAvailabilityManager() {
   });
 
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+
+  useEffect(() => {
+    if (!initialServiceId || selectedServiceId) return;
+    if ((services ?? []).some((s) => s.id === initialServiceId)) {
+      setSelectedServiceId(initialServiceId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialServiceId, services]);
   const [newDate, setNewDate] = useState("");
   const [newStart, setNewStart] = useState("09:00");
   const [newEnd, setNewEnd] = useState("18:00");
