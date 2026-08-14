@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { CatalogItem } from "@/types/catalog";
 
 export interface UnifiedResult {
   id: string;
@@ -31,6 +32,12 @@ export interface UnifiedResult {
   rating?: number | null;
   reviewCount?: number | null;
   priceLevel?: string | null;
+  /** Numeric price in the provider's currency. Shown as "$89" when present; overrides priceLevel display. */
+  price?: number | null;
+  /** ISO-4217 currency code for the numeric price (e.g. "USD"). Defaults to "USD" when omitted. */
+  currency?: string | null;
+  /** Suffix appended after the price (e.g. "night" → "$89/night"). */
+  priceSuffix?: string | null;
   address?: string | null;
   description?: string | null;
   imageUrl?: string | null;
@@ -46,6 +53,40 @@ export interface UnifiedResult {
    * vault token instead; the agent-booking rail resolves it back to the URL server-side.
    */
   bookingToken?: string | null;
+}
+
+/**
+ * Convert a CatalogItem (from /api/catalog/* endpoints) to a UnifiedResult
+ * that can be rendered by UnifiedResultCard. Passes the numeric price and
+ * currency directly so the card shows "$89" instead of tier symbols.
+ */
+export function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
+  const source: UnifiedResult["source"] =
+    item.provider === "viator" || item.provider === "viator-feed" ? "viator"
+    : item.provider === "fever" ? "fever"
+    : item.type === "hotel" ? "booking_com"
+    : item.type === "restaurant" ? "restaurant"
+    : item.type === "transfer" ? "transfer"
+    : item.type === "poi" ? "poi"
+    : "native";
+
+  return {
+    id: item.id,
+    name: item.title,
+    description: item.description ?? null,
+    imageUrl: item.imageUrl ?? null,
+    rating: item.rating ?? null,
+    reviewCount: item.reviewCount ?? null,
+    price: item.price ?? null,
+    currency: item.currency ?? "USD",
+    priceSuffix: item.type === "hotel" ? "night" : null,
+    priceLevel: item.priceLevel ?? null,
+    address: item.destination ?? null,
+    source,
+    isPartner: true,
+    category: item.categories[0] ?? item.type,
+    bookingToken: item.bookingToken ?? null,
+  };
 }
 
 interface UnifiedResultCardProps {
@@ -170,6 +211,24 @@ export function UnifiedResultCard({
   };
 
   const renderPrice = () => {
+    // Prefer the numeric price (e.g. "$89" or "$89/night") over tier symbols.
+    if (result.price != null && result.price > 0) {
+      const currency = result.currency ?? "USD";
+      // Use a compact currency symbol when currency is USD/EUR/GBP/etc; fall back to code.
+      const formatted = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(result.price);
+      const label = result.priceSuffix ? `${formatted}/${result.priceSuffix}` : formatted;
+      return (
+        <span className="text-sm font-semibold text-green-700 dark:text-green-400" data-testid={`text-price-${result.id}`}>
+          {label}
+        </span>
+      );
+    }
+
     if (!result.priceLevel) {
       return (
         <span className="text-sm text-muted-foreground">Request Quote</span>
