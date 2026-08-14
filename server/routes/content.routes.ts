@@ -128,7 +128,7 @@ import { partnerEventsCacheService } from "../services/partner-events-cache.serv
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
-import { budgetService } from "../services/budget.service";
+import { budgetService, BudgetValidationError } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
 import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
@@ -6611,6 +6611,9 @@ router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) =>
       const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
       res.json(conversion);
     } catch (error) {
+      if (error instanceof BudgetValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to convert currency" });
     }
   });
