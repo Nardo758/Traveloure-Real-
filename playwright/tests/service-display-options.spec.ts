@@ -15,8 +15,13 @@
  * Auth: seeded provider kyoto-interpreter@traveloure.test / TestPass123! (instantBooking=true, so an
  * unset listing resolves to 'instant' — the pre-change baseline is the book CTA).
  *
+ * Catalog visual parity (lane C-parity): CardShowsControl now renders INSIDE a settings popover
+ * (gear icon, `button-cardshows-toggle-<id>`) rather than inline on the card face — same mutation,
+ * same testids inside it, just gated behind an open click. Switching Manage⇄Preview re-mounts the
+ * Manage list, so the popover must be reopened after every round-trip through Preview.
+ *
  * Relevant source:
- *   client/src/pages/provider/services.tsx   (CardShowsControl + the Manage/Preview toggle)
+ *   client/src/pages/provider/services.tsx   (CardShowsControl + CardShowsPopover + the Manage/Preview toggle)
  *   client/src/components/OfferingCard.tsx    (showPrice / bookingMode props)
  *   server/routes/storefront.routes.ts        (resolveBookingMode on the read)
  */
@@ -35,6 +40,14 @@ async function loginProvider(page: Page) {
   expect(resp.ok(), `login failed: ${resp.status()}`).toBeTruthy();
 }
 
+/** Opens the per-card "Card shows" settings popover and returns its content locator. */
+async function openCardShows(page: Page, serviceId: string) {
+  await page.getByTestId(`button-cardshows-toggle-${serviceId}`).click();
+  const control = page.getByTestId(`cardshows-${serviceId}`);
+  await expect(control).toBeVisible({ timeout: 10_000 });
+  return control;
+}
+
 test.describe('/provider/services — Card shows control drives the traveler card (lane C3)', () => {
   test('Booking mode + Show price on the Manage control change the Preview card', async ({ page }) => {
     await loginProvider(page);
@@ -47,9 +60,9 @@ test.describe('/provider/services — Card shows control drives the traveler car
     const testId = await manageCard.getAttribute('data-testid');
     const serviceId = testId!.replace('card-service-', '');
 
-    // The "Card shows" control is present on the Manage card.
-    const control = page.getByTestId(`cardshows-${serviceId}`);
-    await expect(control).toBeVisible();
+    // The "Card shows" gear is present on the Manage card, and opens the control.
+    await expect(page.getByTestId(`button-cardshows-toggle-${serviceId}`)).toBeVisible();
+    await openCardShows(page, serviceId);
 
     // ── Baseline: seeded booking_mode is unset → resolves to 'instant' (account instantBooking=true),
     //    so the Preview card renders the book CTA and the price. ─────────────────────────────────
@@ -61,6 +74,7 @@ test.describe('/provider/services — Card shows control drives the traveler car
 
     // ── (a) Set Booking = Request on the Manage control ────────────────────────────────────────
     await page.getByTestId('button-mode-manage').click();
+    await openCardShows(page, serviceId);
     await page.getByTestId(`button-cardshows-booking-${serviceId}-request`).click();
     // The mutation invalidates the services query; the segment reflects the new state.
     await expect(page.getByTestId(`button-cardshows-booking-${serviceId}-request`)).toHaveAttribute('aria-pressed', 'true');
@@ -73,6 +87,7 @@ test.describe('/provider/services — Card shows control drives the traveler car
 
     // ── (b) Turn Show price OFF → the card shows the honest enquire affordance, not a price ─────
     await page.getByTestId('button-mode-manage').click();
+    await openCardShows(page, serviceId);
     await page.getByTestId(`switch-cardshows-price-${serviceId}`).click();
     await page.getByTestId('button-mode-preview').click();
     previewCard = page.getByTestId(`storefront-service-${serviceId}`);
@@ -82,6 +97,7 @@ test.describe('/provider/services — Card shows control drives the traveler car
 
     // ── RESTORE — Booking → Instant, Show price → on — so the shared DB matches C1/C2 expectations ─
     await page.getByTestId('button-mode-manage').click();
+    await openCardShows(page, serviceId);
     await page.getByTestId(`switch-cardshows-price-${serviceId}`).click();
     await page.getByTestId(`button-cardshows-booking-${serviceId}-instant`).click();
     await expect(page.getByTestId(`button-cardshows-booking-${serviceId}-instant`)).toHaveAttribute('aria-pressed', 'true');

@@ -85,7 +85,15 @@ function isPropertyShaped(service: ProviderService | undefined): boolean {
   return service?.productShape === "property" || service?.productShape === "property_room";
 }
 
-export function ProviderAvailabilityManager() {
+export function ProviderAvailabilityManager({
+  initialServiceId,
+}: {
+  // Item 4 (Catalog visual parity): the ?availability=<serviceId> deep-link now switches Catalog
+  // into this view-mode with the requesting service preselected, rather than a second embedded
+  // editor (the old section-catalog-availability block is gone). Optional and defaults to "" —
+  // every other mount of this component (unchanged) keeps today's blank-selector behavior.
+  initialServiceId?: string;
+} = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -97,7 +105,7 @@ export function ProviderAvailabilityManager() {
     queryKey: ["/api/provider/availability"],
   });
 
-  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [selectedServiceId, setSelectedServiceId] = useState<string>(initialServiceId ?? "");
   const [newDate, setNewDate] = useState("");
   const [newStart, setNewStart] = useState("09:00");
   const [newEnd, setNewEnd] = useState("18:00");
