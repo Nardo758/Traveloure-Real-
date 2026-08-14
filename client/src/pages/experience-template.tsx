@@ -99,7 +99,8 @@ import { AmadeusSafety } from "@/components/amadeus-safety";
 import { AmadeusTransfers } from "@/components/amadeus-transfers";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
-import { UnifiedResultCard, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
+import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
@@ -264,7 +265,7 @@ function BookingComCatalogSection({ destination }: { destination: string }) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map(item => (
-          <UnifiedResultCard key={item.id} result={catalogItemToUnifiedResult(item)} showInquiryButton={false} />
+          <HotelCard key={item.id} item={item} />
         ))}
       </div>
     </div>
@@ -365,7 +366,7 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {allItems.map(item => (
-          <UnifiedResultCard key={item.id} result={catalogItemToUnifiedResult(item)} showInquiryButton={false} />
+          <ActivityCard key={item.id} item={item} />
         ))}
       </div>
     </div>
