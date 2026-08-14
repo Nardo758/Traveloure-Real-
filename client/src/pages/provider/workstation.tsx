@@ -261,6 +261,60 @@ const inspirationCards = [
   { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
 ];
 
+/**
+ * WORKSTATION REBUILD — page-scoped presentation tokens + the "one door" launcher idiom,
+ * transcribed from the ratified redesign mock's `panel-door` view
+ * (docs/design/service-creation-mock.html: `:root` tokens + `.doortiles`/`.doortile`/
+ * `.progressbar`/`.cats`/`.cat`/`.screen`/`.grouplabel`/`.divider` rules). Scoped entirely
+ * under `.ws-mock` — this does NOT touch the console's global theme (`.console-scope` in
+ * client/src/index.css) or any shared component; the mock's teal `--accent` (#35605A) is
+ * this view's own accent, distinct from the console's coral `--console-brand`, exactly as
+ * drawn in the mock. Page-local by design (no shared-component extraction) per the
+ * coordination note against the sibling Catalog rebuild lane.
+ */
+const WORKSTATION_MOCK_CSS = `
+.ws-mock{
+  --ws-ink:#1A1A18;--ws-muted:#7A7A72;--ws-hair:#E8E8E2;--ws-ground:#FAFAF8;--ws-paper:#FFFFFF;
+  --ws-accent:#35605A;--ws-accent-soft:#EDF2F1;--ws-warn-bg:#FBF6EC;--ws-warn-line:#D9C79A;--ws-warn-ink:#6B551F;
+  --ws-radius:7px;color:var(--ws-ink);
+}
+.ws-mock a{color:inherit;text-decoration:none;}
+.ws-mock .ws-screen{font-size:19px;font-weight:650;letter-spacing:-.01em;margin:0 0 4px;color:var(--ws-ink);}
+.ws-mock .ws-screen-sub{color:var(--ws-muted);font-size:13px;margin:0 0 18px;max-width:70ch;}
+.ws-mock .ws-grouplabel{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ws-muted);font-weight:600;margin:0 0 10px;}
+.ws-mock .ws-doortiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+@media (max-width:56.25rem){.ws-mock .ws-doortiles{grid-template-columns:1fr;}}
+.ws-mock .ws-doortiles>a{display:contents;}
+.ws-mock .ws-doortile{
+  border:1px solid var(--ws-hair);border-radius:var(--ws-radius);background:var(--ws-paper);padding:20px;
+  text-align:left;min-height:172px;display:flex;flex-direction:column;transition:border-color .15s;
+}
+.ws-mock button.ws-doortile-btn{font:inherit;-webkit-appearance:none;appearance:none;width:100%;cursor:pointer;}
+.ws-mock .ws-doortile:not(.ws-locked):hover{border-color:var(--ws-accent);}
+.ws-mock .ws-doortile h4{font-size:15px;font-weight:650;margin:12px 0 5px;color:var(--ws-ink);}
+.ws-mock .ws-doortile p{font-size:12.5px;color:var(--ws-muted);line-height:1.5;margin:0;}
+.ws-mock .ws-doortile-icon{width:24px;height:24px;color:var(--ws-accent);}
+.ws-mock .ws-cta{margin-top:auto;padding-top:14px;font-size:12.5px;color:var(--ws-accent);font-weight:550;}
+.ws-mock .ws-doortile.ws-locked{background:var(--ws-ground);border-style:dashed;cursor:not-allowed;opacity:.92;}
+.ws-mock .ws-doortile.ws-locked h4{color:var(--ws-muted);}
+.ws-mock .ws-doortile.ws-locked .ws-cta{color:var(--ws-muted);}
+.ws-mock .ws-doortile.ws-locked .ws-doortile-icon{color:var(--ws-muted);}
+.ws-mock .ws-warnbox{margin-top:8px;color:var(--ws-warn-ink);background:var(--ws-warn-bg);border:1px solid var(--ws-warn-line);border-radius:5px;padding:7px 9px;font-size:12.5px;line-height:1.5;}
+.ws-mock .ws-warnbox a{color:var(--ws-warn-ink);text-decoration:underline;font-weight:600;}
+.ws-mock .ws-progressbar{height:5px;border-radius:100px;background:var(--ws-hair);overflow:hidden;margin-top:10px;}
+.ws-mock .ws-progressbar i{display:block;height:100%;background:var(--ws-muted);}
+.ws-mock .ws-divider{height:1px;background:var(--ws-hair);margin:26px 0;}
+.ws-mock .ws-cats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+@media (max-width:1100px){.ws-mock .ws-cats{grid-template-columns:repeat(3,1fr);}}
+@media (max-width:760px){.ws-mock .ws-cats{grid-template-columns:repeat(2,1fr);}}
+.ws-mock .ws-cat{
+  border:1px solid var(--ws-hair);border-radius:6px;background:var(--ws-paper);padding:12px 13px;
+  display:block;transition:border-color .15s,background .15s;
+}
+.ws-mock .ws-cat:hover{border-color:var(--ws-accent);background:var(--ws-accent-soft);}
+.ws-mock .ws-cat b{display:block;font-size:13px;font-weight:600;color:var(--ws-ink);}
+`;
+
 export default function ProviderWorkstation() {
   const { toast } = useToast();
 
@@ -979,138 +1033,134 @@ export default function ProviderWorkstation() {
           }
         />
 
-        {/* S5 (ruling 74 disp. 1, executed): the one-door launcher headline. Every "Add New
-            Service" affordance in the provider console lands HERE first — this is the only
-            place a new listing is born. The three tiles below are that door. */}
-        <div data-testid="text-launcher-headline-block">
-          <h2 className="text-lg font-semibold text-console-darkest" data-testid="text-launcher-headline">
+        {/* S5 (ruling 74 disp. 1, executed) — WORKSTATION REBUILD: the one-door launcher,
+            transcribed from the ratified mock's "One door" view (docs/design/service-creation-
+            mock.html, panel-door). Every "Add New Service" affordance in the provider console
+            lands HERE first — this is the only place a new listing is born. Scoped under
+            .ws-mock (teal accent, mock tokens) — page-local only, no global theme change. */}
+        <div className="ws-mock" data-testid="text-launcher-headline-block">
+          <style>{WORKSTATION_MOCK_CSS}</style>
+
+          <h2 className="ws-screen" data-testid="text-launcher-headline">
             What are you building?
           </h2>
-          <p className="text-sm text-console-mid mt-0.5">
-            Pick a shape to start — you can change most of it later.
+          <p className="ws-screen-sub">
+            Workstation · the single entry point for anything you sell. Pick a shape to start —
+            you can change most of it later.
           </p>
-        </div>
 
-        {/* ── The creation ladder (§17): single service → bundle → property ─────── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="grid-product-ladder">
-          {/* Rung 1 — single service: always available, the existing ServiceForm. */}
-          <Card className="border border-console-light" data-testid="card-ladder-service">
-            <CardContent className="p-5 flex flex-col h-full">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <Plus className="w-5 h-5" />
+          {/* ── The creation ladder (§17): single service → bundle → property, transcribed
+              as the mock's .doortiles grid ──────────────────────────────────────────── */}
+          <div className="ws-doortiles" data-testid="grid-product-ladder">
+            {/* Rung 1 — single service: always available, the existing ServiceForm. The
+                literal <Link href="/provider/services/new"> stays the ONE permitted direct
+                deep link into ServiceForm step 1 (pinned by service-creation-launcher.test.ts). */}
+            <Link href="/provider/services/new">
+              <div className="ws-doortile" data-testid="card-ladder-service">
+                <Plus className="ws-doortile-icon" aria-hidden="true" />
+                <h4>Single service</h4>
+                <p>
+                  One offering with its own price and availability. Every new service is
+                  reviewed before it goes live.
+                </p>
+                <span className="ws-cta" data-testid="button-ladder-new-service">
+                  Start a service →
+                </span>
               </div>
-              <h3 className="font-semibold text-console-darkest">Single service</h3>
-              <p className="text-sm text-console-mid mt-1 flex-1">
-                One offering with its own price and availability. Every new service is
-                reviewed before it goes live.
-              </p>
-              <div className="mt-4">
-                <Link href="/provider/services/new">
-                  <Button size="sm" data-testid="button-ladder-new-service">
-                    <Plus className="w-4 h-4 mr-1.5" /> New service
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+            </Link>
 
-          {/* Rung 2 — bundle: unlocks at 2+ approved+active services (real count, §13). */}
-          <Card className="border border-console-light" data-testid="card-ladder-bundle">
-            <CardContent className="p-5 flex flex-col h-full">
-              <div
-                className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${
-                  bundleUnlocked ? "bg-primary/10 text-primary" : "bg-console-bg text-console-mid"
-                }`}
+            {/* Rung 2 — bundle: unlocks at 2+ approved+active services (real count, §13) —
+                the mock's dashed locked tile + real progressbar renders whenever it isn't. */}
+            {servicesLoading ? (
+              <div className="ws-doortile" data-testid="card-ladder-bundle">
+                <Boxes className="ws-doortile-icon" aria-hidden="true" />
+                <h4>Bundle</h4>
+                <p>
+                  Compose two or more of your approved services under one price. Bundles are
+                  reviewed before they sell, like any listing.
+                </p>
+                <Skeleton className="h-4 w-32 mt-3" />
+              </div>
+            ) : bundleUnlocked ? (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="ws-doortile ws-doortile-btn"
+                data-testid="card-ladder-bundle"
               >
-                <Boxes className="w-5 h-5" />
+                <Boxes className="ws-doortile-icon" aria-hidden="true" />
+                <h4>Bundle</h4>
+                <p>
+                  Compose two or more of your approved services under one price. Bundles are
+                  reviewed before they sell, like any listing.
+                </p>
+                <span className="ws-cta" data-testid="button-ladder-new-bundle">
+                  New bundle →
+                </span>
+              </button>
+            ) : (
+              <div className="ws-doortile ws-locked" data-testid="card-ladder-bundle">
+                <Lock className="ws-doortile-icon" aria-hidden="true" />
+                <h4>Bundle</h4>
+                <p>Two or more of your approved services sold together at one price.</p>
+                <p className="ws-warnbox" data-testid="text-bundle-locked">
+                  Locked. Unlocks when you have 2 approved active services — you have{" "}
+                  {eligibleComponents.length}.{" "}
+                  <Link href="/provider/services">Go to Catalog →</Link>
+                </p>
+                <div className="ws-progressbar">
+                  <i style={{ width: `${Math.min(100, (eligibleComponents.length / 2) * 100)}%` }} />
+                </div>
+                <span className="ws-cta" data-testid="text-bundle-progress">
+                  {eligibleComponents.length} of 2 approved
+                </span>
               </div>
-              <h3 className="font-semibold text-console-darkest">Bundle</h3>
-              <p className="text-sm text-console-mid mt-1 flex-1">
-                Compose two or more of your approved services under one price. Bundles are
-                reviewed before they sell, like any listing.
-              </p>
-              <div className="mt-4">
-                {servicesLoading ? (
-                  <Skeleton className="h-9 w-32" />
-                ) : bundleUnlocked ? (
-                  <Button size="sm" onClick={openCreate} data-testid="button-ladder-new-bundle">
-                    <Plus className="w-4 h-4 mr-1.5" /> New bundle
-                  </Button>
-                ) : (
-                  <div data-testid="text-bundle-locked">
-                    <p className="text-xs text-console-mid flex items-start gap-1.5">
-                      <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                      <span>
-                        You have {eligibleComponents.length} approved active service
-                        {eligibleComponents.length === 1 ? "" : "s"} — bundles unlock at 2.{" "}
-                        <Link href="/provider/services">
-                          <span className="underline cursor-pointer text-primary font-medium">
-                            Go to Catalog →
-                          </span>
-                        </Link>
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+            )}
 
-          {/* Rung 3 — property (§17 Product Builder, PROPERTY rung): an accommodation
-              listing with one or more room types, each priced per night. */}
-          <Card className="border border-console-light" data-testid="card-ladder-property">
-            <CardContent className="p-5 flex flex-col h-full">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <BedDouble className="w-5 h-5" />
-              </div>
-              <h3 className="font-semibold text-console-darkest">Property</h3>
-              <p className="text-sm text-console-mid mt-1 flex-1">
-                Accommodation with one or more room types, each priced per night. Properties
-                and rooms are reviewed before they sell, like any listing.
+            {/* Rung 3 — property (§17 Product Builder, PROPERTY rung): live and buildable in
+                this codebase — unlike the mock's placeholder "builder not yet specified" state,
+                which described a spec gap S8/FP-3 have since closed (§13: the tile must not
+                claim a gap that no longer exists), so this renders as an unlocked tile like
+                Single service, not the mock's dashed/locked Property variant. */}
+            <button
+              type="button"
+              onClick={openPropertyCreate}
+              className="ws-doortile ws-doortile-btn"
+              data-testid="card-ladder-property"
+            >
+              <BedDouble className="ws-doortile-icon" aria-hidden="true" />
+              <h4>Property</h4>
+              <p>
+                A room, apartment or house with per-night pricing and room availability.
+                Properties and rooms are reviewed before they sell, like any listing.
               </p>
-              <div className="mt-4">
-                <Button size="sm" onClick={openPropertyCreate} data-testid="button-ladder-new-property">
-                  <Plus className="w-4 h-4 mr-1.5" /> New property
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              <span className="ws-cta" data-testid="button-ladder-new-property">
+                Start a property →
+              </span>
+            </button>
+          </div>
 
-        {/* S5: the category inspiration tiles MOVE here from Catalog's empty state (which now
-            just points at this screen — see services.tsx). Picking one jumps straight into the
-            single-service create flow with the category pre-selected; nothing here is a bundle
-            or property shortcut, so it lives under the "Single service" rung honestly. */}
-        <div data-testid="section-workstation-categories">
-          <h3 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-1">
-            Or start from what you do
-          </h3>
-          <p className="text-xs text-console-mid mb-3">
-            These are the live service categories. Picking one pre-selects it and jumps straight
-            into a single service.
+          <div className="ws-divider" />
+
+          {/* S5: the category inspiration tiles — transcribed as the mock's .cats grid, kept
+              at the real 30 live service categories (§13: the mock's own CATS array is a
+              12-item illustration, not the full catalog to reproduce — no invented copy). */}
+          <h5 className="ws-grouplabel">Or start from what you do</h5>
+          <p className="ws-screen-sub" style={{ marginBottom: 14 }}>
+            These are the live service categories. Picking one pre-selects the category and
+            jumps straight into the Basics screen.
           </p>
-          <div
-            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3"
-            data-testid="grid-workstation-categories"
-          >
-            {inspirationCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <Link
-                  key={card.slug}
-                  href={`/provider/services/new?category=${encodeURIComponent(card.slug)}`}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-console-light bg-white hover:border-primary hover:shadow-sm transition-all text-center group"
-                  data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${card.color} group-hover:scale-110 transition-transform`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <span className="text-xs font-medium text-console-dark leading-tight">{card.label}</span>
-                </Link>
-              );
-            })}
+          <div className="ws-cats" data-testid="grid-workstation-categories">
+            {inspirationCards.map((card) => (
+              <Link
+                key={card.slug}
+                href={`/provider/services/new?category=${encodeURIComponent(card.slug)}`}
+                className="ws-cat"
+                data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+              >
+                <b>{card.label}</b>
+              </Link>
+            ))}
           </div>
         </div>
 
