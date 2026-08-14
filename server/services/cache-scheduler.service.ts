@@ -23,6 +23,11 @@ const PARTNERIZE_REPORT_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // without an admin opening the dashboard.
 const TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
+// Expired-entry prune for travelpayouts_cache — runs hourly so the table
+// stays lean without hammering the DB.  The 24h refresh loop also calls
+// flushExpired(), so this is an additional, lighter sweep.
+const TRAVELPAYOUTS_CACHE_PRUNE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
 // Configuration
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_THRESHOLD_HOURS = 20; // Consider data stale after 20 hours (refresh before 24h expiry)
@@ -48,6 +53,7 @@ class CacheSchedulerService {
   private partnerizeReportTimer: NodeJS.Timeout | null = null;
   private travelpayoutsReportTimer: NodeJS.Timeout | null = null;
   private travelpayoutsInitialPollTimer: NodeJS.Timeout | null = null;
+  private travelpayoutsCachePruneTimer: NodeJS.Timeout | null = null;
   private isRefreshing: boolean = false;
   private lastStats: CacheRefreshStats | null = null;
 
@@ -116,6 +122,23 @@ class CacheSchedulerService {
     }, TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS);
 
     console.log(`[CacheScheduler] Travelpayouts report polling scheduled every ${TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+
+    // Hourly prune of expired travelpayouts_cache rows — keeps the table lean
+    // between the 24h full-refresh cycles.  First run is delayed 10 minutes so
+    // it doesn't compete with server start-up work.
+    setTimeout(() => {
+      sharedCache.flushExpired().catch((err) =>
+        console.error("[CacheScheduler] Initial Travelpayouts cache prune failed:", err)
+      );
+    }, 10 * 60 * 1000);
+
+    this.travelpayoutsCachePruneTimer = setInterval(() => {
+      sharedCache.flushExpired().catch((err) =>
+        console.error("[CacheScheduler] Travelpayouts cache prune failed:", err)
+      );
+    }, TRAVELPAYOUTS_CACHE_PRUNE_INTERVAL_MS);
+
+    console.log(`[CacheScheduler] Travelpayouts cache prune scheduled every ${TRAVELPAYOUTS_CACHE_PRUNE_INTERVAL_MS / (60 * 1000)} minutes`);
   }
 
   // Poll Travelpayouts for commission action rows and auto-match them against
@@ -181,6 +204,10 @@ class CacheSchedulerService {
     if (this.travelpayoutsInitialPollTimer) {
       clearTimeout(this.travelpayoutsInitialPollTimer);
       this.travelpayoutsInitialPollTimer = null;
+    }
+    if (this.travelpayoutsCachePruneTimer) {
+      clearInterval(this.travelpayoutsCachePruneTimer);
+      this.travelpayoutsCachePruneTimer = null;
     }
   }
 
