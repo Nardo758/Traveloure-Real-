@@ -54,7 +54,7 @@ export function DestinationTransfersSection({
   onAddToCart,
 }: DestinationTransfersSectionProps) {
   const { data, isLoading, error } = useQuery<TransportOption[]>({
-    queryKey: ["/api/transport-options", destination, travelers],
+    queryKey: ["/api/transport-options", destination, travelers, startDate],
     queryFn: async () => {
       const params = new URLSearchParams({
         destination,
