@@ -916,6 +916,7 @@ function ListingRow({
   onDuplicate,
   onRequestDelete,
   duplicateDisabled,
+  onOpenAvailability,
 }: {
   service: Service;
   health: ServiceHealth | undefined;
@@ -927,6 +928,7 @@ function ListingRow({
   onDuplicate: () => void;
   onRequestDelete: () => void;
   duplicateDisabled: boolean;
+  onOpenAvailability?: () => void;
 }) {
   const { t } = useTranslation("catalog");
   const displayName = service.serviceName || service.name || t("card.untitled");
@@ -968,6 +970,18 @@ function ListingRow({
             />
             Show on my storefront
           </label>
+          {/* mock row's "Availability →" — per-listing jump into the slot editor (same drawer
+              the compact Availability card's "Edit slots" opens, preselected to this listing). */}
+          {onOpenAvailability && (
+            <button
+              type="button"
+              onClick={onOpenAvailability}
+              className="text-[12.5px] text-[#1A1A18] underline underline-offset-2 hover:text-[#35605A]"
+              data-testid={`button-availability-${service.id}`}
+            >
+              Availability →
+            </button>
+          )}
           <HealthIndicator health={health} />
         </div>
 
@@ -1427,6 +1441,10 @@ export default function ProviderServices() {
                   onDuplicate={() => duplicateMutation.mutate(service.id)}
                   duplicateDisabled={duplicateMutation.isPending}
                   onRequestDelete={() => setDeleteTarget(service)}
+                  onOpenAvailability={() => {
+                    setAvailabilityDrawerServiceId(service.id);
+                    setAvailabilityDrawerOpen(true);
+                  }}
                 />
               ))}
             </div>
