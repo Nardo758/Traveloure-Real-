@@ -217,6 +217,7 @@ interface Service {
   // amenities: NULL = never captured, [] = deliberately cleared — both render nothing (§13; see
   // hasAmenities in service-good-to-know.ts).
   checkInTime?: string | null;
+  minStayNights?: number | null;
   checkOutTime?: string | null;
   houseRules?: string | null;
   amenities?: string[] | null;
@@ -997,6 +998,16 @@ export default function ServiceDetailPage() {
                       <li className="flex items-start gap-2" data-testid="text-check-in-out">
                         <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                         <span>{checkInOutText}</span>
+                      </li>
+                    )}
+                    {/* Ruling 112 Q6 (migration 214): a declared minimum stay is public
+                        pre-purchase info; absent ⇒ omitted, never a guessed 1 night (§13). */}
+                    {typeof service.minStayNights === "number" && service.minStayNights >= 1 && (
+                      <li className="flex items-start gap-2" data-testid="text-min-stay">
+                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>
+                          Minimum stay: {service.minStayNights} night{service.minStayNights === 1 ? "" : "s"}
+                        </span>
                       </li>
                     )}
                     {/* S9 (docs/DECISIONS.md ledger row 102): async delivery's promised response
