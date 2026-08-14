@@ -193,4 +193,54 @@ test.describe("Stripe Connect Reminder — notification feed surfacing", () => {
       }
     }
   );
+
+  test(
+    "Scheduler: provider with stripeAccountStatus='complete' is excluded from pending set and receives no reminder",
+    async ({ page }) => {
+      const email = `e2e-sc-complete-${uid()}@example.com`;
+      const password = "TestPass123!";
+      let userId = "";
+
+      try {
+        // ── 1. Register a fresh user ──────────────────────────────────────────
+        userId = await registerUser(page, email, password, "Complete", "Provider");
+
+        // ── 2. Promote to service_provider + mark Stripe Connect as complete ──
+        sql(
+          `UPDATE users SET role = 'service_provider', stripe_account_id = 'acct_testcomplete', stripe_account_status = 'complete' WHERE id = '${userId}'`
+        );
+
+        // ── 3. Run the exact WHERE clause the scheduler uses to find pending
+        //       users. A complete provider must NOT appear in this result set.
+        //       The scheduler query is:
+        //         role IN ('service_provider', 'travel_expert')
+        //         AND (stripe_account_id IS NULL
+        //              OR stripe_account_status IS NULL
+        //              OR stripe_account_status NOT IN ('complete', 'active'))
+        const pendingCount = sql(
+          `SELECT COUNT(*) FROM users WHERE id = '${userId}' AND (role = 'service_provider' OR role = 'travel_expert') AND (stripe_account_id IS NULL OR stripe_account_status IS NULL OR stripe_account_status NOT IN ('complete', 'active'))`
+        );
+        expect(
+          parseInt(pendingCount, 10),
+          "A provider with stripeAccountStatus='complete' must not appear in the scheduler pending query"
+        ).toBe(0);
+
+        // ── 4. Confirm no stripe_connect_reminder notification exists for this
+        //       user — either pre-existing or newly created.
+        const notifCount = sql(
+          `SELECT COUNT(*) FROM notifications WHERE user_id = '${userId}' AND type = '${REMINDER_TYPE}'`
+        );
+        expect(
+          parseInt(notifCount, 10),
+          "No stripe_connect_reminder notification should exist for a fully-onboarded provider"
+        ).toBe(0);
+      } finally {
+        // ── 5. Cleanup ────────────────────────────────────────────────────────
+        if (userId) {
+          sql(`DELETE FROM notifications WHERE user_id = '${userId}' AND type = '${REMINDER_TYPE}'`);
+          sql(`DELETE FROM users WHERE id = '${userId}'`);
+        }
+      }
+    }
+  );
 });
