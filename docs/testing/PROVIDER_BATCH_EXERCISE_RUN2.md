@@ -413,3 +413,30 @@ availability" above sixty published nights; the PDF guide to Nishijin cannot be 
 all; and the room page a guest actually books on never shows the house rules she's agreeing to. Close the band
 gap on the five money-heaviest listings, keep the approval promise, and point the calendar at the first real
 date — and this catalog is one a Kyoto host would proudly stand behind, on a console that finally deserves it.
+
+---
+
+## 8. Ruling 112 — outcomes applied (same session, same bench)
+
+The decision-maker ruled all ten §Q questions (ledger row 112) and delegated §Q10 + the R3 fix. All ten are
+**implemented and verified on this bench** (assets `95-…`–`106-…`; every check below was executed against the
+running app, not asserted from code):
+
+| Ruling | Landed as | Verified |
+|---|---|---|
+| Q1 consolidation | Global neighborhood wall + free-text Service Area retired for ONE scoped searchable pick; literal `'Unknown'` client writes gone; display location composed from the pick; city derivation unchanged (server-side). | `99-neighborhood-search.png` — search "nishij" → Nishijin; wall and service-area input absent. |
+| Q2 transport | No change — build's 4-state control ratified, mock marked stale (README). | — |
+| Q3 zones | Display-only dashed surcharge rings (+fee popups, "amounts are set in Pricing & fees") on the Logistics and Catalog maps, drawn from the ruling-81 tier rows. *Bench note: no listing has coordinates (no Maps key), so the layer is type-checked and code-mounted but not visually exercised here.* | code + tsc; ring layer renders only around a confirmed pin (§13). |
+| Q4 autosave | Debounced localStorage checkpoint + "Picked up where you left off" restore banner + Start fresh; cleared once the row exists. | `102-autosave-restored-step1.png` — name AND step survive a reload. |
+| Q5 | Kit-level fix: `SelectContent` z-50→z-[110] (the pricing-drawer per-instance patch predicted this class); duplicate-window payloads now 400 with a truthful message instead of the spurious 409; "Next available: Sat, Aug 15 · 17:00" chip; Calendar "Edit availability →" access point; Escape verified closing the drawer. | `96/97/98-*.png` — day-option click PASSES headless. |
+| Q6 | Migration 214 `min_stay_nights` + editor field; cancellation band select copy = the ENFORCED windows from cancellation-policy.service.ts; traveler page renders "Minimum stay: 2 nights". | `103/104-*.png`, API `minStayNights=2`. |
+| Q7 | Listing Home rail = Pricing & fees + Availability + Photos & media cards, each navigating to the owning surface. | `105-listing-home-rail.png`. |
+| Q8 edit-split | Migration 215 `pending_changes`/`edit_review_status` (§19-stripped on every client rail — an injected `pendingChanges` never landed, verified in DB); PATCH splits server-side against the STORED row (unchanged fields are no-ops); safe edits apply immediately (price 95→99 live at once); identity edits stage (name change staged, live + public name untouched); adding a route to a routeless approved listing stages under `__routePoints`; admin queue lists edit reviews with the exact staged patch; approve applies atomically (double-click = one effect), reject discards with the listing untouched; Catalog shows "Edit in review" beside Live. | 8/8 API checks + `95-admin-edit-review-queue.png`; staged route applied as 2 child rows on approve. |
+| Q9 | Handle & bio edited on Distribute — inline editor (claim card + new bio field riding `PATCH /api/me/storefront`); bio persisted to `users.bio`. | `106-distribute-handle-bio.png`, DB read. |
+| Q10 (delegated) | The earthy User-Console palette (#1A1A18/#7A7A72/#E8E8E2/#FAFAF8 + #35605A) governs the provider console; Navy/Teal/Gold stay traveler-brand tokens. Recorded in the mockup README so future conformance passes don't flag it. | README. |
+| R3 (delegated) | Every listing decision now writes a notification (approve / reject / edit-approve / edit-reject, dedupe-keyed), and the provider Inbox gains a **Notifications** tab — the bell's unread dot finally resolves somewhere. | `101-inbox-notifications.png` — decision rows render. |
+
+Guards after the batch: money-endpoint guard ✅ (229 files), unmounted-router guard ✅ (48/48), tsc 170 =
+baseline throughout, pricing-fees units 43/43, migrations 216/216. Bench fixture deltas from verification:
+S1 is now "…— Autumn Edition" at $99 (the staged-name apply), S2 carries 2 route stops (the staged-route
+apply), the property has `min_stay_nights=2` + a `moderate` band, and the provider has a bio.

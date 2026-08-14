@@ -1069,4 +1069,9 @@ export const MIGRATION_FILES = [
   // conformance pass graded its absence a P2 BUILD-GAP). ONE additive-nullable integer on
   // provider_services (min_stay_nights), NO DB CHECK, declared in shared/schema.ts same commit.
   "214_property_min_stay.sql",
+  // 215: edit-split pending-changes rail (ruling 112 Q8 / CLAUDE.md §23 — the mock's gap #17
+  // ratified: an approved listing is never taken down for an edit). TWO additive-nullable
+  // columns on provider_services (pending_changes jsonb, edit_review_status varchar), NO DB
+  // CHECK, both declared in shared/schema.ts and §19-stripped on every client rail.
+  "215_edit_split_pending_changes.sql",
 ] as const;

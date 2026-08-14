@@ -905,6 +905,14 @@ export const providerServices = pgTable("provider_services", {
   // captured — never a guessed 1-night default (§13).
   minStayNights: integer("min_stay_nights"),
 
+  // Ruling 112 Q8 (migration 215, CLAUDE.md §23): the edit-split pending-changes rail. NEVER
+  // client-settable (§19): .omit()'d from insertProviderServiceSchema below AND stripped in
+  // storage.create/updateProviderService; written only by the PATCH handler's server-side field
+  // split and the admin apply/discard writers. pending_changes holds the identity-field patch
+  // awaiting review; edit_review_status is NULL | 'pending' (app-enforced, no CHECK).
+  pendingChanges: jsonb("pending_changes").$type<Record<string, unknown>>(),
+  editReviewStatus: varchar("edit_review_status"),
+
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
   // NULL when unresolvable (NULL is the honest state — no city-center fallback). NOT read by the
@@ -1953,7 +1961,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
