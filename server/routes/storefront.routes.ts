@@ -298,6 +298,10 @@ const httpsUrlSchema = z
 const storefrontPrefsPatchSchema = z.object({
   // Present + string → set; present + null → clear; absent → leave untouched.
   coverImageUrl: httpsUrlSchema.nullable().optional(),
+  // Ruling 112 Q9: the Distribute storefront card edits handle & BIO together — bio is the
+  // storefront's own intro line (users.bio, the column the public storefront read already
+  // serves). Owner-authored profile prose; not an amount/identity/rate field.
+  bio: z.string().trim().max(2000).nullable().optional(),
 }).strict();
 
 router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
@@ -327,10 +331,15 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
 
     await db
       .update(users)
-      .set({ preferences: { ...current, storefront: nextStorefront } })
+      .set({
+        preferences: { ...current, storefront: nextStorefront },
+        // Ruling 112 Q9: bio rides the same patch — present+string sets, present+null clears,
+        // absent leaves untouched (the coverImageUrl contract, one column over).
+        ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
+      })
       .where(eq(users.id, userId));
 
-    res.json(nextStorefront);
+    res.json({ ...nextStorefront, ...(patch.bio !== undefined ? { bio: patch.bio } : {}) });
   } catch (err) {
     console.error("[me/storefront] write error:", err);
     res.status(500).json({ message: "Failed to save storefront settings" });
