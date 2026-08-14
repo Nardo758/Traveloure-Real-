@@ -1046,6 +1046,7 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     const { bookingId } = req.params;
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     await storage.updateServiceBookingStatus(bookingId, "completed");
+    let auditWarning: string | undefined;
     await insertAccessAuditLog({
       actorId: user.id,
       actorRole: user.role,
@@ -1055,11 +1056,15 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
       metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/disputes] audit log failed (non-fatal):", err));
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_rejected on booking ${bookingId}: ${err?.message ?? "unknown error"}. Status change was applied but this action has no audit trail.`;
+    });
     res.json({
       success: true,
       cleared,
       note: "Dispute rejected; earnings resume release.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute reject error:", err);
@@ -1102,6 +1107,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
+    let auditWarning: string | undefined;
     await insertAccessAuditLog({
       actorId: user.id,
       actorRole: user.role,
@@ -1117,7 +1123,10 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/disputes] audit log failed (non-fatal):", err));
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. Ledger reversal and Stripe refund were applied but this action has no audit trail.`;
+    });
 
     res.json({
       success: true,
@@ -1129,6 +1138,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       note: earnings.skippedPaidOut > 0
         ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
         : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute uphold error:", err);
