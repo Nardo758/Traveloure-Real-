@@ -387,7 +387,12 @@ class AffiliateReconciliationService {
           LIMIT 1
         `);
         contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
-      } catch (_) {}
+      } catch (err: any) {
+        console.warn(
+          `[Reconciliation] tracking-number lookup failed for affiliate_earnings ${candidate.id} (click ${candidate.click_id}) — continuing with null tracking number:`,
+          err?.message || err,
+        );
+      }
 
       // Idempotent atomic claim (§15 posture): a row already matched by a concurrent/duplicate
       // pass updates 0 rows here instead of being re-adopted.
@@ -530,7 +535,12 @@ class AffiliateReconciliationService {
           LIMIT 1
         `);
         contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
-      } catch (_) {}
+      } catch (err: any) {
+        console.warn(
+          `[Reconciliation] tracking-number lookup failed for affiliate_earnings ${best.id} (click ${best.click_id}) — continuing with null tracking number:`,
+          err?.message || err,
+        );
+      }
 
       await db.execute(sql`
         UPDATE affiliate_earnings

@@ -612,9 +612,13 @@ if (process.env.NODE_ENV === "production") {
     // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
     // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
     setTimeout(() => {
-      void runAvailabilityMaterializationSweep();
+      runAvailabilityMaterializationSweep().catch((err) =>
+        logger.error({ err }, "[availability-sweep] first pass failed"),
+      );
       setInterval(() => {
-        void runAvailabilityMaterializationSweep();
+        runAvailabilityMaterializationSweep().catch((err) =>
+          logger.error({ err }, "[availability-sweep] scheduled pass failed"),
+        );
       }, 24 * 60 * 60 * 1000);
     }, 90 * 60 * 1000);
 
@@ -667,7 +671,7 @@ if (process.env.NODE_ENV === "production") {
       pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
         .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
         .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-    }).catch(() => {});
+    }).catch((err: any) => logger.error({ err }, "[startup:admin-promotion] dynamic db import failed"));
 
     runDatabaseSeeding()
       .then(() => {

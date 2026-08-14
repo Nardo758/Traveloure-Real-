@@ -1273,7 +1273,9 @@ class StripePaymentService {
             stripeSessionId: session.id,
           },
         });
-      } catch (_) {}
+      } catch (err) {
+        console.error('[expert-service] T5 funnel event failed (non-fatal, payment already succeeded):', err);
+      }
     } catch (error: any) {
       console.error('Error handling expert service payment:', error);
       throw error;
