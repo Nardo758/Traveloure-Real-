@@ -2783,8 +2783,9 @@ export default function ExpertWorkspace() {
 
   const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({
     queryKey: ["/api/expert/assigned-trips"],
-    // authoring trips have no advisor row; booking_request providers are not assigned advisors yet
-    enabled: !isAuthoring && !isBookingRequest,
+    // Wait for workspace-context to resolve so isAuthoring/isBookingRequest are known before firing.
+    // authoring trips have no advisor row; booking_request providers are not assigned advisors yet.
+    enabled: !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertRoleData } = useQuery<{ role: string; roleLabel: string | null; applicationStatus: string | null }>({
@@ -2938,21 +2939,22 @@ export default function ExpertWorkspace() {
   } : undefined);
 
   // booking_request mode: provider landed via a notification link with an active booking but
-  // no advisor assignment yet. Disable all trip-scoped sub-queries that gate on the advisor
-  // or owner role — the workspace-context endpoint is the ONLY authorized read for this mode.
+  // no advisor assignment yet. Every trip-scoped sub-query is gated on !!workspaceCtx so the
+  // mode is known before any request fires — on the initial render workspaceCtx is undefined,
+  // making isBookingRequest false, which would otherwise enable the queries prematurely.
   const { data: itineraryData, isLoading: itemsLoading } = useQuery<ItineraryData>({
     queryKey: [`/api/trips/${tripId}/itinerary-items`],
-    enabled: !!tripId && !isBookingRequest,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
 
   const { data: assignment, isLoading: assignmentLoading } = useQuery<MyAssignment>({
     queryKey: [`/api/trips/${tripId}/my-assignment`],
-    enabled: !!tripId && !isAuthoring && !isBookingRequest,
+    enabled: !!tripId && !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
-    enabled: !!tripId && !isBookingRequest,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
 
   // CLAUDE.md §21 — the trip-level traveler-facing note's INITIAL value. There is no dedicated
@@ -2963,14 +2965,14 @@ export default function ExpertWorkspace() {
   // invalidates, so this stays in sync for free rather than adding a second cache to babysit.
   const { data: plancardForNote } = useQuery<{ trip?: { expertTravelerNote?: string | null } }>({
     queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: !!tripId && !isBookingRequest,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
     staleTime: 30 * 1000,
     retry: false,
   });
 
   const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
-    enabled: !!tripId && !isBookingRequest,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
     staleTime: 30 * 1000,
   });
 
@@ -2979,7 +2981,7 @@ export default function ExpertWorkspace() {
   // estimator per same-day pair — no reason to pay for it on every workspace load).
   const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
     queryKey: [`/api/trips/${tripId}/transport-gaps`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
   });
 
   // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape TransportLegsPanel and
@@ -2987,7 +2989,7 @@ export default function ExpertWorkspace() {
   // entry, gated the same "only while the tab is open" way transportGaps above is.
   const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
     queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
   });
 
   // Advisor Phase 2-4 — reorder-nudge source (route-efficiency), stays card (stay-anchor), and
@@ -2997,14 +2999,14 @@ export default function ExpertWorkspace() {
   // tab) — react-query's own `isError` flag is read directly rather than a toast.
   const { data: advisorRouteEfficiency, isError: advisorRouteEfficiencyError } = useQuery<AdvisorRouteEfficiencyResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/route-efficiency`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
 
   const { data: advisorStayAnchor, isError: advisorStayAnchorError } = useQuery<AdvisorStayAnchorResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/stay-anchor`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -3019,7 +3021,7 @@ export default function ExpertWorkspace() {
       if (res.status === 204) return null;
       return res.json();
     },
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -3045,7 +3047,7 @@ export default function ExpertWorkspace() {
   // than fake results (§13).
   const { data: fundamentalsData, isLoading: fundamentalsLoading, isError: fundamentalsError } = useQuery<AdvisorFundamentalsResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/fundamentals`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 30 * 1000,
     retry: false,
   });
@@ -3078,7 +3080,7 @@ export default function ExpertWorkspace() {
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: !!tripId && isEvent,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && isEvent,
     staleTime: 60 * 1000,
   });
 
