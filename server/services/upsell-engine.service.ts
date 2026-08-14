@@ -396,7 +396,8 @@ export async function getSlotConfig(surface: Surface): Promise<SlotConfig | null
       frequencyCapHours: row.frequency_cap_hours,
       enabled: row.enabled,
     };
-  } catch {
+  } catch (err) {
+    console.warn("[upsell-engine] Failed to load upsell configuration — returning null:", err);
     return null;
   }
 }
