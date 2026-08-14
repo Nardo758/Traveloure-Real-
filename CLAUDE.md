@@ -109,6 +109,18 @@ This document captures architectural decisions to maintain consistency across co
     server-side from the row like the other two; measurement stays on Performance (`LinkAnalyticsPanel`), the
     share rail never grows its own analytics.
 
+23. **Edit-split on approved listings (decision-maker ratified Aug 14, 2026 — ledger row 112, Q8).** An
+    APPROVED listing is never taken down for an edit. Edits split server-side into two lanes:
+    **safe edits** (price/pricing settings, photos & gallery order, availability/slots/blackouts, description
+    wording, what-to-bring/access notes, meeting-pin position) apply to the live row immediately;
+    **identity edits** (service name, category/offering, delivery method, safety-attestation-bearing changes,
+    adding a route where there was none) do NOT touch the live row — they land in
+    `provider_services.pending_changes` (jsonb) + `edit_review_status='pending'`, the approved version stays
+    live and bookable, and the admin review queue applies them on approval (reject discards, listing stays
+    live as-approved). The field split is decided ONLY server-side in the PATCH handler;
+    `pending_changes`/`edit_review_status` are never client-writable (§19 posture — allowlist-stripped on
+    every rail). Born-submitted (migration 111) is unchanged: this governs edits AFTER first approval only.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

@@ -163,6 +163,25 @@ export function ProviderAvailabilityManager({
 
   const selectedService = services_.find((s) => s.id === selectedServiceId);
 
+  // Ruling 112 Q5 (mock's "Next available" chip): the earliest upcoming slot with seats left for
+  // the selected listing. Derived from real rows only — no slots, no chip (§13).
+  const nextAvailable = selectedServiceId
+    ? upcomingSlots.find(
+        (s) =>
+          s.serviceId === selectedServiceId &&
+          (s.bookedCount ?? 0) < (s.capacity ?? 1) &&
+          s.status !== "withdrawn",
+      )
+    : undefined;
+  const formatSlotDate = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -181,20 +200,38 @@ export function ProviderAvailabilityManager({
               Create a service before setting availability.
             </p>
           ) : (
-            <div className="max-w-sm">
-              <Label className="text-xs">Service</Label>
-              <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
-                <SelectTrigger className="h-9" data-testid="select-availability-service">
-                  <SelectValue placeholder="Choose a service" />
-                </SelectTrigger>
-                <SelectContent>
-                  {services_.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.serviceName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="max-w-sm flex-1 min-w-[220px]">
+                <Label className="text-xs">Service</Label>
+                <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+                  <SelectTrigger className="h-9" data-testid="select-availability-service">
+                    <SelectValue placeholder="Choose a service" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services_.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.serviceName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedServiceId && (
+                nextAvailable ? (
+                  <Badge
+                    variant="secondary"
+                    className="h-7 rounded-full px-3 text-xs font-medium"
+                    data-testid="chip-next-available"
+                  >
+                    Next available: {formatSlotDate(nextAvailable.date)}
+                    {nextAvailable.startTime ? ` · ${nextAvailable.startTime}` : ""}
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground pb-1.5" data-testid="text-no-next-available">
+                    No upcoming bookable dates yet.
+                  </span>
+                )
+              )}
             </div>
           )}
         </CardContent>

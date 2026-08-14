@@ -900,6 +900,18 @@ export const providerServices = pgTable("provider_services", {
   checkOutTime: varchar("check_out_time", { length: 5 }),
   houseRules: text("house_rules"),
   amenities: jsonb("amenities").$type<string[]>(),
+  // Ruling 112 Q6 (migration 214): minimum stay in nights, property/property_room by convention
+  // (editor renders it only for property shapes; app-enforced ≥1, no DB CHECK). NULL = never
+  // captured — never a guessed 1-night default (§13).
+  minStayNights: integer("min_stay_nights"),
+
+  // Ruling 112 Q8 (migration 215, CLAUDE.md §23): the edit-split pending-changes rail. NEVER
+  // client-settable (§19): .omit()'d from insertProviderServiceSchema below AND stripped in
+  // storage.create/updateProviderService; written only by the PATCH handler's server-side field
+  // split and the admin apply/discard writers. pending_changes holds the identity-field patch
+  // awaiting review; edit_review_status is NULL | 'pending' (app-enforced, no CHECK).
+  pendingChanges: jsonb("pending_changes").$type<Record<string, unknown>>(),
+  editReviewStatus: varchar("edit_review_status"),
 
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
@@ -1949,7 +1961,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -2057,6 +2069,9 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   // `null` is preserved as "never captured" and `[]` as "deliberately cleared" — the two must
   // not collapse (§13), the same rule deliveryLanguages already states above.
   amenities: z.array(z.string().trim().min(1).max(60)).max(50).nullable().optional(),
+  // Ruling 112 Q6 (migration 214): a declared minimum stay is at least one night; NULL stays
+  // "never captured" (no guessed default, §13).
+  minStayNights: z.coerce.number().int().min(1).max(365).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
