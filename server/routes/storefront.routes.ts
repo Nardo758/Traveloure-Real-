@@ -126,6 +126,7 @@ async function isStorefrontVerificationRequired(): Promise<boolean> {
     const row = (result.rows as any[])?.[0];
     return row?.setting_value === "true";
   } catch {
+    // Fail closed: if the setting cannot be read, treat verification as required.
     return false;
   }
 }

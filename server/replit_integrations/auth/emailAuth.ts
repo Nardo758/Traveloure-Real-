@@ -121,7 +121,7 @@ export function setupEmailAuth(app: Express): void {
         funnelStage: "T1_ACCOUNT_CREATED",
         source: (req.body.source as string) || "direct",
         refToken: (req.body.refToken as string) || undefined,
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks signup */ });
 
       // Fire-and-forget verification email. Failure here MUST NOT block signup —
       // the user can request a resend later. RESEND_API_KEY absence is logged
