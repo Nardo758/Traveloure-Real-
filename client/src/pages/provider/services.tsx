@@ -750,17 +750,30 @@ function CardShowsControl({
 function CatalogPill({ service }: { service: Service }) {
   const { label, cls } = catalogPillDisplay(service);
   return (
-    <span
-      className={cn(
-        "inline-block text-[11.5px] leading-none px-[9px] py-[3px] rounded-full border",
-        cls === "live" && "border-[#BFD5D0] bg-[#EDF2F1] text-[#35605A]",
-        cls === "draft" && "border-[#D9CDB2] bg-[#FBF6EC] text-[#6B551F]",
-        cls === "" && "border-[#E8E8E2] bg-[#FAFAF8] text-[#7A7A72]",
+    <>
+      <span
+        className={cn(
+          "inline-block text-[11.5px] leading-none px-[9px] py-[3px] rounded-full border",
+          cls === "live" && "border-[#BFD5D0] bg-[#EDF2F1] text-[#35605A]",
+          cls === "draft" && "border-[#D9CDB2] bg-[#FBF6EC] text-[#6B551F]",
+          cls === "" && "border-[#E8E8E2] bg-[#FAFAF8] text-[#7A7A72]",
+        )}
+        data-testid={`pill-status-${service.id}`}
+      >
+        {label}
+      </span>
+      {/* Ruling 112 Q8 (mock gap #17 ratified): while an identity edit waits for review the
+          listing stays Live — this second pill says so ("Live + Edit in review"; nothing is
+          taken down for an edit). */}
+      {(service as any).editReviewStatus === "pending" && (
+        <span
+          className="inline-block ml-1 text-[11.5px] leading-none px-[9px] py-[3px] rounded-full border border-[#D9CDB2] bg-[#FBF6EC] text-[#6B551F]"
+          data-testid={`pill-edit-review-${service.id}`}
+        >
+          Edit in review
+        </span>
       )}
-      data-testid={`pill-status-${service.id}`}
-    >
-      {label}
-    </span>
+    </>
   );
 }
 

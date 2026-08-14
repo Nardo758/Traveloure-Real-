@@ -263,6 +263,13 @@ export interface IStorage {
   approveServiceTranslation(serviceId: string, locale: string, updatedBy: string): Promise<ServiceTranslation | undefined>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
+  // Ruling 112 Q8 (CLAUDE.md §23): the edit-split rail's three writers/readers. stage merges an
+  // identity-field patch into pending_changes; apply/discard are atomic conditionals on
+  // edit_review_status='pending' so a double admin click is one effect.
+  stagePendingChanges(serviceId: string, patch: Record<string, unknown>): Promise<ProviderService | undefined>;
+  applyPendingChanges(serviceId: string, adminId: string): Promise<ProviderService | undefined>;
+  discardPendingChanges(serviceId: string): Promise<ProviderService | undefined>;
+  getEditReviewServiceListings(): Promise<(ProviderServiceListing & { editReview: true; pendingChanges: Record<string, unknown> })[]>;
   deleteProviderService(id: string): Promise<void>;
   upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void>;
 
@@ -1616,7 +1623,8 @@ export class DatabaseStorage implements IStorage {
       service.userId,
       (service as any).categoryId ?? null,
     );
-    const { revenueShareRate: _clientRate, ...serviceWithoutRate } = service as Record<string, unknown>;
+    // Ruling 112 Q8 (§19): the edit-split rail's own state can never be born from a client body.
+    const { revenueShareRate: _clientRate, pendingChanges: _pcCreate, editReviewStatus: _ersCreate, ...serviceWithoutRate } = service as Record<string, unknown>;
 
     const [newService] = await db.insert(providerServices)
       .values({
@@ -1693,6 +1701,70 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // ── Ruling 112 Q8 (CLAUDE.md §23) — the edit-split rail's writers ──────────────────────────
+  // These are the ONLY writers of pending_changes/edit_review_status (the §19 strips above and
+  // in createProviderService keep every client rail out). stage MERGES so a second identity edit
+  // while one waits doesn't lose the first; apply/discard are atomic conditionals on
+  // edit_review_status='pending' — a double admin click or an apply/discard race is exactly one
+  // effect, the loser a no-op (§15 posture applied to a non-money transition).
+  async stagePendingChanges(serviceId: string, patch: Record<string, unknown>): Promise<ProviderService | undefined> {
+    const existing = await this.getProviderServiceById(serviceId);
+    if (!existing) return undefined;
+    const merged = { ...((existing as any).pendingChanges ?? {}), ...patch };
+    const [row] = await db.update(providerServices)
+      .set({ pendingChanges: merged, editReviewStatus: "pending", updatedAt: new Date() } as any)
+      .where(eq(providerServices.id, serviceId))
+      .returning();
+    return row;
+  }
+
+  async applyPendingChanges(serviceId: string, adminId: string): Promise<ProviderService | undefined> {
+    const existing = await this.getProviderServiceById(serviceId);
+    const staged = (existing as any)?.pendingChanges as Record<string, unknown> | null | undefined;
+    if (!existing || !staged || Object.keys(staged).length === 0) return undefined;
+    // The staged patch was validated at stage time by the same insertProviderServiceSchema the
+    // live PATCH uses; privileged keys can never be in it (the split only stages the identity
+    // allowlist). Column changes + the clear land in ONE conditional update; the reserved
+    // __routePoints key (a staged route-addition, Q8's "adding a route where there was none")
+    // is applied through the route's ONE writer, replaceServiceRoutePoints — never a second
+    // child-row write path (ruling 22 posture) — and only after the conditional update won.
+    const { __routePoints: stagedRoute, ...columnPatch } = staged as Record<string, unknown>;
+    const [row] = await db.update(providerServices)
+      .set({
+        ...(columnPatch as any),
+        pendingChanges: null,
+        editReviewStatus: null,
+        reviewedAt: new Date(),
+        reviewedBy: adminId,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(providerServices.id, serviceId), eq(providerServices.editReviewStatus as any, "pending")))
+      .returning();
+    if (row && Array.isArray(stagedRoute) && stagedRoute.length > 0) {
+      await this.replaceServiceRoutePoints(serviceId, stagedRoute as Array<{ name: string; latitude: number | null; longitude: number | null }>);
+    }
+    return row;
+  }
+
+  async discardPendingChanges(serviceId: string): Promise<ProviderService | undefined> {
+    const [row] = await db.update(providerServices)
+      .set({ pendingChanges: null, editReviewStatus: null, updatedAt: new Date() } as any)
+      .where(and(eq(providerServices.id, serviceId), eq(providerServices.editReviewStatus as any, "pending")))
+      .returning();
+    return row;
+  }
+
+  async getEditReviewServiceListings(): Promise<(ProviderServiceListing & { editReview: true; pendingChanges: Record<string, unknown> })[]> {
+    const rows = await db.select().from(providerServices)
+      .where(eq(providerServices.editReviewStatus as any, "pending"))
+      .orderBy(desc(providerServices.updatedAt));
+    return rows.map((r) => ({
+      ...this.mapProviderServiceToListing(r),
+      editReview: true as const,
+      pendingChanges: ((r as any).pendingChanges ?? {}) as Record<string, unknown>,
+    }));
+  }
+
   async updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined> {
     // EX-2 layer 2, UPDATE half — same backstop as createProviderService: negative price never
     // reaches a row from any caller. Zero allowed (draft state); publish gating is the route's job.
@@ -1721,9 +1793,14 @@ export class DatabaseStorage implements IStorage {
     // the completion timer — and mint the held earning — on a booking whose deliverable never
     // existed. Stripped here in STORAGE so every caller is covered, and DERIVED below from the
     // one fact the server observes: the deliverable value actually changing.
+    // Ruling 112 Q8 (§19 layer 2): pending_changes/edit_review_status are the edit-split rail's
+    // own state — written only by the PATCH handler's field split and the admin apply/discard
+    // writers, never by any generic caller. Stripped here so the internal `as any` callers a
+    // type-level omit cannot reach are covered too.
     const {
       approvalStatus: _as, submittedAt: _sa, reviewedAt: _ra, reviewedBy: _rb,
       rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, deliverableUploadedAt: _dua,
+      pendingChanges: _pc, editReviewStatus: _ers,
       ...safeUpdates
     } = updates as Record<string, unknown>;
     let patch: Partial<InsertProviderService> = safeUpdates as Partial<InsertProviderService>;

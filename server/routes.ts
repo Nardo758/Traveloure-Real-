@@ -2545,6 +2545,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         stops.push({ name: s.name, latitude: hasLat ? s.latitude! : null, longitude: hasLng ? s.longitude! : null });
       }
+      // Ruling 112 Q8 (CLAUDE.md §23): ADDING A ROUTE WHERE THERE WAS NONE is an identity edit —
+      // it changes what the approved listing IS (a point service became a route). The staged
+      // stops wait in pending_changes under the reserved __routePoints key; editing an EXISTING
+      // route (reorder, rename, locate, remove) stays a safe edit and applies immediately.
+      if (service.approvalStatus === "approved" && stops.length > 0) {
+        const existingStops = await storage.getServiceRoutePoints(service.id);
+        if (existingStops.length === 0) {
+          const staged = await storage.stagePendingChanges(service.id, { __routePoints: stops });
+          return res.json({
+            routePoints: [],
+            editReview: { status: "pending", stagedKeys: ["routePoints"] },
+            message: "Adding a route to an approved listing goes through review — your live listing is unchanged meanwhile.",
+            editReviewStatus: (staged as any)?.editReviewStatus ?? "pending",
+          });
+        }
+      }
       const routePoints = await storage.replaceServiceRoutePoints(service.id, stops);
       res.json({ routePoints });
     } catch (err: any) {
@@ -3406,7 +3422,35 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatchUpd = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: Object.prototype.hasOwnProperty.call(input, "neighborhood"),
       });
-      const safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd };
+
+      // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
+      // An APPROVED listing is never taken down for an edit. Identity-changing fields are
+      // diverted into pending_changes (the approved version stays live and bookable, the admin
+      // queue applies them); everything else applies immediately. The split compares against
+      // the STORED row — the wizard PATCHes full payloads, so an unchanged serviceName must
+      // pass through as a no-op, not trigger a review.
+      const IDENTITY_EDIT_FIELDS = [
+        "serviceName", "categoryId", "subcategoryId",
+        "serviceOfferingTypeId", "expertOfferingTypeId", "offeringTypeKey",
+        "deliveryMethod", "productShape",
+      ] as const;
+      let stagedEditKeys: string[] = [];
+      if (ownedService.approvalStatus === "approved") {
+        const identityPatch: Record<string, unknown> = {};
+        for (const key of IDENTITY_EDIT_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(safeInput, key)) continue;
+          const next = (safeInput as any)[key];
+          const stored = (ownedService as any)[key];
+          const norm = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+          if (norm(next) !== norm(stored)) identityPatch[key] = next;
+          delete (safeInput as any)[key]; // unchanged identity keys are no-ops, changed ones are staged — neither touches the live row
+        }
+        if (Object.keys(identityPatch).length > 0) {
+          await storage.stagePendingChanges(req.params.id, identityPatch);
+          stagedEditKeys = Object.keys(identityPatch);
+        }
+      }
       // A neighborhoods-only PATCH leaves no listing columns to update —
       // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
       // save before the coverage writer below could run. Skip the row update
@@ -3457,6 +3501,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           ? {
               ...omitFields(updated, ["revenueShareRate"] as const),
               ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
+              // Ruling 112 Q8: tell the owner which fields went to re-review — the live listing
+              // is unchanged for those, and nothing was taken down.
+              ...(stagedEditKeys.length > 0
+                ? { editReview: { status: "pending", stagedKeys: stagedEditKeys } }
+                : {}),
             }
           : updated,
       );

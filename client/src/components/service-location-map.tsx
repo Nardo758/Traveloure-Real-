@@ -134,6 +134,7 @@ export function ServiceLocationMap({
   pin,
   pinLabel,
   radiusKm,
+  surchargeZones,
   stops = [],
   height = 320,
   testIdPrefix = "service-location-map",
@@ -147,6 +148,13 @@ export function ServiceLocationMap({
   pinLabel?: string | null;
   /** serviceRadius in km — rendered as a display-only ring around the pin. */
   radiusKm?: number | null;
+  /**
+   * Ruling 112 Q3 (mock's Layers card): travel-surcharge ZONES as display-only dashed rings
+   * around the confirmed pin — the amounts are authored in Pricing & fees and CHARGED
+   * server-side (ruling 81's resolver); this layer never computes or shows a distance (§13).
+   * Rendered only when a pin exists — a ring has no centre without one.
+   */
+  surchargeZones?: ReadonlyArray<{ radiusKm: number; fee: string | number }> | null;
   /** Full ordered stop list; unlocated stops are counted but never drawn. */
   stops?: ServiceRouteStopView[];
   height?: number | string;
@@ -206,6 +214,27 @@ export function ServiceLocationMap({
             pathOptions={{ color: BRAND, weight: 1.5, opacity: 0.5, fillColor: BRAND, fillOpacity: 0.07 }}
           />
         )}
+        {/* Ruling 112 Q3: surcharge-zone rings — dashed, amber, display-only. Each popup names
+            the authored fee for a pickup landing in that ring; no distance is computed or shown. */}
+        {pin &&
+          (surchargeZones ?? [])
+            .filter((z) => Number(z.radiusKm) > 0)
+            .map((z, i) => (
+              <Circle
+                key={`zone-${i}`}
+                center={[pin.lat, pin.lng]}
+                radius={Number(z.radiusKm) * 1000}
+                pathOptions={{ color: "#B08A3C", weight: 1.5, opacity: 0.6, dashArray: "5 7", fillColor: "#B08A3C", fillOpacity: 0.05 }}
+              >
+                <Popup>
+                  <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", fontSize: 12.5, color: INK }}>
+                    Travel-surcharge zone {i + 1} — pickups out to {Number(z.radiusKm)} km add ${Number(z.fee).toFixed(2)}.
+                    <br />
+                    <span style={{ opacity: 0.7 }}>Amounts are set in Pricing &amp; fees; the charge is applied at checkout.</span>
+                  </div>
+                </Popup>
+              </Circle>
+            ))}
         {showConnector && (
           <Polyline
             positions={located.map((s) => [s.lat, s.lng] as [number, number])}

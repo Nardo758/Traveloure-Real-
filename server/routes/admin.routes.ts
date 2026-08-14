@@ -2758,13 +2758,49 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
 
   // Get all expert service categories with offerings (public)
 
+
+  // Ruling 112 / R3 (Run-2 finding): the review-decision NOTIFICATION promise, kept. The wizard
+  // says "you'll be notified when it's been looked at" — these writers make that true for every
+  // decision arm (born-approval, rejection, edit-review apply/discard). Durable at-most-once via
+  // dedupe_key (migration 209's partial UNIQUE); a 23505 means the notification already exists.
+  async function notifyListingDecision(opts: {
+    userId: string;
+    type: string;
+    title: string;
+    message: string;
+    serviceId: string;
+    dedupeKey: string;
+  }): Promise<void> {
+    try {
+      await storage.createNotification({
+        userId: opts.userId,
+        type: opts.type,
+        title: opts.title,
+        message: opts.message,
+        relatedId: opts.serviceId,
+        relatedType: "provider_service",
+        dedupeKey: opts.dedupeKey,
+      } as any);
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode !== "23505") {
+        console.error("[notifyListingDecision] failed (non-fatal):", err);
+      }
+    }
+  }
+
 router.get("/api/admin/provider-services/pending", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     const services = await storage.getProviderServiceListingsByStatus("submitted");
-    res.json(services);
+    // Ruling 112 Q8 (CLAUDE.md §23): EDIT REVIEWS share this queue — approved listings whose
+    // identity edit waits in pending_changes. The live listing is untouched while it waits;
+    // the card carries `editReview: true` + the staged patch so the admin sees exactly what
+    // would change.
+    const editReviews = await storage.getEditReviewServiceListings();
+    res.json([...editReviews, ...services]);
   });
 
   // Admin: Approve custom service
@@ -2781,6 +2817,34 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
+
+      // Ruling 112 Q8 (CLAUDE.md §23): approving an EDIT REVIEW applies the staged identity
+      // patch to the live row (atomic conditional on edit_review_status='pending' — a double
+      // click is one effect). The listing was approved all along; nothing was ever taken down.
+      const fullRow = await storage.getProviderServiceById(req.params.id);
+      if (fullRow && (fullRow as any).editReviewStatus === "pending") {
+        const applied = await storage.applyPendingChanges(req.params.id, adminId);
+        await insertAccessAuditLog({
+          actorId: adminId,
+          actorRole: user.role,
+          action: "provider_service_edit_review_approve",
+          resourceType: "provider_service",
+          resourceId: req.params.id,
+          metadata: { appliedKeys: Object.keys(((fullRow as any).pendingChanges ?? {}) as object) },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+        await notifyListingDecision({
+          userId: (fullRow as any).userId,
+          type: "listing_edit_approved",
+          title: "Your listing edit was approved",
+          message: `The changes you submitted for "${(fullRow as any).serviceName}" are now live.`,
+          serviceId: req.params.id,
+          dedupeKey: `service:${req.params.id}:edit-approved:${Date.now()}`,
+        });
+        return res.json(applied ?? fullRow);
+      }
+
       if (service.status !== "submitted") {
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
@@ -2794,6 +2858,18 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       // (activateVerificationHeldListings, wired at the verification write paths).
       const ownerVerification = await resolvePublishVerification(service.expertId);
       const approved = await storage.approveProviderServiceListing(req.params.id, adminId, ownerVerification.ok);
+
+      // Ruling 112 / R3: keep the wizard's promise — the owner hears about the decision.
+      await notifyListingDecision({
+        userId: service.expertId,
+        type: "listing_approved",
+        title: "Your listing was approved",
+        message: ownerVerification.ok
+          ? `"${service.title}" is approved and live — travelers can find and book it now.`
+          : `"${service.title}" is approved. It goes live automatically once your verification completes.`,
+        serviceId: req.params.id,
+        dedupeKey: `service:${req.params.id}:approved`,
+      });
 
       // ESO promotion was using expert_id / external_id columns dropped in migration 013.
       // Expert-owned services now live in provider_services; no ESO write needed here.
@@ -2835,11 +2911,48 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
       if (!service) {
         return res.status(404).json({ message: "Custom service not found" });
       }
+
+      // Ruling 112 Q8 (CLAUDE.md §23): rejecting an EDIT REVIEW discards the staged patch —
+      // the live listing stays approved exactly as it was. Never touches approval_status.
+      const fullRowReject = await storage.getProviderServiceById(req.params.id);
+      if (fullRowReject && (fullRowReject as any).editReviewStatus === "pending") {
+        const discarded = await storage.discardPendingChanges(req.params.id);
+        await insertAccessAuditLog({
+          actorId: adminId,
+          actorRole: user.role,
+          action: "provider_service_edit_review_reject",
+          resourceType: "provider_service",
+          resourceId: req.params.id,
+          metadata: { reason, discardedKeys: Object.keys(((fullRowReject as any).pendingChanges ?? {}) as object) },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+        await notifyListingDecision({
+          userId: (fullRowReject as any).userId,
+          type: "listing_edit_rejected",
+          title: "Your listing edit was not approved",
+          message: `The changes you submitted for "${(fullRowReject as any).serviceName}" were not approved: ${reason}. Your live listing is unchanged.`,
+          serviceId: req.params.id,
+          dedupeKey: `service:${req.params.id}:edit-rejected:${Date.now()}`,
+        });
+        return res.json(discarded ?? fullRowReject);
+      }
+
       if (service.status !== "submitted") {
         return res.status(400).json({ message: "Can only reject submitted services" });
       }
 
       const rejected = await storage.rejectProviderServiceListing(req.params.id, adminId, reason);
+
+      // Ruling 112 / R3: rejection is a decision too — say it, with the reason.
+      await notifyListingDecision({
+        userId: service.expertId,
+        type: "listing_rejected",
+        title: "Your listing was not approved",
+        message: `"${service.title}" was not approved: ${reason}. Edit it and resubmit when ready.`,
+        serviceId: req.params.id,
+        dedupeKey: `service:${req.params.id}:rejected`,
+      });
 
       await insertAccessAuditLog({
         actorId: adminId,

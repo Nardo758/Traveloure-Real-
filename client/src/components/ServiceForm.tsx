@@ -3664,6 +3664,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           pin={formData.locationPoint}
           pinLabel={formData.meetingPoint || formData.name || null}
           radiusKm={formData.serviceRadius > 0 ? formData.serviceRadius : null}
+          surchargeZones={((surchargeTierState as any)?.surchargeTiers ?? []).map(
+            (t: { radiusKm: string; fee: string }) => ({ radiusKm: Number(t.radiusKm), fee: t.fee }),
+          )}
           addressHint={formData.meetingPoint || ""}
           savedStops={(existingService?.routePoints as any) ?? []}
         />

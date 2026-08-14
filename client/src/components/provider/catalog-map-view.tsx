@@ -343,6 +343,13 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   const [selectedId, setSelectedId] = useState<string | null>(mappable[0]?.id ?? null);
   const selected = mappable.find((s) => s.id === selectedId) ?? null;
 
+  // Ruling 112 Q3: the selected listing's surcharge zones (ruling 81 rows) render as
+  // display-only rings on the read-only canvas — same layer the Logistics step draws.
+  const { data: zoneTierState } = useQuery<{ surchargeTiers: Array<{ radiusKm: string; fee: string }> }>({
+    queryKey: [`/api/provider/services/${selectedId}/surcharge-tiers`],
+    enabled: !!selectedId,
+  });
+
   // C4 (ruling 74): honest provider-wide coverage. A service is "located" iff its OWN row
   // carries confirmed coordinates (the same `parseStoredPoint` the left rail and the single-
   // service canvas use) — never inferred from a delivery method or a city string. The count is
@@ -518,6 +525,7 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
           pin={pin}
           pinLabel={selected?.meetingPoint || selected?.serviceName || null}
           radiusKm={toNum(selected?.serviceRadius)}
+          surchargeZones={(zoneTierState?.surchargeTiers ?? []).map((t) => ({ radiusKm: Number(t.radiusKm), fee: t.fee }))}
           stops={stops}
           height={480}
           testIdPrefix="catalog-map-canvas"

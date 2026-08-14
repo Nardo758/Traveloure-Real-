@@ -89,10 +89,43 @@ export default function ServiceApprovals() {
                     )}
                   </div>
                 </div>
-                {s.price != null && <Badge variant="secondary">${s.price}</Badge>}
+                <div className="flex items-center gap-2">
+                  {(s as any).editReview && (
+                    <Badge
+                      className="border bg-amber-100 text-amber-800 border-amber-200"
+                      data-testid={`badge-edit-review-${s.id}`}
+                    >
+                      Edit review — listing stays live
+                    </Badge>
+                  )}
+                  {s.price != null && <Badge variant="secondary">${s.price}</Badge>}
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {s.description && <p className="text-sm whitespace-pre-wrap">{s.description}</p>}
+                {/* Ruling 112 Q8: an edit review shows EXACTLY what would change — approve
+                    applies it to the live row; reject discards it and the approved version
+                    stands untouched. */}
+                {(s as any).editReview && (s as any).pendingChanges && (
+                  <div
+                    className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm"
+                    data-testid={`panel-pending-changes-${s.id}`}
+                  >
+                    <p className="font-medium mb-1">Requested changes</p>
+                    <ul className="space-y-0.5">
+                      {Object.entries((s as any).pendingChanges as Record<string, unknown>).map(([k, v]) => (
+                        <li key={k} className="flex gap-2">
+                          <span className="text-muted-foreground">{k === "__routePoints" ? "route stops (new route)" : k}:</span>
+                          <span className="truncate">
+                            {k === "__routePoints" && Array.isArray(v)
+                              ? `${v.length} stop${v.length === 1 ? "" : "s"}`
+                              : String(v)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <Textarea
                   placeholder="Rejection reason (required to reject)"
                   value={reasons[s.id] ?? ""}
