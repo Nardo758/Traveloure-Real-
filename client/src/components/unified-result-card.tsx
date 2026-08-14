@@ -18,6 +18,7 @@ import {
   Send,
   Loader2,
   Calendar,
+  ShoppingCart,
 } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -27,26 +28,44 @@ import type { CatalogItem } from "@/types/catalog";
 
 export interface UnifiedResult {
   id: string;
+
   name: string;
+
   title?: string;
+
   rating?: number | null;
+
   reviewCount?: number | null;
+
   priceLevel?: string | null;
   /** Numeric price in the provider's currency. Shown as "$89" when present; overrides priceLevel display. */
+
   price?: number | null;
   /** ISO-4217 currency code for the numeric price (e.g. "USD"). Defaults to "USD" when omitted. */
+
   currency?: string | null;
   /** Suffix appended after the price (e.g. "night" → "$89/night"). */
+
   priceSuffix?: string | null;
+
   address?: string | null;
+
   description?: string | null;
+
   imageUrl?: string | null;
+
   thumbnail?: string | null;
+
   websiteUrl?: string | null;
+
   website?: string | null;
+
   phone?: string | null;
+
   source: "native" | "serp" | "viator" | "amadeus" | "booking_com" | "opentable" | "fever" | "poi" | "transfer" | "safety" | "restaurant";
+
   isPartner?: boolean;
+
   category?: string | null;
   /** Cuisine type — populated for restaurant / opentable results. */
   cuisine?: string | null;
@@ -54,7 +73,10 @@ export interface UnifiedResult {
    * §16: partner feeds never ship a booking URL — the server strips it and ships this opaque
    * vault token instead; the agent-booking rail resolves it back to the URL server-side.
    */
+
   bookingToken?: string | null;
+
+  priceDisplay?: string | null;
 }
 
 /**
@@ -98,6 +120,7 @@ interface UnifiedResultCardProps {
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
   showInquiryButton?: boolean;
+  onAddToCart?: (result: UnifiedResult) => void;
 }
 
 export function UnifiedResultCard({ 
@@ -105,7 +128,8 @@ export function UnifiedResultCard({
   template = "", 
   destination = "",
   onInquiry,
-  showInquiryButton = true
+  showInquiryButton = true,
+  onAddToCart,
 }: UnifiedResultCardProps) {
   const [clicked, setClicked] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
@@ -320,6 +344,21 @@ export function UnifiedResultCard({
             {renderPrice()}
             
             <div className="flex gap-2">
+              {onAddToCart && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToCart(result);
+                  }}
+                  data-testid={`button-add-to-cart-${result.id}`}
+                >
+                  <ShoppingCart className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
+              )}
+
               {showInquiryButton && !isPartner && onInquiry && (
                 <Button
                   size="sm"
@@ -415,13 +454,17 @@ export function UnifiedResultGrid({
   template, 
   destination,
   onInquiry,
-  isLoading = false
+  onAddToCart,
+  isLoading = false,
+  showInquiryButton,
 }: { 
   results: UnifiedResult[];
   template?: string;
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
+  onAddToCart?: (result: UnifiedResult) => void;
   isLoading?: boolean;
+  showInquiryButton?: boolean;
 }) {
   if (isLoading) {
     return (
@@ -463,6 +506,8 @@ export function UnifiedResultGrid({
           template={template}
           destination={destination}
           onInquiry={onInquiry}
+          onAddToCart={onAddToCart}
+          showInquiryButton={showInquiryButton}
         />
       ))}
     </div>
