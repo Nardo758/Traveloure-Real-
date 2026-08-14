@@ -479,12 +479,13 @@ router.patch(
  */
 router.get("/api/transport-options", async (req, res) => {
   try {
-    const { destination, travelers } = req.query;
+    const { destination, travelers, startDate } = req.query;
     if (!destination || typeof destination !== "string") {
       return res.status(400).json({ error: "destination is required" });
     }
     const travelersNum = travelers ? parseInt(String(travelers), 10) : 1;
-    const options = await getDestinationTransportOptions(destination, travelersNum);
+    const startDateStr = typeof startDate === "string" ? startDate : undefined;
+    const options = await getDestinationTransportOptions(destination, travelersNum, startDateStr);
     return res.json(options);
   } catch (error) {
     console.error("[transport-options] Error fetching destination transport options:", error);

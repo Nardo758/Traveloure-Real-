@@ -612,6 +612,7 @@ export interface DestinationTransportOption {
 export async function getDestinationTransportOptions(
   destination: string,
   travelers: number = 1,
+  startDate?: string,
 ): Promise<DestinationTransportOption[]> {
   // Use the public affiliate marker (partner ID) — never the secret API token —
   // for any URL that will be returned to the client.
@@ -655,29 +656,36 @@ export async function getDestinationTransportOptions(
     // content_affinity_tags may be absent on older dev DBs — not fatal
   }
 
+  // Date helpers — use the trip's startDate when provided, otherwise today.
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  const tripStart = startDate ? new Date(startDate) : new Date();
+  const tripEnd = new Date(tripStart.getTime() + 7 * 86_400_000);
+
   // 2. 12Go — destination search page (user enters their own origin).
   // We link to the 12Go destination hub so the user can search from wherever
-  // they're travelling from. The ?z= param is the public partner marker, not
-  // the secret API token.
+  // they're travelling from. The ?z= param is the public partner marker.
+  // priceCentsLow is null — these are affiliate search links, not real quotes,
+  // so no "Add" button is shown (would corrupt the budget with a floor estimate).
   const destSlug = encodeURIComponent(
     destination.toLowerCase().replace(/\s+/g, "-")
   );
+  const go12DateParam = `&date=${fmt(tripStart)}`;
   results.push({
     id: "affiliate-12go",
     source: "12go",
     title: `Trains & buses to ${destination}`,
-    description: "Book trains, buses & ferries with 12Go — strong Asia & global coverage",
+    description: "Search trains, buses & ferries with 12Go — strong Asia & global coverage",
     modeType: "transit",
     icon: "🚄",
-    priceDisplay: "From $5",
-    priceCentsLow: 500,
+    priceDisplay: "Search prices",
+    priceCentsLow: null,
     currency: "USD",
-    externalUrl: `https://12go.asia/en/travel/to/${destSlug}?z=${marker}`,
+    externalUrl: `https://12go.asia/en/travel/to/${destSlug}?z=${marker}${go12DateParam}`,
     isExternal: true,
   });
 
   // 3. Omio — destination search page (user enters their own origin).
-  // priceCentsLow null → no "Add" button shown (price-compare only).
+  // priceCentsLow null → no "Add" button (price-compare only).
   results.push({
     id: "affiliate-omio",
     source: "omio",
@@ -688,15 +696,13 @@ export async function getDestinationTransportOptions(
     priceDisplay: "Compare prices",
     priceCentsLow: null,
     currency: "EUR",
-    externalUrl: `https://www.omio.com/results?to=${encodeURIComponent(destination)}&ref=${marker}`,
+    externalUrl: `https://www.omio.com/results?to=${encodeURIComponent(destination)}&date=${fmt(tripStart)}&ref=${marker}`,
     isExternal: true,
   });
 
   // 4. DiscoverCars — car rental at destination.
-  // buildDiscoverCarsUrl uses ?affiliate_id= which expects the public marker.
-  const today = new Date();
-  const nextWeek = new Date(today.getTime() + 7 * 86_400_000);
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  // Dates are threaded from the trip's startDate (or today if none provided).
+  // priceCentsLow null — this is a search link, not a real quote.
   results.push({
     id: "affiliate-discovercars",
     source: "discovercars",
@@ -704,10 +710,10 @@ export async function getDestinationTransportOptions(
     description: "Compare 500+ rental providers with DiscoverCars — free cancellation options",
     modeType: "car",
     icon: "🚙",
-    priceDisplay: "From $25/day",
-    priceCentsLow: 2_500,
+    priceDisplay: "Search prices",
+    priceCentsLow: null,
     currency: "USD",
-    externalUrl: `https://www.discovercars.com/car-hire/${encodeURIComponent(destination)}?pickup_date=${fmt(today)}&dropoff_date=${fmt(nextWeek)}&affiliate_id=${marker}`,
+    externalUrl: `https://www.discovercars.com/car-hire/${encodeURIComponent(destination)}?pickup_date=${fmt(tripStart)}&dropoff_date=${fmt(tripEnd)}&affiliate_id=${marker}`,
     isExternal: true,
   });
 
