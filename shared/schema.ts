@@ -900,6 +900,10 @@ export const providerServices = pgTable("provider_services", {
   checkOutTime: varchar("check_out_time", { length: 5 }),
   houseRules: text("house_rules"),
   amenities: jsonb("amenities").$type<string[]>(),
+  // Ruling 112 Q6 (migration 214): minimum stay in nights, property/property_room by convention
+  // (editor renders it only for property shapes; app-enforced ≥1, no DB CHECK). NULL = never
+  // captured — never a guessed 1-night default (§13).
+  minStayNights: integer("min_stay_nights"),
 
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
@@ -2057,6 +2061,9 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   // `null` is preserved as "never captured" and `[]` as "deliberately cleared" — the two must
   // not collapse (§13), the same rule deliveryLanguages already states above.
   amenities: z.array(z.string().trim().min(1).max(60)).max(50).nullable().optional(),
+  // Ruling 112 Q6 (migration 214): a declared minimum stay is at least one night; NULL stays
+  // "never captured" (no guessed default, §13).
+  minStayNights: z.coerce.number().int().min(1).max(365).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

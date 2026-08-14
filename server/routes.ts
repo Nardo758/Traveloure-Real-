@@ -2643,6 +2643,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({ message: "Each pattern's endTime must be after its startTime" });
         }
       }
+      // Ruling 112 Q5 (R4b): a payload carrying two identical windows used to trip the UNIQUE
+      // constraint and get misreported as a concurrency 409 ("changed elsewhere") on a first-ever
+      // save. Duplicates inside ONE payload are a validation error, not a race — say so.
+      const windowKeys = new Set<string>();
+      for (const p of parsed.data.patterns) {
+        const key = `${p.dayOfWeek}|${p.startTime}|${p.endTime}`;
+        if (windowKeys.has(key)) {
+          return res.status(400).json({
+            message: "Two repeating windows are identical (same day, start and end) — merge them or change one.",
+          });
+        }
+        windowKeys.add(key);
+      }
       const patterns = parsed.data.patterns.map((p) => ({
         dayOfWeek: p.dayOfWeek,
         startTime: p.startTime,

@@ -189,6 +189,7 @@ interface Property {
   cancellationPolicy?: string | null;
   cancellationPolicyType?: string | null;
   checkInTime?: string | null;
+  minStayNights?: number | null;
   checkOutTime?: string | null;
   houseRules?: string | null;
   amenities?: string[] | null;
@@ -649,6 +650,8 @@ export default function ProviderWorkstation() {
   const [editPropHouseRules, setEditPropHouseRules] = useState("");
   const [editPropCancellationPolicy, setEditPropCancellationPolicy] = useState("");
   const [editPropCancellationPolicyType, setEditPropCancellationPolicyType] = useState("");
+  // Ruling 112 Q6 (migration 214): minimum stay in nights — "" = never captured, no guessed 1.
+  const [editPropMinStay, setEditPropMinStay] = useState("");
   const [editPropAmenities, setEditPropAmenities] = useState<string[]>([]);
   const [amenityDraft, setAmenityDraft] = useState("");
   const [roomEdits, setRoomEdits] = useState<Record<string, RoomEditDraft>>({});
@@ -673,6 +676,7 @@ export default function ProviderWorkstation() {
     setEditPropHouseRules(property.houseRules ?? "");
     setEditPropCancellationPolicy(property.cancellationPolicy ?? "");
     setEditPropCancellationPolicyType(property.cancellationPolicyType ?? "");
+    setEditPropMinStay(property.minStayNights == null ? "" : String(property.minStayNights));
     setEditPropAmenities(Array.isArray(property.amenities) ? property.amenities : []);
     setAmenityDraft("");
     setRoomEdits(
@@ -791,6 +795,8 @@ export default function ProviderWorkstation() {
         amenities: editPropAmenities,
         cancellationPolicy: editPropCancellationPolicy.trim() || null,
         cancellationPolicyType: editPropCancellationPolicyType || null,
+        // Ruling 112 Q6: NULL = never captured; a typed value is clamped to >=1 by the shared schema.
+        minStayNights: editPropMinStay.trim() === "" ? null : Number(editPropMinStay),
       });
       return res.json();
     },
@@ -1834,7 +1840,7 @@ export default function ProviderWorkstation() {
                     data-testid="input-edit-property-gallery"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Label htmlFor="edit-property-checkin" className="text-sm">Check-in time</Label>
                     <Input
@@ -1853,6 +1859,19 @@ export default function ProviderWorkstation() {
                       value={editPropCheckOutTime}
                       onChange={(e) => setEditPropCheckOutTime(e.target.value)}
                       data-testid="input-edit-property-checkout"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-property-min-stay" className="text-sm">Minimum stay</Label>
+                    <Input
+                      id="edit-property-min-stay"
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={editPropMinStay}
+                      onChange={(e) => setEditPropMinStay(e.target.value)}
+                      placeholder="nights"
+                      data-testid="input-edit-property-min-stay"
                     />
                   </div>
                 </div>
@@ -1915,11 +1934,14 @@ export default function ProviderWorkstation() {
                       className="w-full h-9 rounded-md border border-console-light bg-white px-2 text-sm"
                       data-testid="select-edit-property-cancellation-type"
                     >
-                      <option value="">Not set</option>
-                      <option value="flexible">Flexible</option>
-                      <option value="moderate">Moderate</option>
-                      <option value="strict">Strict</option>
-                      <option value="non_refundable">Non-refundable</option>
+                      <option value="">Not declared — no policy shown to travelers</option>
+                      {/* Ruling 112 Q6: the windows below are the ENFORCED schedule
+                          (cancellation-policy.service.ts), phrased for a stay — never the
+                          mock's illustrative numbers (§13). */}
+                      <option value="flexible">Flexible — full refund until 24 h before check-in</option>
+                      <option value="moderate">Moderate — full refund up to 5 days before check-in; 50% up to 48 h</option>
+                      <option value="strict">Strict — 50% refund up to 7 days before check-in; none after</option>
+                      <option value="non_refundable">Non-refundable — no automatic refund</option>
                     </select>
                   </div>
                   <div>

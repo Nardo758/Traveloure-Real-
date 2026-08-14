@@ -106,6 +106,7 @@ import {
   Search,
 } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
+import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -211,6 +212,10 @@ export function ProviderStorefrontHeader() {
   const { toast } = useToast();
   const { user } = useAuth();
   const handle = (user as any)?.handle as string | null | undefined;
+  // Ruling 112 Q9: handle & bio are edited HERE (Distribute mounts this header) — the mock's
+  // placement: "Catalog is what you sell; this is how you sell it." Settings keeps its mount
+  // for discoverability; this inline editor is the primary home.
+  const [editingStorefront, setEditingStorefront] = useState(false);
 
   const services = useQuery<Service[]>({ queryKey: ["/api/provider/services"] });
   const countsLoaded = !services.isLoading;
@@ -249,14 +254,14 @@ export function ProviderStorefrontHeader() {
             ) : (
               <p className="text-sm text-console-mid" data-testid="text-storefront-no-handle">
                 No handle yet —{" "}
-                <Link href="/provider/settings">
-                  <span
-                    className="underline cursor-pointer font-medium text-primary"
-                    data-testid="link-storefront-claim-handle"
-                  >
-                    Claim your handle in Settings →
-                  </span>
-                </Link>
+                <button
+                  type="button"
+                  onClick={() => setEditingStorefront(true)}
+                  className="underline cursor-pointer font-medium text-primary"
+                  data-testid="link-storefront-claim-handle"
+                >
+                  claim it right here →
+                </button>
               </p>
             )}
           </div>
@@ -282,24 +287,42 @@ export function ProviderStorefrontHeader() {
             )
           )}
           <span className="flex-1" />
-          {isLive && publicUrl && (
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}
-                data-testid="button-storefront-preview"
-              >
-                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                Preview
-              </Button>
-              <Button size="sm" variant="outline" onClick={copyLink} data-testid="button-storefront-copy-link">
-                <Copy className="w-3.5 h-3.5 mr-1.5" />
-                Copy link
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditingStorefront((v) => !v)}
+              data-testid="button-edit-handle-bio"
+            >
+              {editingStorefront ? "Close editor" : "Edit handle & bio"}
+            </Button>
+            {isLive && publicUrl && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}
+                  data-testid="button-storefront-preview"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                  Preview
+                </Button>
+                <Button size="sm" variant="outline" onClick={copyLink} data-testid="button-storefront-copy-link">
+                  <Copy className="w-3.5 h-3.5 mr-1.5" />
+                  Copy link
+                </Button>
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Ruling 112 Q9: the inline handle/bio/cover editor — the same card Settings mounts,
+            opened in place so Distribute is where a storefront is dressed. */}
+        {editingStorefront && (
+          <div data-testid="panel-storefront-editor">
+            <HandleClaimCard currentHandle={handle} />
+          </div>
+        )}
 
         {/* The storefront caption share tool (shared component) — only when the page is
             actually live; promoting a 404 storefront would be a dead share (§13). */}
@@ -1134,6 +1157,11 @@ export default function ProviderServices() {
     const requested = new URLSearchParams(window.location.search).get("availability");
     if (requested && (services ?? []).some((s) => s.id === requested)) {
       setAvailabilityDrawerServiceId(requested);
+      setAvailabilityDrawerOpen(true);
+    } else if (requested) {
+      // Ruling 112 Q5: Calendar's standing "Edit availability →" access point arrives with
+      // `?availability=1` (no listing chosen) — open the editor unpreselected rather than
+      // silently dropping the intent. A stale listing id degrades the same honest way.
       setAvailabilityDrawerOpen(true);
     }
     deepLinkApplied.current = true;

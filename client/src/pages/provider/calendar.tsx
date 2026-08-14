@@ -193,6 +193,16 @@ export default function ProviderCalendar() {
             <ChevronRight className="w-4 h-4" />
           </button>
           <span className="flex-1" />
+          {/* Ruling 112 Q5: the standing access point into the availability editor. Calendar
+              stays read-only (G1); this is the affordance the mock is amended to gain too
+              (mockup README note) — chips deep-link per event, this works with zero events. */}
+          <Link
+            href="/provider/services?availability=1"
+            className="text-[12px] font-semibold underline underline-offset-2 text-console-brand hover:opacity-80"
+            data-testid="link-calendar-edit-availability"
+          >
+            Edit availability →
+          </Link>
           {CHIPS.map((c) => {
             const on = chip === c.key;
             return (

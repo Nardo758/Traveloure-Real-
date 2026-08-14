@@ -1065,4 +1065,8 @@ export const MIGRATION_FILES = [
   // CHECK. Extends the ALREADY-LIVE §15 stay claim mechanism (candidate (a) — the ratified
   // PROPERTY rung) with a date-range materializer; builds no second claim machine (§18c).
   "213_stay_booking_provenance.sql",
+  // 214: property minimum stay (ruling 112 Q6 — the mock's field set adopted after the Run-2
+  // conformance pass graded its absence a P2 BUILD-GAP). ONE additive-nullable integer on
+  // provider_services (min_stay_nights), NO DB CHECK, declared in shared/schema.ts same commit.
+  "214_property_min_stay.sql",
 ] as const;

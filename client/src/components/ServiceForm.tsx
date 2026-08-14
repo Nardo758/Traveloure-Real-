@@ -171,9 +171,7 @@ interface ServiceFormData {
   requirements: string[];
   maxConcurrentClients: number;
   // Logistics
-  serviceArea: string;
   neighborhood: string;
-  neighborhoods: string[];
   meetingPoint: string;
   // L27-P3: the CONFIRMED map point for this listing (migration-129 latitude/longitude).
   // Null = no pin. `locationPrecision` is the row's server-derived precision, carried
@@ -342,9 +340,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     whatIncluded: [],
     requirements: [],
     maxConcurrentClients: 1,
-    serviceArea: "",
     neighborhood: "",
-    neighborhoods: [],
     meetingPoint: "",
     locationPoint: null,
     locationPrecision: null,
@@ -451,9 +447,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     whatIncluded: (s.whatIncluded as string[]) || [],
     requirements: (s.requirements as string[]) || [],
     maxConcurrentClients: s.maxConcurrentBookings || 1,
-    serviceArea: s.location || "",
     neighborhood: s.neighborhood || "",
-    neighborhoods: Array.isArray(s.neighborhoods) ? s.neighborhoods : (s.neighborhood ? [s.neighborhood] : []),
     meetingPoint: s.meetingPoint || "",
     // Existing coordinates + their precision, exactly as stored (decimal → string).
     locationPoint: parseStoredPoint(s.latitude, s.longitude),
@@ -785,7 +779,73 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     staleTime: 5 * 60_000,
   });
 
-  const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm(role));
+  // ── Ruling 112 Q4 — AUTOSAVE (the mock's contract: "Draft · autosaved — closing this tab
+  // keeps everything"). Create mode only: the in-progress form is checkpointed to localStorage
+  // and restored on return, retiring the punch-list "wizard persistence" loss. Edit mode already
+  // persists to the real row. Merged over buildEmptyForm so a shape change in the form never
+  // resurrects stale keys as the whole state.
+  const AUTOSAVE_KEY = `traveloure:new-service-autosave:v1:${role}`;
+  const readAutosave = (): { formData: Partial<ServiceFormData>; currentStep?: number; savedAt?: string } | null => {
+    if (isEditMode || typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && parsed.formData ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+  const initialAutosave = useRef(readAutosave());
+  const [formData, setFormData] = useState<ServiceFormData>(() =>
+    initialAutosave.current
+      ? { ...buildEmptyForm(role), ...initialAutosave.current.formData }
+      : buildEmptyForm(role),
+  );
+  const [autosaveRestoredAt, setAutosaveRestoredAt] = useState<string | null>(
+    initialAutosave.current?.savedAt ?? null,
+  );
+  const clearAutosave = () => {
+    try { window.localStorage.removeItem(AUTOSAVE_KEY); } catch { /* private mode */ }
+  };
+  const discardAutosave = () => {
+    clearAutosave();
+    initialAutosave.current = null;
+    setAutosaveRestoredAt(null);
+    setFormData(buildEmptyForm(role));
+    setCurrentStep(1);
+  };
+  const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
+  useEffect(() => {
+    const st = initialAutosave.current?.currentStep;
+    if (!isEditMode && typeof st === "number" && st >= 1) setCurrentStep(st);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (isEditMode) return;
+    // Only checkpoint once the provider has actually typed something — a pristine empty form
+    // saved on mount would greet every future visit with a bogus "restored" banner.
+    const dirty = Boolean(
+      formData.name?.trim() ||
+      formData.description?.trim() ||
+      formData.basePrice > 0 ||
+      formData.serviceOfferingTypeId ||
+      formData.expertOfferingTypeId,
+    );
+    if (!dirty) return;
+    const t = setTimeout(() => {
+      try {
+        const savedAt = new Date().toISOString();
+        window.localStorage.setItem(
+          AUTOSAVE_KEY,
+          JSON.stringify({ formData, currentStep, savedAt }),
+        );
+        setAutosavedAt(savedAt);
+      } catch { /* storage full / private mode — the manual Save Draft rail still works */ }
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, currentStep, isEditMode]);
 
   const selectedProviderOffering = providerOfferingTypes.find(
     (o) => o.id === formData.serviceOfferingTypeId
@@ -802,6 +862,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const { data: allNeighborhoods = [] } = useQuery<Array<{ id: string; city: string; country: string; name: string; slug: string }>>({
     queryKey: ["/api/city-neighborhoods"],
   });
+  // Ruling 112 Q1: the global 20-city checkbox wall is retired for a single searchable pick —
+  // this is its filter text. One neighborhood, because the column is one neighborhood (the old
+  // multi-select silently dropped every pick after the first — Run-2 finding R7).
+  const [neighborhoodQuery, setNeighborhoodQuery] = useState("");
 
   // Fetch the selected category's categoryKey so we can load its dynamic fields
   const selectedCategoryKey = (categories as ServiceCategory[]).find((c) => c.id === formData.categoryId)?.categoryKey ?? null;
@@ -1253,9 +1317,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         whatIncluded: formData.whatIncluded,
         requirements: formData.requirements,
         maxConcurrentBookings: formData.maxConcurrentClients,
-        location: formData.serviceArea || "Unknown",
-        neighborhood: formData.neighborhoods.length > 0 ? formData.neighborhoods[0] : (formData.neighborhood || null),
-        neighborhoods: formData.neighborhoods,
+        // Ruling 112 Q1: display location is COMPOSED from the picked neighborhood (structured
+        // data the provider chose — never parsed, never guessed), and the literal "Unknown"
+        // client write is retired. No neighborhood → the key is omitted so an edit never
+        // clobbers a stored location with a placeholder.
+        location: (() => {
+          const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
+          return sel ? `${sel.name}, ${sel.city}` : undefined;
+        })(),
+        neighborhood: formData.neighborhood || null,
         meetingPoint: formData.meetingPoint || null,
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
@@ -1517,6 +1587,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             : "It goes live once approved. You'll be notified when it's reviewed.",
         });
         const savedId: string | undefined = service?.id ?? id;
+        // Ruling 112 Q4: the row now owns this draft — the local checkpoint's job is done.
+        if (!isEditMode) { clearAutosave(); setAutosaveRestoredAt(null); }
         if (onSuccess && savedId) onSuccess(savedId);
         // `viewListingHome`'s useState INITIALIZER only ever runs once, at this component
         // instance's true first mount — and wouter's `<Switch>` reuses the SAME `ServiceForm`
@@ -1995,6 +2067,47 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </CardContent>
         </Card>
 
+        {/* Ruling 112 Q7 — the mock's three-card settings rail. Availability and Photos & media
+            sit BESIDE Pricing & fees as standing settings cards; each navigates to the surface
+            that owns the work (the checklist-row rule), it never edits inline. */}
+        <Card data-testid="card-listing-availability">
+          <CardContent className="p-5 flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Availability</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Slots, ranges and blackout dates. Lives on Catalog, beside the listing.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/${role}/services?availability=${id}`)}
+              data-testid="button-open-listing-availability"
+            >
+              Manage
+            </Button>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-listing-photos">
+          <CardContent className="p-5 flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm font-medium text-gray-900">Photos &amp; media</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Cover photo and gallery — authored on the Review &amp; submit step.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setViewListingHome(false);
+                setCurrentStep(TOTAL_STEPS);
+              }}
+              data-testid="button-open-listing-photos"
+            >
+              Manage
+            </Button>
+          </CardContent>
+        </Card>
+
         <Card className="p-5 space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-[220px]">
@@ -2232,6 +2345,36 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             Save Draft at any point and come back.
           </p>
         </div>
+      )}
+
+      {/* Ruling 112 Q4 — the autosave contract, stated and kept. The restore banner appears
+          only when a previous visit's checkpoint was actually loaded; the quiet status line
+          confirms each checkpoint so "did that save?" never needs asking. */}
+      {!isEditMode && autosaveRestoredAt && (
+        <div
+          className="flex items-start gap-3 p-3 rounded-lg border text-sm"
+          style={{ background: "var(--console-ground)", borderColor: "var(--console-line)", color: "var(--console-darkest)" }}
+          data-testid="banner-autosave-restored"
+        >
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "var(--console-brand)" }} />
+          <p className="flex-1">
+            <strong>Picked up where you left off.</strong> This draft was autosaved{" "}
+            {new Date(autosaveRestoredAt).toLocaleString()} — closing the tab keeps everything.
+          </p>
+          <button
+            type="button"
+            onClick={discardAutosave}
+            className="text-xs underline underline-offset-2 shrink-0"
+            data-testid="button-discard-autosave"
+          >
+            Start fresh
+          </button>
+        </div>
+      )}
+      {!isEditMode && !autosaveRestoredAt && autosavedAt && (
+        <p className="text-xs text-muted-foreground -mt-2" data-testid="text-autosave-status">
+          Draft · autosaved — closing this tab keeps everything.
+        </p>
       )}
 
       {/* ── dispatch v1.3 R2 (ruling 53): expert identity-verification status, visible on
@@ -3390,7 +3533,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <LocationPointPicker
               value={formData.locationPoint}
               precision={formData.locationPrecision}
-              addressHint={formData.meetingPoint || formData.serviceArea}
+              addressHint={formData.meetingPoint}
               onChange={(point) => {
                 setLocationPointTouched(true);
                 setOfficePinPrefilled(false);
@@ -3409,69 +3552,101 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 could be answered inconsistently. Nothing about the field or its column changed;
                 only where it is asked. */}
 
-            {/* Neighborhoods multi-select */}
+            {/* Ruling 112 Q1 — one place question, one vocabulary. The global all-cities
+                checkbox wall (Run-2 R12) and the free-text Service Area input are retired:
+                the wall pretended to be a multi-select over a scalar column (R7), and the
+                free text is what left `location` reading 'Unknown'. One searchable pick;
+                it drives the market-page city (server-derived, utils/service-city.ts) and
+                the display location. */}
             <div>
-              <Label>Neighborhoods (Optional)</Label>
+              <Label>Neighborhood (where this happens)</Label>
               <p className="text-xs text-muted-foreground mt-1 mb-2">
-                Select all neighborhoods you serve. The first selected becomes the primary display neighborhood.
+                Pick the one neighborhood travelers should file this under — it places the
+                listing on its city's market page. Search by neighborhood or city.
               </p>
               {allNeighborhoods.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No neighborhoods available.</p>
               ) : (
-                <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1 mt-1">
-                  {Object.entries(
-                    allNeighborhoods.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
-                      const key = `${n.city}, ${n.country}`;
-                      if (!acc[key]) acc[key] = [];
-                      acc[key].push(n);
-                      return acc;
-                    }, {})
-                  ).map(([cityLabel, items]) => (
-                    <div key={cityLabel}>
-                      <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">{cityLabel}</p>
-                      {items.map((n) => {
-                        const checked = formData.neighborhoods.includes(n.slug);
-                        const isPrimary = formData.neighborhoods[0] === n.slug;
+                <>
+                  {formData.neighborhood && (() => {
+                    const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
+                    return (
+                      <div className="flex items-center gap-2 mb-2" data-testid="chip-selected-neighborhood">
+                        <Badge variant="secondary" className="rounded-full px-3">
+                          {sel ? `${sel.name} · ${sel.city}` : formData.neighborhood}
+                        </Badge>
+                        <button
+                          type="button"
+                          className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => set("neighborhood", "")}
+                          data-testid="button-clear-neighborhood"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    );
+                  })()}
+                  <Input
+                    value={neighborhoodQuery}
+                    onChange={(e) => setNeighborhoodQuery(e.target.value)}
+                    placeholder="Search neighborhoods or cities…"
+                    className="mb-2"
+                    data-testid="input-neighborhood-search"
+                  />
+                  <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1">
+                    {(() => {
+                      const q = neighborhoodQuery.trim().toLowerCase();
+                      const filtered = q
+                        ? allNeighborhoods.filter(
+                            (n) =>
+                              n.name.toLowerCase().includes(q) ||
+                              n.city.toLowerCase().includes(q) ||
+                              n.country.toLowerCase().includes(q),
+                          )
+                        : allNeighborhoods;
+                      if (filtered.length === 0) {
                         return (
-                          <label
-                            key={n.slug}
-                            className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent cursor-pointer text-sm"
-                            data-testid={`checkbox-neighborhood-${n.slug}`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300"
-                              checked={checked}
-                              onChange={(e) => {
-                                const next = e.target.checked
-                                  ? [...formData.neighborhoods, n.slug]
-                                  : formData.neighborhoods.filter((s) => s !== n.slug);
-                                set("neighborhoods", next);
-                              }}
-                            />
-                            <span className="flex-1">{n.name}</span>
-                            {checked && isPrimary && (
-                              <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">primary</Badge>
-                            )}
-                          </label>
+                          <p className="text-xs text-muted-foreground px-1 py-2" data-testid="text-no-neighborhood-match">
+                            Nothing matches "{neighborhoodQuery}".
+                          </p>
                         );
-                      })}
-                    </div>
-                  ))}
-                </div>
+                      }
+                      return Object.entries(
+                        filtered.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
+                          const key = `${n.city}, ${n.country}`;
+                          if (!acc[key]) acc[key] = [];
+                          acc[key].push(n);
+                          return acc;
+                        }, {}),
+                      ).map(([cityLabel, items]) => (
+                        <div key={cityLabel}>
+                          <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">
+                            {cityLabel}
+                          </p>
+                          {items.map((n) => {
+                            const selected = formData.neighborhood === n.slug;
+                            return (
+                              <button
+                                key={n.slug}
+                                type="button"
+                                onClick={() => set("neighborhood", selected ? "" : n.slug)}
+                                className={`flex w-full items-center gap-2 px-2 py-1 rounded text-left text-sm hover:bg-accent ${selected ? "bg-accent font-medium" : ""}`}
+                                data-testid={`option-neighborhood-${n.slug}`}
+                                aria-pressed={selected}
+                              >
+                                <span className="flex-1">{n.name}</span>
+                                {selected && (
+                                  <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">selected</Badge>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </>
               )}
-            </div>
-
-            {/* Service Area */}
-            <div>
-              <Label htmlFor="serviceArea">Service Area</Label>
-              <Input
-                id="serviceArea"
-                value={formData.serviceArea}
-                onChange={(e) => set("serviceArea", e.target.value)}
-                placeholder="e.g., Central Paris, Tokyo Shibuya, Barcelona Gràcia"
-                className="mt-2"
-              />
             </div>
 
           </CardContent>
@@ -3489,7 +3664,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           pin={formData.locationPoint}
           pinLabel={formData.meetingPoint || formData.name || null}
           radiusKm={formData.serviceRadius > 0 ? formData.serviceRadius : null}
-          addressHint={formData.meetingPoint || formData.serviceArea || ""}
+          addressHint={formData.meetingPoint || ""}
           savedStops={(existingService?.routePoints as any) ?? []}
         />
       )}
