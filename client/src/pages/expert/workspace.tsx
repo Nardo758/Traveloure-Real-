@@ -2764,7 +2764,7 @@ export default function ExpertWorkspace() {
   // Mode resolution is the SERVER's call (ready-made brief §2): assignment (an advisor row exists)
   // vs authoring (this expert is the trip's author). The client never infers it from a role string.
   const { data: workspaceCtx, isLoading: ctxLoading } = useQuery<{
-    mode: "assignment" | "authoring";
+    mode: "assignment" | "authoring" | "booking_request";
     trip: any;
     listing?: ReadyMadeListing | null;
   }>({
@@ -2773,6 +2773,8 @@ export default function ExpertWorkspace() {
     retry: false,
   });
   const isAuthoring = workspaceCtx?.mode === "authoring";
+  /** Provider landed here via a booking-request notification — advisor row not yet created. */
+  const isBookingRequest = workspaceCtx?.mode === "booking_request";
   const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
 
   // Decision-maker ruling (Aug 8 2026): the workspace ALWAYS lands on Add — building comes
@@ -2781,7 +2783,8 @@ export default function ExpertWorkspace() {
 
   const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({
     queryKey: ["/api/expert/assigned-trips"],
-    enabled: !isAuthoring, // an authoring trip is never in the assignment list (it has no advisor row)
+    // authoring trips have no advisor row; booking_request providers are not assigned advisors yet
+    enabled: !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertRoleData } = useQuery<{ role: string; roleLabel: string | null; applicationStatus: string | null }>({
@@ -2919,8 +2922,10 @@ export default function ExpertWorkspace() {
 
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
+  // booking_request mode: provider landed via a notification link before the advisor row exists —
+  // shape the context trip the same way so the rest of the page can render with the trip data.
   // Shape the context's trip row into the same view model the whole page already reads.
-  const trip: AssignedTrip | undefined = assignedTrip ?? (isAuthoring && workspaceCtx?.trip ? {
+  const trip: AssignedTrip | undefined = assignedTrip ?? ((isAuthoring || isBookingRequest) && workspaceCtx?.trip ? {
     trip_id: workspaceCtx.trip.id,
     trip_title: workspaceCtx.trip.title ?? "Untitled build",
     destination: workspaceCtx.trip.destination ?? "",
@@ -3520,7 +3525,7 @@ export default function ExpertWorkspace() {
   const advisorLegDays = Object.keys(advisorLegMetersByDay).map(Number).sort((a, b) => a - b);
   const advisorLegTotalMeters = advisorTripLegs.reduce((sum, l) => sum + (l.distanceMeters || 0), 0);
 
-  const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
+  const isLoading = ctxLoading || (!isAuthoring && !isBookingRequest && (tripsLoading || assignmentLoading));
 
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {

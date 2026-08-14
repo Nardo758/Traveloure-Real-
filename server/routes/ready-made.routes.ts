@@ -20,7 +20,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users } from "@shared/schema";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users, serviceBookings } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
@@ -398,6 +398,26 @@ router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req,
         .where(eq(readyMadeTrips.sourceTripId, tripId))
         .limit(1);
       return res.json({ mode: "authoring", trip: authored, listing: listing ?? null });
+    }
+
+    // Booking-request mode: a provider who has received a service booking on this trip may
+    // view the workspace so they can start building before the formal advisor assignment
+    // is created (which only happens after the booking is confirmed). Read-only context
+    // sufficient for the notification deep-link to land meaningfully instead of 403.
+    const [pendingBooking] = await db
+      .select({ id: serviceBookings.id })
+      .from(serviceBookings)
+      .where(
+        and(
+          eq(serviceBookings.providerId, userId),
+          eq(serviceBookings.tripId, tripId),
+        ),
+      )
+      .limit(1);
+    if (pendingBooking) {
+      const [trip] = await db.select().from(trips).where(eq(trips.id, tripId)).limit(1);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      return res.json({ mode: "booking_request", trip });
     }
 
     return res.status(403).json({ message: "Not assigned to this trip and not its author" });
