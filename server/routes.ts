@@ -1662,6 +1662,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               serviceName: service.serviceName,
               travelerName,
               amount: totalAmount.toFixed(2),
+              ...(tripId ? { tripId } : {}),
             },
           });
 
