@@ -3,6 +3,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -459,6 +460,11 @@ export default function ItineraryViewPage() {
               {isExpertView ? "Expert Review" : "Shared Itinerary"}
             </Badge>
           </div>
+          <div className="flex items-center gap-1">
+          {/* Ruling 116 (distribution-language audit P3): the shared-itinerary link is a
+              distribution surface — the recipient can switch the UI language (chrome only;
+              trip content has no translation system). Same ONE selector (ruling 60 (b)). */}
+          <LanguageMenu />
           <Button
             variant="ghost"
             size="sm"
@@ -477,6 +483,7 @@ export default function ItineraryViewPage() {
             <Share2 className="h-4 w-4" />
             Share
           </Button>
+          </div>
         </div>
 
         {isExpertView && (
