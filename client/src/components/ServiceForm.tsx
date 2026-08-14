@@ -79,6 +79,7 @@ import { ServiceMapAuthoring } from "@/components/provider/service-map-authoring
 // WAVE 2 / S4 (ledger row 99): the post-creation "Pricing & fees" drawer — surcharge mode +
 // amounts, deposit config and cancellation policy moved here from the wizard steps above.
 import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
+import { ServiceLanguagesCard } from "@/components/service-languages-card";
 import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
 
 interface ServiceCategory {
@@ -195,6 +196,10 @@ interface ServiceFormData {
   // `null` = never captured (render nothing); `[]` = deliberately cleared. The two must not
   // collapse, so this is nullable rather than defaulting to an empty array.
   deliveryLanguages: string[] | null;
+  // Ruling 115 (migration 216): the language the listing's ORIGINAL content is written in.
+  // Owner-declared on Basics ("I'm writing this in"); defaults to English — never guessed from
+  // the text. Drives translation targets and the traveler-facing "shown in <language>" label.
+  sourceLocale: "en" | "ja";
   transportProvided: "yes" | "no" | "not_applicable";
   // ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ───────────────
   // CAPTURE ONLY — nothing reads these yet. Every one is a string here so that "" can mean
@@ -350,6 +355,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     serviceRadius: 0,
     pickupRadiusKm: "",
     deliveryLanguages: null,
+    sourceLocale: "en",
     transportProvided: "not_applicable",
     // D7 (ruling 62): every field starts UNCAPTURED — an empty string, not a guessed default.
     transportProvision: "",
@@ -459,6 +465,8 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     // NULL round-trips as "" / null — never coerced into a number or a presumed language.
     pickupRadiusKm: s.pickupRadiusKm == null ? "" : String(s.pickupRadiusKm),
     deliveryLanguages: Array.isArray(s.deliveryLanguages) ? (s.deliveryLanguages as string[]) : null,
+    // Ruling 115: NULL on the row = English (the pre-216 assumption made explicit).
+    sourceLocale: s.sourceLocale === "ja" ? "ja" : "en",
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
     // D7 (ruling 62): NULL on the row round-trips back as "" — still uncaptured, never coerced
     // into a value the provider did not choose.
@@ -1354,6 +1362,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // SS-6 (ruling 69 disposition 9): sent only once the provider has touched the field —
         // `null` here means "never captured" and must not be confused with a cleared `[]`.
         deliveryLanguages: formData.deliveryLanguages,
+        // Ruling 115: the declared source language of the listing's own content.
+        sourceLocale: formData.sourceLocale,
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
@@ -2113,6 +2123,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </CardContent>
         </Card>
 
+        {/* Ruling 115 — Languages: the console surface for the ruling-60 translation rails.
+            Sits on the same settings rail (never a checklist row — a translation is optional). */}
+        <ServiceLanguagesCard
+          serviceId={id!}
+          sourceLocale={existingService?.sourceLocale === "ja" ? "ja" : "en"}
+          original={{
+            serviceName: existingService?.serviceName ?? null,
+            shortDescription: existingService?.shortDescription ?? null,
+            description: existingService?.description ?? null,
+            meetingPoint: existingService?.meetingPoint ?? null,
+          }}
+        />
+
         <Card className="p-5 space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-[220px]">
@@ -2705,6 +2728,30 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
               className="mt-2"
             />
+          </div>
+
+          {/* Ruling 115: the DECLARED source language of the listing's own content — asked,
+              never guessed from the text (§13). Drives which locales are translation targets
+              (Languages card on Listing Home) and the traveler-facing "shown in <language>"
+              fallback label. */}
+          <div>
+            <Label htmlFor="source-locale">I'm writing this in</Label>
+            <Select
+              value={formData.sourceLocale}
+              onValueChange={(v) => set("sourceLocale", v as "en" | "ja")}
+            >
+              <SelectTrigger id="source-locale" className="mt-2 w-56" data-testid="select-source-locale">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en" data-testid="option-source-locale-en">English</SelectItem>
+                <SelectItem value="ja" data-testid="option-source-locale-ja">日本語 (Japanese)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Write in your own language — travelers can switch languages, and you can add or
+              AI-draft a translation from the listing's Languages card after saving.
+            </p>
           </div>
 
           {/* Category — single canonical taxonomy. Ruling 114: when a provider offering is

@@ -144,15 +144,18 @@ interface Service {
   // (server: GET /api/services/:id, content.routes.ts). Null when the owner isn't away —
   // listings stay visible either way, booking is disabled only while `away` is set.
   away?: { until: string; message: string | null } | null;
-  // Ruling 60 Phase B — provider CONTENT translation. Present only under a non-en active locale:
-  // status 'approved' means the fields above are the provider's translated content; status
-  // 'fallback' (shownInEnglish: true) means no approved translation exists and the ORIGINAL
-  // English is shown with an honest label (§13 — never a silent or machine translation).
+  // Ruling 60 Phase B — provider CONTENT translation. Present only when the active locale differs
+  // from the listing's own source language (ruling 115: source_locale, NULL = en): status
+  // 'approved' means the fields above are the provider's translated content; status 'fallback'
+  // means no approved translation exists and the ORIGINAL is shown with an honest label keyed to
+  // its actual source language (§13 — never a silent or machine translation). `shownInEnglish` is
+  // the pre-115 flag, kept for back-compat (true only for an en-source fallback).
   translation?: {
     locale: string;
     status: "approved" | "fallback";
     source?: string;
     shownInEnglish: boolean;
+    sourceLocale?: string;
   } | null;
   // Ruling 22: the location facts were ALREADY on the wire (the endpoint spreads the row);
   // this interface just stopped dropping them on the floor. Map renders only from a real
@@ -789,19 +792,28 @@ export default function ServiceDetailPage() {
                 </Badge>
               )}
             </div>
-            {/* Ruling 60 Phase B (§13 applied to language): under a non-en locale with no
-                approved translation, the original English content is shown with an HONEST label —
-                never silently, never machine-translated at read time. The label text itself is
-                chrome (Phase A t()), the only place B touches A. */}
-            {service.translation?.shownInEnglish && (
+            {/* Ruling 60 Phase B (§13 applied to language): when the active locale has no
+                approved translation, the original content is shown with an HONEST label keyed to
+                the listing's actual source language (ruling 115) — never silently, never
+                machine-translated at read time. The label text itself is chrome (Phase A t()),
+                the only place B touches A. */}
+            {service.translation?.status === "fallback" && (
               <Badge
                 variant="outline"
                 className="mt-2 text-xs font-normal"
-                title={t("contentTranslation.shownInEnglishHint")}
+                title={t(
+                  (service.translation.sourceLocale ?? "en") === "ja"
+                    ? "contentTranslation.shownInJapaneseHint"
+                    : "contentTranslation.shownInEnglishHint",
+                )}
                 data-testid="badge-shown-in-english"
               >
                 <Languages className="w-3 h-3 mr-1" />
-                {t("contentTranslation.shownInEnglish")}
+                {t(
+                  (service.translation.sourceLocale ?? "en") === "ja"
+                    ? "contentTranslation.shownInJapanese"
+                    : "contentTranslation.shownInEnglish",
+                )}
               </Badge>
             )}
             <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
