@@ -456,7 +456,7 @@ export function UnifiedResultGrid({
   onInquiry,
   onAddToCart,
   isLoading = false,
-  showInquiryButton,
+  showInquiryButton = true,
 }: { 
   results: UnifiedResult[];
   template?: string;
