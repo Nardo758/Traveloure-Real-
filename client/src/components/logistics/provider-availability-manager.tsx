@@ -88,16 +88,9 @@ function isPropertyShaped(service: ProviderService | undefined): boolean {
 export function ProviderAvailabilityManager({
   initialServiceId,
 }: {
-<<<<<<< HEAD
-  // Item 4 (Catalog visual parity): the ?availability=<serviceId> deep-link now switches Catalog
-  // into this view-mode with the requesting service preselected, rather than a second embedded
-  // editor (the old section-catalog-availability block is gone). Optional and defaults to "" —
-  // every other mount of this component (unchanged) keeps today's blank-selector behavior.
-=======
   /** CATALOG REBUILD (mock `?availability=<id>` deep-link + the Catalog "Edit slots"
    *  affordance): preselect this service once the real service list has loaded. A stale
    *  id (not in this owner's list) is simply never applied — no guessed fallback. */
->>>>>>> worktree-agent-aa2f9d65b11c43475
   initialServiceId?: string;
 } = {}) {
   const { toast } = useToast();
@@ -111,9 +104,6 @@ export function ProviderAvailabilityManager({
     queryKey: ["/api/provider/availability"],
   });
 
-<<<<<<< HEAD
-  const [selectedServiceId, setSelectedServiceId] = useState<string>(initialServiceId ?? "");
-=======
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
 
   useEffect(() => {
@@ -123,7 +113,6 @@ export function ProviderAvailabilityManager({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialServiceId, services]);
->>>>>>> worktree-agent-aa2f9d65b11c43475
   const [newDate, setNewDate] = useState("");
   const [newStart, setNewStart] = useState("09:00");
   const [newEnd, setNewEnd] = useState("18:00");
