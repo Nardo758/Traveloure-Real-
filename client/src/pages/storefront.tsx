@@ -19,6 +19,9 @@ import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { OfferingCard } from "@/components/OfferingCard";
+import { LanguageMenu } from "@/components/language-menu";
+import { useLocale } from "@/hooks/use-locale";
+import { useTranslation } from "react-i18next";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
 import {
   Star,
@@ -65,6 +68,10 @@ interface StorefrontService {
   // always concrete; showPrice defaults true). A provider who hides the price hides it here too.
   showPrice?: boolean;
   bookingMode?: "instant" | "request" | "hidden";
+  // Ruling 116: true when the viewer's locale differs from this listing's source language and
+  // no approved translation exists — the card shows the honest original and the lane renders
+  // the one-line note below (§13; the detail page carries the full per-listing label).
+  shownInOriginal?: boolean;
 }
 
 interface StorefrontTemplate {
@@ -149,9 +156,15 @@ export default function StorefrontPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const askExpert = useAskExpert();
+  const { t } = useTranslation("common");
+  // Ruling 116 (distribution-language audit P1): the storefront is a first-class link/QR landing,
+  // so the receiver must be able to switch language here like on /services/:id. The resolved
+  // chrome locale rides the read as ?locale= (part of the key → switching refetches) and the
+  // server overlays approved content translations on the cards.
+  const { locale } = useLocale();
 
   const { data, isLoading, isError } = useQuery<StorefrontData>({
-    queryKey: [`/api/storefront/${handle}`],
+    queryKey: [`/api/storefront/${handle}`, { locale }],
     enabled: handle.length > 0,
     retry: false,
   });
@@ -224,7 +237,9 @@ export default function StorefrontPage() {
       />
 
       {/* Minimal branded header (standalone page, no site chrome) — same idiom as the
-          ready-made-detail.tsx share/OG page frame. */}
+          ready-made-detail.tsx share/OG page frame. Ruling 116: the 🌐 selector rides here so a
+          link/QR recipient (guest included) can switch language — same one-selector rule as the
+          Layout header (ruling 60 entry point (b)). */}
       <div className="border-b bg-card">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center gap-2 no-underline text-inherit" data-testid="link-storefront-logo">
@@ -233,6 +248,7 @@ export default function StorefrontPage() {
             </div>
             <span className="font-semibold text-foreground">Traveloure</span>
           </Link>
+          <LanguageMenu />
         </div>
       </div>
 
@@ -340,6 +356,13 @@ export default function StorefrontPage() {
         {services.length > 0 && (
           <section className="mt-8 sm:mt-12" data-testid="storefront-lane-services">
             <LaneHeader eyebrow="Book directly" title="Services" count={services.length} />
+            {/* Ruling 116 (§13): when any card falls back to its original language under the
+                viewer's locale, say so once — never a silent mix. */}
+            {services.some((s) => s.shownInOriginal) && (
+              <p className="mb-3 -mt-2 text-xs text-muted-foreground" data-testid="text-storefront-original-language-note">
+                {t("contentTranslation.someInOriginal")}
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {services.map((s) => {
                 const chips = s.deliveryMethod && DELIVERY_LABELS[s.deliveryMethod]
