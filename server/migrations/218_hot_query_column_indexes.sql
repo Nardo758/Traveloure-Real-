@@ -1,4 +1,4 @@
--- 217_hot_query_column_indexes.sql
+-- 218_hot_query_column_indexes.sql
 -- Task: add missing B-tree indexes on high-traffic FK/query columns discovered by
 -- cross-referencing the baseline schema against storage.ts / route query patterns.
 -- All statements are idempotent (CREATE INDEX IF NOT EXISTS). Every index here is

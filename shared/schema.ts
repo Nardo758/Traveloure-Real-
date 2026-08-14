@@ -1010,9 +1010,19 @@ export const providerServices = pgTable("provider_services", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
-  // Migration 217 — provider-owned service lookups / browse predicate. Declared here per the
+  // Migration 218 — provider-owned service lookups / browse predicate. Declared here per the
   // deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
   psUserIdStatusIdx: index("idx_provider_services_user_id_status").on(table.userId, table.status),
+  // Migration 219 — full-text search (weighted tsvector) + trigram similarity for search quality.
+  // GIN indexes declared here so publish-time drizzle push does not plan a DROP.
+  psFtsIdx: index("idx_provider_services_fts").using(
+    "gin",
+    sql`(setweight(to_tsvector('english', coalesce(service_name, '')), 'A') || setweight(to_tsvector('english', coalesce(description, '')), 'B'))`,
+  ),
+  psNameTrgmIdx: index("idx_provider_services_name_trgm").using(
+    "gin",
+    sql`service_name gin_trgm_ops`,
+  ),
 }));
 
 // === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
@@ -4817,7 +4827,14 @@ export const expertTemplates = pgTable("expert_templates", {
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, () => ({
+  // Migration 219 — full-text search on title+destination+description. GIN index declared here
+  // per the deploy-push durability rule (publish-time drizzle push drops undeclared indexes).
+  etFtsIdx: index("idx_expert_templates_fts").using(
+    "gin",
+    sql`(setweight(to_tsvector('english', coalesce(title, '')), 'A') || setweight(to_tsvector('english', coalesce(destination, '')), 'A') || setweight(to_tsvector('english', coalesce(description, '')), 'B'))`,
+  ),
+}));
 
 // Template purchases - tracks when users buy templates
 export const templatePurchases = pgTable("template_purchases", {
