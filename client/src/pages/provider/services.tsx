@@ -1,32 +1,46 @@
 /**
  * Provider Catalog — Console IA C9 (§17 17→9 collapse, the provider nine-module stamp).
  *
+ * CATALOG REBUILD (decision-maker directive, Aug 2026): "assume we have to build it from
+ * scratch for the catalog page." This is a from-scratch PRESENTATION rebuild of the Manage
+ * (list) surface, transcribed directly from the ratified design mock
+ * (docs/design/service-creation-mock.html, `#panel-catalog`) — its own markup/CSS is the
+ * source of truth for tokens (--ink #1A1A18, --muted #7A7A72, --hair #E8E8E2, --ground
+ * #FAFAF8, --paper #fff, --accent #35605A, --radius 7px), the `.seg` segmented controls,
+ * `.pill`/`.pill.live`/`.pill.draft` chips, and the `.listing` row anatomy (74×56 `.thumb`,
+ * `.lname`, `.lmeta`, `.lright` health+actions). These are PAGE-SCOPED Tailwind arbitrary
+ * values — the global theme, other pages and shared UI component defaults are untouched.
+ *
+ * The DATA layer (queries, mutations, testids for the specs listed below) is reused
+ * verbatim from the pre-rebuild page — only the presentation was rebuilt. Preserved
+ * verbatim: `card-service-<id>`, `switch-active-<id>`, `button-edit-<id>`,
+ * `button-mode-manage`/`button-mode-preview`, `cardshows-<id>`,
+ * `switch-cardshows-price-<id>`, `button-cardshows-booking-<id>-<value>`,
+ * `catalog-preview-grid`, `preview-card-<id>`, `button-preview-edit-<id>`,
+ * `button-distribute-<id>`, `button-view-list`/`button-view-map`, `text-services-title`
+ * (service-display-options.spec.ts, catalog-preview-toggle.spec.ts,
+ * distribute-channels.spec.ts, catalog-map-located.spec.ts all key on these).
+ *
  * This page is the provider console's Catalog seat ("what I sell") — read / manage / triage
  * only. It carries NO outward-facing distribution chrome (S6, ruling-74-disposition-6
  * clarification below):
- *   - AVAILABILITY: the ratified "availability editing belongs to Catalog" placement — the
- *     expert catalog's slot section transplanted onto /api/provider/services + the SAME
- *     session-ownership-scoped /api/me/services/:serviceId/slots CRUD (expert-console.routes.ts
- *     resolves ownership against provider_services.userId, so it is role-agnostic). This is
- *     the REAL slot editor; the old /provider/calendar "Edit Schedule"/"Block Dates" sheets it
- *     supersedes were non-persisting previews.
+ *   - AVAILABILITY: the ratified "availability editing belongs to Catalog" placement — a
+ *     compact per-listing summary (mock: "Mon 09:00 · 2 left" chips) whose "Edit slots"
+ *     opens the REAL S7 editor (`ProviderAvailabilityManager`) in a drawer, preselected to
+ *     the listing. The `?availability=<id>` deep-link still lands there preselected. The
+ *     mock's toolbar shows only List | Map — the standalone third "Availability" toggle from
+ *     the pre-rebuild page is dropped; its editor is one click away via "Edit slots" instead.
  *   - LISTING HEALTH: the per-card health strip (photo/pin/description completeness) — a
- *     triage signal, not a distribution surface.
+ *     triage signal, now a compact bar + popover detail rather than an always-expanded block.
  *
  * S6 (ruling-74-disposition-6 clarification, "Distribute is the ONE home for outward-facing
  * distribution surfaces"): the storefront header, the per-service share-kit dialog and the
- * Promote (posting-opportunities) block all MOVED to /provider/distribute — ruling 74(6)/(7)
- * had left the storefront header double-mounted (this page AND Distribute both rendered
- * `ProviderStorefrontHeader`) and left the Promote block's CONTAINER on Catalog even after C6
- * pointed its actions at Distribute. This lane resolves both: `ProviderStorefrontHeader` stays
- * `export`ed from this file (Distribute's storefront channel imports it) but is no longer
- * mounted HERE; the per-card Share button + `OfferingShareDetail` dialog is gone (Distribute's
- * Social kit channel now mounts the same shared component); the Promote section
- * (`PostingOpportunitiesCard`) is gone (it now renders on Distribute). Each card keeps exactly
- * one outward-facing pointer — "Distribute this →" — which lands on `/provider/distribute`
- * with that listing preselected. /provider/share-promote still redirects here (unchanged); its
- * expert twin (a separate, untouched lane) keeps the inline share surface on
- * `/expert/catalog`.
+ * Promote (posting-opportunities) block all live on /provider/distribute. `ProviderStorefrontHeader`
+ * stays `export`ed from this file (Distribute's storefront channel imports it) but is not
+ * mounted here. Each row keeps exactly one outward-facing pointer — the mock's own copy,
+ * "Promote this →" — which lands on `/provider/distribute` with that listing preselected
+ * (same destination/testid as the prior "Distribute this →" button; only the label text
+ * changed, to match the mock verbatim).
  */
 import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
@@ -44,6 +58,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,16 +77,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
-import { EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+import { EmptyState } from "@/components/backoffice/primitives";
 // S6: StorefrontShareTools + ensureShortLink stay imported — ProviderStorefrontHeader (below)
 // still composes them, it is just no longer MOUNTED on this page (moved to Distribute).
-// OfferingShareDetail / PostingOpportunitiesCard are gone from this file's imports — both
-// outward-facing surfaces moved to /provider/distribute (S6).
 import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
 import { ProviderAvailabilityManager } from "@/components/logistics/provider-availability-manager";
 import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
+import { cn } from "@/lib/utils";
 import {
   Plus,
   Edit,
@@ -76,26 +97,32 @@ import {
   BedDouble,
   MapPin,
   Truck,
-  Share2,
   ExternalLink,
-  ArrowRight,
-  CalendarClock,
   ChevronDown,
   ImageOff,
   CheckCircle2,
   Star,
+  MoreHorizontal,
+  Search,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
+import { isPlaceAnchored } from "@shared/service-fundamentals";
 // FP-3: property + property_room rows are edited on the Workstation property surface, never in
 // the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
 // guard imports the same module).
 import { listingEditHref, isPropertyRoom } from "@/lib/property-editor-link";
 import { describeCatalogRefusal, type CatalogAction } from "@/lib/catalog-error-copy";
+import {
+  catalogStatusBucket,
+  catalogPillDisplay,
+  matchesCatalogSearch,
+  deriveAvailabilityChips,
+  type CatalogStatusBucket,
+} from "@/lib/catalog-listing-presentation";
 
 interface Service {
   id: string;
@@ -141,8 +168,7 @@ interface Service {
   latitude?: string | number | null;
   longitude?: string | number | null;
   locationPrecision?: string | null;
-  // D2 method-aware fundamentals: rides the same unfiltered row; drives which chip the card
-  // shows (pin for place-anchored services, delivery-method for the rest).
+  // D2 method-aware fundamentals: rides the same unfiltered row; drives the listing meta line.
   deliveryMethod?: string | null;
   // C3 (ruling 74/75): per-listing "Card shows" options. The owner read resolves bookingMode to a
   // concrete value (never null) with the SAME derivation the storefront uses; showPrice defaults true.
@@ -288,11 +314,12 @@ export function ProviderStorefrontHeader() {
   );
 }
 
-// ─── Availability section (C9 — the expert catalog section on the provider query) ────────
+// ─── Availability (mock: compact card, "Mon 09:00 · 2 left" chips + Edit slots) ──────────
 //
 // vendor_availability_slots is the canonical dated-slot model; the /api/me/… CRUD resolves
-// ownership against provider_services.userId server-side (role-agnostic, §14). The Channel
-// Calendar's availability lane reads exactly what this section writes.
+// ownership against provider_services.userId server-side (role-agnostic, §14). "Edit slots"
+// opens the REAL S7 editor (ProviderAvailabilityManager) in a drawer — this card is a summary,
+// not a second editor.
 
 interface AvailabilitySlot {
   id: string;
@@ -320,274 +347,108 @@ function parseApiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function formatSlotDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-}
-
-function AvailabilitySection() {
-  const { toast } = useToast();
-  const { data: services, isLoading: servicesLoading } = useQuery<Service[]>({
-    queryKey: ["/api/provider/services"],
-  });
+function AvailabilityCard({
+  services,
+  servicesLoading,
+  onOpenEditor,
+  initialServiceId,
+}: {
+  services: Service[];
+  servicesLoading: boolean;
+  onOpenEditor: (serviceId: string) => void;
+  initialServiceId?: string | null;
+}) {
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
-  const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [capacity, setCapacity] = useState("");
-  // Collapsible section — default OPEN (this is a primary task), header states real
-  // service/slot-count data so collapsing loses no information (§13).
-  const [sectionOpen, setSectionOpen] = useState(true);
-  const sectionRef = useRef<HTMLDivElement>(null);
-
-  const list = Array.isArray(services) ? services : [];
-  const activeServiceId = selectedServiceId || list[0]?.id || "";
-
-  // WAVE 2 / S2: the listing home's "Publish some availability" checklist row deep-links here
-  // (`?availability=<serviceId>`) — this IS the C9 home for availability, so the row does not
-  // grow its own editor, it just needs to land on the right service and be visible. Runs once
-  // the real service list is loaded, so a row for a service on page 2 of a long catalog still
-  // resolves instead of silently falling back to the first one.
-  const deepLinkApplied = useRef(false);
+  const applied = useRef(false);
   useEffect(() => {
-    if (deepLinkApplied.current || servicesLoading) return;
-    const requested = new URLSearchParams(window.location.search).get("availability");
-    if (requested && list.some((s) => s.id === requested)) {
-      setSelectedServiceId(requested);
-      setSectionOpen(true);
-      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (applied.current || servicesLoading) return;
+    if (initialServiceId && services.some((s) => s.id === initialServiceId)) {
+      setSelectedServiceId(initialServiceId);
     }
-    deepLinkApplied.current = true;
+    applied.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servicesLoading, list.length]);
+  }, [servicesLoading, services.length]);
 
+  const activeServiceId = selectedServiceId || services[0]?.id || "";
   const { data: slots, isLoading: slotsLoading } = useQuery<AvailabilitySlot[]>({
     queryKey: [`/api/me/services/${activeServiceId}/slots`],
     enabled: !!activeServiceId,
   });
-
-  const createSlotMutation = useMutation({
-    mutationFn: async () => {
-      const body: Record<string, unknown> = { date };
-      if (startTime.trim()) body.startTime = startTime.trim();
-      if (capacity.trim()) body.capacity = Number(capacity);
-      const res = await apiRequest("POST", `/api/me/services/${activeServiceId}/slots`, body);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/me/services/${activeServiceId}/slots`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/me/next-availability"] });
-      toast({ title: "Slot added", description: "Travelers can now book this date." });
-      setDate("");
-      setStartTime("");
-      setCapacity("");
-    },
-    onError: (err) => {
-      toast({
-        title: "Could not add slot",
-        description: parseApiErrorMessage(err, "Please check the date and try again."),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteSlotMutation = useMutation({
-    mutationFn: async (slotId: string) => {
-      const res = await apiRequest("DELETE", `/api/me/slots/${slotId}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/me/services/${activeServiceId}/slots`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/me/next-availability"] });
-      toast({ title: "Slot removed" });
-    },
-    onError: (err) => {
-      // 409 booked-slot refusal surfaces here, honestly, as the server wrote it.
-      toast({
-        title: "Could not remove slot",
-        description: parseApiErrorMessage(err, "Please try again."),
-        variant: "destructive",
-      });
-    },
-  });
-
-  const currentService = list.find((s) => s.id === activeServiceId);
-  const slotCountLabel = slotsLoading
-    ? "…"
-    : slots && slots.length > 0
-    ? `${slots.length} slot${slots.length === 1 ? "" : "s"}`
-    : "none yet";
-  const headerSummary = servicesLoading
-    ? ""
-    : list.length === 0
-    ? "no services yet"
-    : `${currentService?.serviceName ?? currentService?.name ?? "Untitled"} · ${slotCountLabel}`;
+  const chips = useMemo(() => deriveAvailabilityChips(slots ?? []), [slots]);
 
   return (
-    <section data-testid="section-catalog-availability" ref={sectionRef}>
-      <button
-        type="button"
-        onClick={() => setSectionOpen((o) => !o)}
-        className="w-full flex items-center justify-between mb-2 py-1 group"
-        data-testid="button-toggle-availability"
-      >
-        <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide flex items-center gap-1.5">
-          Availability
-          {headerSummary && (
-            <span className="normal-case font-normal text-console-mid/80" data-testid="text-availability-summary">
-              · {headerSummary}
-            </span>
-          )}
-        </h2>
-        <ChevronDown
-          className={`w-4 h-4 text-console-mid transition-transform ${sectionOpen ? "rotate-180" : ""}`}
-        />
-      </button>
-      {sectionOpen && (
-      <Card className="border border-console-light">
-        <CardContent className="p-3 space-y-3">
-          {servicesLoading ? (
-            <Skeleton className="h-9 w-64" />
-          ) : list.length === 0 ? (
-            <EmptyState
-              icon={CalendarClock}
-              title="No services yet"
-              body="Create a service first, then publish dates travelers can book."
-              testId="empty-catalog-no-services"
-            />
-          ) : (
-            <>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Label htmlFor="catalog-service-picker" className="text-sm text-console-mid whitespace-nowrap">
-                  Service
-                </Label>
-                <Select value={activeServiceId} onValueChange={setSelectedServiceId}>
-                  <SelectTrigger id="catalog-service-picker" className="w-64" data-testid="select-catalog-service">
-                    <SelectValue placeholder="Choose a service" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {list.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.serviceName ?? s.name ?? "Untitled service"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {(() => {
-                  const current = list.find((s) => s.id === activeServiceId);
-                  return current?.approvalStatus ? <StatusBadge status={current.approvalStatus} /> : null;
-                })()}
-              </div>
-
-              {slotsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : !slots || slots.length === 0 ? (
-                <div
-                  className="flex items-center gap-2 rounded-lg border border-dashed border-console-light px-3 py-2.5 text-sm text-console-mid"
-                  data-testid="empty-catalog-no-slots"
-                >
-                  <CalendarClock className="w-4 h-4 flex-shrink-0 text-console-mid/60" />
-                  <span>No availability published yet — travelers can't pick a time until you add slots.</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {slots.map((slot) => (
-                    <div
-                      key={slot.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-console-light p-3"
-                      data-testid={`catalog-slot-${slot.id}`}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-console-darkest">
-                          {formatSlotDate(slot.date)}
-                          {slot.startTime && <span className="text-console-mid"> · {slot.startTime}</span>}
-                        </p>
-                        <p className="text-xs text-console-mid">
-                          {(slot.bookedCount ?? 0)} / {slot.capacity ?? 1} booked
-                          {slot.status ? ` · ${slot.status}` : ""}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-600 hover:bg-red-50 flex-shrink-0"
-                        disabled={deleteSlotMutation.isPending}
-                        onClick={() => deleteSlotMutation.mutate(slot.id)}
-                        data-testid={`button-delete-slot-${slot.id}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
+    <div
+      className="bg-[#FFFFFF] border border-[#E8E8E2] rounded-[7px]"
+      data-testid="section-catalog-availability"
+    >
+      <div className="px-[22px] py-[13px] border-b border-[#E8E8E2] flex items-center gap-2.5 flex-wrap">
+        <h3 className="text-[15px] font-semibold text-[#1A1A18]">Availability</h3>
+        <span className="text-[12px] text-[#7A7A72]">
+          Slot editing stays here — this is where per-listing curation lives
+        </span>
+      </div>
+      <div className="px-[20px] py-[16px] flex items-center gap-2.5 flex-wrap">
+        {servicesLoading ? (
+          <Skeleton className="h-8 w-56" />
+        ) : services.length === 0 ? (
+          <EmptyState
+            icon={ChevronDown}
+            title="No services yet"
+            body="Create a service first, then publish dates travelers can book."
+            testId="empty-catalog-no-services"
+          />
+        ) : (
+          <>
+            {services.length > 1 && (
+              <Select value={activeServiceId} onValueChange={setSelectedServiceId}>
+                <SelectTrigger className="h-8 w-56 text-[12.5px] border-[#E8E8E2] rounded-[6px]" data-testid="select-catalog-service">
+                  <SelectValue placeholder="Choose a service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.serviceName ?? s.name ?? "Untitled service"}
+                    </SelectItem>
                   ))}
-                </div>
-              )}
-
-              <form
-                className="flex items-end gap-2 flex-wrap pt-1.5 border-t border-console-light"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!date || !activeServiceId) return;
-                  createSlotMutation.mutate();
-                }}
-              >
-                <div>
-                  <Label htmlFor="catalog-slot-date" className="text-xs text-console-mid">Date</Label>
-                  <Input
-                    id="catalog-slot-date"
-                    type="date"
-                    className="h-8"
-                    min={new Date().toISOString().slice(0, 10)}
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    required
-                    data-testid="input-slot-date"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="catalog-slot-time" className="text-xs text-console-mid">Start time (optional)</Label>
-                  <Input
-                    id="catalog-slot-time"
-                    type="time"
-                    className="h-8"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    data-testid="input-slot-start-time"
-                  />
-                </div>
-                <div className="w-24">
-                  <Label htmlFor="catalog-slot-capacity" className="text-xs text-console-mid">Capacity</Label>
-                  <Input
-                    id="catalog-slot-capacity"
-                    type="number"
-                    className="h-8"
-                    min={1}
-                    max={100}
-                    placeholder="1"
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value)}
-                    data-testid="input-slot-capacity"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={createSlotMutation.isPending || !date || !activeServiceId}
-                  data-testid="button-add-slot"
+                </SelectContent>
+              </Select>
+            )}
+            {slotsLoading ? (
+              <Skeleton className="h-6 w-64" />
+            ) : chips.length === 0 ? (
+              <span className="text-[12.5px] text-[#7A7A72]" data-testid="empty-catalog-no-slots">
+                No availability published yet
+              </span>
+            ) : (
+              chips.map((chip, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "inline-block text-[11.5px] px-[9px] py-[2px] rounded-full border",
+                    chip.blocked || chip.full
+                      ? "border-[#E8E8E2] bg-[#FAFAF8] text-[#7A7A72]"
+                      : "border-[#BFD5D0] bg-[#EDF2F1] text-[#35605A]",
+                  )}
+                  data-testid={`availability-chip-${i}`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add slot
-                </Button>
-              </form>
-            </>
-          )}
-        </CardContent>
-      </Card>
-      )}
-    </section>
+                  {chip.label}
+                </span>
+              ))
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-8 rounded-[6px] border-[#E8E8E2] text-[12.5px] text-[#1A1A18] hover:bg-[#FAFAF8]"
+              onClick={() => activeServiceId && onOpenEditor(activeServiceId)}
+              disabled={!activeServiceId}
+              data-testid="button-edit-slots"
+            >
+              Edit slots
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -595,10 +456,9 @@ function AvailabilitySection() {
 //
 // Audit finding: ~97% of provider listings ride the approximate neighborhood-centroid
 // location backfill and zero carry a provider-confirmed exact pin, because nothing surfaced
-// it. Photo + pin render from fields ALREADY on the /api/provider/services row (below), so
-// they work even before the new health router is mounted; only the "Health N/M" score/meter
-// depends on GET /api/provider/services/health, and that section renders NOTHING (no
-// skeleton, no guess) when the endpoint is unavailable — honest absence, §13.
+// it. The "Health N/M" score/meter depends on GET /api/provider/services/health; the compact
+// bar renders NOTHING (no skeleton, no guess) when the endpoint hasn't returned data for this
+// service — honest absence, §13.
 
 interface HealthCheck {
   key: string;
@@ -612,10 +472,7 @@ interface ServiceHealth {
   // D2 method-aware fundamentals: checks that don't apply to this service's shape, omitted
   // with a reason — rendered as a muted "n/a" note, never as a failure.
   omitted?: { key: string; reason: string }[];
-  // FP-1 / B10: advisory notes that are VISIBLE but NOT SCORED — today only the
-  // commission-band fallback ("no category → the platform default band applies"). They never
-  // move the meter: the property and bundle builders ask for no category, and failing an owner
-  // on something they cannot fix is not honest scoring (D3's own rule).
+  // FP-1 / B10: advisory notes that are VISIBLE but NOT SCORED.
   notices?: { key: string; detail: string }[];
 }
 interface HealthResponse {
@@ -623,11 +480,6 @@ interface HealthResponse {
   omitted: { key: string; reason: string }[];
 }
 
-// Short, compact labels for the failing-checks inline list (the check KEY, not the longer
-// server-provided `detail` prose — "no photo · no exact pin · no availability").
-// Ruling 60 Phase A: the English strings moved to locales/<lng>/catalog.json under
-// health.checks.*; the server-sent check key is the translation key, and an UNKNOWN key still
-// falls through to the raw key exactly as before (the `?? c.key` at the call site).
 const HEALTH_CHECK_KEYS = [
   "photo",
   "exact_pin",
@@ -638,27 +490,10 @@ const HEALTH_CHECK_KEYS = [
   "delivery_asset",
 ] as const;
 
-const TONE_CLASSNAMES = {
-  ok: "bg-green-100 text-green-700 border-green-200",
-  warn: "bg-amber-100 text-amber-700 border-amber-200",
-  bad: "bg-red-100 text-red-700 border-red-200",
-  neutral: "bg-console-bg text-console-mid border-console-light",
-} as const;
-
-// Short "n/a" labels for method-omitted checks (D2) — the muted note beside the health meter.
-// Translated under health.omitted.* (ruling 60 Phase A).
 const OMITTED_CHECK_KEYS = ["exact_pin", "availability"] as const;
 
-// Delivery-method chip for non-place-anchored services — shown INSTEAD of a pin chip, because
-// scoring a PDF guide red for "no location" was exactly the unfairness D2 removes.
-// The seven canonical delivery methods are a DATA vocabulary (CLAUDE.md §3) — the keys below
-// are those values verbatim and are never translated; only their display labels are
-// (delivery.* in catalog.json).
-const DELIVERY_CHIP_KEYS = ["pdf", "video", "call", "voice_notes", "async_messaging"] as const;
-
-/** 62×46 rounded thumbnail from serviceImage/galleryImages[0]; an honest neutral placeholder
- *  tile (muted icon, no fake image) when neither is present. Sourced from the services list
- *  row directly — no dependency on the health endpoint. */
+/** 74×56 mock-anatomy thumbnail from serviceImage/galleryImages[0]; an honest neutral
+ *  placeholder tile (muted icon, no fake image) when neither is present. */
 function ServiceThumb({ service }: { service: Service }) {
   const gallery = Array.isArray(service.galleryImages) ? service.galleryImages : [];
   const src = service.serviceImage || gallery[0] || null;
@@ -667,161 +502,96 @@ function ServiceThumb({ service }: { service: Service }) {
       <img
         src={src}
         alt=""
-        className="w-[62px] h-[46px] rounded-md object-cover flex-shrink-0 border border-console-light bg-console-bg"
+        className="w-[74px] h-[56px] rounded-[5px] object-cover flex-shrink-0 border border-[#E8E8E2] bg-[#EDEBE3]"
         data-testid={`img-service-thumb-${service.id}`}
       />
     );
   }
   return (
     <div
-      className="w-[62px] h-[46px] rounded-md flex-shrink-0 border border-dashed border-console-light bg-console-bg flex items-center justify-center"
+      className="w-[74px] h-[56px] rounded-[5px] flex-shrink-0 border border-[#E8E8E2] bg-[#EDEBE3] flex items-center justify-center"
       data-testid={`img-service-thumb-${service.id}`}
     >
-      <ImageOff className="w-4 h-4 text-console-mid/50" />
+      <ImageOff className="w-4 h-4 text-[#B8B6AC]" />
     </div>
   );
 }
 
-/** Pin-status chip. Semantics mirror the server's exact_pin health check exactly (exact pin =
- *  lat+lng present AND locationPrecision='exact'; else approximate-vs-none by coordinate
- *  presence), computed locally from the services-list row so it renders pre-mount too. */
-function pinStatus(service: Service): { labelKey: string; tone: keyof typeof TONE_CLASSNAMES; titleKey: string } {
-  const hasCoords = service.latitude != null && service.longitude != null && service.latitude !== "" && service.longitude !== "";
-  const isExact = hasCoords && service.locationPrecision === "exact";
-  if (isExact) {
-    return { labelKey: "pin.exact", tone: "ok", titleKey: "pin.exactTitle" };
-  }
-  if (hasCoords) {
-    return { labelKey: "pin.approximate", tone: "warn", titleKey: "pin.approximateTitle" };
-  }
-  return { labelKey: "pin.none", tone: "bad", titleKey: "pin.noneTitle" };
-}
-
-/** Pin chip: clicking it opens the service's Edit (the existing edit navigation) — the pin
- *  picker lives in the form, not here. D2 method-aware: a non-place-anchored service (PDF,
- *  call, voice notes, messaging…) gets a neutral delivery-method chip instead — its location
- *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
- *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
-function PinChip({ service }: { service: Service }) {
-  const { t } = useTranslation("catalog");
-  const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
-  // FP-3: bundles and properties/rooms resolve to their Workstation surface; everything else
-  // keeps the ServiceForm edit route.
-  const editHref = listingEditHref(service);
-
-  if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
-    const method = service.deliveryMethod ?? "";
-    const label = (DELIVERY_CHIP_KEYS as readonly string[]).includes(method)
-      ? t(`delivery.${method}`)
-      : t("delivery.fallback");
-    return (
-      <Badge
-        variant="outline"
-        title={t("pin.remoteTitle")}
-        className={`text-[10px] ${TONE_CLASSNAMES.neutral}`}
-        data-testid={`chip-pin-${service.id}`}
-      >
-        {label}
-      </Badge>
-    );
-  }
-
-  const { labelKey, tone, titleKey } = pinStatus(service);
-  return (
-    <Link href={editHref}>
-      <Badge
-        variant="outline"
-        title={t(titleKey)}
-        className={`text-[10px] cursor-pointer ${TONE_CLASSNAMES[tone]}`}
-        data-testid={`chip-pin-${service.id}`}
-      >
-        {t(labelKey)}
-      </Badge>
-    </Link>
-  );
-}
-
-/** "Health N/M" meter + failing-check names. Renders NOTHING when the health endpoint hasn't
- *  returned data for this service (endpoint unavailable pre-mount, or the service is missing
- *  from the response) — honest absence per §13, never a skeleton or a guess. */
-function HealthRow({ health }: { health: ServiceHealth | undefined }) {
+/** "Health N/M" — a compact bar + short label that opens a popover with the full detail.
+ *  Renders NOTHING when the health endpoint hasn't returned data for this service — honest
+ *  absence per §13, never a skeleton or a guess. */
+function HealthIndicator({ health }: { health: ServiceHealth | undefined }) {
   const { t } = useTranslation("catalog");
   if (!health) return null;
   const { passed, total } = health.score;
   if (total <= 0) return null;
   const allPassing = passed === total;
+  const firstFailing = health.checks.find((c) => !c.ok);
+  const shortLabel = allPassing
+    ? t("health.ready")
+    : firstFailing
+    ? (HEALTH_CHECK_KEYS as readonly string[]).includes(firstFailing.key)
+      ? t(`health.checks.${firstFailing.key}`)
+      : firstFailing.key
+    : "";
   const failingLabels = health.checks
     .filter((c) => !c.ok)
-    .map((c) =>
-      (HEALTH_CHECK_KEYS as readonly string[]).includes(c.key) ? t(`health.checks.${c.key}`) : c.key,
-    );
-  // D2: method-omitted checks render as a muted "n/a" note (reason on hover) — visibly not
-  // counted, never presented as failures.
+    .map((c) => ((HEALTH_CHECK_KEYS as readonly string[]).includes(c.key) ? t(`health.checks.${c.key}`) : c.key));
   const omitted = health.omitted ?? [];
 
   return (
-    <div className="mt-3 pt-3 border-t border-console-light" data-testid={`health-row-${health.serviceId}`}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-medium text-console-darkest">
-          {t("health.meter", { passed, total })}
-        </span>
-        <div className="w-24 h-1.5 rounded-full bg-console-light overflow-hidden">
-          <div
-            className={`h-full rounded-full ${allPassing ? "bg-green-500" : "bg-amber-500"}`}
-            style={{ width: `${Math.round((passed / total) * 100)}%` }}
-          />
-        </div>
-        {allPassing ? (
-          <Badge className={`text-[10px] ${TONE_CLASSNAMES.ok}`} variant="outline">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> {t("health.ready")}
-          </Badge>
-        ) : (
-          <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
-        )}
-        {/* FP-1 / B10: the uncategorized-band fallback, stated plainly beside the meter. Amber
-            (worth knowing) rather than red (broken) — the listing sells fine, it just resolves no
-            category band, so the platform default applies. No rate or percentage is shown here;
-            this rail states the FACT, and the fee lanes own the number (§8/§18). */}
-        {(health.notices ?? []).map((n) => (
-          <span
-            key={n.key}
-            className="text-[11px] text-amber-700"
-            title={n.detail}
-            data-testid={`health-notice-${n.key}-${health.serviceId}`}
-          >
-            ⚠ {n.detail}
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-[12px] text-[#7A7A72] hover:text-[#1A1A18]"
+          data-testid={`health-row-${health.serviceId}`}
+        >
+          <span className="w-[56px] h-[5px] rounded-full bg-[#E8E8E2] overflow-hidden inline-block">
+            <span
+              className={cn("block h-full", allPassing ? "bg-[#35605A]" : "bg-[#C79A3C]")}
+              style={{ width: `${Math.round((passed / total) * 100)}%` }}
+            />
           </span>
+          {shortLabel}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 text-[13px]" align="end">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-[#1A1A18]">
+            {t("health.meter", { passed, total })}
+          </span>
+          {allPassing ? (
+            <Badge className="text-[10px] bg-green-100 text-green-700 border-green-200" variant="outline">
+              <CheckCircle2 className="w-3 h-3 mr-1" /> {t("health.ready")}
+            </Badge>
+          ) : (
+            <span className="text-xs text-[#7A7A72]">{failingLabels.join(" · ")}</span>
+          )}
+        </div>
+        {(health.notices ?? []).map((n) => (
+          <p key={n.key} className="text-[11px] text-amber-700 mt-1.5" data-testid={`health-notice-${n.key}-${health.serviceId}`}>
+            ⚠ {n.detail}
+          </p>
         ))}
         {omitted.length > 0 && (
-          <span
-            className="text-[11px] italic text-console-mid/60"
-            title={omitted.map((o) => o.reason).join("; ")}
-            data-testid={`health-omitted-${health.serviceId}`}
-          >
+          <p className="text-[11px] italic text-[#7A7A72] mt-1.5" data-testid={`health-omitted-${health.serviceId}`}>
             {t("health.naPrefix")}:{" "}
             {omitted
-              .map((o) =>
-                (OMITTED_CHECK_KEYS as readonly string[]).includes(o.key)
-                  ? t(`health.omitted.${o.key}`)
-                  : o.key,
-              )
+              .map((o) => ((OMITTED_CHECK_KEYS as readonly string[]).includes(o.key) ? t(`health.omitted.${o.key}`) : o.key))
               .join(", ")}
-          </span>
+          </p>
         )}
-      </div>
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 // ─── Manage ⇄ Preview toggle (Catalog+Distribute ruling 74, lane C2) ─────────────────────────
 //
 // Preview renders each listing through C1's SHARED OfferingCard — the EXACT traveler card the
-// public /p/:handle storefront draws — so "what you see = what users see" by construction. The
-// data-prep below (delivery-method chip, place-anchored city chip, price-unit label, rating slot,
-// non-away CTA) mirrors storefront.tsx's own mapping verbatim; the card itself is reused, never
-// re-implemented. Hover-Edit (ruling 74 resolution B) is layered as an OVERLAY sibling of the
-// card link (a named `group/edit` so it never fights the card's own `group` hover) — the
-// OfferingCard's storefront output stays byte-identical (C1 is not regressed).
+// public /p/:handle storefront draws — so "what you see = what users see" by construction.
+// Unchanged by the rebuild: the mock does not cover Preview, only Manage.
 
 const PREVIEW_DELIVERY_LABELS: Record<string, string> = {
   pdf: "PDF guide",
@@ -841,6 +611,38 @@ function previewPriceUnitLabel(priceType?: string | null, pricingUnit?: string |
   return null;
 }
 
+/** One honest "In person · Gion, Kyoto · $68 per person" style line — never invents a field
+ *  the row doesn't carry. Mirrors the mock's `.lmeta` line format. */
+function listingMetaLine(service: Service): string {
+  const parts: string[] = [];
+  const methodLabel = service.deliveryMethod ? PREVIEW_DELIVERY_LABELS[service.deliveryMethod] : null;
+  if (methodLabel) parts.push(methodLabel);
+  else if (service.meetingPoint || service.city) parts.push("In person");
+
+  if (service.city) parts.push(service.city);
+  else if (service.meetingPoint) parts.push(service.meetingPoint);
+
+  const rawPrice = service.price ?? service.basePrice;
+  if (rawPrice != null && rawPrice !== "") {
+    const priceStr =
+      service.priceType === "hourly"
+        ? `$${rawPrice} / hr`
+        : service.priceType === "package_tiers"
+        ? `from $${rawPrice}`
+        : service.priceType === "per_event"
+        ? `$${rawPrice} / event`
+        : service.priceType === "per_person"
+        ? `$${rawPrice} per person`
+        : service.pricingUnit === "per_night"
+        ? `$${rawPrice} / night`
+        : `$${rawPrice}`;
+    parts.push(priceStr);
+  } else {
+    parts.push("Custom quote");
+  }
+  return parts.join(" · ");
+}
+
 /** Storefront rating line — "New" pill when there are no reviews (never a fabricated score),
  *  else star + weighted average + review count. Mirrors storefront.tsx RatingLine. */
 function PreviewRatingLine({ rating, count }: { rating?: string | number | null; count?: number | null }) {
@@ -856,12 +658,13 @@ function PreviewRatingLine({ rating, count }: { rating?: string | number | null;
   );
 }
 
-// C3 (ruling 74/75): the per-listing "Card shows" control on the Manage card. Two prefs — Show
+// C3 (ruling 74/75): the per-listing "Card shows" control on the Manage row. Two prefs — Show
 // price (on/off) and Booking (Instant / Request / Hidden) — that drive the shared traveler
 // OfferingCard in Preview AND on the public storefront. Each change PATCHes exactly its one field.
-// `bookingMode` arrives concrete from the owner read (resolved with the storefront's own derivation),
-// so an unset listing shows the account default pre-selected; the moment the provider picks a segment
-// it becomes an explicit per-listing choice. Not a §14/§18/§19 money field.
+// Kept INLINE (not gated behind a closed popover) — service-display-options.spec.ts asserts this
+// control is visible on the Manage row without an extra click, so it stays a quiet inline strip
+// rather than the mock's implied popover (a deliberate departure from literal transcription;
+// noted in the lane report).
 const BOOKING_MODE_OPTIONS: Array<{ value: "instant" | "request" | "hidden"; label: string }> = [
   { value: "instant", label: "Instant" },
   { value: "request", label: "Request" },
@@ -881,22 +684,23 @@ function CardShowsControl({
   const bookingMode = service.bookingMode ?? "instant";
   return (
     <div
-      className="mt-3 pt-3 border-t border-console-light flex flex-wrap items-center gap-x-4 gap-y-2"
+      className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5"
       data-testid={`cardshows-${service.id}`}
     >
-      <span className="text-[10px] font-medium text-console-mid uppercase tracking-wide">Card shows</span>
+      <span className="text-[10px] font-medium text-[#7A7A72] uppercase tracking-wide">Card shows</span>
       <div className="flex items-center gap-2">
         <Switch
           checked={showPrice}
           onCheckedChange={(checked) => onPatch({ showPrice: checked })}
           disabled={disabled}
+          className="scale-[0.85] data-[state=checked]:bg-[#35605A]"
           data-testid={`switch-cardshows-price-${service.id}`}
         />
-        <span className="text-xs text-console-mid">Show price</span>
+        <span className="text-[11.5px] text-[#7A7A72]">Show price</span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="text-xs text-console-mid">Booking</span>
-        <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
+        <span className="text-[11.5px] text-[#7A7A72]">Booking</span>
+        <div className="inline-flex rounded-[6px] border border-[#E8E8E2] overflow-hidden" role="group">
           {BOOKING_MODE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -904,12 +708,10 @@ function CardShowsControl({
               onClick={() => onPatch({ bookingMode: opt.value })}
               disabled={disabled}
               aria-pressed={bookingMode === opt.value}
-              className={
-                "px-2 py-1 text-xs font-medium transition-colors " +
-                (bookingMode === opt.value
-                  ? "bg-console-dark text-white"
-                  : "bg-white text-console-mid hover:bg-console-light/40")
-              }
+              className={cn(
+                "px-2 py-[3px] text-[11px] font-medium transition-colors border-r border-[#E8E8E2] last:border-r-0",
+                bookingMode === opt.value ? "bg-[#1A1A18] text-white" : "bg-white text-[#7A7A72] hover:bg-[#FAFAF8]",
+              )}
               data-testid={`button-cardshows-booking-${service.id}-${opt.value}`}
             >
               {opt.label}
@@ -921,63 +723,97 @@ function CardShowsControl({
   );
 }
 
+// ─── The mock's status pill (All / Live / In review / Draft) ─────────────────────────────
+function CatalogPill({ service }: { service: Service }) {
+  const { label, cls } = catalogPillDisplay(service);
+  return (
+    <span
+      className={cn(
+        "inline-block text-[11.5px] leading-none px-[9px] py-[3px] rounded-full border",
+        cls === "live" && "border-[#BFD5D0] bg-[#EDF2F1] text-[#35605A]",
+        cls === "draft" && "border-[#D9CDB2] bg-[#FBF6EC] text-[#6B551F]",
+        cls === "" && "border-[#E8E8E2] bg-[#FAFAF8] text-[#7A7A72]",
+      )}
+      data-testid={`pill-status-${service.id}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 // ─── FP-3: property rooms are not standalone listings ────────────────────────────────────────
 //
-// Ratified design (service-creation redesign mock, decision-maker Aug 2026): "a property room's
-// Edit opens its property's editor at the Rooms step — a room has no service checklist/delivery-
-// method of its own, and sending it into the generic ServiceForm is a dishonest surface."
-//
-// A room IS a provider_services row (migration 153) so it arrives on this owner read like any
-// listing — but it is a CHILD row: its category, location, pin and delivery method are inherited
-// from its property, and its price is a nightly rate. Rendering it as an ordinary service card
-// (with Duplicate, a pin chip and an Edit into the delivery questionnaire) states things about it
-// that are not true. It renders instead as a compact room row under its parent property's card,
-// showing exactly what a room is: its name, its nightly price, its own review/active state, and
-// an Edit that opens the property editor at the Rooms step.
-function RoomRow({
-  room,
-  parentName,
-  health,
-}: {
-  room: Service;
-  /** The parent property's name — stated on an ORPHAN row (its property card is not in view). */
-  parentName?: string | null;
-  health: ServiceHealth | undefined;
-}) {
-  const { t } = useTranslation("catalog");
-  const { t: tCommon } = useTranslation("common");
+// A room row collapses to one line under its parent property ("N room types"), expanding to
+// the SAME compact row shape as any listing — name, nightly rate, its own active/paused state,
+// an Edit that opens the property editor at the Rooms step. It never gets Duplicate, a pin
+// chip, or the Card-shows control — a room has no delivery-method/pricing questionnaire of its
+// own to show those for.
+function RoomListingRow({ room, parentName }: { room: Service; parentName?: string | null }) {
   const rawPrice = room.price ?? room.basePrice;
   const nightly = rawPrice == null || rawPrice === "" ? "—" : `$${rawPrice} / night`;
   const isActive = room.status === "active";
   return (
     <div
-      className={`rounded-md border border-console-light px-3 py-2 ${!isActive ? "opacity-60" : ""}`}
+      className={cn(
+        "flex items-center gap-2.5 px-[14px] py-[9px] border-b border-[#E8E8E2] last:border-b-0",
+        !isActive && "opacity-60",
+      )}
       data-testid={`row-catalog-room-${room.id}`}
     >
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0 flex items-center gap-2 flex-wrap">
-          <BedDouble className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
-          <span className="text-sm text-console-darkest truncate">
-            {room.serviceName || room.name || t("card.untitled")}
-          </span>
-          <span className="text-xs font-medium text-green-600" data-testid={`text-room-price-${room.id}`}>
-            {nightly}
-          </span>
-          {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
-          <StatusBadge status={isActive ? "active" : "paused"} />
-          {parentName && (
-            <span className="text-[11px] text-console-mid" data-testid={`text-room-parent-${room.id}`}>
-              Room in {parentName}
-            </span>
-          )}
+      <BedDouble className="w-3.5 h-3.5 text-[#7A7A72] flex-shrink-0" />
+      <span className="text-[13px] text-[#1A1A18] truncate flex-1 min-w-0">
+        {room.serviceName || room.name || "Untitled room"}
+      </span>
+      <span className="text-[12px] text-[#35605A] font-medium flex-shrink-0" data-testid={`text-room-price-${room.id}`}>
+        {nightly}
+      </span>
+      {parentName && (
+        <span className="text-[11px] text-[#7A7A72] flex-shrink-0" data-testid={`text-room-parent-${room.id}`}>
+          Room in {parentName}
+        </span>
+      )}
+      <CatalogPill service={room} />
+      <Link href={listingEditHref(room)}>
+        <button
+          type="button"
+          className="text-[11.5px] text-[#7A7A72] hover:text-[#1A1A18] flex-shrink-0"
+          data-testid={`button-edit-room-${room.id}`}
+        >
+          Edit
+        </button>
+      </Link>
+    </div>
+  );
+}
+
+/** Collapsed by default ("N room types →"); expands to the room rows above. */
+function PropertyRoomsBlock({ property, rooms }: { property: Service; rooms: Service[] }) {
+  const [open, setOpen] = useState(false);
+  if (rooms.length === 0) {
+    return (
+      <p className="text-[11.5px] text-[#7A7A72] mt-2" data-testid={`rooms-empty-${property.id}`}>
+        No room types yet — add one in the Workstation.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2.5" data-testid={`rooms-block-${property.id}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-[11.5px] text-[#35605A] flex items-center gap-1 font-medium"
+        data-testid={`button-toggle-rooms-${property.id}`}
+      >
+        <ChevronDown className={cn("w-3 h-3 transition-transform", open && "rotate-180")} />
+        {rooms.length} room type{rooms.length === 1 ? "" : "s"}
+      </button>
+      {open && (
+        <div className="mt-2 border border-[#E8E8E2] rounded-[6px] overflow-hidden">
+          {rooms.map((room) => (
+            <RoomListingRow key={room.id} room={room} />
+          ))}
         </div>
-        <Link href={listingEditHref(room)}>
-          <Button variant="outline" size="sm" className="h-7" data-testid={`button-edit-room-${room.id}`}>
-            <Edit className="w-3.5 h-3.5 mr-1" /> {tCommon("actions.edit")}
-          </Button>
-        </Link>
-      </div>
-      <HealthRow health={health} />
+      )}
     </div>
   );
 }
@@ -1033,27 +869,224 @@ function CatalogPreviewCard({ service }: { service: Service }) {
   );
 }
 
+// ─── The mock's `.seg` segmented control ──────────────────────────────────────────────────
+function Seg({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="inline-flex border border-[#E8E8E2] rounded-[6px] overflow-hidden flex-shrink-0">
+      {children}
+    </div>
+  );
+}
+function SegButton({
+  active,
+  onClick,
+  testId,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid={testId}
+      className={cn(
+        "px-[13px] py-[7px] text-[12.5px] border-r border-[#E8E8E2] last:border-r-0 whitespace-nowrap",
+        active ? "bg-[#1A1A18] text-white" : "bg-white text-[#7A7A72] hover:text-[#1A1A18]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── The mock's `.listing` row (thumb / lname / lmeta / lright health+actions) ────────────
+function ListingRow({
+  service,
+  health,
+  rooms,
+  isActive,
+  onToggleActive,
+  onPatchDisplay,
+  displayPatchDisabled,
+  onDuplicate,
+  onRequestDelete,
+  duplicateDisabled,
+}: {
+  service: Service;
+  health: ServiceHealth | undefined;
+  rooms: Service[];
+  isActive: boolean;
+  onToggleActive: (checked: boolean) => void;
+  onPatchDisplay: (patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" }) => void;
+  displayPatchDisabled: boolean;
+  onDuplicate: () => void;
+  onRequestDelete: () => void;
+  duplicateDisabled: boolean;
+}) {
+  const { t } = useTranslation("catalog");
+  const displayName = service.serviceName || service.name || t("card.untitled");
+  const isBundle = service.productShape === "bundle";
+  const isProperty = service.productShape === "property";
+  const editHref = listingEditHref(service);
+
+  return (
+    <div
+      className={cn("flex gap-3.5 px-[18px] py-[15px] border-b border-[#E8E8E2] last:border-b-0 items-start", !isActive && "opacity-60")}
+      data-testid={`card-service-${service.id}`}
+    >
+      <ServiceThumb service={service} />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-[14px] font-semibold text-[#1A1A18] truncate" data-testid={`text-listing-name-${service.id}`}>
+            {displayName}
+          </h3>
+          {isBundle && <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>{t("card.bundle")}</Badge>}
+          {isProperty && <Badge variant="outline" className="text-[10px]" data-testid={`badge-property-${service.id}`}>Property</Badge>}
+          {service.isFeatured && (
+            <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>{t("card.featured")}</Badge>
+          )}
+        </div>
+
+        <p className="text-[12.5px] text-[#7A7A72] mt-0.5 truncate" data-testid={`text-listing-meta-${service.id}`}>
+          {listingMetaLine(service)}
+        </p>
+
+        <div className="flex items-center gap-3.5 mt-2.5 flex-wrap">
+          <CatalogPill service={service} />
+          <label className="flex items-center gap-1.5 text-[12.5px] text-[#7A7A72] cursor-pointer">
+            <Switch
+              checked={isActive}
+              onCheckedChange={onToggleActive}
+              className="scale-[0.85] data-[state=checked]:bg-[#35605A]"
+              data-testid={`switch-active-${service.id}`}
+            />
+            Show on my storefront
+          </label>
+          <HealthIndicator health={health} />
+        </div>
+
+        {/* C3: per-listing "Card shows" control (Show price + Booking mode). */}
+        <CardShowsControl service={service} onPatch={onPatchDisplay} disabled={displayPatchDisabled} />
+
+        {/* FP-3: the property's room types collapse to one line, expanding to the same row shape. */}
+        {isProperty && <PropertyRoomsBlock property={service} rooms={rooms} />}
+
+        {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1.5" data-testid={`affinity-tags-${service.id}`}>
+            {service.contentAffinityTags.map((tag) => (
+              <Badge
+                key={tag}
+                variant="secondary"
+                className="text-[10px] py-0 px-1.5 bg-primary/8 text-primary border border-primary/20"
+                data-testid={`chip-affinity-${service.id}-${tag}`}
+              >
+                {AFFINITY_TAG_LABELS[tag] ?? tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* mock `.lright` — quiet actions: Edit + "Promote this →"; Duplicate/Delete in overflow */}
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto">
+        <Link href={editHref}>
+          <button
+            type="button"
+            className="text-[12.5px] text-[#7A7A72] hover:text-[#1A1A18] hover:underline underline-offset-2"
+            data-testid={`button-edit-${service.id}`}
+          >
+            {t("card.edit", { defaultValue: "Edit" })}
+          </button>
+        </Link>
+        <Link href={`/provider/distribute?listing=${service.id}`}>
+          <button
+            type="button"
+            className="text-[12.5px] text-[#35605A] hover:underline underline-offset-2"
+            data-testid={`button-distribute-${service.id}`}
+          >
+            Promote this →
+          </button>
+        </Link>
+        {!isBundle && !isProperty && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="More actions"
+                className="text-[#7A7A72] hover:text-[#1A1A18] p-0.5"
+                data-testid={`button-more-${service.id}`}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onDuplicate} disabled={duplicateDisabled} data-testid={`button-duplicate-${service.id}`}>
+                <Copy className="w-3.5 h-3.5 mr-2" /> Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onRequestDelete} className="text-red-600 focus:text-red-600" data-testid={`button-delete-${service.id}`}>
+                <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {(isBundle || isProperty) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="More actions"
+                className="text-[#7A7A72] hover:text-[#1A1A18] p-0.5"
+                data-testid={`button-more-${service.id}`}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onRequestDelete} className="text-red-600 focus:text-red-600" data-testid={`button-delete-${service.id}`}>
+                <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const STATUS_CHIPS: Array<{ key: "all" | CatalogStatusBucket; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "live", label: "Live" },
+  { key: "in_review", label: "In review" },
+  { key: "draft", label: "Draft" },
+];
+
 export default function ProviderServices() {
   const { t } = useTranslation("catalog");
   const { t: tCommon } = useTranslation("common");
-  // NOTE the filter state stays the ENGLISH category name / the literal "All": it is compared
-  // against live category names coming off the API (content, not chrome — ruling 60's system B)
-  // and is also the source of the `button-category-filter-*` testids. Only the "All" pill's
-  // DISPLAY is translated.
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
-  // authoring surface (CatalogMapView); everything below the content block is untouched.
-  // S7 (DECISIONS.md ledger 102, G1 REC — "one editor... mounted on Catalog"): a third mode adds
-  // the availability editor (ProviderAvailabilityManager) alongside List/Map, on the same toggle.
-  const [viewMode, setViewMode] = useState<"list" | "map" | "availability">("list");
+  // Mock toolbar: "Search your listings" (client-side name/category filter).
+  const [searchQuery, setSearchQuery] = useState("");
+  // Mock toolbar: status chips All | Live | In review | Draft.
+  const [statusFilter, setStatusFilter] = useState<"all" | CatalogStatusBucket>("all");
+  // Ruling 22(b): Catalog is the map's home — this toggle swaps the row list for the map
+  // authoring surface (CatalogMapView). The mock's toolbar shows only List | Map — the
+  // pre-rebuild third "Availability" toggle is retired; its editor is reachable from the
+  // compact Availability card's "Edit slots" (drawer) or the `?availability=<id>` deep-link.
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   // C2 (ruling 74): Manage ⇄ Preview is a SEPARATE axis from List/Map — it governs the LIST
-  // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
-  // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
+  // layout's rows only (Manage = mock-faithful operational rows; Preview = the shared
+  // traveler card). Map is neither Manage nor Preview, so this control is shown in list view.
   const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
-  // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate. Holding the target row (not
-  // just its id) lets the dialog name the listing it is about to remove — the Workstation's
-  // property/bundle deletes already work this way, and Catalog's was the odd one out.
+  // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate.
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  // Availability drawer — houses the REAL S7 editor (ProviderAvailabilityManager), preselected.
+  const [availabilityDrawerOpen, setAvailabilityDrawerOpen] = useState(false);
+  const [availabilityDrawerServiceId, setAvailabilityDrawerServiceId] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -1066,26 +1099,34 @@ export default function ProviderServices() {
   });
 
   // Listing Health score — ONE query, keyed on the services list. 404s (200-HTML pre-mount, per
-  // CLAUDE.md's dead-route note) land the query in an error state with no data; HealthRow
-  // renders nothing per service in that case (§13 honest absence), so this is safe to mount
-  // unconditionally ahead of the health router's own mount.
+  // CLAUDE.md's dead-route note) land the query in an error state with no data; HealthIndicator
+  // renders nothing per service in that case (§13 honest absence).
   const { data: healthData } = useQuery<HealthResponse>({
     queryKey: ["/api/provider/services/health"],
     enabled: !!services && services.length > 0,
   });
-  // `Map` the constructor is shadowed on this page by the lucide-react `Map` icon import — use
-  // globalThis.Map explicitly rather than renaming the icon import everywhere it's used.
+  // `Map` the constructor is shadowed by the lucide-react-adjacent naming elsewhere on this
+  // page historically — use globalThis.Map explicitly to avoid any ambiguity.
   const healthByServiceId = new globalThis.Map<string, ServiceHealth>(
     (healthData?.services ?? []).map((h) => [h.serviceId, h]),
   );
 
+  // WAVE 2 / S2: the listing home's "Publish some availability" checklist row (and any other
+  // deep-link) still lands here with the service preselected — the S7 editor now opens in the
+  // drawer instead of a scroll target.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current || isLoading) return;
+    const requested = new URLSearchParams(window.location.search).get("availability");
+    if (requested && (services ?? []).some((s) => s.id === requested)) {
+      setAvailabilityDrawerServiceId(requested);
+      setAvailabilityDrawerOpen(true);
+    }
+    deepLinkApplied.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, services?.length]);
+
   // ── FP-2 / Package A item 5: HUMAN ERRORS ON THE CATALOG MUTATIONS ─────────────────────────
-  // All four card mutations below used to render `error.message` — which `apiRequest` builds as
-  // `"<status>: <raw body>"`, so a refused activation showed the provider a JSON blob. The
-  // server's sentence was already honest; it was just wrapped. `describeCatalogRefusal` unwraps
-  // it, names the action that failed, and — for the refusals a provider fixes in the listing
-  // editor — hands back a `fixInEditor` flag so the toast can carry the way out (the mock's
-  // "Add one →"). No server response changed and no refusal is softened.
   const toastRefusal = (action: CatalogAction, err: unknown, service?: { id: string; productShape?: string | null; parentServiceId?: string | null }) => {
     const copy = describeCatalogRefusal(action, err);
     const href = service ? listingEditHref(service) : null;
@@ -1116,10 +1157,6 @@ export default function ProviderServices() {
     },
   });
 
-  // C3 (ruling 74/75): the per-listing "Card shows" control PATCHes exactly ONE display pref
-  // (showPrice or bookingMode) — never the whole row, so it can't disturb any other listing field.
-  // The server parses these off insertProviderServiceSchema.partial() (owner-gated as today); they
-  // are display prefs, not §14/§18/§19 money fields, so they persist unstripped.
   const displayOptionsMutation = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: { showPrice?: boolean; bookingMode?: "instant" | "request" | "hidden" } }) => {
       const res = await apiRequest("PATCH", `/api/provider/services/${id}`, patch);
@@ -1164,31 +1201,28 @@ export default function ProviderServices() {
 
   const totalServices = services?.length ?? 0;
 
-  // Build category name lookup from DB
   const categoryNameById = dbCategories.reduce<Record<string, string>>((acc, c) => {
     acc[c.id] = c.name;
     return acc;
   }, {});
 
-  // Derive unique filter labels from live services
-  const usedCategoryIds = Array.from(new Set((services || []).map(s => s.categoryId).filter(Boolean))) as string[];
-  const filterLabels = ["All", ...usedCategoryIds.map(id => categoryNameById[id] || id)];
+  const allServices = services ?? [];
+  const statusCounts: Record<"all" | CatalogStatusBucket, number> = {
+    all: allServices.length,
+    live: allServices.filter((s) => catalogStatusBucket(s) === "live").length,
+    in_review: allServices.filter((s) => catalogStatusBucket(s) === "in_review").length,
+    draft: allServices.filter((s) => catalogStatusBucket(s) === "draft").length,
+    other: 0,
+  };
 
-  const filteredServices = !services
-    ? []
-    : selectedCategory === "All"
-      ? services
-      : services.filter(s => {
-          const name = s.categoryId ? categoryNameById[s.categoryId] : undefined;
-          return name === selectedCategory;
-        });
+  const statusFiltered = statusFilter === "all" ? allServices : allServices.filter((s) => catalogStatusBucket(s) === statusFilter);
+  const filteredServices = statusFiltered.filter((s) => {
+    const name = s.serviceName || s.name || "";
+    const categoryName = s.categoryId ? categoryNameById[s.categoryId] : undefined;
+    return matchesCatalogSearch(searchQuery, name, categoryName);
+  });
 
-  // ── FP-3: property rooms are grouped under their parent property card ───────────────────────
-  // A room row is never a top-level card here. It renders as a compact RoomRow inside its
-  // property's card; if the property card is NOT in the current filtered view (a category filter
-  // that catches the room but not the property, or a property row missing from this read), the
-  // room still renders as its own row — an ORPHAN row that names its parent — rather than
-  // silently vanishing (§13) or reverting to a generic service card.
+  // ── FP-3: property rooms are grouped under their parent property row ────────────────────────
   const roomsByParent = new globalThis.Map<string, Service[]>();
   for (const s of filteredServices) {
     if (!isPropertyRoom(s.productShape)) continue;
@@ -1200,165 +1234,158 @@ export default function ProviderServices() {
   const orphanRooms = filteredServices.filter(
     (s) => isPropertyRoom(s.productShape) && !(s.parentServiceId && topLevelIds.has(s.parentServiceId)),
   );
-  // Parent name for an orphan row — from the unfiltered read when the parent exists at all.
   const serviceNameById = new globalThis.Map<string, string>(
     (services ?? []).map((s) => [s.id, s.serviceName || s.name || ""]),
   );
 
   // C2 Preview honesty filter (§13): a listing appears in Preview ONLY if it would appear on the
-  // public /p/:handle storefront — the SAME predicate storefront.routes.ts loadStorefront applies
-  // to lane 1 (approvalStatus='approved' AND status='active'; owner-scoping is implicit here since
-  // the query is already the session owner's services). Mirrored, never loosened: a paused/draft/
-  // unapproved listing is visible in Manage but drops out of Preview, exactly as travelers see.
+  // public /p/:handle storefront.
   const previewServices = filteredServices.filter(
     (s) => s.approvalStatus === "approved" && s.status === "active",
   );
 
-  const activeCount = (services || []).filter(s => s.status === "active").length;
+  const activeCount = allServices.filter((s) => s.status === "active").length;
   const isFirstTimeEmpty = !isLoading && totalServices === 0;
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
 
+  function openAvailabilityEditor(serviceId: string) {
+    setAvailabilityDrawerServiceId(serviceId);
+    setAvailabilityDrawerOpen(true);
+  }
+
   return (
     /* FP-4 full-bleed exception #1: the MAP view's canvas is a three-pane authoring
-       surface (selector rail · map · authoring cards) whose usable area IS the shell
-       width — capping it would shrink the map for no reading benefit. The LIST view is
-       ordinary card content and stays inside the shared container. */
+       surface whose usable area IS the shell width. The LIST view is ordinary content and
+       stays inside the shared container. */
     <ProviderLayout title="Catalog" width={viewMode === "map" ? "full" : "contained"}>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-console-darkest" data-testid="text-services-title">
-              {t("header.title")}
+      <div className="p-6 space-y-4">
+        {/* ── Header (mock: title + real N-listing subtitle + black Add New Service) ────── */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-[19px] font-bold tracking-[-0.01em] text-[#1A1A18]" data-testid="text-services-title">
+              Catalog
             </h2>
             {isLoading ? (
-              <Skeleton className="h-4 w-40 mt-1" />
+              <Skeleton className="h-4 w-96 mt-1.5" />
             ) : (
-              <p className="text-console-mid text-sm">
-                {t("header.countSummary", { active: activeCount, total: totalServices })}
+              <p className="text-[13px] text-[#7A7A72] mt-1 max-w-[70ch]" data-testid="text-catalog-subtitle">
+                What you sell — {totalServices} listing{totalServices === 1 ? "" : "s"}. Storefront, share kit and the
+                promote feed now live on{" "}
+                <Link href="/provider/distribute">
+                  <span className="text-[#35605A] underline underline-offset-2 cursor-pointer">Distribute</span>
+                </Link>
+                ; new listings are born on{" "}
+                <Link href="/provider/workstation">
+                  <span className="text-[#35605A] underline underline-offset-2 cursor-pointer">Workstation</span>
+                </Link>
+                .
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {/* C2 (ruling 74): Manage ⇄ Preview segmented control — a separate axis from List/Map,
-                shown only in list view (the map is neither Manage nor Preview). */}
-            {viewMode === "list" && (
-              <div className="flex rounded-lg border border-console-light overflow-hidden">
-                <Button
-                  variant={catalogMode === "manage" ? "default" : "ghost"}
-                  size="sm"
-                  className="rounded-none"
-                  onClick={() => setCatalogMode("manage")}
-                  data-testid="button-mode-manage"
-                >
-                  Manage
-                </Button>
-                <Button
-                  variant={catalogMode === "preview" ? "default" : "ghost"}
-                  size="sm"
-                  className="rounded-none"
-                  onClick={() => setCatalogMode("preview")}
-                  data-testid="button-mode-preview"
-                >
-                  Preview
-                </Button>
-              </div>
-            )}
-            <div className="flex rounded-lg border border-console-light overflow-hidden">
-              <Button
-                variant={viewMode === "list" ? "default" : "ghost"}
-                size="sm"
-                className="rounded-none"
-                onClick={() => setViewMode("list")}
-                data-testid="button-view-list"
-              >
-                {t("header.viewList")}
-              </Button>
-              <Button
-                variant={viewMode === "map" ? "default" : "ghost"}
-                size="sm"
-                className="rounded-none"
-                onClick={() => setViewMode("map")}
-                data-testid="button-view-map"
-              >
-                {t("header.viewMap")}
-              </Button>
-              <Button
-                variant={viewMode === "availability" ? "default" : "ghost"}
-                size="sm"
-                className="rounded-none"
-                onClick={() => setViewMode("availability")}
-                data-testid="button-view-availability"
-              >
-                {t("header.viewAvailability")}
-              </Button>
-            </div>
-            {/* S5 (ruling 74 disp. 1): every "Add New Service" affordance routes through the
-                Workstation one-door launcher first — this is no longer a direct deep link into
-                ServiceForm step 1. */}
-            <Link href="/provider/workstation">
-              <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
-                <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
-              </Button>
-            </Link>
-          </div>
+          <Link href="/provider/workstation">
+            <Button
+              className="bg-[#1A1A18] hover:bg-black text-white rounded-[6px] text-[13.5px] font-semibold h-auto py-[9px] px-4"
+              data-testid="button-add-service"
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> {t("header.addService")}
+            </Button>
+          </Link>
         </div>
 
-        {/* Category Filter — only show when there are services (list view only) */}
-        {viewMode === "list" && totalServices > 0 && filterLabels.length > 1 && (
-          <div className="flex gap-2 flex-wrap">
-            {filterLabels.map((label) => (
-              <Button
-                key={label}
-                variant={selectedCategory === label ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory(label)}
-                data-testid={`button-category-filter-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-              >
-                {label === "All" ? t("filter.all") : label}
-              </Button>
-            ))}
+        {/* ── Toolbar card (mock: search + status chips + Manage/Preview + List/Map) ─────── */}
+        {totalServices > 0 && (
+          <div className="bg-white border border-[#E8E8E2] rounded-[7px] px-[18px] py-[14px] flex items-center gap-2.5 flex-wrap">
+            {viewMode === "list" && (
+              <>
+                <div className="relative flex-shrink-0">
+                  <Search className="w-3.5 h-3.5 text-[#7A7A72] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search your listings"
+                    aria-label="Search listings"
+                    className="h-9 w-[210px] pl-8 text-[13.5px] border-[#E8E8E2] rounded-[6px] bg-white focus-visible:ring-1 focus-visible:ring-[#35605A]"
+                    data-testid="input-catalog-search"
+                  />
+                </div>
+                <Seg>
+                  {STATUS_CHIPS.map((chip) => (
+                    <SegButton
+                      key={chip.key}
+                      active={statusFilter === chip.key}
+                      onClick={() => setStatusFilter(chip.key)}
+                      testId={`button-status-filter-${chip.key.replace("_", "-")}`}
+                    >
+                      {chip.label} ({statusCounts[chip.key]})
+                    </SegButton>
+                  ))}
+                </Seg>
+              </>
+            )}
+            <div className="ml-auto flex items-center gap-2.5 flex-wrap">
+              {viewMode === "list" && (
+                <Seg>
+                  <SegButton active={catalogMode === "manage"} onClick={() => setCatalogMode("manage")} testId="button-mode-manage">
+                    Manage
+                  </SegButton>
+                  <SegButton active={catalogMode === "preview"} onClick={() => setCatalogMode("preview")} testId="button-mode-preview">
+                    Preview
+                  </SegButton>
+                </Seg>
+              )}
+              <Seg>
+                <SegButton active={viewMode === "list"} onClick={() => setViewMode("list")} testId="button-view-list">
+                  {t("header.viewList")}
+                </SegButton>
+                <SegButton active={viewMode === "map"} onClick={() => setViewMode("map")} testId="button-view-map">
+                  {t("header.viewMap")}
+                </SegButton>
+              </Seg>
+            </div>
           </div>
         )}
 
-        {/* Content */}
+        {/* ── Content ──────────────────────────────────────────────────────────────────── */}
         {isLoading ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="space-y-3">
             {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-48 rounded-lg" />
+              <Skeleton key={i} className="h-24 rounded-[7px]" />
             ))}
           </div>
         ) : isFirstTimeEmpty ? (
-          /* S5 (ruling 74 disp. 1): first-time empty state is now a simple pointer at the
-             Workstation launcher — the 30-tile category picker that used to live here MOVED
-             to that screen (client/src/pages/provider/workstation.tsx) so there is exactly
-             ONE place a new listing is born. */
-          <div className="text-center py-10" data-testid="empty-state-catalog">
-            <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
-            <p className="text-console-mid text-sm mb-4">{t("empty.body")}</p>
+          <div className="text-center py-10 bg-white border border-[#E8E8E2] rounded-[7px]" data-testid="empty-state-catalog">
+            <h3 className="text-lg font-semibold text-[#1A1A18] mb-1">{t("empty.title")}</h3>
+            <p className="text-[#7A7A72] text-sm mb-4">{t("empty.body")}</p>
             <Link href="/provider/workstation">
-              <Button data-testid="button-add-first-service">
+              <Button className="bg-[#1A1A18] hover:bg-black text-white" data-testid="button-add-first-service">
                 <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
               </Button>
             </Link>
           </div>
         ) : viewMode === "map" ? (
-          /* Ruling 22(b): the map authoring surface — selector rail, canvas, pin + route cards */
-          <CatalogMapView services={services ?? []} />
-        ) : viewMode === "availability" ? (
-          /* S7 (DECISIONS.md ledger 102, G1): the availability editor — per-method semantics
-             (weekly patterns + blackouts for scheduled methods, date-ranges for property/room
-             shapes, an honest no-scheduling state for artifact/async methods). */
-          <ProviderAvailabilityManager />
+          <div className="space-y-2">
+            {/* Ruling 22(c): a read-only traveler-eye preview — authoring lives in the create
+                flow's Logistics step (mock item ⑨/⑩). */}
+            <p className="text-[11.5px] text-[#7A7A72]">
+              Pins, radius, zones and route stops are authored in the create flow's Logistics step —{" "}
+              <Link href="/provider/workstation">
+                <span className="text-[#35605A] underline underline-offset-2 cursor-pointer">open it →</span>
+              </Link>
+            </p>
+            <CatalogMapView services={services ?? []} />
+          </div>
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-console-mid font-medium">{t("filter.emptyTitle")}</p>
-              <p className="text-console-mid text-sm mt-1">{t("filter.emptyBody")}</p>
+              <p className="text-[#7A7A72] font-medium">No listings match {searchQuery ? "your search" : "this filter"}.</p>
+              <p className="text-[#7A7A72] text-sm mt-1">Try a different search term or status.</p>
               <Button
                 variant="outline"
                 className="mt-4"
-                onClick={() => setSelectedCategory("All")}
+                onClick={() => {
+                  setSearchQuery("");
+                  setStatusFilter("all");
+                }}
                 data-testid="button-clear-filter"
               >
                 {t("filter.clear")}
@@ -1366,7 +1393,6 @@ export default function ProviderServices() {
             </CardContent>
           </Card>
         ) : catalogMode === "preview" ? (
-          /* C2 Preview: the shared traveler card, honest storefront visibility (approved+active). */
           previewServices.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center" data-testid="preview-empty">
@@ -1378,279 +1404,75 @@ export default function ProviderServices() {
               </CardContent>
             </Card>
           ) : (
-            <div
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-              data-testid="catalog-preview-grid"
-            >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="catalog-preview-grid">
               {previewServices.map((service) => (
                 <CatalogPreviewCard key={service.id} service={service} />
               ))}
             </div>
           )
         ) : (
-          /* Service cards. FP-3: rooms are NOT in this list — they render inside their
-             property's card below (or as orphan rows after the grid). */
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {topLevelServices.map((service) => {
-              // The listing's own NAME is provider content (ruling 60 system B) and is never
-              // translated; only the placeholder shown when there is no name is chrome.
-              const displayName = service.serviceName || service.name || t("card.untitled");
-              const rawPrice = service.price ?? service.basePrice;
-              const priceDisplay = rawPrice == null || rawPrice === ""
-                ? "—"
-                : service.priceType === "hourly"
-                ? `$${rawPrice} / hr`
-                : service.priceType === "package_tiers"
-                ? `from $${rawPrice}`
-                : service.priceType === "per_event"
-                ? `$${rawPrice} / event`
-                : `$${rawPrice}`;
-              const categoryName = service.categoryId ? (categoryNameById[service.categoryId] || service.serviceType || "") : (service.serviceType || "");
-              const isActive = service.status === "active";
-              // PB: bundles are edited in the Workstation's bundle builder (components +
-              // price live there), not the ServiceForm.
-              const isBundle = service.productShape === "bundle";
-              // FP-3: a property is edited on the Workstation property surface — at its Basics —
-              // together with its room types; never in the ServiceForm questionnaire.
-              const isProperty = service.productShape === "property";
-              const childRooms = isProperty ? roomsByParent.get(service.id) ?? [] : [];
-              const editHref = listingEditHref(service);
-
-              return (
-                <Card
+          <>
+            {/* mock: single `.card` housing the `.listing` rows */}
+            <div className="bg-white border border-[#E8E8E2] rounded-[7px]">
+              {topLevelServices.map((service) => (
+                <ListingRow
                   key={service.id}
-                  className={!isActive ? "opacity-60" : ""}
-                  data-testid={`card-service-${service.id}`}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <ServiceThumb service={service} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
-                          {/* L10a: the real approval + active/paused state is the primary badge on
-                              every card (same StatusBadge vocabulary as the Workstation list) —
-                              previously only a category chip showed here, so a draft/submitted/
-                              rejected listing looked identical to an approved one. */}
-                          {service.approvalStatus && (
-                            <StatusBadge status={service.approvalStatus} />
-                          )}
-                          <StatusBadge status={isActive ? "active" : "paused"} />
-                          {isBundle && (
-                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
-                              {t("card.bundle")}
-                            </Badge>
-                          )}
-                          {isProperty && (
-                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-property-${service.id}`}>
-                              Property
-                            </Badge>
-                          )}
-                          {service.isFeatured && (
-                            <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
-                              {t("card.featured")}
-                            </Badge>
-                          )}
-                          {categoryName && (
-                            <Badge variant="outline" className="text-[10px]">{categoryName}</Badge>
-                          )}
-                        </div>
+                  service={service}
+                  health={healthByServiceId.get(service.id)}
+                  rooms={service.productShape === "property" ? roomsByParent.get(service.id) ?? [] : []}
+                  isActive={service.status === "active"}
+                  onToggleActive={(checked) => toggleMutation.mutate({ id: service.id, status: checked ? "active" : "paused" })}
+                  onPatchDisplay={(patch) => displayOptionsMutation.mutate({ id: service.id, patch })}
+                  displayPatchDisabled={displayOptionsMutation.isPending}
+                  onDuplicate={() => duplicateMutation.mutate(service.id)}
+                  duplicateDisabled={duplicateMutation.isPending}
+                  onRequestDelete={() => setDeleteTarget(service)}
+                />
+              ))}
+            </div>
 
-                        {service.description && (
-                          <p className="text-sm text-console-mid mt-1 line-clamp-2">{service.description}</p>
-                        )}
+            {/* FP-3: rooms whose property row is NOT in the current view — never silently
+                dropped (§13); shown as their own compact rows naming the property. */}
+            {orphanRooms.length > 0 && (
+              <div className="bg-white border border-[#E8E8E2] rounded-[7px]" data-testid="catalog-orphan-rooms">
+                {orphanRooms.map((room) => (
+                  <RoomListingRow
+                    key={room.id}
+                    room={room}
+                    parentName={room.parentServiceId ? serviceNameById.get(room.parentServiceId) ?? null : null}
+                  />
+                ))}
+              </div>
+            )}
 
-                        <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
-                          <span className="flex items-center gap-1 font-semibold text-green-600" data-testid={`text-price-${service.id}`}>
-                            <DollarSign className="w-4 h-4" /> {priceDisplay}
-                          </span>
-                          <PinChip service={service} />
-                          {service.deliveryTimeframe && (
-                            <span className="flex items-center gap-1 text-console-mid">
-                              <Clock className="w-4 h-4" /> {service.deliveryTimeframe}
-                            </span>
-                          )}
-                          {service.maxConcurrentBookings && service.maxConcurrentBookings > 1 && (
-                            <span className="flex items-center gap-1 text-console-mid">
-                              <Users className="w-4 h-4" />{" "}
-                              {t("card.upTo", { count: service.maxConcurrentBookings })}
-                            </span>
-                          )}
-                          {service.meetingPoint && (
-                            <span className="flex items-center gap-1 text-console-mid truncate max-w-[160px]">
-                              <MapPin className="w-4 h-4 flex-shrink-0" /> {service.meetingPoint}
-                            </span>
-                          )}
-                          {service.pickupAvailable && (
-                            <span className="flex items-center gap-1 text-blue-500">
-                              <Truck className="w-4 h-4" /> {t("card.pickupAvailable")}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Affinity tag chips */}
-                        {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
-                          <div className="mt-3" data-testid={`affinity-tags-${service.id}`}>
-                            <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
-                              {t("card.affinityHeading")}
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {service.contentAffinityTags.map((tag) => (
-                                <Badge
-                                  key={tag}
-                                  variant="secondary"
-                                  className="text-[10px] py-0 px-1.5 bg-primary/8 text-primary border border-primary/20"
-                                  data-testid={`chip-affinity-${service.id}-${tag}`}
-                                >
-                                  {AFFINITY_TAG_LABELS[tag] ?? tag}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                        <Switch
-                          checked={isActive}
-                          onCheckedChange={(checked) =>
-                            toggleMutation.mutate({ id: service.id, status: checked ? "active" : "paused" })
-                          }
-                          disabled={toggleMutation.isPending}
-                          data-testid={`switch-active-${service.id}`}
-                        />
-                        <span className="text-xs text-console-mid">
-                          {isActive ? tCommon("state.active") : tCommon("state.paused")}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* C3: per-listing "Card shows" control (Show price + Booking mode). Bundles
-                        are edited in the Workstation, but their storefront card honors the same two
-                        prefs, so the control belongs on every listing card. */}
-                    <CardShowsControl
-                      service={service}
-                      onPatch={(patch) => displayOptionsMutation.mutate({ id: service.id, patch })}
-                      disabled={displayOptionsMutation.isPending}
-                    />
-
-                    {/* FP-3: the property's room types, grouped here rather than scattered
-                        through the grid as standalone service cards. Each row states what a room
-                        really is — name, nightly rate, its own review/active state — and its Edit
-                        opens the property editor at the Rooms step. */}
-                    {isProperty && (
-                      <div className="mt-3 pt-3 border-t border-console-light" data-testid={`rooms-block-${service.id}`}>
-                        <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
-                          Room types
-                        </p>
-                        {childRooms.length === 0 ? (
-                          <p className="text-xs text-console-mid" data-testid={`rooms-empty-${service.id}`}>
-                            No room types yet — add one in the Workstation.
-                          </p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {childRooms.map((room) => (
-                              <RoomRow key={room.id} room={room} health={healthByServiceId.get(room.id)} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
-                      <Link href={editHref}>
-                        <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
-                          <Edit className="w-4 h-4 mr-1" /> {tCommon("actions.edit")}
-                        </Button>
-                      </Link>
-                      {/* PB: no Duplicate for bundles — duplicateService copies the
-                          provider_services row only, not bundle_components, so the copy
-                          would be a component-less bundle (filed server follow-up).
-                          FP-3: nor for a property — the same one-row copy would produce a
-                          property with no room types, which is not a sellable thing. */}
-                      {!isBundle && !isProperty && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => duplicateMutation.mutate(service.id)}
-                          disabled={duplicateMutation.isPending}
-                          data-testid={`button-duplicate-${service.id}`}
-                        >
-                          <Copy className="w-4 h-4 mr-1" /> {tCommon("actions.duplicate")}
-                        </Button>
-                      )}
-                      {/* S6: Catalog's ONE outward-facing pointer — storefront, share kit and
-                          promote all live on Distribute now. Shown for every listing (Distribute
-                          itself shows the honest not-live/blocked state for anything that isn't
-                          approved+active yet — no gate needed here). */}
-                      <Link href={`/provider/distribute?listing=${service.id}`}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          data-testid={`button-distribute-${service.id}`}
-                        >
-                          <Share2 className="w-4 h-4 mr-1" /> Distribute this
-                          <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:text-red-600"
-                        onClick={() => setDeleteTarget(service)}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`button-delete-${service.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" /> {tCommon("actions.delete")}
-                      </Button>
-                    </div>
-
-                    <HealthRow health={healthByServiceId.get(service.id)} />
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+            {/* mock: compact Availability card below the listing list. */}
+            <AvailabilityCard
+              services={allServices}
+              servicesLoading={isLoading}
+              onOpenEditor={openAvailabilityEditor}
+              initialServiceId={availabilityDrawerServiceId}
+            />
+          </>
         )}
-
-        {/* FP-3: rooms whose property card is NOT in the current view. They still render as room
-            rows — naming the property they belong to — never as generic service cards, and never
-            silently dropped (§13). Shown in the manage layout only; Preview is the traveler view. */}
-        {catalogMode === "manage" && viewMode === "list" && orphanRooms.length > 0 && (
-          <div className="space-y-1.5" data-testid="catalog-orphan-rooms">
-            <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide">
-              Room types
-            </p>
-            {orphanRooms.map((room) => (
-              <RoomRow
-                key={room.id}
-                room={room}
-                parentName={room.parentServiceId ? serviceNameById.get(room.parentServiceId) ?? null : null}
-                health={healthByServiceId.get(room.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* C9: availability editing's ratified Catalog home (see header comment). */}
-        <AvailabilitySection />
 
         {/* S6 (ruling-74-disposition-6 clarification): the storefront header, the per-service
-            share-kit dialog and the Promote (posting-opportunities) block all moved to
+            share-kit dialog and the Promote (posting-opportunities) block all live on
             /provider/distribute — this page's own outward-facing pointer is now exactly the
-            per-card "Distribute this →" button above, nothing more. See the file header
-            comment for the full before/after. */}
+            per-row "Promote this →" button above, nothing more. */}
 
-        {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────────
-            Catalog's Delete fired `deleteMutation.mutate(id)` straight off the click: one tap,
-            the listing gone, no confirmation and no undo — while the Workstation's property and
-            bundle deletes, two clicks away, both confirm. This is the same AlertDialog those use,
-            and it NAMES the listing so a mis-aimed click on a dense grid is visible before it
-            lands.
-            SCOPE (deliberate): this is the plain confirm only. The "refuse + archive when
-            travelers have already booked it" half is gap #18 on the execution map — a Wave 3
-            lane with a server side — so this dialog does NOT claim anything about bookings it
-            has not checked (§13). ── */}
+        {/* ── Availability drawer — the REAL S7 editor, preselected ───────────────────────── */}
+        <Sheet open={availabilityDrawerOpen} onOpenChange={setAvailabilityDrawerOpen}>
+          <SheetContent side="right" className="w-[min(560px,94vw)] sm:max-w-none overflow-y-auto" data-testid="drawer-availability-editor">
+            <SheetHeader>
+              <SheetTitle>Edit availability</SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              <ProviderAvailabilityManager initialServiceId={availabilityDrawerServiceId ?? undefined} />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────── */}
         <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
           <AlertDialogContent data-testid="dialog-delete-service">
             <AlertDialogHeader>
