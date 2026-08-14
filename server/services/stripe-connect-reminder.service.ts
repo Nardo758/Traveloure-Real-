@@ -91,7 +91,7 @@ class StripeConnectReminderService {
     }
   }
 
-  private async runReminders(): Promise<void> {
+  async runReminders(): Promise<void> {
     try {
       // Find approved providers/experts without a complete Stripe Connect account
       // stripe_account_id / stripe_account_status live on the users table in the DB

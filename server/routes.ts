@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import express from "express";
+import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
 import { validateImageDataUrl } from "./utils/imageValidation";
@@ -11385,6 +11386,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // /api/trips/:tripId/itinerary-items/:itemId). Express matches in registration order, so
   // an inline route registered earlier claims a shared path before this router sees it.
   app.use(tripsRoutes);
+
+  // ── Test-only: trigger the Stripe Connect reminder scheduler on demand ───────
+  // Gated to non-production so it can never be called on live infrastructure.
+  // Used by Playwright e2e tests to verify the scheduler skips fully-onboarded
+  // providers without waiting for the 72-hour timer to fire.
+  if (process.env.NODE_ENV !== "production") {
+    app.post("/api/test/stripe-reminder-run", async (_req, res) => {
+      try {
+        await stripeConnectReminderScheduler.runReminders();
+        res.json({ ok: true });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err.message });
+      }
+    });
+  }
 
   return httpServer;
 }

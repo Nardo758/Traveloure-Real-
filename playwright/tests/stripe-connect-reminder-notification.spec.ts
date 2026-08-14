@@ -195,7 +195,7 @@ test.describe("Stripe Connect Reminder — notification feed surfacing", () => {
   );
 
   test(
-    "Scheduler: provider with stripeAccountStatus='complete' is excluded from pending set and receives no reminder",
+    "Scheduler: provider with stripeAccountStatus='complete' receives no reminder after scheduler runs",
     async ({ page }) => {
       const email = `e2e-sc-complete-${uid()}@example.com`;
       const password = "TestPass123!";
@@ -205,34 +205,34 @@ test.describe("Stripe Connect Reminder — notification feed surfacing", () => {
         // ── 1. Register a fresh user ──────────────────────────────────────────
         userId = await registerUser(page, email, password, "Complete", "Provider");
 
-        // ── 2. Promote to service_provider + mark Stripe Connect as complete ──
+        // ── 2. Promote to service_provider and mark Stripe Connect as complete ─
+        //    Setting both stripe_account_id and stripe_account_status = 'complete'
+        //    mirrors what the Stripe Connect onboarding flow writes on completion.
         sql(
           `UPDATE users SET role = 'service_provider', stripe_account_id = 'acct_testcomplete', stripe_account_status = 'complete' WHERE id = '${userId}'`
         );
 
-        // ── 3. Run the exact WHERE clause the scheduler uses to find pending
-        //       users. A complete provider must NOT appear in this result set.
-        //       The scheduler query is:
-        //         role IN ('service_provider', 'travel_expert')
-        //         AND (stripe_account_id IS NULL
-        //              OR stripe_account_status IS NULL
-        //              OR stripe_account_status NOT IN ('complete', 'active'))
-        const pendingCount = sql(
-          `SELECT COUNT(*) FROM users WHERE id = '${userId}' AND (role = 'service_provider' OR role = 'travel_expert') AND (stripe_account_id IS NULL OR stripe_account_status IS NULL OR stripe_account_status NOT IN ('complete', 'active'))`
+        // ── 3. Invoke the real scheduler via the test-only endpoint ───────────
+        //    POST /api/test/stripe-reminder-run calls runReminders() directly,
+        //    so this exercises the actual service query + insert path —
+        //    not a reimplementation of the WHERE clause.
+        const triggerRes = await page.request.post(
+          `${BASE_URL}/api/test/stripe-reminder-run`
         );
         expect(
-          parseInt(pendingCount, 10),
-          "A provider with stripeAccountStatus='complete' must not appear in the scheduler pending query"
-        ).toBe(0);
+          triggerRes.status(),
+          "Test trigger endpoint should return 200"
+        ).toBe(200);
 
-        // ── 4. Confirm no stripe_connect_reminder notification exists for this
-        //       user — either pre-existing or newly created.
+        // ── 4. Assert no stripe_connect_reminder was inserted for this user ───
+        //    If the scheduler incorrectly selected the complete provider, a row
+        //    would now exist in notifications.
         const notifCount = sql(
           `SELECT COUNT(*) FROM notifications WHERE user_id = '${userId}' AND type = '${REMINDER_TYPE}'`
         );
         expect(
           parseInt(notifCount, 10),
-          "No stripe_connect_reminder notification should exist for a fully-onboarded provider"
+          "Scheduler must not insert a stripe_connect_reminder for a provider whose stripeAccountStatus is 'complete'"
         ).toBe(0);
       } finally {
         // ── 5. Cleanup ────────────────────────────────────────────────────────
