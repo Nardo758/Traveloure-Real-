@@ -174,6 +174,19 @@ const categoryIcons: Record<string, React.ElementType> = {
   "visa-assistance": Globe,
 };
 
+const CATALOG_PROVIDER_TO_SOURCE: Record<string, UnifiedResult["source"]> = {
+  viator: "viator",
+  fever: "fever",
+  opentable: "opentable",
+  booking_com: "booking_com",
+  "booking.com": "booking_com",
+  amadeus: "amadeus",
+  poi: "poi",
+  transfer: "transfer",
+  safety: "safety",
+  restaurant: "restaurant",
+};
+
 const tripCategories = [
   { id: "all", label: "All", icon: Globe },
   { id: "adventure", label: "Adventure", icon: TrendingUp },
@@ -482,6 +495,7 @@ function ServiceCard({
   );
 }
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -2016,3 +2030,32 @@ export default function DiscoverPage() {
     </>
   );
 }
+
+/** Convert a numeric price to the $ symbol string rendered by UnifiedResultCard. */
+function toPriceTier(price: number | null | undefined): string | null {
+  if (price == null) return null;
+  if (price < 25) return "$";
+  if (price < 75) return "$$";
+  if (price < 150) return "$$$";
+  return "$$$$";
+}
+
+const PARTNER_PROVIDERS = new Set([
+  "viator", "fever", "opentable", "booking_com", "booking.com", "amadeus",
+]);
+
+/** Format a numeric price + ISO currency code into a human-readable string for cart display. */
+function formatCatalogPrice(price: number | null | undefined, currency: string): string {
+  if (price == null) return "Request Quote";
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "USD",
+      maximumFractionDigits: 0,
+    }).format(price);
+  } catch {
+    return `${currency || "USD"} ${price}`;
+  }
+}
+
+// hint: Structural and logic conflict. Both design and behavior differ.

@@ -28,32 +28,53 @@ import type { CatalogItem } from "@/types/catalog";
 
 export interface UnifiedResult {
   id: string;
+
   name: string;
+
   title?: string;
+
   rating?: number | null;
+
   reviewCount?: number | null;
+
   priceLevel?: string | null;
   /** Numeric price in the provider's currency. Shown as "$89" when present; overrides priceLevel display. */
+
   price?: number | null;
   /** ISO-4217 currency code for the numeric price (e.g. "USD"). Defaults to "USD" when omitted. */
+
   currency?: string | null;
   /** Suffix appended after the price (e.g. "night" → "$89/night"). */
+
   priceSuffix?: string | null;
+
   address?: string | null;
+
   description?: string | null;
+
   imageUrl?: string | null;
+
   thumbnail?: string | null;
+
   websiteUrl?: string | null;
+
   website?: string | null;
+
   phone?: string | null;
+
   source: "native" | "serp" | "viator" | "amadeus" | "booking_com" | "opentable" | "fever" | "poi" | "transfer" | "safety" | "restaurant";
+
   isPartner?: boolean;
+
   category?: string | null;
   /**
    * §16: partner feeds never ship a booking URL — the server strips it and ships this opaque
    * vault token instead; the agent-booking rail resolves it back to the URL server-side.
    */
+
   bookingToken?: string | null;
+
+  priceDisplay?: string | null;
 }
 
 /**
