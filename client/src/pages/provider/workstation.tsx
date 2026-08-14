@@ -133,7 +133,18 @@ interface Service {
   price?: string | number | null;
   basePrice?: string | number | null;
   productShape?: string | null;
+  serviceOfferingTypeId?: string | null;
 }
+
+// Ruling 114: the ideas rail's data shapes — the /earn catalog row and the category name map.
+interface IdeasOffering {
+  id: string;
+  offering_type_key: string;
+  category_key: string;
+  display_name: string;
+  tagline: string | null;
+}
+interface IdeasCategory { id: string; name: string; categoryKey: string | null }
 
 interface BundleComponent {
   id: string;
@@ -322,6 +333,22 @@ export default function ProviderWorkstation() {
   const { data: services, isLoading: servicesLoading } = useQuery<Service[]>({
     queryKey: ["/api/provider/services"],
   });
+  // ── Ruling 114: "Ideas for your business" — offerings from the categories this provider
+  // REGISTERED for that they have NOT listed yet. Real data only: the application's own
+  // serviceOffers, the live /earn catalog (taglines come from it — nothing invented, §13),
+  // and the provider's actual listings. Empty ⇒ the rail does not render at all.
+  const { data: providerApplication } = useQuery<{ serviceOffers?: string[] | null } | null>({
+    queryKey: ["/api/provider-application"],
+  });
+  const { data: ideasCatalog = [] } = useQuery<IdeasOffering[]>({
+    queryKey: ["/api/offering-types/services"],
+    staleTime: 5 * 60_000,
+  });
+  const { data: ideasCategories = [] } = useQuery<IdeasCategory[]>({
+    queryKey: ["/api/service-categories"],
+    staleTime: 5 * 60_000,
+  });
+
   const { data: bundles, isLoading: bundlesLoading } = useQuery<Bundle[]>({
     queryKey: ["/api/provider/bundles"],
   });
@@ -661,6 +688,36 @@ export default function ProviderWorkstation() {
   // FP-2 item 7: the bundle deep link gets its OWN miss state so the notice renders in the
   // bundles section, beside the list it is talking about, rather than under "Your properties".
   const [bundleLinkMiss, setBundleLinkMiss] = useState<string | null>(null);
+
+  // Ruling 114: ideas = registered categories ∩ catalog, minus already-listed offerings,
+  // round-robined across categories (max 2 per category, 6 tiles) so one category never
+  // monopolises the rail. custom_other_offering is a door, not an idea.
+  const ideasForBusiness = (() => {
+    // NOTE: plain objects, not Map — `Map` is shadowed in this module by the lucide icon import.
+    const registered = new Set((providerApplication?.serviceOffers ?? []).filter(Boolean));
+    if (registered.size === 0) return [];
+    const nameByKey: Record<string, string> = {};
+    for (const c of ideasCategories) if (c.categoryKey) nameByKey[c.categoryKey] = c.name;
+    const listedOfferingIds = new Set(
+      (services ?? []).map((s) => s.serviceOfferingTypeId).filter(Boolean) as string[],
+    );
+    const eligible = ideasCatalog.filter((o) => {
+      if (!o.category_key || o.offering_type_key === "custom_other_offering") return false;
+      const catName = nameByKey[o.category_key];
+      return !!catName && registered.has(catName) && !listedOfferingIds.has(o.id);
+    });
+    const byCat: Record<string, IdeasOffering[]> = {};
+    for (const o of eligible) (byCat[o.category_key] ??= []).push(o);
+    const picked: (IdeasOffering & { categoryName: string })[] = [];
+    for (let round = 0; round < 2 && picked.length < 6; round++) {
+      for (const key of Object.keys(byCat)) {
+        if (picked.length >= 6) break;
+        const o = byCat[key][round];
+        if (o) picked.push({ ...o, categoryName: nameByKey[key] });
+      }
+    }
+    return picked;
+  })();
 
   function openPropertyEditor(property: Property, step: PropertyEditorStep, roomId?: string | null) {
     setPropertyEditorTarget(property);
@@ -1171,6 +1228,47 @@ export default function ProviderWorkstation() {
         </div>
 
         {/* ── Your bundles ──────────────────────────────────────────────────────── */}
+        {/* ── Ruling 114: "Ideas for your business" — the standing inspiration surface, on the
+            creation area (ruling 113). Personalized: only offerings from the categories this
+            provider registered for that they haven't listed; taglines come from the /earn
+            catalog rows themselves (nothing invented, §13). Hidden entirely when there is
+            nothing honest to suggest. ── */}
+        {ideasForBusiness.length > 0 && (
+          <section className="mb-8" data-testid="section-ideas-for-business">
+            <div className="rounded-lg border bg-white" style={{ borderColor: "var(--console-brand-soft, #CBDAD7)" }}>
+              <div className="px-4 py-3 border-b border-console-light flex items-baseline gap-3 flex-wrap">
+                <h2 className="text-[15px] font-semibold text-console-darkest">Ideas for your business</h2>
+                <span className="text-xs text-console-mid">
+                  From the categories you registered — offerings you haven't listed yet.
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 p-4">
+                {ideasForBusiness.map((idea) => (
+                  <Link
+                    key={idea.id}
+                    href={`/provider/services/new?offeringTypeKey=${encodeURIComponent(idea.offering_type_key)}`}
+                    className="block rounded-md border border-console-light bg-white px-3 py-2.5 hover:border-console-brand transition-colors"
+                    data-testid={`idea-${idea.offering_type_key}`}
+                  >
+                    <p className="text-[10.5px] uppercase tracking-wider font-semibold text-console-mid">
+                      {idea.categoryName}
+                    </p>
+                    <p className="text-[13.5px] font-semibold text-console-darkest mt-0.5">{idea.display_name}</p>
+                    {idea.tagline && <p className="text-xs text-console-mid mt-0.5">{idea.tagline}</p>}
+                    <p className="text-xs font-medium mt-1.5" style={{ color: "var(--console-brand, #35605A)" }}>
+                      Start this →
+                    </p>
+                  </Link>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-[11.5px] text-console-mid">
+                Suggestions come only from your registered categories and hide once listed — this
+                rail disappears when you've listed everything.
+              </p>
+            </div>
+          </section>
+        )}
+
         <section data-testid="section-workstation-bundles">
           <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
             Your bundles
