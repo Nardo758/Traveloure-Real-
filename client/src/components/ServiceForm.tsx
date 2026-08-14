@@ -79,6 +79,7 @@ import { ServiceMapAuthoring } from "@/components/provider/service-map-authoring
 // WAVE 2 / S4 (ledger row 99): the post-creation "Pricing & fees" drawer — surcharge mode +
 // amounts, deposit config and cancellation policy moved here from the wizard steps above.
 import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
+import { ServiceLanguagesCard } from "@/components/service-languages-card";
 import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
 
 interface ServiceCategory {
@@ -195,6 +196,10 @@ interface ServiceFormData {
   // `null` = never captured (render nothing); `[]` = deliberately cleared. The two must not
   // collapse, so this is nullable rather than defaulting to an empty array.
   deliveryLanguages: string[] | null;
+  // Ruling 115 (migration 216): the language the listing's ORIGINAL content is written in.
+  // Owner-declared on Basics ("I'm writing this in"); defaults to English — never guessed from
+  // the text. Drives translation targets and the traveler-facing "shown in <language>" label.
+  sourceLocale: "en" | "ja";
   transportProvided: "yes" | "no" | "not_applicable";
   // ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ───────────────
   // CAPTURE ONLY — nothing reads these yet. Every one is a string here so that "" can mean
@@ -350,6 +355,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     serviceRadius: 0,
     pickupRadiusKm: "",
     deliveryLanguages: null,
+    sourceLocale: "en",
     transportProvided: "not_applicable",
     // D7 (ruling 62): every field starts UNCAPTURED — an empty string, not a guessed default.
     transportProvision: "",
@@ -459,6 +465,8 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     // NULL round-trips as "" / null — never coerced into a number or a presumed language.
     pickupRadiusKm: s.pickupRadiusKm == null ? "" : String(s.pickupRadiusKm),
     deliveryLanguages: Array.isArray(s.deliveryLanguages) ? (s.deliveryLanguages as string[]) : null,
+    // Ruling 115: NULL on the row = English (the pre-216 assumption made explicit).
+    sourceLocale: s.sourceLocale === "ja" ? "ja" : "en",
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
     // D7 (ruling 62): NULL on the row round-trips back as "" — still uncaptured, never coerced
     // into a value the provider did not choose.
@@ -787,6 +795,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const AUTOSAVE_KEY = `traveloure:new-service-autosave:v1:${role}`;
   const readAutosave = (): { formData: Partial<ServiceFormData>; currentStep?: number; savedAt?: string } | null => {
     if (isEditMode || typeof window === "undefined") return null;
+    // Ruling 114: an EXPLICIT entry intent — an ideas-rail tile, an /earn CTA, a Workstation
+    // category card (?offeringTypeKey= / ?category=) — beats a stale checkpoint. The checkpoint
+    // is not deleted (the next plain visit still offers it); it just doesn't hijack this one.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("offeringTypeKey") || params.get("category")) return null;
     try {
       const raw = window.localStorage.getItem(AUTOSAVE_KEY);
       if (!raw) return null;
@@ -1349,6 +1362,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // SS-6 (ruling 69 disposition 9): sent only once the provider has touched the field —
         // `null` here means "never captured" and must not be confused with a cleared `[]`.
         deliveryLanguages: formData.deliveryLanguages,
+        // Ruling 115: the declared source language of the listing's own content.
+        sourceLocale: formData.sourceLocale,
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
@@ -2108,6 +2123,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </CardContent>
         </Card>
 
+        {/* Ruling 115 — Languages: the console surface for the ruling-60 translation rails.
+            Sits on the same settings rail (never a checklist row — a translation is optional). */}
+        <ServiceLanguagesCard
+          serviceId={id!}
+          sourceLocale={existingService?.sourceLocale === "ja" ? "ja" : "en"}
+          original={{
+            serviceName: existingService?.serviceName ?? null,
+            shortDescription: existingService?.shortDescription ?? null,
+            description: existingService?.description ?? null,
+            meetingPoint: existingService?.meetingPoint ?? null,
+          }}
+        />
+
         <Card className="p-5 space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-[220px]">
@@ -2164,6 +2192,42 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </p>
           )}
         </Card>
+
+        {/* ── Ruling 114: the post-publish nudge — one line at the moment of momentum,
+            pointing at the Workstation ideas rail (ruling 113: inspiration lives on the
+            creation area). Named siblings come from the /earn catalog's own rows for THIS
+            listing's category (nothing invented, §13); no siblings ⇒ no nudge. ── */}
+        {role === "provider" && frozen && (() => {
+          const siblings = providerOfferingTypes
+            .filter(
+              (o) =>
+                o.category_key === selectedProviderOffering?.category_key &&
+                o.id !== selectedProviderOffering?.id &&
+                o.offering_type_key !== "custom_other_offering",
+            )
+            .slice(0, 2);
+          if (siblings.length === 0 || !selectedCategory?.name) return null;
+          return (
+            <div
+              className="flex items-baseline gap-2 flex-wrap rounded-lg border px-4 py-3 text-sm bg-amber-50 border-amber-200 text-amber-900"
+              data-testid="nudge-more-ideas"
+            >
+              <span>
+                <strong>Providers in {selectedCategory.name} also offer</strong>{" "}
+                {siblings.map((o) => o.display_name.toLowerCase()).join(" and ")}.
+              </span>
+              <button
+                type="button"
+                className="ml-auto underline underline-offset-2 font-medium whitespace-nowrap"
+                style={{ color: "var(--console-brand, #35605A)" }}
+                onClick={() => navigate("/provider/workstation")}
+                data-testid="link-nudge-workstation-ideas"
+              >
+                See ideas on Workstation →
+              </button>
+            </div>
+          );
+        })()}
 
         <PricingFeesDrawer
           open={pricingDrawerOpen}
@@ -2385,6 +2449,54 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </p>
       )}
 
+      {/* Ruling 114: the provider verification banners live in THIS stack — visible on every
+          step (the ruling-53 posture), never wedged between form fields. Copy unchanged. */}
+      {/* Verification banner — shown when selected category requires background check / elevated insurance */}
+      {role === "provider" && isCategoryGated && (
+        <div
+          className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${isProviderVerified ? "bg-green-50 border-green-200 text-green-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}
+          data-testid="banner-verification-required"
+        >
+          <ShieldAlert className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isProviderVerified ? "text-green-600" : "text-amber-600"}`} />
+          <div>
+            {isProviderVerified ? (
+              <p className="font-medium">Background verification complete — you can publish this service.</p>
+            ) : (
+              <>
+                <p className="font-medium">Background check required before going live</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  This category requires a background check and/or elevated insurance verification.
+                  You can save as a draft now and contact support to complete verification before publishing.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* F2 identity + business verification gate banner (Phase 0.5).
+          Shows when either identity or business verification is not yet "verified". */}
+      {role === "provider" && verificationGateBlocked && (
+        <div
+          className="flex items-start gap-3 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-200"
+          data-testid="banner-identity-biz-verification-required"
+        >
+          <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+          <div>
+            <p className="font-medium">Identity &amp; business verification required before publishing</p>
+            <p className="text-xs mt-0.5 opacity-80">
+              {!identityVerified && !bizVerified
+                ? "Both identity verification (Stripe Identity) and business verification (Stripe Connect) must be completed first."
+                : !identityVerified
+                ? "Identity verification (Stripe Identity) must be completed before going live."
+                : "Business verification (Stripe Connect) must be completed before going live."}
+              {" "}Complete these steps in your{" "}
+              <a href="/provider-status" className="underline font-medium">Provider Status page</a>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── dispatch v1.3 R2 (ruling 53): expert identity-verification status, visible on
           EVERY step (not gated to step 1 or the final Publish click) — "the expert always
           knows verification status, what's blocking, and what happens next... never
@@ -2448,12 +2560,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           legacy row's (unset) linkage is visible, but only REQUIRED on a new create
           (enforced in createMutation + the Publish button, not here). ── */}
       {role === "provider" && (() => {
-        // Collapse to a one-line summary once a selection exists (including
-        // an edit-mode row loaded with its linkage already set) — reopened
-        // by "Change". Nothing-selected always shows the expanded picker,
-        // regardless of offeringPickerOpen, so a required-on-create pick is
-        // never hidden behind a stale collapsed state.
+        // Ruling 114 (one-card Basics): once a selection exists the picker card disappears
+        // entirely — the offering becomes the Basics card's identity HEADER below (name +
+        // category chip + tagline + one Change button). Nothing-selected always shows the
+        // expanded picker, so a required-on-create pick is never hidden; "Change" in the
+        // header reopens it. The pre-pick state keeps its full inspiration job untouched.
         const expanded = offeringPickerOpen || !formData.serviceOfferingTypeId;
+        if (!expanded) return null;
         return (
         <Card data-testid="provider-offering-picker">
           <CardHeader>
@@ -2462,37 +2575,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           <CardContent className="space-y-3">
             {providerOfferingTypesRaw.length === 0 ? (
               <p className="text-xs text-muted-foreground">Loading offerings…</p>
-            ) : !expanded ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-primary bg-primary/5 p-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm text-gray-900 truncate">
-                      {selectedProviderOffering?.display_name}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {selectedProviderOfferingLabel}
-                      {selectedProviderOffering?.tagline ? ` — ${selectedProviderOffering.tagline}` : ""}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setRequestOfferingConfirmedName(null);
-                      setOfferingPickerOpen(true);
-                    }}
-                    data-testid="button-reopen-offering-picker"
-                  >
-                    Change
-                  </Button>
-                </div>
-                {requestOfferingConfirmedName && selectedProviderOffering?.offering_type_key === "custom_other_offering" && (
-                  <p className="text-xs text-muted-foreground" data-testid="text-request-offering-confirmed">
-                    Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
-                  </p>
-                )}
-              </div>
             ) : (
               <>
                 <Input
@@ -2594,10 +2676,45 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── Basic Information ── */}
+      {/* ── Basic Information — ruling 114: ONE card; the offering IS the header ── */}
       <Card>
         <CardHeader>
-          <CardTitle>{isEditMode ? "Edit Service" : "Create New Service"}</CardTitle>
+          {role === "provider" && formData.serviceOfferingTypeId && selectedProviderOffering ? (
+            <div className="flex items-start justify-between gap-3 flex-wrap" data-testid="offering-identity-header">
+              <div className="min-w-0">
+                <CardTitle className="truncate">{selectedProviderOffering.display_name}</CardTitle>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  {selectedProviderOfferingLabel && (
+                    <Badge variant="secondary" className="rounded-full" data-testid="chip-offering-category">
+                      {selectedCategory?.name ?? selectedProviderOfferingLabel}
+                    </Badge>
+                  )}
+                  {selectedProviderOffering.tagline && (
+                    <span className="text-xs text-muted-foreground">{selectedProviderOffering.tagline}</span>
+                  )}
+                </div>
+                {requestOfferingConfirmedName && selectedProviderOffering.offering_type_key === "custom_other_offering" && (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-request-offering-confirmed">
+                    Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
+                  </p>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRequestOfferingConfirmedName(null);
+                  setOfferingPickerOpen(true);
+                }}
+                data-testid="button-reopen-offering-picker"
+              >
+                Change
+              </Button>
+            </div>
+          ) : (
+            <CardTitle>{isEditMode ? "Edit Service" : "Create New Service"}</CardTitle>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
 
@@ -2613,7 +2730,35 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             />
           </div>
 
-          {/* Category — single canonical taxonomy; derived + locked when a provider offering is selected (§17) */}
+          {/* Ruling 115: the DECLARED source language of the listing's own content — asked,
+              never guessed from the text (§13). Drives which locales are translation targets
+              (Languages card on Listing Home) and the traveler-facing "shown in <language>"
+              fallback label. */}
+          <div>
+            <Label htmlFor="source-locale">I'm writing this in</Label>
+            <Select
+              value={formData.sourceLocale}
+              onValueChange={(v) => set("sourceLocale", v as "en" | "ja")}
+            >
+              <SelectTrigger id="source-locale" className="mt-2 w-56" data-testid="select-source-locale">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en" data-testid="option-source-locale-en">English</SelectItem>
+                <SelectItem value="ja" data-testid="option-source-locale-ja">日本語 (Japanese)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Write in your own language — travelers can switch languages, and you can add or
+              AI-draft a translation from the listing's Languages card after saving.
+            </p>
+          </div>
+
+          {/* Category — single canonical taxonomy. Ruling 114: when a provider offering is
+              selected and its category RESOLVES, the header chip above states it — no locked
+              pseudo-input, no duplicate Change button. The unresolved case keeps FP-1/A1's
+              honest failure banner; every non-offering path keeps the Select. */}
+          {role === "provider" && formData.serviceOfferingTypeId && !offeringCategoryUnresolved ? null : (
           <div>
             <Label htmlFor="category">Category *</Label>
             {role === "provider" && formData.serviceOfferingTypeId ? (
@@ -2681,51 +2826,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
             )}
           </div>
-
-          {/* Verification banner — shown when selected category requires background check / elevated insurance */}
-          {role === "provider" && isCategoryGated && (
-            <div
-              className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${isProviderVerified ? "bg-green-50 border-green-200 text-green-900" : "bg-amber-50 border-amber-200 text-amber-900"}`}
-              data-testid="banner-verification-required"
-            >
-              <ShieldAlert className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isProviderVerified ? "text-green-600" : "text-amber-600"}`} />
-              <div>
-                {isProviderVerified ? (
-                  <p className="font-medium">Background verification complete — you can publish this service.</p>
-                ) : (
-                  <>
-                    <p className="font-medium">Background check required before going live</p>
-                    <p className="text-xs mt-0.5 opacity-80">
-                      This category requires a background check and/or elevated insurance verification.
-                      You can save as a draft now and contact support to complete verification before publishing.
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* F2 identity + business verification gate banner (Phase 0.5).
-              Shows when either identity or business verification is not yet "verified". */}
-          {role === "provider" && verificationGateBlocked && (
-            <div
-              className="flex items-start gap-3 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-200"
-              data-testid="banner-identity-biz-verification-required"
-            >
-              <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
-              <div>
-                <p className="font-medium">Identity &amp; business verification required before publishing</p>
-                <p className="text-xs mt-0.5 opacity-80">
-                  {!identityVerified && !bizVerified
-                    ? "Both identity verification (Stripe Identity) and business verification (Stripe Connect) must be completed first."
-                    : !identityVerified
-                    ? "Identity verification (Stripe Identity) must be completed before going live."
-                    : "Business verification (Stripe Connect) must be completed before going live."}
-                  {" "}Complete these steps in your{" "}
-                  <a href="/provider-status" className="underline font-medium">Provider Status page</a>.
-                </p>
-              </div>
-            </div>
           )}
 
           {/* Subcategory */}

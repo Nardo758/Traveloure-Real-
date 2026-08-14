@@ -1074,4 +1074,9 @@ export const MIGRATION_FILES = [
   // columns on provider_services (pending_changes jsonb, edit_review_status varchar), NO DB
   // CHECK, both declared in shared/schema.ts and §19-stripped on every client rail.
   "215_edit_split_pending_changes.sql",
+  // 216: listing source language (ruling 115 — a provider can author in their native language;
+  // travelers flip the toggle the other way). ONE additive-nullable varchar on provider_services
+  // (source_locale, 'en'|'ja' app-enforced, NO DB CHECK), declared in shared/schema.ts same
+  // commit. NULL = pre-216 row = English (ruling 60's baked-in assumption made explicit).
+  "216_source_locale.sql",
 ] as const;

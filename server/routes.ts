@@ -90,7 +90,7 @@ import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
-import { draftServiceTranslation, isContentLocale } from "./services/service-translation.service";
+import { draftServiceTranslation, isContentLocale, effectiveSourceLocale, CONTENT_LOCALES } from "./services/service-translation.service";
 import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
@@ -2881,10 +2881,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
     return { userId, service };
   }
-  function parseTargetLocale(raw: string, res: any): string | null {
-    // A translation TARGET must be a shipped content locale other than the source language (en).
-    if (!isContentLocale(raw) || raw === "en") {
-      res.status(400).json({ message: `Unsupported translation locale '${raw}' (shipped: ja)` });
+  function parseTargetLocale(raw: string, res: any, service: any): string | null {
+    // Ruling 115: a translation TARGET must be a shipped content locale other than the LISTING'S
+    // OWN source language (source_locale, NULL = en — ruling 60's assumption made explicit).
+    const src = effectiveSourceLocale(service?.sourceLocale);
+    if (!isContentLocale(raw) || raw === src) {
+      res.status(400).json({
+        message: `Unsupported translation locale '${raw}' (source is '${src}'; targets: ${CONTENT_LOCALES.filter((l) => l !== src).join(", ")})`,
+      });
       return null;
     }
     return raw;
@@ -2896,7 +2900,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const translation = await storage.getServiceTranslation(owned.service.id, locale);
       res.json({ locale, translation: translation ?? null });
@@ -2913,7 +2917,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const parsed = translationContentBodySchema.safeParse(req.body ?? {});
       if (!parsed.success) {
@@ -2940,7 +2944,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const translation = await storage.approveServiceTranslation(owned.service.id, locale, owned.userId);
       if (!translation) return res.status(404).json({ message: "No translation to approve for this locale" });
@@ -2959,7 +2963,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const owned = await resolveOwnedService(req, res);
       if (!owned) return;
-      const locale = parseTargetLocale(req.params.locale, res);
+      const locale = parseTargetLocale(req.params.locale, res, owned.service);
       if (!locale) return;
       const s = owned.service as any;
       const outcome = await draftServiceTranslation(
@@ -2971,6 +2975,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         },
         locale,
         owned.userId,
+        // Ruling 115: translate FROM the listing's own source language, not an assumed English.
+        effectiveSourceLocale(s.sourceLocale),
       );
       if (outcome.status === "no_api_key") {
         return res.status(503).json({

@@ -27,6 +27,9 @@
   "contentTranslation": {
     "shownInEnglish": "Shown in English",
     "shownInEnglishHint": "This listing has not been translated yet — showing the provider's original.",
+    "shownInJapanese": "Shown in Japanese (original)",
+    "shownInJapaneseHint": "This listing has not been translated yet — showing the provider's original Japanese.",
+    "someInOriginal": "Some listings are shown in their original language — they have not been translated yet.",
     "aiDraft": "AI draft — review before publishing",
     "machineDraftNotice": "Machine-generated first draft. Review and approve before travelers see it.",
     "approveDraft": "Approve translation",

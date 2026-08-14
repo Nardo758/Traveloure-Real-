@@ -27,6 +27,7 @@ import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -228,7 +229,12 @@ export default function ReadyMadeDetailPage() {
           </div>
           <span className="font-semibold text-foreground">Traveloure</span>
         </Link>
-        <span className="text-xs uppercase tracking-widest text-muted-foreground">Ready Made Trips</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs uppercase tracking-widest text-muted-foreground">Ready Made Trips</span>
+          {/* Ruling 116 (distribution-language audit P2): a link/QR recipient can switch the UI
+              language here like on every other landing — same ONE selector (ruling 60 (b)). */}
+          <LanguageMenu />
+        </div>
       </div>
 
       {isPreview && (
