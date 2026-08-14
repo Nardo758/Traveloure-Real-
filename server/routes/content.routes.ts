@@ -18,7 +18,7 @@ import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../s
 import { getProviderHealth } from "../services/provider-health.service";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
 import { nightDatesInclusive } from "../services/availability-materializer.service";
-import { isContentLocale } from "../services/service-translation.service";
+import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
 // Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
 import { logDemandSignal } from "./demand.routes";
@@ -2070,9 +2070,20 @@ router.get("/api/services/:id", async (req, res) => {
     // to a traveler; NEVER show a JA locale a half-translated listing without the label.
     const rawLocale = typeof req.query.locale === "string" ? req.query.locale : "en";
     const activeLocale = isContentLocale(rawLocale) ? rawLocale : "en";
+    // Ruling 115: the comparison point is the LISTING'S OWN source language (source_locale,
+    // NULL = en — every pre-216 row was authored under ruling 60's source-is-English assumption).
+    const listingSourceLocale = effectiveSourceLocale((service as any).sourceLocale);
     let contentOverlay: Record<string, unknown> = {};
-    let translationMeta: { locale: string; status: "approved" | "fallback"; source?: string; shownInEnglish: boolean } | null = null;
-    if (activeLocale !== "en") {
+    let translationMeta: {
+      locale: string;
+      status: "approved" | "fallback";
+      source?: string;
+      // Kept for back-compat with pre-115 clients: true only for the original case (en-source
+      // listing, no approved translation). New clients key the label off sourceLocale instead.
+      shownInEnglish: boolean;
+      sourceLocale: string;
+    } | null = null;
+    if (activeLocale !== listingSourceLocale) {
       const t = await storage.getServiceTranslation(service.id, activeLocale);
       if (t && t.status === "approved") {
         // Overlay only the fields the provider actually translated; an untranslated field falls
@@ -2081,11 +2092,17 @@ router.get("/api/services/:id", async (req, res) => {
         if (t.shortDescription) contentOverlay.shortDescription = t.shortDescription;
         if (t.description) contentOverlay.description = t.description;
         if (t.meetingPoint) contentOverlay.meetingPoint = t.meetingPoint;
-        translationMeta = { locale: activeLocale, status: "approved", source: t.source, shownInEnglish: false };
+        translationMeta = { locale: activeLocale, status: "approved", source: t.source, shownInEnglish: false, sourceLocale: listingSourceLocale };
       } else {
         // No approved translation (none authored, or only a draft exists) → honest original +
-        // the "shown in English" label. A draft's content is deliberately NOT overlaid (§13).
-        translationMeta = { locale: activeLocale, status: "fallback", shownInEnglish: true };
+        // a truthful "shown in <source language>" label (§13). A draft's content is deliberately
+        // NOT overlaid.
+        translationMeta = {
+          locale: activeLocale,
+          status: "fallback",
+          shownInEnglish: listingSourceLocale === "en",
+          sourceLocale: listingSourceLocale,
+        };
       }
     }
     const withTranslation = <T extends Record<string, unknown>>(payload: T) => ({
