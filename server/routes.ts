@@ -6295,9 +6295,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // branch above returns earlier with its own notification.
               userId: booking.travelerId,
               type: "booking_cancelled",
-              title: "Booking cancelled by provider",
-              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              title: "Booking declined by provider",
+              message: reason
+                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
+                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
               dedupeKey: `booking:${req.params.id}:cancelled`,
             }
         : undefined;

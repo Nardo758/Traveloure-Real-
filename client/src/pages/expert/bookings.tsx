@@ -20,16 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -459,7 +449,11 @@ export default function ExpertBookings() {
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
   const [selectedVisaBooking, setSelectedVisaBooking] = useState<Booking | null>(null);
   const [planBooking, setPlanBooking] = useState<Booking | null>(null);
-  const [declineBooking, setDeclineBooking] = useState<Booking | null>(null);
+  const [declineDialog, setDeclineDialog] = useState<{ open: boolean; bookingId: string | null; reason: string }>({
+    open: false,
+    bookingId: null,
+    reason: "",
+  });
   const { toast } = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -467,8 +461,8 @@ export default function ExpertBookings() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status }),
+    mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
+      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status, ...(reason ? { reason } : {}) }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
       toast({
@@ -487,6 +481,24 @@ export default function ExpertBookings() {
       });
     },
   });
+
+  const openDeclineDialog = (bookingId: string) => {
+    setDeclineDialog({ open: true, bookingId, reason: "" });
+  };
+
+  const closeDeclineDialog = () => {
+    setDeclineDialog({ open: false, bookingId: null, reason: "" });
+  };
+
+  const confirmDecline = () => {
+    if (!declineDialog.bookingId) return;
+    statusMutation.mutate({
+      id: declineDialog.bookingId,
+      status: "cancelled",
+      reason: declineDialog.reason.trim() || undefined,
+    });
+    closeDeclineDialog();
+  };
 
   const openVisaDialog = (booking: Booking) => {
     setSelectedVisaBooking(booking);
@@ -728,7 +740,7 @@ export default function ExpertBookings() {
                               variant="outline"
                               className="text-red-600 border-red-300 hover:bg-red-50"
                               disabled={statusMutation.isPending}
-                              onClick={() => setDeclineBooking(booking)}
+                              onClick={() => openDeclineDialog(booking.id)}
                               data-testid={`button-decline-booking-${booking.id}`}
                             >
                               Decline
@@ -794,33 +806,52 @@ export default function ExpertBookings() {
         onOpenChange={(open) => { if (!open) setPlanBooking(null); }}
       />
 
-      <AlertDialog open={!!declineBooking} onOpenChange={(open) => { if (!open) setDeclineBooking(null); }}>
-        <AlertDialogContent data-testid="dialog-decline-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Decline this booking?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to decline the booking
-              {declineBooking?.travelerName ? ` from ${declineBooking.travelerName}` : ""}?
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-decline-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700 text-white"
-              data-testid="button-decline-confirm"
-              onClick={() => {
-                if (declineBooking) {
-                  statusMutation.mutate({ id: declineBooking.id, status: "cancelled" });
-                  setDeclineBooking(null);
-                }
-              }}
+      {/* Decline confirmation dialog with optional reason */}
+      <Dialog open={declineDialog.open} onOpenChange={(open) => { if (!open) closeDeclineDialog(); }}>
+        <DialogContent className="max-w-md" data-testid="dialog-decline-booking">
+          <DialogHeader>
+            <DialogTitle>Decline this booking?</DialogTitle>
+            <DialogDescription>
+              The traveler will be notified. You can optionally include a short reason — it helps them understand what happened and find a better fit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="decline-reason">Reason (optional)</Label>
+            <Textarea
+              id="decline-reason"
+              value={declineDialog.reason}
+              onChange={(e) => setDeclineDialog((prev) => ({ ...prev, reason: e.target.value }))}
+              placeholder="e.g. I'm fully booked for those dates, or this trip is outside my area of expertise."
+              rows={3}
+              maxLength={500}
+              data-testid="input-decline-reason"
+            />
+            {declineDialog.reason.length > 0 && (
+              <p className="text-xs text-muted-foreground text-right">{declineDialog.reason.length}/500</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={closeDeclineDialog} data-testid="button-cancel-decline">
+              Keep booking
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDecline}
+              disabled={statusMutation.isPending}
+              data-testid="button-confirm-decline"
             >
-              Decline Booking
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              {statusMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Declining...
+                </>
+              ) : (
+                "Decline booking"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ExpertLayout>
   );
 }
