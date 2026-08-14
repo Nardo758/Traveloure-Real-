@@ -23,6 +23,7 @@ import {
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   expertServiceCategories, expertServiceOfferings, expertSpecializations,
   destinationEvents, destinationSeasons, locationCache,
+  fxRates, geocodeFallbacks,
   experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
   experienceUniversalFilters, experienceUniversalFilterOptions,
   expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
@@ -494,6 +495,14 @@ export interface IStorage {
   
   // Get unique countries with calendar data
   getCalendarCountries(): Promise<string[]>;
+
+  // FX rates (migration 217) — DB-backed fallback for /api/exchange-rates.
+  getLatestFxRates(): Promise<{ rates: Record<string, number>; updatedAt: Date | null } | null>;
+  upsertFxRates(rates: Record<string, number>): Promise<number>;
+
+  // Geocode fallbacks (migration 217) — admin-curated city-centre coordinates,
+  // consulted only when the live geocode misses. Null when the city is unknown.
+  getGeocodeFallback(cityName: string): Promise<{ lat: number; lng: number; formattedAddress: string } | null>;
 
   // Location Cache
   searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]>;
@@ -4000,6 +4009,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Destination Seasons
+  // ── FX rates & geocode fallbacks (migration 217) ────────────────────────────
+  async getLatestFxRates(): Promise<{ rates: Record<string, number>; updatedAt: Date | null } | null> {
+    const rows = await db.select().from(fxRates);
+    if (rows.length === 0) return null;
+    const rates: Record<string, number> = {};
+    let updatedAt: Date | null = null;
+    for (const row of rows) {
+      rates[row.currencyCode] = row.rateToUsd;
+      if (!updatedAt || row.updatedAt > updatedAt) updatedAt = row.updatedAt;
+    }
+    return { rates, updatedAt };
+  }
+
+  async upsertFxRates(rates: Record<string, number>): Promise<number> {
+    let upserted = 0;
+    for (const [code, rate] of Object.entries(rates)) {
+      if (!Number.isFinite(rate) || rate <= 0) continue;
+      await db
+        .insert(fxRates)
+        .values({ currencyCode: code, rateToUsd: rate, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: fxRates.currencyCode,
+          set: { rateToUsd: rate, updatedAt: new Date() },
+        });
+      upserted++;
+    }
+    return upserted;
+  }
+
+  async getGeocodeFallback(cityName: string): Promise<{ lat: number; lng: number; formattedAddress: string } | null> {
+    const slug = cityName.trim().toLowerCase();
+    if (!slug) return null;
+    const [row] = await db.select().from(geocodeFallbacks).where(eq(geocodeFallbacks.slug, slug)).limit(1);
+    if (!row) return null;
+    return { lat: row.lat, lng: row.lng, formattedAddress: row.formattedAddress };
+  }
+
   async getDestinationSeasons(country: string, city?: string): Promise<DestinationSeason[]> {
     const conditions = [eq(destinationSeasons.country, country)];
     if (city) conditions.push(eq(destinationSeasons.city, city));
