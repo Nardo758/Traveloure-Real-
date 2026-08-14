@@ -11388,11 +11388,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.use(tripsRoutes);
 
   // ── Test-only: trigger the Stripe Connect reminder scheduler on demand ───────
-  // Gated to non-production so it can never be called on live infrastructure.
-  // Used by Playwright e2e tests to verify the scheduler skips fully-onboarded
-  // providers without waiting for the 72-hour timer to fire.
-  if (process.env.NODE_ENV !== "production") {
-    app.post("/api/test/stripe-reminder-run", async (_req, res) => {
+  // Enabled only when RATE_LIMIT_BYPASS_KEY is set AND the request supplies it
+  // in the X-Test-Secret header. This prevents arbitrary callers on preview or
+  // staging instances from triggering bulk notification writes. Used by the
+  // Playwright e2e suite to invoke runReminders() synchronously so the test can
+  // observe its effects without waiting for the 72-hour timer.
+  if (process.env.NODE_ENV !== "production" && process.env.RATE_LIMIT_BYPASS_KEY) {
+    app.post("/api/test/stripe-reminder-run", async (req, res) => {
+      const providedSecret = req.headers["x-test-secret"];
+      if (providedSecret !== process.env.RATE_LIMIT_BYPASS_KEY) {
+        return res.status(403).json({ ok: false, error: "Forbidden" });
+      }
       try {
         await stripeConnectReminderScheduler.runReminders();
         res.json({ ok: true });

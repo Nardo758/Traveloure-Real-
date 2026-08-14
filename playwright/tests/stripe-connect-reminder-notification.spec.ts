@@ -16,6 +16,10 @@ import crypto from "crypto";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
 
+// Secret required by the test-only scheduler trigger endpoint.
+// Must match the RATE_LIMIT_BYPASS_KEY env var configured on the dev server.
+const TEST_SECRET = process.env.RATE_LIMIT_BYPASS_KEY || "";
+
 const REMINDER_TYPE = "stripe_connect_reminder";
 const REMINDER_TITLE = "Set up payouts to get paid";
 
@@ -216,13 +220,19 @@ test.describe("Stripe Connect Reminder — notification feed surfacing", () => {
         //    POST /api/test/stripe-reminder-run calls runReminders() directly,
         //    so this exercises the actual service query + insert path —
         //    not a reimplementation of the WHERE clause.
+        //    The endpoint requires X-Test-Secret matching RATE_LIMIT_BYPASS_KEY
+        //    and returns 500 if the scheduler throws, so a 200 with ok:true
+        //    confirms the scheduler ran successfully.
         const triggerRes = await page.request.post(
-          `${BASE_URL}/api/test/stripe-reminder-run`
+          `${BASE_URL}/api/test/stripe-reminder-run`,
+          { headers: { "x-test-secret": TEST_SECRET } }
         );
         expect(
           triggerRes.status(),
-          "Test trigger endpoint should return 200"
+          "Test trigger endpoint should return 200 — a 5xx means the scheduler threw an unexpected error"
         ).toBe(200);
+        const triggerBody = await triggerRes.json();
+        expect(triggerBody.ok, "Scheduler must complete without error before checking notification absence").toBe(true);
 
         // ── 4. Assert no stripe_connect_reminder was inserted for this user ───
         //    If the scheduler incorrectly selected the complete provider, a row
