@@ -905,6 +905,13 @@ export const providerServices = pgTable("provider_services", {
   // captured — never a guessed 1-night default (§13).
   minStayNights: integer("min_stay_nights"),
 
+  // Ruling 115 (migration 216): the language the listing's ORIGINAL content is written in
+  // ('en' | 'ja' — the shipped content locales, app-enforced, no DB CHECK). NULL = pre-216 row =
+  // English (ruling 60's original assumption, so NULL→en is a fact, not a guess). Owner-declared
+  // on the wizard ("I'm writing this in") — content metadata, not a §14/§18/§19 field. Drives
+  // which locales are translation TARGETS and the truthful "shown in <language>" fallback label.
+  sourceLocale: varchar("source_locale"),
+
   // Ruling 112 Q8 (migration 215, CLAUDE.md §23): the edit-split pending-changes rail. NEVER
   // client-settable (§19): .omit()'d from insertProviderServiceSchema below AND stripped in
   // storage.create/updateProviderService; written only by the PATCH handler's server-side field
@@ -2072,6 +2079,9 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   // Ruling 112 Q6 (migration 214): a declared minimum stay is at least one night; NULL stays
   // "never captured" (no guessed default, §13).
   minStayNights: z.coerce.number().int().min(1).max(365).nullable().optional(),
+  // Ruling 115 (migration 216): app-enforced vocabulary — the shipped content locales only.
+  // NULL stays "never declared" (= English, the pre-216 assumption).
+  sourceLocale: z.enum(["en", "ja"]).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

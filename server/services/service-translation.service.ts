@@ -22,8 +22,9 @@ import { trackAICost, calculateAnthropicCost } from "./ai-cost-tracker";
 
 // The content locales this system ships (ruling 60 launch market = Kyoto → en + ja). Deliberately
 // the SHIPPED set, NOT the wider settings enum (en, ja, es, fr, de): drafting into an unshipped
-// locale would mint content nobody can review or render. `en` is the source language and is never
-// a translation TARGET here (a listing's original is already English).
+// locale would mint content nobody can review or render. Ruling 115: the source language is no
+// longer assumed to be English — it is the listing's own `source_locale` (NULL = en, the pre-216
+// assumption made explicit), and the listing's source locale is never a translation TARGET.
 export const CONTENT_LOCALES = ["en", "ja"] as const;
 export type ContentLocale = (typeof CONTENT_LOCALES)[number];
 
@@ -31,11 +32,18 @@ export function isContentLocale(v: unknown): v is ContentLocale {
   return typeof v === "string" && (CONTENT_LOCALES as readonly string[]).includes(v);
 }
 
-// Human-readable target-language names for the prompt (the model translates INTO these).
+// Human-readable language names for the prompt (source and target both come from here).
 const LOCALE_LANGUAGE_NAME: Record<string, string> = {
   ja: "Japanese (日本語, polite です/ます register)",
   en: "English",
 };
+
+// Ruling 115: the effective source language of a listing. NULL/undefined/unknown = 'en' —
+// every pre-216 row was authored under ruling 60's source-is-English assumption, so this
+// default is a recorded fact, not a guess.
+export function effectiveSourceLocale(raw: unknown): ContentLocale {
+  return isContentLocale(raw) ? raw : "en";
+}
 
 // The translatable free-text fields (ruling 60: "listing names/descriptions/meeting-point text").
 export interface TranslatableContent {
@@ -48,8 +56,8 @@ export interface TranslatableContent {
 export type TranslationDraftOutcome =
   // ANTHROPIC_API_KEY is unset — nothing attempted, nothing fabricated (§13).
   | { status: "no_api_key" }
-  // The target locale is the source language (en) or not a shipped content locale — a draft would
-  // be meaningless. Refused, never guessed.
+  // The target locale is the listing's own source language or not a shipped content locale — a
+  // draft would be meaningless. Refused, never guessed.
   | { status: "unsupported_locale" }
   // The AI call failed (network/parse) — nothing drafted, safe to retry.
   | { status: "ai_error" }
@@ -57,7 +65,7 @@ export type TranslationDraftOutcome =
   | { status: "drafted"; content: TranslatableContent };
 
 const DRAFT_SYSTEM_PROMPT = `You are a professional localization translator for a travel-services marketplace.
-You translate a service provider's OWN listing content from English into the requested target language.
+You translate a service provider's OWN listing content from the stated source language into the requested target language.
 Rules:
 - Translate ONLY the provided field values. Do not add, remove, or invent content.
 - Preserve meaning, tone and any place names; keep proper nouns recognizable.
@@ -65,9 +73,10 @@ Rules:
 - Return ONLY a JSON object with exactly these keys: serviceName, shortDescription, description, meetingPoint.
 - Each value is the translated string, or null if the input was null.`;
 
-function buildUserPrompt(content: TranslatableContent, targetLocale: string): string {
+function buildUserPrompt(content: TranslatableContent, targetLocale: string, sourceLocale: string): string {
   const langName = LOCALE_LANGUAGE_NAME[targetLocale] ?? targetLocale;
-  return `Target language: ${langName}\n\nSource fields (JSON):\n${JSON.stringify(
+  const sourceName = LOCALE_LANGUAGE_NAME[sourceLocale] ?? sourceLocale;
+  return `Source language: ${sourceName}\nTarget language: ${langName}\n\nSource fields (JSON):\n${JSON.stringify(
     {
       serviceName: content.serviceName,
       shortDescription: content.shortDescription,
@@ -107,8 +116,11 @@ export async function draftServiceTranslation(
   original: TranslatableContent,
   targetLocale: string,
   actorId: string | null,
+  // Ruling 115: the listing's own source language. Defaults to 'en' (the pre-216 posture) so
+  // every existing caller keeps its exact behavior.
+  sourceLocale: ContentLocale = "en",
 ): Promise<TranslationDraftOutcome> {
-  if (!isContentLocale(targetLocale) || targetLocale === "en") {
+  if (!isContentLocale(targetLocale) || targetLocale === sourceLocale) {
     return { status: "unsupported_locale" };
   }
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -120,7 +132,7 @@ export async function draftServiceTranslation(
       model: "claude-sonnet-4-5",
       max_tokens: 2000,
       system: DRAFT_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserPrompt(original, targetLocale) }],
+      messages: [{ role: "user", content: buildUserPrompt(original, targetLocale, sourceLocale) }],
     });
     const inputTokens = response.usage?.input_tokens ?? 0;
     const outputTokens = response.usage?.output_tokens ?? 0;

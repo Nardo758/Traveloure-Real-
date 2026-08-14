@@ -1,0 +1,275 @@
+<title>One-Card Create & Ideas Rail</title>
+<style>
+  :root{
+    color-scheme: light;
+    --ink:#1A1A18; --muted:#7A7A72; --hair:#E8E8E2; --ground:#FAFAF8; --paper:#FFFFFF;
+    --accent:#35605A; --accent-soft:#EDF2F1; --accent-line:#CBDAD7;
+    --warn-bg:#FBF6EC; --warn-line:#D9C79A; --warn-ink:#6B551F;
+    --info-bg:#EEF4FB; --info-line:#C3D6EC; --info-ink:#1E4E79;
+    --danger-bg:#FBEFEE; --danger-line:#E3C0BC; --danger-ink:#8C2F2A;
+    --radius:7px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--ground);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;cursor:pointer}
+  .shell{display:grid;grid-template-columns:216px minmax(0,1fr);min-height:100vh}
+  @media(max-width:760px){.shell{grid-template-columns:minmax(0,1fr)}.sidebar{display:none}}
+  .sidebar{background:var(--paper);border-right:1px solid var(--hair);padding:16px 12px;position:sticky;top:0;height:100vh}
+  .brand{font-weight:650;font-size:15px;padding:2px 8px 18px;letter-spacing:-.01em}
+  .ng{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:14px 8px 5px;font-weight:600}
+  .ni{display:flex;gap:9px;align-items:center;width:100%;text-align:left;padding:7px 8px;border-radius:5px;
+    font-size:13px;background:none;border:1px solid transparent}
+  .ni:hover{background:var(--ground)}
+  .ni.on{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:inset 0 0 0 1px var(--accent-line)}
+  .ni .gl{width:15px;text-align:center;color:var(--muted);font-size:12px}
+  .ni.on .gl{color:var(--accent)}
+  .main{min-width:0}
+  .topbar{background:var(--paper);border-bottom:1px solid var(--hair);padding:11px 26px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .whoami b{display:block;font-size:13.5px;font-weight:650;line-height:1.25}
+  .whoami span{display:block;font-size:12px;color:var(--muted)}
+  .avatar{width:29px;height:29px;border-radius:100px;background:var(--accent-soft);border:1px solid var(--accent-line);
+    color:var(--accent);font-size:11px;font-weight:650;display:flex;align-items:center;justify-content:center}
+  .mockbadge{margin-left:auto;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--hair);border-radius:100px;padding:3px 11px;background:var(--ground)}
+  .viewtabs{background:var(--paper);border-bottom:1px solid var(--hair);padding:0 26px;display:flex;gap:2px;flex-wrap:wrap}
+  .viewtabs button{background:none;border:none;border-bottom:2px solid transparent;padding:11px 13px;font-size:13px;color:var(--muted)}
+  .viewtabs button[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+  .wrap{padding:22px 26px 76px;max-width:980px}
+  .view{display:none}.view.on{display:block}
+  .explain{border:1px dashed var(--accent-line);background:var(--accent-soft);border-radius:var(--radius);
+    padding:11px 14px;font-size:12.5px;color:var(--accent);margin-bottom:18px;line-height:1.55}
+  .explain b{font-weight:650}
+  h2.screen{font-size:20px;font-weight:650;letter-spacing:-.01em;margin-bottom:4px;text-wrap:balance}
+  p.sub{color:var(--muted);font-size:13px;margin-bottom:16px;max-width:74ch}
+  .card{background:var(--paper);border:1px solid var(--hair);border-radius:var(--radius)}
+  .notice{border-radius:6px;padding:10px 13px;font-size:12.5px;line-height:1.5;display:flex;gap:9px;align-items:flex-start}
+  .notice.info{background:var(--info-bg);border:1px solid var(--info-line);color:var(--info-ink)}
+  .notice.danger{background:var(--danger-bg);border:1px solid var(--danger-line);color:var(--danger-ink)}
+  .notice .ic{flex:0 0 14px;margin-top:1px}
+  .stack{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+  .autosave{font-size:12px;color:var(--muted)}
+  .autosave i{font-style:normal;color:var(--accent);font-weight:600}
+  /* offering identity header */
+  .idhead{display:flex;gap:12px;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--hair);
+    background:linear-gradient(0deg,var(--paper),var(--accent-soft) 160%);border-radius:var(--radius) var(--radius) 0 0}
+  .idhead .t{flex:1;min-width:0}
+  .idhead .oname{font-size:16px;font-weight:650;letter-spacing:-.01em}
+  .idhead .oline{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
+  .chip{display:inline-block;font-size:11.5px;padding:2px 10px;border-radius:100px;
+    background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent);font-weight:600;white-space:nowrap}
+  .tag{font-size:12.5px;color:var(--muted)}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;padding:8px 15px;border-radius:6px;font-size:13px;font-weight:550}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--hair)}
+  .btn.ghost:hover{border-color:var(--muted);background:var(--ground)}
+  .btn.accent{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.sm{padding:6px 11px;font-size:12.5px}
+  .fields{padding:20px;display:flex;flex-direction:column;gap:15px}
+  .field label{display:block;font-size:13px;font-weight:550;margin-bottom:5px}
+  .field label em{font-style:normal;color:var(--danger-ink)}
+  .inp{width:100%;padding:9px 11px;border:1px solid var(--hair);border-radius:6px;background:var(--paper);font:inherit;font-size:13.5px;color:var(--ink)}
+  .inp::placeholder{color:#B4B4AC}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:600px){.row2{grid-template-columns:1fr}}
+  .help{font-size:12px;color:var(--muted);margin-top:5px}
+  .ghostnote{font-size:11.5px;color:var(--muted);padding:12px 20px;border-top:1px dashed var(--hair)}
+  /* picker (state 0) */
+  .picker{padding:20px}
+  .picker .search{margin-bottom:12px}
+  .pgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+  @media(max-width:760px){.pgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .popt{border:1px solid var(--hair);border-radius:6px;background:var(--paper);padding:11px 12px;text-align:left;transition:border-color .12s}
+  .popt:hover{border-color:var(--accent)}
+  .popt b{display:block;font-size:13px;font-weight:600}
+  .popt span{display:block;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+  .pcat{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;grid-column:1/-1;padding-top:6px}
+  /* workstation door + ideas */
+  .doortiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:26px}
+  @media(max-width:760px){.doortiles{grid-template-columns:1fr}}
+  .door{border:1px solid var(--hair);border-radius:var(--radius);background:var(--paper);padding:16px;min-height:120px;display:flex;flex-direction:column}
+  .door h4{font-size:14px;font-weight:650;margin-bottom:4px}
+  .door p{font-size:12px;color:var(--muted);line-height:1.45}
+  .door .cta{margin-top:auto;padding-top:10px;font-size:12.5px;color:var(--accent);font-weight:550}
+  .ideas{border:1px solid var(--accent-line);border-radius:var(--radius);background:var(--paper)}
+  .ideas .hd{padding:14px 18px;border-bottom:1px solid var(--hair);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .ideas .hd h3{font-size:15px;font-weight:650}
+  .ideas .hd .why{font-size:12px;color:var(--muted)}
+  .irail{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px 18px}
+  @media(max-width:760px){.irail{grid-template-columns:1fr}}
+  .idea{border:1px solid var(--hair);border-radius:6px;padding:12px 13px;text-align:left;background:var(--paper);
+    display:flex;flex-direction:column;gap:3px;transition:border-color .12s}
+  .idea:hover{border-color:var(--accent)}
+  .idea .from{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .idea b{font-size:13.5px;font-weight:600}
+  .idea span{font-size:12px;color:var(--muted);line-height:1.4}
+  .idea .go{font-size:12.5px;color:var(--accent);font-weight:550;margin-top:6px}
+  .ideas .ft{padding:10px 18px 14px;font-size:11.5px;color:var(--muted);border-top:1px dashed var(--hair)}
+  /* listing home */
+  .hero{border:1px solid var(--accent);border-radius:var(--radius);background:var(--paper);padding:18px 20px;display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+  .tick{width:32px;height:32px;flex:0 0 32px;border-radius:100px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:700}
+  .hero h3{font-size:16px;font-weight:650}
+  .hero p{font-size:13px;color:var(--muted)}
+  .pill{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:100px;border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);margin-left:auto;align-self:flex-start}
+  .checkrows{margin-bottom:14px}
+  .check{display:flex;gap:12px;padding:12px 18px;border-bottom:1px solid var(--hair);font-size:13px;align-items:center}
+  .check:last-child{border-bottom:none}
+  .check .bx{width:17px;height:17px;flex:0 0 17px;border-radius:4px;border:1.5px solid var(--hair);display:flex;align-items:center;justify-content:center;font-size:11px}
+  .check.done .bx{background:var(--accent);border-color:var(--accent);color:#fff}
+  .check .go{margin-left:auto;color:var(--accent);font-size:12.5px;white-space:nowrap}
+  .nudge{border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:var(--radius);padding:13px 18px;
+    display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:var(--warn-ink)}
+  .nudge b{font-weight:650}
+  .nudge a{color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;margin-left:auto}
+  .delta{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--warn-ink);background:var(--warn-bg);
+    border:1px solid var(--warn-line);border-radius:100px;padding:2px 9px;font-weight:650}
+</style>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">⊕ Traveloure</div>
+    <div class="ng">Work</div>
+    <button class="ni" data-v="basics"><span class="gl">⚒</span>Workstation</button>
+    <div class="ng">Business</div>
+    <button class="ni"><span class="gl">▦</span>Catalog</button>
+    <button class="ni"><span class="gl">↗</span>Distribute</button>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="avatar">HM</div>
+      <div class="whoami"><b>Haruka Morimoto</b><span>Machiya &amp; Miyako · Nishijin, Kyoto · Provider</span></div>
+      <span class="mockbadge">Mock — proposal for rows 112/113 follow-up</span>
+    </div>
+    <div class="viewtabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="basics">1 · One-card Basics</button>
+      <button role="tab" aria-selected="false" data-tab="picker">1a · Before an offering is picked</button>
+      <button role="tab" aria-selected="false" data-tab="ws">2 · Workstation ideas rail</button>
+      <button role="tab" aria-selected="false" data-tab="home">3 · Post-publish nudge</button>
+    </div>
+
+    <!-- ═══ VIEW 1: one-card basics ═══ -->
+    <div class="wrap view on" id="v-basics">
+      <div class="explain"><b>What changed.</b> The "What are you offering?" card, the "Create New Service" heading and the locked
+        Category row collapse into ONE card whose header <i>is</i> the offering — name, category chip, tagline, one Change button.
+        The verification and review notices move into the status stack up top, so nothing interrupts Name → Delivery → Price.</div>
+      <h2 class="screen">New service</h2>
+      <p class="sub">Workstation › New service</p>
+      <div class="stack">
+        <div class="notice info"><span class="ic">ⓘ</span><span><b>New listings are reviewed before they go live.</b> You can Save Draft at any point and come back.</span></div>
+        <div class="notice danger"><span class="ic">⛨</span><span><b>Identity &amp; business verification required before publishing.</b> Complete both in your <u>Provider Status page</u> — you can keep building meanwhile.</span></div>
+        <p class="autosave">Draft · <i>autosaved</i> — closing this tab keeps everything.</p>
+      </div>
+      <div class="card">
+        <div class="idhead">
+          <div class="t">
+            <div class="oname">24/7 Personal Concierge</div>
+            <div class="oline"><span class="chip">Personal Assistance</span><span class="tag">Anything, anytime, sorted.</span></div>
+          </div>
+          <button class="btn ghost sm" id="btn-change">Change</button>
+        </div>
+        <div class="fields">
+          <div class="field"><label>Service Name <em>*</em></label>
+            <input class="inp" placeholder="e.g., Private City Walking Tour, Airport Transfer"></div>
+          <div class="row2">
+            <div class="field"><label>Subcategory</label><input class="inp" placeholder="Optional"></div>
+            <div class="field"><label>Delivery Method <em>*</em></label><input class="inp" value="In-Person"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>Pricing Model</label><input class="inp" value="Fixed price"></div>
+            <div class="field"><label>Base Price ($) <em>*</em></label><input class="inp" placeholder="0"></div>
+          </div>
+          <div class="field"><label>Description <span style="color:var(--muted);font-weight:400">(recommended)</span></label>
+            <textarea class="inp" rows="3" placeholder="What's included, what makes it special, what travelers can expect…"></textarea></div>
+        </div>
+        <div class="ghostnote"><b>This screen is enough to save.</b> Name it, put a price on it — the remaining steps are built from the delivery method.</div>
+      </div>
+    </div>
+
+    <!-- ═══ VIEW 1a: pre-pick — the picker keeps its inspiration job ═══ -->
+    <div class="wrap view" id="v-picker">
+      <div class="explain"><b>Unchanged on purpose.</b> Before anything is chosen, the full catalog IS the screen — this is the
+        moment of maximum receptivity, so browsing and being inspired stays exactly here. Picking one collapses it into the
+        identity header on tab 1; "Change" brings this back.</div>
+      <h2 class="screen">New service</h2>
+      <p class="sub">Workstation › New service — what are you offering?</p>
+      <div class="card picker">
+        <input class="inp search" placeholder="Search ~100 offerings — food, photo, stays, help…">
+        <div class="pgrid">
+          <div class="pcat">Food &amp; Culinary</div>
+          <button class="popt"><b>Cooking Class Host</b><span>Your kitchen, their apron.</span></button>
+          <button class="popt"><b>Private Dinner Host</b><span>One table, one night, yours.</span></button>
+          <button class="popt"><b>Market-to-Table Chef</b><span>Shop the morning, cook the catch.</span></button>
+          <div class="pcat">Personal Assistance</div>
+          <button class="popt" style="border-color:var(--accent);background:var(--accent-soft)"><b>24/7 Personal Concierge</b><span>Anything, anytime, sorted.</span></button>
+          <button class="popt"><b>Errand Runner</b><span>The queue stands in it for you.</span></button>
+          <button class="popt"><b>Reservation Insider</b><span>Tables nobody else can book.</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ VIEW 2: workstation ideas rail ═══ -->
+    <div class="wrap view" id="v-ws">
+      <div class="explain"><b>New: "Ideas for your business."</b> Personalized, not the generic 30-tile grid — offerings from the
+        categories Haruka registered for that she has NOT listed yet, each one click from a pre-seeded create flow. Ruling 113:
+        this lives on Workstation, the creation area. Honest empty state when she's listed everything.</div>
+      <h2 class="screen">Workstation</h2>
+      <p class="sub">One door for building what you sell — start with a service, grow into bundles.</p>
+      <div class="doortiles">
+        <div class="door"><h4>Single service</h4><p>One offering with its own price and availability.</p><div class="cta">Start a service →</div></div>
+        <div class="door"><h4>Bundle</h4><p>Two or more approved services at one price.</p><div class="cta">New bundle →</div></div>
+        <div class="door"><h4>Property</h4><p>Rooms with per-night pricing and availability.</p><div class="cta">Start a property →</div></div>
+      </div>
+      <div class="ideas">
+        <div class="hd">
+          <h3>Ideas for your business</h3>
+          <span class="why">From the 5 categories you registered — offerings you haven't listed yet.</span>
+        </div>
+        <div class="irail">
+          <button class="idea"><span class="from">Food &amp; Culinary</span><b>Private Dinner Host</b><span>You already teach obanzai — some guests would rather just eat it.</span><span class="go">Start this →</span></button>
+          <button class="idea"><span class="from">Food &amp; Culinary</span><b>Market-to-Table Chef</b><span>Your Nishiki walk, extended into a kitchen.</span><span class="go">Start this →</span></button>
+          <button class="idea"><span class="from">Photography &amp; Videography</span><b>Couples Photographer</b><span>Your dawn session, for two.</span><span class="go">Start this →</span></button>
+          <button class="idea"><span class="from">Arts &amp; Crafts Instruction</span><b>Tea Ceremony Host</b><span>The machiya's tatami room is already the venue.</span><span class="go">Start this →</span></button>
+          <button class="idea"><span class="from">Tours &amp; Experiences</span><b>History Guide</b><span>Nishijin's weaving lanes, told street by street.</span><span class="go">Start this →</span></button>
+          <button class="idea"><span class="from">Lodging &amp; Accommodation</span><b>Heritage Stay Concierge</b><span>Help guests find machiya stays beyond your own.</span><span class="go">Start this →</span></button>
+        </div>
+        <div class="ft">Suggestions come only from your registered categories and hide once listed — nothing is invented, and this rail disappears when you've listed everything (§13).</div>
+      </div>
+    </div>
+
+    <!-- ═══ VIEW 3: post-publish nudge ═══ -->
+    <div class="wrap view" id="v-home">
+      <div class="explain"><b>New: one line at the moment of momentum.</b> Right after a listing is submitted — "that was easy,
+        what else?" — a single nudge points back at the Workstation rail. One line, not a catalog; it never interrupts the checklist.</div>
+      <h2 class="screen">Obanzai Cooking Class in a Nishijin Machiya</h2>
+      <p class="sub">Workstation › Listing home</p>
+      <div class="hero">
+        <div class="tick">✓</div>
+        <div><h3>Submitted — we'll notify you when it's reviewed</h3>
+        <p>In-Person · Arts &amp; Crafts Instruction · $130. You can keep editing while it waits.</p></div>
+        <span class="pill">In review</span>
+      </div>
+      <div class="card checkrows">
+        <div class="check done"><span class="bx">✓</span>Service name<span class="go"></span></div>
+        <div class="check done"><span class="bx">✓</span>Price<span class="go"></span></div>
+        <div class="check done"><span class="bx">✓</span>The confirmations on Review &amp; submit<span class="go"></span></div>
+        <div class="check"><span class="bx"></span>Publish some availability — nothing else makes this bookable<span class="go">Open Availability →</span></div>
+      </div>
+      <div class="nudge">
+        <span>💡</span>
+        <span><b>Providers in Arts &amp; Crafts Instruction also offer</b> tea ceremonies and craft workshops.</span>
+        <a href="#" onclick="return false">See ideas on Workstation →</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const tabs=[...document.querySelectorAll('.viewtabs [role=tab]')];
+  const views={basics:'v-basics',picker:'v-picker',ws:'v-ws',home:'v-home'};
+  function show(k){
+    tabs.forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===k)));
+    Object.values(views).forEach(id=>document.getElementById(id).classList.remove('on'));
+    document.getElementById(views[k]).classList.add('on');
+  }
+  tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.tab)));
+  document.getElementById('btn-change').addEventListener('click',()=>show('picker'));
+  document.querySelectorAll('#v-picker .popt').forEach(b=>b.addEventListener('click',()=>show('basics')));
+</script>
