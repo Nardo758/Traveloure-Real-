@@ -106,6 +106,8 @@ type Service = {
 type DiscoverResult = {
   services: Service[];
   total: number;
+  packagesTotal?: number;
+  suggestion?: string | null;
 };
 
 interface CartData {
@@ -1338,9 +1340,27 @@ export default function DiscoverPage() {
                       <div className="text-center py-16" data-testid="services-no-results">
                         <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No services found</h3>
-                        <p className="text-muted-foreground mb-4">
-                          Try adjusting your search or filters
-                        </p>
+                        {result?.suggestion ? (
+                          <p className="text-muted-foreground mb-4" data-testid="text-search-suggestion">
+                            Did you mean{" "}
+                            <button
+                              type="button"
+                              className="text-primary font-medium underline underline-offset-2 hover:no-underline"
+                              onClick={() => {
+                                setSearchQuery(result.suggestion!);
+                                setPage(0);
+                              }}
+                              data-testid="button-search-suggestion"
+                            >
+                              {result.suggestion}
+                            </button>
+                            ?
+                          </p>
+                        ) : (
+                          <p className="text-muted-foreground mb-4">
+                            Try adjusting your search or filters
+                          </p>
+                        )}
                         <Button variant="outline" onClick={clearFilters}>
                           Clear Filters
                         </Button>

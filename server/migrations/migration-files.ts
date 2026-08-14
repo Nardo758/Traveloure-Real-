@@ -1,4 +1,3 @@
-// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1091,4 +1090,9 @@ export const MIGRATION_FILES = [
   // durability rule) so the publish-time drizzle push never drops them. (Renumbered from
   // 217 during rebase: main already shipped 217_fx_rates_geocode_fallbacks.sql.)
   "218_hot_query_column_indexes.sql",
+  // 219: search quality — pg_trgm extension + GIN indexes for the tsvector/trigram search in
+  // storage.unifiedSearch (typo tolerance, relevance ranking, "did you mean" suggestions).
+  // All idempotent (CREATE EXTENSION/INDEX IF NOT EXISTS), no table/column changes.
+  // (Renumbered from 217→218→219 at merge — main's 217 is fx_rates, 218 is hot-query indexes.)
+  "219_search_fts_trgm.sql",
 ] as const;
