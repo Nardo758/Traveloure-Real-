@@ -148,6 +148,7 @@ interface ServiceFormData {
   categoryId: string;
   subcategoryId: string;
   description: string;
+  shortDescription: string;
   basePrice: number;
   priceType: "Fixed" | "Range" | "Per-person" | "Hourly" | "Package tiers" | "Per-event";
   pricingTiers: PricingTier[];
@@ -329,6 +330,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     categoryId: "",
     subcategoryId: "",
     description: "",
+    shortDescription: "",
     basePrice: 0,
     priceType: "Fixed",
     pricingTiers: [],
@@ -437,6 +439,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     categoryId: s.categoryId || "",
     subcategoryId: s.subcategoryId || "",
     description: s.description || "",
+    shortDescription: s.shortDescription || "",
     basePrice: Number(s.price || 0),
     priceType: mapPriceTypeFromBackend(s.priceType),
     pricingTiers: Array.isArray(s.pricingTiers) ? s.pricingTiers : [],
@@ -1320,6 +1323,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         categoryId: formData.categoryId || undefined,
         subcategoryId: formData.subcategoryId || undefined,
         description: formData.description,
+        shortDescription: formData.shortDescription.trim() || null,
         price: priceScalar,
         priceType: mapPriceTypeToBackend(formData.priceType),
         pricingTiers: pricingTiersPayload,
@@ -3162,6 +3166,40 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               rows={4}
               className="mt-2"
             />
+          </div>
+
+          {/* Short description — shown on browse cards in place of the full description.
+              Max 150 chars so cards never get awkwardly truncated. */}
+          <div>
+            <Label htmlFor="shortDescription">
+              Short Description{" "}
+              <span className="text-muted-foreground font-normal">(shown on browse cards)</span>
+            </Label>
+            <div className="relative mt-2">
+              <Input
+                id="shortDescription"
+                value={formData.shortDescription}
+                onChange={(e) => {
+                  const val = e.target.value.slice(0, 150);
+                  set("shortDescription", val);
+                }}
+                placeholder="One compelling sentence travelers see on the browse card…"
+                maxLength={150}
+                data-testid="input-short-description"
+              />
+              <span
+                className={`absolute right-2 top-1/2 -translate-y-1/2 text-xs ${
+                  formData.shortDescription.length >= 140
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {formData.shortDescription.length}/150
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Leave blank to fall back to the full description on cards.
+            </p>
           </div>
 
           {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
