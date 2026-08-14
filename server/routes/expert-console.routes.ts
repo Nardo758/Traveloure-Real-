@@ -500,15 +500,12 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
     //     (storage.getServiceRoutePoints) rather than re-deriving the rule a second way.
     // An opportunity kind with no honest mapping gets no suggestion (undefined), never a
     // default frame guessed onto it.
+    // N+1 fix: ONE IN-clause query for all slot services' route points, counted per service.
     const slotServiceIds = Array.from(new Set(slotRows.map((s) => s.serviceId)));
-    const routeStopCounts = new Map(
-      await Promise.all(
-        slotServiceIds.map(async (id): Promise<[string, number]> => {
-          const points = await storage.getServiceRoutePoints(id);
-          return [id, points.length];
-        }),
-      ),
-    );
+    const routeStopCounts = new Map<string, number>();
+    for (const point of await storage.getRoutePointsByServiceIds(slotServiceIds)) {
+      routeStopCounts.set(point.serviceId, (routeStopCounts.get(point.serviceId) ?? 0) + 1);
+    }
 
     const opportunities = [
       ...reviewRows.map((r) => {

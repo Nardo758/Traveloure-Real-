@@ -374,10 +374,14 @@ export async function resolveCartSurcharges(cartData: any[]): Promise<Map<string
       .map((i) => i.service.id as string)
       .filter(Boolean),
   ));
+  // N+1 fix: ONE IN-clause query for every zones-mode service's tiers, grouped by serviceId.
   const tiersByService = new Map<string, Array<{ radiusKm: string; fee: string }>>();
-  for (const sid of zonesServiceIds) {
-    const tiers = await storage.getServiceSurchargeTiers(sid);
-    tiersByService.set(sid, tiers.map((t) => ({ radiusKm: t.radiusKm, fee: t.fee })));
+  if (zonesServiceIds.length > 0) {
+    const allTiers = await storage.getSurchargeTiersByServiceIds(zonesServiceIds);
+    for (const sid of zonesServiceIds) tiersByService.set(sid, []);
+    for (const t of allTiers) {
+      tiersByService.get(t.serviceId)!.push({ radiusKm: t.radiusKm, fee: t.fee });
+    }
   }
   for (const item of cartData) {
     if (!item.service) continue;
