@@ -440,3 +440,36 @@ Guards after the batch: money-endpoint guard ✅ (229 files), unmounted-router g
 baseline throughout, pricing-fees units 43/43, migrations 216/216. Bench fixture deltas from verification:
 S1 is now "…— Autumn Edition" at $99 (the staged-name apply), S2 carries 2 route stops (the staged-route
 apply), the property has `min_stay_nights=2` + a `moderate` band, and the provider has a bio.
+
+## 9. Rulings 112/113 — workspace confirmation run (Aug 14, 2026, dev env, real Maps key)
+
+Environment: workspace dev DB (ledger 229 rows in THIS env — the bench's "216/216" was its own
+count), branch `claude/provider-console-batch-exercise-viater` (content == origin/main at start).
+Provider fixture: cartagena-concierge@traveloure.test; admin: test-admin@traveloure.test.
+Note: dispatch cites CLAUDE.md §23, which does not exist in this checkout (sections stop at §19);
+flagged here rather than blocking.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Boot / migrations | **PASS** | 214_property_min_stay + 215_edit_split_pending_changes applied on restart; `min_stay_nights`, `pending_changes`, `edit_review_status` all present in dev DB; /api/ready true. |
+| Q3 zones — create-flow Logistics map | **PASS** | Listing `q3-zones-UPmQQg` (293f37a1): confirmed pin at 10.39831,-75.56108; 2 tiers (3 km→$5, 10 km→$12); dashed amber rings render only around the confirmed pin; click-popup shows "Travel-surcharge zone 2 — pickups out to 10 km add $12.00" + "Amounts are set in Pricing & fees" — no computed traveler distances (§13). `assets/provider-batch-run2/s9-q3-logistics-zones.png`. |
+| Q3 zones — Catalog map view | **PASS** | Same rings + popup on /provider/services map view. `assets/provider-batch-run2/s9-q3-catalog-zones.png`. |
+| Q8 safe edit applies instantly | **PASS** | Price 100→110 saved; DB: price=110, pending_changes NULL, edit_review_status NULL. |
+| Q8 identity edit stages | **PASS** | Name change staged: service_name unchanged, pending_changes={serviceName:…}, edit_review_status=pending; Catalog showed the "Edit in review" pill (main pill read "Paused" only because the DB fixture was flipped to approved without a storefront publish — the ruling's second pill rendered correctly). |
+| Q8 admin queue + reject discards | **PASS** | /admin/service-approvals amber edit-review card; reject cleared pending_changes, live name untouched. |
+| Q8 approve applies | **PASS** | Re-staged name approved → service_name updated, pending_changes cleared, listing stays approved. |
+| Q8 injected pendingChanges never lands | **PASS** | Authenticated PATCH with `pendingChanges`/`pending_changes` in body: description (safe field) applied, DB pending_changes stayed empty, name untouched. |
+| Q5 day dropdown / duplicate 400 / chip / calendar entry | **PASS** | Weekday dropdown opens above sheet overlay; exact duplicate window → 400 "Two repeating windows are identical…" (not 409); Next-available indicator on Catalog; Calendar "Edit availability →" opens the drawer. |
+| Q4 autosave survives tab close | **PASS** | `q4-auto-Dv0pDM` ($77) intact after full tab close + fresh login. |
+| Q6 min-stay + band copy on traveler page | **PASS** | ps-h01 with min_stay_nights=3 + moderate band: traveler page renders "Minimum stay: 3 nights" + "Moderate — full refund 5+ days before the start; 50% refund 2+ days before". `assets/provider-batch-run2/s9-q6-traveler-property.png`. |
+| Q7 rail cards navigate | **PASS** | Pricing & fees / Availability / Photos & media cards each open the owning surface. |
+| Q9 Distribute inline handle/bio | **PASS** | "QA bio 3Ba6" saved inline; users.bio confirmed in DB. |
+| R3 notifications (approve AND reject) | **PASS** | Provider Inbox → Notifications showed the rejection notice and, after the approve pass, the approval notice. |
+| Ruling 113 — one door | **PASS** | Catalog header/empty state/map hint already point at Workstation ("Every listing starts on the Workstation…"); dashboard and playbook have no create affordance; only wizard entry links live on Workstation (+route registry). |
+| Ruling 113 — wizard identity (implemented this run) | **PASS** | ServiceForm: provider create-mode breadcrumb now reads "Workstation › New service", Back and Cancel land on /provider/workstation; edit mode keeps "Listing home"; expert console unchanged; "Finish later"/post-publish still land on Catalog. Verified in-browser: back button labeled "Workstation" lands on /provider/workstation. |
+
+Gates after the run: check-money-endpoints ✅, check-unmounted-routers ✅, check-decision-guards ✅,
+tsc 170 errors = baseline (zero added), pricing-fees units 43/43 (fail 0), package-lock has zero
+replit.local references. Fixture deltas left in the dev DB: q3-zones listing is approved with a
+renamed service_name (edit-split approve arc), q4 autosave draft exists, ps-h01 carries
+min_stay_nights=3 + moderate band, provider bio set.

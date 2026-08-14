@@ -2250,22 +2250,30 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       <div className="flex items-center gap-2 text-sm">
         {/* WAVE 2 / S2: a provider who entered the flow FROM the listing home (a checklist row,
             or any other `?step=` deep link) gets back to it without a round trip through the
-            server — the row it navigated from is what should be highlighted on return. Anyone
-            else (fresh create, or a direct deep link with no listing home to return to) keeps
-            the original "My Services" breadcrumb, unchanged. */}
+            server — the row it navigated from is what should be highlighted on return.
+            RULING 113 (Workstation vs Catalog): the CREATE flow is Workstation territory — a
+            provider's fresh create reads "Workstation › New service" and "Back" lands on
+            /provider/workstation, never Catalog. Edit mode stays "Listing home" (the listing
+            exists — it's being operated), and the expert console keeps "My Services". */}
         <button
           onClick={() =>
-            isEditMode && role === "provider" ? setViewListingHome(true) : navigate(`/${role}/services`)
+            isEditMode && role === "provider"
+              ? setViewListingHome(true)
+              : navigate(role === "provider" ? "/provider/workstation" : `/${role}/services`)
           }
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
           data-testid="button-form-back"
         >
           <ArrowLeft className="w-4 h-4" />
-          {isEditMode && role === "provider" ? "Listing home" : "My Services"}
+          {isEditMode && role === "provider"
+            ? "Listing home"
+            : role === "provider"
+            ? "Workstation"
+            : "My Services"}
         </button>
-        <span className="text-muted-foreground">/</span>
+        <span className="text-muted-foreground">›</span>
         <span className="text-foreground font-medium">
-          {isEditMode ? "Edit Service" : "New Service"}
+          {isEditMode ? "Edit Service" : role === "provider" ? "New service" : "New Service"}
         </span>
       </div>
 
@@ -4496,7 +4504,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           <div className="flex gap-3 flex-col sm:flex-row sm:items-center">
             <Button
               variant="ghost"
-              onClick={() => navigate(`/${role}/services`)}
+              onClick={() =>
+                // Ruling 113: backing OUT of a provider CREATE flow returns to the Workstation
+                // (creation area). Edits — and the expert console — still land on the catalog.
+                navigate(!isEditMode && role === "provider" ? "/provider/workstation" : `/${role}/services`)
+              }
               disabled={createMutation.isPending}
             >
               Cancel
