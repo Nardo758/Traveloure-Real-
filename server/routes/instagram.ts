@@ -38,6 +38,41 @@ export function resolveInstagramVerifyStatus(
 }
 
 /**
+ * Processes the Graph API verification result for the /status endpoint.
+ * Resolves the status payload AND, when the token is definitively expired
+ * (error codes 102, 104, 190), nulls out the stored token columns so stale
+ * credentials never accumulate.
+ *
+ * Exported for unit testing — callers supply the db client so tests can inject
+ * a mock without a real database connection.
+ *
+ * @param userId     The authenticated user's id (used for the DB update)
+ * @param verifyOk   Whether the HTTP response had a 2xx status code
+ * @param verifyData Parsed JSON body from graph.instagram.com/me
+ * @param dbClient   Drizzle DB client (real or mock)
+ */
+export async function handleInstagramStatusVerify(
+  userId: string,
+  verifyOk: boolean,
+  verifyData: Record<string, unknown>,
+  dbClient: typeof db,
+): Promise<{ connected: boolean; reason?: string; accountType?: string }> {
+  const status = resolveInstagramVerifyStatus(verifyOk, verifyData);
+
+  if (status.reason === "token_expired") {
+    // Wipe stored credentials so expired tokens never accumulate. We do this
+    // only for definitive token-expiry codes (102, 104, 190); non-token errors
+    // (network failures, permission errors) leave the token intact.
+    await dbClient
+      .update(users)
+      .set({ instagramUserId: null, instagramAccessToken: null })
+      .where(eq(users.id, userId));
+  }
+
+  return status;
+}
+
+/**
  * Maps a token-verification result to a publish-gate error payload.
  * Returns null when the token is valid and publishing should proceed.
  * Exported for unit testing.
@@ -188,6 +223,8 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
     // Verify the token is still valid and check account type.
     // A personal account will succeed the call but return account_type === "PERSONAL".
     // An expired/revoked token returns an OAuthException error.
+    // handleInstagramStatusVerify also nulls out the DB columns when the token
+    // is definitively expired (codes 102, 104, 190) so stale tokens never accumulate.
     try {
       const verifyResponse = await fetch(
         `https://graph.instagram.com/me?fields=id,account_type&access_token=${user.instagramAccessToken}`
@@ -198,7 +235,8 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
         console.warn("Instagram token verification failed:", verifyData.error?.message);
       }
 
-      return res.json(resolveInstagramVerifyStatus(verifyResponse.ok, verifyData));
+      const status = await handleInstagramStatusVerify(userId, verifyResponse.ok, verifyData, db);
+      return res.json(status);
     } catch (verifyErr) {
       // Network error during verification — treat as disconnected but don't
       // wipe the stored token; the user may just be offline temporarily.
