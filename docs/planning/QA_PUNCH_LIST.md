@@ -2035,3 +2035,22 @@ video call), category blocks on step 5, autosave round-tripping, the derived che
 
 **Annotation to the G5 batch above:** **#17 (edit-path for a live listing) is CLOSED** — landed as
 the edit-split rail (ruling 112 Q8, CLAUDE.md Locked Decision 23, migration 215, PR #474).
+
+### Folded in Aug 15, 2026 — workspace-reconciliation follow-ups (lanes E/F, ledger row 118)
+
+- **Router-guard comment-strip fragility (latent, §18d candidate).** `check-unmounted-routers.cjs`
+  strips block comments with a naive regex BEFORE line comments, so a `/*` glob inside a `//`
+  comment (e.g. "All /api/admin/* routes…") opens a bogus block that can swallow the mount
+  section when later REAL `/* … */` comments change the pairing — lane F hit exactly this (guard
+  reported 15 mounted routers dead; fixed by using `//` comments instead). The guard predicate
+  needs a line-comments-first strip + committed `--self-test` fixtures per §18d. Until then:
+  avoid inline `/* … */` in server/routes.ts.
+- **Payout-parity R8–R10 rewrites (deferred from lane F).** R8 must adopt the suite's own
+  dual-leg Stripe contract (assert per-owner stamps on the provisional rows in the 503 leg —
+  the stamp happens before Stripe); R10's raw `INSERT INTO service_categories` must match
+  canonical schema; helper signatures (makeService owner arg, recipeExpectation source option)
+  need porting from the workspace file. Tests only — no product risk while deferred.
+- **TWO parallel sanitizers to reconcile.** Replit's exercise-branch push (`d69b089a`) adds
+  `server/utils/sanitize.ts` + tests, authored before #477 landed `server/utils/text-sanitizer.ts`
+  (22 tests, wired into provider/expert/traveler write paths). When that branch PRs, fold to ONE
+  sanitizer (keep text-sanitizer as canonical; port any case their tests cover that ours miss).

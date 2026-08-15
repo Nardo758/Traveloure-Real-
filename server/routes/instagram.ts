@@ -512,6 +512,7 @@ function parseSignedRequest(signedRequest: string): Record<string, unknown> | nu
   try {
     return JSON.parse(Buffer.from(toBase64(payload), "base64").toString("utf8"));
   } catch {
+    // Malformed base64 or JSON payload — treat as unauthenticated without leaking verification details.
     return null;
   }
 }

@@ -71,6 +71,8 @@ import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { CatalogItem } from "@/types/catalog";
 
 type ServiceCategory = {
   id: string;
@@ -101,6 +103,8 @@ type Service = {
   providerFirstName?: string | null;
   providerLastName?: string | null;
   providerImageUrl?: string | null;
+  providerRating?: string | null;
+  providerBusinessName?: string | null;
 };
 
 type DiscoverResult = {
@@ -213,12 +217,16 @@ function ServiceCard({
     return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
   };
 
-  // Build real provider display name from API data
-  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || "Provider";
+  // Build real provider display name from API data.
+  // Fallback chain: firstName+lastName → businessName (from service_provider_forms) → "Provider"
+  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || service.providerBusinessName || "Provider";
   const providerImageUrl = service.providerImageUrl || null;
 
-  // Initials fallback for providers without a profile photo
-  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase() || "P";
+  // Initials fallback for providers without a profile photo.
+  // When no first/last name is set, use the first letter of the business name instead.
+  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase()
+    || service.providerBusinessName?.[0]?.toUpperCase()
+    || "P";
 
   const getStatusColor = (rating: number) => {
     if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
@@ -340,6 +348,19 @@ function ServiceCard({
                 </h3>
                 <div className="flex items-center gap-2 text-white/90 text-sm">
                   <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  {service.providerRating && parseFloat(service.providerRating) > 0 && (
+                    <>
+                      <span className="text-white/60">•</span>
+                      <span
+                        className="flex items-center gap-0.5"
+                        data-testid={`text-provider-rating-${service.id}`}
+                        title={`Provider portfolio rating: ${parseFloat(service.providerRating).toFixed(1)}/5`}
+                      >
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        <span className="text-amber-300 font-semibold">{parseFloat(service.providerRating).toFixed(1)}</span>
+                      </span>
+                    </>
+                  )}
                   <span className="text-white/60">•</span>
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
@@ -652,6 +673,22 @@ export default function DiscoverPage() {
     queryKey: [expertsApiUrl],
     enabled: showExperts,
   });
+
+  // Partner catalog activities — fetched when the user has narrowed to a location.
+  // Results are shown below the native service grid so real prices (e.g. "$89") are
+  // visible instead of tier symbols; uses catalogItemToUnifiedResult + UnifiedResultGrid.
+  const { data: catalogActivityData, isLoading: catalogActivitiesLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/activities-gyg", locationFilter],
+    enabled: !!locationFilter && activeTab === "services",
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination: locationFilter, limit: "8" });
+      const res = await fetch(`/api/catalog/activities-gyg?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Catalog fetch failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const catalogActivities = (catalogActivityData?.items ?? []).map(catalogItemToUnifiedResult);
   
   // Auto-scroll to experts section when coming from quick-start
   useEffect(() => {
@@ -1366,6 +1403,29 @@ export default function DiscoverPage() {
                         </Button>
                       </div>
                     )}
+
+                  {/* Partner catalog activities — only shown when a location is filtered.
+                      Uses UnifiedResultGrid + catalogItemToUnifiedResult so real numeric
+                      prices (e.g. "$89") are displayed instead of tier symbols. */}
+                  {locationFilter && (catalogActivitiesLoading || catalogActivities.length > 0) && (
+                    <div className="mt-10" data-testid="section-partner-activities">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Ticket className="h-4 w-4 text-primary" />
+                        <h2 className="text-lg font-semibold">
+                          Activities in {locationFilter}
+                        </h2>
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                          via Partners
+                        </Badge>
+                      </div>
+                      <UnifiedResultGrid
+                        results={catalogActivities}
+                        destination={locationFilter}
+                        isLoading={catalogActivitiesLoading}
+                        showInquiryButton={false}
+                      />
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
