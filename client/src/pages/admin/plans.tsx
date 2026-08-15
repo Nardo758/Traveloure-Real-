@@ -11,10 +11,13 @@ import {
   Users,
   DollarSign,
   Eye,
+  EyeOff,
   Clock,
   CheckCircle,
   AlertTriangle,
-  Loader2
+  Loader2,
+  ArrowRight,
+  History,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -34,9 +37,119 @@ const statusColors: Record<string, string> = {
   past: "bg-blue-100 text-blue-700 border-blue-200",
 };
 
+const workspaceStatusLabels: Record<string, string> = {
+  draft: "Draft",
+  in_review: "In Review",
+  delivered: "Delivered",
+};
+
+const workspaceStatusColors: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-700",
+  in_review: "bg-amber-100 text-amber-700",
+  delivered: "bg-green-100 text-green-700",
+};
+
+interface WorkspaceHistoryEntry {
+  id: string;
+  tripId: string;
+  itemId: string | null;
+  eventType: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  actorType: string;
+  actorId: string | null;
+  actorName: string | null;
+  createdAt: string;
+}
+
+function WorkspaceHistory({ tripId }: { tripId: string }) {
+  const { data, isLoading, isError } = useQuery<WorkspaceHistoryEntry[]>({
+    queryKey: ["/api/admin/trips", tripId, "workspace-history"],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/trips/${tripId}/workspace-history`);
+      if (!res.ok) throw new Error("Failed to load workspace history");
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-gray-500 text-sm" data-testid="workspace-history-loading">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading workspace history…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-red-600 text-sm" data-testid="workspace-history-error">
+        <AlertTriangle className="w-4 h-4" />
+        Could not load workspace history.
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <p className="py-4 text-sm text-gray-500 italic" data-testid="workspace-history-empty">
+        No workspace status changes recorded for this trip.
+      </p>
+    );
+  }
+
+  return (
+    <ol className="space-y-2" data-testid="workspace-history-list">
+      {data.map((entry) => {
+        const from = entry.fromStatus ? (workspaceStatusLabels[entry.fromStatus] ?? entry.fromStatus) : null;
+        const to = entry.toStatus ? (workspaceStatusLabels[entry.toStatus] ?? entry.toStatus) : null;
+        const when = new Date(entry.createdAt).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        return (
+          <li
+            key={entry.id}
+            className="flex flex-wrap items-center gap-2 text-sm py-2 border-b border-gray-100 last:border-0"
+            data-testid={`workspace-history-entry-${entry.id}`}
+          >
+            <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <span className="text-gray-500 shrink-0">{when}</span>
+            {from && (
+              <>
+                <Badge className={`${workspaceStatusColors[entry.fromStatus ?? ""] ?? "bg-gray-100 text-gray-700"} text-xs`}>
+                  {from}
+                </Badge>
+                <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              </>
+            )}
+            {to && (
+              <Badge className={`${workspaceStatusColors[entry.toStatus ?? ""] ?? "bg-gray-100 text-gray-700"} text-xs`}>
+                {to}
+              </Badge>
+            )}
+            <span className="text-gray-500 ml-auto shrink-0">
+              {entry.actorName
+                ? `by ${entry.actorName}`
+                : entry.actorId
+                  ? `by user ${entry.actorId.slice(0, 8)}…`
+                  : `by ${entry.actorType}`}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function AdminPlans() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
 
   const { data: plansData, isLoading } = useQuery<{
     trips: Array<{ id: string; title: string; type: string; destination: string; startDate: string; endDate: string; guests: number; budget: string; status: string; user: string; created: string }>;
@@ -182,49 +295,78 @@ export default function AdminPlans() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {filteredPlans.map((plan) => (
-              <div
-                key={plan.id}
-                className="p-4 border border-gray-200 rounded-lg"
-                data-testid={`card-plan-${plan.id}`}
-              >
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className={typeColors[plan.type] ?? "bg-gray-100 text-gray-700 border-gray-200"}>{plan.type}</Badge>
-                      <Badge className={statusColors[plan.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}>{plan.status}</Badge>
-                      <h3 className="font-semibold text-gray-900">{plan.title}</h3>
-                    </div>
+            {filteredPlans.map((plan) => {
+              const isExpanded = expandedTripId === plan.id;
+              return (
+                <div
+                  key={plan.id}
+                  className="border border-gray-200 rounded-lg overflow-hidden"
+                  data-testid={`card-plan-${plan.id}`}
+                >
+                  <div className="p-4">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge className={typeColors[plan.type] ?? "bg-gray-100 text-gray-700 border-gray-200"}>{plan.type}</Badge>
+                          <Badge className={statusColors[plan.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}>{plan.status}</Badge>
+                          <h3 className="font-semibold text-gray-900">{plan.title}</h3>
+                        </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <MapPin className="w-4 h-4" /> {plan.destination}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <Calendar className="w-4 h-4" /> {plan.date}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <Users className="w-4 h-4" /> {plan.guests} guests
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <DollarSign className="w-4 h-4" /> {plan.budget}
-                      </div>
-                    </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <MapPin className="w-4 h-4" /> {plan.destination}
+                          </div>
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <Calendar className="w-4 h-4" /> {plan.date}
+                          </div>
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <Users className="w-4 h-4" /> {plan.guests} guests
+                          </div>
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <DollarSign className="w-4 h-4" /> {plan.budget}
+                          </div>
+                        </div>
 
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span>User: {plan.user}</span>
-                      <span>Created: {plan.created}</span>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <span>User: {plan.user}</span>
+                          <span>Created: {plan.created}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setExpandedTripId(isExpanded ? null : plan.id)}
+                          data-testid={`button-view-${plan.id}`}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? (
+                            <><EyeOff className="w-4 h-4 mr-1" /> Hide</>
+                          ) : (
+                            <><Eye className="w-4 h-4 mr-1" /> View</>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" data-testid={`button-view-${plan.id}`}>
-                      <Eye className="w-4 h-4 mr-1" /> View
-                    </Button>
-                  </div>
+                  {/* Workspace status history panel */}
+                  {isExpanded && (
+                    <div
+                      className="border-t border-gray-100 bg-gray-50 px-4 py-3"
+                      data-testid={`workspace-history-panel-${plan.id}`}
+                    >
+                      <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                        <History className="w-4 h-4 text-gray-500" />
+                        Workspace Status History
+                      </h4>
+                      <WorkspaceHistory tripId={plan.id} />
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
