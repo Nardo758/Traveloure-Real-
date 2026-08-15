@@ -5434,8 +5434,8 @@ export const contentImpressions = pgTable("content_impressions", {
   // index is not unique and declaring it UNIQUE would make drizzle push fail. Both
   // content_impressions unique indexes are analytics-only (no money semantics) and are
   // documented as intentionally unmanaged in scripts/preflight-prod-unique-indexes.cjs.
-  index("idx_ci_city").on(table.city, table.createdAt).where(sql`city IS NOT NULL`),
-  index("idx_ci_user").on(table.userId, table.createdAt).where(sql`user_id IS NOT NULL`),
+  index("idx_ci_city").on(table.city, table.createdAt.desc()).where(sql`city IS NOT NULL`),
+  index("idx_ci_user").on(table.userId, table.createdAt.desc()).where(sql`user_id IS NOT NULL`),
   index("idx_ci_dedup_user_session")
     .on(table.contentType, table.contentId, table.userId, table.sessionId)
     .where(sql`user_id IS NOT NULL AND session_id IS NOT NULL`),
