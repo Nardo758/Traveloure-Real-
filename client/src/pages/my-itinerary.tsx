@@ -480,7 +480,7 @@ export default function MyItineraryPage() {
                   <p className="text-sm text-muted-foreground">Based on balance, pacing, and wellness optimization</p>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-4 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                 <div>
                   <div className="text-lg font-bold text-primary">{Math.round(data.metrics?.balanceScore || 0)}%</div>
                   <div className="text-xs text-muted-foreground">Balance</div>
