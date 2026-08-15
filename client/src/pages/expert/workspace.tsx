@@ -2883,6 +2883,9 @@ export default function ExpertWorkspace() {
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Persists across renders: true when the last flush attempt for private notes failed so that
+  // safeNavigate retries on every subsequent navigation click until a flush succeeds.
+  const noteFlushFailedRef = useRef(false);
   // CLAUDE.md §21 (ratified Aug 9, 2026) — the trip-level "Expert Notes" card, traveler-visible
   // (trips.expert_traveler_note, migration 187), distinct from the private Build notes state
   // directly above. Mirrors that card's own save/debounce/status pattern exactly.
@@ -2892,6 +2895,8 @@ export default function ExpertWorkspace() {
   const [travelerNotesOpen, setTravelerNotesOpen] = useState(false);
   const travelerNoteInitialized = useRef(false);
   const travelerNotesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Same failure-tracking ref for traveler-facing notes (mirrors noteFlushFailedRef above).
+  const travelerNoteFlushFailedRef = useRef(false);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   // Session cache: normalized provider names already confirmed (via "Continue to [Provider]")
   // for the CURRENT trip in this browser session. Keyed by tripId in sessionStorage so
@@ -3626,12 +3631,16 @@ export default function ExpertWorkspace() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      noteFlushFailedRef.current = false;
       setNoteSaveStatus("saved");
       setLastSavedAt(data?.expertNotesUpdatedAt ? new Date(data.expertNotesUpdatedAt) : new Date());
       const t = setTimeout(() => setNoteSaveStatus("idle"), 2000);
       return () => clearTimeout(t);
     },
-    onError: () => setNoteSaveStatus("idle"),
+    onError: () => {
+      noteFlushFailedRef.current = true;
+      setNoteSaveStatus("idle");
+    },
   });
 
   const handleNoteChange = (text: string) => {
@@ -3658,13 +3667,17 @@ export default function ExpertWorkspace() {
       return res.json();
     },
     onSuccess: () => {
+      travelerNoteFlushFailedRef.current = false;
       setTravelerNoteSaveStatus("saved");
       setTravelerNoteLastSavedAt(new Date());
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       const t = setTimeout(() => setTravelerNoteSaveStatus("idle"), 2000);
       return () => clearTimeout(t);
     },
-    onError: () => setTravelerNoteSaveStatus("idle"),
+    onError: () => {
+      travelerNoteFlushFailedRef.current = true;
+      setTravelerNoteSaveStatus("idle");
+    },
   });
 
   const handleTravelerNoteChange = (text: string) => {
@@ -3721,7 +3734,10 @@ export default function ExpertWorkspace() {
     type FlushResult = { label: string; promise: Promise<unknown> };
     const flushes: FlushResult[] = [];
 
-    if (noteSaveStatus === "saving") {
+    // Flush if a save is actively debounced (status === "saving") OR if a previous flush
+    // attempt failed (ref === true). The ref persists across renders and navigation clicks,
+    // so every subsequent attempt retries until the save succeeds or the expert discards.
+    if (noteSaveStatus === "saving" || noteFlushFailedRef.current) {
       if (notesDebounceRef.current) {
         clearTimeout(notesDebounceRef.current);
         notesDebounceRef.current = null;
@@ -3729,7 +3745,7 @@ export default function ExpertWorkspace() {
       flushes.push({ label: "private notes", promise: autoSaveNotesMutation.mutateAsync(noteText) });
     }
 
-    if (travelerNoteSaveStatus === "saving") {
+    if (travelerNoteSaveStatus === "saving" || travelerNoteFlushFailedRef.current) {
       if (travelerNotesDebounceRef.current) {
         clearTimeout(travelerNotesDebounceRef.current);
         travelerNotesDebounceRef.current = null;
@@ -3741,13 +3757,15 @@ export default function ExpertWorkspace() {
       const results = await Promise.allSettled(flushes.map((f) => f.promise));
       const failed = flushes.filter((_, i) => results[i].status === "rejected");
       if (failed.length > 0) {
+        // refs already set to true in each mutation's onError — next navigation click retries
         toast({
           title: "Could not save notes",
           description: `${failed.map((f) => f.label).join(" and ")} could not be saved. Stay on this page to try again or copy your notes before leaving.`,
           variant: "destructive",
         });
-        return; // block navigation — expert's unsaved work must not be silently lost
+        return; // block navigation — unsaved work must not be silently lost
       }
+      // refs cleared to false in each mutation's onSuccess
       toast({ title: "Notes saved", description: "Your notes were saved before leaving." });
     }
 
