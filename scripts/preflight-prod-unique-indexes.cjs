@@ -63,6 +63,11 @@ const INDEX_MANIFEST = [
     cols: ["source_trip_id"], where: null, migration: "133" },
   { name: "idx_rmp_buyer_trip_active", table: "ready_made_purchases",
     cols: ["buyer_id", "ready_made_trip_id"], where: "status IN ('paid','cloned')", migration: "133" },
+
+  // ── Fever event cache — concurrent cache-miss inserts can create duplicates
+  //    before this index lands (exactly what blocked the Aug-2026 prod deploy).
+  { name: "idx_fever_event_cache_event_id", table: "fever_event_cache",
+    cols: ["event_id"], where: null, migration: "221" },
 ];
 
 /**
