@@ -4,6 +4,8 @@ import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +23,33 @@ import {
   Loader2
 } from "lucide-react";
 
+type Preset = "7d" | "30d" | "90d" | "custom" | "all";
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function presetDates(preset: Preset): { from: string; to: string } {
+  const today = new Date();
+  const to = isoDate(today);
+  if (preset === "7d") {
+    const from = new Date(today);
+    from.setDate(from.getDate() - 7);
+    return { from: isoDate(from), to };
+  }
+  if (preset === "30d") {
+    const from = new Date(today);
+    from.setDate(from.getDate() - 30);
+    return { from: isoDate(from), to };
+  }
+  if (preset === "90d") {
+    const from = new Date(today);
+    from.setDate(from.getDate() - 90);
+    return { from: isoDate(from), to };
+  }
+  return { from: "", to: "" };
+}
+
 interface AnalyticsData {
   metrics: Array<{ label: string; value: string; change: string; positive: boolean }>;
   topDestinations: Array<{ name: string; bookings: number; revenue: string }>;
@@ -31,14 +60,36 @@ interface AnalyticsData {
 export default function AdminAnalytics() {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
+  const [preset, setPreset] = useState<Preset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
   const { data: analytics, isLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics/overview"],
   });
 
+  function getExportRange(): { from: string; to: string } {
+    if (preset === "custom") return { from: customFrom, to: customTo };
+    if (preset === "all") return { from: "", to: "" };
+    return presetDates(preset);
+  }
+
+  function applyPreset(p: Preset) {
+    setPreset(p);
+    if (p !== "custom") {
+      setCustomFrom("");
+      setCustomTo("");
+    }
+  }
+
   async function handleExport() {
     setExporting(true);
     try {
-      const r = await fetch("/api/admin/analytics/export?format=csv", { credentials: "include" });
+      const { from, to } = getExportRange();
+      const params = new URLSearchParams({ format: "csv" });
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const r = await fetch(`/api/admin/analytics/export?${params}`, { credentials: "include" });
       if (!r.ok) throw new Error(`Export failed: ${r.status}`);
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -102,23 +153,77 @@ export default function AdminAnalytics() {
           ))}
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap gap-3">
-          <Button data-testid="button-export-data" onClick={handleExport} disabled={exporting}>
-            {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-            Export Data
-          </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span tabIndex={0}>
-                <Button variant="outline" disabled data-testid="button-custom-report">
-                  Custom Report
+        {/* Export date-range picker + actions */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              Export Date Range
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Preset buttons */}
+            <div className="flex flex-wrap gap-2" data-testid="export-range-presets">
+              {(["all", "7d", "30d", "90d", "custom"] as Preset[]).map((p) => (
+                <Button
+                  key={p}
+                  size="sm"
+                  variant={preset === p ? "default" : "outline"}
+                  data-testid={`preset-${p}`}
+                  onClick={() => applyPreset(p)}
+                >
+                  {p === "all" ? "All time" : p === "7d" ? "Last 7 days" : p === "30d" ? "Last 30 days" : p === "90d" ? "Last 90 days" : "Custom range"}
                 </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>Custom reporting coming soon</TooltipContent>
-          </Tooltip>
-        </div>
+              ))}
+            </div>
+
+            {/* Custom date inputs — visible only when "Custom range" is selected */}
+            {preset === "custom" && (
+              <div className="flex flex-wrap gap-4 items-end" data-testid="custom-date-inputs">
+                <div className="space-y-1">
+                  <Label htmlFor="export-from">From</Label>
+                  <Input
+                    id="export-from"
+                    data-testid="input-export-from"
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="w-44"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="export-to">To</Label>
+                  <Input
+                    id="export-to"
+                    data-testid="input-export-to"
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="w-44"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-3 pt-1">
+              <Button data-testid="button-export-data" onClick={handleExport} disabled={exporting}>
+                {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                Export Data
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0}>
+                    <Button variant="outline" disabled data-testid="button-custom-report">
+                      Custom Report
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Custom reporting coming soon</TooltipContent>
+              </Tooltip>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Weekly Activity */}
