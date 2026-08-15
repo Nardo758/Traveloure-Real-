@@ -644,6 +644,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // URL box, and what satisfies the publish gate without the owner having to paste anything.
   const [deliverableUploading, setDeliverableUploading] = useState(false);
   const [deliverableUploaded, setDeliverableUploaded] = useState(false);
+  const [shortDescSuggesting, setShortDescSuggesting] = useState(false);
   // L27-P3 (§13): only an explicit Confirm/Remove in the picker sends `locationPoint`.
   // Untouched ⇒ the key is omitted entirely ⇒ the server leaves latitude/longitude/
   // location_precision exactly as they are, so an unrelated edit can never turn a
@@ -3254,17 +3255,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   size="sm"
                   className="text-xs h-7 px-2"
                   data-testid="btn-suggest-short-description"
-                  onClick={() => {
-                    const src = formData.description.trim();
-                    let suggestion = src.length <= 150 ? src : src.slice(0, 150);
-                    if (src.length > 150) {
-                      const lastSpace = suggestion.lastIndexOf(" ");
-                      if (lastSpace > 100) suggestion = suggestion.slice(0, lastSpace);
+                  disabled={shortDescSuggesting}
+                  onClick={async () => {
+                    setShortDescSuggesting(true);
+                    try {
+                      const res = await apiRequest("POST", "/api/ai/suggest-short-description", {
+                        description: formData.description.trim(),
+                      });
+                      const data = await res.json();
+                      if (data.suggestion) {
+                        set("shortDescription", data.suggestion.slice(0, 150));
+                      }
+                    } catch {
+                      toast({ title: "Couldn't generate a suggestion", variant: "destructive" });
+                    } finally {
+                      setShortDescSuggesting(false);
                     }
-                    set("shortDescription", suggestion.trim());
                   }}
                 >
-                  Suggest short description
+                  {shortDescSuggesting ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      Suggesting…
+                    </>
+                  ) : (
+                    "Suggest short description"
+                  )}
                 </Button>
               )}
             </div>
