@@ -69,6 +69,42 @@ const OWNER_KEY = "trip-context-owner";
 const CHANGE_EVENT = "trip-context-change";
 
 /**
+ * Marks the current session context as explicitly guest-authored.
+ * Set inside updateTripContext / switchTripContext whenever content is written
+ * while no owner stamp is present — i.e. during a confirmed unauthenticated
+ * session. This lets the sign-in hook distinguish fresh guest writes from
+ * legacy pre-feature contexts that also have no stamp but were built by an
+ * authenticated user (those must never be pushed to a different account).
+ */
+const GUEST_PROVENANCE_KEY = "trip-context-guest-provenance";
+
+function setGuestProvenance(): void {
+  try {
+    sessionStorage.setItem(GUEST_PROVENANCE_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Returns true when the current context was explicitly written during a guest session. */
+export function hasGuestProvenance(): boolean {
+  try {
+    return sessionStorage.getItem(GUEST_PROVENANCE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Clears the guest-provenance flag (call on sign-in or context clear). */
+export function clearGuestProvenance(): void {
+  try {
+    sessionStorage.removeItem(GUEST_PROVENANCE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Returns the userId that owns the current local context, or null when the
  * context was built while unauthenticated (guest-owned / unowned).
  */
@@ -145,6 +181,9 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   const next = { ...current, ...sanitized } as TripContext;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // Mark as guest-authored if written without an owner stamp — enables the
+    // sign-in hook to distinguish fresh guest writes from legacy unowned contexts.
+    if (getContextOwner() === null) setGuestProvenance();
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -215,6 +254,8 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
 
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // Mark as guest-authored if written without an owner stamp.
+    if (getContextOwner() === null) setGuestProvenance();
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -405,6 +446,10 @@ export function clearTripContext(): void {
   // by a different user on the same tab from uploading the first user's data.
   // The stamp is only set (never cleared here), so a guest who never signed in
   // keeps an absent stamp (null), which is still treated as safely pushable.
+  //
+  // GUEST_PROVENANCE_KEY IS cleared: no content → nothing to push, and clearing
+  // here ensures a fresh write-then-sign-in cycle can re-establish provenance.
+  clearGuestProvenance();
   try {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
