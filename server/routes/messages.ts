@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { sanitizeText } from "../utils/text-sanitizer";
 import {
   buildConversationId,
   parseConversationId,
@@ -138,7 +139,7 @@ router.post("/", isAuthenticated, async (req, res) => {
     const exists = await assertRecipientExists(targetRecipientId);
     if (!exists) return res.status(404).json({ message: "Recipient not found" });
 
-    const result = await sendMessage(userId, targetRecipientId, message, attachment);
+    const result = await sendMessage(userId, targetRecipientId, sanitizeText(message) ?? message, attachment);
     res.status(201).json(result);
   } catch (error) {
     console.error(error);

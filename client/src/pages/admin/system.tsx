@@ -1,3 +1,4 @@
+import React from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { SlowQueryWidget } from "@/components/admin/SlowQueryWidget";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,7 +18,8 @@ import {
   CheckCircle,
   AlertTriangle,
   RefreshCw,
-  Loader2
+  Loader2,
+  Send
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -39,6 +41,13 @@ const FLAG_DEFAULTS: Record<string, boolean> = {
   email_notifications_enabled: true,
 };
 
+interface TestEmailResult {
+  ok: boolean;
+  id?: string;
+  to?: string;
+  error?: string;
+}
+
 export default function AdminSystem() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -52,6 +61,34 @@ export default function AdminSystem() {
     if (!row) return FLAG_DEFAULTS[key] ?? false;
     return row.setting_value === "true";
   };
+
+  const [testEmailTo, setTestEmailTo] = React.useState("");
+  const [testEmailResult, setTestEmailResult] = React.useState<TestEmailResult | null>(null);
+  const SEND_TIMEOUT_MS = 15_000;
+
+  const sendTestEmail = useMutation({
+    mutationFn: async () => {
+      const body = testEmailTo.trim() ? { to: testEmailTo.trim() } : undefined;
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("No response from the email service after 15 s. Check your Resend configuration and try again.")),
+          SEND_TIMEOUT_MS,
+        ),
+      );
+
+      const fetchPromise = apiRequest("POST", "/api/admin/system/test-email", body)
+        .then((res) => res.json() as Promise<TestEmailResult>);
+
+      return Promise.race([fetchPromise, timeoutPromise]);
+    },
+    onSuccess: (data) => {
+      setTestEmailResult(data);
+    },
+    onError: (err: Error) => {
+      setTestEmailResult({ ok: false, error: err.message });
+    },
+  });
 
   const updateFlag = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: boolean }) => {
@@ -225,6 +262,76 @@ export default function AdminSystem() {
                   onCheckedChange={(v) => updateFlag.mutate({ key: "email_notifications_enabled", value: v })}
                   data-testid="switch-emails"
                 />
+              </div>
+
+              {/* Test email delivery */}
+              <div className="pt-2 border-t border-gray-100">
+                <div className="space-y-0.5 mb-3">
+                  <Label className="text-base flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-gray-500" />
+                    Verify Email Delivery
+                  </Label>
+                  <p className="text-sm text-gray-500">
+                    Send a test email to confirm Resend is configured correctly. Leave blank to send to your admin address.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="email"
+                    placeholder="Send to (defaults to your address)"
+                    value={testEmailTo}
+                    onChange={(e) => setTestEmailTo(e.target.value)}
+                    className="h-8 text-sm max-w-xs"
+                    data-testid="input-test-email-to"
+                    disabled={sendTestEmail.isPending}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setTestEmailResult(null); sendTestEmail.mutate(); }}
+                    disabled={sendTestEmail.isPending}
+                    data-testid="button-send-test-email"
+                  >
+                    {sendTestEmail.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4 mr-2" />
+                    )}
+                    Send test email
+                  </Button>
+                </div>
+                {testEmailResult && (
+                  <div
+                    className={`mt-3 flex items-start gap-2 rounded-md p-3 text-sm ${
+                      testEmailResult.ok
+                        ? "bg-green-50 border border-green-200 text-green-800"
+                        : "bg-red-50 border border-red-200 text-red-800"
+                    }`}
+                    data-testid="test-email-result"
+                  >
+                    {testEmailResult.ok ? (
+                      <CheckCircle className="w-4 h-4 mt-0.5 shrink-0 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
+                    )}
+                    <div>
+                      {testEmailResult.ok ? (
+                        <>
+                          <p className="font-medium">Delivered successfully</p>
+                          <p className="text-xs mt-0.5 opacity-80">
+                            Sent to {testEmailResult.to}
+                            {testEmailResult.id ? ` · Resend ID: ${testEmailResult.id}` : ""}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium">Delivery failed</p>
+                          <p className="text-xs mt-0.5 opacity-80">{testEmailResult.error}</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

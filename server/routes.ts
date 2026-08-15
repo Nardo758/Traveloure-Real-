@@ -113,6 +113,7 @@ import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeDeep } from "./utils/text-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -184,6 +185,8 @@ import {
   tripExpertAdvisors,
   templatePurchases,
 } from "@shared/schema";
+import { sanitizeText } from "./utils/text-sanitizer";
+import { sanitizeStringFields } from "./utils/text-sanitizer";
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
@@ -407,16 +410,16 @@ function sanitizeInput(input: string): string {
     .trim();
 }
 
-// Sanitize object string fields recursively
+// Sanitize all string fields in a plain object, including every nested array and object.
+// Delegates to the exported, tested sanitizeDeep (server/utils/text-sanitizer.ts) so that
+// the recursion is exercised by unit tests independently of this route module.
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    if (typeof result[key] === 'string') {
-      result[key] = sanitizeInput(result[key]);
-    }
-  }
-  return result;
+  return sanitizeDeep(obj) as T;
 }
+
+// Note: knowledgeProofAnswers[].answer is sanitized by sanitizeObject (via sanitizeDeep),
+// which recurses into JSONB arrays and objects and applies sanitizeText to every nested string.
+// The unit tests in server/utils/__tests__/text-sanitizer.test.ts verify this path explicitly.
 
 // Migration 151 (§17 Product Builder): bundle_components.component_service_id is
 // ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
@@ -1891,7 +1894,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+          const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1913,7 +1917,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+      const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -1946,7 +1951,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+          const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1967,7 +1973,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+      const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2926,7 +2933,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const translation = await storage.upsertServiceTranslation({
         serviceId: owned.service.id,
         locale,
-        content: normalizeContent(parsed.data),
+        // Sanitize translated free-text before storing (task 1135 / task 1138).
+        content: sanitizeStringFields(normalizeContent(parsed.data)) as ReturnType<typeof normalizeContent>,
         status: "approved",
         source: "human",
         updatedBy: owned.userId,
@@ -3016,7 +3024,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.parse(bodyWithoutLocation);
+      // Sanitize provider-authored free-text fields to strip HTML injection vectors before
+      // they reach the database, emails, or AI prompts (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -3276,7 +3286,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.partial().parse(bodyWithoutLocation);
+      // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -5120,7 +5131,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         purchaseId: purchase.id,
         reviewerId: userId,
         rating: req.body.rating,
-        review: req.body.review,
+        review: sanitizeText(req.body.review),
       });
 
       res.json(review);
@@ -5994,38 +6005,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (error: any) {
       console.error("Failed to add to cart:", error);
       res.status(500).json({ message: "Failed to add to cart" });
-    }
-  });
-
-  // Get single booking
-  // NOTE: If requester is provider, traveler info is sanitized
-  app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
-    const booking = await storage.getServiceBooking(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-    // Check if user is traveler or provider
-    if (booking.travelerId !== userId && booking.providerId !== userId) {
-      return res.status(403).json({ message: "Not authorized to view this booking" });
-    }
-    
-    // If the user is the traveler, they see full booking
-    // If the user is the provider, sanitize the traveler info
-    if (booking.travelerId === userId) {
-      res.json(booking);
-    } else {
-      // Provider viewing - sanitize traveler info
-      const traveler = await storage.getUser(booking.travelerId);
-      const sanitizedBooking = sanitizeBookingForExpert(booking, userRole, userId);
-      res.json({
-        ...sanitizedBooking,
-        traveler: traveler ? {
-          ...sanitizeUserForRole(traveler, userRole, false),
-          displayName: getDisplayName(traveler.firstName, traveler.lastName)
-        } : null
-      });
     }
   });
 
