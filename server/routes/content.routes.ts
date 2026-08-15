@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
@@ -885,7 +886,7 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
 router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
-      const input = insertCustomVenueSchema.parse(req.body);
+      const input = sanitizeStringFields(insertCustomVenueSchema.parse(req.body));
       const venue = await storage.createCustomVenue(input);
       res.status(201).json(venue);
     } catch (err) {
@@ -911,7 +912,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       if (venue.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const input = insertCustomVenueSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -2750,13 +2751,13 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         return res.status(404).json({ message: "Service not found" });
       }
       
-      const input = insertServiceReviewSchema.parse({
+      const input = sanitizeStringFields(insertServiceReviewSchema.parse({
         ...req.body,
         serviceId: req.params.serviceId,
         travelerId: userId,
         providerId: service.userId,
         status: "pending",
-      });
+      }));
       
       const review = await storage.createServiceReview(input);
       res.status(201).json(review);
