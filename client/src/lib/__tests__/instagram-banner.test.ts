@@ -26,6 +26,7 @@ import {
   getInstagramBannerHeading,
   getInstagramBannerButtonLabel,
   isInstagramBannerAmberVariant,
+  getInstagramBannerAction,
   type InstagramStatus,
   type InstagramDisconnectReason,
 } from "../instagram-banner-utils.js";
@@ -249,4 +250,144 @@ describe("Instagram banner — full scenario matrix", () => {
       }
     });
   }
+});
+
+// ── Suite: banner button action routing ───────────────────────────────────────
+//
+// This is the regression gate for the "Retry vs OAuth" branch in the banner
+// button's onClick handler (content-studio.tsx):
+//
+//   onClick={
+//     getInstagramBannerAction(reason) === "retry"
+//       ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+//       : handleConnectInstagram   // ← initiates OAuth redirect
+//   }
+//
+// The tests below assert the routing table so any accidental change that sends
+// a transient-failure user through OAuth is caught immediately.
+
+describe("getInstagramBannerAction — retry vs OAuth routing", () => {
+  it('returns "retry" for verification_error — MUST invalidate, never OAuth', () => {
+    assert.equal(
+      getInstagramBannerAction("verification_error"),
+      "retry",
+      "verification_error must route to cache-invalidation, not OAuth",
+    );
+  });
+
+  it('returns "oauth" when no reason is set (first-time connect)', () => {
+    assert.equal(getInstagramBannerAction(undefined), "oauth");
+  });
+
+  it('returns "oauth" for token_expired (token fully gone — needs fresh OAuth grant)', () => {
+    assert.equal(getInstagramBannerAction("token_expired"), "oauth");
+  });
+
+  it('returns "oauth" for personal_account (needs account-type change then reconnect)', () => {
+    assert.equal(getInstagramBannerAction("personal_account"), "oauth");
+  });
+
+  it('returns "oauth" for auth_error (generic error — not a transient network failure)', () => {
+    assert.equal(getInstagramBannerAction("auth_error"), "oauth");
+  });
+
+  // Guard: verify that verification_error is the ONLY reason that bypasses OAuth.
+  // This prevents a copy-paste error introducing a second "retry" branch.
+  it("only verification_error bypasses OAuth — all other known reasons trigger OAuth", () => {
+    const oauthReasons: InstagramDisconnectReason[] = [
+      undefined,
+      "token_expired",
+      "personal_account",
+      "auth_error",
+    ];
+    for (const reason of oauthReasons) {
+      assert.equal(
+        getInstagramBannerAction(reason),
+        "oauth",
+        `reason "${String(reason)}" should trigger OAuth but getInstagramBannerAction returned "retry"`,
+      );
+    }
+  });
+});
+
+// ── Suite: verification_error does not change window.location ─────────────────
+//
+// Simulates the component's click handler in a pure-JS environment.
+// When reason === "verification_error" the handler must call invalidateQueries
+// and must NOT assign window.location.href (which would start an OAuth redirect).
+
+describe("verification_error Retry handler — no OAuth navigation", () => {
+  it("calls invalidateQueries and leaves window.location.href unchanged", () => {
+    // Minimal queryClient stub that records calls.
+    const invalidated: Array<{ queryKey: unknown }> = [];
+    const stubQueryClient = {
+      invalidateQueries(opts: { queryKey: unknown }) {
+        invalidated.push(opts);
+      },
+    };
+
+    // Track whether the OAuth handler was invoked (simulates a location change).
+    let oauthInitiated = false;
+
+    // Reconstruct the component's onClick branch using the production routing helper.
+    // This mirrors the JSX verbatim:
+    //   onClick={
+    //     getInstagramBannerAction(reason) === "retry"
+    //       ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+    //       : handleConnectInstagram
+    //   }
+    const reason: InstagramDisconnectReason = "verification_error";
+    const action = getInstagramBannerAction(reason);
+
+    const handleConnectInstagram = () => {
+      // Simulates the OAuth initiation path — must NOT be called for verification_error.
+      oauthInitiated = true;
+    };
+
+    const onClick =
+      action === "retry"
+        ? () => stubQueryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+        : handleConnectInstagram;
+
+    onClick();
+
+    // Assert invalidateQueries was called with the correct status query key.
+    assert.equal(invalidated.length, 1, "invalidateQueries must be called exactly once");
+    assert.deepEqual(
+      invalidated[0].queryKey,
+      ["/api/instagram/status"],
+      "must invalidate the instagram status query key",
+    );
+
+    // Assert the OAuth handler was never invoked (no navigation / redirect).
+    assert.equal(oauthInitiated, false, "OAuth must NOT be triggered for verification_error");
+  });
+
+  it("calls handleConnectInstagram (OAuth) for any non-retry reason", () => {
+    let oauthCalled = false;
+    const invalidated: unknown[] = [];
+
+    const stubQueryClient = {
+      invalidateQueries(opts: unknown) {
+        invalidated.push(opts);
+      },
+    };
+
+    const handleConnectInstagram = () => {
+      oauthCalled = true;
+    };
+
+    const reason: InstagramDisconnectReason = "token_expired";
+    const action = getInstagramBannerAction(reason);
+
+    const onClick =
+      action === "retry"
+        ? () => stubQueryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+        : handleConnectInstagram;
+
+    onClick();
+
+    assert.equal(oauthCalled, true, "OAuth handler must be called for token_expired");
+    assert.equal(invalidated.length, 0, "invalidateQueries must NOT be called for token_expired");
+  });
 });

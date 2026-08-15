@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
+import { getUserId } from "../../utils/auth";
 import { z } from "zod";
 import { db } from "../../db";
 import { eq, inArray, sql as drizzleSql } from "drizzle-orm";
@@ -40,7 +41,7 @@ export function registerAuthRoutes(app: Express): void {
       return res.json({ authenticated: false, user: null });
     }
     try {
-      const userId = req.user?.claims?.sub ?? req.user?.id;
+      const userId = getUserId(req);
       if (!userId) {
         return res.json({ authenticated: false, user: null });
       }
@@ -55,7 +56,8 @@ export function registerAuthRoutes(app: Express): void {
   // Current user info (multiple route aliases)
   app.get("/api/users/me", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -70,7 +72,8 @@ export function registerAuthRoutes(app: Express): void {
   // Profile management - GET
   app.get("/api/profile", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -85,7 +88,8 @@ export function registerAuthRoutes(app: Express): void {
   // Profile management - PATCH (update)
   app.patch("/api/profile", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const validation = updateProfileSchema.safeParse(req.body);
       if (!validation.success) {
         return res.status(400).json({
@@ -107,7 +111,8 @@ export function registerAuthRoutes(app: Express): void {
   // Alternate profile route
   app.get("/api/user/profile", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -122,7 +127,8 @@ export function registerAuthRoutes(app: Express): void {
   // Get current authenticated user
   app.get("/api/auth/me", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       res.json(sanitizeUser(user));
     } catch (error) {
@@ -133,7 +139,8 @@ export function registerAuthRoutes(app: Express): void {
 
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       res.json(sanitizeUser(user));
     } catch (error) {
@@ -145,7 +152,8 @@ export function registerAuthRoutes(app: Express): void {
   // Accept terms and privacy policy
   app.post("/api/auth/accept-terms", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const validation = acceptTermsSchema.safeParse(req.body);
       if (!validation.success) {
@@ -201,7 +209,7 @@ export function registerAuthRoutes(app: Express): void {
   // the session store rows are deleted in step 5.
   app.delete("/api/auth/account", isAuthenticated, async (req: any, res) => {
     try {
-      const userId: string | undefined = req.user?.claims?.sub ?? req.user?.id;
+      const userId = getUserId(req);
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }

@@ -112,6 +112,7 @@ import {
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
+import { getWorkspaceStatusHistory } from "../services/item-transition-log.service";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -164,6 +165,7 @@ import {
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
   getUsersBasicByIds, getProviderServiceById, getProviderServicesByIds, deleteProviderService,
+  isValidTimezone,
 } from "../services/admin-query.service";
 
 const router = Router();
@@ -306,13 +308,16 @@ router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
         })
         .reduce((sum, b) => sum + parseFloat(b.platformFee || "0"), 0);
       
-      // New users today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const newUsersToday = allUsers.filter(u => {
-        const created = u.createdAt ? new Date(u.createdAt) : null;
-        return created && created >= today;
-      }).length;
+      // New users today — use the admin's IANA timezone so the day boundary
+      // matches what the admin sees on their own clock (falls back to UTC).
+      const rawTz = req.query.timezone as string | undefined;
+      const tz = rawTz && isValidTimezone(rawTz) ? rawTz : "UTC";
+      const [newTodayResult] = await db
+        .select({
+          newToday: sql<number>`COUNT(*) FILTER (WHERE ((${users.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = (now() AT TIME ZONE ${tz})::date)`,
+        })
+        .from(users);
+      const newUsersToday = Number(newTodayResult?.newToday ?? 0);
       
       res.json({
         totalUsers,
@@ -4987,6 +4992,35 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });
+    }
+  });
+
+  // === Admin: Workspace Status History for a trip (task 1030) ===
+  // Read-only audit trail — `workspace_status_transition` rows from item_transition_log.
+  // Support staff use this to resolve "when was this delivered?" disputes without DB access.
+
+router.get("/api/admin/trips/:tripId/workspace-history", isAuthenticated, requireAdminLocal, async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const rows = await getWorkspaceStatusHistory(tripId);
+
+      // Batch-resolve actor names for rows that have an actorId.
+      const actorIds = Array.from(new Set(rows.map(r => r.actorId).filter(Boolean))) as string[];
+      const actors = actorIds.length > 0 ? await getUsersBasicByIds(actorIds) : [];
+      const actorById = new Map(actors.map(u => [u.id, u]));
+
+      const result = rows.map(row => {
+        const actor = row.actorId ? actorById.get(row.actorId) : undefined;
+        const actorName = actor
+          ? [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || null
+          : null;
+        return { ...row, actorName };
+      });
+
+      res.json(result);
+    } catch (err) {
+      console.error("Admin workspace history error:", err);
+      res.status(500).json({ message: "Failed to fetch workspace history" });
     }
   });
 

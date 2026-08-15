@@ -90,8 +90,14 @@ function DigestTriggerButton() {
 }
 
 export default function AdminDashboard() {
+  const adminTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
-    queryKey: ["/api/admin/stats"],
+    queryKey: ["/api/admin/stats", adminTimezone],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/stats?timezone=${encodeURIComponent(adminTimezone)}`);
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    },
   });
 
   const { data: expertApps } = useQuery<LocalExpertForm[]>({

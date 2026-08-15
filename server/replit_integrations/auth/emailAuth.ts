@@ -7,6 +7,7 @@ import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
 import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import { getUserId } from "../../utils/auth";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -451,7 +452,7 @@ export function setupEmailAuth(app: Express): void {
   // caller's email. Used by the "Resend verification email" UI button.
   app.post("/api/auth/send-verification", async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req);
       if (!userId) {
         return res.status(401).json({ message: "Authentication required" });
       }
