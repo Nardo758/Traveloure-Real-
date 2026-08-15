@@ -10,6 +10,7 @@ vite.config.ts.*
 !.env.e2e.example
 # Playwright test artifacts
 playwright-report/
+playwright-report-webkit/
 test-results/
 .playwright/
 # E2E (deploy harness) generated auth state

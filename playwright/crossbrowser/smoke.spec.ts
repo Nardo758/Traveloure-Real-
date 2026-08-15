@@ -335,38 +335,39 @@ test('full booking checkout with Stripe test card 4242', async ({ page, request 
 });
 
 test('admin panel loads (desktop only)', async ({ page }) => {
-  // Log in as the seeded admin account
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1500);
-
+  // Use the seeded test-admin account (always present in dev DB).
+  // E2E_ADMIN_EMAIL / E2E_TEST_PASSWORD are the standard e2e env vars;
+  // fall back to the known seeded address so the test is self-contained.
   const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'test-admin@traveloure.test';
   const PASSWORD    = process.env.E2E_TEST_PASSWORD ?? 'TestPass123!';
 
-  const signInBtn = page.locator('[data-testid="button-sign-in"]');
-  if (await signInBtn.isVisible().catch(() => false)) {
-    await signInBtn.click();
-    const modal = page.locator('[data-testid="modal-sign-in"]');
-    await modal.waitFor({ state: 'visible', timeout: 8000 });
-    await modal.locator('input[type="email"], input[name="email"]').first().fill(ADMIN_EMAIL);
-    await modal.locator('input[type="password"]').first().fill(PASSWORD);
-    await modal
-      .locator('button[type="submit"], button:has-text("Sign in"), button:has-text("Log in")')
-      .first()
-      .click();
-    await modal.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1000);
-  }
+  // Log in via API so the browser context carries a valid admin session.
+  // page.request shares the cookie jar with the page.
+  const loginRes = await page.request.post('/api/auth/login', {
+    data: { email: ADMIN_EMAIL, password: PASSWORD },
+  });
+  expect(
+    loginRes.ok(),
+    `Admin login failed (${loginRes.status()}) — ensure test-admin@traveloure.test is seeded`,
+  ).toBe(true);
 
-  // Navigate to admin panel
+  // Navigate to the admin dashboard
   await page.goto('/admin', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
 
-  // Must not redirect to homepage or a generic error page
-  expect(page.url()).toMatch(/\/admin/);
+  // Must stay on an /admin path (not redirected to homepage or sign-in)
+  expect(page.url(), 'Admin visit redirected away from /admin').toMatch(/\/admin/);
 
-  // The admin panel renders real content (not an empty shell)
-  const bodyText = await page.evaluate(() => document.body.innerText.trim().length);
-  expect(bodyText, 'admin panel body appears empty').toBeGreaterThan(100);
+  // Assert an admin-only chrome element from admin-sidebar.tsx / admin-layout.tsx
+  // Both are exclusive to authenticated admin sessions.
+  const adminLogo   = page.locator('[data-testid="link-admin-logo"]');
+  const adminLogout = page.locator('[data-testid="button-admin-logout"]');
+  const logoVisible   = await adminLogo.isVisible().catch(() => false);
+  const logoutVisible = await adminLogout.isVisible().catch(() => false);
+  expect(
+    logoVisible || logoutVisible,
+    'Admin sidebar not found — page may have landed on sign-in or an error screen',
+  ).toBe(true);
 
   // No horizontal overflow at desktop width
   const noOverflow = await page.evaluate(
