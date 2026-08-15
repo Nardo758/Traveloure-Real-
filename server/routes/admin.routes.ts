@@ -164,6 +164,7 @@ import {
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
   getUsersBasicByIds, getProviderServiceById, getProviderServicesByIds, deleteProviderService,
+  isValidTimezone,
 } from "../services/admin-query.service";
 
 const router = Router();
@@ -306,13 +307,16 @@ router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
         })
         .reduce((sum, b) => sum + parseFloat(b.platformFee || "0"), 0);
       
-      // New users today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const newUsersToday = allUsers.filter(u => {
-        const created = u.createdAt ? new Date(u.createdAt) : null;
-        return created && created >= today;
-      }).length;
+      // New users today — use the admin's IANA timezone so the day boundary
+      // matches what the admin sees on their own clock (falls back to UTC).
+      const rawTz = req.query.timezone as string | undefined;
+      const tz = rawTz && isValidTimezone(rawTz) ? rawTz : "UTC";
+      const [newTodayResult] = await db
+        .select({
+          newToday: sql<number>`COUNT(*) FILTER (WHERE ((${users.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = (now() AT TIME ZONE ${tz})::date)`,
+        })
+        .from(users);
+      const newUsersToday = Number(newTodayResult?.newToday ?? 0);
       
       res.json({
         totalUsers,
