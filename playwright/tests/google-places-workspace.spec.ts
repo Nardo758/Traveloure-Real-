@@ -233,12 +233,17 @@ test.describe("[Google Places] Expert workspace browse", () => {
     // Click the add button (left side → adds to focusDay, default Day 1).
     await addButton.click();
 
-    // After the mock 201 resolves, the button testid transitions from the split-button to the
-    // green "Added to Day N" chip.  It now contains "Day" followed by a number.
+    // After the mock 201 resolves, the React state update swaps the split-button (<button>) for
+    // the green chip (<span>).  Both share the same data-testid, but only the chip is a <span>.
+    // Scoping the locator to `span[data-testid=...]` means it can ONLY match the post-add state —
+    // the pre-click <button> element is explicitly excluded, so the assertion cannot pass early.
+    const addedChip = page.locator(`span[data-testid="button-add-gplace-${placeKey}"]`);
     await expect(
-      page.locator(`[data-testid="button-add-gplace-${placeKey}"]`),
-      '"Added to Day N" chip must appear at the same testid after a successful add',
-    ).toContainText(/Day\s+\d/, { timeout: 8_000 });
+      addedChip,
+      '"Added to Day N" chip (<span>) must appear at the same testid after a successful add',
+    ).toBeVisible({ timeout: 8_000 });
+    // The chip text must be exactly "Day 1" (focusDay default) — no "+" prefix.
+    await expect(addedChip).toContainText("Day 1");
 
     // Assert the POST body carried googlePlaceId and the correct title.
     expect(capturedPostBody, "POST to itinerary-items must have been intercepted").not.toBeNull();
