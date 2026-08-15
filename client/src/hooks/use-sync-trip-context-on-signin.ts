@@ -8,41 +8,46 @@ import {
 } from "@/lib/trip-context";
 
 /**
- * Pushes the local trip context to the server immediately after a guest becomes
- * authenticated (guest → signed-in transition). This closes the gap where a
- * guest who builds up a trip and then signs in could lose their planning if they
- * close the tab before the next local-context write fires the debounced push.
+ * sessionStorage key that marks the current session as guest-authored.
+ * Set whenever the user is not authenticated (initial load or after logout).
+ * Cleared when the user signs in.
  *
- * Ownership safety: sessionStorage survives same-tab page reloads, so a context
- * left by a previous user (user A logs out → user B signs in on same tab) must
- * not be uploaded to B's account. An OWNER_KEY stamp tracks which identity the
- * context belongs to:
- *   - No stamp / null  → built while unauthenticated (guest-owned) → safe to push
- *   - Stamp = current userId → same user returning → no duplicate push needed
- *   - Stamp = different userId → cross-account remnant → clear it, don't push
+ * This flag is what distinguishes a genuine guest context (safe to push) from
+ * a legacy pre-feature context that has no ownership stamp but was built by an
+ * authenticated user before this feature shipped. Legacy contexts must not be
+ * pushed to a newly authenticated account.
+ */
+const GUEST_PROVENANCE_KEY = "trip-context-guest-provenance";
+
+/**
+ * Manages trip context ownership across sign-in and sign-out transitions.
  *
- * Stamp-before-push: ownership is stamped at the moment of sign-in, BEFORE the
- * push attempt completes. This ensures that any planning the user creates while
- * authenticated (even if the initial push failed or there was nothing to push)
- * is immediately attributed to them. Without this, a user who signs in with an
- * empty context, writes new planning, then logs out would leave an unowned
- * context behind that a different sign-in could upload to the wrong account.
+ * On sign-in (guest → authenticated):
+ *   - Pushes the local trip context to the server if it was explicitly
+ *     built during the current guest session (GUEST_PROVENANCE_KEY is set).
+ *   - Stamps ownership immediately — before the push — so that planning
+ *     the user creates after signing in is attributed to them even if the
+ *     context was initially empty or the push failed.
+ *   - Clears cross-account remnants (a different user's stamped context)
+ *     without pushing them.
+ *   - Skips push for same-user returning (already in sync).
+ *   - Skips push for markerless legacy contexts (unknown provenance —
+ *     conservative to avoid leaking prior authenticated planning).
  *
- * Retry on re-sign-in: the tracking ref observes the previous userId value, not
- * a "handled" flag. On logout (user → null) the previous value resets, so if
- * the same user signs in again (e.g. after a network failure on the first push)
- * the effect re-fires and retries the delivery.
+ * On sign-out (authenticated → guest):
+ *   - Clears both the local context and the ownership stamp so the
+ *     subsequent guest session starts clean.
+ *   - Sets GUEST_PROVENANCE_KEY so any planning built during the new
+ *     guest session can later be identified as safely pushable.
  *
- * Delivery safety: pushTripContextNow uses fetch with keepalive:true so the
- * request survives immediate tab close or navigation after sign-in.
+ * Retry: prevUserIdRef tracks the previous userId. On logout the ref
+ * resets to null, so a subsequent sign-in (by the same or a different
+ * user) re-enters the sign-in branch and can retry a failed push.
  *
  * Call from a top-level component (e.g. Router in App.tsx).
  */
 export function useSyncTripContextOnSignIn(): void {
   const { user } = useAuth();
-  // Track the previous userId so we can detect sign-in transitions AND
-  // automatically reset when the user logs out (userId → null), enabling
-  // retry on a subsequent sign-in without any explicit "reset" step.
   const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -50,36 +55,72 @@ export function useSyncTripContextOnSignIn(): void {
     const prevUserId = prevUserIdRef.current;
     prevUserIdRef.current = userId;
 
-    // Not a sign-in transition — either still logged out or same user continuing.
-    if (!userId || userId === prevUserId) return;
+    if (!userId) {
+      if (prevUserId !== null) {
+        // Explicit logout: wipe the context and ownership stamp so the
+        // subsequent guest session starts with a clean slate and is not
+        // contaminated by this user's authenticated planning.
+        clearTripContext();
+        setContextOwner(null);
+      }
+      // Mark this tab as being in an unauthenticated (guest) session.
+      // Writing happens here (and not in updateTripContext) so the flag
+      // covers the whole guest session window, including sessions that
+      // begin on a fresh tab with no prior sign-in.
+      try {
+        sessionStorage.setItem(GUEST_PROVENANCE_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    // userId is non-null. Only act on a sign-in transition.
+    if (userId === prevUserId) return;
 
     const owner = getContextOwner();
+    const hasGuestProvenance =
+      sessionStorage.getItem(GUEST_PROVENANCE_KEY) === "1";
+
+    // Clear the guest-provenance flag — the session is now authenticated.
+    try {
+      sessionStorage.removeItem(GUEST_PROVENANCE_KEY);
+    } catch {
+      /* ignore */
+    }
+
+    // Stamp ownership immediately so that any planning the user creates
+    // after signing in (even if the context was empty, or the push below
+    // fails) is attributed to them. Without this early stamp, a user who
+    // signs in with an empty context, writes planning, then logs out would
+    // leave an unowned context that a different account's sign-in could push.
+    setContextOwner(userId);
 
     if (owner === userId) {
-      // Same user returning on this tab — context already stamped and in sync.
-      // No push needed.
+      // Same user returning on this tab — context already stamped and in
+      // sync with the server. No push needed.
       return;
     }
 
     if (owner !== null) {
-      // Cross-account remnant: a different user's stamped context is present.
-      // Clear it, stamp the new owner, and do not push (it's not their data).
+      // Cross-account remnant: a different user's stamped context is
+      // present. Clear it (stamp already updated above) to prevent
+      // their planning from appearing in this session.
       clearTripContext();
-      setContextOwner(userId);
       return;
     }
 
-    // owner is null: context was built while unauthenticated (guest-built).
-    //
-    // Stamp ownership FIRST — before the push attempt — so that any planning
-    // the user creates after signing in (including when the context was empty
-    // and pushTripContextNow() is a no-op) is immediately attributed to them.
-    // A failed push leaves the stamp set, protecting authenticated writes; the
-    // retry window is the next sign-in transition (prevUserIdRef resets on
-    // logout, so signing in again will re-enter this branch).
-    setContextOwner(userId);
+    // owner is null. Decide whether to push based on provenance:
+    if (!hasGuestProvenance) {
+      // No explicit guest-provenance flag — this is either a legacy
+      // pre-feature context (built while authenticated with no stamp) or
+      // an edge case we cannot safely classify. Skip the push to avoid
+      // leaking prior authenticated planning to this account.
+      return;
+    }
 
-    // Best-effort delivery of whatever guest planning existed before sign-in.
+    // Explicitly guest-built context: push it to the server so the user's
+    // pre-sign-in planning is not lost. keepalive:true survives tab close.
     pushTripContextNow().catch(() => {
       /* offline — best-effort; stamp already protects post-sign-in writes */
     });
