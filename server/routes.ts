@@ -1747,11 +1747,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({ message: "Expert is not yet approved" });
         }
 
-        // Persist a durable expert_requests record so the inquiry survives even if
-        // the in-process notification write were to fail. Failures here surface as
-        // 500 — we never tell the traveler "success" when persistence failed.
-        // expertRequests has no NOT NULL city constraint, making it the right table
-        // for this catalog-handoff workflow.
+        // Persist the expert_requests row and notification atomically in one
+        // transaction so a notification-write failure never leaves an orphaned,
+        // undelivered request (and vice-versa). If either insert fails the
+        // whole tx rolls back and we return 500 — the client retains the cart
+        // so the traveler can retry without duplicates.
         const traveler = await storage.getUser(userId);
         const travelerName = traveler
           ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
@@ -1770,47 +1770,56 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           `Browse-cart booking request from ${travelerName}:\n${itemSummary}` +
           (notes ? `\n\nNote: ${notes}` : "");
 
-        // Destination city is optional — passed by the client when the traveler
-        // filtered by location before sending their cart.
         const destinationCity = browseDestinationCity || null;
 
-        // Insert durable record in expert_requests (purpose-built for expert assignment,
-        // no NOT NULL city constraint like service_requests has).
-        const [inquiryRecord] = await db
-          .insert(expertRequests)
-          .values({
-            userId,
-            assignedExpertId: expertId,
-            requestType: "catalog_booking",
-            notes: inquiryNotes.slice(0, 5000),
-            status: "pending",
-            destinationCity,
-            optimizationContext: { browseCatalogItems } as any,
-          })
-          .returning({ id: expertRequests.id });
+        const { inquiryId } = await db.transaction(async (tx) => {
+          // 1. Durable request row (expert_requests has no NOT NULL city
+          //    constraint, making it the right table for this workflow).
+          const [inquiry] = await tx
+            .insert(expertRequests)
+            .values({
+              userId,
+              assignedExpertId: expertId,
+              requestType: "catalog_booking",
+              notes: inquiryNotes.slice(0, 5000),
+              status: "pending",
+              destinationCity,
+              optimizationContext: { browseCatalogItems } as any,
+            })
+            .returning({ id: expertRequests.id });
 
-        // Now deliver the in-app notification. If this throws, the outer catch
-        // returns 500 and the traveler is NOT told success (prevents silent loss).
-        await storage.createNotification({
-          userId: expertId,
-          type: "expert_inquiry",
-          title: "New Booking Request",
-          message: `${travelerName} wants help booking ${browseCatalogItems.length} activit${browseCatalogItems.length === 1 ? "y" : "ies"}:\n${itemSummary}${notes ? `\n\nNote: ${notes}` : ""}`,
-          relatedId: inquiryRecord?.id ?? userId,
-          relatedType: "service_request",
-          data: {
-            inquiryId: inquiryRecord?.id,
-            travelerId: userId,
-            travelerName,
-            browseCatalogItems,
-            notes,
-          },
+          // 2. In-app notification within the same transaction. relatedType
+          //    "expert_request" routes to the expert's requests view.
+          //    The message body contains the full item summary so the expert
+          //    can act even before opening the work-queue detail.
+          const notifMessage =
+            `${travelerName} wants help booking ${browseCatalogItems.length} activit${browseCatalogItems.length === 1 ? "y" : "ies"}:\n${itemSummary}` +
+            (notes ? `\n\nNote: ${notes}` : "");
+
+          await tx.insert(notifications).values({
+            userId: expertId,
+            type: "expert_inquiry",
+            title: "New Booking Request",
+            message: notifMessage,
+            relatedId: inquiry.id,
+            relatedType: "expert_request",
+            data: {
+              inquiryId: inquiry.id,
+              travelerId: userId,
+              travelerName,
+              browseCatalogItems,
+              destinationCity,
+              notes,
+            } as any,
+          });
+
+          return { inquiryId: inquiry.id };
         });
 
         return res.status(201).json({
           success: true,
           message: "Booking request sent to expert",
-          inquiryId: inquiryRecord?.id ?? null,
+          inquiryId,
           expertId,
           requestedAt: new Date().toISOString(),
         });
