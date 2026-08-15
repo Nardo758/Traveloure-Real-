@@ -1420,13 +1420,8 @@ export default function ProviderServices() {
         ) : viewMode === "map" ? (
           <div className="space-y-2">
             {/* Ruling 22(c): a read-only traveler-eye preview — authoring lives in the create
-                flow's Logistics step (mock item ⑨/⑩). */}
-            <p className="text-[11.5px] text-[#7A7A72]">
-              Pins, radius, zones and route stops are authored in the create flow's Logistics step —{" "}
-              <Link href="/provider/workstation">
-                <span className="text-[#35605A] underline underline-offset-2 cursor-pointer">open it →</span>
-              </Link>
-            </p>
+                flow's Logistics step. Lane M (D-2/D-6): the posture notice moved INSIDE
+                CatalogMapView so its "open it →" can land on the SELECTED listing's step 4. */}
             <CatalogMapView services={services ?? []} />
           </div>
         ) : isFilterEmpty ? (
