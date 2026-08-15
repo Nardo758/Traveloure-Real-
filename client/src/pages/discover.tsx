@@ -556,17 +556,29 @@ export default function DiscoverPage() {
     setActiveTab(urlTab);
   }, [urlTab]);
 
-  // Sync filter state FROM the URL so back/forward navigation restores the
-  // correct filters even when the component is already mounted.
-  // Each setter only fires when the URL-derived value actually changes, so
-  // there is no cascade: the state-to-URL effect below sees that the URL
-  // already matches and skips the navigate call.
-  useEffect(() => { setLocationFilter(urlLocationFilter); }, [urlLocationFilter]);
-  useEffect(() => { setSelectedCategory(urlCategory); }, [urlCategory]);
-  useEffect(() => { setSortBy(urlSortBy); }, [urlSortBy]);
-  useEffect(() => { setMinPrice(urlMinPrice); }, [urlMinPrice]);
-  useEffect(() => { setMaxPrice(urlMaxPrice); }, [urlMaxPrice]);
-  useEffect(() => { setMinRating(urlMinRating); }, [urlMinRating]);
+  // Tracks the last search string we ourselves wrote, so the URL→state reader
+  // below can skip re-applying our own writes (avoiding a read-write-read loop).
+  const lastWrittenSearch = useRef<string | null>(null);
+
+  // URL→state: sync all filter values atomically when an EXTERNAL URL change
+  // arrives (back/forward navigation, link click).  Skips URLs that the
+  // state→URL writer just pushed to avoid the race where stale state overwrites
+  // the incoming URL before the state updates have been applied.
+  useEffect(() => {
+    if (lastWrittenSearch.current !== null && searchString === lastWrittenSearch.current) {
+      // This change was from our own setLocation call — reset sentinel and bail.
+      lastWrittenSearch.current = null;
+      return;
+    }
+    const params = new URLSearchParams(searchString);
+    const handoffDest = params.get("destination") || "";
+    setLocationFilter(params.get("location") || handoffDest);
+    setSelectedCategory(params.get("category") || "all");
+    setSortBy(params.get("sortBy") || "rating");
+    setMinPrice(Number(params.get("minPrice") || "0"));
+    setMaxPrice(Number(params.get("maxPrice") || "0"));
+    setMinRating(Number(params.get("minRating") || "0"));
+  }, [searchString]); // only fires when the URL string actually changes
 
   // Keep filter selections in the URL so they survive tab switches and
   // back-navigation.  Use replace (not push) to avoid bloating history.
@@ -592,8 +604,11 @@ export default function DiscoverPage() {
     if (minRating > 0) next.set("minRating", String(minRating));
     if (sortBy && sortBy !== "rating") next.set("sortBy", sortBy);
     const newSearch = next.toString();
-    // Only navigate when the search string actually changes to avoid loops
+    // Only navigate when the search string actually changes to avoid loops.
+    // Record the value we're about to write so the URL→state reader can skip
+    // it (prevents the race where stale state overwrites back/forward entries).
     if (newSearch !== searchString) {
+      lastWrittenSearch.current = newSearch;
       setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
