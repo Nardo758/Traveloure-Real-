@@ -348,7 +348,7 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[]; packages: ExpertTemplate[]; total: number; packagesTotal: number; suggestion: string | null }>;
+  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null })[]; packages: ExpertTemplate[]; total: number; packagesTotal: number; suggestion: string | null }>;
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
@@ -2805,18 +2805,49 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Enrich page results with real provider name and profile image from users table
-    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[] = pageServices;
+    // Enrich page results with real provider name, profile image, and portfolio-wide avg rating
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null })[] = pageServices;
     if (pageServices.length > 0) {
       const userIds = [...new Set(pageServices.map(s => s.userId))];
-      const userRows = await db
-        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
-        .from(users)
-        .where(inArray(users.id, userIds));
+      const [userRows, ratingRows] = await Promise.all([
+        db
+          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+          .from(users)
+          .where(inArray(users.id, userIds)),
+        db
+          .select({
+            userId: providerServices.userId,
+            // Review-count-weighted average: sum(rating * reviews) / sum(reviews).
+            // Only approved, active services count — unapproved listings must not
+            // influence the public marketplace trust signal.
+            // Returns NULL (-> null in JS) when no approved service has any reviews.
+            avgRating: sqlOp<string | null>`
+              CASE WHEN sum(${providerServices.reviewCount}) = 0 OR sum(${providerServices.reviewCount}) IS NULL
+                   THEN NULL
+                   ELSE sum(${providerServices.averageRating}::numeric * ${providerServices.reviewCount}::numeric)
+                        / sum(${providerServices.reviewCount}::numeric)
+              END`,
+          })
+          .from(providerServices)
+          .where(and(
+            inArray(providerServices.userId, userIds),
+            eq(providerServices.status, "active"),
+            eq(providerServices.approvalStatus, "approved"),
+          ))
+          .groupBy(providerServices.userId),
+      ]);
       const userMap = new Map(userRows.map(u => [u.id, u]));
+      const ratingMap = new Map(ratingRows.map(r => [r.userId, r.avgRating]));
       enrichedServices = pageServices.map(s => {
         const u = userMap.get(s.userId);
-        return { ...s, providerFirstName: u?.firstName ?? null, providerLastName: u?.lastName ?? null, providerImageUrl: u?.profileImageUrl ?? null };
+        const avgRating = ratingMap.get(s.userId);
+        return {
+          ...s,
+          providerFirstName: u?.firstName ?? null,
+          providerLastName: u?.lastName ?? null,
+          providerImageUrl: u?.profileImageUrl ?? null,
+          providerRating: avgRating != null ? String(avgRating) : null,
+        };
       });
     }
 
