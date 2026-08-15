@@ -58,6 +58,7 @@ import {
   type InsertContentPlacementRule,
   adminNotifications,
   expertRequests,
+  serviceRequests,
   funnelEvents,
   bundleComponents,
   deliverableDownloads,
@@ -1718,41 +1719,84 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         };
       } else if (expertId && browseCatalogItems && browseCatalogItems.length > 0) {
         // Browse-cart handoff: traveler picked catalog items (Viator/Fever/etc.) on the
-        // discover page and asked a specific expert to book them. Notify that expert with
-        // a structured list of items so they can follow up.
-        try {
-          const traveler = await storage.getUser(userId);
-          const travelerName = traveler
-            ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
-            : "A traveler";
+        // discover page and asked a specific expert to book them.
+        //
+        // Security: validate the recipient is a real, eligible expert before creating
+        // any notification or inquiry record. Reject with 4xx on invalid targets so a
+        // malicious client cannot spam arbitrary user IDs.
+        const [expertRow] = await db
+          .select({ id: users.id, role: users.role, status: users.status })
+          .from(users)
+          .where(eq(users.id, expertId))
+          .limit(1);
 
-          const itemSummary = browseCatalogItems
-            .map((item) => {
-              const price = item.price != null
-                ? ` (${item.currency ?? "USD"} ${item.price.toFixed(0)})`
-                : "";
-              return `• ${item.name}${price}${item.provider ? ` via ${item.provider}` : ""}`;
-            })
-            .join("\n");
-
-          await storage.createNotification({
-            userId: expertId,
-            type: "expert_inquiry",
-            title: "New Booking Request",
-            message: `${travelerName} wants help booking ${browseCatalogItems.length} activit${browseCatalogItems.length === 1 ? "y" : "ies"}:\n${itemSummary}${notes ? `\n\nNote: ${notes}` : ""}`,
-            relatedId: userId,
-            relatedType: "user",
-            data: {
-              travelerId: userId,
-              travelerName,
-              browseCatalogItems,
-              notes,
-            },
-          });
-        } catch (browseErr) {
-          console.error("Failed to notify expert of browse-cart request:", browseErr);
-          // Non-fatal: return success so the UI can still confirm to the traveler
+        if (!expertRow) {
+          return res.status(404).json({ message: "Expert not found" });
         }
+        if (!isExpertRole(expertRow.role)) {
+          return res.status(400).json({ message: "Target user is not an expert" });
+        }
+        if (expertRow.status !== "verified" && expertRow.status !== "approved") {
+          return res.status(400).json({ message: "Expert is not yet verified" });
+        }
+
+        // Persist a durable service_requests record so the inquiry survives even if
+        // the in-process notification write were to fail. Failures here surface as
+        // 500 — we never tell the traveler "success" when persistence failed.
+        const traveler = await storage.getUser(userId);
+        const travelerName = traveler
+          ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+          : "A traveler";
+
+        const itemSummary = browseCatalogItems
+          .map((item) => {
+            const price = item.price != null
+              ? ` (${item.currency ?? "USD"} ${Number(item.price).toFixed(0)})`
+              : "";
+            return `• ${item.name}${price}${item.provider ? ` via ${item.provider}` : ""}`;
+          })
+          .join("\n");
+
+        const inquiryDescription =
+          `Browse-cart booking request from ${travelerName}:\n${itemSummary}` +
+          (notes ? `\n\nNote: ${notes}` : "");
+
+        // Insert a service_requests row so the inquiry is durable and admin-visible
+        const [inquiryRecord] = await db
+          .insert(serviceRequests)
+          .values({
+            travelerId: userId,
+            serviceType: "catalog_booking",
+            description: inquiryDescription.slice(0, 5000),
+            status: "open",
+          } as any)
+          .returning({ id: serviceRequests.id });
+
+        // Now deliver the in-app notification. If this throws, the outer catch
+        // returns 500 and the traveler is NOT told success (prevents silent loss).
+        await storage.createNotification({
+          userId: expertId,
+          type: "expert_inquiry",
+          title: "New Booking Request",
+          message: `${travelerName} wants help booking ${browseCatalogItems.length} activit${browseCatalogItems.length === 1 ? "y" : "ies"}:\n${itemSummary}${notes ? `\n\nNote: ${notes}` : ""}`,
+          relatedId: inquiryRecord?.id ?? userId,
+          relatedType: "service_request",
+          data: {
+            inquiryId: inquiryRecord?.id,
+            travelerId: userId,
+            travelerName,
+            browseCatalogItems,
+            notes,
+          },
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "Booking request sent to expert",
+          inquiryId: inquiryRecord?.id ?? null,
+          expertId,
+          requestedAt: new Date().toISOString(),
+        });
       } else if (tripId) {
         // No specific service — route inquiry to relevant experts for the trip destination
         try {
