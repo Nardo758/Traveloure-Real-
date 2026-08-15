@@ -266,8 +266,7 @@ after(async () => {
 test("R1: route-stamped provider_earnings equals the shared recipe (default band)", async () => {
   const price = 110;
 
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  const serviceId = await makeService(price.toFixed(2));
   const expected = await recipeExpectation(price);
   assert.ok(Number(expected.stamped) > 0, "recipe expectation must be a positive payout");
 
@@ -390,9 +389,8 @@ test("R4: inactive concierge band causes checkout to 503 honestly — no booking
 test("R5: provider-owned service routes through the provider-source branch (isProviderRole)", async () => {
   const price = 110;
 
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
-  const expected = await recipeExpectation(price);
+  const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.provider);
+  const expected = await recipeExpectation(price, undefined, { source: "provider", providerId: ids.provider });
   assert.ok(Number(expected.stamped) > 0, "provider-source recipe expectation must be a positive payout");
 
   // Belt-and-braces discriminator: the provider user carries a per-expert EXP-OVR override
@@ -424,11 +422,10 @@ test("R5: provider-owned service routes through the provider-source branch (isPr
 test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
   const price = 110;
 
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  // Service owned by the expert (no concierge offering type on provider path — tests the expert
-  // booking_concierge path, which is the route's primary concierge scenario).
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  // Service owned by the expert and tagged as booking_concierge — tests the expert
+  // booking_concierge path, which is the route's primary concierge scenario.
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
   // Live concierge rate from fee_bands (no fee literal); must be positive so the preview figure
   // is distinguishable from a $0 concierge fee (misconfigured-band silent failure).
@@ -610,9 +607,8 @@ test("R8: mixed cart (expert item + provider item) stamps each row with its OWN 
 test("R7: fee-preview with a concierge item and a missing band ⇒ machine-readable 503, never a $0 fee", async () => {
   const price = 110;
 
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
   // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
   // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.
