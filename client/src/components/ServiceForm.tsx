@@ -3263,8 +3263,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                         description: formData.description.trim(),
                       });
                       const data = await res.json();
-                      if (data.suggestion) {
-                        set("shortDescription", data.suggestion.slice(0, 150));
+                      const trimmed = typeof data.suggestion === "string" ? data.suggestion.trim() : "";
+                      if (trimmed) {
+                        set("shortDescription", trimmed.slice(0, 150));
+                      } else {
+                        toast({ title: "Couldn't generate a useful suggestion — try editing your description", variant: "destructive" });
                       }
                     } catch {
                       toast({ title: "Couldn't generate a suggestion", variant: "destructive" });
