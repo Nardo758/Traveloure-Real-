@@ -1139,4 +1139,10 @@ export const MIGRATION_FILES = [
   // rows). The extractor now filters them at source (CHOME_BLOCK_PATTERN); this cleans
   // up what's already on disk. Data-only, idempotent, no schema change — no publish trap.
   "227_purge_chome_neighborhood_rows.sql",
+  // 228: message safety — user_blocks and message_reports tables. user_blocks fences
+  // blocked pairs from messaging each other (enforced on all write paths). message_reports
+  // is an append-only moderation queue for admins to action. All idempotent DDL; no
+  // column/enum changes; no publish-trap risk (plain varchar status/reason fields, not PG
+  // enums). Schema declared in shared/schema.ts same commit.
+  "228_message_blocks_reports.sql",
 ] as const;

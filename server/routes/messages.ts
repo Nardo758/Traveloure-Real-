@@ -16,6 +16,13 @@ import {
   searchMessages,
   assertRecipientExists,
   hasExistingConversation,
+  blockUser,
+  unblockUser,
+  getBlockedByUser,
+  isBlockedBetween,
+  reportMessage,
+  reportUser,
+  BlockedUserError,
 } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
@@ -182,6 +189,9 @@ router.post("/", isAuthenticated, async (req, res) => {
 
     res.status(201).json(result);
   } catch (error) {
+    if (error instanceof BlockedUserError) {
+      return res.status(403).json({ message: "You cannot send messages to this user." });
+    }
     console.error(error);
     res.status(500).json({ message: "Failed to send message" });
   }
@@ -245,6 +255,103 @@ router.post("/typing/:conversationId", isAuthenticated, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: "Failed to update typing status" });
+  }
+});
+
+// ─── Block / unblock ─────────────────────────────────────────────────────────
+
+router.post("/block/:targetUserId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { targetUserId } = req.params;
+    if (targetUserId === userId) {
+      return res.status(400).json({ message: "Cannot block yourself" });
+    }
+    const exists = await assertRecipientExists(targetUserId);
+    if (!exists) return res.status(404).json({ message: "User not found" });
+    await blockUser(userId, targetUserId);
+    res.json({ success: true, blocked: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to block user" });
+  }
+});
+
+router.delete("/block/:targetUserId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { targetUserId } = req.params;
+    await unblockUser(userId, targetUserId);
+    res.json({ success: true, blocked: false });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to unblock user" });
+  }
+});
+
+router.get("/block/status/:targetUserId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { targetUserId } = req.params;
+    const blockedByMe = (await getBlockedByUser(userId)).includes(targetUserId);
+    const blockedByThem = await isBlockedBetween(userId, targetUserId);
+    res.json({ blockedByMe, blocked: blockedByThem });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to get block status" });
+  }
+});
+
+// ─── Reporting ────────────────────────────────────────────────────────────────
+
+const reportSchema = z.object({
+  reason: z.enum(["spam", "harassment", "inappropriate", "other"]),
+  details: z.string().max(1000).optional(),
+});
+
+router.post("/report/message/:messageId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const validation = reportSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ message: validation.error.errors[0]?.message });
+    }
+    const { reason, details } = validation.data;
+    const { messageId } = req.params;
+
+    const message = await getMessageById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+    // Only the recipient can report a message they received
+    if (message.receiverId !== userId) {
+      return res.status(403).json({ message: "Can only report messages sent to you" });
+    }
+    const result = await reportMessage(userId, message.senderId, messageId, reason, details);
+    res.status(201).json({ success: true, reportId: result.id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to submit report" });
+  }
+});
+
+router.post("/report/user/:targetUserId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const validation = reportSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ message: validation.error.errors[0]?.message });
+    }
+    const { reason, details } = validation.data;
+    const { targetUserId } = req.params;
+    if (targetUserId === userId) {
+      return res.status(400).json({ message: "Cannot report yourself" });
+    }
+    const exists = await assertRecipientExists(targetUserId);
+    if (!exists) return res.status(404).json({ message: "User not found" });
+    const result = await reportUser(userId, targetUserId, reason, details);
+    res.status(201).json({ success: true, reportId: result.id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to submit report" });
   }
 });
 
