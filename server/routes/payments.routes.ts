@@ -239,6 +239,14 @@ router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
 
 router.get("/api/revenue-splits", async (req, res) => {
     try {
+      // Task 1151 (workspace reconciliation): revenue splits expose commercially
+      // sensitive rate config (§18 posture) — admin-only.
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       const splits = await storage.getRevenueSplits();
       res.json(splits);
     } catch (err) {
@@ -712,11 +720,14 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
         });
 
         const provider = await storage.getUser(String(raw.provider_id));
-        if (provider?.email) {
+        // Migration 225: skip alert email when provider has opted out (emailBookingAlerts
+        // defaults to true — existing providers are unaffected until they toggle it off).
+        if (provider?.email && provider.emailBookingAlerts !== false) {
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
           await sendBookingAlertEmail({
-            providerEmail: provider.email,
+            // Migration 224: route alerts to the dedicated notification email when set.
+            providerEmail: provider.notificationEmail || provider.email,
             providerName,
             bookingId,
             serviceName: raw.service_name ?? "a service",

@@ -80,6 +80,10 @@ export const users = pgTable("users", {
   stripeAccountId: varchar("stripe_account_id", { length: 255 }),
   stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
   canReceivePayments: boolean("can_receive_payments").default(false),
+  // Notification email (migration 207): experts/providers can set a separate business
+  // email for booking alert emails. Falls back to `email` when null. Never used for
+  // login/auth — account email is always authoritative for security flows.
+  notificationEmail: varchar("notification_email", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).
@@ -99,8 +103,16 @@ export const users = pgTable("users", {
   // (enforcement lands in the feature build, not here). Confirmed bookings are unaffected.
   vacationUntil: timestamp("vacation_until"),
   vacationMessage: varchar("vacation_message", { length: 200 }),
+  // Migration 223: opt-out flag for booking-alert emails. Default true = send alerts. Experts
+  // can disable this from Settings → Notifications so they rely on in-app notifications only.
+  emailBookingAlerts: boolean("email_booking_alerts").default(true),
 }, (table) => [
   index("users_role_idx").on(table.role),
+  // Migrations 102 + 105: partial indexes for soft-delete and suspension fast-paths.
+  // Declared here — drizzle push drops indexes not present in this file, which would
+  // remove these before any migration re-runs them.
+  index("users_is_deleted_idx").on(table.isDeleted).where(sql`is_deleted = true`),
+  index("users_is_suspended_idx").on(table.id).where(sql`is_suspended = true`),
 ]);
 
 export type UpsertUser = typeof users.$inferInsert;
@@ -119,7 +131,12 @@ export const passwordResetTokens = pgTable(
     usedAt: timestamp("used_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
-  (table) => [index("idx_password_reset_user").on(table.userId)],
+  (table) => [
+    index("idx_password_reset_user").on(table.userId),
+    // Migration 021: partial index for token expiry scans (only un-used tokens).
+    // Declared here — drizzle push drops undeclared indexes on publish.
+    index("idx_password_reset_expires").on(table.expiresAt).where(sql`used_at IS NULL`),
+  ],
 );
 
 // Email verification on signup. Same shape as password_reset_tokens — single-use,
@@ -135,5 +152,10 @@ export const emailVerificationTokens = pgTable(
     usedAt: timestamp("used_at"),
     createdAt: timestamp("created_at").defaultNow(),
   },
-  (table) => [index("idx_email_verification_user").on(table.userId)],
+  (table) => [
+    index("idx_email_verification_user").on(table.userId),
+    // Migration 022: partial index for token expiry scans (only un-used tokens).
+    // Declared here — drizzle push drops undeclared indexes on publish.
+    index("idx_email_verification_expires").on(table.expiresAt).where(sql`used_at IS NULL`),
+  ],
 );

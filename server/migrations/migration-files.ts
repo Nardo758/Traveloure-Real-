@@ -1,3 +1,4 @@
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1111,4 +1112,25 @@ export const MIGRATION_FILES = [
   // accurate freshness signal via GET /api/admin/travelpayouts-cache/status. No default so
   // pre-migration rows carry NULL (surfaced as "unknown" by the status endpoint).
   "222_travelpayouts_cache_refreshed_at.sql",
+  // 223: One-time backfill of bookings_count and total_revenue on provider_services from
+  // existing service_bookings rows. The live code keeps these counters in sync for new
+  // bookings; this recalculates both fields for any pre-existing bookings that were created
+  // before the sync logic was in place. Fully idempotent UPDATE (re-derives from source of
+  // truth; safe to re-run). Only updates services that have at least one booking row.
+  "223_backfill_service_booking_counters.sql",
+  // 224: add notification_email to users. Experts/providers can set a separate
+  // business email for booking alert emails; falls back to users.email when NULL.
+  // Never touches auth flows. Idempotent (ADD COLUMN IF NOT EXISTS).
+  "224_notification_email.sql",
+  // 225: add email_booking_alerts boolean (default true) to users. Experts can disable
+  // booking-alert emails from Settings → Notifications; the flag is checked at all
+  // sendBookingAlertEmail call sites before the email is dispatched.
+  "225_email_booking_alerts.sql",
+  // 226: retire the `_deprecated_expert_city_queues` table deliberately — following the
+  // guarded-drop pattern of migrations 158/167/168. The table was replaced by
+  // scoring-based lead routing (expert_requests) in 2026-06; it has zero code references
+  // and was absent from shared/schema.ts (making it a silent DROP candidate on every
+  // publish). All 10 rows were empty seed records (expert_ids=[], active_requests=0);
+  // archived to legacy_archives before dropping. Guard refuses if any live rows are found.
+  "226_retire_deprecated_expert_city_queues.sql",
 ] as const;

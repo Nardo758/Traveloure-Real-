@@ -215,6 +215,8 @@ const settingsPatchSchema = z.object({
   // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
   // now a real persisted preference (display opt-in only, no money/ranking semantics here).
   showOnLeaderboard: z.boolean().optional(),
+  // Migration 225: DB-backed column on users (not JSONB). Written to users.email_booking_alerts.
+  emailBookingAlerts: z.boolean().optional(),
 }).strict();
 
 router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
@@ -222,13 +224,18 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
     const [me] = await db
-      .select({ preferences: users.preferences })
+      .select({ preferences: users.preferences, emailBookingAlerts: users.emailBookingAlerts })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
     if (!me) return res.status(401).json({ message: "Authentication required" });
     const prefs = (me.preferences as any) ?? {};
-    res.json(prefs.settings ?? {});
+    // Migration 225: merge the DB-backed emailBookingAlerts column into the settings
+    // payload so the client sees it alongside the JSONB preferences.
+    res.json({
+      ...(prefs.settings ?? {}),
+      emailBookingAlerts: me.emailBookingAlerts ?? true,
+    });
   } catch (err) {
     console.error("[me/preferences] read error:", err);
     res.status(500).json({ message: "Failed to load preferences" });
@@ -265,12 +272,15 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         : {}),
     };
 
-    await db
-      .update(users)
-      .set({ preferences: { ...current, settings: nextSettings } })
-      .where(eq(users.id, userId));
+    // Migration 225: emailBookingAlerts is a real column, not a JSONB key — split it out
+    // of the settings merge and write it alongside (checked at every booking-alert send site).
+    const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
+    if (parsed.data.emailBookingAlerts !== undefined) {
+      columnUpdate.emailBookingAlerts = parsed.data.emailBookingAlerts;
+    }
+    await db.update(users).set(columnUpdate as any).where(eq(users.id, userId));
 
-    res.json(nextSettings);
+    res.json({ ...nextSettings, ...(parsed.data.emailBookingAlerts !== undefined ? { emailBookingAlerts: parsed.data.emailBookingAlerts } : {}) });
   } catch (err) {
     console.error("[me/preferences] write error:", err);
     res.status(500).json({ message: "Failed to save preferences" });
@@ -997,6 +1007,61 @@ router.get("/ready-made/:id", async (req, res, next) => {
   } catch (err) {
     console.error("[storefront] OG injection error (ready-made):", err);
     return next(); // fall through to SPA on any error
+  }
+});
+
+// ── Notification email (migration 224) ─────────────────────────────────────
+// GET  /api/me/notification-email  — return current value (null if unset)
+// PATCH /api/me/notification-email — set or clear; earner-only, own record only
+
+const notificationEmailSchema = z.object({
+  notificationEmail: z
+    .string()
+    .email("Must be a valid email address")
+    .max(255)
+    .nullable()
+    .optional(),
+});
+
+router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
+  try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
+    const userId = getUserId(req)!;
+    const [row] = await db
+      .select({ notificationEmail: users.notificationEmail })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return res.json({ notificationEmail: row?.notificationEmail ?? null });
+  } catch (err) {
+    console.error("[notification-email] GET error:", err);
+    return res.status(500).json({ message: "Failed to fetch notification email" });
+  }
+});
+
+router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
+  try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
+    const userId = getUserId(req)!;
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const { notificationEmail } = parsed.data;
+    await db
+      .update(users)
+      .set({ notificationEmail: notificationEmail ?? null })
+      .where(eq(users.id, userId));
+    return res.json({ notificationEmail: notificationEmail ?? null });
+  } catch (err) {
+    console.error("[notification-email] PATCH error:", err);
+    return res.status(500).json({ message: "Failed to update notification email" });
   }
 });
 

@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
 
-import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
+import { Camera, Mail, Bell, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -31,6 +31,36 @@ export default function Profile() {
   const [isLoading, setIsLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Notification email — for earner roles only (expert-family + service_provider; NOT executive_assistant)
+  const EARNER_ROLES = new Set(["expert","local_expert","travel_expert","event_planner","service_provider"]);
+  const isEarner = user?.role != null && EARNER_ROLES.has(user.role);
+  const [notificationEmail, setNotificationEmail] = useState<string>("");
+  const [notificationEmailError, setNotificationEmailError] = useState<string>("");
+  const hydratedNotifEmail = useRef(false);
+
+  const { data: savedNotificationEmail } = useQuery<{ notificationEmail: string | null }>({
+    queryKey: ["/api/me/notification-email"],
+    enabled: !!isEarner,
+  });
+
+  useEffect(() => {
+    if (!savedNotificationEmail || hydratedNotifEmail.current) return;
+    hydratedNotifEmail.current = true;
+    setNotificationEmail(savedNotificationEmail.notificationEmail ?? "");
+  }, [savedNotificationEmail]);
+
+  const saveNotificationEmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/me/notification-email", {
+        notificationEmail: notificationEmail.trim() || null,
+      });
+      return res.json() as Promise<{ notificationEmail: string | null }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/notification-email"] });
+    },
+  });
 
   // H8: Travel Preferences — persisted via GET/PATCH /api/me/travel-preferences
   // (users.preferences.travelPreferences, no schema change). Hydrates once from the saved
@@ -95,17 +125,46 @@ export default function Profile() {
     toast({ title: "Photo removed", description: "Your profile photo has been removed." });
   };
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateNotificationEmail = (value: string): string => {
+    if (value.trim() === "") return "";
+    return EMAIL_RE.test(value.trim()) ? "" : "Please enter a valid email address.";
+  };
+
+  const handleNotificationEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNotificationEmail(value);
+    // Clear error immediately once the value becomes empty or valid
+    if (value.trim() === "" || EMAIL_RE.test(value.trim())) {
+      setNotificationEmailError("");
+    }
+  };
+
+  const handleNotificationEmailBlur = () => {
+    setNotificationEmailError(validateNotificationEmail(notificationEmail));
+  };
+
   const handleSave = async () => {
+    if (isEarner) {
+      const emailErr = validateNotificationEmail(notificationEmail);
+      if (emailErr) {
+        setNotificationEmailError(emailErr);
+        return;
+      }
+    }
     setIsLoading(true);
     try {
-      await saveTravelPreferencesMutation.mutateAsync();
+      const saves: Promise<any>[] = [saveTravelPreferencesMutation.mutateAsync()];
+      if (isEarner) saves.push(saveNotificationEmailMutation.mutateAsync());
+      await Promise.all(saves);
       toast({
         title: "Profile updated",
         description: "Your profile has been saved successfully.",
       });
     } catch (err: any) {
       toast({
-        title: "Couldn't save your travel preferences",
+        title: "Couldn't save your profile",
         description: err?.message || "Please try again.",
         variant: "destructive",
       });
@@ -247,6 +306,50 @@ export default function Profile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Notification email — experts and providers only */}
+        {isEarner && (
+          <Card className="border border-border">
+            <CardHeader>
+              <CardTitle className="text-lg text-foreground dark:text-white flex items-center gap-2">
+                <Bell className="w-4 h-4 text-muted-foreground" />
+                Booking Notifications
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Choose where booking alert emails are delivered
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="notificationEmail" className="text-foreground dark:text-white flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  Notification email
+                </Label>
+                <Input
+                  id="notificationEmail"
+                  type="email"
+                  placeholder={user?.email || "your@business.com"}
+                  value={notificationEmail}
+                  onChange={handleNotificationEmailChange}
+                  onBlur={handleNotificationEmailBlur}
+                  className={`border-border${notificationEmailError ? " border-destructive" : ""}`}
+                  data-testid="input-notification-email"
+                  aria-invalid={!!notificationEmailError}
+                  aria-describedby={notificationEmailError ? "notification-email-error" : "notification-email-hint"}
+                />
+                {notificationEmailError ? (
+                  <p id="notification-email-error" className="text-xs text-destructive" data-testid="error-notification-email">
+                    {notificationEmailError}
+                  </p>
+                ) : (
+                  <p id="notification-email-hint" className="text-xs text-muted-foreground">
+                    Booking alerts will go here instead of your account email. Leave blank to use your account email.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Payment Methods (FP-2) */}
         <PaymentMethodsCard />
