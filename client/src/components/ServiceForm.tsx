@@ -3248,7 +3248,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 Short Description{" "}
                 <span className="text-muted-foreground font-normal">(shown on browse cards)</span>
               </Label>
-              {formData.description.trim() && !formData.shortDescription && (
+              {formData.description.trim() && (
                 <Button
                   type="button"
                   variant="outline"
@@ -3278,6 +3278,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       <Loader2 className="h-3 w-3 animate-spin mr-1" />
                       Suggesting…
                     </>
+                  ) : formData.shortDescription ? (
+                    "Regenerate"
                   ) : (
                     "Suggest short description"
                   )}

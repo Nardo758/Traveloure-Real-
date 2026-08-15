@@ -120,7 +120,7 @@ function TravelpayoutsCachePanel({ data }: { data: TravelpayoutsCacheStatusRespo
                     {brand.isStale ? "Stale" : "Fresh"}
                   </Badge>
                 </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                   <span>
                     Keys: {brand.freshKeys} fresh / {brand.staleKeys} stale / {brand.totalKeys} total
                   </span>
