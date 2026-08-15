@@ -10,7 +10,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -4620,8 +4620,8 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
         storage.getAllProviderPayouts(status),
       ]);
       const allPayouts = [
-        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
-        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
+        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const, isStale: isPayoutStale(p) })),
+        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const, isStale: isPayoutStale(p) })),
       ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {

@@ -23,6 +23,20 @@ import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/back
 // The one Money ledger endpoint (GET /api/expert/earnings/details, server/routes/experts.routes.ts:220)
 // backed by revenue-tracking.service.ts:252-276. Vocabulary: `availableEarnings` = RELEASABLE (cleared,
 // payable now); `pendingEarnings` = HELD in escrow. This page is its first consumer.
+
+// Task 1193: mirror the server's STALE_PAYOUT_CONTACT_DAYS constant — if a pending/processing
+// payout is older than this many days, show a "Contact support" nudge beneath that row so the
+// earner knows there is a self-service escalation path. The gate bypass (14 days) is server-only;
+// this shorter window is purely informational.
+const PAYOUT_CONTACT_DAYS = 7;
+
+function isPayoutOverdueForContact(payout: { status: string; requestedAt: string }): boolean {
+  if (payout.status !== "pending" && payout.status !== "processing") return false;
+  const requestedAt = new Date(payout.requestedAt);
+  if (isNaN(requestedAt.getTime())) return false;
+  return (Date.now() - requestedAt.getTime()) / 86_400_000 > PAYOUT_CONTACT_DAYS;
+}
+
 interface ExpertEarningRow {
   id: string;
   amount: string;
@@ -96,6 +110,8 @@ export default function ExpertEarnings() {
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
+      } else if (msg.includes("payout_processing_stale")) {
+        toast({ title: "Payout stuck in processing", description: "Your payout has been in processing for over 14 days. Contact support to resolve it.", variant: "destructive" });
       } else if (msg.includes("stripe_not_connected")) {
         toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
@@ -265,21 +281,48 @@ export default function ExpertEarnings() {
             <CardContent>
               {payouts.length > 0 ? (
                 <div className="space-y-3">
-                  {payouts.map((payout) => (
-                    <div
-                      key={payout.id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
-                      data-testid={`payout-${payout.id}`}
-                    >
-                      <div>
-                        <p className="font-medium text-console-darkest">
-                          ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                        <p className="text-sm text-console-mid">{new Date(payout.requestedAt).toLocaleDateString()}</p>
+                  {payouts.map((payout) => {
+                    const overdue = isPayoutOverdueForContact(payout);
+                    return (
+                      <div
+                        key={payout.id}
+                        className="p-3 rounded-lg border border-console-light bg-console-bg"
+                        data-testid={`payout-${payout.id}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-console-darkest">
+                              ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-sm text-console-mid">
+                              Requested {new Date(payout.requestedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <StatusBadge status={payout.status} />
+                        </div>
+                        {/* Task 1193: stale-payout nudge — appears after PAYOUT_CONTACT_DAYS of
+                            no resolution so the earner knows there is an escalation path. The 14-day
+                            server gate (STALE_PAYOUT_PROCESSING_DAYS) allows a fresh request after
+                            that window; this shorter 7-day nudge is purely informational. */}
+                        {overdue && (
+                          <p
+                            className="mt-2 text-xs text-amber-700"
+                            data-testid={`text-payout-stale-${payout.id}`}
+                          >
+                            This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
+                            <a
+                              href="mailto:support@traveloure.com"
+                              className="underline font-medium"
+                              data-testid={`link-payout-support-${payout.id}`}
+                            >
+                              Contact support
+                            </a>{" "}
+                            if you need help.
+                          </p>
+                        )}
                       </div>
-                      <StatusBadge status={payout.status} />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <EmptyState title="No payout requests yet" body="Request a payout from your available balance above." testId="empty-payouts" />
