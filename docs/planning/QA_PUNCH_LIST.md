@@ -2055,6 +2055,56 @@ the edit-split rail (ruling 112 Q8, CLAUDE.md Locked Decision 23, migration 215,
   (22 tests, wired into provider/expert/traveler write paths). When that branch PRs, fold to ONE
   sanitizer (keep text-sanitizer as canonical; port any case their tests cover that ours miss).
 
+## Folded in Aug 15, 2026 — Distribute-vs-mock audit (Claude-in-Chrome, artifact d1c16852; 11 findings, 0 P1)
+
+Audit compared /provider/distribute against the ratified mockup
+(docs/design/provider-console-mockup/mockup.html). Verdict "DIVERGES": 6 P2 + 5 P3. Triage: 7 fixed
+in the conformance lane (this PR), 3 accepted-as-built (mock to be amended), 1 filed as enhancement.
+Audit coverage caveats stand: the CI reviewer account had 0 live listings and no handle, and mobile
+was unverified — re-audit those two surfaces opportunistically.
+
+### Fixed here (lane D — Distribute mock conformance)
+
+- **D-1 (P2, FIXED).** Arriving from Catalog's "Promote this →" (`?listing=<id>`) gave no arrival
+  context. Now: `banner-promote-arrival` — Catalog › Distribute › «name» crumbs, "Promoting «name»",
+  ← Back to Catalog. Stale/foreign ids still silently ignored (unchanged selection posture).
+- **D-2 (P2, FIXED).** Storefront card led with the generic "Your storefront" while the mock leads
+  with WHOSE page it is. Now: avatar (profileImageUrl or shared `initialsFromUser`) + business name
+  (businessName → firstName+lastName fallback — same chain as Profile/sidebar), "Your storefront"
+  demoted to eyebrow.
+- **D-4 (P2, FIXED).** Direct link required a separate "Get link" step before Copy/QR existed.
+  Now: Copy link / WhatsApp / Show QR render immediately; the first action mints the tracked /r/
+  link inline (`ensureUrl()`), then acts. §13 held: the URL text renders only once the code exists.
+- **D-5 (P3, FIXED).** Card title "Social kit" → "Share kit" (mock verbatim). Internal
+  names/testids keep the original channel vocabulary.
+- **D-7 (P3, FIXED).** Frame sublabels led with pixel dimensions. Now purpose-first: "Feed post ·
+  portrait card · 1080×1350", "Story · full-screen · 1080×1920", "Route map · portrait card ·
+  1080×1350".
+- **D-8 (P2, FIXED).** Route frame carried no on-surface honesty statement. Now a guardrail line
+  under the Route label: "Shows your stops in order — not a travel route, and no distances or
+  times" (ruling 22(c) stated where the provider sees it).
+- **D-11 (P3, FIXED).** Storefront badge "Live · N approved service(s)" spoke approval vocabulary.
+  Now "Live · showing X of Y listings" (X = approved+active, Y = all owner listings — same
+  predicate, clearer claim about what the public page shows).
+
+### Accepted as built — mock amendments (no code change)
+
+- **D-3 (P2, ACCEPT + AMEND MOCK).** Mock shows storefront URL as `traveloure.com/@handle`; built
+  namespace is `/p/:handle` and is load-bearing (OG injection, `/r/` short-link expansion, reserved
+  handles, ruling 116 language overlay all key on `/p/`). KEEP `/p/`; amend the mock.
+- **D-6 (P2, ACCEPT + AMEND MOCK).** Mock's feed frame is square 1080×1080; built is 1080×1350
+  4:5 portrait — the higher-performing IG feed shape and what the satori template renders. KEEP
+  1080×1350; amend the mock.
+- **D-9 (P3, ACCEPT AS BUILT).** Section titles differ slightly from mock ("Marketplace" card copy
+  etc.) — built titles are more accurate to what each channel does; mock titles were placeholders.
+
+### Filed (enhancement, needs its own lane)
+
+- **D-10 (P3, FILED).** Mock sketches per-channel "last shared" recency hints on the channel strip.
+  Needs a data source (short-link mint timestamps exist; share-action events don't) — and any
+  metric rendering on Distribute must stay within ruling 74 disp. 8 / 22(d) (measurement lives on
+  Performance). Design first, then a lane.
+
 ## Folded in Aug 15, 2026 — Logistics/map audit (Claude-in-Chrome round 2; 17 findings, 2 P1)
 
 Audit compared Catalog → Map (traveler preview) and Workstation → step 4 "Logistics" against the
