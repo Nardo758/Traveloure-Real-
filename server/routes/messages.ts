@@ -23,7 +23,24 @@ const sendMessageSchema = z.object({
   recipientId: z.string().optional(),
   conversationId: z.string().optional(),
   message: z.string().min(1, "Message cannot be empty"),
-  attachment: z.string().url().optional(),
+  // Defensive validation: nothing renders this field today, but stored URLs flow back out of
+  // the API, so reject dangerous schemes (javascript:, data:, file:, ...) at the door.
+  // Only https URLs are accepted; loosen deliberately (with a host allowlist) if a real
+  // attachment-upload feature is ever built.
+  attachment: z
+    .string()
+    .url()
+    .refine(
+      (value) => {
+        try {
+          return new URL(value).protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+      { message: "Attachment must be an https:// URL" },
+    )
+    .optional(),
 });
 
 router.get("/", isAuthenticated, async (req, res) => {

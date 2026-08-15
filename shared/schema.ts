@@ -1890,7 +1890,24 @@ export const insertTripSchema = createInsertSchema(trips).omit({
 });
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats).omit({ id: true, createdAt: true });
+export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    // Defensive invariant shared by every public chat write (/api/chats, /api/messages):
+    // attachment URLs must be https — rejects javascript:, data:, file:, http: etc. Nothing
+    // renders this field today, but stored URLs flow back out of the API.
+    attachment: z
+      .string()
+      .url()
+      .refine((value) => {
+        try {
+          return new URL(value).protocol === "https:";
+        } catch {
+          return false;
+        }
+      }, "Attachment must be an https:// URL")
+      .nullish(),
+  });
 export const insertTouristPlaceResultSchema = createInsertSchema(touristPlaceResults).omit({ id: true });
 export const insertHelpGuideTripSchema = createInsertSchema(helpGuideTrips).omit({ id: true, userId: true, createdAt: true });
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
