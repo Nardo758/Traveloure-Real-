@@ -4,6 +4,8 @@ import type { RequestHandler } from "express";
 import { storage } from "./storage";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
+import { hasExistingConversation } from "./services/messages.service";
+import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 
 // `log` previously came from "./index" — the only file in server/ importing back into
 // the app entrypoint, which drags in and RUNS the entire bootstrap (migrations, DB
@@ -55,6 +57,9 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", (ws, req: IncomingMessage) => {
+    // Real socket peer address (not a spoofable header) — scopes the messaging
+    // rate-limiter's CI bypass to loopback only, matching the HTTP paths.
+    const peerIp = req.socket?.remoteAddress ?? null;
     // The session lookup below is async (a real DB round-trip via connect-pg-simple),
     // but the WebSocket handshake itself already completed by the time "connection"
     // fires — a legitimate client (see client/src/hooks/use-websocket.ts) sends its
@@ -139,6 +144,20 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
           }
 
           try {
+            // Messaging rate limit (same limits as the HTTP send paths). On breach we
+            // send an error frame instead of persisting, so socket sends can't bypass it.
+            const isNewConversation = !(await hasExistingConversation(userId, message.recipientId));
+            const rate = checkMessageRateLimit({ senderId: userId, recipientId: message.recipientId, isNewConversation, peerIp });
+            if (!rate.allowed) {
+              ws.send(JSON.stringify({
+                type: "error",
+                error: rate.message ?? "You're sending messages too quickly. Please slow down.",
+                scope: rate.scope,
+                retryAfter: rate.retryAfterSec,
+              }));
+              break;
+            }
+
             // senderId is the session-resolved userId — a forged message.senderId in the
             // payload is never read (MT-1). storage.createChat is the shared write path
             // with POST /api/chats and also fires the MT-2 recipient notification.
