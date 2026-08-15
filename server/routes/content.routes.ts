@@ -5991,7 +5991,7 @@ router.get("/api/search/experiences", async (req, res) => {
           console.warn("[viator] VIATOR_API_KEY is not set — skipping Viator search");
         }
       }
-      if (includeViator && !viatorServiceNotice) try {
+      if (includeViator && !viatorServiceNotice) {
         // Combine free-text query with destination so results are scoped to the right city.
         // Pattern mirrors the Google Places arm: [q, destination].filter(Boolean).join(" in ").
         // If only destination is provided (no search text), destination alone is the search term.
@@ -6004,35 +6004,36 @@ router.get("/api/search/experiences", async (req, res) => {
           // to a category that Viator never covers (dining=restaurant, hotels=lodging).
           const viatorCatMatch = !catLower || catLower === "all" || catLower === "activities" || catLower === "transport";
           if (viatorCatMatch) {
+            // searchByFreetext never throws — it catches all HTTP/network errors internally
+            // and returns { unavailable: true } so we can surface an honest notice rather than
+            // silently showing an empty "No Viator results" state.
             const viatorResult = await viatorService.searchByFreetext(searchTerm, "USD", 15);
-            const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-            for (const product of (viatorResult.products || [])) {
-              const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
-              const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
-              const fromPrice = product.pricing?.summary?.fromPrice;
-              results.push({
-                id: `vtr_${product.productCode}`,
-                source: "viator",
-                productCode: product.productCode,
-                name: product.title,
-                address: null,
-                category: "activity",
-                rating: product.reviews?.combinedAverageRating ?? null,
-                reviewCount: product.reviews?.totalReviews ?? null,
-                priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
-                location: null,
-                photoUrl: photoVariant?.url ?? null,
-                mapsUrl: null,
-              });
+            if (viatorResult.unavailable) {
+              viatorServiceNotice = "Viator is temporarily unavailable";
+            } else {
+              const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+              for (const product of (viatorResult.products || [])) {
+                const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
+                const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
+                const fromPrice = product.pricing?.summary?.fromPrice;
+                results.push({
+                  id: `vtr_${product.productCode}`,
+                  source: "viator",
+                  productCode: product.productCode,
+                  name: product.title,
+                  address: null,
+                  category: "activity",
+                  rating: product.reviews?.combinedAverageRating ?? null,
+                  reviewCount: product.reviews?.totalReviews ?? null,
+                  priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
+                  location: null,
+                  photoUrl: photoVariant?.url ?? null,
+                  mapsUrl: null,
+                });
+              }
             }
           }
         }
-      } catch (err) {
-        console.error("[viator] searchByFreetext failed in /api/search/experiences:", err);
-        // Non-fatal — Viator unavailable should never fail the whole search response.
-        // Surface an honest notice so the client can show a specific "unavailable" message
-        // rather than a generic empty state that looks like a search returning no results.
-        viatorServiceNotice = "Viator is temporarily unavailable";
       }
 
       res.json({
