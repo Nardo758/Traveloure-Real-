@@ -179,3 +179,81 @@ test.describe("T02 — Confirm the decline dialog", () => {
     expect((capturedBody as Record<string, unknown>).status).toBe("cancelled");
   });
 });
+
+// ── T03 — After decline confirmed, card disappears from DOM ───────────────────
+
+test.describe("T03 — Booking card removed after decline", () => {
+  test("inbox-booking-<id> is gone (or empty-inbox-bookings appears) after confirming decline", async ({
+    page,
+  }) => {
+    // Track how many times the bookings list has been fetched so we can
+    // serve the updated (empty) list on the re-fetch that follows the PATCH.
+    let bookingsFetchCount = 0;
+
+    // Auth: always return the expert user
+    await page.route("**/api/auth/user", (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(EXPERT_USER),
+      });
+    });
+
+    // Bookings list: first call returns one pending booking;
+    // subsequent calls (after invalidation) return an empty array so the
+    // card disappears from the pending filter.
+    await page.route("**/api/expert/bookings", (route) => {
+      if (route.request().method() !== "GET") {
+        route.fallback();
+        return;
+      }
+      // Don't intercept sub-paths like /api/expert/bookings/:id/status
+      const url = route.request().url();
+      if (url.match(/\/api\/expert\/bookings\/[^/]+/)) {
+        route.fallback();
+        return;
+      }
+      bookingsFetchCount += 1;
+      const body = bookingsFetchCount === 1 ? FAKE_BOOKINGS : [];
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
+    });
+
+    // Assigned trips: empty (prevents 401 noise)
+    await page.route("**/api/expert/assigned-trips", (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+
+    // Status endpoint: acknowledge the PATCH so mutation succeeds
+    await page.route(`**/api/expert/bookings/${BOOKING_ID}/status`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    });
+
+    await page.goto(`${BASE}/expert/inbox`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForSelector(`[data-testid="button-decline-booking-${BOOKING_ID}"]`, {
+      timeout: 15_000,
+    });
+
+    // Open the decline dialog and confirm
+    await page.getByTestId(`button-decline-booking-${BOOKING_ID}`).click();
+    await expect(page.getByTestId("dialog-decline-booking")).toBeVisible({ timeout: 5_000 });
+    await page.getByTestId("button-confirm-decline").click();
+
+    // After the PATCH + cache invalidation the booking card must leave the DOM.
+    // We accept either: the card is gone, or the empty-state sentinel is visible.
+    await expect(
+      page.getByTestId(`inbox-booking-${BOOKING_ID}`),
+    ).not.toBeAttached({ timeout: 10_000 });
+  });
+});
