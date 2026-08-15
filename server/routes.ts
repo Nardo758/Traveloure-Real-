@@ -1726,9 +1726,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Security: validate the recipient is a real, eligible expert before creating
         // any notification or inquiry record. Reject with 4xx on invalid targets so a
         // malicious client cannot spam arbitrary user IDs.
+        // Validate recipient: must exist, hold an expert role, and have an
+        // approved localExpertForms row. Expert verification lives on
+        // local_expert_forms.status, not on the users table (which has no
+        // status column).
         const [expertRow] = await db
-          .select({ id: users.id, role: users.role, status: users.status })
+          .select({ id: users.id, role: users.role, formStatus: localExpertForms.status })
           .from(users)
+          .leftJoin(localExpertForms, eq(localExpertForms.userId, users.id))
           .where(eq(users.id, expertId))
           .limit(1);
 
@@ -1738,8 +1743,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!isExpertRole(expertRow.role)) {
           return res.status(400).json({ message: "Target user is not an expert" });
         }
-        if (expertRow.status !== "verified" && expertRow.status !== "approved") {
-          return res.status(400).json({ message: "Expert is not yet verified" });
+        if (expertRow.formStatus !== "approved") {
+          return res.status(400).json({ message: "Expert is not yet approved" });
         }
 
         // Persist a durable expert_requests record so the inquiry survives even if
