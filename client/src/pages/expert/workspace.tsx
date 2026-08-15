@@ -901,7 +901,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
   tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, confirmedProviders,
-  resolveBookingUrl, focusItemId, onFocusHandled, onSelectItem,
+  onConfirmedProvider, resolveBookingUrl, focusItemId, onFocusHandled, onSelectItem,
   suggestOrderForDay, onSuggestHandled,
 }: {
   tripId: string;
@@ -920,6 +920,9 @@ function ItemsEditorPanel({
   /** Providers the expert has already confirmed (clicked "Continue to …") this session.
    *  Used to show an "already confirmed" badge on the per-item Book button. */
   confirmedProviders?: Set<string>;
+  /** Called after the expert clicks "Continue" in the per-item BookingBriefModal.
+   *  Must update the confirmedProviders set in the parent so the badge reflects the change. */
+  onConfirmedProvider?: (provider: string) => void;
   /** Resolves a partner-network name to its affiliate booking URL so the per-item modal can
    *  open the vendor site for partner-sourced items (same source as the partner-card path). */
   resolveBookingUrl?: (network: string) => string | undefined;
@@ -1368,6 +1371,10 @@ function ItemsEditorPanel({
           itemTitle={bookingBriefItem.item.title}
           onClose={() => setBookingBriefItem(null)}
           onConfirm={() => setBookingBriefItem(null)}
+          onConfirmed={(provider) => {
+            onConfirmedProvider?.(provider);
+            setBookingBriefItem(null);
+          }}
         />
       )}
     </div>
@@ -3706,18 +3713,20 @@ export default function ExpertWorkspace() {
   }, [noteSaveStatus, travelerNoteSaveStatus]);
 
   // ── safeNavigate: flush pending note saves before navigating ──
-  // Instead of warning the expert, we immediately fire the mutation (cancelling the debounce
-  // timer first) and await completion before changing the route. A brief toast confirms the
-  // flush so the expert knows their work was preserved.
+  // Cancels the debounce timer, fires each pending mutation immediately, and awaits all of
+  // them. If every flush succeeds, a confirmation toast appears and navigation proceeds.
+  // If any flush fails, an error toast appears and navigation is BLOCKED — the expert
+  // remains on the page with their unsaved work intact so they can retry or copy it out.
   const safeNavigate = async (path: string) => {
-    const flushes: Promise<unknown>[] = [];
+    type FlushResult = { label: string; promise: Promise<unknown> };
+    const flushes: FlushResult[] = [];
 
     if (noteSaveStatus === "saving") {
       if (notesDebounceRef.current) {
         clearTimeout(notesDebounceRef.current);
         notesDebounceRef.current = null;
       }
-      flushes.push(autoSaveNotesMutation.mutateAsync(noteText).catch(() => {}));
+      flushes.push({ label: "private notes", promise: autoSaveNotesMutation.mutateAsync(noteText) });
     }
 
     if (travelerNoteSaveStatus === "saving") {
@@ -3725,11 +3734,20 @@ export default function ExpertWorkspace() {
         clearTimeout(travelerNotesDebounceRef.current);
         travelerNotesDebounceRef.current = null;
       }
-      flushes.push(autoSaveTravelerNoteMutation.mutateAsync(travelerNoteText).catch(() => {}));
+      flushes.push({ label: "traveler notes", promise: autoSaveTravelerNoteMutation.mutateAsync(travelerNoteText) });
     }
 
     if (flushes.length > 0) {
-      await Promise.all(flushes);
+      const results = await Promise.allSettled(flushes.map((f) => f.promise));
+      const failed = flushes.filter((_, i) => results[i].status === "rejected");
+      if (failed.length > 0) {
+        toast({
+          title: "Could not save notes",
+          description: `${failed.map((f) => f.label).join(" and ")} could not be saved. Stay on this page to try again or copy your notes before leaving.`,
+          variant: "destructive",
+        });
+        return; // block navigation — expert's unsaved work must not be silently lost
+      }
       toast({ title: "Notes saved", description: "Your notes were saved before leaving." });
     }
 
@@ -4340,6 +4358,15 @@ export default function ExpertWorkspace() {
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => handleOpenBookingBrief(network, resolvePartnerBookingUrl(network))}
                   confirmedProviders={confirmedProviders}
+                  onConfirmedProvider={(provider) => {
+                    const key = normalizeProvider(provider);
+                    setConfirmedProviders(prev => {
+                      const s = new Set(prev);
+                      s.add(key);
+                      if (tripId) writeConfirmedToSession(tripId, s);
+                      return s;
+                    });
+                  }}
                   resolveBookingUrl={resolvePartnerBookingUrl}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}

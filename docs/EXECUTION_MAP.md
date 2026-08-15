@@ -450,7 +450,7 @@ The script scans **all `.ts` files under `shared/`** for `pgTable("name")` decla
 
 **Maintaining the lists:** when you retire a table via a guarded migration, add it to `RETIRED_TABLES`. When you declare a new table in `shared/schema.ts` (or any file under `shared/`), the script picks it up automatically — no list update needed.
 
-**Current finding (Aug 2026):** `_deprecated_expert_city_queues` — exists in DB, undeclared, pending a guarded retirement migration (see `server/migrations/scheduled_drop_deprecated_city_queues.sql`). Must be resolved before the next publish.
+**Status (Aug 2026):** dev and prod both clean — `node scripts/check-undeclared-tables.cjs` exits 0. The only finding from the initial run (`_deprecated_expert_city_queues`) was retired by migration 226 (archive-then-guarded-drop, following the migration-158 pattern; all 10 rows were empty seed records archived to `legacy_archives`). The unregistered `server/migrations/scheduled_drop_deprecated_city_queues.sql` is now superseded by migration 226 and can be ignored.
 
 ### Housekeeping
 - ~31 tables exist with zero code references (INFERRED, not hand-verified per table): `board_items` (migration 133's
