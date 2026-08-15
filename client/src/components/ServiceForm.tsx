@@ -3171,10 +3171,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {/* Short description — shown on browse cards in place of the full description.
               Max 150 chars so cards never get awkwardly truncated. */}
           <div>
-            <Label htmlFor="shortDescription">
-              Short Description{" "}
-              <span className="text-muted-foreground font-normal">(shown on browse cards)</span>
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="shortDescription">
+                Short Description{" "}
+                <span className="text-muted-foreground font-normal">(shown on browse cards)</span>
+              </Label>
+              {formData.description.trim() && !formData.shortDescription && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                  data-testid="btn-suggest-short-description"
+                  onClick={() => {
+                    const src = formData.description.trim();
+                    let suggestion = src.length <= 150 ? src : src.slice(0, 150);
+                    if (src.length > 150) {
+                      const lastSpace = suggestion.lastIndexOf(" ");
+                      if (lastSpace > 100) suggestion = suggestion.slice(0, lastSpace);
+                    }
+                    set("shortDescription", suggestion.trim());
+                  }}
+                >
+                  Suggest short description
+                </Button>
+              )}
+            </div>
             <div className="relative mt-2">
               <Input
                 id="shortDescription"
