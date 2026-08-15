@@ -666,6 +666,8 @@ export default function CartPage() {
 
   // Task 1110: mirror the same fee-preview check the itinerary page uses so the
   // "Proceed to Payment" CTA can be gated when the concierge fee band is missing.
+  // refetchInterval: poll every 30 s while there's an error so the CTA re-enables
+  // automatically once an admin fixes the fee-band — without needing a page reload.
   const { error: feePreviewError } = useQuery<{
     subtotal: number;
     platformFeeTotal: number;
@@ -675,6 +677,8 @@ export default function CartPage() {
   }>({
     queryKey: ["/api/cart/fee-preview"],
     staleTime: 30 * 1000,
+    refetchInterval: (query) => (query.state.error ? 30_000 : false),
+    retry: false,
   });
   const conciergeFeeUnavailable =
     feePreviewError != null &&
