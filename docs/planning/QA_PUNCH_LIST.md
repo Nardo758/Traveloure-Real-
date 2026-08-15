@@ -2155,3 +2155,17 @@ account had no live listing and no saved stops (D-13 unverified with data), mobi
 - **D-15 (P3).** Full-width canvas, rail as aside ("one canvas with one rail").
 - **D-16 (P3).** Step header "Logistics — where it happens" + "Step 4 of 5".
 - **D-17 (P3).** Radius ring contrast raised to visibly legible at default zoom.
+
+### Post-ship catch (Aug 15, decision-maker report) — property rows' fix door was a dead end
+
+- **Map-preview fix links vs property rows (FIXED — lane map-property-door).** Lane M's
+  "Fix it in step 4 →" sent EVERY unlocated place-anchored row to `/edit?step=logistics` — but a
+  property/room row's `/edit` renders only the FP-3 "Properties are edited in the Workstation"
+  guard, a dead end. All three doors on the map preview (fix links, "open it →" notice, pin-card
+  "Add a location") are now shape-aware via the EXISTING shared `propertyEditorHref` resolver
+  (property → `/provider/workstation?property=<id>`, room → `…&room=<id>`, label "Fix it in the
+  Workstation →"); service rows keep the step-4 door unchanged. Bench-proven: property click
+  lands on the Workstation with the Edit-property dialog auto-opened; service links unchanged.
+  Lesson folded forward: any new "fix this listing" affordance must route through
+  `propertyEditorHref` first — the guard page existing is proof the ServiceForm door is wrong
+  for these shapes.
