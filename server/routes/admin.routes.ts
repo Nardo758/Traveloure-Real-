@@ -5679,13 +5679,25 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
       }
 
-      // Import sendEmail directly — bypass the email_notifications_enabled flag
-      // so admins can verify delivery credentials even when notifications are off.
-      const { sendEmail, getAppBaseUrl } = await import("../services/email.service");
+      // Call Resend directly — same pattern as auth-critical emails — so the test
+      // works even when email_notifications_enabled is turned off in platform settings.
+      // This is intentional: admins must be able to verify delivery credentials
+      // regardless of the notification kill-switch state.
+      const { getAppBaseUrl } = await import("../services/email.service");
+      const { Resend } = await import("resend");
       const appUrl = getAppBaseUrl();
 
-      const result = await sendEmail({
+      const apiKey = process.env.RESEND_API_KEY;
+      const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
+      const replyTo = process.env.EMAIL_REPLY_TO ?? toEmail;
+      if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
+      if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
+
+      const resendClient = new Resend(apiKey);
+      const { data: emailData, error: emailError } = await resendClient.emails.send({
+        from,
         to: toEmail,
+        replyTo,
         subject: "[Traveloure] Test email — delivery verified",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -5728,14 +5740,16 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
           "",
           "This email was triggered manually from the admin system settings page.",
         ].join("\n"),
-        replyTo: toEmail,
       });
 
-      if (!result.ok) {
-        return res.status(502).json({ ok: false, error: result.error });
+      if (emailError) {
+        const msg = String((emailError as { message?: string }).message ?? emailError);
+        console.error("[admin/test-email] Resend error:", msg);
+        return res.status(502).json({ ok: false, error: msg });
       }
 
-      return res.json({ ok: true, id: result.id, to: toEmail });
+      const emailId = (emailData as { id?: string } | null)?.id;
+      return res.json({ ok: true, id: emailId, to: toEmail });
     } catch (err) {
       console.error("[admin/test-email] unexpected error:", err);
       return res.status(500).json({ ok: false, error: "Internal server error" });
