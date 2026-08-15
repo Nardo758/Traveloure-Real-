@@ -551,22 +551,44 @@ export default function DiscoverPage() {
   const urlCity = urlParams.get("city") || "";
   const [activeTab, setActiveTab] = useState(urlTab);
 
-  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks)
-  useEffect(() => {
-    setActiveTab(urlTab);
-  }, [urlTab]);
+  // Always-current ref so the state→URL effect can include the active tab in
+  // the URL it writes without declaring activeTab as a dep — which would cause
+  // the effect to fire when a tab-sync updates activeTab, racing against
+  // external URL changes before filter state has been applied.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab; // updated synchronously on every render
 
   // Tracks the last search string we ourselves wrote, so the URL→state reader
   // below can skip re-applying our own writes (avoiding a read-write-read loop).
   const lastWrittenSearch = useRef<string | null>(null);
 
+  // User-driven tab switch: update state AND URL atomically so no intermediate
+  // render can trigger the state→URL effect with a mismatched tab/filter combo.
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    activeTabRef.current = tab;
+    const next = new URLSearchParams(searchString);
+    if (tab && tab !== "travelpulse") {
+      next.set("tab", tab);
+    } else {
+      next.delete("tab");
+    }
+    const newSearch = next.toString();
+    lastWrittenSearch.current = newSearch;
+    setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true });
+  };
+
+  // Sync active tab whenever the URL ?tab= param changes externally
+  // (e.g. nav link, back/forward to a ?tab=… entry).
+  useEffect(() => {
+    setActiveTab(urlTab);
+  }, [urlTab]);
+
   // URL→state: sync all filter values atomically when an EXTERNAL URL change
-  // arrives (back/forward navigation, link click).  Skips URLs that the
-  // state→URL writer just pushed to avoid the race where stale state overwrites
-  // the incoming URL before the state updates have been applied.
+  // arrives (back/forward navigation, link with ?location=…, etc.).
+  // Skips URLs that our own writer just pushed via lastWrittenSearch sentinel.
   useEffect(() => {
     if (lastWrittenSearch.current !== null && searchString === lastWrittenSearch.current) {
-      // This change was from our own setLocation call — reset sentinel and bail.
       lastWrittenSearch.current = null;
       return;
     }
@@ -578,11 +600,14 @@ export default function DiscoverPage() {
     setMinPrice(Number(params.get("minPrice") || "0"));
     setMaxPrice(Number(params.get("maxPrice") || "0"));
     setMinRating(Number(params.get("minRating") || "0"));
-  }, [searchString]); // only fires when the URL string actually changes
+  }, [searchString]);
 
-  // Keep filter selections in the URL so they survive tab switches and
-  // back-navigation.  Use replace (not push) to avoid bloating history.
-  // Non-filter params (showExperts, destination, etc.) are preserved as-is.
+  // State→URL: keep filter selections in the URL so they survive tab switches
+  // and back-navigation.  Uses replace (not push) to avoid bloating history.
+  // activeTab is intentionally NOT in deps — tab URL writes go through
+  // handleTabChange to prevent the race where a tab-sync triggers this effect
+  // with stale filter state and overwrites an incoming back/forward URL.
+  // activeTabRef gives access to the current tab value without making it a dep.
   useEffect(() => {
     const next = new URLSearchParams();
     // Preserve context/handoff params that must not be lost on filter changes
@@ -594,9 +619,8 @@ export default function DiscoverPage() {
       const val = urlParams.get(key);
       if (val) next.set(key, val);
     });
-    // Tab
-    if (activeTab && activeTab !== "travelpulse") next.set("tab", activeTab);
-    // Filters — only write non-default values to keep URLs clean
+    const currentTab = activeTabRef.current;
+    if (currentTab && currentTab !== "travelpulse") next.set("tab", currentTab);
     if (locationFilter) next.set("location", locationFilter);
     if (selectedCategory && selectedCategory !== "all") next.set("category", selectedCategory);
     if (minPrice > 0) next.set("minPrice", String(minPrice));
@@ -604,15 +628,12 @@ export default function DiscoverPage() {
     if (minRating > 0) next.set("minRating", String(minRating));
     if (sortBy && sortBy !== "rating") next.set("sortBy", sortBy);
     const newSearch = next.toString();
-    // Only navigate when the search string actually changes to avoid loops.
-    // Record the value we're about to write so the URL→state reader can skip
-    // it (prevents the race where stale state overwrites back/forward entries).
     if (newSearch !== searchString) {
       lastWrittenSearch.current = newSearch;
       setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, activeTab]);
+  }, [locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy]);
 
   // Pre-fetch adjacent tabs' data so switching feels instant.
   // Each tab's data has a 5-10 min staleTime, so these are no-ops on revisit.
@@ -989,7 +1010,7 @@ export default function DiscoverPage() {
             AI-Suggestions button, Plan-Experience button, and the standalone banner
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
