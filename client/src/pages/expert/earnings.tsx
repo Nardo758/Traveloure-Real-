@@ -234,14 +234,16 @@ export default function ExpertEarnings() {
           />
         </div>
 
-        {/* Revenue Share Breakdown — mirrors the provider Money page layout.
-            Gross/fee figures come from platform_revenue (expertId-scoped), added to the
-            GET /api/expert/earnings/details response in revenue-tracking.service.ts. */}
+        {/* Booking Revenue Share Breakdown — scoped to booking_commission rows from
+            platform_revenue so tips (shown separately below) and affiliate commissions
+            (also shown separately) cannot inflate the gross or create a double-count.
+            Gross/fee/share come from GET /api/expert/earnings/details summary fields
+            added in revenue-tracking.service.ts. */}
         <Card data-testid="card-revenue-share">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <PieChart className="w-5 h-5 text-primary" />
-              Revenue Share Breakdown
+              Booking Revenue Share
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -251,7 +253,7 @@ export default function ExpertEarnings() {
                 <p className="text-xl font-bold text-console-darkest">
                   ${(summary?.grossBookingValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
+                <p className="text-xs text-console-mid mt-1">Total traveler spend on bookings</p>
               </div>
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
                 <p className="text-sm text-red-600 mb-1">
@@ -264,16 +266,16 @@ export default function ExpertEarnings() {
               </div>
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
                 <p className="text-sm text-green-600 mb-1">
-                  Your Share{summary?.effectiveShareRate != null ? ` (${Math.round(summary.effectiveShareRate * 100)}%)` : ""}
+                  Your Booking Share{summary?.effectiveShareRate != null ? ` (${Math.round(summary.effectiveShareRate * 100)}%)` : ""}
                 </p>
                 <p className="text-xl font-bold text-green-700">
                   ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
+                <p className="text-xs text-green-500 mt-1">Your cut of booking revenue</p>
               </div>
             </div>
 
-            {/* Fee line items */}
+            {/* Fee breakdown line items — booking revenue only, tips/affiliate shown separately */}
             <div className="mt-4 rounded-lg border border-border bg-muted/30 divide-y divide-border" data-testid="section-fee-breakdown">
               <div className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2">
@@ -284,32 +286,10 @@ export default function ExpertEarnings() {
                   -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
-              {(summary?.totalTips ?? 0) > 0 && (
-                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-tips">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-sm text-muted-foreground">Tips received</span>
-                  </div>
-                  <span className="text-sm font-medium text-blue-600">
-                    +${(summary?.totalTips ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
-              {(summary?.totalAffiliateCommissions ?? 0) > 0 && (
-                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-affiliate">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-green-500" />
-                    <span className="text-sm text-muted-foreground">Affiliate commissions</span>
-                  </div>
-                  <span className="text-sm font-medium text-green-600">
-                    +${(summary?.totalAffiliateCommissions ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
               <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-950/20 rounded-b-lg">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="w-3.5 h-3.5 text-green-600" />
-                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Your net earnings</span>
+                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Your booking net</span>
                 </div>
                 <span className="text-sm font-bold text-green-600" data-testid="text-net-earnings">
                   ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -317,7 +297,7 @@ export default function ExpertEarnings() {
               </div>
             </div>
 
-            {/* Proportional split bar — only rendered when gross data is available */}
+            {/* Proportional split bar — only rendered when gross booking data is available */}
             {summary?.effectiveShareRate != null ? (
               <>
                 <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
@@ -331,6 +311,7 @@ export default function ExpertEarnings() {
                   <span>Platform {Math.round((1 - summary.effectiveShareRate) * 100)}%</span>
                   <span data-testid="text-expert-share-rate">You {Math.round(summary.effectiveShareRate * 100)}%</span>
                 </div>
+                <p className="text-xs text-console-mid mt-1">Booking revenue only — tips and affiliate commissions are shown below.</p>
               </>
             ) : (
               <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">

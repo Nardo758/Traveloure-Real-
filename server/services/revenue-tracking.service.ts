@@ -261,11 +261,12 @@ class RevenueTrackingService {
     const earningsSummary = await storage.getExpertEarningsSummary(expertId);
     const affiliateSummary = await storage.getAffiliateEarningsSummary(expertId);
 
-    // Pull gross/fee totals from platform_revenue for the Revenue Share Breakdown card.
-    // SUM includes both the original positive rows AND the negative compensating reversal rows,
+    // Pull booking-only gross/fee totals from platform_revenue for the Revenue Share Breakdown
+    // card. Scoped to 'booking_commission' so tips (tip_commission) and affiliate commissions
+    // (affiliate_commission) — which are already surfaced in separate summary fields — cannot
+    // inflate the "Gross Booking Value" or "Your Share" figures and create a double-count.
+    // SUM includes both the original positive rows AND the negative compensating reversal rows
     // so refunded/reversed bookings net to zero automatically (double-entry ledger semantics).
-    // Filtering to gross >= 0 only would leave the original positive row visible even after
-    // its reversal, overstating the lifetime figure for refunded bookings.
     const [revenueRow] = await db
       .select({
         grossTotal: sql<string>`COALESCE(SUM(${platformRevenue.grossAmount}::numeric), 0)`,
@@ -273,7 +274,10 @@ class RevenueTrackingService {
         shareTotal: sql<string>`COALESCE(SUM(${platformRevenue.expertEarnings}::numeric), 0)`,
       })
       .from(platformRevenue)
-      .where(eq(platformRevenue.expertId, expertId));
+      .where(and(
+        eq(platformRevenue.expertId, expertId),
+        eq(platformRevenue.sourceType, 'booking_commission'),
+      ));
 
     const gross = parseFloat(revenueRow?.grossTotal ?? '0');
     const platformFeeTotal = parseFloat(revenueRow?.feeTotal ?? '0');
