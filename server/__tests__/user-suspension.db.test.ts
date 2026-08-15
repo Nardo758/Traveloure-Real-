@@ -726,6 +726,83 @@ describe("suspended admin session — both endpoints reject the stale cookie", (
   });
 });
 
+// ── Suite 7: requireAdminLocal-only route — suspended admin is blocked ────────
+//
+// Several admin routes (e.g. /api/admin/optimization-fees) use only
+// requireAdminLocal without isAuthenticated in the middleware chain.  Before the
+// fix, requireAdminLocal called req.isAuthenticated() (Passport's in-memory check)
+// which does NOT perform the DB isSuspended lookup.  A suspended admin holding a
+// stale session cookie could reach handler logic on those routes.
+//
+// After the fix, requireAdminLocal uses getFullAdminUser (SELECT *) and rejects
+// any suspended user with 403 — the same response isAuthenticated produces.
+
+describe("requireAdminLocal-only route — suspended admin session is blocked", () => {
+  let adminId: string;
+  let server: http.Server;
+  let staleAdminCookie: string;
+  let suspendedResponse: HttpResult;
+
+  before(async () => {
+    server = await getAdminGuardServer();
+
+    // Create an admin-role user and log them in.
+    adminId = await createTestUser({ role: "admin" });
+    const adminEmail = (await getUserRow(adminId)).email;
+
+    const loginRes = await post(server, "/api/auth/login", {
+      email: adminEmail,
+      password: TEST_PASSWORD,
+    });
+    assert.equal(
+      loginRes.status,
+      200,
+      `Admin login must succeed; got ${loginRes.status}: ${JSON.stringify(loginRes.data)}`
+    );
+    assert.ok(loginRes.setCookie, "Login must issue a session cookie");
+    staleAdminCookie = loginRes.setCookie!;
+
+    // Confirm the route returns 200 before suspension (proves the route is reachable).
+    const beforeSuspend = await get(server, "/api/admin/optimization-fees", staleAdminCookie);
+    assert.ok(
+      beforeSuspend.status === 200 || beforeSuspend.status === 404,
+      `Route must be reachable before suspension; got ${beforeSuspend.status}`
+    );
+
+    // Suspend the admin in the DB while their session cookie is still active.
+    await suspendUser(adminId, "Suspended to test requireAdminLocal bypass prevention");
+
+    // One request with the now-stale cookie to a route guarded only by
+    // requireAdminLocal (no isAuthenticated in front).
+    suspendedResponse = await get(
+      server,
+      "/api/admin/optimization-fees",
+      staleAdminCookie
+    );
+  });
+
+  after(async () => {
+    await unsuspendUser(adminId).catch(() => {});
+    await deleteTestUser(adminId);
+  });
+
+  it("requireAdminLocal-only route returns 403 for a suspended admin's stale session", () => {
+    assert.equal(
+      suspendedResponse.status,
+      403,
+      `Expected 403 from requireAdminLocal-only route for suspended session, got ${suspendedResponse.status}. Body: ${JSON.stringify(suspendedResponse.data)}`
+    );
+  });
+
+  it("403 response body mentions 'suspended'", () => {
+    assert.ok(
+      typeof suspendedResponse.data?.message === "string" &&
+        suspendedResponse.data.message.toLowerCase().includes("suspended"),
+      `Expected suspension message in response body, got: ${JSON.stringify(suspendedResponse.data)}`
+    );
+  });
+});
+
 // ── Teardown ──────────────────────────────────────────────────────────────────
 
 after(async () => {
