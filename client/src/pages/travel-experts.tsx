@@ -732,7 +732,7 @@ export default function TravelExpertsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">First Name</Label>
                     <Input
@@ -772,7 +772,7 @@ export default function TravelExpertsPage() {
                     data-testid="input-phone"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">Country</Label>
                     <Input
@@ -1422,7 +1422,7 @@ export default function TravelExpertsPage() {
                 <CardTitle className="text-2xl text-foreground">Review Your Application</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Name:</span>
                     <span className="ml-2 text-foreground font-medium">
@@ -1513,7 +1513,7 @@ export default function TravelExpertsPage() {
 
                 <div className="p-4 bg-[#F3F4F6] rounded-lg">
                   <h4 className="font-medium text-foreground mb-2">Benefits You'll Get:</h4>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {benefits.map((benefit) => (
                       <div key={benefit.text} className="flex items-center gap-2 text-sm text-muted-foreground">
                         <benefit.icon className="w-4 h-4 text-primary" />

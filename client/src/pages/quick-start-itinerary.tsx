@@ -523,7 +523,7 @@ export default function QuickStartItinerary() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
                   <Popover>
@@ -631,7 +631,7 @@ export default function QuickStartItinerary() {
 
               <div className="space-y-2">
                 <Label>Pace Preference</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {PACE_OPTIONS.map((pace) => (
                     <Button
                       key={pace.value}
