@@ -55,7 +55,7 @@ jobs:
       # introduced ZERO new type errors (none in any touched file). Locked in here.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '170'
+          TSC_BASELINE: '168'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
