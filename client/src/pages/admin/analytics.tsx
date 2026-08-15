@@ -25,27 +25,33 @@ import {
 
 type Preset = "7d" | "30d" | "90d" | "custom" | "all";
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
+/** Format a Date as YYYY-MM-DD using the browser's local calendar (not UTC). */
+function localIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function presetDates(preset: Preset): { from: string; to: string } {
   const today = new Date();
-  const to = isoDate(today);
+  // "to" is today's local calendar date; the server will treat it as inclusive
+  // (advancing to start-of-next-day internally).
+  const to = localIsoDate(today);
   if (preset === "7d") {
     const from = new Date(today);
-    from.setDate(from.getDate() - 7);
-    return { from: isoDate(from), to };
+    from.setDate(from.getDate() - 6); // today + 6 prior days = 7 inclusive days
+    return { from: localIsoDate(from), to };
   }
   if (preset === "30d") {
     const from = new Date(today);
-    from.setDate(from.getDate() - 30);
-    return { from: isoDate(from), to };
+    from.setDate(from.getDate() - 29);
+    return { from: localIsoDate(from), to };
   }
   if (preset === "90d") {
     const from = new Date(today);
-    from.setDate(from.getDate() - 90);
-    return { from: isoDate(from), to };
+    from.setDate(from.getDate() - 89);
+    return { from: localIsoDate(from), to };
   }
   return { from: "", to: "" };
 }
