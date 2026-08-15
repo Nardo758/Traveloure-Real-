@@ -1681,7 +1681,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             const { sendBookingAlertEmail } = await import("./services/email.service");
             const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
             await sendBookingAlertEmail({
-              providerEmail: provider.email,
+              providerEmail: provider.notificationEmail || provider.email,
               providerName,
               bookingId: booking.id,
               serviceName: service.serviceName,
