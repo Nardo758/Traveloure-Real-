@@ -32,6 +32,7 @@ import { requireBaseUrl } from "../fixtures/base-url";
 
 interface MyBooking {
   id: string;
+  trackingNumber?: string | null;
   status: string;
   stripePaymentIntentId: string | null;
   confirmedAt: string | null;
@@ -174,16 +175,27 @@ test.describe("Journey 1096-A — traveler clicks Confirm completion → complet
     expect(postEarningsRes.ok(), `GET /api/expert/earnings/details post-confirmation → ${postEarningsRes.status()}`).toBeTruthy();
     const postEarnings: EarningsDetails = await postEarningsRes.json();
 
-    // Look for an earning row whose description references this booking's id.
-    // The storage layer writes: `Service booking earnings from ${booking.trackingNumber || booking.id}`
+    // The storage layer writes the description as:
+    //   `Service booking earnings from ${booking.trackingNumber || booking.id}`
+    // Most service bookings have a tracking number, so we match against it first,
+    // falling back to the UUID for fixtures that lack one.
+    const descKey = candidate.trackingNumber ?? bookingId;
     const bookingEarning = postEarnings.earnings.find(
-      (e) => e.description?.includes(bookingId),
+      (e) => e.description?.includes(descKey),
     );
     expect(
       bookingEarning,
-      `Expert earnings must include a row whose description references booking ${bookingId}. ` +
+      `Expert earnings must include a row whose description contains "${descKey}". ` +
         `Rows present: ${JSON.stringify(postEarnings.earnings.map((e) => ({ id: e.id, status: e.status, desc: e.description })))}`,
     ).toBeTruthy();
+
+    // The matched row must be NEW — absent from the pre-confirmation snapshot —
+    // proving that confirm-completion minted it rather than it being a stale entry.
+    expect(
+      preEarningIds.has(bookingEarning!.id),
+      `Earning ${bookingEarning!.id} was already present before confirm-completion; ` +
+        `it must be a new row minted by the completion transition`,
+    ).toBe(false);
 
     // After confirm-completion the held earning is early-released → 'releasable'.
     // 'held' is also accepted: it means the release ran but the hold window hasn't
