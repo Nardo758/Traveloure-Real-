@@ -5997,7 +5997,9 @@ router.get("/api/search/experiences", async (req, res) => {
           // match a service whose location column stores any of those variants.
           const destCity = dest.split(",")[0].trim();
           const locCity = (p.location || "").toLowerCase().split(",")[0].trim();
-          const destMatch = !dest || !destCity || locCity.includes(destCity) || destCity.includes(locCity);
+          // Guard: if locCity is empty the service has no location and must not
+          // match any destination query (destCity.includes("") is always true).
+          const destMatch = !dest || !destCity || (!!locCity && (locCity.includes(destCity) || destCity.includes(locCity)));
           const textMatch = !qLower || nameMatch || descMatch;
           if (textMatch && destMatch && catMatch) {
             results.push({
