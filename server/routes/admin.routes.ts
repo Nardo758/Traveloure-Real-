@@ -107,6 +107,7 @@ import {
   tripExpertAdvisors,
 } from "@shared/schema";
 import { travelpayoutsCache } from "@shared/schema";
+import { sharedCache } from "../services/shared-cache.service";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -7880,13 +7881,20 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
   }
 });
 
-// ─── Travelpayouts cache status ────────────────────────────────────────────────
-// Rides the blanket /api/admin adminApiGuard (§2). Aggregates all cache rows by
-// brand so operators can see whether displayed eSIM, transport, and activity
-// cards are fresh or stale. refreshedAt (migration 221, stamped on every upsert
-// by shared-cache.service.ts) is the accurate last-refresh time — createdAt is
-// immutable after first insert and is not surfaced here. Pre-migration rows with
-// null refreshedAt are represented as lastRefreshedAt: null ("unknown").
+// ─── Travelpayouts cache status & purge ────────────────────────────────────────
+// Both endpoints ride the blanket /api/admin adminApiGuard (§2).
+//
+// GET  /api/admin/travelpayouts-cache/status
+//   Aggregates all cache rows by brand so operators can see whether displayed
+//   eSIM, transport, and activity cards are fresh or stale. refreshedAt
+//   (migration 221, stamped on every upsert by shared-cache.service.ts) is the
+//   accurate last-refresh time — createdAt is immutable after first insert and
+//   is not surfaced here. Pre-migration rows with null refreshedAt are
+//   represented as lastRefreshedAt: null ("unknown").
+//
+// DELETE /api/admin/travelpayouts-cache/:brand/:cacheKey
+//   Purges a single stale entry immediately so the next read triggers a fresh
+//   fetch from the upstream partner API, without waiting for the scheduler.
 router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
   try {
     const now = new Date();
@@ -7906,6 +7914,21 @@ router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req
   } catch (error: any) {
     console.error("[admin/travelpayouts-cache/status] error:", error);
     res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
+  }
+});
+
+router.delete("/api/admin/travelpayouts-cache/:brand/:cacheKey", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const { brand, cacheKey } = req.params;
+    if (!brand || !cacheKey) {
+      return res.status(400).json({ message: "brand and cacheKey are required" });
+    }
+    await sharedCache.del(brand, cacheKey);
+    console.log(`[admin/travelpayouts-cache/purge] purged brand="${brand}" key="${cacheKey}" by admin ${getUserId(req)}`);
+    res.json({ ok: true, brand, cacheKey });
+  } catch (error: any) {
+    console.error("[admin/travelpayouts-cache/purge] error:", error);
+    res.status(500).json({ message: "Failed to purge cache entry", error: error.message });
   }
 });
 

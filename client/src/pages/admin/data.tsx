@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Activity,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,20 @@ interface CacheStatus {
   supportedCities: number;
   cacheEnabled: boolean;
   cacheDurationHours: number;
+}
+
+interface TravelpayoutsCacheEntry {
+  brand: string;
+  cacheKey: string;
+  expiresAt: string;
+  lastRefreshedAt: string | null;
+  isStale: boolean;
+  entryCount: number;
+}
+
+interface TravelpayoutsCacheStatus {
+  brands: TravelpayoutsCacheEntry[];
+  retrievedAt: string;
 }
 
 interface ProviderHealthEntry {
@@ -111,6 +126,29 @@ export default function AdminData() {
       toast({ title: "Refresh failed", description: error.message, variant: "destructive" });
       setRefreshingCity(null);
     }
+  });
+
+  // ── Travelpayouts shared cache ─────────────────────────────────────────────
+  const { data: tpCacheStatus, isLoading: loadingTpCache, refetch: refetchTpCache } =
+    useQuery<TravelpayoutsCacheStatus>({
+      queryKey: ["/api/admin/travelpayouts-cache/status"],
+    });
+
+  const [purgingKey, setPurgingKey] = useState<string | null>(null);
+
+  const purgeCacheMutation = useMutation({
+    mutationFn: async ({ brand, cacheKey }: { brand: string; cacheKey: string }) => {
+      return apiRequest("DELETE", `/api/admin/travelpayouts-cache/${encodeURIComponent(brand)}/${encodeURIComponent(cacheKey)}`);
+    },
+    onSuccess: (_data, { brand, cacheKey }) => {
+      toast({ title: "Cache entry purged", description: `${brand} / ${cacheKey} has been removed` });
+      setPurgingKey(null);
+      refetchTpCache();
+    },
+    onError: (error: Error, { brand, cacheKey }) => {
+      toast({ title: "Purge failed", description: error.message, variant: "destructive" });
+      setPurgingKey(null);
+    },
   });
 
   // ── Provider health (catalog sources) ─────────────────────────────────────
@@ -916,6 +954,91 @@ export default function AdminData() {
 
           {/* Flights tab removed (migration 176 retired the writerless flight_cache table). */}
         </Tabs>
+
+        {/* ── Travelpayouts shared-cache management ──────────────────────────── */}
+        <Card data-testid="card-travelpayouts-cache">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Database className="w-4 h-4 text-indigo-600" />
+              Travelpayouts shared cache
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingTpCache ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            ) : !tpCacheStatus?.brands?.length ? (
+              <p className="text-gray-500 text-sm text-center py-6">No cache entries found</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-3 font-medium text-gray-600">Brand</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-600">Cache key</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-600">Entries</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-600">Last refreshed</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-600">Expires</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-600">Status</th>
+                      <th className="py-2 px-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tpCacheStatus.brands.map((entry) => {
+                      const rowKey = `${entry.brand}::${entry.cacheKey}`;
+                      const isPurging = purgingKey === rowKey;
+                      return (
+                        <tr
+                          key={rowKey}
+                          className="border-b border-gray-100 hover:bg-gray-50"
+                          data-testid={`row-tp-cache-${entry.brand}-${entry.cacheKey}`}
+                        >
+                          <td className="py-2 px-3 font-medium">{entry.brand}</td>
+                          <td className="py-2 px-3 text-gray-600 font-mono text-xs">{entry.cacheKey}</td>
+                          <td className="py-2 px-3 text-right">{entry.entryCount}</td>
+                          <td className="py-2 px-3 text-gray-500">
+                            {entry.lastRefreshedAt ? getTimeSince(entry.lastRefreshedAt) : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-gray-500">
+                            {entry.expiresAt ? getTimeSince(entry.expiresAt) : "—"}
+                          </td>
+                          <td className="py-2 px-3">
+                            {entry.isStale ? (
+                              <Badge className="bg-red-100 text-red-700 border-red-200">Stale</Badge>
+                            ) : (
+                              <Badge className="bg-green-100 text-green-700 border-green-200">Fresh</Badge>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={isPurging}
+                              data-testid={`btn-purge-${entry.brand}-${entry.cacheKey}`}
+                              onClick={() => {
+                                setPurgingKey(rowKey);
+                                purgeCacheMutation.mutate({ brand: entry.brand, cacheKey: entry.cacheKey });
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              {isPurging ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3 h-3" />
+                              )}
+                              <span className="ml-1">Purge</span>
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AdminLayout>
   );
