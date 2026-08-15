@@ -5995,38 +5995,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get single booking
-  // NOTE: If requester is provider, traveler info is sanitized
-  app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
-    const booking = await storage.getServiceBooking(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-    // Check if user is traveler or provider
-    if (booking.travelerId !== userId && booking.providerId !== userId) {
-      return res.status(403).json({ message: "Not authorized to view this booking" });
-    }
-    
-    // If the user is the traveler, they see full booking
-    // If the user is the provider, sanitize the traveler info
-    if (booking.travelerId === userId) {
-      res.json(booking);
-    } else {
-      // Provider viewing - sanitize traveler info
-      const traveler = await storage.getUser(booking.travelerId);
-      const sanitizedBooking = sanitizeBookingForExpert(booking, userRole, userId);
-      res.json({
-        ...sanitizedBooking,
-        traveler: traveler ? {
-          ...sanitizeUserForRole(traveler, userRole, false),
-          displayName: getDisplayName(traveler.firstName, traveler.lastName)
-        } : null
-      });
-    }
-  });
-
   // Get client profile (for experts/providers) - sanitized view
   // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
