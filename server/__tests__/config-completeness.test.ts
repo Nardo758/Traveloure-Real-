@@ -50,10 +50,12 @@ describe("config completeness", () => {
   });
 
   it("all required fee_bands are present and active", async () => {
+    // beta_flat is intentionally NOT here: migration 178 (fee-ledger Phase 1A,
+    // ruling D2, 2026-08-06) deactivates it, and getBand() returns null for
+    // inactive bands by design.
     const requiredBands = [
       "expert_standard",
       "expert_new",
-      "beta_flat",
       "expert_concierge_booking",
     ];
 
@@ -62,5 +64,12 @@ describe("config completeness", () => {
       expect(band, `bandKey=${bandKey} must be seeded and active`).toBeDefined();
       expect(band!.rate, `bandKey=${bandKey} must have a positive rate`).toBeGreaterThan(0);
     }
+  });
+
+  it("beta_flat stays deactivated (migration 178, ruling D2)", async () => {
+    // getBand only returns active bands; a non-null result means someone
+    // reactivated the superseded beta band, which charge paths must not see.
+    const band = await getBand("beta_flat");
+    expect(band, "beta_flat must remain inactive").toBeNull();
   });
 });
