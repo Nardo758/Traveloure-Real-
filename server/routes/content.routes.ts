@@ -56,7 +56,7 @@ import {
   getAiItinerariesForUser, getAiItineraryById,
   insertItineraryComparison, updateItineraryComparisonStatus,
   getActiveProviderServices, getDestinationEventsByCity,
-  getExpertUserIds, getAiDiscoveredGemById,
+  getExpertUserIds, pickBestExpertForBookingRequest, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
   insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
@@ -6914,9 +6914,14 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
       const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
 
-      // Auto-assign to an expert based on category (city match optional, fallback any expert)
-      const expertIds2 = await getExpertUserIds(10);
-      const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
+      // Auto-assign to the best-matched expert: score by destination + category,
+      // prefer lower workload; falls back to any approved expert, then any expert.
+      const requestDestination =
+        (typeof partnerRoute === "object" && partnerRoute !== null && typeof partnerRoute.destination === "string")
+          ? partnerRoute.destination
+          : null;
+      const requestCategory = typeof partnerCategory === "string" ? partnerCategory : null;
+      const expertId = await pickBestExpertForBookingRequest(requestDestination, requestCategory);
       const status = expertId ? "assigned" : "pending";
 
       // Same MONEY_MAP F-5 (dormant) sub_id attribution seam as the /from-catalog variant below:
@@ -6992,8 +6997,12 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       if (!resolved) {
         return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
       }
-      const expertIds3 = await getExpertUserIds(10);
-      const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
+      // Auto-assign to the best-matched expert: score by destination + category,
+      // prefer lower workload; falls back to any approved expert, then any expert.
+      const expertId = await pickBestExpertForBookingRequest(
+        typeof destination === "string" ? destination : null,
+        resolved.partnerCategory,
+      );
       const status = expertId ? "assigned" : "pending";
 
       // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
