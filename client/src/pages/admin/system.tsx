@@ -66,7 +66,7 @@ export default function AdminSystem() {
   const sendTestEmail = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/system/test-email");
-      return res as TestEmailResult;
+      return await res.json() as TestEmailResult;
     },
     onSuccess: (data) => {
       setTestEmailResult(data);
