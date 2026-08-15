@@ -55,7 +55,7 @@ export interface ReconciliationResult {
 // Period helper
 // ---------------------------------------------------------------------------
 
-function getPeriodDates(period: string): { start: Date; end: Date } {
+export function getPeriodDates(period: string): { start: Date; end: Date } {
   const now = new Date();
   if (period === "last_month") {
     return {
