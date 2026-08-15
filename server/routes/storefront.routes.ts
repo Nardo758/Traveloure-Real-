@@ -269,7 +269,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
 
     const parsed = settingsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
@@ -339,7 +339,7 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
 
     const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid storefront settings", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
@@ -837,9 +837,10 @@ router.get("/p/:handle", async (req, res, next) => {
     const title = `${data.earner.name} | Traveloure`;
     const description = data.earner.bio
       ? data.earner.bio.slice(0, 160)
-      : `${data.earner.name} offers ${count} curated experience${count !== 1 ? "s" : ""} on Traveloure.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
+      : `${count} offering${count !== 1 ? "s" : ""} by ${data.earner.name} on Traveloure`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/p/${req.params.handle}`;
     const ogImage =
+      data.earner.coverImageUrl ??
       data.earner.profileImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
@@ -912,7 +913,7 @@ router.get("/services/:id", async (req, res, next) => {
     const title = `${service.serviceName} | Traveloure`;
     const description = service.description
       ? service.description.slice(0, 160)
-      : `Book ${service.serviceName} — a curated travel experience on Traveloure.`;
+      : `Book ${service.serviceName} on Traveloure`;
     const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
     const ogImage =
       service.serviceImage ??
