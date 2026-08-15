@@ -141,6 +141,12 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           E2E_AI_STUB: "1"
+          # Loopback-only rate-limit exemption (server/infrastructure/rate-limiter.ts), same as the
+          # auth-routes / discover-tabs / journey gates. Load-bearing here: this gate runs several
+          # spec files that each log in as the same fixture, and Playwright retries log in again —
+          # without it the auth limiter starts answering 429 and every retry fails at the door,
+          # masking the real first failure. (Observed on this gate's first run.)
+          RATE_LIMIT_LOOPBACK_SKIP: "1"
           PORT: 5000
           PGUSER: postgres
           PGPASSWORD: postgres
