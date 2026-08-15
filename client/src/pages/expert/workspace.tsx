@@ -289,7 +289,7 @@ interface TravelerProfile {
   profileImageUrl: string | null;
 }
 
-function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider: string; bookingUrl?: string; tripId: string; onClose: () => void }) {
+function BookingBriefModal({ provider, bookingUrl, tripId, onClose, onConfirmed }: { provider: string; bookingUrl?: string; tripId: string; onClose: () => void; onConfirmed?: (provider: string) => void }) {
   const { data: profile, isLoading } = useQuery<TravelerProfile>({
     queryKey: [`/api/trips/${tripId}/traveler-profile`],
     enabled: !!tripId,
@@ -310,6 +310,7 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
     if (bookingUrl) {
       window.open(bookingUrl, "_blank", "noopener,noreferrer");
     }
+    onConfirmed?.(provider);
     onClose();
   };
 
@@ -817,7 +818,8 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
+  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, confirmedProviders,
+  focusItemId, onFocusHandled, onSelectItem,
   suggestOrderForDay, onSuggestHandled,
 }: {
   tripId: string;
@@ -833,6 +835,9 @@ function ItemsEditorPanel({
   // item directly there), so any row this panel can show is already either author-owned or
   // client-approved. Nothing here needs to re-check approval state.
   onOpenBookingBrief: (network: string) => void;
+  /** Providers the expert has already confirmed (clicked "Continue to …") this session.
+   *  Used to show an "already confirmed" badge on the Booking Brief button. */
+  confirmedProviders?: Set<string>;
   // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
   // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
   // request (a one-shot signal, not a controlled/sticky prop).
@@ -1200,15 +1205,21 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
-                    {partnerSource && (
-                      <button
-                        onClick={() => onOpenBookingBrief(partnerSource.network)}
-                        data-testid={`button-booking-brief-${item.id}`}
-                        style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
-                      >
-                        <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
-                      </button>
-                    )}
+                    {partnerSource && (() => {
+                      const alreadyConfirmed = confirmedProviders?.has(normalizeProvider(partnerSource.network)) ?? false;
+                      return (
+                        <button
+                          onClick={() => onOpenBookingBrief(partnerSource.network)}
+                          data-testid={`button-booking-brief-${item.id}`}
+                          style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
+                        >
+                          <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
+                          {alreadyConfirmed && (
+                            <StateChip tone="ok">✓ on file</StateChip>
+                          )}
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => {
                         if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
@@ -2640,6 +2651,35 @@ function writeExtraMaxDay(tripId: string, value: number): void {
   }
 }
 
+// ── Booking-brief session cache (trip-scoped, sessionStorage-backed) ─────────
+// Keyed per tripId so confirming a provider for one trip never skips the modal
+// on a different client's trip. sessionStorage survives page reloads but is
+// cleared when the browser tab/session ends — matching "same session" semantics.
+// All errors are swallowed: private-browsing / quota failures silently degrade
+// to in-memory-only behaviour (the state Set still works for the current mount).
+const BOOKING_BRIEF_STORE = (tripId: string) => `booking-brief-confirmed:${tripId}`;
+const normalizeProvider = (p: string) => p.trim().toLowerCase();
+
+function readConfirmedFromSession(tripId: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(BOOKING_BRIEF_STORE(tripId));
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeConfirmedToSession(tripId: string, providers: Set<string>): void {
+  try {
+    sessionStorage.setItem(BOOKING_BRIEF_STORE(tripId), JSON.stringify(Array.from(providers)));
+  } catch {
+    // quota / private-browsing — silently degrade
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
@@ -2722,6 +2762,33 @@ export default function ExpertWorkspace() {
   const travelerNoteInitialized = useRef(false);
   const travelerNotesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
+  // Session cache: normalized provider names already confirmed (via "Continue to [Provider]")
+  // for the CURRENT trip in this browser session. Keyed by tripId in sessionStorage so
+  // switching trips never carries over a previous client's confirmations.
+  const [confirmedProviders, setConfirmedProviders] = useState<Set<string>>(() =>
+    tripId ? readConfirmedFromSession(tripId) : new Set(),
+  );
+  // Re-hydrate whenever the active trip changes (e.g. sidebar navigation without full reload).
+  useEffect(() => {
+    if (tripId) setConfirmedProviders(readConfirmedFromSession(tripId));
+  }, [tripId]);
+
+  /** Session-aware booking brief opener.
+   *  First click for a given provider (per trip) → shows the full modal.
+   *  Subsequent clicks in the same session for the same trip → skips the modal, opens the
+   *  URL directly, and shows a brief toast so the expert knows client details are still in play. */
+  const handleOpenBookingBrief = useCallback((provider: string, bookingUrl?: string) => {
+    if (confirmedProviders.has(normalizeProvider(provider))) {
+      if (bookingUrl) window.open(bookingUrl, "_blank", "noopener,noreferrer");
+      toast({
+        title: "Client details on file",
+        description: `Opening ${provider} — your client's details are ready to use.`,
+      });
+      return;
+    }
+    setBookingBrief({ provider, bookingUrl });
+  }, [confirmedProviders, toast]);
+
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
   // log-a-booking form open. One at a time, mirroring ItemsEditorPanel's single-expanded-row pattern.
@@ -3871,7 +3938,21 @@ export default function ExpertWorkspace() {
         (internal panes scroll; the shell's <main> never double-scrolls). */}
     <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", height: "calc(100vh - 52px)", display: "flex", flexDirection: "column", background: GROUND, overflow: "hidden" }}>
       {bookingBrief && tripId && (
-        <BookingBriefModal provider={bookingBrief.provider} bookingUrl={bookingBrief.bookingUrl} tripId={tripId} onClose={() => setBookingBrief(null)} />
+        <BookingBriefModal
+          provider={bookingBrief.provider}
+          bookingUrl={bookingBrief.bookingUrl}
+          tripId={tripId}
+          onClose={() => setBookingBrief(null)}
+          onConfirmed={(provider) => {
+            const key = normalizeProvider(provider);
+            setConfirmedProviders(prev => {
+              const s = new Set(prev);
+              s.add(key);
+              if (tripId) writeConfirmedToSession(tripId, s);
+              return s;
+            });
+          }}
+        />
       )}
       {servicePickerOpen && tripId && (
         <ServicePickerModal tripId={tripId} dayNumber={focusDay} destination={trip?.destination || ""} onClose={() => setServicePickerOpen(false)} onAdded={triggerEnergyRecalc} />
@@ -4089,7 +4170,8 @@ export default function ExpertWorkspace() {
                   maxDay={maxDay}
                   destination={destination}
                   onDayMoved={triggerEnergyRecalc}
-                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  onOpenBookingBrief={(network) => handleOpenBookingBrief(network, resolvePartnerBookingUrl(network))}
+                  confirmedProviders={confirmedProviders}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
                   onSelectItem={(itemId) => setMapFocusItemId(itemId)}
@@ -4576,7 +4658,7 @@ export default function ExpertWorkspace() {
                         <div style={{ fontSize: 11, color: FAINT }}>{aff.category || "—"}</div>
                       </div>
                       <button
-                        onClick={() => setBookingBrief({ provider: aff.name, bookingUrl: aff.websiteUrl })}
+                        onClick={() => handleOpenBookingBrief(aff.name, aff.websiteUrl)}
                         data-testid={`button-affiliate-${aff.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
                         style={{ ...btnPrimaryStyle, flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11 }}
                       >
