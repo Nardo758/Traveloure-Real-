@@ -63,8 +63,75 @@ export type TripContextPatch = Omit<Partial<TripContext>, "startDate" | "endDate
 };
 
 const STORAGE_KEY = "experienceContext";
+
+/** Tracks which identity owns the local context: a userId string, or absent/null for guest. */
+const OWNER_KEY = "trip-context-owner";
 const CHANGE_EVENT = "trip-context-change";
 
+/**
+ * In-memory flag: true only when auth has resolved to "confirmed unauthenticated"
+ * (isLoading=false, user=null) as signalled by the sign-in hook via
+ * confirmGuestSession(). Writes during auth loading never see this true, which
+ * prevents loading-time effects (e.g. template pages) from marking a legacy
+ * authenticated context as guest-authored.
+ */
+let guestSessionConfirmed = false;
+
+/** Called by the sign-in hook when auth resolves to confirmed unauthenticated. */
+export function confirmGuestSession(): void {
+  guestSessionConfirmed = true;
+}
+
+/** Called by the sign-in hook on sign-in to stop new writes from marking provenance. */
+export function endGuestSession(): void {
+  guestSessionConfirmed = false;
+}
+
+/**
+ * sessionStorage key persisting guest provenance within the tab session.
+ * Set by updateTripContext/switchTripContext only when guestSessionConfirmed.
+ * Survives page reloads within the same tab (unlike the in-memory flag above)
+ * so that a write-then-reload-then-sign-in flow still delivers the context.
+ */
+const GUEST_PROVENANCE_KEY = "trip-context-guest-provenance";
+
+function setGuestProvenance(): void {
+  try {
+    sessionStorage.setItem(GUEST_PROVENANCE_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Returns true when the current context was explicitly written during a confirmed guest session. */
+export function hasGuestProvenance(): boolean {
+  try {
+    return sessionStorage.getItem(GUEST_PROVENANCE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Clears the guest-provenance flag (call on sign-in or context clear). */
+export function clearGuestProvenance(): void {
+  try {
+    sessionStorage.removeItem(GUEST_PROVENANCE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Returns the userId that owns the current local context, or null when the
+ * context was built while unauthenticated (guest-owned / unowned).
+ */
+export function getContextOwner(): string | null {
+  try {
+    return sessionStorage.getItem(OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
 function normalizeDate(value: string | Date | null | undefined): string | undefined {
   if (value === null || value === undefined || value === "") return undefined;
   if (value instanceof Date) {
@@ -131,6 +198,11 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   const next = { ...current, ...sanitized } as TripContext;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // Mark as guest-authored only when auth has explicitly confirmed unauthenticated
+    // state (guestSessionConfirmed, set by the sign-in hook). Checking the owner
+    // stamp alone is insufficient: auth-loading-time writes also lack the stamp
+    // but must NOT be marked as guest (they could be legacy authenticated content).
+    if (guestSessionConfirmed) setGuestProvenance();
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -201,6 +273,8 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
 
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // Mark as guest-authored only when auth has confirmed unauthenticated state.
+    if (guestSessionConfirmed) setGuestProvenance();
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -253,6 +327,37 @@ function tripScopedQuery(context: Pick<TripContext, "tripId">): string {
 
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
 
+/**
+ * Cancels any pending debounced push.
+ * Call before clearing context (logout, cross-account switch) so a
+ * scheduled PUT from a previous user can't fire against the new session.
+ */
+export function cancelPendingPush(): void {
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = undefined;
+  }
+}
+
+/**
+ * Synchronously cancels pending pushes and wipes all local trip-context state:
+ * the stored context, owner stamp, and guest-provenance flag.
+ *
+ * Call at logout **before** navigation (e.g. from the logout function in
+ * use-auth.ts) so that a pending debounced PUT cannot fire against the
+ * next session's credentials and the prior user's context cannot leak to
+ * whoever opens the tab next.
+ *
+ * Also call defensively on confirmed-unauthenticated bootstrap when a stale
+ * authenticated owner stamp is found.
+ */
+export function wipeLocalTripSession(): void {
+  endGuestSession(); // stop writes from marking provenance
+  cancelPendingPush(); // cancel debounced timer (also done inside clearTripContext)
+  clearTripContext(); // removes storage key, provenance flag, and fires change event
+  setContextOwner(null); // clearTripContext intentionally leaves the owner stamp; remove it here
+}
+
 function schedulePush(context: TripContext): void {
   if (typeof fetch !== "function") return;
   if (pushTimer) clearTimeout(pushTimer);
@@ -269,6 +374,53 @@ function schedulePush(context: TripContext): void {
   }, 1500);
 }
 
+/**
+ * Immediately push the current local trip context to the server, cancelling
+ * any pending debounced push. Returns false (no-op) when the context is empty.
+ * Intended for the sign-in transition so planning built as a guest is not lost
+ * if the user closes the tab immediately after authenticating.
+ *
+ * Uses fetch keepalive:true so the request survives immediate tab close or
+ * navigation after sign-in — the exact scenario this is designed to handle.
+ */
+/**
+ * Immediately PUT the local trip context to the server, cancelling any pending
+ * debounced push. Uses keepalive:true so the request survives a tab close or
+ * navigation immediately after sign-in.
+ *
+ * @param options.userScoped - When true, omits the `?tripId=` query parameter
+ *   so the PUT targets the user's default context row instead of a trip-scoped
+ *   row. Use this for the sign-in push: `useClaimGuestTrips` may not have
+ *   finished claiming the guest trip yet, so a trip-scoped PUT would be
+ *   rejected (the tripId doesn't belong to the user until claim succeeds).
+ *   The default row is always accessible once the user is authenticated.
+ *
+ * Returns a Promise that resolves to true when the server acknowledged the PUT
+ * (2xx response), or false when the context was empty / the network call failed.
+ */
+export async function pushTripContextNow(options?: {
+  userScoped?: boolean;
+}): Promise<boolean> {
+  if (typeof fetch !== "function") return false;
+  const context = getTripContext();
+  if (Object.keys(context).length === 0) return false;
+  // Cancel any pending debounced push — this immediate call supersedes it.
+  cancelPendingPush();
+  const query = options?.userScoped ? "" : tripScopedQuery(context);
+  try {
+    const res = await fetch(`/api/trip-context${query}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      keepalive: true,
+      body: JSON.stringify({ context }),
+    });
+    return res.ok;
+  } catch {
+    /* offline — best-effort */
+    return false;
+  }
+}
 let hydrated = false;
 
 /**
@@ -338,11 +490,24 @@ export function useTripContextSync(): void {
 }
 
 export function clearTripContext(): void {
+  // Cancel any pending debounced push first — a scheduled PUT from a previous
+  // user must not fire after the context is cleared (cross-account race).
+  cancelPendingPush();
   try {
     sessionStorage.removeItem(STORAGE_KEY);
   } catch {
     /* ignore */
   }
+  // NOTE: OWNER_KEY is intentionally NOT cleared here. Keeping the stamp means
+  // that if an authenticated user clears context and then builds new planning,
+  // that new context is still owned by them — preventing a subsequent sign-in
+  // by a different user on the same tab from uploading the first user's data.
+  // The stamp is only set (never cleared here), so a guest who never signed in
+  // keeps an absent stamp (null), which is still treated as safely pushable.
+  //
+  // GUEST_PROVENANCE_KEY IS cleared: no content → nothing to push, and clearing
+  // here ensures a fresh write-then-sign-in cycle can re-establish provenance.
+  clearGuestProvenance();
   try {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
@@ -375,4 +540,21 @@ export function useTripContext(): [TripContext, (patch: TripContextPatch) => voi
   }, []);
 
   return [context, update];
+}
+
+/**
+ * Stamps the local context with an owner userId (or clears the stamp when
+ * called with null, reverting to guest-owned). Call after a successful
+ * sign-in push so subsequent identity checks can detect cross-account reuse.
+ */
+export function setContextOwner(owner: string | null): void {
+  try {
+    if (owner === null) {
+      sessionStorage.removeItem(OWNER_KEY);
+    } else {
+      sessionStorage.setItem(OWNER_KEY, owner);
+    }
+  } catch {
+    /* ignore */
+  }
 }

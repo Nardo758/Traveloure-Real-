@@ -185,6 +185,7 @@ import { Loader2 } from "lucide-react";
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
+import { useSyncTripContextOnSignIn } from "@/hooks/use-sync-trip-context-on-signin";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
@@ -321,6 +322,8 @@ function Router() {
   // Automatically claim guest trips and concierge requests when user signs in
   useClaimGuestTrips();
   useClaimGuestConcierge();
+  // Push any locally-built trip context to the server on sign-in so planning isn't lost
+  useSyncTripContextOnSignIn();
 
   return (
     <Suspense fallback={<PageLoader />}>
