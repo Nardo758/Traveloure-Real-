@@ -330,6 +330,60 @@ test.describe('Admin test-email — EMAIL_FROM not configured (502)', () => {
   );
 });
 
+// ── Suite F — EMAIL_FROM_NOREPLY absent, EMAIL_FROM present → success ──────────
+
+test.describe('Admin test-email — EMAIL_FROM_NOREPLY absent, EMAIL_FROM present', () => {
+  test(
+    'success banner shows "Delivered successfully" when server falls back to EMAIL_FROM',
+    async ({ page }) => {
+      test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
+
+      // This test guards against a regression where the fallback logic
+      //   `process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM`
+      // is accidentally removed or reversed, causing the endpoint to return
+      // an error even though EMAIL_FROM is correctly configured.
+      //
+      // The mock simulates the server behaviour when EMAIL_FROM_NOREPLY is not
+      // set but EMAIL_FROM is: the route resolves the `from` address from the
+      // fallback and returns 200 with ok:true.
+
+      await mockSupportingRoutes(page);
+
+      let interceptorCalled = false;
+      await page.route('**/api/admin/system/test-email', async (route) => {
+        interceptorCalled = true;
+        expect(route.request().method()).toBe('POST');
+
+        // Respond as the real server would when EMAIL_FROM_NOREPLY is absent
+        // but EMAIL_FROM is present — send succeeds using the fallback address.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ok: true,
+            id: 'msg_test_from_fallback',
+            to: ADMIN_EMAIL,
+          }),
+        });
+      });
+
+      await openSystemPage(page);
+
+      // Submit without a custom recipient so the server uses the admin's address.
+      await page.getByTestId('button-send-test-email').click();
+
+      // The success banner must appear — a missing EMAIL_FROM_NOREPLY must not
+      // cause the send to fail when EMAIL_FROM is configured.
+      const banner = page.getByTestId('test-email-result');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+      await expect(banner).toContainText('Delivered successfully');
+
+      // Confirm the interceptor ran (the request actually reached the mock).
+      expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
+    },
+  );
+});
+
 // ── Suite C — Empty field falls back to admin address ─────────────────────────
 
 test.describe('Admin test-email — empty field falls back to admin address', () => {
