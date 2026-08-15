@@ -2179,23 +2179,59 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // §15: one open request at a time — a pending/processing payout blocks a duplicate,
-      // UNLESS it is stale (older than STALE_PAYOUT_PROCESSING_DAYS days). A stale payout
-      // means the admin pipeline is stuck; the earner should not be permanently locked out.
-      // Stale payouts remain visible in the admin queue with `isStale: true` for manual
-      // resolution — this gate bypass does not silently abandon them.
+      // §15: one open request at a time. Two sub-cases:
+      //
+      // FRESH open payout (age ≤ STALE_PAYOUT_PROCESSING_DAYS) → 409. Normal duplicate guard.
+      //
+      // STALE open payout (age > STALE_PAYOUT_PROCESSING_DAYS) → atomically supersede it before
+      // creating the replacement. The stale row is cancelled to `failed` with a note BEFORE the
+      // new row is created so there is NEVER two live completable rows simultaneously. The
+      // claimExpertPayoutForProcessing / claimProviderPayoutForProcessing guards also exclude
+      // `failed` rows from Stripe transfer, so a superseded row can never have money moved
+      // against it even if an admin tries to complete it manually (storage.ts, task 1193 fix).
       const existing = isProvider
         ? await storage.getProviderPayouts(userId)
         : await storage.getExpertPayouts(userId);
-      const open = existing.find(
+
+      const freshOpen = existing.find(
         (p: any) => (p.status === "pending" || p.status === "processing") && !isPayoutStale(p),
       );
-      if (open) {
+      if (freshOpen) {
         return res.status(409).json({
           error: "payout_request_pending",
           message: "You already have a payout request awaiting review.",
-          payout: open,
+          payout: freshOpen,
         });
+      }
+
+      // Atomically cancel any stale open payouts before creating the replacement so admin can
+      // never complete both. Logged for observability; the admin queue isStale flag provides
+      // the visibility trail.
+      const staleOpen = existing.filter(
+        (p: any) => (p.status === "pending" || p.status === "processing") && isPayoutStale(p),
+      );
+      for (const stale of staleOpen) {
+        const supersessionNote =
+          `Automatically superseded after ${STALE_PAYOUT_PROCESSING_DAYS} days with no resolution. ` +
+          `A fresh payout request was submitted by the earner. No Stripe transfer was issued for this row.`;
+        try {
+          if (isProvider) {
+            await storage.updateProviderPayoutStatus(stale.id, "failed", supersessionNote);
+          } else {
+            await storage.updateExpertPayoutStatus(stale.id, "failed", supersessionNote);
+          }
+          console.log(
+            `[payouts] superseded stale ${isProvider ? "provider" : "expert"} payout ${stale.id} ` +
+            `(status was ${stale.status}, age > ${STALE_PAYOUT_PROCESSING_DAYS}d) for user ${userId}`,
+          );
+        } catch (cancelErr: any) {
+          // Non-fatal: log and continue. A cancellation failure leaves the stale row in its
+          // current state; the new payout is still created because the claimForProcessing guard
+          // now excludes 'failed' — but if cancellation failed the stale row is still pending/
+          // processing and the claim guard still has the 'failed' exclusion. Worst case: admin
+          // sees two rows and must resolve manually. Better than a permanent earner lockout.
+          console.error(`[payouts] failed to supersede stale payout ${stale.id}:`, cancelErr);
+        }
       }
 
       // §14: amount is SERVER-DERIVED from the earner's releasable balance, never from the

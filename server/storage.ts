@@ -4990,17 +4990,21 @@ export class DatabaseStorage implements IStorage {
   // if not already completed/processing. Returns undefined if another caller already claimed/
   // completed it — the transition IS the concurrency guard, so a double-invocation transfers once.
   async claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined> {
+    // Guard: only claim rows that are in a pre-transfer state. 'completed' is already done;
+    // 'processing' is already claimed by another concurrent call; 'failed' is a terminal state
+    // (an admin rejection OR a stale-supersession) and must never be re-driven to Stripe.
     const [row] = await db.update(expertPayouts)
       .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing')`))
+      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing','failed')`))
       .returning();
     return row;
   }
 
   async claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined> {
+    // Same guard as claimExpertPayoutForProcessing — 'failed' must not be re-claimable.
     const [row] = await db.update(providerPayouts)
       .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing')`))
+      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing','failed')`))
       .returning();
     return row;
   }
