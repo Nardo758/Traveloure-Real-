@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link, useLocation, useSearch, Redirect } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -27,6 +28,8 @@ import {
   Briefcase,
   ShieldCheck,
   Home,
+  ShoppingCart,
+  X,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -45,6 +48,53 @@ export default function ExpertDetailPage() {
   // unlocks a "share my trip plan" request — the expert-booking-request carries
   // the tripId, which is what authorizes the expert's plan-snapshot view.
   const handoffTripId = new URLSearchParams(searchString).get("tripId");
+
+  // Browse-cart handoff: arriving from the discover page's catalog cart with
+  // ?browseCart=1. Items are stored in sessionStorage; we read them here so
+  // the traveler can request this specific expert to book them.
+  const BROWSE_CART_KEY = "traveloure_browse_cart";
+  type BrowseCartItem = { id: string; name: string; price: number | null; currency: string; provider: string; category: string | null };
+  const hasBrowseCart = new URLSearchParams(searchString).get("browseCart") === "1";
+  const [browseCartItems, setBrowseCartItems] = useState<BrowseCartItem[]>(() => {
+    if (!hasBrowseCart) return [];
+    try {
+      const raw = sessionStorage.getItem(BROWSE_CART_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as BrowseCartItem[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
+
+  const requestBrowseCartMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/expert-booking-requests", {
+        expertId: expertId,
+        browseCatalogItems: browseCartItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          currency: item.currency,
+          provider: item.provider,
+          category: item.category,
+        })),
+        notes: `Traveler wants help booking ${browseCartItems.length} activit${browseCartItems.length === 1 ? "y" : "ies"} from the discover catalog.`,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Request sent!",
+        description: `${expert?.firstName || "The expert"} has been notified of your activity picks and will follow up soon.`,
+      });
+      // Clear the cart after a successful handoff
+      try { sessionStorage.removeItem(BROWSE_CART_KEY); } catch { /* ignore */ }
+      setBrowseCartItems([]);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Could not send request", description: "Please try again." });
+    },
+  });
 
   // Fetch expert details
   const { data: expert, isLoading, isError } = useQuery<any>({
@@ -660,6 +710,56 @@ export default function ExpertDetailPage() {
                       )}
                     </div>
 
+                    {/* Browse-cart handoff: traveler arrived from the discover
+                        catalog cart with activities they want this expert to book. */}
+                    {browseCartItems.length > 0 && (
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2" data-testid="browse-cart-handoff-section">
+                        <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                          <ShoppingCart className="w-4 h-4" />
+                          {browseCartItems.length} activit{browseCartItems.length === 1 ? "y" : "ies"} to book
+                        </div>
+                        <ul className="space-y-1.5">
+                          {browseCartItems.map((item) => (
+                            <li key={item.id} className="flex items-start justify-between gap-2 text-xs">
+                              <span className="text-foreground line-clamp-1 flex-1">{item.name}</span>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {item.price != null && (
+                                  <span className="text-emerald-600 font-semibold">
+                                    {item.currency === "USD" || !item.currency ? "$" : item.currency + " "}{item.price.toFixed(0)}
+                                  </span>
+                                )}
+                                <button
+                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                  onClick={() => setBrowseCartItems((prev) => prev.filter((i) => i.id !== item.id))}
+                                  aria-label={`Remove ${item.name}`}
+                                  data-testid={`button-remove-cart-item-${item.id}`}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          onClick={() => {
+                            if (!isAuthenticated) { openSignInModal(); return; }
+                            requestBrowseCartMutation.mutate();
+                          }}
+                          disabled={requestBrowseCartMutation.isPending || requestBrowseCartMutation.isSuccess}
+                          data-testid="button-request-browse-cart-booking"
+                        >
+                          <ShoppingCart className="w-4 h-4 mr-2" />
+                          {requestBrowseCartMutation.isSuccess
+                            ? "Request sent ✓"
+                            : requestBrowseCartMutation.isPending
+                              ? "Sending…"
+                              : `Ask ${expert?.firstName || "expert"} to book these`}
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Plan handoff: only when the traveler arrived with a trip
                         (?tripId= from the cart) AND the expert has a bookable
                         service to attach the request to. */}
@@ -680,7 +780,13 @@ export default function ExpertDetailPage() {
                       </Button>
                     )}
 
-                    <Button className="w-full" size="lg" variant={handoffTripId && services.length > 0 ? "outline" : "default"} onClick={handleContactExpert} data-testid="button-contact-expert">
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      variant={handoffTripId && services.length > 0 ? "outline" : "default"}
+                      onClick={handleContactExpert}
+                      data-testid="button-contact-expert"
+                    >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Contact Expert
                     </Button>

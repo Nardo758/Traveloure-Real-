@@ -1510,6 +1510,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     notes: z.string().optional().default(""),
     serviceId: z.string().optional(),
     bookingMetadata: z.record(z.any()).optional(),
+    /** Browse-cart handoff: the specific expert to notify (their user id). */
+    expertId: z.string().optional(),
+    /** Browse-cart handoff: catalog items the traveler wants the expert to book. */
+    browseCatalogItems: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      price: z.number().nullable().optional(),
+      currency: z.string().optional().default("USD"),
+      provider: z.string().optional(),
+      category: z.string().nullable().optional(),
+    })).optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -1521,7 +1532,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, serviceId, bookingMetadata } = validation.data;
+      const { tripId, notes, serviceId, bookingMetadata, expertId, browseCatalogItems } = validation.data;
       const userId = getUserId(req)!;
       
       // Only validate trip ownership when a tripId is provided
@@ -1705,6 +1716,43 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           commissionRate:
             totalAmount > 0 ? Number(platformFeeAmt) / totalAmount : 0,
         };
+      } else if (expertId && browseCatalogItems && browseCatalogItems.length > 0) {
+        // Browse-cart handoff: traveler picked catalog items (Viator/Fever/etc.) on the
+        // discover page and asked a specific expert to book them. Notify that expert with
+        // a structured list of items so they can follow up.
+        try {
+          const traveler = await storage.getUser(userId);
+          const travelerName = traveler
+            ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+            : "A traveler";
+
+          const itemSummary = browseCatalogItems
+            .map((item) => {
+              const price = item.price != null
+                ? ` (${item.currency ?? "USD"} ${item.price.toFixed(0)})`
+                : "";
+              return `• ${item.name}${price}${item.provider ? ` via ${item.provider}` : ""}`;
+            })
+            .join("\n");
+
+          await storage.createNotification({
+            userId: expertId,
+            type: "expert_inquiry",
+            title: "New Booking Request",
+            message: `${travelerName} wants help booking ${browseCatalogItems.length} activit${browseCatalogItems.length === 1 ? "y" : "ies"}:\n${itemSummary}${notes ? `\n\nNote: ${notes}` : ""}`,
+            relatedId: userId,
+            relatedType: "user",
+            data: {
+              travelerId: userId,
+              travelerName,
+              browseCatalogItems,
+              notes,
+            },
+          });
+        } catch (browseErr) {
+          console.error("Failed to notify expert of browse-cart request:", browseErr);
+          // Non-fatal: return success so the UI can still confirm to the traveler
+        }
       } else if (tripId) {
         // No specific service — route inquiry to relevant experts for the trip destination
         try {

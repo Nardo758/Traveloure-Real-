@@ -606,7 +606,14 @@ export default function ExpertsPage() {
                     showServices={true}
                     experienceTypeFilter={selectedExperienceType || undefined}
                     onNeighbourhoodClick={handleNeighbourhoodChipClick}
-                    detailQuery={handoffTripId ? `?tripId=${encodeURIComponent(handoffTripId)}` : undefined}
+                    detailQuery={
+                      handoffTripId || browseCartItems.length > 0
+                        ? `?${[
+                            handoffTripId ? `tripId=${encodeURIComponent(handoffTripId)}` : null,
+                            browseCartItems.length > 0 ? "browseCart=1" : null,
+                          ].filter(Boolean).join("&")}`
+                        : undefined
+                    }
                   />
                 </motion.div>
               ))}
