@@ -420,6 +420,10 @@ function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   return sanitizeDeep(obj) as T;
 }
 
+// Note: knowledgeProofAnswers[].answer is sanitized by sanitizeObject (via sanitizeDeep),
+// which recurses into JSONB arrays and objects and applies sanitizeText to every nested string.
+// The unit tests in server/utils/__tests__/text-sanitizer.test.ts verify this path explicitly.
+
 // Migration 151 (§17 Product Builder): bundle_components.component_service_id is
 // ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
 // removed from the bundle. Postgres surfaces that as FK violation 23503; translate it into
@@ -2034,6 +2038,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
           const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
@@ -2056,6 +2061,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
       const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
@@ -2089,6 +2095,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
           const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
@@ -2110,6 +2117,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
       const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
