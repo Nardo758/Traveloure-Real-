@@ -1214,6 +1214,7 @@ class StripePaymentService {
     try {
       return await stripe.paymentIntents.retrieve(paymentIntentId);
     } catch {
+      // Safe failure direction: callers treat null as unverified (see JSDoc above).
       return null;
     }
   }

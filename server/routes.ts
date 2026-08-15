@@ -114,6 +114,7 @@ import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { sanitizeDeep } from "./utils/text-sanitizer";
+import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -1179,7 +1180,7 @@ export async function registerRoutes(
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks trip creation
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1444,7 +1445,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks itinerary response
 
       // Rebuild itinerary_items — delete old, insert new.
       // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
@@ -1644,7 +1645,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           eventType: "revenue",
           funnelStage: "T6",
           eventData: { amount: totalAmount },
-        }).catch(() => {});
+        }).catch(() => {}); // fire-and-forget funnel event — never blocks booking confirmation
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -3659,6 +3660,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const photoUrl = pexelsPhotos[0]?.url ?? null;
           return res.json({ photoUrl });
         } catch {
+          // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
         }
       }
@@ -5474,6 +5476,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         displayName,
       });
     } catch {
+      // Fail closed: if the verification profile cannot be read, report as unverified.
       res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });
@@ -6156,7 +6159,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const { status, reason } = req.body;
+      const { status } = req.body;
+      // Normalize and validate the optional decline reason via the shared utility so the
+      // server-side check and the unit-tested production code are the same code path.
+      const reasonResult = normalizeDeclineReason(req.body.reason);
+      if (!reasonResult.ok) {
+        return res.status(reasonResult.status).json({ message: reasonResult.message });
+      }
+      const reason = reasonResult.reason;
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
@@ -6227,13 +6237,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                   userId: booking.travelerId,
                   type: "booking_cancelled",
                   title: "Booking cancelled by provider — full refund issued",
-                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  message: reason
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+              }
+              // Send a cancellation + refund email so the traveler sees both the reason and
+              // confirmation that their money is being returned.
+              try {
+                const traveler = await storage.getUser(booking.travelerId);
+                if (traveler?.email) {
+                  const { sendBookingCancellationWithRefundEmail } = await import("./services/email.service");
+                  await sendBookingCancellationWithRefundEmail({
+                    toEmail: traveler.email,
+                    travelerName: traveler.firstName ?? null,
+                    bookingTrackingNumber: booking.trackingNumber ?? null,
+                    serviceName: (booking as any).serviceName ?? null,
+                    refundAmount: amountPaid,
+                    cancellationReason: reason ?? null,
+                  });
+                }
+              } catch (emailErr) {
+                console.error("Failed to send cancellation+refund email to traveler:", emailErr);
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
@@ -6271,9 +6301,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // branch above returns earlier with its own notification.
               userId: booking.travelerId,
               type: "booking_cancelled",
-              title: "Booking cancelled by provider",
-              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              title: "Booking declined by provider",
+              message: reason
+                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
+                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
               dedupeKey: `booking:${req.params.id}:cancelled`,
             }
         : undefined;
@@ -6285,6 +6317,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // notification (the notify insert lives inside the same transaction the lost race rolled
         // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
+
+      // Send a decline email so the traveler sees the reason even if they don't check the app.
+      // Non-fatal: a delivery failure must never roll back the already-committed status flip.
+      if (status === "cancelled" && booking.travelerId) {
+        try {
+          const traveler = await storage.getUser(booking.travelerId);
+          if (traveler?.email) {
+            const { sendBookingDeclineEmail } = await import("./services/email.service");
+            await sendBookingDeclineEmail({
+              toEmail: traveler.email,
+              travelerName: traveler.firstName ?? null,
+              bookingTrackingNumber: booking.trackingNumber ?? null,
+              serviceName: (booking as any).serviceName ?? null,
+              declineReason: reason ?? null,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send decline email to traveler:", emailErr);
+        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
@@ -8596,7 +8648,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
         eventType: "cart_populated",
         funnelStage: "T4",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks cart response
 
       res.json({
         message:
@@ -9219,12 +9271,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       } catch (inner) {
         // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
-        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch(() => {});
+        // Best-effort rollback — if either step fails, log but still re-throw the original error
+        // so the outer handler can surface it; a partial rollback is better than a silent hang.
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) => {
+          console.warn("[coordination/payment] Could not release claimed credit during rollback:", rollbackErr);
+        });
         await db
           .update(coordinationStates)
           .set({ feePaymentStatus: "unpaid" })
           .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
-          .catch(() => {});
+          .catch((rollbackErr) => {
+            console.warn("[coordination/payment] Could not reset feePaymentStatus to 'unpaid' during rollback:", rollbackErr);
+          });
         throw inner;
       }
     } catch (error: any) {
