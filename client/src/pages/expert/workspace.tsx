@@ -270,6 +270,10 @@ function ViatorDetailPanel({ productCode }: { productCode: string }) {
     queryKey: [`/api/viator/activities/${productCode}`],
     staleTime: 5 * 60 * 1000,
   });
+  // Description "show more" — collapsed at 400 chars so the card doesn't dominate
+  // the panel; experts can expand to read the full text before adding.
+  const DESC_COLLAPSE = 400;
+  const [descExpanded, setDescExpanded] = useState(false);
 
   if (isLoading) {
     return (
@@ -307,6 +311,7 @@ function ViatorDetailPanel({ productCode }: { productCode: string }) {
   };
 
   const dur = formatDuration(data.duration ?? data.itinerary?.duration);
+  // All inclusions and exclusions — no artificial slice limit.
   const inclusions: string[] = (data.inclusions ?? [])
     .map((inc: any) => inc.otherDescription ?? inc.typeDescription ?? inc.categoryDescription)
     .filter(Boolean);
@@ -319,15 +324,32 @@ function ViatorDetailPanel({ productCode }: { productCode: string }) {
     : cancelPolicy?.type === "ALL_SALES_FINAL" ? "Non-refundable"
     : cancelPolicy?.description ?? cancelPolicy?.type ?? null;
 
+  const fullDesc: string = data.description ?? "";
+  const descNeedsToggle = fullDesc.length > DESC_COLLAPSE;
+  const visibleDesc = descNeedsToggle && !descExpanded
+    ? `${fullDesc.slice(0, DESC_COLLAPSE)}…`
+    : fullDesc;
+
   return (
     <div
       data-testid={`viator-detail-panel-${productCode}`}
       style={{ paddingTop: 10, borderTop: `1px solid var(--console-line)`, marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}
     >
-      {/* Description */}
-      {data.description && (
-        <div style={{ fontSize: 11.5, color: "var(--console-ink)", lineHeight: 1.55 }}>
-          {data.description.length > 320 ? `${data.description.slice(0, 320)}…` : data.description}
+      {/* Description — full text with optional collapse for long entries */}
+      {fullDesc && (
+        <div>
+          <div style={{ fontSize: 11.5, color: "var(--console-ink)", lineHeight: 1.55 }}>
+            {visibleDesc}
+          </div>
+          {descNeedsToggle && (
+            <button
+              onClick={() => setDescExpanded(e => !e)}
+              data-testid={`button-viator-desc-toggle-${productCode}`}
+              style={{ background: "none", border: "none", padding: "3px 0 0", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "var(--console-brand)" }}
+            >
+              {descExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
         </div>
       )}
 
@@ -339,24 +361,24 @@ function ViatorDetailPanel({ productCode }: { productCode: string }) {
         </div>
       )}
 
-      {/* Inclusions */}
+      {/* Inclusions — all items */}
       {inclusions.length > 0 && (
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--console-faint)", marginBottom: 3 }}>Included</div>
           <ul style={{ margin: 0, paddingLeft: 14, display: "flex", flexDirection: "column", gap: 2 }}>
-            {inclusions.slice(0, 5).map((inc, i) => (
+            {inclusions.map((inc, i) => (
               <li key={i} style={{ fontSize: 11, color: "var(--console-mid)", lineHeight: 1.4 }}>{inc}</li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* Exclusions */}
+      {/* Exclusions — all items */}
       {exclusions.length > 0 && (
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--console-faint)", marginBottom: 3 }}>Not included</div>
           <ul style={{ margin: 0, paddingLeft: 14, display: "flex", flexDirection: "column", gap: 2 }}>
-            {exclusions.slice(0, 4).map((exc, i) => (
+            {exclusions.map((exc, i) => (
               <li key={i} style={{ fontSize: 11, color: "var(--console-mid)", lineHeight: 1.4 }}>{exc}</li>
             ))}
           </ul>
