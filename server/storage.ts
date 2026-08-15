@@ -2718,7 +2718,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-   *    * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
+  /**
+   * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
    * the sole author of provisional-claim transitions; this parameter is how the OWNER rail refuses
    * to touch a row the claim machine owns. Why it had to exist: `PATCH /api/provider/bookings/
    * :id/status` checked the TARGET status and never the CURRENT one, so a provider clicking Accept
@@ -5479,7 +5480,8 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-   *    * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
+  /**
+   * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
    * $0.01 (rounding tolerance) past amountDollars; once one row would overshoot, it — and everything
    * after it (oldest-first) — stays releasable. If the releasable total is less than amountDollars
    * (e.g. a reversal/dispute/concurrent payout consumed rows since this payout was requested), flips

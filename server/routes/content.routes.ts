@@ -1548,8 +1548,12 @@ router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
 
 router.get("/api/destinations", async (req, res) => {
     try {
-      const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      // Alias of /api/catalog/destinations — apply same pagination contract.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const all = await experienceCatalogService.getDestinations();
+      const deduped = [...new Set(all)] as string[];
+      const page = deduped.slice(offset, offset + limit);
+      res.json({ data: page, total: deduped.length, hasMore: offset + page.length < deduped.length, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
