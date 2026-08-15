@@ -189,7 +189,7 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
           <Ticket className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
           <h3 className="font-semibold text-lg mb-2">No Events Found</h3>
           <p className="text-muted-foreground">
-            No events are currently cached for {destination}. Check back soon as our catalog updates daily.
+            No events were found for {destination}. Try a different destination or check back soon.
           </p>
         </CardContent>
       </Card>
