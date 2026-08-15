@@ -31,7 +31,7 @@ import {
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
-  Trash2, RefreshCw, Route, Building2,
+  Trash2, RefreshCw, Route, Building2, Briefcase,
 } from "lucide-react";
 // L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
@@ -2764,7 +2764,7 @@ export default function ExpertWorkspace() {
   // Mode resolution is the SERVER's call (ready-made brief §2): assignment (an advisor row exists)
   // vs authoring (this expert is the trip's author). The client never infers it from a role string.
   const { data: workspaceCtx, isLoading: ctxLoading } = useQuery<{
-    mode: "assignment" | "authoring";
+    mode: "assignment" | "authoring" | "booking_request";
     trip: any;
     listing?: ReadyMadeListing | null;
   }>({
@@ -2773,6 +2773,8 @@ export default function ExpertWorkspace() {
     retry: false,
   });
   const isAuthoring = workspaceCtx?.mode === "authoring";
+  /** Provider landed here via a booking-request notification — advisor row not yet created. */
+  const isBookingRequest = workspaceCtx?.mode === "booking_request";
   const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
 
   // Decision-maker ruling (Aug 8 2026): the workspace ALWAYS lands on Add — building comes
@@ -2781,7 +2783,9 @@ export default function ExpertWorkspace() {
 
   const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({
     queryKey: ["/api/expert/assigned-trips"],
-    enabled: !isAuthoring, // an authoring trip is never in the assignment list (it has no advisor row)
+    // Wait for workspace-context to resolve so isAuthoring/isBookingRequest are known before firing.
+    // authoring trips have no advisor row; booking_request providers are not assigned advisors yet.
+    enabled: !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertRoleData } = useQuery<{ role: string; roleLabel: string | null; applicationStatus: string | null }>({
@@ -2919,8 +2923,10 @@ export default function ExpertWorkspace() {
 
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
+  // booking_request mode: provider landed via a notification link before the advisor row exists —
+  // shape the context trip the same way so the rest of the page can render with the trip data.
   // Shape the context's trip row into the same view model the whole page already reads.
-  const trip: AssignedTrip | undefined = assignedTrip ?? (isAuthoring && workspaceCtx?.trip ? {
+  const trip: AssignedTrip | undefined = assignedTrip ?? ((isAuthoring || isBookingRequest) && workspaceCtx?.trip ? {
     trip_id: workspaceCtx.trip.id,
     trip_title: workspaceCtx.trip.title ?? "Untitled build",
     destination: workspaceCtx.trip.destination ?? "",
@@ -2932,19 +2938,23 @@ export default function ExpertWorkspace() {
     suggestion_count: 0,
   } : undefined);
 
+  // booking_request mode: provider landed via a notification link with an active booking but
+  // no advisor assignment yet. Every trip-scoped sub-query is gated on !!workspaceCtx so the
+  // mode is known before any request fires — on the initial render workspaceCtx is undefined,
+  // making isBookingRequest false, which would otherwise enable the queries prematurely.
   const { data: itineraryData, isLoading: itemsLoading } = useQuery<ItineraryData>({
     queryKey: [`/api/trips/${tripId}/itinerary-items`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
 
   const { data: assignment, isLoading: assignmentLoading } = useQuery<MyAssignment>({
     queryKey: [`/api/trips/${tripId}/my-assignment`],
-    enabled: !!tripId && !isAuthoring,
+    enabled: !!tripId && !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
 
   // CLAUDE.md §21 — the trip-level traveler-facing note's INITIAL value. There is no dedicated
@@ -2955,14 +2965,14 @@ export default function ExpertWorkspace() {
   // invalidates, so this stays in sync for free rather than adding a second cache to babysit.
   const { data: plancardForNote } = useQuery<{ trip?: { expertTravelerNote?: string | null } }>({
     queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
     staleTime: 30 * 1000,
     retry: false,
   });
 
   const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
     staleTime: 30 * 1000,
   });
 
@@ -2971,7 +2981,7 @@ export default function ExpertWorkspace() {
   // estimator per same-day pair — no reason to pay for it on every workspace load).
   const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
     queryKey: [`/api/trips/${tripId}/transport-gaps`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
   });
 
   // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape TransportLegsPanel and
@@ -2979,7 +2989,7 @@ export default function ExpertWorkspace() {
   // entry, gated the same "only while the tab is open" way transportGaps above is.
   const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
     queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
   });
 
   // Advisor Phase 2-4 — reorder-nudge source (route-efficiency), stays card (stay-anchor), and
@@ -2989,14 +2999,14 @@ export default function ExpertWorkspace() {
   // tab) — react-query's own `isError` flag is read directly rather than a toast.
   const { data: advisorRouteEfficiency, isError: advisorRouteEfficiencyError } = useQuery<AdvisorRouteEfficiencyResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/route-efficiency`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
 
   const { data: advisorStayAnchor, isError: advisorStayAnchorError } = useQuery<AdvisorStayAnchorResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/stay-anchor`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -3011,7 +3021,7 @@ export default function ExpertWorkspace() {
       if (res.status === 204) return null;
       return res.json();
     },
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -3037,7 +3047,7 @@ export default function ExpertWorkspace() {
   // than fake results (§13).
   const { data: fundamentalsData, isLoading: fundamentalsLoading, isError: fundamentalsError } = useQuery<AdvisorFundamentalsResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/fundamentals`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 30 * 1000,
     retry: false,
   });
@@ -3070,7 +3080,7 @@ export default function ExpertWorkspace() {
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: !!tripId && isEvent,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && isEvent,
     staleTime: 60 * 1000,
   });
 
@@ -3175,21 +3185,23 @@ export default function ExpertWorkspace() {
   const energyCalcRef = useRef(false);
   const energyRecalcInFlight = useRef(false);
   const triggerEnergyRecalc = useCallback(() => {
-    if (!tripId || energyRecalcInFlight.current) return;
+    // booking_request mode: provider/expert has no assignment yet — skip all trip-scoped writes.
+    if (!tripId || isBookingRequest || energyRecalcInFlight.current) return;
     energyRecalcInFlight.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .finally(() => { energyRecalcInFlight.current = false; });
-  }, [tripId]);
+  }, [tripId, isBookingRequest]);
 
   useEffect(() => {
-    if (!tripId || energyCalcRef.current) return;
+    // booking_request mode: no assignment, no trip-scoped writes allowed.
+    if (!tripId || isBookingRequest || energyCalcRef.current) return;
     energyCalcRef.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => {});
-  }, [tripId]);
+  }, [tripId, isBookingRequest]);
 
   const presetsAppliedRef = useRef(false);
   useEffect(() => {
@@ -3520,7 +3532,7 @@ export default function ExpertWorkspace() {
   const advisorLegDays = Object.keys(advisorLegMetersByDay).map(Number).sort((a, b) => a - b);
   const advisorLegTotalMeters = advisorTripLegs.reduce((sum, l) => sum + (l.distanceMeters || 0), 0);
 
-  const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
+  const isLoading = ctxLoading || (!isAuthoring && !isBookingRequest && (tripsLoading || assignmentLoading));
 
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {
@@ -3742,6 +3754,51 @@ export default function ExpertWorkspace() {
       </div>
     </ExpertLayout>
   );
+
+  // Booking-request mode: the provider has an active booking on this trip but is not yet an
+  // assigned advisor. Show a scoped landing view — no itinerary/notes/plancard data is fetched
+  // (those queries are disabled above); all information here comes solely from workspace-context.
+  if (isBookingRequest && trip) {
+    const brTitle = trip.trip_title || trip.destination || `Trip ${tripId}`;
+    const brDest  = trip.destination || "";
+    return (
+      <ExpertLayout title="Booking Request">
+        <div style={{ maxWidth: 520, margin: "40px auto", padding: "0 16px" }}>
+          <div style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Briefcase style={{ width: 22, height: 22, color: BRAND }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: INK }}>{brTitle}</div>
+                {brDest && <div style={{ fontSize: 13, color: MID, marginTop: 2 }}>{brDest}</div>}
+              </div>
+            </div>
+            <div style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: MID, lineHeight: 1.6 }}>
+              A traveler has sent you a booking request for this trip. Review and respond in your bookings dashboard.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                data-testid="button-booking-request-go-to-bookings"
+                onClick={() => safeNavigate("/expert/bookings")}
+                style={{ ...btnPrimaryStyle, flex: 1, padding: "9px 16px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+              >
+                <Briefcase style={{ width: 15, height: 15 }} />
+                Review Booking Request
+              </button>
+              <button
+                data-testid="button-booking-request-back"
+                onClick={() => safeNavigate("/expert/workspace")}
+                style={{ ...btnQuietStyle, padding: "9px 16px", fontSize: 14 }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </ExpertLayout>
+    );
+  }
 
   const tripTitle = trip?.trip_title || trip?.destination || `Trip ${tripId}`;
   const travelerCode = trip?.trip_id?.slice(-6)?.toUpperCase() || "??????";
