@@ -334,7 +334,37 @@ describe("POST /api/admin/system/test-email — Resend integration", () => {
   });
 });
 
-// ── 4. Client UI contract (narrow static checks) ───────────────────────────────
+// ── 4. Resend timeout ─────────────────────────────────────────────────────────
+
+describe("POST /api/admin/system/test-email — Resend timeout", () => {
+  it("returns 504 { ok: false, error } when Resend does not respond within the timeout", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    // Hook: a promise that never resolves, simulating a hung Resend API.
+    _adminTestEmailHooks.resendSend = () => new Promise(() => {/* intentionally hangs */});
+    // Use a very short timeout so the test completes quickly.
+    _adminTestEmailHooks.resendTimeoutMs = 50;
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 504, `Expected 504, got ${captured.status}`);
+    assert.equal(captured.body?.ok, false, "ok must be false on timeout");
+    assert.ok(
+      typeof captured.body?.error === "string" && captured.body.error.length > 0,
+      `Expected a non-empty error string, got: ${JSON.stringify(captured.body)}`,
+    );
+  });
+
+  afterEach(() => {
+    delete _adminTestEmailHooks.resendTimeoutMs;
+  });
+});
+
+// ── 5. Client UI contract (narrow static checks) ───────────────────────────────
 
 describe("admin/system.tsx — test email UI contract", () => {
   const clientPath = new URL(
@@ -401,6 +431,17 @@ describe("admin/system.tsx — test email UI contract", () => {
     assert.ok(
       src.includes("testEmailTo.trim()") && src.includes("{ to: testEmailTo.trim() }"),
       "mutationFn must include { to: testEmailTo.trim() } in the request body when the field is non-empty",
+    );
+  });
+
+  it("mutationFn races the fetch against a client-side timeout", () => {
+    assert.ok(
+      src.includes("Promise.race"),
+      "mutationFn must use Promise.race to enforce a client-side timeout",
+    );
+    assert.ok(
+      src.includes("SEND_TIMEOUT_MS") || src.includes("15_000") || src.includes("15000"),
+      "mutationFn must define a numeric timeout constant (15 s)",
     );
   });
 });
