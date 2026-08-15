@@ -823,7 +823,6 @@ router.get("/p/:handle", async (req, res, next) => {
     if (!data) return next(); // SPA renders its own not-found
 
     const title = `${listing.title} | Traveloure`;
-
     const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
 
     const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
@@ -913,7 +912,6 @@ router.get("/services/:id", async (req, res, next) => {
     if (!service) return next(); // SPA renders its own not-found
 
     const title = `${listing.title} | Traveloure`;
-
     const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
 
     const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
@@ -1018,7 +1016,6 @@ router.get("/ready-made/:id", async (req, res, next) => {
       ? listing.planTypeCustom
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
-
     const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
 
     const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
