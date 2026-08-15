@@ -474,7 +474,10 @@ export function ServiceMapAuthoring({
                 <p className="text-[11px] text-muted-foreground mt-1" data-testid="text-layer-zones-note">
                   Zones are <strong>display only</strong> here — the amounts are set in{" "}
                   {serviceId ? (
-                    <Link href={`/provider/services/${serviceId}`}>
+                    // The listing HOME (where the Pricing & fees drawer mounts) is the edit
+                    // route WITHOUT ?step — /provider/services/:id has no route of its own
+                    // (caught by the dynamic-links gate on first push).
+                    <Link href={`/provider/services/${serviceId}/edit`}>
                       <span className="underline cursor-pointer text-primary" data-testid="link-pricing-fees">
                         Pricing &amp; fees →
                       </span>
