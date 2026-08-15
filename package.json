@@ -8,6 +8,7 @@
     "postinstall": "node scripts/scrub-lockfile.cjs",
     "scrub-lockfile": "node scripts/scrub-lockfile.cjs",
     "test": "tsx --test client/src/lib/__tests__/footer-route-coverage.test.ts",
+    "test:vitest": "vitest run --root . server/__tests__/concierge-suggest-add.test.ts server/__tests__/coordination-credit.test.ts server/__tests__/config-completeness.test.ts server/__tests__/event-coordination.test.ts",
     "test:upsell-contract": "tsx --test server/services/__tests__/upsell-engine.test.ts",
     "test:payout-parity": "tsx --test server/__tests__/payout-parity.db.test.ts",
     "test:payout-parity-route": "tsx --test server/__tests__/payout-parity-route.http.test.ts",
@@ -172,7 +173,8 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.22.4",
     "typescript": "5.6.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "esbuild": "^0.28.1",

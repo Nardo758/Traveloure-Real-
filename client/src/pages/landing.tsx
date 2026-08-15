@@ -41,7 +41,7 @@ import {
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
+import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.webp";
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useQuery } from "@tanstack/react-query";
