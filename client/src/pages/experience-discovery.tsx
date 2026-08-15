@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -89,11 +89,24 @@ function catalogItemToUnifiedResult(item: any): UnifiedResult {
 
 export default function ExperienceDiscoveryPage() {
   const searchString = useSearch();
+  const [, navigate] = useLocation();
   const urlParams = new URLSearchParams(searchString);
+
+  const initialType = (urlParams.get("type") ?? "all") as ExperienceType;
+  const safeInitialType: ExperienceType = ALL_TYPES.includes(initialType) ? initialType : "all";
 
   const [destination, setDestination] = useState(urlParams.get("destination") ?? "");
   const [query, setQuery] = useState("");
-  const [selectedType, setSelectedType] = useState<ExperienceType>("all");
+  const [selectedType, setSelectedType] = useState<ExperienceType>(safeInitialType);
+
+  // Sync filter state back to the URL so links and back-button work
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (destination) params.set("destination", destination);
+    if (selectedType !== "all") params.set("type", selectedType);
+    const qs = params.toString();
+    navigate(`/discover-experiences${qs ? `?${qs}` : ""}`, { replace: true });
+  }, [destination, selectedType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resolve the `type` query param list to send to the API
   const typeParam =
