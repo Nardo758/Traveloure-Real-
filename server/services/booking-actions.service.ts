@@ -696,7 +696,7 @@ export async function createTravelerAdvisorJoinedNotification(
       ${crypto.randomUUID()}, ${travelerId}, 'booking_request',
       'Expert joined your trip',
       ${`${expertName} is now advising on ${tripLabel}.`},
-      ${JSON.stringify({ tripId, tripPath: `/trips/${tripId}` })}::jsonb,
+      ${JSON.stringify({ tripId, workspacePath: `/trip/${tripId}` })}::jsonb,
       false, NOW()
     )
   `);
