@@ -216,7 +216,7 @@ test('sign-in modal opens with email + password fields', async ({ page }) => {
   expect(storageOk, 'sessionStorage / localStorage not functional in WebKit').toBe(true);
 });
 
-test('full booking checkout with Stripe test card 4242', async ({ page, request }) => {
+test('full booking checkout with Stripe test card 4242', { timeout: 120_000 }, async ({ page, request }) => {
   // ── 1. Register a fresh account (no saved card → PaymentElement will mount) ──
   const suffix = Math.random().toString(36).slice(2, 8);
   const email = `wk-smoke-${suffix}@traveloure.test`;

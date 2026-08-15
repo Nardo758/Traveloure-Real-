@@ -23,6 +23,19 @@ fi
 GST_DIR="$(mktemp -d)"
 trap 'rm -rf "$GST_DIR"' EXIT
 
+# Guard: this suite registers accounts, seeds carts, and writes admin sessions.
+# Refuse to run against anything that is not a local dev server unless the
+# caller explicitly opts in (mirrors the old webkit-smoke.mjs behaviour).
+BASE_URL="${BASE_URL:-http://127.0.0.1:5000}"
+if ! echo "$BASE_URL" | grep -qE '^https?://(127\.0\.0\.1|localhost)(:[0-9]+)?(/|$)'; then
+  if [ "${WEBKIT_SMOKE_ALLOW:-}" != "1" ]; then
+    echo "ERROR: refusing to run against non-local BASE_URL=$BASE_URL" >&2
+    echo "       Set WEBKIT_SMOKE_ALLOW=1 to override." >&2
+    exit 1
+  fi
+fi
+export BASE_URL
+
 export LD_LIBRARY_PATH="$(cat "$LDPATH_FILE")"
 export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
 export GST_PLUGIN_SYSTEM_PATH_1_0="$GST_DIR"
