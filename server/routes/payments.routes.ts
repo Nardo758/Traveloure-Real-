@@ -1314,15 +1314,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // would defeat an admin band edit exactly as audit C2/Q9 described. A line neither lane
         // can price (expert-owned, or a refusal) is byte-identical to pre-1C.
         const itemRails = railsByItemId.get(item.id);
-        const ownerRoleForItem = ownerRoleById.get(item.service.userId ?? "") ?? null;
         const { shareRate: itemExpertShare } = pickOwnerShareRate({
-          railsShareRate: null,
-          direct: await resolveDirectProviderRate({
-            serviceOwnerUserId: item.service.userId ?? null,
-            ownerRole: ownerRoleForItem,
-            categoryId: item.service.categoryId ?? null,
-            serviceId: item.service.id ?? item.serviceId,
-          }),
+          railsShareRate: itemRails?.rate?.providerShareRate ?? null,
+          direct: directRateByItemId.get(item.id) ?? null,
           legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate),
         });
         checkoutSubtotal += itemPrice;
