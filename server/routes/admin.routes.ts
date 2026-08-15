@@ -168,6 +168,17 @@ import {
 
 const router = Router();
 
+/**
+ * Test seam — populated only by unit tests to intercept the Resend call without
+ * hitting the real API. Empty object in production; no behaviour change when unset.
+ */
+export const _adminTestEmailHooks: {
+  resendSend?: (payload: Record<string, unknown>) => Promise<{
+    data: { id?: string } | null;
+    error: { message?: string } | null;
+  }>;
+} = {};
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -5333,7 +5344,15 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       const { sendEmail, getAppBaseUrl } = await import("../services/email.service");
       const appUrl = getAppBaseUrl();
 
-      const result = await sendEmail({
+      const apiKey = process.env.RESEND_API_KEY;
+      const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
+      const replyTo = process.env.EMAIL_REPLY_TO ?? toEmail;
+      if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
+      if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
+
+      const resendClient = new Resend(apiKey);
+      const emailPayload: Record<string, unknown> = {
+        from,
         to: toEmail,
         subject: "[Traveloure] Test email — delivery verified",
         html: `
@@ -5377,8 +5396,13 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
           "",
           "This email was triggered manually from the admin system settings page.",
         ].join("\n"),
-        replyTo: toEmail,
-      });
+      };
+
+      // Use test hook when set (unit tests only); real Resend client in production.
+      const sender = _adminTestEmailHooks.resendSend
+        ? _adminTestEmailHooks.resendSend
+        : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
+      const { data: emailData, error: emailError } = await sender(emailPayload);
 
       if (!result.ok) {
         return res.status(502).json({ ok: false, error: result.error });
