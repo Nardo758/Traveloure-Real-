@@ -348,10 +348,10 @@ async function runDatabaseSeeding() {
 
   try {
     const popularCitiesResult = await seedPopularCitiesContent();
-    if (popularCitiesResult.gems > 0 || popularCitiesResult.services > 0) {
+    if (popularCitiesResult.gems > 0) {
       logger.info(
-        { gems: popularCitiesResult.gems, services: popularCitiesResult.services },
-        "Seeded popular cities content (hidden gems + services)",
+        { gems: popularCitiesResult.gems },
+        "Seeded popular cities content (hidden gems)",
       );
     }
   } catch (err) {
