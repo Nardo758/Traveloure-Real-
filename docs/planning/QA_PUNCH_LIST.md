@@ -2360,3 +2360,81 @@ four PRs merged with 54/54 green, because nothing ran them.
   most; the rest are unaudited and may be rotted or dead in the same two ways. Worth one sweep:
   for each, does it run, and does it pass? (Cheap to answer, and the answer is load-bearing —
   every one of them currently reads as coverage while providing none.)
+
+---
+
+## Folded in Aug 15, 2026 — the spec-coverage sweep (answers the "~34 ungated specs" item above)
+
+The sweep the previous section asked for: for every spec in no workflow, **does it run, and does
+it pass?** Method matters here more than the tally, because the first two passes produced numbers
+that were wrong in *my* favour and in the specs' — both are recorded below so the next person does
+not repeat them.
+
+### The coverage number, computed rather than eyeballed
+
+**53 specs on disk; 20 reachable from a workflow; 33 run nowhere.** The 20 is not a count of
+literal filenames: most gates invoke `npx playwright test <substring>`, so coverage has to be
+resolved by matching each workflow's positional patterns against real filenames. Counting
+`playwright/tests/*.spec.ts` mentions alone gives a different (wrong) answer.
+
+The 33 split by age into two very different groups, and the second is the alarming one:
+**25 were last touched in a single Aug-5 sweep**, but **8 are from this week's lanes**
+(Aug 11–15: `offering-card`, `seam-cross-console`, `security-regression`, `travel-surcharge-step`,
+`service-display-options`, `booking-payment-isolation`, `ea-console-pages`,
+`expert-application-mobile`, `expert-booking-decline-dialog`). Specs are still being written
+ungated *today* — the rot mechanism the last lane fixed is still running.
+
+### Three harness facts a runner MUST satisfy — each one faked a failure before it was found
+
+These are the reason a naive `npx playwright test <file>` sweep produces a damning and false
+report. All three were discovered by disbelieving a red result:
+
+1. **`DATABASE_URL`** — 7 specs shell out to `psql`; without it their helper throws on the first
+   call. `booking-payment-isolation` "failed" this way and passes cleanly once set.
+2. **`PW_AUTH_SETUP=1`** — `playwright.config.ts` gates `globalSetup` on it, so without it the
+   saved auth states are never written and the specs that load them die on `ENOENT`
+   (`ea-console-pages`, `expert-application-mobile`, `rbac-security`, `auth-form-validation`).
+   Only 4 of the repo's workflows set it.
+3. **A timeout that fits the bench, not the default.** This sandbox's Vite dev server takes
+   **~25 s** to serve a heavy authenticated route's module graph — measured, and identical warm
+   and cold — while the APIs those pages call answer in **under 60 ms**. It is the dev module
+   waterfall, not the product and not the database. Playwright's 30 s default therefore indicts
+   slow pages instead of broken ones: every `page.goto` timeout in a default-timeout sweep is
+   **unproven, not condemned**. Re-run at `--timeout=120000` before believing any of them.
+
+4. **`/api/ready` must return HTTP 200 — and it does not merely because the server works.** With
+   `PW_AUTH_SETUP=1`, `global-setup` probes readiness and, in CI mode, **throws** on anything less,
+   which fails *every spec in the run* before a single test executes — a total-wipeout signature
+   (24/24 `NO-SUMMARY`) that looks nothing like spec rot and must not be read as it. The body said
+   `"ready":true` the whole time; the **HTTP status** was 503 because two health checks are graded
+   `fail` when their env is absent: `XAI_API_KEY` and `STRIPE_WEBHOOK_SECRET`. Stub values for both
+   (plus `E2E_AI_STUB=1`) turn the probe green. Note the asymmetry that makes this easy to
+   misdiagnose: a missing `ANTHROPIC_API_KEY` or `RESEND_API_KEY` is only a `warn` and costs
+   nothing.
+
+Also: `ci-provider@traveloure.test` (used by `travel-surcharge-step`) exists only after
+`scripts/seed-ci-test-users.ts` runs. Absent that, the spec is unrunnable for a reason that has
+nothing to do with the spec.
+
+**The meta-lesson, since it cost four passes:** every one of these produced a confident red result
+that was entirely my harness. A spec that has never run in CI has *no* established baseline, so
+the first red is worth nothing until the runner itself is proven — and the cheapest proof is a
+spec you already know passes. Budget for the harness, not just the sweep.
+
+### Confirmed defects in the specs themselves
+
+- **`concierge-phase-a` — deterministic, has never worked.** Its `sql()` helper runs
+  `INSERT … RETURNING id` through `psql -t -A`, which prints the returned uuid *and* the command
+  tag, so the helper hands back `"<uuid>\nINSERT 0 1"` and the very next
+  `expect(tempId).toMatch(/^[0-9a-f-]{36}$/i)` fails. Nothing environmental about it — it would
+  fail identically in CI on the day it was written. 5 of its 6 tests pass; this one never could.
+  Fix is one line in the helper (take the first line / strip the command tag), and the same
+  helper shape is copied into several other specs — worth fixing at the pattern, not the instance.
+
+### Verdicts
+
+Being finalised by the re-run at realistic timeouts (`audit-pass3`); the table lands in the next
+commit rather than being guessed at here. What is already settled: **5 specs are fully green**
+(`auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`,
+`experts-flow` 10/10, `navbar-responsive` 16/16) — these are real, unclaimed coverage that should
+simply be gated.
