@@ -386,12 +386,12 @@ export function clearTripContext(): void {
   } catch {
     /* ignore */
   }
-  // Clear the ownership stamp so the next user starts with a clean guest-owned context.
-  try {
-    sessionStorage.removeItem(OWNER_KEY);
-  } catch {
-    /* ignore */
-  }
+  // NOTE: OWNER_KEY is intentionally NOT cleared here. Keeping the stamp means
+  // that if an authenticated user clears context and then builds new planning,
+  // that new context is still owned by them — preventing a subsequent sign-in
+  // by a different user on the same tab from uploading the first user's data.
+  // The stamp is only set (never cleared here), so a guest who never signed in
+  // keeps an absent stamp (null), which is still treated as safely pushable.
   try {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
