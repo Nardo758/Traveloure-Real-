@@ -2179,20 +2179,29 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // §15: one open request at a time. Two sub-cases:
+      // §15: one open request at a time. Three sub-cases:
       //
-      // FRESH open payout (age ≤ STALE_PAYOUT_PROCESSING_DAYS) → 409. Normal duplicate guard.
+      // (A) FRESH pending/processing (age ≤ STALE_PAYOUT_PROCESSING_DAYS) → 409.
       //
-      // STALE open payout (age > STALE_PAYOUT_PROCESSING_DAYS) → atomically supersede it before
-      // creating the replacement. The stale row is cancelled to `failed` with a note BEFORE the
-      // new row is created so there is NEVER two live completable rows simultaneously. The
-      // claimExpertPayoutForProcessing / claimProviderPayoutForProcessing guards also exclude
-      // `failed` rows from Stripe transfer, so a superseded row can never have money moved
-      // against it even if an admin tries to complete it manually (storage.ts, task 1193 fix).
+      // (B) STALE processing (age > STALE_PAYOUT_PROCESSING_DAYS) → 409 with contactSupport.
+      //     A 'processing' row means the admin has the row in hand; a Stripe transfer could
+      //     have been issued out-of-band. Do NOT auto-cancel — the earner must contact support.
+      //     The Money page already shows a 7-day "Contact support" nudge for these rows.
+      //
+      // (C) STALE pending (age > STALE_PAYOUT_PROCESSING_DAYS) → atomic supersession.
+      //     'pending' rows have never been claimed for a Stripe transfer (the claim guard in
+      //     storage.ts only promotes pending→processing at the moment a completed attempt fires).
+      //     Safe to cancel. The cancellation and the new INSERT happen in ONE DB transaction
+      //     with a conditional UPDATE (WHERE status='pending') so a concurrent admin claim
+      //     between our read and the tx causes the UPDATE to return 0 rows, which rolls back
+      //     the entire tx and returns 409 to the earner to retry. The claimForProcessing guards
+      //     also exclude 'failed' (storage.ts task-1193 fix) so a superseded row can never
+      //     have Stripe money moved against it.
       const existing = isProvider
         ? await storage.getProviderPayouts(userId)
         : await storage.getExpertPayouts(userId);
 
+      // (A) Fresh open payout — normal duplicate gate.
       const freshOpen = existing.find(
         (p: any) => (p.status === "pending" || p.status === "processing") && !isPayoutStale(p),
       );
@@ -2204,35 +2213,25 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // Atomically cancel any stale open payouts before creating the replacement so admin can
-      // never complete both. Logged for observability; the admin queue isStale flag provides
-      // the visibility trail.
-      const staleOpen = existing.filter(
-        (p: any) => (p.status === "pending" || p.status === "processing") && isPayoutStale(p),
+      // (B) Stale processing — cannot auto-cancel; Stripe transfer may have been issued.
+      const staleProcessing = existing.find(
+        (p: any) => p.status === "processing" && isPayoutStale(p),
       );
-      for (const stale of staleOpen) {
-        const supersessionNote =
-          `Automatically superseded after ${STALE_PAYOUT_PROCESSING_DAYS} days with no resolution. ` +
-          `A fresh payout request was submitted by the earner. No Stripe transfer was issued for this row.`;
-        try {
-          if (isProvider) {
-            await storage.updateProviderPayoutStatus(stale.id, "failed", supersessionNote);
-          } else {
-            await storage.updateExpertPayoutStatus(stale.id, "failed", supersessionNote);
-          }
-          console.log(
-            `[payouts] superseded stale ${isProvider ? "provider" : "expert"} payout ${stale.id} ` +
-            `(status was ${stale.status}, age > ${STALE_PAYOUT_PROCESSING_DAYS}d) for user ${userId}`,
-          );
-        } catch (cancelErr: any) {
-          // Non-fatal: log and continue. A cancellation failure leaves the stale row in its
-          // current state; the new payout is still created because the claimForProcessing guard
-          // now excludes 'failed' — but if cancellation failed the stale row is still pending/
-          // processing and the claim guard still has the 'failed' exclusion. Worst case: admin
-          // sees two rows and must resolve manually. Better than a permanent earner lockout.
-          console.error(`[payouts] failed to supersede stale payout ${stale.id}:`, cancelErr);
-        }
+      if (staleProcessing) {
+        return res.status(409).json({
+          error: "payout_processing_stale",
+          message:
+            `Your payout has been in processing for over ${STALE_PAYOUT_PROCESSING_DAYS} days. ` +
+            `Please contact support to resolve it before a new request can be submitted.`,
+          payout: staleProcessing,
+          contactSupport: true,
+        });
       }
+
+      // (C) Stale pending — safe to supersede atomically.
+      const stalePending = existing.filter(
+        (p: any) => p.status === "pending" && isPayoutStale(p),
+      );
 
       // §14: amount is SERVER-DERIVED from the earner's releasable balance, never from the
       // body (a self-service withdrawal of the user's OWN cleared balance — money-derive-ok).
@@ -2266,10 +2265,74 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       }
 
       const amount = (amountCents / 100).toFixed(2);
+
       // requestedAt is DB-defaulted (defaultNow) — not in the insert type, so it's omitted here.
-      const payout = isProvider
-        ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
-        : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+      let payout: any;
+      if (stalePending.length > 0) {
+        // (C) Atomic supersession: cancel stale pending row(s) and create replacement in ONE tx.
+        // The conditional UPDATE (WHERE status='pending') is the guard against a concurrent admin
+        // claim between our read above and this tx: if 0 rows are updated the tx rolls back and
+        // we return 409 so the earner can retry.
+        const supersessionNote =
+          `Automatically superseded after ${STALE_PAYOUT_PROCESSING_DAYS} days with no admin resolution. ` +
+          `A fresh payout request was submitted by the earner on ${new Date().toISOString()}. ` +
+          `No Stripe transfer was issued for this row.`;
+        try {
+          payout = await db.transaction(async (tx) => {
+            for (const stale of stalePending) {
+              const cancelled = isProvider
+                ? await tx
+                    .update(providerPayouts)
+                    .set({ status: "failed", notes: supersessionNote })
+                    .where(and(eq(providerPayouts.id, stale.id), eq(providerPayouts.status, "pending")))
+                    .returning()
+                : await tx
+                    .update(expertPayouts)
+                    .set({ status: "failed", failureReason: supersessionNote })
+                    .where(and(eq(expertPayouts.id, stale.id), eq(expertPayouts.status, "pending")))
+                    .returning();
+              if (cancelled.length === 0) {
+                // Admin claimed this payout concurrently — our window closed. Roll back.
+                throw Object.assign(
+                  new Error("Stale payout was claimed concurrently — please try again."),
+                  { code: "concurrent_claim" },
+                );
+              }
+              console.log(
+                `[payouts] superseded stale pending ${isProvider ? "provider" : "expert"} payout ` +
+                `${stale.id} for user ${userId} (age > ${STALE_PAYOUT_PROCESSING_DAYS}d)`,
+              );
+            }
+            // Create the replacement inside the same transaction.
+            if (isProvider) {
+              const [inserted] = await tx
+                .insert(providerPayouts)
+                .values({ providerId: userId, amount, status: "pending", notes: "Requested by provider (superseded stale)" })
+                .returning();
+              return inserted;
+            } else {
+              const [inserted] = await tx
+                .insert(expertPayouts)
+                .values({ expertId: userId, amount, status: "pending", metadata: { source: "self_request_superseded" } })
+                .returning();
+              return inserted;
+            }
+          });
+        } catch (txErr: any) {
+          if (txErr.code === "concurrent_claim") {
+            return res.status(409).json({
+              error: "payout_request_pending",
+              message: "Your payout was just picked up for processing. Please try again in a moment.",
+            });
+          }
+          throw txErr;
+        }
+      } else {
+        // No stale pending rows — normal creation path (unchanged).
+        payout = isProvider
+          ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
+          : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+      }
 
       res.status(201).json({ ...payout, requesterType: isProvider ? "provider" : "expert" });
     } catch (error: any) {

@@ -110,6 +110,8 @@ export default function ExpertEarnings() {
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
+      } else if (msg.includes("payout_processing_stale")) {
+        toast({ title: "Payout stuck in processing", description: "Your payout has been in processing for over 14 days. Contact support to resolve it.", variant: "destructive" });
       } else if (msg.includes("stripe_not_connected")) {
         toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
