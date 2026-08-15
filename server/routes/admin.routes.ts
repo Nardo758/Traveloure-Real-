@@ -5674,7 +5674,12 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const toEmail = adminUser.email;
+      // Optional custom recipient — falls back to admin's own address.
+      const rawTo = (req.body?.to as string | undefined)?.trim();
+      if (rawTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawTo)) {
+        return res.status(400).json({ ok: false, error: "Invalid email address in 'to' field" });
+      }
+      const toEmail = rawTo || adminUser.email;
       if (!toEmail) {
         return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
       }
