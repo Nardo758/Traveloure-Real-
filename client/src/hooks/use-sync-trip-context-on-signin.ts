@@ -21,11 +21,17 @@ import {
  *   - Stamp = current userId → same user returning → no duplicate push needed
  *   - Stamp = different userId → cross-account remnant → clear it, don't push
  *
- * After the sign-in transition the context is always stamped with the current
- * userId — even when nothing was pushed — so that any context the user builds
- * while authenticated is attributed to them. Without this stamp a future sign-in
- * by a different user would see an unowned context and upload the previous user's
- * planning to their account.
+ * Stamp-before-push: ownership is stamped at the moment of sign-in, BEFORE the
+ * push attempt completes. This ensures that any planning the user creates while
+ * authenticated (even if the initial push failed or there was nothing to push)
+ * is immediately attributed to them. Without this, a user who signs in with an
+ * empty context, writes new planning, then logs out would leave an unowned
+ * context behind that a different sign-in could upload to the wrong account.
+ *
+ * Retry on re-sign-in: the tracking ref observes the previous userId value, not
+ * a "handled" flag. On logout (user → null) the previous value resets, so if
+ * the same user signs in again (e.g. after a network failure on the first push)
+ * the effect re-fires and retries the delivery.
  *
  * Delivery safety: pushTripContextNow uses fetch with keepalive:true so the
  * request survives immediate tab close or navigation after sign-in.
@@ -34,40 +40,48 @@ import {
  */
 export function useSyncTripContextOnSignIn(): void {
   const { user } = useAuth();
-  const handledForUserIdRef = useRef<string | null>(null);
+  // Track the previous userId so we can detect sign-in transitions AND
+  // automatically reset when the user logs out (userId → null), enabling
+  // retry on a subsequent sign-in without any explicit "reset" step.
+  const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!user?.id) return;
-    // Already handled the sign-in transition for this user in this session.
-    if (handledForUserIdRef.current === user.id) return;
-    handledForUserIdRef.current = user.id;
+    const userId = user?.id ?? null;
+    const prevUserId = prevUserIdRef.current;
+    prevUserIdRef.current = userId;
+
+    // Not a sign-in transition — either still logged out or same user continuing.
+    if (!userId || userId === prevUserId) return;
 
     const owner = getContextOwner();
 
-    if (owner === user.id) {
-      // Same user returning — context already uploaded and attributed; no push
-      // needed. The stamp is already set so no action required.
+    if (owner === userId) {
+      // Same user returning on this tab — context already stamped and in sync.
+      // No push needed.
       return;
     }
 
     if (owner !== null) {
-      // Context was left by a different authenticated user — clear it to
-      // prevent cross-account contamination, then stamp as owned by the new user.
+      // Cross-account remnant: a different user's stamped context is present.
+      // Clear it, stamp the new owner, and do not push (it's not their data).
       clearTripContext();
-      setContextOwner(user.id);
+      setContextOwner(userId);
       return;
     }
 
-    // owner is null: context was built while unauthenticated (guest-owned).
-    // Push it now and stamp ownership only after the server acknowledges.
-    pushTripContextNow().then((delivered) => {
-      if (delivered) {
-        // Server confirmed receipt — mark this context as belonging to the
-        // current user so a future same-tab sign-in doesn't re-upload.
-        setContextOwner(user.id);
-      }
-      // If delivery failed (offline / network error) we intentionally leave
-      // the stamp unset so the next sign-in event can retry the push.
+    // owner is null: context was built while unauthenticated (guest-built).
+    //
+    // Stamp ownership FIRST — before the push attempt — so that any planning
+    // the user creates after signing in (including when the context was empty
+    // and pushTripContextNow() is a no-op) is immediately attributed to them.
+    // A failed push leaves the stamp set, protecting authenticated writes; the
+    // retry window is the next sign-in transition (prevUserIdRef resets on
+    // logout, so signing in again will re-enter this branch).
+    setContextOwner(userId);
+
+    // Best-effort delivery of whatever guest planning existed before sign-in.
+    pushTripContextNow().catch(() => {
+      /* offline — best-effort; stamp already protects post-sign-in writes */
     });
   }, [user?.id]);
 }

@@ -72,7 +72,7 @@ const claimSchema = z.object({
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = claimSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid handle" });
     }
@@ -267,7 +267,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -300,6 +300,17 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     };
 
     const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
+    if (patch.emailBookingAlerts !== undefined) {
+      columnUpdate.emailBookingAlerts = patch.emailBookingAlerts;
+    }
+    await db.update(users).set(columnUpdate as any).where(eq(users.id, userId));
+    res.json({ ...nextSettings, emailBookingAlerts: patch.emailBookingAlerts ?? (me.emailBookingAlerts ?? true) });
+  } catch (err) {
+    console.error("[me/preferences] write error:", err);
+    res.status(500).json({ message: "Failed to save preferences" });
+  }
+});
+
 const httpsUrlSchema = z
   .string()
   .trim()
@@ -326,7 +337,7 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -422,7 +433,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -822,29 +833,17 @@ router.get("/p/:handle", async (req, res, next) => {
     const data = await loadStorefront(req.params.handle);
     if (!data) return next(); // SPA renders its own not-found
 
-    const title = `${listing.title} | Traveloure`;
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const count = data.services.length + data.templates.length + data.readyMade.length;
+    const title = `${data.earner.name} | Traveloure`;
+    const description = data.earner.bio
+      ? data.earner.bio.slice(0, 160)
+      : `${count} offering${count !== 1 ? "s" : ""} by ${data.earner.name} on Traveloure`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/p/${req.params.handle}`;
     const ogImage =
-      listing.heroImageUrl ??
+      data.earner.coverImageUrl ??
+      data.earner.profileImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
+
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
@@ -911,28 +910,13 @@ router.get("/services/:id", async (req, res, next) => {
 
     if (!service) return next(); // SPA renders its own not-found
 
-    const title = `${listing.title} | Traveloure`;
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const title = `${service.serviceName} | Traveloure`;
+    const description = service.description
+      ? service.description.slice(0, 160)
+      : `Book ${service.serviceName} on Traveloure`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
     const ogImage =
-      listing.heroImageUrl ??
+      service.serviceImage ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -1016,23 +1000,6 @@ router.get("/ready-made/:id", async (req, res, next) => {
       ? listing.planTypeCustom
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
-
-    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
@@ -1138,5 +1105,3 @@ router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res
 });
 
 export default router;
-
-    const earner = data.earner;
