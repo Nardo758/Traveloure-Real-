@@ -6382,21 +6382,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
               }
-              // Send decline email so the traveler sees the reason even if they don't check the app.
+              // Send a cancellation + refund email so the traveler sees both the reason and
+              // confirmation that their money is being returned.
               try {
                 const traveler = await storage.getUser(booking.travelerId);
                 if (traveler?.email) {
-                  const { sendBookingDeclineEmail } = await import("./services/email.service");
-                  await sendBookingDeclineEmail({
+                  const { sendBookingCancellationWithRefundEmail } = await import("./services/email.service");
+                  await sendBookingCancellationWithRefundEmail({
                     toEmail: traveler.email,
                     travelerName: traveler.firstName ?? null,
                     bookingTrackingNumber: booking.trackingNumber ?? null,
                     serviceName: (booking as any).serviceName ?? null,
-                    declineReason: reason ?? null,
+                    refundAmount: amountPaid,
+                    cancellationReason: reason ?? null,
                   });
                 }
               } catch (emailErr) {
-                console.error("Failed to send decline email to traveler (paid-cancel):", emailErr);
+                console.error("Failed to send cancellation+refund email to traveler:", emailErr);
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
