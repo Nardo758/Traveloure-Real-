@@ -753,7 +753,7 @@ export interface IStorage {
   setTripShareToken(tripId: string, token: string): Promise<Trip | undefined>;
   claimTrip(tripId: string, userId: string): Promise<Trip | undefined>;
   getTripEventType(tripId: string): Promise<string | null>;
-  getTripExpertNotes(tripId: string): Promise<string>;
+  getTripExpertNotes(tripId: string): Promise<{ expertNotes: string; expertModifiedAt: Date | null }>;
   // === Generated itinerary ===
   updateGeneratedItineraryData(id: string, itineraryData: any, status: string): Promise<GeneratedItinerary | undefined>;
   replaceItineraryItems(tripId: string, items: any[]): Promise<void>;
@@ -6547,9 +6547,9 @@ export class DatabaseStorage implements IStorage {
     return row?.eventType ?? null;
   }
 
-  async getTripExpertNotes(tripId: string): Promise<string> {
-    const [row] = await db.select({ expertNotes: trips.expertNotes }).from(trips).where(eq(trips.id, tripId)).limit(1);
-    return row?.expertNotes ?? "";
+  async getTripExpertNotes(tripId: string): Promise<{ expertNotes: string; expertModifiedAt: Date | null }> {
+    const [row] = await db.select({ expertNotes: trips.expertNotes, expertModifiedAt: trips.expertModifiedAt }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    return { expertNotes: row?.expertNotes ?? "", expertModifiedAt: row?.expertModifiedAt ?? null };
   }
 
   // === Generated itinerary ===
