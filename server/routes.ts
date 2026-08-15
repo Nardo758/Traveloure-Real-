@@ -409,12 +409,21 @@ function sanitizeInput(input: string): string {
     .trim();
 }
 
-// Sanitize object string fields recursively
+// Sanitize object string fields recursively (traverses arrays and nested plain objects)
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };
   for (const key of Object.keys(result)) {
-    if (typeof result[key] === 'string') {
-      result[key] = sanitizeInput(result[key]);
+    const val = result[key];
+    if (typeof val === 'string') {
+      result[key] = sanitizeInput(val);
+    } else if (Array.isArray(val)) {
+      result[key] = val.map((item: any) => {
+        if (typeof item === 'string') return sanitizeInput(item);
+        if (item !== null && typeof item === 'object' && !Array.isArray(item)) return sanitizeObject(item);
+        return item;
+      });
+    } else if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      result[key] = sanitizeObject(val);
     }
   }
   return result;
