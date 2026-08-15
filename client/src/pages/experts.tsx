@@ -147,7 +147,9 @@ export default function ExpertsPage() {
   // Browse cart handoff: when the user clicks "Get Expert Help" from the discover
   // page's catalog cart, items are stored in sessionStorage so experts can see what
   // the traveler wants booked.
-  const BROWSE_CART_KEY = "traveloure_browse_cart";
+  // Distinct key from traveloure_browse_cart (native service IDs) to avoid
+  // payload collision between string[] and catalog-item objects.
+  const CATALOG_CART_KEY = "traveloure_catalog_cart";
   type BrowseCartItem = { id: string; name: string; price: number | null; currency: string; provider: string; category: string | null };
   const [browseCartItems, setBrowseCartItems] = useState<BrowseCartItem[]>([]);
   const [browseCartDismissed, setBrowseCartDismissed] = useState(false);
@@ -156,11 +158,20 @@ export default function ExpertsPage() {
     const hasBrowseCart = new URLSearchParams(searchString).get("browseCart") === "1";
     if (!hasBrowseCart) return;
     try {
-      const raw = sessionStorage.getItem(BROWSE_CART_KEY);
+      const raw = sessionStorage.getItem(CATALOG_CART_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as BrowseCartItem[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setBrowseCartItems(parsed);
+        const parsed = JSON.parse(raw);
+        // Validate: must be an array of objects with id (string) and name (string),
+        // not the native-service string[] stored under the old shared key.
+        if (
+          Array.isArray(parsed) &&
+          parsed.length > 0 &&
+          typeof parsed[0] === "object" &&
+          parsed[0] !== null &&
+          typeof parsed[0].id === "string" &&
+          typeof parsed[0].name === "string"
+        ) {
+          setBrowseCartItems(parsed as BrowseCartItem[]);
         }
       }
     } catch { /* ignore parse errors */ }

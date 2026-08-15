@@ -50,18 +50,32 @@ export default function ExpertDetailPage() {
   const handoffTripId = new URLSearchParams(searchString).get("tripId");
 
   // Browse-cart handoff: arriving from the discover page's catalog cart with
-  // ?browseCart=1. Items are stored in sessionStorage; we read them here so
-  // the traveler can request this specific expert to book them.
-  const BROWSE_CART_KEY = "traveloure_browse_cart";
+  // ?browseCart=1. Items are stored in sessionStorage under a key distinct from
+  // the native-service cart (traveloure_browse_cart stores string[] of serviceIds;
+  // traveloure_catalog_cart stores UnifiedResult-shaped objects).
+  const CATALOG_CART_KEY = "traveloure_catalog_cart";
   type BrowseCartItem = { id: string; name: string; price: number | null; currency: string; provider: string; category: string | null };
-  const hasBrowseCart = new URLSearchParams(searchString).get("browseCart") === "1";
+  const params = new URLSearchParams(searchString);
+  const hasBrowseCart = params.get("browseCart") === "1";
+  const handoffDestination = params.get("destination") || "";
   const [browseCartItems, setBrowseCartItems] = useState<BrowseCartItem[]>(() => {
     if (!hasBrowseCart) return [];
     try {
-      const raw = sessionStorage.getItem(BROWSE_CART_KEY);
+      const raw = sessionStorage.getItem(CATALOG_CART_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as BrowseCartItem[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const parsed = JSON.parse(raw);
+        // Validate: must be an array of objects with id (string) + name (string),
+        // not the native string[] stored under traveloure_browse_cart.
+        if (
+          Array.isArray(parsed) &&
+          parsed.length > 0 &&
+          typeof parsed[0] === "object" &&
+          parsed[0] !== null &&
+          typeof parsed[0].id === "string" &&
+          typeof parsed[0].name === "string"
+        ) {
+          return parsed as BrowseCartItem[];
+        }
       }
     } catch { /* ignore */ }
     return [];
@@ -70,7 +84,8 @@ export default function ExpertDetailPage() {
   const requestBrowseCartMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", "/api/expert-booking-requests", {
-        expertId: expertId,
+        expertId,
+        destinationCity: handoffDestination || undefined,
         browseCatalogItems: browseCartItems.map((item) => ({
           id: item.id,
           name: item.name,
@@ -87,8 +102,8 @@ export default function ExpertDetailPage() {
         title: "Request sent!",
         description: `${expert?.firstName || "The expert"} has been notified of your activity picks and will follow up soon.`,
       });
-      // Clear the cart after a successful handoff
-      try { sessionStorage.removeItem(BROWSE_CART_KEY); } catch { /* ignore */ }
+      // Clear the catalog cart after a successful handoff
+      try { sessionStorage.removeItem(CATALOG_CART_KEY); } catch { /* ignore */ }
       setBrowseCartItems([]);
     },
     onError: () => {

@@ -886,9 +886,11 @@ export default function DiscoverPage() {
     setBrowseCartItems((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Store browse cart in sessionStorage and navigate to /experts
+  // Store browse cart in sessionStorage and navigate to /experts.
+  // Uses a distinct key from the native addedServices cart (traveloure_browse_cart)
+  // to avoid payload collision between string[] and UnifiedResult[].
   const handleGetExpertHelp = () => {
-    const BROWSE_CART_KEY = "traveloure_browse_cart";
+    const BROWSE_CART_KEY = "traveloure_catalog_cart";
     const payload = browseCartItems.map((item) => ({
       id: item.id,
       name: item.name || item.title || "Activity",

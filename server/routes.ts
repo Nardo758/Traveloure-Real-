@@ -1513,6 +1513,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     bookingMetadata: z.record(z.any()).optional(),
     /** Browse-cart handoff: the specific expert to notify (their user id). */
     expertId: z.string().optional(),
+    /** Browse-cart handoff: destination city for context (from the discover location filter). */
+    destinationCity: z.string().optional(),
     /** Browse-cart handoff: catalog items the traveler wants the expert to book. */
     browseCatalogItems: z.array(z.object({
       id: z.string(),
@@ -1533,7 +1535,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, serviceId, bookingMetadata, expertId, browseCatalogItems } = validation.data;
+      const { tripId, notes, serviceId, bookingMetadata, expertId, destinationCity: browseDestinationCity, browseCatalogItems } = validation.data;
       const userId = getUserId(req)!;
       
       // Only validate trip ownership when a tripId is provided
@@ -1740,9 +1742,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({ message: "Expert is not yet verified" });
         }
 
-        // Persist a durable service_requests record so the inquiry survives even if
+        // Persist a durable expert_requests record so the inquiry survives even if
         // the in-process notification write were to fail. Failures here surface as
         // 500 — we never tell the traveler "success" when persistence failed.
+        // expertRequests has no NOT NULL city constraint, making it the right table
+        // for this catalog-handoff workflow.
         const traveler = await storage.getUser(userId);
         const travelerName = traveler
           ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
@@ -1757,20 +1761,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           })
           .join("\n");
 
-        const inquiryDescription =
+        const inquiryNotes =
           `Browse-cart booking request from ${travelerName}:\n${itemSummary}` +
           (notes ? `\n\nNote: ${notes}` : "");
 
-        // Insert a service_requests row so the inquiry is durable and admin-visible
+        // Destination city is optional — passed by the client when the traveler
+        // filtered by location before sending their cart.
+        const destinationCity = browseDestinationCity || null;
+
+        // Insert durable record in expert_requests (purpose-built for expert assignment,
+        // no NOT NULL city constraint like service_requests has).
         const [inquiryRecord] = await db
-          .insert(serviceRequests)
+          .insert(expertRequests)
           .values({
-            travelerId: userId,
-            serviceType: "catalog_booking",
-            description: inquiryDescription.slice(0, 5000),
-            status: "open",
-          } as any)
-          .returning({ id: serviceRequests.id });
+            userId,
+            assignedExpertId: expertId,
+            requestType: "catalog_booking",
+            notes: inquiryNotes.slice(0, 5000),
+            status: "pending",
+            destinationCity,
+            optimizationContext: { browseCatalogItems } as any,
+          })
+          .returning({ id: expertRequests.id });
 
         // Now deliver the in-app notification. If this throws, the outer catch
         // returns 500 and the traveler is NOT told success (prevents silent loss).
