@@ -200,22 +200,22 @@ interface PlacesCacheEntry {
 }
 const placesResultCache = new Map<string, PlacesCacheEntry>();
 
-/** Build a collision-safe, normalised cache key from the three search axes. */
+/** Build a collision-safe cache key from the three pre-normalised search axes.
+ *  Inputs are already lowercased/trimmed by the route handler; JSON.stringify
+ *  makes the key injective (field values containing the separator cannot collide).
+ */
 function buildPlacesCacheKey(q: string, destination: string, category: string): string {
-  return JSON.stringify([
-    q.toLowerCase().trim(),
-    destination.toLowerCase().trim(),
-    category.toLowerCase().trim(),
-  ]);
+  return JSON.stringify([q, destination, category]);
 }
 
 /** Sweep expired entries, then enforce the entry cap before inserting. */
 function placesResultCacheSet(key: string, entry: PlacesCacheEntry): void {
   const now = Date.now();
   // 1. Eager expiry sweep — remove every stale entry in one pass.
-  for (const [k, v] of placesResultCache) {
-    if (v.expiresAt <= now) placesResultCache.delete(k);
-  }
+  // Map.forEach avoids the ES2015 downlevel-iteration incompatibility of for...of.
+  const expiredKeys: string[] = [];
+  placesResultCache.forEach((v, k) => { if (v.expiresAt <= now) expiredKeys.push(k); });
+  expiredKeys.forEach(k => placesResultCache.delete(k));
   // 2. If still at or above cap, evict the oldest insertion-order entry.
   while (placesResultCache.size >= MAX_PLACES_CACHE_ENTRIES) {
     const oldestKey = placesResultCache.keys().next().value;
@@ -5819,7 +5819,13 @@ router.get("/api/geocode", async (req, res) => {
 
 router.get("/api/search/experiences", async (req, res) => {
     try {
-      const { q, destination, category, sources } = req.query as Record<string, string>;
+      const { q: _q, destination: _destination, category: _category, sources } = req.query as Record<string, string>;
+      // Normalise all three search axes once, up-front, so the cache key and
+      // the Places URL construction always use identical canonical values.
+      // category is lower-cased so catToType/catDefaultQuery lookups are case-insensitive.
+      const q           = (_q           || "").trim();
+      const destination = (_destination || "").trim();
+      const category    = (_category    || "").trim().toLowerCase();
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
       }
@@ -5975,7 +5981,7 @@ router.get("/api/search/experiences", async (req, res) => {
 
         // ── Cache check ──────────────────────────────────────────────────────────
         // Key uses JSON serialisation (collision-safe; see buildPlacesCacheKey).
-        const placesCacheKey = buildPlacesCacheKey(q || "", destination || "", category || "");
+        const placesCacheKey = buildPlacesCacheKey(q, destination, category);
         const cachedEntry = placesResultCache.get(placesCacheKey);
         if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
           // Cache HIT — push cached rows into results and skip the API call.
