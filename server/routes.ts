@@ -2,6 +2,8 @@ import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
+import * as messagingService from "./services/messages.service";
+import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { validateImageDataUrl } from "./utils/imageValidation";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
@@ -1828,6 +1830,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // authenticated user write messages as someone else (§14's identity rule,
       // applied to chat integrity).
       const sessionUserId = getUserId(req)!;
+      const recipientId = (input as any).receiverId as string | undefined;
+      if (recipientId) {
+        const isNewConversation = !(await messagingService.hasExistingConversation(sessionUserId, recipientId));
+        const rate = checkMessageRateLimit({ senderId: sessionUserId, recipientId, isNewConversation, peerIp: req.ip });
+        if (!rate.allowed) {
+          res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
+          return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
+        }
+      }
       const chat = await storage.createChat({ ...input, senderId: sessionUserId });
       res.status(201).json(chat);
     } catch (err) {

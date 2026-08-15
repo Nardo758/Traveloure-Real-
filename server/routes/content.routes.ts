@@ -70,6 +70,8 @@ import {
   insertContentImpression, getDemandCountsForCity,
   filterOutAwayOwners,
 } from "../services/content-query.service";
+import { hasExistingConversation } from "../services/messages.service";
+import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
@@ -418,6 +420,15 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
       const expert = await getUserById(expertId);
       if (!expert) {
         return res.status(404).json({ message: "Expert not found" });
+      }
+
+      // Messaging rate limit — this endpoint opens NEW conversations, so cold-contact
+      // throttling is the relevant guard here.
+      const isNewConversation = !(await hasExistingConversation(userId, expertId));
+      const rate = checkMessageRateLimit({ senderId: userId, recipientId: expertId, isNewConversation, peerIp: req.ip });
+      if (!rate.allowed) {
+        res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
+        return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
       }
 
       // Create initial chat message
