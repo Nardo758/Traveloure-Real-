@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { hotelCache, activityCache, hotelOfferCache, restaurantCache } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { hotelCache, activityCache, restaurantCache } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { cacheService } from "./cache.service";
 import { partnerEventsCacheService } from "./partner-events-cache.service";
 import { sharedCache } from "./shared-cache.service";
@@ -239,10 +239,9 @@ class CacheSchedulerService {
     const stats: CacheRefreshStats = this.createEmptyStats();
 
     try {
-      // Refresh hotels
-      const hotelsResult = await this.refreshStaleHotels();
-      stats.hotelsRefreshed = hotelsResult.refreshed;
-      stats.errors.push(...hotelsResult.errors);
+      // Hotel refresh RETIRED: getHotelsWithCache returns empty on miss (no Amadeus
+      // fallback since ruling 34); calling it in a loop only re-reads the same
+      // stale rows without ever refilling data. Remove to stop log churn.
 
       // Refresh activities
       const activitiesResult = await this.refreshStaleActivities();
@@ -275,7 +274,7 @@ class CacheSchedulerService {
       await cacheService.cleanupExpiredCache(); // hotels / activities
       await partnerEventsCacheService.cleanupExpiredCache(); // fever events (delegates to sharedCache.cleanupDomainTable)
 
-      console.log(`[CacheScheduler] Refresh complete - Hotels: ${stats.hotelsRefreshed}, Activities: ${stats.activitiesRefreshed}, Fever: ${stats.feverEventsRefreshed}`);
+      console.log(`[CacheScheduler] Refresh complete - Activities: ${stats.activitiesRefreshed}, Fever: ${stats.feverEventsRefreshed}, Booking.com: ${stats.bookingComHotelsRefreshed}, OpenTable: ${stats.openTableRestaurantsRefreshed}`);
     } catch (error: any) {
       console.error("[CacheScheduler] Refresh error:", error);
       stats.errors.push(`General error: ${error.message}`);
@@ -416,92 +415,10 @@ class CacheSchedulerService {
     }
   }
 
-  // Refresh stale hotel data
-  private async refreshStaleHotels(): Promise<{ refreshed: number; errors: string[] }> {
-    const errors: string[] = [];
-    let refreshed = 0;
-
-    try {
-      // Find unique city codes with stale data (lastUpdated is null OR older than threshold)
-      const staleThreshold = new Date();
-      staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
-
-      // Get all unique city codes and check their freshness
-      const allCityCodes = await db
-        .selectDistinct({ 
-          cityCode: hotelCache.cityCode,
-          lastUpdated: hotelCache.lastUpdated 
-        })
-        .from(hotelCache);
-
-      // Filter for stale or null lastUpdated
-      const staleCityCodes = allCityCodes.filter(({ lastUpdated }) => 
-        !lastUpdated || new Date(lastUpdated) < staleThreshold
-      );
-
-      console.log(`[CacheScheduler] Found ${staleCityCodes.length} city codes with stale hotel data`);
-
-      // Process in batches
-      for (let i = 0; i < staleCityCodes.length; i += BATCH_SIZE) {
-        const batch = staleCityCodes.slice(i, i + BATCH_SIZE);
-        
-        await Promise.all(batch.map(async ({ cityCode }) => {
-          try {
-            // Generate future dates for refresh (next 7 days as default search)
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const checkInDate = tomorrow.toISOString().split('T')[0];
-            
-            const nextWeek = new Date();
-            nextWeek.setDate(nextWeek.getDate() + 8);
-            const checkOutDate = nextWeek.toISOString().split('T')[0];
-
-            // Try to get existing offers to use their date range if available
-            const existingData = await db.select()
-              .from(hotelOfferCache)
-              .innerJoin(hotelCache, eq(hotelOfferCache.hotelCacheId, hotelCache.id))
-              .where(eq(hotelCache.cityCode, cityCode))
-              .orderBy(desc(hotelOfferCache.checkInDate))
-              .limit(1);
-
-            let finalCheckIn = checkInDate;
-            let finalCheckOut = checkOutDate;
-
-            if (existingData.length > 0) {
-              const existingCheckIn = new Date(existingData[0].hotel_offer_cache.checkInDate);
-              // Only use existing dates if they're still in the future
-              if (existingCheckIn > new Date()) {
-                finalCheckIn = existingData[0].hotel_offer_cache.checkInDate;
-                finalCheckOut = existingData[0].hotel_offer_cache.checkOutDate;
-              }
-            }
-
-            await cacheService.getHotelsWithCache({
-              cityCode,
-              checkInDate: finalCheckIn,
-              checkOutDate: finalCheckOut,
-              adults: 2,
-              roomQuantity: 1,
-              currency: 'USD',
-            });
-            refreshed++;
-            console.log(`[CacheScheduler] Refreshed hotels for ${cityCode}`);
-          } catch (error: any) {
-            errors.push(`Hotel refresh error for ${cityCode}: ${error.message}`);
-          }
-        }));
-
-        // Delay between batches
-        if (i + BATCH_SIZE < staleCityCodes.length) {
-          await this.delay(BATCH_DELAY_MS);
-        }
-      }
-    } catch (error: any) {
-      errors.push(`Hotel refresh general error: ${error.message}`);
-    }
-
-    return { refreshed, errors };
-  }
+  // refreshStaleHotels RETIRED: getHotelsWithCache returns empty on a cache miss
+  // (no live hotel API since Amadeus was dropped, ruling 34). Calling it in a
+  // scheduler loop only re-read stale hotel_cache rows without ever refilling
+  // data, generating log churn for zero benefit. Deleted alongside the dead leg.
 
   // Refresh stale activity data
   private async refreshStaleActivities(): Promise<{ refreshed: number; errors: string[] }> {
