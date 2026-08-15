@@ -1000,4 +1000,59 @@ router.get("/ready-made/:id", async (req, res, next) => {
   }
 });
 
+// ── Notification email (migration 207) ─────────────────────────────────────
+// GET  /api/me/notification-email  — return current value (null if unset)
+// PATCH /api/me/notification-email — set or clear; earner-only, own record only
+
+const notificationEmailSchema = z.object({
+  notificationEmail: z
+    .string()
+    .email("Must be a valid email address")
+    .max(255)
+    .nullable()
+    .optional(),
+});
+
+router.get("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
+  try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
+    const userId = getUserId(req)!;
+    const [row] = await db
+      .select({ notificationEmail: users.notificationEmail })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return res.json({ notificationEmail: row?.notificationEmail ?? null });
+  } catch (err) {
+    console.error("[notification-email] GET error:", err);
+    return res.status(500).json({ message: "Failed to fetch notification email" });
+  }
+});
+
+router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res) => {
+  try {
+    const userRole = req.user?.role ?? req.user?.claims?.role;
+    if (!isEarnerRole(userRole)) {
+      return res.status(403).json({ message: "Only experts and providers can set a notification email" });
+    }
+    const userId = getUserId(req)!;
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+    }
+    const { notificationEmail } = parsed.data;
+    await db
+      .update(users)
+      .set({ notificationEmail: notificationEmail ?? null })
+      .where(eq(users.id, userId));
+    return res.json({ notificationEmail: notificationEmail ?? null });
+  } catch (err) {
+    console.error("[notification-email] PATCH error:", err);
+    return res.status(500).json({ message: "Failed to update notification email" });
+  }
+});
+
 export default router;
