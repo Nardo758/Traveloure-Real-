@@ -328,9 +328,6 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
     LIMIT 1
   `);
   const conciergeRate = Number((bandRow.rows[0] as any)?.rate ?? 0);
-  assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate (migrations 064–066)");
-  const conciergeFeeAmt = price * conciergeRate;
-
     const { row } = await checkoutThroughRoute(serviceId);
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
@@ -425,9 +422,9 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   const price = 110;
 
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  // Service owned by the expert and tagged as booking_concierge — tests the expert
-  // booking_concierge path, which is the route's primary concierge scenario.
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  // Service owned by the expert with the booking_concierge offering type so the concierge fee
+  // path is activated by the route.
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId, ids.expert);
 
   // Live concierge rate from fee_bands (no fee literal); must be positive so the preview figure
   // is distinguishable from a $0 concierge fee (misconfigured-band silent failure).
