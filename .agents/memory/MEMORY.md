@@ -28,4 +28,5 @@
 - [Earnings mint path](earnings-mint-path.md) — earnings mint on booking → completed; production paths are traveler confirm-completion + PI-gated auto-complete scheduler; full fixture recipe inside.
 - [Payout-parity discriminators](payout-parity-discriminators.md) — all live bands are 0.25 so amount-based branch tests are vacuous; use the EXP-OVR override asymmetry to distinguish provider vs expert resolution.
 - [Provider console verification quirks](provider-console-verification.md) — zone fee popups are click-only; catalog pill reads status not approval_status; edit-split injection guard confirmed.
+- [Message write-path convergence](message-write-paths.md) — user↔user messages have 3 write paths (POST /api/messages, POST /api/chats, /ws chat); guards must go in shared code (storage.createChat / insertUserAndExpertChatSchema) or paths diverge silently.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

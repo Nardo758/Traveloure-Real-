@@ -5,6 +5,7 @@ import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-adviso
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
 import { omitFields } from "./utils/data-sanitizer";
+import { sanitizeText } from "./utils/text-sanitizer";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
@@ -1397,7 +1398,15 @@ export class DatabaseStorage implements IStorage {
 
   async createChat(chat: any): Promise<UserAndExpertChat> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newChat] = await db.insert(userAndExpertChats).values({ ...chat, trackingNumber }).returning();
+    // Sanitize user-authored message text on write. createChat is the shared write path for
+    // POST /api/chats AND the /ws "chat" real-time handler, so guarding here closes stored-XSS
+    // on both surfaces at once. Uses sanitizeText to match POST /api/messages (messages.service
+    // path), keeping the two message write paths convergent rather than divergent.
+    const sanitizedChat =
+      typeof chat?.message === "string"
+        ? { ...chat, message: sanitizeText(chat.message) ?? chat.message }
+        : chat;
+    const [newChat] = await db.insert(userAndExpertChats).values({ ...sanitizedChat, trackingNumber }).returning();
 
     // Auto-register chat in content tracking system
     await this.registerContent({
