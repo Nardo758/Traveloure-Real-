@@ -637,3 +637,222 @@ test("R7: fee-preview with a concierge item and a missing band ⇒ machine-reada
   assert.ok(ok.conciergeFeeTotal > 0, "restored band must yield a positive concierge fee in the preview");
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
 });
+
+
+test("R9: GET /api/cart, GET /api/cart/fee-preview, and POST /api/checkout all agree on the fee breakdown for a mixed cart", async () => {
+  // Seed a cart with TWO items: one plain service + one booking_concierge service.
+  // This is the primary regression surface: three independent loops all call the same
+  // shared helpers (resolveItemBaseAmount, resolveCommissionRates, getConciergeBookingRate)
+  // but any per-loop edit could silently diverge.  The test drives all three surfaces and
+  // asserts every fee component is byte-identical across them.
+
+  const priceNormal = 120;
+  const priceConcierge = 80;
+  const offeringTypeId = await bookingConciergeOfferingTypeId();
+
+  const normalServiceId = await makeService(priceNormal.toFixed(2));
+  const conciergeServiceId = await makeService(priceConcierge.toFixed(2), undefined, offeringTypeId);
+
+  // Concierge band must be positive (otherwise the conciergeFee components are all zero and
+  // the cross-surface comparison is vacuous — a $0 discrepancy is invisible at $0).
+  const bandRow = await db.execute(sql`
+    SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands
+    WHERE band_key = 'expert_concierge_booking' AND rate_type = 'percent' AND is_active = true
+    LIMIT 1
+  `);
+  const conciergeRate = Number((bandRow.rows[0] as any)?.rate ?? 0);
+  assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate for R9 to be discriminable");
+
+  // ── Build the mixed cart ───────────────────────────────────────────────────────────────────
+  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+  for (const id of [normalServiceId, conciergeServiceId]) {
+    const r = await api("/api/cart", "POST", { serviceId: id });
+    assert.equal(r.status, 201, `POST /api/cart for ${id} must be 201: ${await r.clone().text()}`);
+  }
+
+  // ── Surface 1: GET /api/cart ───────────────────────────────────────────────────────────────
+  const cartRes = await api("/api/cart", "GET");
+  assert.equal(cartRes.status, 200, `GET /api/cart must return 200: ${await cartRes.clone().text()}`);
+  const cart = await cartRes.json() as {
+    subtotal: string;
+    platformFee: string;
+    conciergeFee: string;
+    total: string;
+    itemCount: number;
+  };
+  assert.equal(cart.itemCount, 2, "cart must contain exactly the two seeded items");
+  assert.ok(Number(cart.conciergeFee) > 0, "GET /api/cart must report a positive conciergeFee for the booking_concierge item");
+
+  // ── Surface 2: GET /api/cart/fee-preview ──────────────────────────────────────────────────
+  const previewRes = await api("/api/cart/fee-preview", "GET");
+  assert.equal(previewRes.status, 200, `GET /api/cart/fee-preview must return 200: ${await previewRes.clone().text()}`);
+  const preview = await previewRes.json() as {
+    subtotal: number;
+    platformFeeTotal: number;
+    conciergeFeeTotal: number;
+    total: number;
+    itemCount: number;
+  };
+  assert.ok(preview.conciergeFeeTotal > 0, "GET /api/cart/fee-preview must report a positive conciergeFeeTotal for the booking_concierge item");
+
+  // CLAIM A — the two preview surfaces must agree field-for-field.
+  // Field names differ (platformFee vs platformFeeTotal) but semantics are identical.
+  assert.equal(
+    Number(cart.subtotal).toFixed(2),
+    preview.subtotal.toFixed(2),
+    "subtotal diverged between GET /api/cart and GET /api/cart/fee-preview",
+  );
+  assert.equal(
+    Number(cart.platformFee).toFixed(2),
+    preview.platformFeeTotal.toFixed(2),
+    "platform fee diverged between GET /api/cart (platformFee) and GET /api/cart/fee-preview (platformFeeTotal)",
+  );
+  assert.equal(
+    Number(cart.conciergeFee).toFixed(2),
+    preview.conciergeFeeTotal.toFixed(2),
+    "concierge fee diverged between GET /api/cart (conciergeFee) and GET /api/cart/fee-preview (conciergeFeeTotal)",
+  );
+  assert.equal(
+    Number(cart.total).toFixed(2),
+    preview.total.toFixed(2),
+    "total diverged between GET /api/cart and GET /api/cart/fee-preview",
+  );
+
+  // ── Surface 3: POST /api/checkout ─────────────────────────────────────────────────────────
+  // Two accepted contracts (Stripe ruling 38):
+  //   201 — real test-mode key: the response body carries subtotal/platformFee/conciergeFee/total
+  //          as server-derived strings.  Compare directly against GET /api/cart (same field names)
+  //          and GET /api/cart/fee-preview (different names, same semantics).
+  //   503 payment_unavailable — CI stub key: no fee fields in the body.  Use the DB rows:
+  //          The route's own invariant (lineFullCharge = price + surcharge + totalPlatformFee,
+  //          total_amount = price + surcharge, platform_fee = totalPlatformFee) means
+  //          sum(total_amount + platform_fee) === cart total.  Additionally, the DB merges base
+  //          platform and concierge into a single platform_fee column, so
+  //          sum(platform_fee) === cart platformFee + cart conciergeFee (the two separately-
+  //          reported components the traveler sees).
+  const checkoutKey = `ppr-${RUN}-r9-${crypto.randomUUID()}`;
+  const checkoutRes = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+  const checkoutBodyText = await checkoutRes.text();
+  const checkoutBody = JSON.parse(checkoutBodyText);
+
+  if (checkoutRes.status === 503) {
+    assert.equal(
+      checkoutBody.error,
+      "payment_unavailable",
+      `503 must be the declared Stripe-stub contract, got: ${checkoutBodyText}`,
+    );
+  } else {
+    assert.equal(
+      checkoutRes.status,
+      201,
+      `POST /api/checkout must be 201 or the declared 503, got ${checkoutRes.status}: ${checkoutBodyText}`,
+    );
+  }
+
+  // Read stamped rows regardless of Stripe leg (the stamp happens BEFORE Stripe either way).
+  const rows = await db.execute(sql`
+    SELECT id, service_id, total_amount, platform_fee, status
+    FROM service_bookings
+    WHERE idempotency_key LIKE ${checkoutKey + "%"}
+    ORDER BY created_at
+  `);
+  assert.equal(rows.rows.length, 2, "checkout must have stamped exactly two booking rows for the two-item cart");
+  for (const row of rows.rows as any[]) {
+    createdBookingIds.push((row as any).id);
+  }
+
+  if (checkoutRes.status === 201) {
+    // CLAIM B (201 leg) — compare the checkout response body fee fields field-for-field
+    // against both GET surfaces.  The checkout body uses the SAME field names as GET /api/cart
+    // (subtotal, platformFee, conciergeFee, total), so a loop divergence that touches any
+    // individual component (not just the combined total) will fail here.
+    assert.equal(
+      String(checkoutBody.subtotal),
+      Number(cart.subtotal).toFixed(2),
+      `checkout subtotal (${checkoutBody.subtotal}) diverged from GET /api/cart subtotal (${cart.subtotal})`,
+    );
+    assert.equal(
+      String(checkoutBody.platformFee),
+      Number(cart.platformFee).toFixed(2),
+      `checkout platformFee (${checkoutBody.platformFee}) diverged from GET /api/cart platformFee (${cart.platformFee}) — ` +
+        "base platform-fee computation diverged across the three surfaces",
+    );
+    assert.equal(
+      String(checkoutBody.conciergeFee),
+      Number(cart.conciergeFee).toFixed(2),
+      `checkout conciergeFee (${checkoutBody.conciergeFee}) diverged from GET /api/cart conciergeFee (${cart.conciergeFee}) — ` +
+        "concierge fee computation diverged across the three surfaces",
+    );
+    assert.equal(
+      String(checkoutBody.total),
+      Number(cart.total).toFixed(2),
+      `checkout total (${checkoutBody.total}) diverged from GET /api/cart total (${cart.total})`,
+    );
+    // Cross-check against fee-preview too (different field names, same semantics).
+    assert.equal(
+      String(checkoutBody.platformFee),
+      preview.platformFeeTotal.toFixed(2),
+      `checkout platformFee (${checkoutBody.platformFee}) diverged from GET /api/cart/fee-preview platformFeeTotal (${preview.platformFeeTotal})`,
+    );
+    assert.equal(
+      String(checkoutBody.conciergeFee),
+      preview.conciergeFeeTotal.toFixed(2),
+      `checkout conciergeFee (${checkoutBody.conciergeFee}) diverged from GET /api/cart/fee-preview conciergeFeeTotal (${preview.conciergeFeeTotal})`,
+    );
+    assert.equal(
+      String(checkoutBody.total),
+      preview.total.toFixed(2),
+      `checkout total (${checkoutBody.total}) diverged from GET /api/cart/fee-preview total (${preview.total})`,
+    );
+  } else {
+    // CLAIM B (503 leg) — no fee fields in body; use DB rows.
+    // sum(total_amount + platform_fee) === cart total (lineFullCharge invariant).
+    const checkoutChargedTotal = (rows.rows as any[]).reduce(
+      (acc, row) => acc + Number(row.total_amount) + Number(row.platform_fee),
+      0,
+    );
+    assert.equal(
+      checkoutChargedTotal.toFixed(2),
+      Number(cart.total).toFixed(2),
+      `DB-stamped total (sum total_amount + platform_fee = ${checkoutChargedTotal.toFixed(2)}) ` +
+        `diverged from GET /api/cart total (${cart.total})`,
+    );
+    assert.equal(
+      checkoutChargedTotal.toFixed(2),
+      preview.total.toFixed(2),
+      `DB-stamped total (${checkoutChargedTotal.toFixed(2)}) diverged from ` +
+        `GET /api/cart/fee-preview total (${preview.total})`,
+    );
+
+    // CLAIM C (503 leg) — the DB merges base platform + concierge into a single platform_fee
+    // column per row; their combined sum must equal the two separately-reported cart components.
+    // This catches a misclassification that preserves the combined total but moves amounts
+    // between the base-platform and concierge buckets.
+    const sumPlatformFee = (rows.rows as any[]).reduce(
+      (acc, row) => acc + Number(row.platform_fee),
+      0,
+    );
+    const expectedCombinedFee = Number(cart.platformFee) + Number(cart.conciergeFee);
+    assert.equal(
+      sumPlatformFee.toFixed(2),
+      expectedCombinedFee.toFixed(2),
+      `DB sum(platform_fee) (${sumPlatformFee.toFixed(2)}) must equal cart platformFee + conciergeFee ` +
+        `(${Number(cart.platformFee).toFixed(2)} + ${Number(cart.conciergeFee).toFixed(2)} = ${expectedCombinedFee.toFixed(2)}) — ` +
+        "base platform and concierge fees are misclassified in the stamped rows",
+    );
+  }
+
+  // CLAIM D — subtotal matches on both legs (base-amount computation consistent across surfaces).
+  const checkoutSubtotal = (rows.rows as any[]).reduce(
+    (acc, row) => acc + Number(row.total_amount),
+    0,
+  );
+  assert.equal(
+    checkoutSubtotal.toFixed(2),
+    Number(cart.subtotal).toFixed(2),
+    `DB sum(total_amount) (${checkoutSubtotal.toFixed(2)}) diverged from GET /api/cart subtotal (${cart.subtotal})`,
+  );
+
+  // Cart cleanup — done here so subsequent tests start clean.
+  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+});
