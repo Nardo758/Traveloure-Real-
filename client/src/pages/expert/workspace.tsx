@@ -1206,7 +1206,7 @@ function ItemsEditorPanel({
                       </button>
                     </div>
                     {partnerSource && (() => {
-                      const alreadyConfirmed = confirmedProviders?.has(partnerSource.network) ?? false;
+                      const alreadyConfirmed = confirmedProviders?.has(normalizeProvider(partnerSource.network)) ?? false;
                       return (
                         <button
                           onClick={() => onOpenBookingBrief(partnerSource.network)}
@@ -2651,6 +2651,35 @@ function writeExtraMaxDay(tripId: string, value: number): void {
   }
 }
 
+// ── Booking-brief session cache (trip-scoped, sessionStorage-backed) ─────────
+// Keyed per tripId so confirming a provider for one trip never skips the modal
+// on a different client's trip. sessionStorage survives page reloads but is
+// cleared when the browser tab/session ends — matching "same session" semantics.
+// All errors are swallowed: private-browsing / quota failures silently degrade
+// to in-memory-only behaviour (the state Set still works for the current mount).
+const BOOKING_BRIEF_STORE = (tripId: string) => `booking-brief-confirmed:${tripId}`;
+const normalizeProvider = (p: string) => p.trim().toLowerCase();
+
+function readConfirmedFromSession(tripId: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(BOOKING_BRIEF_STORE(tripId));
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeConfirmedToSession(tripId: string, providers: Set<string>): void {
+  try {
+    sessionStorage.setItem(BOOKING_BRIEF_STORE(tripId), JSON.stringify(Array.from(providers)));
+  } catch {
+    // quota / private-browsing — silently degrade
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
@@ -2733,16 +2762,23 @@ export default function ExpertWorkspace() {
   const travelerNoteInitialized = useRef(false);
   const travelerNotesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
-  // Session cache: tracks which providers the expert has already clicked "Continue to [Provider]"
-  // for in this session. Subsequent clicks on the same provider skip the modal entirely.
-  const [confirmedProviders, setConfirmedProviders] = useState<Set<string>>(new Set());
+  // Session cache: normalized provider names already confirmed (via "Continue to [Provider]")
+  // for the CURRENT trip in this browser session. Keyed by tripId in sessionStorage so
+  // switching trips never carries over a previous client's confirmations.
+  const [confirmedProviders, setConfirmedProviders] = useState<Set<string>>(() =>
+    tripId ? readConfirmedFromSession(tripId) : new Set(),
+  );
+  // Re-hydrate whenever the active trip changes (e.g. sidebar navigation without full reload).
+  useEffect(() => {
+    if (tripId) setConfirmedProviders(readConfirmedFromSession(tripId));
+  }, [tripId]);
 
   /** Session-aware booking brief opener.
-   *  First click for a given provider → shows the full modal.
-   *  Subsequent clicks in the same session → skips the modal, opens the URL directly,
-   *  and shows a brief toast so the expert knows client details are still in play. */
+   *  First click for a given provider (per trip) → shows the full modal.
+   *  Subsequent clicks in the same session for the same trip → skips the modal, opens the
+   *  URL directly, and shows a brief toast so the expert knows client details are still in play. */
   const handleOpenBookingBrief = useCallback((provider: string, bookingUrl?: string) => {
-    if (confirmedProviders.has(provider)) {
+    if (confirmedProviders.has(normalizeProvider(provider))) {
       if (bookingUrl) window.open(bookingUrl, "_blank", "noopener,noreferrer");
       toast({
         title: "Client details on file",
@@ -3850,7 +3886,15 @@ export default function ExpertWorkspace() {
           bookingUrl={bookingBrief.bookingUrl}
           tripId={tripId}
           onClose={() => setBookingBrief(null)}
-          onConfirmed={(provider) => setConfirmedProviders(prev => { const s = new Set(prev); s.add(provider); return s; })}
+          onConfirmed={(provider) => {
+            const key = normalizeProvider(provider);
+            setConfirmedProviders(prev => {
+              const s = new Set(prev);
+              s.add(key);
+              if (tripId) writeConfirmedToSession(tripId, s);
+              return s;
+            });
+          }}
         />
       )}
       {servicePickerOpen && tripId && (
