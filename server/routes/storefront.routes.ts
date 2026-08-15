@@ -92,6 +92,7 @@ router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -240,6 +241,7 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -274,6 +276,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -342,6 +345,7 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -402,6 +406,7 @@ router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) 
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -434,6 +439,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -482,6 +488,7 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
