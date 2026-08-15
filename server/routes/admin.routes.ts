@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
@@ -9,7 +10,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -2495,8 +2496,8 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       const categoryRow = await resolveOrCreateItineraryPlanningCategory();
       const esoRow = await createExpertServiceOfferingRow({
         categoryId:  categoryRow.id,
-        name:        title,
-        description: description ?? null,
+        name:        sanitizeText(title) as string,
+        description: sanitizeText(description ?? null),
         price:       suggestedPrice ?? "0",
         isDefault:   true,
         sortOrder:   sortOrder ?? 0,
@@ -2533,7 +2534,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const input = insertServiceTemplateSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertServiceTemplateSchema.partial().parse(req.body));
       const updated = await storage.updateServiceTemplate(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Template not found" });
@@ -4619,8 +4620,8 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
         storage.getAllProviderPayouts(status),
       ]);
       const allPayouts = [
-        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
-        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
+        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const, isStale: isPayoutStale(p) })),
+        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const, isStale: isPayoutStale(p) })),
       ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {
@@ -5263,16 +5264,39 @@ router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
-    const fromParam = typeof req.query.from === "string" && req.query.from ? new Date(req.query.from) : null;
-    const toParam = typeof req.query.to === "string" && req.query.to ? new Date(req.query.to) : null;
-    const from = fromParam && !isNaN(fromParam.getTime()) ? fromParam : null;
-    const to = toParam && !isNaN(toParam.getTime()) ? toParam : null;
+    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toRaw   = typeof req.query.to   === "string" ? req.query.to.trim()   : "";
+
+    // Parse "from" as start-of-day (00:00:00.000 local/UTC boundary — date-only strings
+    // are interpreted as UTC midnight by the Date constructor, which is correct for a
+    // lower-bound inclusive comparison).
+    const fromParsed = fromRaw ? new Date(fromRaw) : null;
+    const from = fromParsed && !isNaN(fromParsed.getTime()) ? fromParsed : null;
+
+    // Parse "to" as end-of-day so that records created at any time on the selected date
+    // are included.  A date-only string like "2026-08-15" is parsed as midnight UTC, so
+    // we advance by one full day and use a strict-less-than upper bound.
+    let toExclusive: Date | null = null;
+    if (toRaw) {
+      const toParsed = new Date(toRaw);
+      if (!isNaN(toParsed.getTime())) {
+        // If the caller sent a date-only value (exactly 10 chars, YYYY-MM-DD), advance by
+        // one day so the entire selected calendar day is included.
+        if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
+          toExclusive = new Date(toParsed.getTime() + 24 * 60 * 60 * 1000);
+        } else {
+          // Full timestamp — treat as already an inclusive upper bound; add 1 ms.
+          toExclusive = new Date(toParsed.getTime() + 1);
+        }
+      }
+    }
+
     const inRange = (d: Date | string | null | undefined) => {
-      if (!from && !to) return true;
+      if (!from && !toExclusive) return true;
       if (!d) return false;
       const t = new Date(d).getTime();
       if (from && t < from.getTime()) return false;
-      if (to && t > to.getTime()) return false;
+      if (toExclusive && t >= toExclusive.getTime()) return false;
       return true;
     };
 
@@ -5310,8 +5334,8 @@ router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
     };
     const lines: string[] = [];
     lines.push("Section,Label,Value");
-    lines.push(`Range,From,${esc(from ? from.toISOString() : "all time")}`);
-    lines.push(`Range,To,${esc(to ? to.toISOString() : "now")}`);
+    lines.push(`Range,From,${esc(fromRaw || "all time")}`);
+    lines.push(`Range,To,${esc(toRaw || "now")}`);
     lines.push(`Metrics,Total Users,${allUsers.length}`);
     lines.push(`Metrics,Total Bookings,${allBookings.length}`);
     lines.push(`Metrics,Completed Bookings,${completedBookings.length}`);
@@ -6837,7 +6861,7 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
       try {
         const { createExpertAssignmentNotification, getTripLabel } = await import("../services/booking-actions.service");
         const tripLabel = await getTripLabel(row.trip_id);
-        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel);
+        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel, { status: "assigned" });
       } catch (notifyErr) {
         console.error("Failed to notify expert of trip assignment:", notifyErr);
       }

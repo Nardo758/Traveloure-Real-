@@ -153,6 +153,8 @@ import {
 // applied to notifications), keyed by `dedupeKey` against notifications.dedupe_key's partial
 // UNIQUE index (ON CONFLICT DO NOTHING) so a crash-retry of the SAME transition never inserts a
 // duplicate row. `dedupeKey` should be shaped `booking:<id>:<event>` (e.g. `booking:<id>:accepted`).
+// Pass an array to fire multiple notifications in the same transaction (e.g. earner + traveler on
+// auto-completion) — each entry is individually deduplicated by its own dedupeKey.
 export interface BookingStatusNotification {
   userId: string;
   type: string;
@@ -324,7 +326,7 @@ export interface IStorage {
   getServiceBookings(filters: { providerId?: string; travelerId?: string; status?: string }): Promise<ServiceBooking[]>;
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
-  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[]): Promise<ServiceBooking | undefined>;
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
@@ -2322,7 +2324,7 @@ export class DatabaseStorage implements IStorage {
    * promote. The `vendor_availability_slots.booked_count` taken at claim time was destroyed for
    * good, with no code path to give it back.
    */
-  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined> {
+  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[]): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
@@ -2403,20 +2405,25 @@ export class DatabaseStorage implements IStorage {
       // ON CONFLICT DO NOTHING against notifications.dedupe_key's partial UNIQUE index (migration
       // 209) — a retried/duplicated call for the SAME event (same dedupeKey) inserts zero extra
       // rows, so this is safe to call again after a crash or under a concurrent duplicate.
+      // `notify` may be a single notification or an array (e.g. earner + traveler on auto-complete);
+      // each entry is individually deduplicated by its own dedupeKey.
       if (notify) {
-        await tx.insert(notifications).values({
-          userId: notify.userId,
-          type: notify.type,
-          title: notify.title,
-          message: notify.message,
-          relatedId: id,
-          relatedType: "booking",
-          data: notify.data ?? null,
-          dedupeKey: notify.dedupeKey,
-        }).onConflictDoNothing({
-          target: notifications.dedupeKey,
-          where: sql`dedupe_key IS NOT NULL`,
-        });
+        const notifyList = Array.isArray(notify) ? notify : [notify];
+        for (const n of notifyList) {
+          await tx.insert(notifications).values({
+            userId: n.userId,
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            relatedId: id,
+            relatedType: "booking",
+            data: n.data ?? null,
+            dedupeKey: n.dedupeKey,
+          }).onConflictDoNothing({
+            target: notifications.dedupeKey,
+            where: sql`dedupe_key IS NOT NULL`,
+          });
+        }
       }
 
       return u;
@@ -4983,17 +4990,21 @@ export class DatabaseStorage implements IStorage {
   // if not already completed/processing. Returns undefined if another caller already claimed/
   // completed it — the transition IS the concurrency guard, so a double-invocation transfers once.
   async claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined> {
+    // Guard: only claim rows that are in a pre-transfer state. 'completed' is already done;
+    // 'processing' is already claimed by another concurrent call; 'failed' is a terminal state
+    // (an admin rejection OR a stale-supersession) and must never be re-driven to Stripe.
     const [row] = await db.update(expertPayouts)
       .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing')`))
+      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing','failed')`))
       .returning();
     return row;
   }
 
   async claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined> {
+    // Same guard as claimExpertPayoutForProcessing — 'failed' must not be re-claimable.
     const [row] = await db.update(providerPayouts)
       .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing')`))
+      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing','failed')`))
       .returning();
     return row;
   }

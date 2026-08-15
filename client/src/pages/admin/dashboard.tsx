@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Loader2,
   AlertTriangle,
+  Database,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -32,6 +33,30 @@ interface AdminStats {
   pendingProviderApplications: number;
 }
 
+interface CacheKeyStatus {
+  cacheKey: string;
+  refreshedAt: string | null;
+  expiresAt: string;
+  isStale: boolean;
+}
+
+interface BrandStatus {
+  brand: string;
+  totalKeys: number;
+  staleKeys: number;
+  freshKeys: number;
+  lastRefreshedAt: string | null;
+  earliestExpiresAt: string | null;
+  latestExpiresAt: string | null;
+  isStale: boolean;
+  keys: CacheKeyStatus[];
+}
+
+interface TravelpayoutsCacheStatusResponse {
+  brands: BrandStatus[];
+  retrievedAt: string;
+}
+
 interface StaleBooking {
   id: string;
   user_id: string;
@@ -44,6 +69,81 @@ interface StaleBooking {
   user_email: string;
   user_first_name: string;
   user_last_name: string;
+}
+
+function TravelpayoutsCachePanel({ data }: { data: TravelpayoutsCacheStatusResponse }) {
+  const retrievedAt = new Date(data.retrievedAt);
+
+  function formatTs(ts: string | null): string {
+    if (!ts) return "unknown";
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
+  }
+
+  return (
+    <Card data-testid="card-travelpayouts-cache">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Database className="w-5 h-5 text-indigo-500" />
+          Travelpayouts Cache Freshness
+          <span className="ml-auto text-xs font-normal text-gray-400">
+            retrieved {retrievedAt.toLocaleTimeString()}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.brands.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+            No cache entries found — cache has not been populated yet.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {data.brands.map((brand) => (
+              <div
+                key={brand.brand}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 p-3"
+                data-testid={`cache-brand-${brand.brand}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 capitalize">
+                    {brand.brand}
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className={
+                      brand.isStale
+                        ? "text-red-700 border-red-400 bg-red-50 dark:bg-red-900/20 dark:text-red-300 dark:border-red-700"
+                        : "text-emerald-700 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700"
+                    }
+                    data-testid={`badge-freshness-${brand.brand}`}
+                  >
+                    {brand.isStale ? "Stale" : "Fresh"}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  <span>
+                    Keys: {brand.freshKeys} fresh / {brand.staleKeys} stale / {brand.totalKeys} total
+                  </span>
+                  <span>
+                    Last cached:{" "}
+                    <span className="text-gray-700 dark:text-gray-300">{formatTs(brand.lastRefreshedAt)}</span>
+                  </span>
+                  <span>
+                    Earliest expiry:{" "}
+                    <span className="text-gray-700 dark:text-gray-300">{formatTs(brand.earliestExpiresAt)}</span>
+                  </span>
+                  <span>
+                    Latest expiry:{" "}
+                    <span className="text-gray-700 dark:text-gray-300">{formatTs(brand.latestExpiresAt)}</span>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function DigestTriggerButton() {
@@ -114,6 +214,11 @@ export default function AdminDashboard() {
 
   const { data: stalePendingData } = useQuery<{ bookings: StaleBooking[]; count: number }>({
     queryKey: ["/api/admin/bookings/stale-pending"],
+  });
+
+  const { data: cacheStatus } = useQuery<TravelpayoutsCacheStatusResponse>({
+    queryKey: ["/api/admin/travelpayouts-cache/status"],
+    refetchInterval: 60_000, // refresh every minute
   });
 
   // Build 1: activation funnel — pure read aggregation over existing tables (§13).
@@ -279,6 +384,9 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Travelpayouts cache freshness */}
+        {cacheStatus && <TravelpayoutsCachePanel data={cacheStatus} />}
 
         {/* Applications */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
