@@ -66,6 +66,9 @@ let benchUserId: string;
 let savedNeighborhoods: string[] = [];
 let savedLocalityProof: string = "";
 
+/** expert_notes_style before the suite runs — restored in `after` (null = column was NULL). */
+let savedNotesStyle: string | null = null;
+
 /** Specializations added during the suite — deleted in `after`. */
 const specsToCleanup: string[] = [];
 
@@ -142,9 +145,9 @@ before(async () => {
   assert.ok(row.rows.length > 0, "kyoto bench fixture must exist (run console-sigma-kyoto-bench first)");
   benchUserId = row.rows[0].id;
 
-  // Save current neighborhoods + locality proof for post-suite restoration.
+  // Save current neighborhoods, locality proof, and notes style for post-suite restoration.
   const formRow = await pool.query(
-    `SELECT neighborhoods, locality_proof FROM local_expert_forms WHERE user_id = $1`,
+    `SELECT neighborhoods, locality_proof, expert_notes_style FROM local_expert_forms WHERE user_id = $1`,
     [benchUserId],
   );
   if (formRow.rows.length > 0) {
@@ -152,16 +155,20 @@ before(async () => {
       ? formRow.rows[0].neighborhoods
       : [];
     savedLocalityProof = formRow.rows[0].locality_proof ?? "";
+    // Preserve NULL vs. empty-string semantics — restore exactly what was there.
+    savedNotesStyle = formRow.rows[0].expert_notes_style ?? null;
   }
 });
 
 after(async () => {
   try {
-    // Restore the bench fixture's neighborhoods to what they were before this suite ran.
+    // Restore the bench fixture's neighborhoods and notes style to what they were before this suite.
     if (benchUserId) {
       await pool.query(
-        `UPDATE local_expert_forms SET neighborhoods = $1, locality_proof = $2 WHERE user_id = $3`,
-        [JSON.stringify(savedNeighborhoods), savedLocalityProof, benchUserId],
+        `UPDATE local_expert_forms
+         SET neighborhoods = $1, locality_proof = $2, expert_notes_style = $3
+         WHERE user_id = $4`,
+        [JSON.stringify(savedNeighborhoods), savedLocalityProof, savedNotesStyle, benchUserId],
       );
     }
 
