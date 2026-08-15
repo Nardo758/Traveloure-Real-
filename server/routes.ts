@@ -188,6 +188,7 @@ import {
   templatePurchases,
 } from "@shared/schema";
 import { sanitizeText } from "./utils/text-sanitizer";
+import { sanitizeStringFields } from "./utils/text-sanitizer";
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
@@ -2935,7 +2936,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const translation = await storage.upsertServiceTranslation({
         serviceId: owned.service.id,
         locale,
-        content: normalizeContent(parsed.data),
+        // Sanitize translated free-text before storing (task 1135 / task 1138).
+        content: sanitizeStringFields(normalizeContent(parsed.data)) as ReturnType<typeof normalizeContent>,
         status: "approved",
         source: "human",
         updatedBy: owned.userId,
@@ -3025,7 +3027,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.parse(bodyWithoutLocation);
+      // Sanitize provider-authored free-text fields to strip HTML injection vectors before
+      // they reach the database, emails, or AI prompts (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -3285,7 +3289,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.partial().parse(bodyWithoutLocation);
+      // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
