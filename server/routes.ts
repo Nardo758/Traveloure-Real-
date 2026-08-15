@@ -6382,6 +6382,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
               }
+              // Send a cancellation + refund email so the traveler sees both the reason and
+              // confirmation that their money is being returned.
+              try {
+                const traveler = await storage.getUser(booking.travelerId);
+                if (traveler?.email) {
+                  const { sendBookingCancellationWithRefundEmail } = await import("./services/email.service");
+                  await sendBookingCancellationWithRefundEmail({
+                    toEmail: traveler.email,
+                    travelerName: traveler.firstName ?? null,
+                    bookingTrackingNumber: booking.trackingNumber ?? null,
+                    serviceName: (booking as any).serviceName ?? null,
+                    refundAmount: amountPaid,
+                    cancellationReason: reason ?? null,
+                  });
+                }
+              } catch (emailErr) {
+                console.error("Failed to send cancellation+refund email to traveler:", emailErr);
+              }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
             return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
@@ -6434,6 +6452,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // notification (the notify insert lives inside the same transaction the lost race rolled
         // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
+
+      // Send a decline email so the traveler sees the reason even if they don't check the app.
+      // Non-fatal: a delivery failure must never roll back the already-committed status flip.
+      if (status === "cancelled" && booking.travelerId) {
+        try {
+          const traveler = await storage.getUser(booking.travelerId);
+          if (traveler?.email) {
+            const { sendBookingDeclineEmail } = await import("./services/email.service");
+            await sendBookingDeclineEmail({
+              toEmail: traveler.email,
+              travelerName: traveler.firstName ?? null,
+              bookingTrackingNumber: booking.trackingNumber ?? null,
+              serviceName: (booking as any).serviceName ?? null,
+              declineReason: reason ?? null,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send decline email to traveler:", emailErr);
+        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
