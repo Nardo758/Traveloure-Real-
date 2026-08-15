@@ -521,7 +521,7 @@ export default function EnhancedPlanningModal({
             <label className="text-sm font-semibold text-gray-700 mb-3 block">
               What type of experience?
             </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {EXPERIENCE_TYPES.map((type) => (
                 <button
                   key={type.value}
