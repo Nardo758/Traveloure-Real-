@@ -289,10 +289,50 @@ interface TravelerProfile {
   profileImageUrl: string | null;
 }
 
-function BookingBriefModal({ provider, bookingUrl, tripId, onClose, onConfirmed }: { provider: string; bookingUrl?: string; tripId: string; onClose: () => void; onConfirmed?: (provider: string) => void }) {
+function BookingBriefModal({
+  provider, bookingUrl, tripId, onClose,
+  itemId, itemTitle, onConfirm, onConfirmed,
+}: {
+  provider: string;
+  bookingUrl?: string;
+  tripId: string;
+  onClose: () => void;
+  /** When set, the "Confirm booking" action PATCHes this item's bookingStatus to "pending". */
+  itemId?: string;
+  /** Displayed in the modal sub-header as the item being booked. */
+  itemTitle?: string;
+  /** Called after the server PATCH succeeds (or immediately if no itemId / no status change). */
+  onConfirm?: () => void;
+  /** Called with the provider name after the expert clicks "Continue" — used by the
+   *  session-level confirmedProviders set (task #128) to show "already confirmed" badges. */
+  onConfirmed?: (provider: string) => void;
+}) {
+  const { toast } = useToast();
   const { data: profile, isLoading } = useQuery<TravelerProfile>({
     queryKey: [`/api/trips/${tripId}/traveler-profile`],
     enabled: !!tripId,
+  });
+  // Opt-in checkbox: the expert explicitly decides whether opening the brief means they
+  // are starting the booking (→ mark pending). Unchecked by default so that merely
+  // reviewing PII does not silently change item state.
+  const [markPending, setMarkPending] = useState(false);
+
+  const statusMutation = useMutation({
+    mutationFn: async () => {
+      if (!itemId || !markPending) return;
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/itinerary-items/${itemId}`, { bookingStatus: "pending" });
+      return res.json();
+    },
+    onSuccess: () => {
+      if (itemId && markPending) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+        toast({ title: "Booking started", description: "Item marked as pending — complete the booking with the vendor." });
+      }
+      onConfirm?.();
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "Could not update status", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   const formatDateLocal = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -311,8 +351,17 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose, onConfirmed 
       window.open(bookingUrl, "_blank", "noopener,noreferrer");
     }
     onConfirmed?.(provider);
-    onClose();
+    if (itemId) {
+      statusMutation.mutate();
+    } else {
+      onConfirm?.();
+      onClose();
+    }
   };
+
+  const subtitle = itemTitle
+    ? `Secure client details — ${itemTitle}`
+    : `Secure client details for ${provider}`;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -320,10 +369,19 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose, onConfirmed 
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${LINE}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center" }}><ShieldCheck style={{ width: 16, height: 16, color: BRAND }} /></div>
-            <div><div style={{ fontSize: 14, fontWeight: 700, color: INK }}>Booking Brief</div><div style={{ fontSize: 11, color: MID }}>Secure client details for {provider}</div></div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: INK }}>Booking Brief</div>
+              <div style={{ fontSize: 11, color: MID, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
+            </div>
           </div>
           <button onClick={onClose} data-testid="button-close-booking-brief" style={{ background: "none", border: "none", cursor: "pointer", color: FAINT, padding: 4, display: "flex" }}><X style={{ width: 18, height: 18 }} /></button>
         </div>
+        {itemTitle && (
+          <div style={{ margin: "12px 18px 0", padding: "6px 10px", background: BRAND_SOFT, border: `1px solid ${BRAND}`, borderRadius: 8, fontSize: 11.5, fontWeight: 600, color: INK }}>
+            <FileText style={{ width: 11, height: 11, display: "inline", marginRight: 5, verticalAlign: "middle" }} />
+            {itemTitle}
+          </div>
+        )}
         <div style={{ margin: "12px 18px 0", padding: "8px 12px", background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
           <Lock style={{ width: 13, height: 13, color: MID, flexShrink: 0, marginTop: 1 }} />
           <span style={{ fontSize: 11, color: MID, lineHeight: 1.5 }}>Booking context only. Use these details to complete your client's reservation. Do not save or share with unrelated third parties.</span>
@@ -345,10 +403,33 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose, onConfirmed 
             </div>
           ))}
         </div>
+        {itemId && (
+          <div style={{ margin: "0 18px 2px", padding: "8px 10px", background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <input
+              type="checkbox"
+              id="booking-brief-mark-pending"
+              checked={markPending}
+              onChange={e => setMarkPending(e.target.checked)}
+              data-testid="checkbox-mark-booking-pending"
+              style={{ marginTop: 2, cursor: "pointer", accentColor: BRAND }}
+            />
+            <label htmlFor="booking-brief-mark-pending" style={{ fontSize: 11.5, color: MID, lineHeight: 1.5, cursor: "pointer" }}>
+              I'm starting this booking — mark item as <strong style={{ color: INK }}>pending</strong>
+            </label>
+          </div>
+        )}
         <div style={{ padding: "14px 18px", display: "flex", gap: 8 }}>
-          <button onClick={onClose} style={{ ...btnQuietStyle, flex: 1, padding: "8px", fontSize: 13, color: MID }}>Cancel</button>
-          <button onClick={handleContinue} data-testid="button-confirm-booking" style={{ ...btnPrimaryStyle, flex: 2, padding: "8px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <ExternalLink style={{ width: 13, height: 13 }} /> Continue to {provider}
+          <button onClick={onClose} disabled={statusMutation.isPending} style={{ ...btnQuietStyle, flex: 1, padding: "8px", fontSize: 13, color: MID }}>Cancel</button>
+          <button
+            onClick={handleContinue}
+            disabled={statusMutation.isPending}
+            data-testid="button-confirm-booking"
+            style={{ ...btnPrimaryStyle, flex: 2, padding: "8px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: statusMutation.isPending ? 0.6 : 1 }}
+          >
+            {statusMutation.isPending
+              ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
+              : <ExternalLink style={{ width: 13, height: 13 }} />}
+            {bookingUrl ? `Continue to ${provider}` : "Got the details"}
           </button>
         </div>
       </div>
@@ -801,6 +882,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   }
 }
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /** A-2 / C-1 (Workstation audit): the canvas item editor. Collapsible, day-grouped list of
  *  every item on the build with a "Move to day" select (A-2) and an "Expert note" textarea
  *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
@@ -819,7 +901,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
   tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, confirmedProviders,
-  focusItemId, onFocusHandled, onSelectItem,
+  resolveBookingUrl, focusItemId, onFocusHandled, onSelectItem,
   suggestOrderForDay, onSuggestHandled,
 }: {
   tripId: string;
@@ -836,8 +918,11 @@ function ItemsEditorPanel({
   // client-approved. Nothing here needs to re-check approval state.
   onOpenBookingBrief: (network: string) => void;
   /** Providers the expert has already confirmed (clicked "Continue to …") this session.
-   *  Used to show an "already confirmed" badge on the Booking Brief button. */
+   *  Used to show an "already confirmed" badge on the per-item Book button. */
   confirmedProviders?: Set<string>;
+  /** Resolves a partner-network name to its affiliate booking URL so the per-item modal can
+   *  open the vendor site for partner-sourced items (same source as the partner-card path). */
+  resolveBookingUrl?: (network: string) => string | undefined;
   // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
   // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
   // request (a one-shot signal, not a controlled/sticky prop).
@@ -870,6 +955,11 @@ function ItemsEditorPanel({
   // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
   // explicit confirm (never auto-applied).
   const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
+  // Per-item Booking Brief: hoveredItemId drives hover highlighting on the "Book" button
+  // (always rendered for keyboard/touch accessibility); bookingBriefItem stores whichever item
+  // has the modal open, plus the resolved partner booking URL.
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const [bookingBriefItem, setBookingBriefItem] = useState<{ item: ItineraryItem; bookingUrl?: string } | null>(null);
 
   useEffect(() => {
     if (!focusItemId) return;
@@ -1084,8 +1174,17 @@ function ItemsEditorPanel({
                   // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
                   // `days` at all IS the gate — see the prop comment above.
                   const partnerSource = parsePartnerSource(item.description);
+                  const alreadyConfirmed = partnerSource
+                    ? (confirmedProviders?.has(normalizeProvider(partnerSource.network)) ?? false)
+                    : false;
                   return (
-                    <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
+                    <div
+                      key={item.id}
+                      data-testid={`item-editor-row-${item.id}`}
+                      onMouseEnter={() => setHoveredItemId(item.id)}
+                      onMouseLeave={() => setHoveredItemId(id => id === item.id ? null : id)}
+                      style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}
+                    >
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {/* Item 18: within-day reorder — swaps this item with its neighbor and
                             sends the day's full ordered id list to the existing reorder endpoint.
@@ -1125,6 +1224,31 @@ function ItemsEditorPanel({
                             <MapPin style={{ width: 13, height: 13 }} />
                           </button>
                         )}
+                        {/* Per-item Booking Brief: always visible (keyboard/touch accessible);
+                            hover lifts opacity to full. Shows "✓ on file" when this provider
+                            has already been confirmed this session (task #128). */}
+                        <button
+                          onClick={() => {
+                            const ps = parsePartnerSource(item.description);
+                            const bookingUrl = ps ? resolveBookingUrl?.(ps.network) : undefined;
+                            setBookingBriefItem({ item, bookingUrl });
+                          }}
+                          data-testid={`button-book-item-${item.id}`}
+                          title="Pull client details to book this item"
+                          style={{
+                            ...btnQuietStyle,
+                            padding: "3px 9px",
+                            fontSize: 11,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            opacity: hoveredItemId === item.id ? 1 : 0.45,
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          <ShieldCheck style={{ width: 11, height: 11 }} /> Book
+                          {alreadyConfirmed && <StateChip tone="ok">✓ on file</StateChip>}
+                        </button>
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : item.id)}
                           data-testid={`button-expand-item-${item.id}`}
@@ -1205,21 +1329,6 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
-                    {partnerSource && (() => {
-                      const alreadyConfirmed = confirmedProviders?.has(normalizeProvider(partnerSource.network)) ?? false;
-                      return (
-                        <button
-                          onClick={() => onOpenBookingBrief(partnerSource.network)}
-                          data-testid={`button-booking-brief-${item.id}`}
-                          style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
-                        >
-                          <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
-                          {alreadyConfirmed && (
-                            <StateChip tone="ok">✓ on file</StateChip>
-                          )}
-                        </button>
-                      );
-                    })()}
                     <button
                       onClick={() => {
                         if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
@@ -1247,10 +1356,23 @@ function ItemsEditorPanel({
           })}
         </div>
       )}
+      {/* Per-item Booking Brief modal — opened from any item's "Book" button.
+          Provides client PII for vendor bookings; on confirm (with checkbox) PATCHes
+          bookingStatus → "pending" so the center panel reflects the change. */}
+      {bookingBriefItem && (
+        <BookingBriefModal
+          tripId={tripId}
+          provider={parsePartnerSource(bookingBriefItem.item.description)?.network ?? bookingBriefItem.item.locationName ?? bookingBriefItem.item.title}
+          bookingUrl={bookingBriefItem.bookingUrl}
+          itemId={bookingBriefItem.item.id}
+          itemTitle={bookingBriefItem.item.title}
+          onClose={() => setBookingBriefItem(null)}
+          onConfirm={() => setBookingBriefItem(null)}
+        />
+      )}
     </div>
   );
 }
-
 // ── L4b: the between-stops transport-leg editor (docs/briefs/L4-transport-legs.md) ──────────────
 // Server contracts (L4a, migration 154 — final, do not adjust to fit the client):
 //   POST   /api/trips/:tripId/transport-legs/generate           → born 'proposed', replaces the
@@ -2681,6 +2803,7 @@ function writeConfirmedToSession(tripId: string, providers: Set<string>): void {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
@@ -4217,6 +4340,7 @@ export default function ExpertWorkspace() {
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => handleOpenBookingBrief(network, resolvePartnerBookingUrl(network))}
                   confirmedProviders={confirmedProviders}
+                  resolveBookingUrl={resolvePartnerBookingUrl}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
                   onSelectItem={(itemId) => setMapFocusItemId(itemId)}
