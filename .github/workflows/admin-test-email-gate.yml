@@ -1,0 +1,227 @@
+name: Admin Test-Email UI Gate
+
+# Guards the admin system page's "Verify Email Delivery" flow:
+#   - Custom recipient address is sent in the POST body and echoed in the banner
+#   - Invalid email format surfaces a visible error banner
+#   - Empty field causes the POST to omit `to`, and the banner shows the admin's address
+#
+# All API calls are intercepted via page.route() so no real Resend call is made.
+# Requires an authenticated admin session (ci-admin@traveloure.test), created by
+# playwright/global-setup.ts (PW_AUTH_SETUP=1) from the CI-seeded test accounts.
+#
+# Status context:
+#   * admin-test-email-smoke — independent gate; safe to mark as a required check.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'client/src/pages/admin/system.tsx'
+      - 'server/routes/admin.routes.ts'
+      - 'playwright/tests/admin-test-email.spec.ts'
+      - '.github/workflows/admin-test-email-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'client/src/pages/admin/system.tsx'
+      - 'server/routes/admin.routes.ts'
+      - 'playwright/tests/admin-test-email.spec.ts'
+      - '.github/workflows/admin-test-email-gate.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: admin-test-email-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # setup: pre-warm Playwright browser cache + production build cache.
+  # ─────────────────────────────────────────────────────────────────────────
+  setup:
+    name: setup (build + browser cache warm-up)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium + system deps)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Cache production build output
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
+      - name: Build production bundle
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # admin-test-email-smoke: Playwright UI gate with real admin session.
+  # ─────────────────────────────────────────────────────────────────────────
+  admin-test-email-smoke:
+    name: admin-test-email-smoke (Playwright UI gate)
+    runs-on: ubuntu-latest
+    needs: [setup]
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright system deps
+        run: npx playwright install-deps chromium
+
+      - name: Restore production build cache
+        uses: actions/cache@v4
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
+      - name: Set up CI database (migrations, sessions table, test users)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          # A stub key is fine — the test-email route handler is intercepted by
+          # page.route() before any real Resend call is attempted.
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          EMAIL_FROM: noreply@ci.traveloure.test
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Assert spec file exists
+        run: |
+          if [ ! -f "playwright/tests/admin-test-email.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/admin-test-email.spec.ts"
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Admin test-email UI smoke
+        # Runs with PW_AUTH_SETUP=1 so globalSetup creates the admin auth state.
+        # All three suites use page.route() to intercept and assert the POST body
+        # without touching the real Resend API.
+        run: npx playwright test admin-test-email --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          PW_AUTH_SETUP: '1'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-test-email-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR comment)
+    runs-on: ubuntu-latest
+    needs: [admin-test-email-smoke]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Admin Test-Email UI Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> Playwright UI tests for the admin system page test-email panel.',
+              '> Verifies custom address, invalid format, and empty-field fallback cases.',
+              '> All network calls are intercepted — no real Resend API is hit.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
