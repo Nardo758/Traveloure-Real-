@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # WebKit (Safari-engine) smoke check launcher.
 # Sets the NixOS env WebKit needs (see .agents/memory/webkit-testing-setup.md),
-# then runs scripts/webkit-smoke.mjs. Requires the app serving on port 5000.
+# then runs playwright/crossbrowser/smoke.spec.ts via Playwright test runner.
+# Requires the app serving on port 5000.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -30,4 +31,4 @@ export LIBGL_ALWAYS_SOFTWARE=1
 export GIO_EXTRA_MODULES="$GIO_DIR"
 export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
-exec node scripts/webkit-smoke.mjs
+exec npx playwright test --config playwright/crossbrowser/playwright.config.ts "$@"
