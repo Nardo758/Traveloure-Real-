@@ -5982,7 +5982,16 @@ router.get("/api/search/experiences", async (req, res) => {
           return res.status(401).json({ message: "Authentication required for Viator search" });
         }
       }
-      if (includeViator) try {
+      let viatorServiceNotice: string | undefined;
+      if (includeViator) {
+        // Check upfront whether the API key is configured so we can surface an honest notice
+        // rather than letting the call fail silently and showing a generic "No results" state.
+        if (!process.env.VIATOR_API_KEY) {
+          viatorServiceNotice = "Viator is temporarily unavailable";
+          console.warn("[viator] VIATOR_API_KEY is not set — skipping Viator search");
+        }
+      }
+      if (includeViator && !viatorServiceNotice) try {
         // Combine free-text query with destination so results are scoped to the right city.
         // Pattern mirrors the Google Places arm: [q, destination].filter(Boolean).join(" in ").
         // If only destination is provided (no search text), destination alone is the search term.
@@ -6020,10 +6029,18 @@ router.get("/api/search/experiences", async (req, res) => {
         }
       } catch (err) {
         console.error("[viator] searchByFreetext failed in /api/search/experiences:", err);
-        // Non-fatal — Viator unavailable should never fail the whole search response
+        // Non-fatal — Viator unavailable should never fail the whole search response.
+        // Surface an honest notice so the client can show a specific "unavailable" message
+        // rather than a generic empty state that looks like a search returning no results.
+        viatorServiceNotice = "Viator is temporarily unavailable";
       }
 
-      res.json({ results, count: results.length, placesUnavailable: includeGoogle ? placesUnavailable : undefined });
+      res.json({
+        results,
+        count: results.length,
+        placesUnavailable: includeGoogle ? placesUnavailable : undefined,
+        serviceNotice: includeViator ? viatorServiceNotice : undefined,
+      });
     } catch (error: any) {
       console.error("Error in /api/search/experiences:", error);
       res.status(500).json({ message: "Search failed", error: error.message });
