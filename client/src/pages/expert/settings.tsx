@@ -298,7 +298,9 @@ export default function ExpertSettings() {
     language?: string;
     timezone?: string;
     showOnLeaderboard?: boolean;
+    emailBookingAlerts?: boolean;
   }>({ queryKey: ["/api/me/preferences"] });
+  const [emailBookingAlerts, setEmailBookingAlerts] = useState(true);
   const settingsHydrated = useRef(false);
   useEffect(() => {
     if (!savedSettings || settingsHydrated.current) return;
@@ -306,6 +308,7 @@ export default function ExpertSettings() {
     if (savedSettings.language) setLanguage(savedSettings.language);
     if (savedSettings.timezone) setTimezone(savedSettings.timezone);
     if (savedSettings.showOnLeaderboard !== undefined) setEnableLeaderboard(savedSettings.showOnLeaderboard);
+    if (savedSettings.emailBookingAlerts !== undefined) setEmailBookingAlerts(savedSettings.emailBookingAlerts);
     if (savedSettings.notifications) {
       setNotifications((prev) =>
         prev.map((n) => {
@@ -322,6 +325,7 @@ export default function ExpertSettings() {
         language,
         timezone,
         showOnLeaderboard: enableLeaderboard,
+        emailBookingAlerts,
         notifications: Object.fromEntries(
           notifications.map((n) => [n.key, { email: n.email, push: n.push }]),
         ),
@@ -411,7 +415,30 @@ export default function ExpertSettings() {
           </TabsContent>
 
           {/* Notifications Tab */}
-          <TabsContent value="notifications" className="mt-6">
+          <TabsContent value="notifications" className="mt-6 space-y-4">
+            {/* Booking alert email opt-out (migration 223) */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Booking Alert Emails</CardTitle>
+                <CardDescription>Control whether you receive an email when a new booking arrives</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-console-darkest">Email me when I receive a booking</p>
+                    <p className="text-sm text-console-mid mt-1">
+                      When off, you'll still see booking requests in your Inbox — you just won't get an email.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={emailBookingAlerts}
+                    onCheckedChange={setEmailBookingAlerts}
+                    data-testid="toggle-email-booking-alerts"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Notification Preferences</CardTitle>
