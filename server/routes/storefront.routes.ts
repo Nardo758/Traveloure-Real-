@@ -126,7 +126,11 @@ async function isStorefrontVerificationRequired(): Promise<boolean> {
     const row = (result.rows as any[])?.[0];
     return row?.setting_value === "true";
   } catch {
-    // Fail closed: if the setting cannot be read, treat verification as required.
+    // Deliberately fail OPEN (false = verification NOT required): this flag is an
+    // admin-switchable HARDENING gate that defaults off (V.1). A transient settings-read
+    // failure must not vanish every storefront on the platform; when the flag is ON and
+    // the read fails, the next successful read re-applies it. (Corrects the a250e6a6
+    // sweep's comment, which claimed "fail closed" above code that fails open.)
     return false;
   }
 }
