@@ -29,4 +29,5 @@
 - [Payout-parity discriminators](payout-parity-discriminators.md) — all live bands are 0.25 so amount-based branch tests are vacuous; use the EXP-OVR override asymmetry to distinguish provider vs expert resolution.
 - [Provider console verification quirks](provider-console-verification.md) — zone fee popups are click-only; catalog pill reads status not approval_status; edit-split injection guard confirmed.
 - [Discover search design](discover-search-fts.md) — layered FTS→trigram→suggestion search; expression indexes must match query expressions byte-for-byte or go unused.
+- [WebKit testing setup](webkit-testing-setup.md) — Playwright WebKit runs on this NixOS repl only after LD-path shimming, wrapper patch, and glib-networking TLS fix; blank Stripe Elements in WebKit = missing TLS module.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

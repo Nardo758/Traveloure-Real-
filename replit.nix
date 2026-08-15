@@ -1,5 +1,44 @@
 {pkgs}: {
   deps = [
+    pkgs.cacert
+    pkgs.glib-networking
+    pkgs.zlib
+    pkgs.libxslt
+    pkgs.libxml2
+    pkgs.libwpe
+    pkgs.systemdLibs
+    pkgs.sqlite
+    pkgs.libpng
+    pkgs.libopus
+    pkgs.libjxl
+    pkgs.freetype
+    pkgs.fontconfig
+    pkgs.libavif
+    pkgs.icu74
+    pkgs.wayland
+    pkgs.libmanette
+    pkgs.lcms2
+    pkgs.flite
+    pkgs.libevent
+    pkgs.woff2
+    pkgs.hyphen
+    pkgs.libtasn1
+    pkgs.libsecret
+    pkgs.enchant
+    pkgs.libwebp
+    pkgs.libgpg-error
+    pkgs.libgcrypt
+    pkgs.gdk-pixbuf
+    pkgs.pango
+    pkgs.cairo
+    pkgs.libepoxy
+    pkgs.icu
+    pkgs.harfbuzzFull
+    pkgs.libsoup_3
+    pkgs.gst_all_1.gst-plugins-good
+    pkgs.gst_all_1.gst-plugins-bad
+    pkgs.gst_all_1.gst-plugins-base
+    pkgs.gst_all_1.gstreamer
     pkgs.alsa-lib
     pkgs.mesa
     pkgs.xorg.libxcb
