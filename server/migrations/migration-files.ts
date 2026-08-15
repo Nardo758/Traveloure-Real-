@@ -1133,4 +1133,10 @@ export const MIGRATION_FILES = [
   // publish). All 10 rows were empty seed records (expert_ids=[], active_requests=0);
   // archived to legacy_archives before dropping. Guard refuses if any live rows are found.
   "226_retire_deprecated_expert_city_queues.sql",
+  // 227: D-14 (ledger row 119) — delete chōme (丁目) address-block rows that the admin
+  // "Add market" OSM extract dumped into city_neighborhoods (Japanese cities tag every
+  // numbered block as place=quarter/neighbourhood; live instance: Osaka's thousands of
+  // rows). The extractor now filters them at source (CHOME_BLOCK_PATTERN); this cleans
+  // up what's already on disk. Data-only, idempotent, no schema change — no publish trap.
+  "227_purge_chome_neighborhood_rows.sql",
 ] as const;
