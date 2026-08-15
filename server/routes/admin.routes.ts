@@ -2,6 +2,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
 import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
+import { parsePagination } from '../utils/pagination';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -125,7 +126,7 @@ import {
   getAllExpertServiceOfferings, updateExpertServiceOfferingRoles,
   validateDefaultCommissionBandInheritance, validateCommissionBand,
   getPayoutRecipientId, getPayoutAmount, getAdminUsersPaginated, getAdminUsersPage,
-  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips,
+  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips, getAdminTripsPage,
   getAllServiceReviewsForAnalytics, getAllTripsForAnalytics, getAllTrips, getAllServiceReviews,
   getExpertsByCountryAnalytics, getProvidersByCountryAnalytics, getTripsByDestinationAnalytics,
   getExpertsByCountryDetailed, getExpertsByCity, getExpertStatusSummary, getExpertsByExperience,
@@ -4938,26 +4939,27 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
       // §13: `status` filtering used to run `eq(trips.status, status)` against the dead field —
       // it never matched the client's "active"/"pending"/"completed" filter values (which aren't
       // trips.status vocabulary at all) and would have silently returned zero rows. Phase is now
-      // derived post-fetch (below) and the requested phase, if any, filters on that instead.
-      const phaseFilter = req.query.status as string | undefined;
+      // date-derived IN SQL (getAdminTripsPage) so filtering + paging happen before enrichment.
+      const rawPhase = req.query.status as string | undefined;
+      const phaseFilter = rawPhase === "upcoming" || rawPhase === "active" || rawPhase === "past" ? rawPhase : undefined;
+      const { limit, offset } = parsePagination(req.query);
 
-      const conditions: any[] = [];
-      if (search) {
-        conditions.push(
-          or(
-            like(trips.title, `%${search}%`),
-            like(trips.destination, `%${search}%`)
-          )
-        );
-      }
-
-      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-      const allTrips = await getAdminTrips(whereClause);
+      const { rows, stats, filteredTotal } = await getAdminTripsPage({
+        search: search || undefined,
+        phase: phaseFilter,
+        limit,
+        offset,
+      });
 
       const now = new Date();
 
-      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
-        const owner = await storage.getUser(t.userId || '');
+      // Batch owner lookup (one query per page, not one per trip).
+      const ownerIds = Array.from(new Set(rows.map((t) => t.userId).filter((id): id is string => !!id)));
+      const owners = await getUsersBasicByIds(ownerIds);
+      const ownerMap = new Map(owners.map((u) => [u.id, u]));
+
+      const enrichedTrips = rows.map((t) => {
+        const owner = t.userId ? ownerMap.get(t.userId) : undefined;
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -4972,22 +4974,24 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
-      }));
+      });
 
-      const phaseFiltered = phaseFilter
-        ? enrichedTrips.filter(t => t.status === phaseFilter)
-        : enrichedTrips;
-
-      // Honest labels (§13) — no fabricated "completed"/"pending" bucket derived from a field
-      // nothing writes; the three buckets below are exactly the three deriveTripPhase can return.
+      // Honest labels (§13) — the three buckets are exactly the three phases SQL can derive.
       const statusCounts = {
-        total: enrichedTrips.length,
-        upcoming: enrichedTrips.filter(t => t.status === "upcoming").length,
-        active: enrichedTrips.filter(t => t.status === "active").length,
-        past: enrichedTrips.filter(t => t.status === "past").length,
+        total: Number(stats.total ?? 0),
+        upcoming: Number(stats.upcoming ?? 0),
+        active: Number(stats.active ?? 0),
+        past: Number(stats.past ?? 0),
       };
 
-      res.json({ trips: phaseFiltered, stats: statusCounts });
+      res.json({
+        trips: enrichedTrips,
+        stats: statusCounts,
+        total: filteredTotal,
+        hasMore: offset + enrichedTrips.length < filteredTotal,
+        limit,
+        offset,
+      });
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });

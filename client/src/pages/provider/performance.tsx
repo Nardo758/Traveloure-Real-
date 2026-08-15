@@ -8,7 +8,7 @@
  * page's 9-tab picker), so no ?sub= seam is needed. /provider/analytics redirects to
  * /provider/performance?tab=analytics.
  */
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useSearch } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -87,6 +87,8 @@ interface ProviderReview {
 interface ProviderReviewsResponse {
   reviews: ProviderReview[];
   summary: { total: number; avgRating: number; awaitingReply: number };
+  total: number;
+  hasMore: boolean;
 }
 
 // Demand tab response shapes (§10/§11/§12, GET /api/me/demand-signals /
@@ -568,14 +570,32 @@ function ReviewReplyRow({ review }: { review: ProviderReview }) {
 }
 
 function ReviewsTab() {
+  // True offset pagination: fixed 50-row pages, offset increments on Load more, results append.
+  const PAGE_SIZE = 50;
+  const [offset, setOffset] = useState(0);
+  const [allReviews, setAllReviews] = useState<ProviderReview[]>([]);
   const { data, isLoading } = useQuery<ProviderReviewsResponse>({
-    queryKey: ["/api/me/reviews"],
+    queryKey: ["/api/me/reviews", { limit: PAGE_SIZE, offset }],
   });
 
-  const reviews = data?.reviews ?? [];
-  const summary = data?.summary ?? { total: 0, avgRating: 0, awaitingReply: 0 };
+  // Append each new page as it arrives; reset accumulator when offset goes back to 0.
+  useEffect(() => {
+    if (!data?.reviews) return;
+    if (offset === 0) {
+      setAllReviews(data.reviews);
+    } else {
+      setAllReviews((prev) => {
+        const seenIds = new Set(prev.map((r) => r.id));
+        return [...prev, ...data.reviews.filter((r) => !seenIds.has(r.id))];
+      });
+    }
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (isLoading) {
+  const reviews = allReviews;
+  const summary = data?.summary ?? { total: 0, avgRating: 0, awaitingReply: 0 };
+  const hasMore = data?.hasMore ?? false;
+
+  if (isLoading && offset === 0) {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -636,7 +656,7 @@ function ReviewsTab() {
         </Card>
       </div>
 
-      {reviews.length === 0 ? (
+      {reviews.length === 0 && !isLoading ? (
         <div className="text-center py-12 text-muted-foreground" data-testid="text-reviews-empty">
           <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p>No reviews yet — they appear after completed bookings.</p>
@@ -646,6 +666,19 @@ function ReviewsTab() {
           {reviews.map((review) => (
             <ReviewReplyRow key={review.id} review={review} />
           ))}
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isLoading}
+                onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                data-testid="button-load-more-reviews"
+              >
+                {isLoading ? "Loading…" : `Load more (${reviews.length} of ${summary.total})`}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
