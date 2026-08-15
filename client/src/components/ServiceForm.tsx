@@ -1627,7 +1627,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       }
 
       if (isEditMode) {
-        toast({ title: "Service updated" });
+        // Ruling 112 Q8: if identity-changing fields (name, category, delivery method, etc.)
+        // were staged for admin re-review on an approved listing, tell the expert so they
+        // don't wonder why the listing looks unchanged on the live catalog.
+        const stagedKeys: string[] = service?.editReview?.stagedKeys ?? [];
+        if (stagedKeys.length > 0) {
+          const STAGED_KEY_LABELS: Record<string, string> = {
+            serviceName: "service name",
+            categoryId: "category",
+            subcategoryId: "subcategory",
+            deliveryMethod: "delivery method",
+            expertOfferingTypeId: "offering type",
+            serviceOfferingTypeId: "offering type",
+            offeringTypeKey: "offering type",
+            productShape: "product shape",
+          };
+          const changedFields = stagedKeys
+            .map((k) => STAGED_KEY_LABELS[k] ?? k)
+            .filter((v, i, a) => a.indexOf(v) === i) // deduplicate (e.g. two offering-type keys)
+            .join(", ");
+          toast({
+            title: "Changes pending re-approval",
+            description: `Your update to ${changedFields} needs admin review before going live. The rest of your edits are saved and visible immediately.`,
+          });
+        } else {
+          toast({ title: "Service updated" });
+        }
         navigate(`/${role}/services`);
         return;
       }
