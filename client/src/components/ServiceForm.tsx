@@ -3088,7 +3088,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 )}
                 {formData.pricingTiers.map((tier, idx) => (
                   <div key={idx} className="flex items-start gap-2 p-3 bg-secondary/40 rounded-lg border" data-testid={`tier-row-${idx}`}>
-                    <div className="flex-1 grid grid-cols-2 gap-2">
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <Input
                         placeholder="Tier name (e.g. Basic)"
                         value={tier.label}
@@ -3167,7 +3167,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     data-testid="input-event-rate"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="guestMin">Min guests (optional)</Label>
                     <Input

@@ -118,7 +118,7 @@ export function DestinationCalendar({ cityName, country }: DestinationCalendarPr
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {Array.from({ length: 12 }).map((_, i) => (
               <Skeleton key={i} className="h-20 w-full" />
             ))}
