@@ -4999,13 +4999,8 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
   // Read-only audit trail — `workspace_status_transition` rows from item_transition_log.
   // Support staff use this to resolve "when was this delivered?" disputes without DB access.
 
-router.get("/api/admin/trips/:tripId/workspace-history", isAuthenticated, async (req, res) => {
+router.get("/api/admin/trips/:tripId/workspace-history", isAuthenticated, requireAdminLocal, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
       const { tripId } = req.params;
       const rows = await getWorkspaceStatusHistory(tripId);
 
