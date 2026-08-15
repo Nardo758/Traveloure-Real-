@@ -38,6 +38,22 @@ const PROVIDER_PASSWORD = 'TestPass123!';
 const REMOTE_SERVICE = 'Business Document Translation'; // async/remote — the one we unpin
 const LOCATED_SERVICE = 'Business Meeting Interpretation (Full Day)'; // stays pinned
 
+/**
+ * The map surfaces mount Leaflet, which fetches OSM tiles from an external host. Every assertion
+ * here is DOM — markers, counts, copy — so the tiles buy the test nothing and cost it a live
+ * third-party dependency that simply hangs on a sandboxed or offline runner. Aborted.
+ *
+ * PRECONDITION, learned the hard way: the seeded provider must have accepted terms
+ * (`users.terms_accepted_at` AND `privacy_accepted_at`). Without both, every authenticated console
+ * route bounces to `/accept-terms`, so `button-view-map` never renders and the test burns its whole
+ * timeout on an auto-waiting click — surfacing as a timeout attributed to the cleanup PATCH in the
+ * `finally`, which is the LAST place you would look. If this spec times out with no assertion
+ * error, check the terms columns before suspecting the map.
+ */
+async function blockMapTiles(page: Page) {
+  await page.route(/tile\.openstreetmap\.org/, (route) => route.abort());
+}
+
 async function loginProvider(page: Page) {
   const resp = await page.request.post(`${BASE_URL}/api/auth/login`, {
     headers: { 'Content-Type': 'application/json' },
@@ -60,6 +76,7 @@ function nameOf(s: Svc): string {
 
 test.describe('/provider/services Map — read-only traveler preview (lanes C4 + M + M2)', () => {
   test('unlocated listing is named off-canvas with its true reason; located listing draws its pin', async ({ page }) => {
+    await blockMapTiles(page);
     await loginProvider(page);
 
     const services = await loadServices(page);
