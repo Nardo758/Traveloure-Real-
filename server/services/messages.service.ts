@@ -261,6 +261,25 @@ export async function getUserRole(userId: string): Promise<string> {
   return user?.role ?? "traveler";
 }
 
+/**
+ * True when at least one message already exists between the pair (either direction).
+ * Used to classify a send as continuing an existing conversation vs. cold-contacting
+ * a new one, which the messaging rate limiter throttles differently.
+ */
+export async function hasExistingConversation(userA: string, userB: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userAndExpertChats.id })
+    .from(userAndExpertChats)
+    .where(
+      or(
+        and(eq(userAndExpertChats.senderId, userA), eq(userAndExpertChats.receiverId, userB)),
+        and(eq(userAndExpertChats.senderId, userB), eq(userAndExpertChats.receiverId, userA)),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
 export async function assertRecipientExists(recipientId: string): Promise<boolean> {
   const [r] = await db
     .select({ id: users.id })

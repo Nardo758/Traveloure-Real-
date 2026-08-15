@@ -15,7 +15,9 @@ import {
   markConversationRead,
   searchMessages,
   assertRecipientExists,
+  hasExistingConversation,
 } from "../services/messages.service";
+import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 
 const router = Router();
 
@@ -155,6 +157,13 @@ router.post("/", isAuthenticated, async (req, res) => {
 
     const exists = await assertRecipientExists(targetRecipientId);
     if (!exists) return res.status(404).json({ message: "Recipient not found" });
+
+    const isNewConversation = !(await hasExistingConversation(userId, targetRecipientId));
+    const rate = checkMessageRateLimit({ senderId: userId, recipientId: targetRecipientId, isNewConversation, peerIp: req.ip });
+    if (!rate.allowed) {
+      res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
+      return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
+    }
 
     const result = await sendMessage(userId, targetRecipientId, sanitizeText(message) ?? message, attachment);
     res.status(201).json(result);
