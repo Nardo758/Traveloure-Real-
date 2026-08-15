@@ -94,8 +94,6 @@ import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
-import { AmadeusPOIs } from "@/components/amadeus-pois";
-import { AmadeusSafety } from "@/components/amadeus-safety";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
@@ -2396,35 +2394,6 @@ export default function ExperienceTemplatePage() {
                 <TravelpayoutsActivities destination={destination} />
               )}
 
-              {/* Points of Interest and Destination Safety */}
-              {destinationCenter && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                  <div className="md:col-span-2">
-                    <AmadeusPOIs
-                      latitude={destinationCenter.lat}
-                      longitude={destinationCenter.lng}
-                      onAddToCart={(item) => {
-                        addToCart({
-                          id: item.id,
-                          type: item.type,
-                          name: item.name,
-                          price: item.price,
-                          quantity: item.quantity,
-                          provider: item.provider,
-                          details: item.details,
-                          isExternal: item.isExternal,
-                        });
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <AmadeusSafety
-                      latitude={destinationCenter.lat}
-                      longitude={destinationCenter.lng}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
