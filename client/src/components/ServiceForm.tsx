@@ -295,17 +295,11 @@ const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
 ];
 
 // ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ────────────────
-// Vocabularies mirror shared/schema.ts's transportProvisionEnum / pickupCoverageModeEnum
-// (app-enforced, no DB CHECK). "" is offered as a real option: NOT SAYING is honest, and is
-// what every pre-195 listing already means (§13).
-// `segLabel` is the terse caption for the segmented control (ruling 74 / lane T1 — the mock's
-// "Transport & Logistics" step); `label` is the full sentence shown as the helper line under it.
-const TRANSPORT_PROVISION_OPTIONS: { value: string; segLabel: string; label: string }[] = [
-  { value: "pickup_included", segLabel: "Pickup included", label: "Pickup included — I collect the traveler" },
-  { value: "pickup_available", segLabel: "Pickup available", label: "Pickup available — can be arranged" },
-  { value: "meet_at_point", segLabel: "Meet at point", label: "Meet at the meeting point — traveler makes their own way" },
-  { value: "not_applicable", segLabel: "No transport", label: "Not applicable" },
-];
+// Vocabulary mirrors shared/schema.ts's transportProvisionEnum (app-enforced, no DB CHECK).
+// D-9 (ledger 119): the four-way provision question is no longer ASKED — the mock's ratified
+// "one transport question" collapse. `transportProvision` still hydrates and round-trips
+// unchanged (never-clobber), and PICKUP_PROVISIONS below still gates the coverage block for
+// legacy rows whose stored provision said "pickup".
 // The pickup provisions — the two that make a coverage AREA meaningful (ruling 62 amendment).
 const PICKUP_PROVISIONS: ReadonlySet<string> = new Set(["pickup_included", "pickup_available"]);
 /** "" → null (never captured). A non-numeric entry is also null, never a fabricated 0. */
@@ -1879,7 +1873,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       goToStep(firstMissing.step);
       toast({
         title: "A required field is missing",
-        description: `${firstMissing.label} — on ${STEP_SHORT_TITLES[firstMissing.stepKey]} (step ${firstMissing.step}) — is required before you submit this for review. You can Save Draft to finish later.`,
+        description: `${firstMissing.label} — on ${STEP_SHORT_TITLES[firstMissing.stepKey]} (step ${firstMissing.step}) — is required before you submit this for review. ${isEditMode ? "You can Save Draft to finish later." : "Your draft is autosaved — finish it any time."}`,
         variant: "destructive",
       });
       return;
@@ -2391,6 +2385,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </p>
       </nav>
 
+      {/* ── D-16 (ledger 119): the step's own header — its long title, the mock's
+          "Draft · autosaved" chip (create mode, once a checkpoint exists), and "Step X of Y". ── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap" data-testid="step-header">
+        <h2 className="text-lg font-semibold flex items-center gap-2 min-w-0">
+          <span className="truncate" data-testid="text-step-long-title">{STEP_LONG_TITLES[stepKey]}</span>
+          {!isEditMode && autosavedAt && (
+            <Badge variant="outline" className="text-[11px] font-normal shrink-0" data-testid="badge-draft-autosaved">
+              Draft · autosaved
+            </Badge>
+          )}
+        </h2>
+        <span className="text-sm text-muted-foreground shrink-0" data-testid="text-step-position">
+          Step {effectiveStep} of {TOTAL_STEPS}
+        </span>
+      </div>
+
       {/* ── FP-2 / A1 UPFRONT REVIEW NOTICE (Package A item 1; service-creation mock, fix A1) ────
           The final action was labelled "Publish Service" while EVERY create is clamped
           server-side to a non-approved born state (F2 / migration 111 — `approval_status`
@@ -2413,8 +2423,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <p>
             <strong>New listings are reviewed before they go live.</strong> When you finish, this
-            goes to our team for review — you'll be notified when it's been looked at. You can
-            Save Draft at any point and come back.
+            goes to our team for review — you'll be notified when it's been looked at. Your work
+            autosaves as you go, so you can leave and come back any time.
           </p>
         </div>
       )}
@@ -2815,9 +2825,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     This offering points at a category this platform doesn't currently have, so we
                     can't file your listing under one — and a listing without a category can't be
                     published. This is our problem to fix, not yours: please contact support with
-                    this listing's name. In the meantime you can <strong>Save Draft</strong> to keep
-                    your work, or use <strong>Change offering</strong> to pick a different one and
-                    publish today.
+                    this listing's name. In the meantime your work is safe{isEditMode ? " — Save Draft keeps it" : " (drafts autosave)"},
+                    or use <strong>Change offering</strong> to pick a different one and publish
+                    today.
                   </p>
                 </div>
               </div>
@@ -3206,9 +3216,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               difference between a five-field draft and a provider who believes the whole form
               has to be finished in one sitting. ── */}
           <p className="text-sm text-muted-foreground border-t pt-4" data-testid="text-basics-fast-path">
-            <strong>This screen is enough to save.</strong> Name it, say how you deliver it, put a
-            price on it — then <strong>Save Draft</strong> and come back. The remaining steps are
-            built from the delivery method you picked, and none of them are needed to keep a draft.
+            <strong>This screen is enough.</strong> Name it, say how you deliver it, put a price on
+            it — your draft autosaves as you go, so you can leave and come back. The remaining
+            steps are built from the delivery method you picked, and none of them are needed to
+            keep a draft.
           </p>
 
         </CardContent>
@@ -3361,8 +3372,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     className="text-xs text-muted-foreground mb-3"
                     data-testid="text-deliverable-upload-after-save"
                   >
-                    A protected upload attaches to a saved listing. <strong>Save Draft</strong>{" "}
-                    first, then reopen this listing to upload the PDF — or paste a link below.
+                    A protected upload attaches once this listing first saves — finish and submit
+                    it, then reopen it to upload the PDF. Or paste a link below now.
                   </p>
                 )}
                 <Label htmlFor="serviceFile">Deliverable File URL *</Label>
@@ -3777,6 +3788,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           )}
           addressHint={formData.meetingPoint || ""}
           savedStops={(existingService?.routePoints as any) ?? []}
+          // D-11 (ledger 119): the canvas's ARMED pin mode proposes a candidate; its explicit
+          // confirm lands here — the SAME field the LocationPointPicker's confirm writes, saved
+          // by the same form save (extractServiceLocation stays the one pin writer, L27-P3/22b).
+          onPinConfirm={(point) => {
+            setLocationPointTouched(true);
+            setOfficePinPrefilled(false);
+            set("locationPoint", point);
+          }}
         />
       )}
 
@@ -3793,33 +3812,42 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <p className="text-xs text-muted-foreground">
-              These answers are used: the travel surcharge below is charged at checkout from the
-              real pickup a traveler confirms. Leave anything you're unsure of blank — blank means
-              "not stated", never a guessed default.
-            </p>
+            {/* ── D-9 (RATIFIED, ledger row 119): ONE transport question. The mock's whole thesis
+                for this step: "one transport question, one vocabulary, one step" — and this block
+                had re-expanded to six. Collapsed back to the toggle, with the SPATIAL detail
+                (pickup point, drop-off, coverage) revealed under it only when it's ON.
 
-            {/* ── FP-2's merged "Getting there" block, completed (Wave 2 / A1) ───────────────
-                Pickup, drop-off and the service radius used to sit on the Meeting Location card
-                while the transport provision sat in a different card on a different part of the
-                same step. They are one question — WHERE this listing collects and returns people
-                — so they are now asked in one place, on the step named for it. Fields, columns
-                and payload are untouched; only the location of the question changed. ── */}
-            {/* Pickup */}
-            <div className="space-y-4">
+                WHAT THE TOGGLE WRITES: `pickupAvailable` — and nothing else. The two ruling-62
+                columns this block used to ask for out loud (`transport_provision` "how does the
+                traveler reach the start", `transport_provided` "once you've met, do you drive
+                them") are NO LONGER ASKED (the mock's gap-#13 "stop asking for it" rule, ratified
+                here) but are NOT derived from the toggle either — ruling 62 forbids collapsing
+                the two questions into each other, and §13 forbids inventing the half that is not
+                entailed. Both columns stay in form state, hydrate from the row, and round-trip
+                UNCHANGED on every save, so no stored answer is lost and every traveler surface
+                that reads `transport_provided` keeps rendering exactly what the provider once
+                said. A control comes back with its consumer, never before it. ── */}
+            <div className="space-y-4" data-testid="logistics-section-transport">
               <div className="flex items-center justify-between">
                 <Label htmlFor="pickupAvailable" className="flex items-center gap-2">
                   <Truck className="w-4 h-4" />
-                  Offer Pickup/Drop-off
+                  I collect travelers and drop them back
                 </Label>
                 <Switch
                   id="pickupAvailable"
                   checked={formData.pickupAvailable}
                   onCheckedChange={(checked) => set("pickupAvailable", checked)}
+                  data-testid="switch-collect-travelers"
                 />
               </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Off by default. Pickup is a <strong>spatial</strong> question, so it lives on this
+                step. How long the transfer takes is temporal — that stays in Scheduling. One
+                transport question, one vocabulary, one step.
+              </p>
+
               {formData.pickupAvailable && (
-                <>
+                <div className="rounded-md border p-3 space-y-4" data-testid="block-pickup-detail">
                   <div>
                     <Label htmlFor="pickupAddress">Pickup Location</Label>
                     <Input
@@ -3844,112 +3872,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       data-testid="input-drop-off-point"
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="serviceRadius" className="flex items-center gap-2">
-                      <Radius className="w-4 h-4" />
-                      Service Radius (km)
-                    </Label>
-                    <Input
-                      id="serviceRadius"
-                      type="number"
-                      value={formData.serviceRadius}
-                      onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
-                      className="mt-2"
-                    />
-                  </div>
-                </>
+                </div>
               )}
             </div>
 
-            {/* ── Getting there: transport provision + the ruling-62 AMENDMENT's coverage choice.
-                T1 (ruling 74) brings this to the mock: the provision is a SEGMENTED choice, the
-                coverage is an explicit radius/route TOGGLE, and the never-clobber notice states
-                out loud that the hidden side's data is preserved (ruling 62/64, §13). */}
-            {/* FP-1 / B5: transport, pickup coverage and the travel surcharge stay
-                PLACE-ANCHORED-ONLY — there is nothing to get to, and no distance to charge for,
-                on a call or a video session. Only the timing / capacity / booking-rules sections
-                below open up for scheduled remote methods. */}
-            {showLogisticsCapture && (
-            <div className="space-y-4" data-testid="logistics-section-transport">
-              <p className="text-xs text-muted-foreground">
-                Everything about transport is asked here, and only here. Tap a choice again to
-                leave it unset.
-              </p>
-
-              <div>
-                <Label className="text-sm">How does the traveler reach the start?</Label>
-                <ToggleGroup
-                  type="single"
-                  value={formData.transportProvision}
-                  onValueChange={(v) => set("transportProvision", v || "")}
-                  variant="outline"
-                  className="mt-2 flex-wrap justify-start gap-2"
-                  data-testid="segmented-transport-provision"
-                >
-                  {TRANSPORT_PROVISION_OPTIONS.map((o) => (
-                    <ToggleGroupItem
-                      key={o.value}
-                      value={o.value}
-                      aria-label={o.label}
-                      className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                      data-testid={`toggle-transport-${o.value}`}
-                    >
-                      {o.segLabel}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formData.transportProvision
-                    ? TRANSPORT_PROVISION_OPTIONS.find((o) => o.value === formData.transportProvision)?.label
-                    : "Not specified."}
-                </p>
-              </div>
-
-              {/* ── FP-2 / Package A item 8 (transport) — THE SECOND TRANSPORT QUESTION, MOVED
-                  HERE from the Meeting Location card above ────────────────────────────────────
-                  The audit's finding was "transport is asked twice in two vocabularies on the
-                  same screen", and it was: this yes/no/not-applicable disclosure lived on the
-                  Meeting Location card while the four-value provision toggle lived down here,
-                  and a provider could answer them inconsistently without ever seeing both at
-                  once.
-
-                  They are NOT MERGED, and that is deliberate: ruling 62 (see
-                  `shared/schema.ts`'s `transportProvisionEnum` block) states the two columns
-                  answer DIFFERENT questions and must not be collapsed — `transport_provision`
-                  is "how does the traveler get to the start", `transport_provided` (migration
-                  119, which carries a real DB CHECK) is "once you've met, do you drive them".
-                  Deriving one from the other would be exactly the merge that ruling forbids,
-                  and §13 forbids inventing the half that is not entailed. Both are still
-                  authored — now as one block, in one order, with the distinction said out loud.
-                  (The redesign mock's fix A6 proposes dropping this question entirely; that
-                  deviation is recorded in the ledger, because `transport_provided` is the one
-                  of the pair that is actually READ — `service-detail.tsx` renders it and
-                  `envelopeFromProviderService` carries it — while `transport_provision` has no
-                  consumer beyond this form's own gating.) ── */}
-              <div>
-                <Label htmlFor="transportProvided" className="text-sm">
-                  And once you've met — do you transport them?
-                </Label>
-                <p className="text-xs text-muted-foreground mt-0.5 mb-2">
-                  A different question from the one above: this is about the service itself (a
-                  car, a van), not about how they arrive. Travelers see the answer.
-                </p>
-                <Select
-                  value={formData.transportProvided}
-                  onValueChange={(v: "yes" | "no" | "not_applicable") => set("transportProvided", v)}
-                >
-                  <SelectTrigger id="transportProvided" data-testid="select-transport-provided">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yes">Yes — I provide transport during the service</SelectItem>
-                    <SelectItem value="no">No — travelers get themselves between stops</SelectItem>
-                    <SelectItem value="not_applicable">Not applicable</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-            {pickupProvisionChosen && (
+            {/* ── D-9 (cont.): the coverage choice is the toggle's SPATIAL sub-detail, not a
+                separate question. Gated on the toggle OR a stored pickup provision (a legacy row
+                whose provision said "pickup" still sees its coverage — never-clobber, §13). ── */}
+            {(formData.pickupAvailable || pickupProvisionChosen) && (
               <div className="rounded-md border p-3 space-y-3" data-testid="block-pickup-coverage">
                 <Label className="flex items-center gap-2">
                   <Radius className="w-4 h-4" />
@@ -3992,28 +3922,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
                 {formData.pickupCoverageMode === "radius" && (
                   <div>
-                    {/* ── FP-2 / Package A item 3 — "Pickup radius (km)" (`pickupRadiusKm`)
-                        REMOVED. It was a THIRD radius input on this form (beside "Service
-                        Radius (km)" on the Pickup card and the surcharge's "Won't travel
-                        beyond") and the only one of the three that NOTHING reads: the ring
-                        travelers see (`service-detail.tsx`), the Catalog map ring
-                        (`catalog-map-view.tsx`) and the flat-surcharge containment test all
-                        read `service_radius`. Column untouched, value round-trips on edit.
-                        What replaces it is a pointer at the number that IS the coverage, so a
-                        provider setting "Radius" here is not left with an input that decides
-                        nothing (§13). ── */}
-                    <p className="text-xs text-muted-foreground" data-testid="text-coverage-radius-source">
-                      {savedRadiusKm > 0
-                        ? `Your coverage is the ${savedRadiusKm} km Service radius set above — that is the ring travelers see.`
-                        : "Set the Service radius above — that number is the ring travelers see. No radius is set yet."}
+                    {/* ── D-9: the ONE radius input, asked WHERE the radius is chosen. It writes
+                        `serviceRadius` — the number every consumer reads (the traveler ring in
+                        service-detail.tsx, the Catalog map ring, the flat-surcharge containment
+                        test). FP-2's history stands: `pickupRadiusKm` stays unasked and
+                        round-trips untouched (migration 199 split, nothing reads it). ── */}
+                    <Label htmlFor="serviceRadius" className="flex items-center gap-2">
+                      <Radius className="w-4 h-4" />
+                      Service Radius (km)
+                    </Label>
+                    <Input
+                      id="serviceRadius"
+                      type="number"
+                      value={formData.serviceRadius}
+                      onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
+                      className="mt-2"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1" data-testid="text-coverage-radius-source">
+                      This is the ring travelers see around your meeting pin.
                     </p>
-                    {/* HISTORY (SS-4, ruling 69 disposition 9, migration 199): the removed input
-                        and "Service Radius (km)" once wrote ONE column — the six-sigma pass
-                        (finding M-3) measured typing 17 here making #serviceRadius read 17
-                        instantly. Migration 199 split them into `pickup_radius_km` and
-                        `service_radius`; FP-2 finds the split half unread and stops asking for
-                        it, which leaves `service_radius` as the single coverage number again —
-                        this time as the one every consumer already reads. */}
                     {savedRouteStopCount > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                         {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
@@ -4049,13 +3976,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 never-clobber round-trip fidelity (hydrated, sent unedited on every save); no
                 control here writes them any more. `serviceRadius` above is untouched — it is
                 coverage/location geometry, not a surcharge amount, and stays authored here. */}
-            {pickupProvisionChosen && (
+            {(formData.pickupAvailable || pickupProvisionChosen) && (
               <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-surcharge-moved">
                 Travel surcharges are set in <b>Pricing &amp; fees</b>, on this listing's home page —
-                available once you've saved a draft. Not required to go live.
+                available once this listing first saves. Not required to go live.
               </p>
-            )}
-            </div>
             )}
           </CardContent>
         </Card>
@@ -4628,30 +4553,26 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
             <div className="flex-1" />
 
-            {/* Draft save is reachable from EVERY step (unchanged: drafts skip
-                required-field checks), so nobody has to walk to step 4 to bail out.
-
-                SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A / finding M-4):
-                this action sends `status:"draft"` unconditionally, so on a listing that is
-                CURRENTLY LIVE it takes the listing off the marketplace. Measured directly:
-                clicking it on an `active` listing moved that row to `draft` in the DB, with
-                nothing on screen saying so — and it sits immediately beside "Next", on every
-                step, wearing the same neutral label it wears for a brand-new draft. The
-                BEHAVIOUR is deliberately left alone here (whether an edit should preserve
-                `active` is a product call — filed Tier B); what changes is that the button now
-                says what it is about to do. */}
-            <Button
-              variant="outline"
-              onClick={() => createMutation.mutate("draft")}
-              disabled={createMutation.isPending}
-              title={isCurrentlyLive ? "This listing is live. Saving it as a draft removes it from the marketplace until you publish it again." : undefined}
-              data-testid="button-save-draft"
-            >
-              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              {isCurrentlyLive
-                ? "Unpublish & Save Draft"
-                : role === "expert" ? "Save as Draft" : "Save Draft"}
-            </Button>
+            {/* D-12 (RATIFIED, ledger 119): in CREATE mode the manual Save Draft button is GONE —
+                the mock's contract is autosave ("Autosaved. Closing this tab keeps everything."),
+                which ruling 112 Q4's localStorage checkpoint already delivers; the footer line
+                below states it. EDIT mode keeps the button: there it is also the UNPUBLISH rail
+                (six-sigma M-4 — it sends status:"draft" and takes a live listing off the
+                marketplace), which autosave neither replaces nor should trigger silently. */}
+            {isEditMode && (
+              <Button
+                variant="outline"
+                onClick={() => createMutation.mutate("draft")}
+                disabled={createMutation.isPending}
+                title={isCurrentlyLive ? "This listing is live. Saving it as a draft removes it from the marketplace until you publish it again." : undefined}
+                data-testid="button-save-draft"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {isCurrentlyLive
+                  ? "Unpublish & Save Draft"
+                  : role === "expert" ? "Save as Draft" : "Save Draft"}
+              </Button>
+            )}
 
             {effectiveStep < TOTAL_STEPS ? (
               <Button
@@ -4705,6 +4626,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
           </div>
 
+          {/* D-12: the mock's footer line — the autosave contract stated where Save Draft used
+              to sit, so nobody goes hunting for the button that kept their work. */}
+          {!isEditMode && (
+            <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-footer-autosave">
+              Autosaved. Closing this tab keeps everything.
+            </p>
+          )}
+
           {/* Final-step disabled explanation: name WHICH step holds each missing
               required field, with a jump link — mirrors the existing enforcement,
               adds none. */}
@@ -4723,7 +4652,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   </button>
                 </span>
               ))}
-              . Or Save Draft and finish later.
+              . {isEditMode ? "Or Save Draft and finish later." : "Your draft is autosaved — finish later any time."}
             </p>
           )}
 
@@ -4752,7 +4681,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 ? "Publishing needs identity and business verification. "
                 : "This category needs background verification before it can be published. "}
               <a href="/provider-status" className="underline font-medium">Finish verification on your Provider Status page</a>
-              {" "}— your work here is safe, use Save Draft and come back.
+              {" "}— your work here is safe{isEditMode ? ", use Save Draft and come back" : " (drafts autosave), come back any time"}.
             </p>
           )}
         </CardContent>
