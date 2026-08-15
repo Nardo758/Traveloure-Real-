@@ -485,7 +485,7 @@ export default function AdminAICosts() {
                           {provider}
                           <span className="text-xs text-muted-foreground font-normal">({info.note})</span>
                         </h4>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                           {Object.entries(info.models).map(([model, prices]) => (
                             <div key={model} className="p-3 rounded-lg bg-muted/50">
                               <code className="text-xs">{model}</code>
@@ -675,7 +675,7 @@ export default function AdminAICosts() {
                           {provider}
                           <span className="text-xs text-muted-foreground font-normal">({info.note})</span>
                         </h4>
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                           {Object.entries(info.endpoints).map(([endpoint, price]) => (
                             <div key={endpoint} className="p-3 rounded-lg bg-muted/50">
                               <code className="text-xs">{endpoint}</code>
