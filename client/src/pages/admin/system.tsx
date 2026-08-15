@@ -64,11 +64,23 @@ export default function AdminSystem() {
 
   const [testEmailTo, setTestEmailTo] = React.useState("");
   const [testEmailResult, setTestEmailResult] = React.useState<TestEmailResult | null>(null);
+  const SEND_TIMEOUT_MS = 15_000;
+
   const sendTestEmail = useMutation({
     mutationFn: async () => {
       const body = testEmailTo.trim() ? { to: testEmailTo.trim() } : undefined;
-      const res = await apiRequest("POST", "/api/admin/system/test-email", body);
-      return await res.json() as TestEmailResult;
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("No response from the email service after 15 s. Check your Resend configuration and try again.")),
+          SEND_TIMEOUT_MS,
+        ),
+      );
+
+      const fetchPromise = apiRequest("POST", "/api/admin/system/test-email", body)
+        .then((res) => res.json() as Promise<TestEmailResult>);
+
+      return Promise.race([fetchPromise, timeoutPromise]);
     },
     onSuccess: (data) => {
       setTestEmailResult(data);
