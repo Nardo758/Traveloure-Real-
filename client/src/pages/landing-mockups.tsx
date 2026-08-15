@@ -31,7 +31,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
+import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.webp";
 
 const experienceCategories = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500", bgColor: "bg-blue-500/10" },

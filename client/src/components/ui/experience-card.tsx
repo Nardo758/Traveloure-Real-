@@ -7,7 +7,8 @@ interface ExperienceCardProps {
   label: string;
   description?: string;
   /** Optional. With no image the header falls back to the card's own colour +
-   *  icon — never a random remote stock photo (§13). */
+   *  icon. Use curated Unsplash CDN URLs of the form
+   *  `https://images.unsplash.com/photo-<ID>?auto=format&fit=crop&w=800&q=80`. */
   image?: string;
   slug: string;
   icon: LucideIcon;
