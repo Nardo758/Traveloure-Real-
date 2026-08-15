@@ -7,6 +7,7 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { isExpertRole } from "@shared/roles";
+import { getUserId } from "../utils/auth";
 import {
   rankCandidates,
   getSlotConfig,
@@ -402,7 +403,7 @@ export async function requireExpertRole(
   req: any,
   res: any,
 ): Promise<{ userId: string; role: string } | null> {
-  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  const userId = getUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Authentication required" });
     return null;
