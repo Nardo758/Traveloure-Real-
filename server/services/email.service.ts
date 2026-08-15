@@ -464,6 +464,118 @@ export async function sendEmailVerificationEmail(params: EmailVerificationParams
   console.log(`[email] Verification link sent to ${params.toEmail}`);
 }
 
+// ─── Booking Decline ────────────────────────────────────────────────────────
+
+export interface BookingDeclineEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  bookingTrackingNumber?: string | null;
+  /** Human-readable service/product title for the declined booking. */
+  serviceName?: string | null;
+  /** Decline reason provided by the expert/provider, or null if none given. */
+  declineReason?: string | null;
+}
+
+/**
+ * Sends a decline notification email to the traveler when an expert or provider
+ * rejects their booking request. The email surfaces the decline reason so the
+ * traveler does not have to check the in-app notification.
+ *
+ * Uses `sendEmail` so it respects the platform email-notifications kill switch.
+ */
+export async function sendBookingDeclineEmail(
+  params: BookingDeclineEmailParams
+): Promise<void> {
+  const greeting = params.travelerName
+    ? `Hi ${escHtml(params.travelerName)},`
+    : "Hi,";
+  const bookingLabel = params.bookingTrackingNumber
+    ? `booking ${escHtml(params.bookingTrackingNumber)}`
+    : "your booking";
+  const serviceLabel = params.serviceName ? escHtml(params.serviceName) : null;
+  const myBookingsUrl = `${getAppBaseUrl()}/bookings`;
+
+  const reasonBlock = params.declineReason
+    ? `<tr style="background: #FEF2F2;">
+         <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Reason</td>
+         <td style="padding: 12px 16px; color: #111827;">${escHtml(params.declineReason)}</td>
+       </tr>`
+    : "";
+  const reasonPlain = params.declineReason
+    ? `Reason:   ${params.declineReason}\n`
+    : "";
+
+  const serviceRow = serviceLabel
+    ? `<tr style="background: #F3F4F6;">
+         <td style="padding: 12px 16px; color: #6B7280;">Service</td>
+         <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${serviceLabel}</td>
+       </tr>`
+    : "";
+  const servicePlain = params.serviceName
+    ? `Service:  ${params.serviceName}\n`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Booking Declined</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Unfortunately, the provider was unable to accept ${bookingLabel}. No charge has been made.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+        ${serviceRow}
+        ${reasonBlock}
+      </table>
+      <p style="color: #374151;">
+        You can browse other services or contact our support team if you have questions.
+      </p>
+      <a href="${myBookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View My Bookings
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you made a booking request on Traveloure.<br>
+        View your bookings at <a href="${myBookingsUrl}" style="color: #FF385C;">${myBookingsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Booking Declined`,
+    ``,
+    greeting,
+    ``,
+    `Unfortunately, the provider was unable to accept ${
+      params.bookingTrackingNumber ? `booking ${params.bookingTrackingNumber}` : "your booking"
+    }. No charge has been made.`,
+    ``,
+    servicePlain.trimEnd(),
+    reasonPlain.trimEnd(),
+    `View your bookings: ${myBookingsUrl}`,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+
+  const subject = params.serviceName
+    ? `Your booking request for ${stripCrLf(params.serviceName)} was declined`
+    : "Your booking request was declined";
+
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+  });
+
+  if (!result.ok) {
+    console.warn(
+      `[email] sendBookingDeclineEmail failed for ${params.toEmail}:`,
+      result.error
+    );
+  }
+}
+
 // ─── Admin Daily Digest ────────────────────────────────────────────────────
 
 interface DigestNotification {
