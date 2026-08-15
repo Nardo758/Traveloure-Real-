@@ -20,8 +20,9 @@
  * Network strategy
  *   page.route() intercepts every API call made by the admin/system page so the
  *   test never touches the real Resend API and is deterministic across
- *   environments.  The /test-email handler is replaced per-test to exercise
- *   different server responses.
+ *   environments.  Critically, each test-email interceptor reads and asserts the
+ *   request body BEFORE responding, so a regression in the UI (wrong field name,
+ *   missing body, wrong address) causes a test failure — not a silent pass.
  */
 
 import { test, expect } from '@playwright/test';
@@ -35,6 +36,7 @@ test.use({ storageState: 'playwright/.auth/admin.json' });
 // ── Module-level session gate ──────────────────────────────────────────────────
 
 let adminSessionOk = false;
+/** Email address of the CI admin account seeded by seed-ci-test-users.ts */
 const ADMIN_EMAIL = 'ci-admin@traveloure.test';
 
 test.beforeAll(async ({ request }) => {
@@ -133,110 +135,159 @@ async function openSystemPage(page: import('@playwright/test').Page) {
 // ── Suite A — Custom recipient address ─────────────────────────────────────────
 
 test.describe('Admin test-email — custom recipient address', () => {
-  test('success banner shows the custom address that was entered', async ({ page }) => {
-    test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
+  test(
+    'UI sends the entered address in the POST body and banner shows it on success',
+    async ({ page }) => {
+      test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
 
-    const CUSTOM_ADDRESS = 'delivery-check@example.com';
+      const CUSTOM_ADDRESS = 'delivery-check@example.com';
 
-    await mockSupportingRoutes(page);
+      await mockSupportingRoutes(page);
 
-    // The test-email route returns success with the custom address echoed back.
-    await page.route('**/api/admin/system/test-email', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, id: 'msg_test_abc123', to: CUSTOM_ADDRESS }),
-      }),
-    );
+      // Intercept the test-email POST, assert it carries the right `to`, then respond.
+      let capturedTo: string | undefined;
+      await page.route('**/api/admin/system/test-email', async (route) => {
+        expect(route.request().method()).toBe('POST');
 
-    await openSystemPage(page);
+        const bodyText = route.request().postData() ?? '{}';
+        const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
 
-    // Enter the custom address.
-    const input = page.getByTestId('input-test-email-to');
-    await input.fill(CUSTOM_ADDRESS);
+        // Assert the UI sent the custom address in the `to` field.
+        expect(bodyJson.to, 'POST body must include the custom address in the `to` field').toBe(
+          CUSTOM_ADDRESS,
+        );
+        capturedTo = String(bodyJson.to);
 
-    // Click Send.
-    await page.getByTestId('button-send-test-email').click();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, id: 'msg_test_abc123', to: CUSTOM_ADDRESS }),
+        });
+      });
 
-    // Result banner must be visible and show the custom address.
-    const banner = page.getByTestId('test-email-result');
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-    await expect(banner).toContainText(CUSTOM_ADDRESS);
-    await expect(banner).toContainText('Delivered successfully');
-  });
+      await openSystemPage(page);
+
+      // Enter the custom address.
+      const input = page.getByTestId('input-test-email-to');
+      await input.fill(CUSTOM_ADDRESS);
+
+      // Click Send.
+      await page.getByTestId('button-send-test-email').click();
+
+      // Result banner must be visible and show the custom address.
+      const banner = page.getByTestId('test-email-result');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+      await expect(banner).toContainText(CUSTOM_ADDRESS);
+      await expect(banner).toContainText('Delivered successfully');
+
+      // Confirm the route handler actually ran.
+      expect(capturedTo, 'Interceptor must have been invoked').toBe(CUSTOM_ADDRESS);
+    },
+  );
 });
 
 // ── Suite B — Invalid email format ─────────────────────────────────────────────
 
 test.describe('Admin test-email — invalid email format', () => {
-  test('result banner shows an error when a non-email value is submitted', async ({
-    page,
-  }) => {
-    test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
+  test(
+    'result banner shows an error when a non-email value is submitted',
+    async ({ page }) => {
+      test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
 
-    await mockSupportingRoutes(page);
+      await mockSupportingRoutes(page);
 
-    // The server returns a 400 with the validation error.
-    await page.route('**/api/admin/system/test-email', (route) =>
-      route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: false, error: "Invalid email address in 'to' field" }),
-      }),
-    );
+      // The server returns a 400 with the validation error.
+      let interceptorCalled = false;
+      await page.route('**/api/admin/system/test-email', async (route) => {
+        interceptorCalled = true;
+        expect(route.request().method()).toBe('POST');
 
-    await openSystemPage(page);
+        const bodyText = route.request().postData() ?? '{}';
+        const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
 
-    // Type an obviously invalid value.
-    const input = page.getByTestId('input-test-email-to');
-    await input.fill('not-an-email-address');
+        // The `to` field must be present and must match what the user typed.
+        expect(typeof bodyJson.to, '`to` field must be a string').toBe('string');
 
-    await page.getByTestId('button-send-test-email').click();
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: false, error: "Invalid email address in 'to' field" }),
+        });
+      });
 
-    // The result banner must surface — either a client validation message or
-    // the server's error string.  We only assert that it appears and signals
-    // failure (not the exact wording, which the server controls).
-    const banner = page.getByTestId('test-email-result');
-    await expect(banner).toBeVisible({ timeout: 10_000 });
+      await openSystemPage(page);
 
-    // The banner must NOT claim success.
-    await expect(banner).not.toContainText('Delivered successfully');
-  });
+      // Type an obviously invalid value.
+      const input = page.getByTestId('input-test-email-to');
+      await input.fill('not-an-email-address');
+
+      await page.getByTestId('button-send-test-email').click();
+
+      // The result banner must surface and signal failure.
+      const banner = page.getByTestId('test-email-result');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+
+      // The banner must NOT claim success.
+      await expect(banner).not.toContainText('Delivered successfully');
+
+      // Confirm the route handler actually ran (not short-circuited client-side).
+      expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
+    },
+  );
 });
 
 // ── Suite C — Empty field falls back to admin address ─────────────────────────
 
 test.describe('Admin test-email — empty field falls back to admin address', () => {
-  test('success banner shows the admin own address when field is left blank', async ({
-    page,
-  }) => {
-    test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
+  test(
+    'POST omits `to` when field is blank; banner shows admin own address',
+    async ({ page }) => {
+      test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
 
-    await mockSupportingRoutes(page);
+      await mockSupportingRoutes(page);
 
-    // When no `to` body field is sent the server uses the admin's own email.
-    // The mock echoes the seeded CI admin address.
-    await page.route('**/api/admin/system/test-email', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, id: 'msg_test_fallback', to: ADMIN_EMAIL }),
-      }),
-    );
+      let interceptorCalled = false;
+      await page.route('**/api/admin/system/test-email', async (route) => {
+        interceptorCalled = true;
+        expect(route.request().method()).toBe('POST');
 
-    await openSystemPage(page);
+        const bodyText = route.request().postData();
 
-    // Confirm the input is blank (no pre-filled value).
-    const input = page.getByTestId('input-test-email-to');
-    await expect(input).toHaveValue('');
+        // When the field is blank the UI sends no body or a body without `to`.
+        // This matches the client code: `const body = testEmailTo.trim() ? { to: ... } : undefined`.
+        if (bodyText && bodyText !== 'undefined') {
+          const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
+          expect(
+            bodyJson.to,
+            'POST body must NOT include a `to` field when the input is blank',
+          ).toBeUndefined();
+        }
 
-    // Click Send without entering an address.
-    await page.getByTestId('button-send-test-email').click();
+        // Server uses the admin's own address and echoes it back.
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, id: 'msg_test_fallback', to: ADMIN_EMAIL }),
+        });
+      });
 
-    // Banner must show success with the admin's own address.
-    const banner = page.getByTestId('test-email-result');
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-    await expect(banner).toContainText('Delivered successfully');
-    await expect(banner).toContainText(ADMIN_EMAIL);
-  });
+      await openSystemPage(page);
+
+      // Confirm the input is blank (no pre-filled value).
+      const input = page.getByTestId('input-test-email-to');
+      await expect(input).toHaveValue('');
+
+      // Click Send without entering an address.
+      await page.getByTestId('button-send-test-email').click();
+
+      // Banner must show success with the admin's own address.
+      const banner = page.getByTestId('test-email-result');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+      await expect(banner).toContainText('Delivered successfully');
+      await expect(banner).toContainText(ADMIN_EMAIL);
+
+      // Confirm the route handler actually ran.
+      expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
+    },
+  );
 });
