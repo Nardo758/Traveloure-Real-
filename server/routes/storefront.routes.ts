@@ -72,7 +72,7 @@ const claimSchema = z.object({
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = claimSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid handle" });
     }
@@ -240,6 +240,8 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -263,9 +265,9 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid settings", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
@@ -274,6 +276,8 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -294,6 +298,17 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     };
 
     const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
+    if (patch.emailBookingAlerts !== undefined) {
+      columnUpdate.emailBookingAlerts = patch.emailBookingAlerts;
+    }
+    await db.update(users).set(columnUpdate as any).where(eq(users.id, userId));
+    res.json({ ...nextSettings, emailBookingAlerts: patch.emailBookingAlerts ?? (me.emailBookingAlerts ?? true) });
+  } catch (err) {
+    console.error("[me/preferences] write error:", err);
+    res.status(500).json({ message: "Failed to save preferences" });
+  }
+});
+
 const httpsUrlSchema = z
   .string()
   .trim()
@@ -320,9 +335,9 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid storefront settings", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
@@ -331,6 +346,7 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -391,6 +407,7 @@ router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) 
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -412,7 +429,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -423,6 +440,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
         role: users.role,
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -809,11 +827,13 @@ router.get("/p/:handle", async (req, res, next) => {
     if (!data) return next(); // SPA renders its own not-found
 
     const count = data.services.length + data.templates.length + data.readyMade.length;
-    const title = `${listing.title} | Traveloure`;
-    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const title = `${data.earner.name} | Traveloure`;
+    const description = data.earner.bio
+      ? data.earner.bio.slice(0, 200)
+      : `${data.earner.name} is a travel expert on Traveloure with ${count} offering${count !== 1 ? "s" : ""}.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/p/${req.params.handle}`;
     const ogImage =
-      listing.heroImageUrl ??
+      data.earner.profileImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -882,11 +902,13 @@ router.get("/services/:id", async (req, res, next) => {
 
     if (!service) return next(); // SPA renders its own not-found
 
-    const title = `${listing.title} | Traveloure`;
-    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const title = `${service.serviceName} | Traveloure`;
+    const description = service.description
+      ? service.description.slice(0, 200)
+      : `${service.serviceName} — book this service on Traveloure.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
     const ogImage =
-      listing.heroImageUrl ??
+      service.serviceImage ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
