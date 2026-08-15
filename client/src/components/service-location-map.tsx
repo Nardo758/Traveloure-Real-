@@ -241,11 +241,13 @@ export function ServiceLocationMap({
           authoring={authoring}
         />
         {onCanvasClick && <CanvasClickBridge onCanvasClick={onCanvasClick} />}
+        {/* D-17 (mock conformance, Aug 15): the ring must be legible at default zoom — the old
+            0.5/0.07 opacities read as absent against pale tiles. */}
         {pin && radiusKm && radiusKm > 0 && (
           <Circle
             center={[pin.lat, pin.lng]}
             radius={radiusKm * 1000}
-            pathOptions={{ color: BRAND, weight: 1.5, opacity: 0.5, fillColor: BRAND, fillOpacity: 0.07 }}
+            pathOptions={{ color: BRAND, weight: 2.5, opacity: 0.85, fillColor: BRAND, fillOpacity: 0.14 }}
           />
         )}
         {/* Ruling 112 Q3: surcharge-zone rings — dashed, amber, display-only. Each popup names
