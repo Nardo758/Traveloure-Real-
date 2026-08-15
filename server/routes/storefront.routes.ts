@@ -298,6 +298,8 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         ? { notifications: { ...(currentSettings.notifications ?? {}), ...patch.notifications } }
         : {}),
     };
+
+    const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
 const httpsUrlSchema = z
   .string()
   .trim()
@@ -821,6 +823,24 @@ router.get("/p/:handle", async (req, res, next) => {
     if (!data) return next(); // SPA renders its own not-found
 
     const title = `${listing.title} | Traveloure`;
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
@@ -893,6 +913,24 @@ router.get("/services/:id", async (req, res, next) => {
     if (!service) return next(); // SPA renders its own not-found
 
     const title = `${listing.title} | Traveloure`;
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
@@ -980,6 +1018,24 @@ router.get("/ready-made/:id", async (req, res, next) => {
       ? listing.planTypeCustom
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
+
+    const blurb = earner.bio ? ` ${earner.bio.slice(0, 120)}` : "";
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
@@ -1085,3 +1141,5 @@ router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res
 });
 
 export default router;
+
+    const earner = data.earner;
