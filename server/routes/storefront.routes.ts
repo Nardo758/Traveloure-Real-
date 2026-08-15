@@ -250,7 +250,7 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     // client sees it alongside the JSONB preferences (migration 223).
     res.json({
       ...(prefs.settings ?? {}),
-      emailBookingAlerts: me.emailBookingAlerts ?? true,
+      emailBookingAlerts: (me as any).emailBookingAlerts ?? true,
     });
   } catch (err) {
     console.error("[me/preferences] read error:", err);
@@ -304,6 +304,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     res.status(500).json({ message: "Failed to save preferences" });
   }
 });
+
 const httpsUrlSchema = z
   .string()
   .trim()
