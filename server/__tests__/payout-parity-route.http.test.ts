@@ -469,6 +469,132 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
 });
 
+test("R8: mixed cart (expert item + provider item) stamps each row with its OWN owner's payout", async () => {
+  // Two items in the SAME checkout — different price so earnings amounts are distinguishable even
+  // if both bands happen to resolve the same rate.
+  const expertPrice = 150;
+  const providerPrice = 200;
+
+  const expertServiceId = await makeService(expertPrice.toFixed(2), undefined, undefined, ids.expert);
+  const providerServiceId = await makeService(providerPrice.toFixed(2), undefined, undefined, ids.provider);
+
+  // Compute what EACH row should look like from the shared recipe.
+  const expertExpected = await recipeExpectation(expertPrice, undefined, {
+    source: "expert",
+    expertId: ids.expert,
+  });
+  const providerExpected = await recipeExpectation(providerPrice, undefined, {
+    source: "provider",
+    providerId: ids.provider,
+  });
+  // The misrouted figure for the provider item (applying the 90 % EXP-OVR override as if
+  // it were an expert-owned item). Must DIFFER from the correct provider figure — this is
+  // R5's discriminator re-used here so a cross-item rate bleed is detectable.
+  const providerMisrouted = await recipeExpectation(providerPrice, undefined, {
+    source: "expert",
+    expertId: ids.provider,
+  });
+  assert.notEqual(
+    providerExpected.stamped,
+    providerMisrouted.stamped,
+    "discriminator collapsed: provider-source figure equals the misrouted expert-branch figure — fix the fixture override",
+  );
+
+  // Start from an empty cart, add BOTH items, then checkout in a single POST.
+  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+
+  const addExpert = await api("/api/cart", "POST", { serviceId: expertServiceId });
+  assert.equal(addExpert.status, 201, `POST /api/cart (expert item) failed: ${await addExpert.clone().text()}`);
+
+  const addProvider = await api("/api/cart", "POST", { serviceId: providerServiceId });
+  assert.equal(addProvider.status, 201, `POST /api/cart (provider item) failed: ${await addProvider.clone().text()}`);
+
+  const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;
+  const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+  const bodyText = await res.text();
+  if (res.status === 503) {
+    const body = JSON.parse(bodyText);
+    assert.equal(body.error, "payment_unavailable", `503 must be the declared contract, got: ${bodyText}`);
+  } else {
+    assert.equal(res.status, 201, `POST /api/checkout must be 201 or the declared 503, got ${res.status}: ${bodyText}`);
+  }
+
+  // Fetch BOTH stamped rows (bare key + suffixed key) and sort by service_id.
+  const r = await db.execute(sql`
+    SELECT id, service_id, provider_earnings, platform_fee, insurance_fee, total_amount, status
+    FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
+    ORDER BY idempotency_key
+  `);
+  assert.equal(r.rows.length, 2, "mixed checkout must stamp exactly two booking rows (one per cart item)");
+
+  // Track for cleanup.
+  for (const row of r.rows as any[]) {
+    createdBookingIds.push(row.id);
+  }
+
+  // Match each stamped row to its service — the order is deterministic (cart insertion order =
+  // idempotency key order: bare key → #1), but we identify by service_id for robustness.
+  const rowByServiceId = new Map<string, any>();
+  for (const row of r.rows as any[]) {
+    rowByServiceId.set(row.service_id, row);
+  }
+
+  const expertRow = rowByServiceId.get(expertServiceId);
+  const providerRow = rowByServiceId.get(providerServiceId);
+
+  assert.ok(expertRow, "a stamped row must exist for the expert-owned service");
+  assert.ok(providerRow, "a stamped row must exist for the provider-owned service");
+
+  // ── Expert row must match the expert-source recipe ──────────────────────────
+  assert.equal(
+    Number(expertRow.provider_earnings).toFixed(2),
+    expertExpected.stamped,
+    "expert-owned item: route-stamped provider_earnings has DRIFTED from the expert-source recipe",
+  );
+  assert.equal(
+    Number(expertRow.insurance_fee).toFixed(2),
+    expertExpected.insurance,
+    "expert-owned item: insurance_fee stamp must match the expert-source recipe",
+  );
+  assert.equal(
+    Number(expertRow.platform_fee).toFixed(2),
+    expertExpected.platformFee,
+    "expert-owned item: platform_fee stamp must match the expert-source recipe",
+  );
+  assert.equal(
+    (Number(expertRow.provider_earnings) + Number(expertRow.platform_fee)).toFixed(2),
+    Number(expertRow.total_amount).toFixed(2),
+    "expert-owned item: earnings + platform take must reconstruct the charged amount",
+  );
+
+  // ── Provider row must match the provider-source recipe (NOT the misrouted expert figure) ──
+  assert.equal(
+    Number(providerRow.provider_earnings).toFixed(2),
+    providerExpected.stamped,
+    "provider-owned item: route-stamped provider_earnings has DRIFTED from the provider-source recipe (cross-item rate bleed or isProviderRole misrouting?)",
+  );
+  assert.notEqual(
+    Number(providerRow.provider_earnings).toFixed(2),
+    providerMisrouted.stamped,
+    "provider-owned item: stamped figure must NOT equal the misrouted expert-branch figure — the route is taking the wrong branch for the provider item",
+  );
+  assert.equal(
+    Number(providerRow.insurance_fee).toFixed(2),
+    providerExpected.insurance,
+    "provider-owned item: insurance_fee stamp must match the provider-source recipe",
+  );
+  assert.equal(
+    Number(providerRow.platform_fee).toFixed(2),
+    providerExpected.platformFee,
+    "provider-owned item: platform_fee stamp must match the provider-source recipe",
+  );
+  assert.equal(
+    (Number(providerRow.provider_earnings) + Number(providerRow.platform_fee)).toFixed(2),
+    Number(providerRow.total_amount).toFixed(2),
+    "provider-owned item: earnings + platform take must reconstruct the charged amount",
+  );
+});
+
 test("R7: fee-preview with a concierge item and a missing band ⇒ machine-readable 503, never a $0 fee", async () => {
   const price = 110;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
