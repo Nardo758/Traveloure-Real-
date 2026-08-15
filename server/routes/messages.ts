@@ -18,6 +18,7 @@ import {
   hasExistingConversation,
 } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
+import { broadcastToUser } from "../websocket";
 
 const router = Router();
 
@@ -165,7 +166,20 @@ router.post("/", isAuthenticated, async (req, res) => {
       return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
     }
 
-    const result = await sendMessage(userId, targetRecipientId, sanitizeText(message) ?? message, attachment);
+    const storedMessage = sanitizeText(message) ?? message;
+    const result = await sendMessage(userId, targetRecipientId, storedMessage, attachment);
+
+    // Live-push to the recipient's open chat client (same frame shape as the /ws relay).
+    // HTTP sends were previously invisible to an open recipient until reload.
+    broadcastToUser(targetRecipientId, {
+      type: "chat",
+      id: result.id,
+      senderId: userId,
+      recipientId: targetRecipientId,
+      content: storedMessage,
+      timestamp: new Date().toISOString(),
+    });
+
     res.status(201).json(result);
   } catch (error) {
     console.error(error);

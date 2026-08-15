@@ -72,6 +72,7 @@ import {
 } from "../services/content-query.service";
 import { hasExistingConversation } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
+import { broadcastToUser } from "../websocket";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
@@ -440,6 +441,16 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
 
       // Create notification for expert
       await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
+
+      // Live-push to the expert's open chat client (same frame shape as the /ws relay).
+      broadcastToUser(expertId, {
+        type: "chat",
+        id: chat.id,
+        senderId: userId,
+        recipientId: expertId,
+        content: chat.message,
+        timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
+      });
 
       res.status(201).json({
         message: "Chat started successfully",
