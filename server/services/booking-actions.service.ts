@@ -663,6 +663,44 @@ export async function createExpertAssignmentNotification(
   `);
 }
 
+/**
+ * Notify the trip owner (traveler) that an expert has joined their trip via the
+ * booking-accept bridge (E1). Fires after a trip_expert_advisors row is created
+ * or activated because an expert accepted a booking that carried a tripId.
+ * Non-fatal: callers must catch errors so the booking accept itself is unaffected.
+ */
+export async function createTravelerAdvisorJoinedNotification(
+  tripId: string,
+  expertUserId: string,
+): Promise<void> {
+  // Resolve trip owner + label in one query.
+  const tripResult = await db.execute(sql`
+    SELECT user_id, title, destination FROM trips WHERE id = ${tripId} LIMIT 1
+  `);
+  const tripRow = (tripResult.rows?.[0] as any) || {};
+  const travelerId: string | undefined = tripRow.user_id;
+  if (!travelerId) return; // trip not found — nothing to notify
+  const tripLabel: string = tripRow.title || tripRow.destination || "your trip";
+
+  // Resolve expert display name.
+  const expertResult = await db.execute(sql`
+    SELECT first_name, last_name FROM users WHERE id = ${expertUserId} LIMIT 1
+  `);
+  const expertRow = (expertResult.rows?.[0] as any) || {};
+  const expertName: string =
+    [expertRow.first_name, expertRow.last_name].filter(Boolean).join(" ") || "An expert";
+
+  await db.execute(sql`
+    INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
+    VALUES (
+      ${crypto.randomUUID()}, ${travelerId}, 'booking_request',
+      'Expert joined your trip',
+      ${`${expertName} is now advising on ${tripLabel}.`},
+      ${JSON.stringify({ tripId, tripPath: `/trips/${tripId}` })}::jsonb,
+      false, NOW()
+    )
+  `);
+}
 export async function getTripLabel(tripId: string): Promise<string> {
   const result = await db.execute(sql`
     SELECT title, destination FROM trips WHERE id = ${tripId} LIMIT 1

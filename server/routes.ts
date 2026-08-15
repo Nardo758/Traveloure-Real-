@@ -6348,16 +6348,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .limit(1);
           if (isExpertRole(ownerRow?.role)) {
             const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
+            let advisorLinked = false;
             if (!existing) {
               await storage.createTripExpertAdvisor({
                 tripId: booking.tripId,
                 localExpertId: userId,
                 status: "accepted",
               });
+              advisorLinked = true;
             } else if (existing.status === "pending") {
               await storage.acceptTripAssignment(existing.id, userId);
+              advisorLinked = true;
             }
             // Any other existing status (already accepted, rejected) is left as-is.
+
+            // Notify the traveler that an expert has joined their trip.
+            // Non-fatal: wrap separately so a notification failure never blocks the accept.
+            if (advisorLinked) {
+              const { createTravelerAdvisorJoinedNotification } = await import("./services/booking-actions.service");
+              createTravelerAdvisorJoinedNotification(booking.tripId, userId).catch((notifErr) => {
+                console.error("Failed to notify traveler of advisor join via booking bridge:", notifErr);
+              });
+            }
           }
         } catch (bridgeErr) {
           // Non-fatal: the booking accept itself must still succeed.
