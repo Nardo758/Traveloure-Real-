@@ -1,28 +1,35 @@
 /**
  * Task #1214 — booking count and earnings figures stay accurate after cancellation.
  *
- * One booking ID drives BOTH effects together, mirroring the production cancellation/refund
- * path (server/routes/bookings.ts) that calls updateServiceBookingStatus then
- * reverseEarningsForBooking for the same booking:
+ * The production refund path (POST /api/bookings/:id/cancel and POST /api/bookings/refund)
+ * calls stripePaymentService.refundServiceBooking which sets service_bookings.status via
+ * raw SQL — it does NOT go through storage.updateServiceBookingStatus, so the
+ * provider_services.bookings_count decrement only happens via the fix in that service.
+ * The expert earnings reversal also fires inside refundServiceBooking for full refunds
+ * (storage.reverseEarningsForBooking at line ~1002).
  *
- *   1. Before cancellation: provider dashboard reports totalBookings = 1 and expert earnings
- *      shows totalEarnings = 80 / pendingEarnings = 80.
- *   2. Cancellation + reversal applied (same bookingId for both operations).
- *   3. After cancellation: dashboard totalBookings = 0, expert earnings totalEarnings = 0 /
- *      pendingEarnings = 0 — confirming neither surface overcounts after the next 30-second poll.
- *   4. totalRevenue is unaffected (booking cancelled before completion — never earned).
- *   5. Reversal is idempotent — a second call reverses 0 rows.
+ * This test exercises stripePaymentService.refundServiceBooking directly (Stripe client
+ * replaced via the _stripeOverride test seam so no real card charge occurs) and asserts
+ * both live poll surfaces before and after:
  *
- * Endpoints covered:
- *   GET /api/provider/analytics/dashboard  — summary.totalBookings, summary.totalRevenue
- *   GET /api/expert/earnings/details       — summary.totalEarnings, summary.pendingEarnings
+ *   1. GET /api/provider/analytics/dashboard — summary.totalBookings / summary.totalRevenue
+ *   2. GET /api/expert/earnings/details      — summary.totalEarnings / summary.pendingEarnings
  *
- * SERVER REQUIRED — tests register real sessions over HTTP to assert what the live endpoints
- * actually return. before() fails loudly when the dev server is not up.
+ * One booking ID is used throughout, matching the production orchestration where the
+ * bookings_count decrement and the earnings reversal both reference the same row.
  *
- * DISPOSABLE DB ONLY. Every row this file writes is created here and deleted in after().
+ * SERVER REQUIRED — tests register real sessions over HTTP to assert what the live
+ * endpoints return. before() fails loudly when the dev server is not up.
  *
- * Run solo:
+ * DISPOSABLE DB ONLY.  All rows written here are deleted in after().
+ *
+ * Run solo (requires a sk_test_ Stripe key — the import validates key prefix):
+ *   STRIPE_SECRET_KEY="$(node scripts/dev-stripe-key.cjs)" \
+ *   JOURNEY_DB_WRITES_OK=1 RATE_LIMIT_LOOPBACK_SKIP=1 \
+ *   npx tsx --test server/__tests__/booking-cancellation-counters.db.test.ts
+ *
+ * In CI (Stripe calls are mocked so a stub key is sufficient):
+ *   STRIPE_SECRET_KEY=sk_test_ci_stub_no_real_calls \
  *   JOURNEY_DB_WRITES_OK=1 RATE_LIMIT_LOOPBACK_SKIP=1 \
  *   npx tsx --test server/__tests__/booking-cancellation-counters.db.test.ts
  */
@@ -31,7 +38,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db.js";
-import { storage } from "../storage.js";
+import { stripePaymentService } from "../services/stripe-payment.service.js";
 
 // ── Disposable-DB guard ──────────────────────────────────────────────────────────────────────────
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -59,19 +66,36 @@ async function assertDisposableDb(): Promise<void> {
 const RUN = crypto.randomUUID().slice(0, 8);
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 
-// All fixture IDs — populated in before(), used by tests and after()
+// All fixture IDs — populated in before(), consumed by tests and after()
 const fixture = {
-  providerId:    "",
-  expertId:      "",
-  travelerId:    `cc-${RUN}-trav`,
-  serviceId:     `cc-${RUN}-svc`,
-  // ONE shared booking ID: service_bookings.id AND expert_earnings.reference_id
-  // This mirrors the production refund route (server/routes/bookings.ts) which calls
-  // updateServiceBookingStatus and reverseEarningsForBooking for the SAME bookingId.
-  bookingId:     `cc-${RUN}-bk`,
-  earningId:     `cc-${RUN}-ee`,
+  providerId:     "",
+  expertId:       "",
+  travelerId:     `cc-${RUN}-trav`,
+  serviceId:      `cc-${RUN}-svc`,
+  /** ONE shared booking ID for service_bookings AND expert_earnings.reference_id. */
+  bookingId:      `cc-${RUN}-bk`,
+  earningId:      `cc-${RUN}-ee`,
   providerCookie: "",
   expertCookie:   "",
+};
+
+// ── Minimal Stripe refund mock ───────────────────────────────────────────────────────────────────
+//
+// The real stripe.refunds.create would charge a card.  We replace it with a mock that returns a
+// fake succeeded refund so that refundServiceBooking's post-Stripe logic (bookings_count decrement
+// + earnings reversal) is exercised against the real database without touching the live Stripe API.
+//
+// This is exactly what "Stripe safely stubbed" means in this context: all storage/DB paths are
+// real; only the remote Stripe RPC is replaced by a deterministic in-process stub.
+const mockStripeRefunds = {
+  create: async (_params: unknown, _opts?: unknown) => ({
+    id: `rf_test_${RUN}`,
+    status: "succeeded",
+    amount: 10000,
+    currency: "usd",
+    payment_intent: `pi_test_${RUN}`,
+    object: "refund" as const,
+  }),
 };
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────────────────────────
@@ -116,7 +140,7 @@ before(async () => {
 
   await assertDisposableDb();
 
-  // Register users via HTTP so they hold real sessions
+  // Register real HTTP sessions so the analytics/earnings endpoints can identify the callers.
   const provider = await registerUser("prov");
   const expert   = await registerUser("exp");
   fixture.providerId     = provider.id;
@@ -124,20 +148,19 @@ before(async () => {
   fixture.providerCookie = provider.cookie;
   fixture.expertCookie   = expert.cookie;
 
-  // Assign correct roles — the analytics/earnings handlers check the DB role directly
-  // (server/routes.ts ~:697-720 prefix gate uses isProvider/isExpert, both DB-read-only).
-  // Provider role vocabulary: "service_provider" — NOT bare "provider" (shared/roles.ts).
+  // Role vocabulary: "service_provider" (NOT bare "provider") for the analytics prefix gate.
+  // Both checks are DB-read (server/routes.ts:697-720 PROVIDER_SELF_SERVICE_PREFIXES).
   await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${fixture.providerId}`);
   await db.execute(sql`UPDATE users SET role = 'expert'            WHERE id = ${fixture.expertId}`);
 
-  // Traveler: FK anchor only — no session needed
+  // Traveler row: FK anchor for service_bookings.traveler_id.
   await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name)
     VALUES (${fixture.travelerId}, ${`cc-${RUN}-trav@t.test`}, 'CC', 'Trav')
     ON CONFLICT (id) DO NOTHING
   `);
 
-  // Provider service — bookings_count starts at 0, total_revenue at 0
+  // Provider service — bookings_count will be set to 1 below.
   await db.execute(sql`
     INSERT INTO provider_services
       (id, user_id, service_name, status, approval_status,
@@ -148,29 +171,30 @@ before(async () => {
     ON CONFLICT (id) DO NOTHING
   `);
 
-  // Confirmed booking — uses fixture.bookingId for both the service_bookings row below
-  // and the expert_earnings row further below (same as production: earnings reference
-  // the booking that triggered them via expert_earnings.reference_id).
+  // Confirmed booking with a fake payment-intent ID.  stripe_payment_intent_id must be
+  // non-null for refundServiceBooking to proceed past its "no intent to refund" guard.
+  // The real Stripe RPC is replaced by mockStripeRefunds in the test body.
   await db.execute(sql`
     INSERT INTO service_bookings
       (id, service_id, traveler_id, provider_id, status,
-       total_amount, platform_fee, provider_earnings, booking_details, created_at, updated_at)
+       total_amount, platform_fee, insurance_fee, provider_earnings,
+       stripe_payment_intent_id, booking_details, created_at, updated_at)
     VALUES
       (${fixture.bookingId}, ${fixture.serviceId}, ${fixture.travelerId}, ${fixture.providerId},
-       'confirmed', '100.00', '25.00', '75.00', '{}', NOW(), NOW())
+       'confirmed', '75.00', '25.00', '0.00', '75.00',
+       ${`pi_test_${RUN}`}, '{}', NOW(), NOW())
     ON CONFLICT (id) DO NOTHING
   `);
 
-  // Set bookings_count = 1 — mirrors storage.ts ~:2217-2219 which increments this when a
-  // booking first transitions to confirmed.
+  // Simulate the bookings_count increment that fires when a booking is first confirmed.
   await db.execute(sql`
     UPDATE provider_services SET bookings_count = 1 WHERE id = ${fixture.serviceId}
   `);
 
-  // Expert earnings in 'held' status for the SAME booking ID.
-  // This is the pattern the completion path uses (storage.ts:2553-2566): expertEarnings row
-  // linked to the service_bookings row via reference_id. referenceType = 'service_booking'
-  // matches reverseEarningsForBooking's WHERE clause (storage.ts:4828-4831).
+  // Expert earnings in 'held' status linked to the SAME booking ID.
+  // referenceType = 'service_booking' matches storage.reverseEarningsForBooking's WHERE clause
+  // (storage.ts ~:4828-4831).  refundServiceBooking calls reverseEarningsForBooking internally
+  // for full refunds (storage.ts ~:1001-1003), so we do NOT call it separately in the test.
   await db.execute(sql`
     INSERT INTO expert_earnings
       (id, expert_id, type, amount, currency,
@@ -180,48 +204,52 @@ before(async () => {
        ${fixture.bookingId}, 'service_booking', 'held', NOW())
     ON CONFLICT DO NOTHING
   `);
+
+  // Install the Stripe mock — no real card charges during this test.
+  stripePaymentService._stripeOverride = { refunds: mockStripeRefunds } as any;
 });
 
 after(async () => {
-  await db.execute(sql`DELETE FROM expert_earnings  WHERE id = ${fixture.earningId}`);
-  await db.execute(sql`DELETE FROM service_bookings WHERE id = ${fixture.bookingId}`);
+  // Remove the Stripe mock so subsequent tests in this process use the live client.
+  stripePaymentService._stripeOverride = null;
+
+  await db.execute(sql`DELETE FROM expert_earnings   WHERE id = ${fixture.earningId}`);
+  await db.execute(sql`DELETE FROM service_bookings  WHERE id = ${fixture.bookingId}`);
   await db.execute(sql`DELETE FROM provider_services WHERE id = ${fixture.serviceId}`);
   await db.execute(sql`
     DELETE FROM users WHERE id IN (${fixture.providerId}, ${fixture.expertId}, ${fixture.travelerId})
   `);
 });
 
-// ── Test sequence — one booking ID drives both effects ───────────────────────────────────────────
+// ── Test sequence ────────────────────────────────────────────────────────────────────────────────
 //
-// The production refund route (server/routes/bookings.ts:566-595) calls BOTH:
-//   storage.updateServiceBookingStatus(id, "cancelled")   → decrements bookings_count
-//   storage.reverseEarningsForBooking(id)                 → flips held/releasable → reversed
-// for the same booking ID. The tests below replicate that orchestration so a future drift in
-// either call site — e.g. reversal step accidentally dropped — would immediately fail here.
+// The critical invariant: stripePaymentService.refundServiceBooking (the production paid-refund
+// path) must both decrement provider_services.bookings_count (via the fix added to that service)
+// AND reverse expert_earnings rows (which it already calls via storage.reverseEarningsForBooking).
+// Both effects must be visible on the next poll cycle of the two live dashboard surfaces.
 
-test("1: before cancellation — provider dashboard totalBookings = 1", async () => {
+test("1: before refund — provider dashboard totalBookings = 1", async () => {
   const res = await apiCall("/api/provider/analytics/dashboard", fixture.providerCookie);
   assert.equal(res.status, 200, `expected 200, got ${res.status}`);
   const body: any = await res.json();
-  assert.ok(body.summary, "response must have a summary object");
+  assert.ok(body.summary, "response must include a summary object");
   assert.equal(
     body.summary.totalBookings,
     1,
-    `totalBookings must be 1 before cancellation, got ${body.summary.totalBookings}`,
+    `totalBookings must be 1 before refund, got ${body.summary.totalBookings}`,
   );
 });
 
-test("2: before cancellation — expert earnings totalEarnings = 80 and pendingEarnings = 80", async () => {
+test("2: before refund — expert earnings totalEarnings = 80, pendingEarnings = 80", async () => {
   const res = await apiCall("/api/expert/earnings/details", fixture.expertCookie);
   assert.equal(res.status, 200, `expected 200, got ${res.status}`);
   const body: any = await res.json();
-  assert.ok(body.summary, "response must have a summary object");
+  assert.ok(body.summary, "response must include a summary object");
   assert.equal(
     body.summary.totalEarnings,
     80,
     `totalEarnings must be 80 before reversal, got ${body.summary.totalEarnings}`,
   );
-  // Status is 'held' with no availableAt — not yet releasable, so it counts as pending.
   assert.equal(
     body.summary.pendingEarnings,
     80,
@@ -229,50 +257,64 @@ test("2: before cancellation — expert earnings totalEarnings = 80 and pendingE
   );
 });
 
-test("3: cancel booking and reverse earnings — both using the same bookingId", async () => {
-  // Step 1: cancel the booking → decrements provider_services.bookings_count
-  const updated = await storage.updateServiceBookingStatus(fixture.bookingId, "cancelled");
-  assert.ok(updated, "updateServiceBookingStatus must return the updated booking row");
-  assert.equal(updated.status, "cancelled", "booking status must be 'cancelled'");
-
-  // Verify DB column directly
-  const r = await db.execute(
-    sql`SELECT bookings_count FROM provider_services WHERE id = ${fixture.serviceId}`,
-  );
-  assert.equal(
-    Number((r.rows[0] as any)?.bookings_count),
-    0,
-    `bookings_count in DB must be 0 after cancellation, got ${(r.rows[0] as any)?.bookings_count}`,
+test("3: refundServiceBooking — Stripe mocked, both bookings_count and earnings reversed for the same bookingId", async () => {
+  // This is the exact production paid-refund code path (server/services/stripe-payment.service.ts).
+  // It sets status = 'refunded' via raw SQL (bypassing storage.updateServiceBookingStatus), then —
+  // after the fix in task #1214 — decrements bookings_count and calls reverseEarningsForBooking,
+  // all for the same bookingId.
+  const result = await stripePaymentService.refundServiceBooking(
+    fixture.bookingId,
+    "test_cancellation",
   );
 
-  // Step 2: reverse earnings → flips expert_earnings.status from held to reversed
-  const reversal = await storage.reverseEarningsForBooking(fixture.bookingId);
+  // Stripe mock must have been called and returned the fake refund.
+  assert.ok(result && !("alreadyRefunded" in result) || (result as any).alreadyRefunded === undefined,
+    `refundServiceBooking must not return alreadyRefunded on the first call, got: ${JSON.stringify(result)}`);
+
+  // DB: status must be 'refunded'.
+  const bk = await db.execute(
+    sql`SELECT status, bookings_count_check FROM (
+      SELECT sb.status,
+             ps.bookings_count AS bookings_count_check
+      FROM service_bookings sb
+      JOIN provider_services ps ON ps.id = sb.service_id
+      WHERE sb.id = ${fixture.bookingId}
+    ) t`,
+  );
+  const row = bk.rows[0] as any;
+  assert.equal(row?.status, "refunded", `booking status must be 'refunded' after refundServiceBooking`);
   assert.equal(
-    reversal.reversed,
-    1,
-    `exactly 1 expert_earnings row must be reversed (same bookingId), got ${reversal.reversed}`,
+    Number(row?.bookings_count_check),
+    0,
+    `bookings_count must be 0 immediately after refundServiceBooking (fix: raw-SQL refund path now decrements the counter), got ${row?.bookings_count_check}`,
+  );
+
+  // DB: earnings must be 'reversed'.
+  const ee = await db.execute(
+    sql`SELECT status FROM expert_earnings WHERE id = ${fixture.earningId}`,
   );
   assert.equal(
-    reversal.skippedPaidOut,
-    0,
-    `no paid_out rows should exist for this fixture, got skippedPaidOut=${reversal.skippedPaidOut}`,
+    (ee.rows[0] as any)?.status,
+    "reversed",
+    "expert_earnings status must be 'reversed' — refundServiceBooking calls reverseEarningsForBooking internally",
   );
 });
 
-test("4: after cancellation — provider dashboard totalBookings = 0 (next poll cycle)", async () => {
+test("4: after refund — provider dashboard totalBookings = 0 (simulates next 30-second poll)", async () => {
   const res = await apiCall("/api/provider/analytics/dashboard", fixture.providerCookie);
   assert.equal(res.status, 200, `expected 200, got ${res.status}`);
   const body: any = await res.json();
   assert.equal(
     body.summary.totalBookings,
     0,
-    `totalBookings must be 0 after cancellation, got ${body.summary.totalBookings}`,
+    `totalBookings must be 0 after refund, got ${body.summary.totalBookings} — ` +
+    `indicates bookings_count was not decremented by the refund path`,
   );
 });
 
-test("5: after cancellation — expert earnings totalEarnings = 0 and pendingEarnings = 0 (next poll cycle)", async () => {
-  // summarizeEscrowEarnings (storage.ts:4491) filters reversed rows — cancellation/refund
-  // must zero both figures for the expert today page's next 30-second poll.
+test("5: after refund — expert earnings totalEarnings = 0 and pendingEarnings = 0 (simulates next 30-second poll)", async () => {
+  // summarizeEscrowEarnings (storage.ts ~:4491) excludes reversed rows — the expert today
+  // page's next refetchInterval=30_000 poll must show zero.
   const res = await apiCall("/api/expert/earnings/details", fixture.expertCookie);
   assert.equal(res.status, 200, `expected 200, got ${res.status}`);
   const body: any = await res.json();
@@ -288,24 +330,38 @@ test("5: after cancellation — expert earnings totalEarnings = 0 and pendingEar
   );
 });
 
-test("6: totalRevenue unaffected — booking cancelled before completion, revenue never earned", async () => {
-  // provider_services.total_revenue is only incremented on booking COMPLETION
-  // (storage.ts ~:2545-2549). A pre-completion cancellation must leave it at 0.
+test("6: totalRevenue unaffected — booking cancelled before completion so revenue was never minted", async () => {
+  // provider_services.total_revenue is only incremented at booking COMPLETION
+  // (storage.ts ~:2545-2549). A pre-completion refund leaves it at 0.
   const res = await apiCall("/api/provider/analytics/dashboard", fixture.providerCookie);
   const body: any = await res.json();
   assert.equal(
     body.summary.totalRevenue,
     0,
-    `totalRevenue must remain 0 for a booking cancelled before completion, got ${body.summary.totalRevenue}`,
+    `totalRevenue must remain 0 for a booking refunded before completion, got ${body.summary.totalRevenue}`,
   );
 });
 
-test("7: reversal is idempotent — second call on the same bookingId reverses 0 rows", async () => {
-  // The atomic UPDATE WHERE status IN ('held','releasable') finds nothing the second time.
-  const result = await storage.reverseEarningsForBooking(fixture.bookingId);
+test("7: refundServiceBooking idempotent — second call returns alreadyRefunded, counters unchanged", async () => {
+  // The atomic claim (WHERE status <> 'refunded') fires zero rows on retry.
+  // bookings_count guard (priorStatus check) also fires zero rows: booking is already 'refunded'.
+  // Earnings reversal idempotency is handled by status IN ('held','releasable') WHERE clause.
+  const result = await stripePaymentService.refundServiceBooking(
+    fixture.bookingId,
+    "test_cancellation_retry",
+  );
   assert.equal(
-    result.reversed,
+    (result as any).alreadyRefunded,
+    true,
+    `second call must return { alreadyRefunded: true }, got ${JSON.stringify(result)}`,
+  );
+
+  // Dashboard counter must still be 0 (not double-decremented).
+  const res = await apiCall("/api/provider/analytics/dashboard", fixture.providerCookie);
+  const body: any = await res.json();
+  assert.equal(
+    body.summary.totalBookings,
     0,
-    `second reversal must find no eligible rows (idempotent guard), got ${result.reversed}`,
+    `totalBookings must remain 0 after idempotent retry — must not double-decrement`,
   );
 });
