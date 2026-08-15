@@ -17,7 +17,7 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
-  Users, Route, CalendarClock, Circle, ChevronRight,
+  Users, Route, CalendarClock, Circle, ChevronRight, Pause, Play,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -1260,6 +1260,26 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // Task 1220: activate/pause toggle — PATCH /api/expert/services/:id/status.
+  // Only callable in edit mode when the service is approved; the gate below enforces that.
+  const toggleExpertStatusMutation = useMutation({
+    mutationFn: async (newStatus: "active" | "paused") => {
+      return apiRequest("PATCH", `/api/expert/services/${id}/status`, { status: newStatus });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      toast({ title: "Service status updated" });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to update status",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
@@ -4348,7 +4368,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       )}
 
 
-
       {onStep("review") && (<>
 
       {/* ── Booking Terms ── */}
@@ -4679,6 +4698,49 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </Badge>
               </div>
             </div>
+
+            {/* Task 1220: activate/pause toggle — only shown when the service has been
+                approved; draft/submitted services go through the normal review flow and
+                have no actionable status to toggle from within the form. */}
+            {isEditMode && existingService?.approvalStatus === "approved" && (
+              <div className="border-t pt-4">
+                <Label className="text-sm font-medium">Listing Visibility</Label>
+                <div className="mt-2 flex items-center gap-3">
+                  <Badge
+                    variant={existingService?.status === "active" ? "default" : "secondary"}
+                    data-testid="badge-expert-service-visibility"
+                  >
+                    {existingService?.status === "active" ? "Live" : "Paused"}
+                  </Badge>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={toggleExpertStatusMutation.isPending}
+                    onClick={() =>
+                      toggleExpertStatusMutation.mutate(
+                        existingService?.status === "active" ? "paused" : "active"
+                      )
+                    }
+                    data-testid="button-expert-toggle-service-status"
+                  >
+                    {toggleExpertStatusMutation.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : existingService?.status === "active" ? (
+                      <Pause className="w-3.5 h-3.5 mr-1.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {existingService?.status === "active" ? "Pause listing" : "Activate listing"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {existingService?.status === "active"
+                    ? "Pausing hides this service from search and new bookings."
+                    : "Activating makes this service visible to travellers again."}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
