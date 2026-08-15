@@ -3,6 +3,8 @@ import { useAuth } from "./use-auth";
 import {
   clearGuestProvenance,
   clearTripContext,
+  confirmGuestSession,
+  endGuestSession,
   getContextOwner,
   hasGuestProvenance,
   pushTripContextNow,
@@ -12,33 +14,40 @@ import {
 /**
  * Manages trip context ownership across sign-in and sign-out transitions.
  *
- * ## Guest provenance
- * The flag that determines whether an unowned context is safe to push is set
- * inside `updateTripContext` / `switchTripContext` at write time — whenever
- * content is written while no owner stamp is present. This is the ONLY correct
- * place to set it. Setting it on auth resolve (i.e. "auth is null therefore
- * this is a guest session") would mark pre-existing legacy authenticated
- * contexts as guest-authored and push them to the wrong account.
+ * ## How guest provenance works
+ * `trip-context.ts` maintains two pieces of state:
  *
- * ## Sign-in transition (confirmed unauthenticated → authenticated)
- * - Stamps ownership immediately so post-sign-in writes are attributed even if
- *   the context was empty or the push below fails.
- * - Pushes context only when the guest-provenance flag is present (set at write
- *   time), skipping markerless legacy contexts conservatively.
- * - Clears cross-account remnants without pushing.
- * - Skips push for same-user returning (already in sync).
+ * 1. `guestSessionConfirmed` (in-memory) — set to true by this hook when auth
+ *    has *resolved* to unauthenticated (isLoading=false, user=null). Only when
+ *    this flag is true do `updateTripContext`/`switchTripContext` mark writes
+ *    with the sessionStorage GUEST_PROVENANCE_KEY. This prevents auth-loading-
+ *    time writes (e.g. template pages mounting effects before `/api/auth/user`
+ *    resolves) from marking a legacy authenticated context as guest-authored.
  *
- * ## Sign-out transition (authenticated → confirmed unauthenticated)
- * - Clears the local context and ownership stamp so the subsequent guest session
- *   starts clean. Guest provenance is reset via clearTripContext.
+ * 2. `GUEST_PROVENANCE_KEY` (sessionStorage) — persists within the tab session
+ *    so that a write-then-reload-then-sign-in flow still delivers the context.
+ *    Cleared by this hook on sign-in and by `clearTripContext` on logout.
+ *
+ * ## Sign-in transition (isLoading=false, null → userId)
+ *   - Calls `endGuestSession()` so subsequent writes are no longer marked.
+ *   - Stamps ownership immediately (before push) so post-sign-in writes are
+ *     always attributed even if the context is empty or the push fails.
+ *   - Pushes context only when GUEST_PROVENANCE_KEY is set (written during a
+ *     confirmed guest session). Markerless legacy contexts are skipped.
+ *   - Clears cross-account remnants (different owner stamp) without pushing.
+ *   - Skips push for same-user returning (already in sync).
+ *
+ * ## Sign-out transition (isLoading=false, userId → null)
+ *   - Clears context + owner stamp via clearTripContext + setContextOwner(null).
+ *   - Calls `confirmGuestSession()` so subsequent writes mark provenance.
  *
  * ## Auth-loading gate
- * All transitions are gated on `isLoading === false`. The transient null/undefined
- * user during the initial auth fetch is never misclassified as a logout or guest.
+ *   All transitions require isLoading=false. The transient null during the
+ *   initial fetch is never misclassified as a guest session or logout.
  *
- * ## Retry on re-sign-in
- * prevUserIdRef resets to null on logout, so a subsequent sign-in re-enters the
- * sign-in branch and can retry a failed push without any explicit reset step.
+ * ## Retry
+ *   prevUserIdRef resets to null on logout, so a re-sign-in re-enters the
+ *   sign-in branch and can retry a failed push without any explicit reset.
  *
  * Call from a top-level component (e.g. Router in App.tsx).
  */
@@ -47,7 +56,7 @@ export function useSyncTripContextOnSignIn(): void {
   const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Do nothing while auth is still fetching — cannot yet distinguish
+    // Do nothing while auth is still resolving — cannot distinguish
     // "genuinely unauthenticated" from "still loading".
     if (isLoading) return;
 
@@ -58,36 +67,38 @@ export function useSyncTripContextOnSignIn(): void {
     if (!userId) {
       if (prevUserId !== null) {
         // Explicit logout (auth resolved to null after being authenticated).
-        // Wipe context + stamp so the subsequent guest session starts clean.
-        // clearTripContext() also clears the guest-provenance flag so fresh
-        // guest writes can re-establish it via updateTripContext.
+        // Clear context + stamp so the subsequent guest session starts clean.
+        // clearTripContext() also clears GUEST_PROVENANCE_KEY so fresh writes
+        // can re-establish it.
         clearTripContext();
         setContextOwner(null);
       }
-      // No provenance flag is set here. The flag is set by updateTripContext /
-      // switchTripContext at write time, ensuring only genuine writes during
-      // a no-owner session are marked — never just because auth resolved null.
+      // Auth has now confirmed unauthenticated — enable provenance marking for
+      // subsequent writes via updateTripContext/switchTripContext.
+      confirmGuestSession();
       return;
     }
 
     // userId is non-null. Only act on a sign-in transition.
     if (userId === prevUserId) return;
 
-    // Capture and clear the guest-provenance flag before stamping ownership,
-    // so the flag state reflects the pre-sign-in guest session.
-    const guestWroteContext = hasGuestProvenance();
-    clearGuestProvenance();
+    // Stop marking new writes as guest-authored.
+    endGuestSession();
 
-    // Read the owner stamp before overwriting it below.
+    // Capture provenance and read owner stamp BEFORE overwriting.
+    const guestWroteContext = hasGuestProvenance();
     const owner = getContextOwner();
 
-    // Stamp ownership immediately — before any push — so that planning the
-    // user creates after signing in is attributed to them even if the context
-    // was empty or the network push below fails.
+    // Clear provenance flag — session is now authenticated.
+    clearGuestProvenance();
+
+    // Stamp ownership immediately — before any push — so planning built after
+    // sign-in is attributed to this user even if the context is empty or the
+    // network push fails.
     setContextOwner(userId);
 
     if (owner === userId) {
-      // Same user returning (page reload while already authenticated).
+      // Same user returning (e.g. page reload while authenticated).
       // Context already stamped and in sync — no push needed.
       return;
     }
@@ -99,15 +110,15 @@ export function useSyncTripContextOnSignIn(): void {
       return;
     }
 
-    // owner is null. Only push if the context was explicitly written during a
-    // guest session (flag set at write time by updateTripContext). Without the
-    // flag we cannot rule out a legacy pre-feature context created by an
-    // authenticated user — pushing it would leak their planning.
+    // owner is null. Only push if provenance was explicitly established during
+    // a confirmed guest session. Without the flag we cannot distinguish a
+    // genuine guest write from a legacy pre-feature context created by an
+    // authenticated user — pushing the latter would leak their planning.
     if (!guestWroteContext) return;
 
-    // Genuine guest context: deliver to the server. keepalive survives tab close.
+    // Genuine guest context: deliver to server. keepalive survives tab close.
     pushTripContextNow().catch(() => {
-      /* offline — best-effort; ownership stamp already protects post-sign-in writes */
+      /* offline — best-effort; stamp already protects post-sign-in writes */
     });
   }, [user?.id, isLoading]);
 }

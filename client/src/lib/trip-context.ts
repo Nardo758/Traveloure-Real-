@@ -69,12 +69,29 @@ const OWNER_KEY = "trip-context-owner";
 const CHANGE_EVENT = "trip-context-change";
 
 /**
- * Marks the current session context as explicitly guest-authored.
- * Set inside updateTripContext / switchTripContext whenever content is written
- * while no owner stamp is present — i.e. during a confirmed unauthenticated
- * session. This lets the sign-in hook distinguish fresh guest writes from
- * legacy pre-feature contexts that also have no stamp but were built by an
- * authenticated user (those must never be pushed to a different account).
+ * In-memory flag: true only when auth has resolved to "confirmed unauthenticated"
+ * (isLoading=false, user=null) as signalled by the sign-in hook via
+ * confirmGuestSession(). Writes during auth loading never see this true, which
+ * prevents loading-time effects (e.g. template pages) from marking a legacy
+ * authenticated context as guest-authored.
+ */
+let guestSessionConfirmed = false;
+
+/** Called by the sign-in hook when auth resolves to confirmed unauthenticated. */
+export function confirmGuestSession(): void {
+  guestSessionConfirmed = true;
+}
+
+/** Called by the sign-in hook on sign-in to stop new writes from marking provenance. */
+export function endGuestSession(): void {
+  guestSessionConfirmed = false;
+}
+
+/**
+ * sessionStorage key persisting guest provenance within the tab session.
+ * Set by updateTripContext/switchTripContext only when guestSessionConfirmed.
+ * Survives page reloads within the same tab (unlike the in-memory flag above)
+ * so that a write-then-reload-then-sign-in flow still delivers the context.
  */
 const GUEST_PROVENANCE_KEY = "trip-context-guest-provenance";
 
@@ -86,7 +103,7 @@ function setGuestProvenance(): void {
   }
 }
 
-/** Returns true when the current context was explicitly written during a guest session. */
+/** Returns true when the current context was explicitly written during a confirmed guest session. */
 export function hasGuestProvenance(): boolean {
   try {
     return sessionStorage.getItem(GUEST_PROVENANCE_KEY) === "1";
@@ -181,9 +198,11 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   const next = { ...current, ...sanitized } as TripContext;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    // Mark as guest-authored if written without an owner stamp — enables the
-    // sign-in hook to distinguish fresh guest writes from legacy unowned contexts.
-    if (getContextOwner() === null) setGuestProvenance();
+    // Mark as guest-authored only when auth has explicitly confirmed unauthenticated
+    // state (guestSessionConfirmed, set by the sign-in hook). Checking the owner
+    // stamp alone is insufficient: auth-loading-time writes also lack the stamp
+    // but must NOT be marked as guest (they could be legacy authenticated content).
+    if (guestSessionConfirmed) setGuestProvenance();
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
@@ -254,8 +273,8 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
 
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    // Mark as guest-authored if written without an owner stamp.
-    if (getContextOwner() === null) setGuestProvenance();
+    // Mark as guest-authored only when auth has confirmed unauthenticated state.
+    if (guestSessionConfirmed) setGuestProvenance();
   } catch {
     /* storage full/unavailable — context is best-effort */
   }
