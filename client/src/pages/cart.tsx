@@ -664,6 +664,22 @@ export default function CartPage() {
        savedMethodsData.methods[0] ?? null)
     : null;
 
+  // Task 1110: mirror the same fee-preview check the itinerary page uses so the
+  // "Proceed to Payment" CTA can be gated when the concierge fee band is missing.
+  const { error: feePreviewError } = useQuery<{
+    subtotal: number;
+    platformFeeTotal: number;
+    conciergeFeeTotal: number;
+    total: number;
+    itemCount: number;
+  }>({
+    queryKey: ["/api/cart/fee-preview"],
+    staleTime: 30 * 1000,
+  });
+  const conciergeFeeUnavailable =
+    feePreviewError != null &&
+    String((feePreviewError as Error).message ?? "").includes("concierge_fee_unconfigured");
+
   const convertToItineraryMutation = useMutation({
     mutationFn: async (payload: {
       tripId?: string;
@@ -2206,11 +2222,17 @@ export default function CartPage() {
                             className="w-full border-2"
                             size="lg"
                             onClick={() => setFlowStep("payment")}
+                            disabled={conciergeFeeUnavailable}
                             data-testid="button-skip-to-payment"
                           >
                             <CreditCard className="w-5 h-5 mr-2" />
                             Proceed to Payment
                           </Button>
+                          {conciergeFeeUnavailable && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 text-center" data-testid="note-concierge-fee-unavailable-cart">
+                              Booking Concierge fee can't be calculated — checkout is paused until this is resolved.
+                            </p>
+                          )}
                         </>
                       )}
                     </CardFooter>
@@ -2607,15 +2629,23 @@ export default function CartPage() {
                         </div>
                       )}
                       {(cart?.items?.length || 0) > 0 ? (
-                        <Button
-                          className="w-full bg-primary hover:bg-primary/90"
-                          size="lg"
-                          onClick={proceedToPayment}
-                          data-testid="button-proceed-payment"
-                        >
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          Proceed to Payment
-                        </Button>
+                        <>
+                          <Button
+                            className="w-full bg-primary hover:bg-primary/90"
+                            size="lg"
+                            onClick={proceedToPayment}
+                            disabled={conciergeFeeUnavailable}
+                            data-testid="button-proceed-payment"
+                          >
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Proceed to Payment
+                          </Button>
+                          {conciergeFeeUnavailable && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 text-center" data-testid="note-concierge-fee-unavailable-cart">
+                              Booking Concierge fee can't be calculated — checkout is paused until this is resolved.
+                            </p>
+                          )}
+                        </>
                       ) : (
                         <div className="w-full text-center text-muted-foreground text-sm">
                           External bookings must be completed on provider websites
