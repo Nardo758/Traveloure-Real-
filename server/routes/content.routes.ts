@@ -6866,7 +6866,8 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const { itemName, itemDescription, partnerName, partnerCategory, travelDate, travelers, userNotes,
-              bookingToken, affiliateProductId, transportOptionId, partnerRoute } = req.body;
+              bookingToken, affiliateProductId, transportOptionId, partnerRoute,
+              destination: bodyDestination } = req.body;
 
       let resolved: { url: string; name: string | null; partner: string | null } | null = null;
       if (typeof bookingToken === "string" && bookingToken) {
@@ -6915,11 +6916,19 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
 
       // Auto-assign to the best-matched expert: score by destination + category,
-      // prefer lower workload; falls back to any approved expert, then any expert.
-      const requestDestination =
+      // prefer lower workload. Destination is resolved from, in priority order:
+      //   1. Explicit body.destination (covers all reference types incl. result-card flows)
+      //   2. partnerRoute.destination (12Go / transport deep-links)
+      // Returns null when no approved expert with accepts_new_handoffs=true exists
+      // → request stays "pending" for admin manual routing (never bypasses the flag).
+      const routeDest =
         (typeof partnerRoute === "object" && partnerRoute !== null && typeof partnerRoute.destination === "string")
           ? partnerRoute.destination
           : null;
+      const requestDestination =
+        (typeof bodyDestination === "string" && bodyDestination.trim())
+          ? bodyDestination.trim()
+          : routeDest;
       const requestCategory = typeof partnerCategory === "string" ? partnerCategory : null;
       const expertId = await pickBestExpertForBookingRequest(requestDestination, requestCategory);
       const status = expertId ? "assigned" : "pending";

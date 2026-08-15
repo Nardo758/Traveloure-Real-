@@ -384,9 +384,13 @@ export async function getExpertUserIds(limit = 10): Promise<string[]> {
  *   +2  destination appears in expert's declared destinations (case-insensitive substring)
  *   +1  category matches any of the expert's specialties (case-insensitive substring)
  *
- * Only considers approved experts who accept new handoffs. Among equally-scored
- * candidates the one with fewer open (non-terminal) booking requests is preferred
- * (lower workload). Returns null when no expert exists at all.
+ * Only considers approved experts who have accepts_new_handoffs = true.
+ * Returns null (→ request stays "pending") when no such expert exists — never
+ * bypasses the handoff flag to force an assignment.
+ *
+ * Among eligible candidates the one with the fewest open (non-terminal) booking
+ * requests is preferred for equal scores. Terminal statuses:
+ *   completed | confirmed | cancelled | closed
  *
  * Used by both POST /api/affiliate-booking-requests variants so the logic lives
  * in one place and stays consistent.
@@ -415,7 +419,7 @@ export async function pickBestExpertForBookingRequest(
         SELECT COUNT(*)::int
         FROM affiliate_booking_requests abr
         WHERE abr.expert_id = u.id
-          AND abr.status NOT IN ('completed', 'cancelled', 'closed')
+          AND abr.status NOT IN ('completed', 'confirmed', 'cancelled', 'closed')
       ) AS open_count
     FROM users u
     INNER JOIN local_expert_forms lef ON lef.user_id = u.id
@@ -428,27 +432,9 @@ export async function pickBestExpertForBookingRequest(
 
   const candidates = rows.rows as Array<{ id: string; score: number; open_count: number }>;
 
-  if (candidates.length === 0) {
-    // Fallback: any approved expert regardless of handoff flag
-    const fallback = await db.execute(sql`
-      SELECT u.id
-      FROM users u
-      INNER JOIN local_expert_forms lef ON lef.user_id = u.id
-      WHERE u.role = 'expert'
-        AND lef.status = 'approved'
-      ORDER BY random()
-      LIMIT 1
-    `);
-    const fallbackRows = fallback.rows as Array<{ id: string }>;
-    if (fallbackRows.length > 0) return fallbackRows[0].id;
-
-    // Last resort: any user with role='expert' (matches old getExpertUserIds behaviour)
-    const lastResort = await db.execute(sql`
-      SELECT id FROM users WHERE role = 'expert' LIMIT 1
-    `);
-    const lrRows = lastResort.rows as Array<{ id: string }>;
-    return lrRows.length > 0 ? lrRows[0].id : null;
-  }
+  // No eligible expert found — leave request pending rather than bypassing the
+  // accepts_new_handoffs flag. The admin queue surfaces pending requests for manual routing.
+  if (candidates.length === 0) return null;
 
   return candidates[0].id;
 }
