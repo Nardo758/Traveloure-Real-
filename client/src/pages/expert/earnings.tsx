@@ -81,6 +81,11 @@ interface EarningsDetails {
     paidOut: number;
     totalTips: number;
     totalAffiliateCommissions: number;
+    // Revenue share breakdown from platform_revenue
+    grossBookingValue: number;
+    platformFeeTotal: number;
+    expertShareFromRevenue: number;
+    effectiveShareRate: number | null;
   };
   earnings: ExpertEarningRow[];
   payouts: ExpertPayoutRow[];
@@ -229,10 +234,9 @@ export default function ExpertEarnings() {
           />
         </div>
 
-        {/* Revenue Share Breakdown — mirrors the provider Money page layout (§1194).
-            Expert summary only returns totalEarnings (the net/expert share); gross and
-            platform-fee split are not available from this endpoint, so the bar is omitted
-            honestly when there is nothing to compute from. */}
+        {/* Revenue Share Breakdown — mirrors the provider Money page layout.
+            Gross/fee figures come from platform_revenue (expertId-scoped), added to the
+            GET /api/expert/earnings/details response in revenue-tracking.service.ts. */}
         <Card data-testid="card-revenue-share">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -242,45 +246,49 @@ export default function ExpertEarnings() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-gross-total">
+                <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
+                <p className="text-xl font-bold text-console-darkest">
+                  ${(summary?.grossBookingValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
+                <p className="text-sm text-red-600 mb-1">
+                  Platform Fee{summary?.effectiveShareRate != null ? ` (${Math.round((1 - summary.effectiveShareRate) * 100)}%)` : ""}
+                </p>
+                <p className="text-xl font-bold text-red-700">
+                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
+              </div>
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">Your Share (Net Earnings)</p>
+                <p className="text-sm text-green-600 mb-1">
+                  Your Share{summary?.effectiveShareRate != null ? ` (${Math.round(summary.effectiveShareRate * 100)}%)` : ""}
+                </p>
                 <p className="text-xl font-bold text-green-700">
-                  ${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
               </div>
-              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-tips-total">
-                <p className="text-sm text-console-mid mb-1">Tips Received</p>
-                <p className="text-xl font-bold text-console-darkest">
-                  ${(summary?.totalTips ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-console-mid mt-1">From grateful travelers</p>
-              </div>
-              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-affiliate-total">
-                <p className="text-sm text-console-mid mb-1">Affiliate Commissions</p>
-                <p className="text-xl font-bold text-console-darkest">
-                  ${(summary?.totalAffiliateCommissions ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-console-mid mt-1">From partner referrals</p>
-              </div>
             </div>
 
-            {/* Net earnings summary row */}
+            {/* Fee line items */}
             <div className="mt-4 rounded-lg border border-border bg-muted/30 divide-y divide-border" data-testid="section-fee-breakdown">
               <div className="flex items-center justify-between px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="w-3.5 h-3.5 text-console-mid" />
-                  <span className="text-sm text-muted-foreground">Service earnings</span>
+                  <DollarSign className="w-3.5 h-3.5 text-red-500" />
+                  <span className="text-sm text-muted-foreground">Platform commission</span>
                 </div>
-                <span className="text-sm font-medium text-console-darkest" data-testid="text-service-earnings">
-                  ${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm font-medium text-red-600" data-testid="text-base-commission">
+                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               {(summary?.totalTips ?? 0) > 0 && (
-                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-tips-fee">
+                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-tips">
                   <div className="flex items-center gap-2">
                     <Shield className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-sm text-muted-foreground">Tips</span>
+                    <span className="text-sm text-muted-foreground">Tips received</span>
                   </div>
                   <span className="text-sm font-medium text-blue-600">
                     +${(summary?.totalTips ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -288,7 +296,7 @@ export default function ExpertEarnings() {
                 </div>
               )}
               {(summary?.totalAffiliateCommissions ?? 0) > 0 && (
-                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-affiliate-fee">
+                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-affiliate">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-3.5 h-3.5 text-green-500" />
                     <span className="text-sm text-muted-foreground">Affiliate commissions</span>
@@ -301,29 +309,32 @@ export default function ExpertEarnings() {
               <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-950/20 rounded-b-lg">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="w-3.5 h-3.5 text-green-600" />
-                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Total lifetime earnings</span>
+                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Your net earnings</span>
                 </div>
                 <span className="text-sm font-bold text-green-600" data-testid="text-net-earnings">
-                  ${((summary?.totalEarnings ?? 0) + (summary?.totalTips ?? 0) + (summary?.totalAffiliateCommissions ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
 
-            {/* Split bar: expert endpoint does not expose gross/platform-fee breakdown, so we
-                show an honest empty state rather than a fabricated or misleading percentage. */}
-            {(summary?.totalEarnings ?? 0) > 0 ? (
+            {/* Proportional split bar — only rendered when gross data is available */}
+            {summary?.effectiveShareRate != null ? (
               <>
                 <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
-                  <div className="h-full bg-green-500 w-full" />
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round((1 - summary.effectiveShareRate) * 100)}%` }}
+                  />
+                  <div className="h-full bg-green-500 flex-1" />
                 </div>
                 <div className="flex justify-between text-xs text-console-mid mt-1">
-                  <span>Platform fee not shown here</span>
-                  <span data-testid="text-expert-share-rate">Your net earnings</span>
+                  <span>Platform {Math.round((1 - summary.effectiveShareRate) * 100)}%</span>
+                  <span data-testid="text-expert-share-rate">You {Math.round(summary.effectiveShareRate * 100)}%</span>
                 </div>
               </>
             ) : (
               <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">
-                No earnings yet — your breakdown appears here after your first booking.
+                No bookings yet — your split appears here after your first booking.
               </p>
             )}
           </CardContent>

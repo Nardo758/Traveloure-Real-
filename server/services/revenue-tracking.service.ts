@@ -261,6 +261,23 @@ class RevenueTrackingService {
     const earningsSummary = await storage.getExpertEarningsSummary(expertId);
     const affiliateSummary = await storage.getAffiliateEarningsSummary(expertId);
 
+    // Pull gross/fee totals from platform_revenue for the Revenue Share Breakdown card.
+    // Exclude reversal rows (gross_amount < 0) so they don't deflate the lifetime figures.
+    const [revenueRow] = await db
+      .select({
+        grossTotal: sql<string>`COALESCE(SUM(CASE WHEN ${platformRevenue.grossAmount}::numeric >= 0 THEN ${platformRevenue.grossAmount}::numeric ELSE 0 END), 0)`,
+        feeTotal:   sql<string>`COALESCE(SUM(CASE WHEN ${platformRevenue.grossAmount}::numeric >= 0 THEN ${platformRevenue.platformFee}::numeric ELSE 0 END), 0)`,
+        shareTotal: sql<string>`COALESCE(SUM(CASE WHEN ${platformRevenue.grossAmount}::numeric >= 0 THEN ${platformRevenue.expertEarnings}::numeric ELSE 0 END), 0)`,
+      })
+      .from(platformRevenue)
+      .where(eq(platformRevenue.expertId, expertId));
+
+    const gross = parseFloat(revenueRow?.grossTotal ?? '0');
+    const platformFeeTotal = parseFloat(revenueRow?.feeTotal ?? '0');
+    const expertShareFromRevenue = parseFloat(revenueRow?.shareTotal ?? '0');
+    // Effective share rate: expert's cut of every gross dollar (null when no revenue yet).
+    const effectiveShareRate: number | null = gross > 0 ? expertShareFromRevenue / gross : null;
+
     return {
       summary: {
         totalEarnings: earningsSummary.total,
@@ -269,6 +286,11 @@ class RevenueTrackingService {
         paidOut: earningsSummary.paidOut,
         totalTips: tips.totalAmount,
         totalAffiliateCommissions: affiliateSummary.total,
+        // Revenue share breakdown (from platform_revenue)
+        grossBookingValue: gross,
+        platformFeeTotal,
+        expertShareFromRevenue,
+        effectiveShareRate,
       },
       earnings: earnings.slice(0, 20),
       payouts: payouts.slice(0, 10),
