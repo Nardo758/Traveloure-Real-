@@ -3020,7 +3020,7 @@ export default function ExpertWorkspace() {
     enabled: !!tripId && !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
-  const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
+  const { data: expertNotesData } = useQuery<{ expertNotes: string; expertNotesUpdatedAt?: string | null }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
     enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
@@ -3293,6 +3293,9 @@ export default function ExpertWorkspace() {
   useEffect(() => {
     if (expertNotesData !== undefined && !noteInitialized.current) {
       setNoteText(expertNotesData.expertNotes || "");
+      if (expertNotesData.expertNotesUpdatedAt) {
+        setLastSavedAt(new Date(expertNotesData.expertNotesUpdatedAt));
+      }
       noteInitialized.current = true;
     }
   }, [expertNotesData]);
@@ -3492,9 +3495,9 @@ export default function ExpertWorkspace() {
       const res = await apiRequest("PATCH", `/api/trips/${tripId}/expert-notes`, { expertNotes: notes });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       setNoteSaveStatus("saved");
-      setLastSavedAt(new Date());
+      setLastSavedAt(data?.expertNotesUpdatedAt ? new Date(data.expertNotesUpdatedAt) : new Date());
       const t = setTimeout(() => setNoteSaveStatus("idle"), 2000);
       return () => clearTimeout(t);
     },
