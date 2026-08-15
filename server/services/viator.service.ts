@@ -173,10 +173,6 @@ export interface ViatorDestination {
 export interface ViatorSearchResult {
   products: ViatorProduct[];
   totalCount: number;
-  /** Set when the Viator integration is unreachable (missing key or HTTP error).
-   *  Callers should surface this as an honest "unavailable" notice rather than
-   *  treating it as an empty result set. */
-  unavailable?: boolean;
 }
 
 class ViatorService {
@@ -225,7 +221,7 @@ class ViatorService {
   async searchByFreetext(searchTerm: string, currency: string = 'USD', count: number = 20): Promise<ViatorSearchResult> {
     if (!this.isConfigured()) {
       console.warn('[Viator] VIATOR_API_KEY not set – skipping searchByFreetext');
-      return { products: [], totalCount: 0, unavailable: true };
+      return { products: [], totalCount: 0 };
     }
     try {
       const response = await this.makeRequest<any>('/search/freetext', 'POST', {
@@ -243,7 +239,7 @@ class ViatorService {
     } catch (error: any) {
       reportProviderResult("viator", error?.status ? outcomeFromHttpStatus(error.status) : "error", error?.message);
       console.error('Viator freetext search error:', error);
-      return { products: [], totalCount: 0, unavailable: true };
+      return { products: [], totalCount: 0 };
     }
   }
 

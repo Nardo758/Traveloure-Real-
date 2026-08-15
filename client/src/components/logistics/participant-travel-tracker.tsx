@@ -283,7 +283,7 @@ export function ParticipantTravelTracker({
               </div>
             ) : (
               <div className="space-y-2 text-sm">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-xs text-muted-foreground">Arrives</span>
                     <div className="flex items-center gap-1">

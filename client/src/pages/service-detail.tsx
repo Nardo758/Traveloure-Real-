@@ -1606,7 +1606,7 @@ export default function ServiceDetailPage() {
                       <BedDouble className="w-4 h-4 text-primary" />
                       Pick your dates
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                    <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
                         <label className="text-xs text-muted-foreground" id="label-room-checkin">
                           Check-in
@@ -1808,8 +1808,8 @@ export default function ServiceDetailPage() {
 
                     {/* Preferred date/time — optional fallback for services without a published
                         slot the traveler wants. Carried into the cart + booking. */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-                      <div className="col-span-full sm:col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                         <Calendar className="w-3.5 h-3.5" />
                         Or request a date & time <span className="font-normal">(optional)</span>
                       </div>

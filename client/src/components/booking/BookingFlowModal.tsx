@@ -293,7 +293,7 @@ export default function BookingFlowModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex justify-between items-center rounded-t-2xl">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-2xl">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               {currentStep === 'visa_intake' && <><Globe className="w-6 h-6 text-blue-600" />Visa Details</>}
@@ -313,7 +313,7 @@ export default function BookingFlowModal({
         </div>
 
         {/* Content */}
-        <div className="px-4 sm:px-6 py-6">
+        <div className="px-6 py-6">
 
           {/* ── Visa Intake Step ── */}
           {currentStep === 'visa_intake' && (
@@ -445,16 +445,16 @@ export default function BookingFlowModal({
                     key={item.id}
                     className="border border-gray-200 rounded-lg p-4 hover:border-purple-300 transition"
                   >
-                    <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-gray-900 break-words">{item.title}</h3>
-                        <p className="text-sm text-gray-600 break-words">{item.location}</p>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{item.title}</h3>
+                        <p className="text-sm text-gray-600">{item.location}</p>
                       </div>
-                      <span className="text-lg font-bold text-gray-900 flex-shrink-0">
+                      <span className="text-lg font-bold text-gray-900">
                         ${item.price.toFixed(2)}
                       </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+                    <div className="flex items-center gap-4 text-sm text-gray-600">
                       <span>{new Date(item.date).toLocaleDateString()}</span>
                       {item.time && <span>{item.time}</span>}
                       <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">

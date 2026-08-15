@@ -831,19 +831,6 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               )}
             </div>
 
-            {booking.status === "cancelled" && booking.cancellationReason && (
-              <div
-                className="mt-3 flex gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/20 text-sm"
-                data-testid={`decline-reason-${booking.id}`}
-              >
-                <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-destructive" />
-                <div>
-                  <span className="font-medium text-destructive">Decline reason: </span>
-                  <span className="text-foreground">{booking.cancellationReason}</span>
-                </div>
-              </div>
-            )}
-
             {showVisaTimeline && booking.bookingMetadata && (
               <VisaStatusTimeline metadata={booking.bookingMetadata} bookingId={booking.id} />
             )}

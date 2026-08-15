@@ -734,7 +734,7 @@ function CityDetailSkeleton() {
         </div>
       </div>
       <Skeleton className="h-64 w-full rounded-lg" />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Skeleton className="h-24" />
         <Skeleton className="h-24" />
         <Skeleton className="h-24" />
@@ -1379,7 +1379,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                    <div className="grid grid-cols-3 gap-4 text-center">
                       <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                         <p className="text-xs text-muted-foreground">Budget</p>
                         <p className="text-lg font-semibold text-green-600 dark:text-green-400">

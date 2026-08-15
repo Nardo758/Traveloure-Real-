@@ -218,27 +218,9 @@ export function setupFacebookAuth(app: Express) {
 
   app.get("/api/auth/facebook/callback", (req, res, next) => {
     ensureFacebookStrategy(req.hostname);
-    passport.authenticate(`facebook:${req.hostname}`, (err: any, user: any, info: any) => {
-      if (err) {
-        console.error("[Facebook Auth] Callback error:", err);
-        return res.redirect("/become-expert?influencer=true&error=auth_failed");
-      }
-      if (!user) {
-        // Surface suspension as a distinct error code so the UI can show a
-        // clear, actionable message rather than a generic "auth failed" one.
-        const message: string = info?.message ?? "";
-        if (message.toLowerCase().includes("suspended")) {
-          return res.redirect("/become-expert?influencer=true&error=account_suspended");
-        }
-        return res.redirect("/become-expert?influencer=true&error=auth_failed");
-      }
-      req.logIn(user, (loginErr) => {
-        if (loginErr) {
-          console.error("[Facebook Auth] Login error:", loginErr);
-          return res.redirect("/become-expert?influencer=true&error=auth_failed");
-        }
-        return res.redirect("/become-expert?influencer=true&auth=facebook");
-      });
+    passport.authenticate(`facebook:${req.hostname}`, {
+      successRedirect: "/become-expert?influencer=true&auth=facebook",
+      failureRedirect: "/become-expert?influencer=true&error=auth_failed",
     })(req, res, next);
   });
 

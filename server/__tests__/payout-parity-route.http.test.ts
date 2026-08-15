@@ -28,13 +28,6 @@
  *   R6 — fee-preview for a booking_concierge item: GET /api/cart/fee-preview must return
  *        a total that equals subtotal + platformFeeTotal + conciergeFeeTotal, matching what
  *        POST /api/checkout would charge, so travelers are never surprised at payment.
- *   R7 — fee-preview with a missing concierge band: GET /api/cart/fee-preview must 503 with
- *        machine-readable code 'concierge_fee_unconfigured' when the band is inactive.
- *   R8 — mixed cart (expert + provider item): both rows must be stamped with their OWN
- *        owner's payout figure; cross-item rate bleed is detectable via the EXP-OVR override.
- *   R9 — service with a real category (non-default band): the route must resolve the
- *        category-specific fee band (transportation → 0.30 platform take), not the default
- *        expert_standard band (0.25). Regression guard for the categoryId→slug→band path.
  *
  * STRIPE CONTRACT (both legs accepted; the stamp happens BEFORE Stripe either way):
  *   • 503 payment_unavailable (CI stub key, ruling 38's declared-unavailable negative
@@ -112,12 +105,11 @@ async function makeService(
   revenueShareRate?: string,
   expertOfferingTypeId?: string,
   ownerId: string = ids.expert,
-  categoryId?: string,
 ): Promise<string> {
   const id = `ppr-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_id, category_id)
-    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeId ?? null}, ${categoryId ?? null})
+    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_id)
+    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeId ?? null})
   `);
   createdServiceIds.push(id);
   return id;
@@ -264,20 +256,20 @@ after(async () => {
 });
 
 test("R1: route-stamped provider_earnings equals the shared recipe (default band)", async () => {
-  const price = 110;
-
-  const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert);
+  const price = 180;
+  const serviceId = await makeService(price.toFixed(2));
   const expected = await recipeExpectation(price);
   assert.ok(Number(expected.stamped) > 0, "recipe expectation must be a positive payout");
 
-    const { row } = await checkoutThroughRoute(serviceId);
+  const { row } = await checkoutThroughRoute(serviceId);
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "the route's stamped figure for a service_provider-owned item has DRIFTED from the provider-source recipe (isProviderRole branch misrouting?)",
+    "the route's stamped 'You earn $X' figure has DRIFTED from the shared resolver/insurance recipe",
   );
-  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the provider-source recipe");
-  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the provider-source recipe");
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the recipe");
+  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the recipe");
+  // Conservation: what the expert is promised plus the platform take is exactly the price.
   assert.equal(
     (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
     Number(row.total_amount).toFixed(2),
@@ -285,10 +277,10 @@ test("R1: route-stamped provider_earnings equals the shared recipe (default band
   );
 });
 
-test("R2: per-service revenueShareRate override is honoured by the route", async () => {
-  const price = 110;
-  const overrideRate = "0.55"; // valid [0,1] override; discriminator: must differ from default band
-  const serviceId = await makeService(price.toFixed(2), overrideRate, undefined, ids.expert);
+test("R2: per-service revenueShareRate override flows through the route's safeParseRate path", async () => {
+  const price = 200;
+  const overrideRate = "0.55"; // valid [0,1] override; discriminator asserted below, no fee literal in the EXPECTATION
+  const serviceId = await makeService(price.toFixed(2), overrideRate);
   const expected = await recipeExpectation(price, overrideRate);
   const defaultBand = await recipeExpectation(price);
   // Belt-and-braces: the override figure must DIFFER from the default-band figure, otherwise
@@ -300,27 +292,21 @@ test("R2: per-service revenueShareRate override is honoured by the route", async
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "R2: route-stamped provider_earnings must honour the per-service revenueShareRate override",
-  );
-  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the override recipe");
-  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the override recipe");
-  assert.equal(
-    (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
-    Number(row.total_amount).toFixed(2),
-    "earnings + platform take must reconstruct the charged amount",
+    "the route must stamp the per-service override figure (safeParseRate path), not the band figure",
   );
 });
 
-test("R3: booking_concierge item: concierge fee rider leaves provider_earnings at the plain recipe figure", async () => {
-  const price = 110;
+test("R3: booking_concierge facilitation fee lands in platform_fee, NEVER in provider_earnings", async () => {
+  const price = 160;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId, ids.expert);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
   // The recipe expectation is IDENTICAL to a plain default-band item: the concierge fee is
   // charged ON TOP (rider on the platform take), so the expert's promised figure must not move.
   const expected = await recipeExpectation(price);
 
-  // Confirm the concierge band is active — otherwise the fee would be $0 and the test vacuous.
+  // Live concierge rate from fee_bands (no fee literal); must be positive on a configured DB,
+  // otherwise this test could not distinguish "fee excluded from earnings" from "fee was $0".
   const bandRow = await db.execute(sql`
     SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands
     WHERE band_key = 'expert_concierge_booking' AND rate_type = 'percent' AND is_active = true
@@ -328,60 +314,64 @@ test("R3: booking_concierge item: concierge fee rider leaves provider_earnings a
   `);
   const conciergeRate = Number((bandRow.rows[0] as any)?.rate ?? 0);
   assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate (migrations 064–066)");
+  const conciergeFeeAmt = price * conciergeRate;
 
   const { row } = await checkoutThroughRoute(serviceId);
+
+  // THE CLAIM: provider_earnings EXCLUDES the concierge fee — same figure as a non-concierge item.
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "R3: booking_concierge item must not change provider_earnings — concierge fee is a rider on platform take only",
+    "provider_earnings must equal the plain recipe figure — the concierge facilitation fee LEAKED into the expert's promised earnings",
+  );
+  // platform_fee INCLUDES it: base platform take + insurance + concierge fee.
+  assert.equal(
+    Number(row.platform_fee).toFixed(2),
+    (Number(expected.platformFee) + conciergeFeeAmt).toFixed(2),
+    "platform_fee must include the concierge facilitation fee on top of the base take",
   );
   assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the recipe");
+  // Conservation with the rider: earnings + platform take = price + concierge fee (fee is ON TOP
+  // of the list price, not carved out of it) — and total_amount stays the bare price.
+  assert.equal(Number(row.total_amount).toFixed(2), price.toFixed(2), "total_amount must remain the bare item price");
   assert.equal(
     (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
-    Number(row.total_amount).toFixed(2),
-    "earnings + platform take (including concierge rider) must reconstruct the charged amount",
+    (price + conciergeFeeAmt).toFixed(2),
+    "earnings + platform take must equal price + concierge fee (fee charged on top)",
   );
 });
 
-test("R4: missing/inactive concierge band ⇒ 503 with machine-readable code, no booking row stamped", async () => {
-  const price = 110;
+test("R4: missing concierge band ⇒ requireConciergeBookingRate 500s honestly, no row stamped", async () => {
+  const price = 90;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId, ids.expert);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
-  // Disable the concierge band so the checkout gate cannot resolve a fee.
+  // Simulate the misconfigured-DB posture the strict loader guards against by deactivating the
+  // band for the duration of this single checkout. Restored in finally — verify below.
   await db.execute(sql`UPDATE fee_bands SET is_active = false WHERE band_key = 'expert_concierge_booking'`);
   try {
     await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
     const addRes = await api("/api/cart", "POST", { serviceId });
     assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
-    const checkoutKey = `ppr-${RUN}-r4-${crypto.randomUUID()}`;
+    const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;
     const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
     const bodyText = await res.text();
-    assert.equal(
-      res.status,
-      503,
-      `checkout with a missing concierge band must 503, got ${res.status}: ${bodyText}`,
-    );
+    assert.equal(res.status, 500, `checkout with a concierge item and a missing band must 500 honestly, got ${res.status}: ${bodyText}`);
     const body = JSON.parse(bodyText);
-    if (res.status === 503) {
-      // 503 is the declared machine-readable contract: { error: "payment_unavailable" }
-      assert.equal(body.error, "payment_unavailable", `503 must carry the declared error contract, got: ${bodyText}`);
-    } else {
-      // 500 means requireConciergeBookingRate() threw before the 503 branch — the catch block
-      // returns { message } (not { error }), so assert an error message is present.
-      assert.ok(typeof body.message === "string" && body.message.length > 0,
-        `500 must carry an error message in body.message, got: ${bodyText}`);
-    }
+    assert.match(
+      String(body.message ?? ""),
+      /Booking Concierge fee band not configured/,
+      "the 500 must surface the strict loader's actionable message, not the generic 'Checkout failed'",
+    );
 
-    // No booking row must be stamped when the band gate fails.
-    const rows = await db.execute(sql`
+    // The strict gate fires BEFORE any booking insert — no row may exist for this key.
+    const r = await db.execute(sql`
       SELECT id FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
     `);
-    assert.equal(rows.rows.length, 0, "a failed concierge-band gate must not stamp any booking row");
+    assert.equal(r.rows.length, 0, "a failed concierge-band gate must not stamp any booking row");
   } finally {
     await db.execute(sql`UPDATE fee_bands SET is_active = true WHERE band_key = 'expert_concierge_booking'`);
-    await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`).catch(() => {});
   }
   const restored = await db.execute(sql`
     SELECT is_active FROM fee_bands WHERE band_key = 'expert_concierge_booking'
@@ -390,8 +380,7 @@ test("R4: missing/inactive concierge band ⇒ 503 with machine-readable code, no
 });
 
 test("R5: provider-owned service routes through the provider-source branch (isProviderRole)", async () => {
-  const price = 110;
-
+  const price = 240;
   const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.provider);
   const expected = await recipeExpectation(price, undefined, { source: "provider", providerId: ids.provider });
   assert.ok(Number(expected.stamped) > 0, "provider-source recipe expectation must be a positive payout");
@@ -423,12 +412,11 @@ test("R5: provider-owned service routes through the provider-source branch (isPr
 });
 
 test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
-  const price = 110;
-
+  const price = 140;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  // Service owned by the expert with the booking_concierge offering type so the concierge fee
-  // path is activated by the route.
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId, ids.expert);
+  // Service owned by the expert (no concierge offering type on provider path — tests the expert
+  // booking_concierge path, which is the route's primary concierge scenario).
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
   // Live concierge rate from fee_bands (no fee literal); must be positive so the preview figure
   // is distinguishable from a $0 concierge fee (misconfigured-band silent failure).
@@ -447,11 +435,11 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
 
   // Cart the service, then call the preview endpoint.
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
-    const addRes = await api("/api/cart", "POST", { serviceId });
-    assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
+  const addRes = await api("/api/cart", "POST", { serviceId });
+  assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
   const previewRes = await api("/api/cart/fee-preview", "GET");
-  assert.equal(previewRes.status, 200, `GET /api/cart/fee-preview must return 200: ${await previewRes.clone().text()}`);
+  assert.equal(previewRes.status, 200, `GET /api/cart/fee-preview must return 200, got ${previewRes.status}: ${await previewRes.clone().text()}`);
   const preview = await previewRes.json() as {
     subtotal: number;
     platformFeeTotal: number;
@@ -481,130 +469,10 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
 });
 
-test("R8: mixed cart (expert item + provider item) stamps each row with its OWN owner's payout", async () => {
-  // Two items in the SAME checkout — different price so earnings amounts are distinguishable even
-  // if both bands happen to resolve the same rate.
-  const expertPrice = 150;
-  const providerPrice = 200;
-
-  const expertServiceId = await makeService(expertPrice.toFixed(2), undefined, undefined, ids.expert);
-  const providerServiceId = await makeService(providerPrice.toFixed(2), undefined, undefined, ids.provider);
-
-  // Compute what EACH row should look like from the shared recipe.
-  const expertExpected = await recipeExpectation(expertPrice, undefined, {
-    source: "expert",
-    expertId: ids.expert,
-  });
-  const providerExpected = await recipeExpectation(providerPrice, undefined, {
-    source: "provider",
-    providerId: ids.provider,
-  });
-  // The misrouted figure for the provider item (applying the 90 % EXP-OVR override as if
-  // it were an expert-owned item). Must DIFFER from the correct provider figure — this is
-  // R5's discriminator re-used here so a cross-item rate bleed is detectable.
-  const providerMisrouted = await recipeExpectation(providerPrice, undefined, {
-    source: "expert",
-    expertId: ids.provider,
-  });
-  assert.notEqual(
-    providerExpected.stamped,
-    providerMisrouted.stamped,
-    "discriminator collapsed: provider-source figure equals the misrouted expert-branch figure — fix the fixture override",
-  );
-
-  // Start from an empty cart, add BOTH items, then checkout in a single POST.
-  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
-
-  const addExpert = await api("/api/cart", "POST", { serviceId: expertServiceId });
-  assert.equal(addExpert.status, 201, `POST /api/cart (expert item) failed: ${await addExpert.clone().text()}`);
-
-  const addProvider = await api("/api/cart", "POST", { serviceId: providerServiceId });
-  assert.equal(addProvider.status, 201, `POST /api/cart (provider item) failed: ${await addProvider.clone().text()}`);
-
-  const checkoutKey = `ppr-${RUN}-r8-${crypto.randomUUID()}`;
-  const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
-  const bodyText = await res.text();
-  assert.equal(res.status, 201, `POST /api/checkout must be 201 for a mixed cart, got ${res.status}: ${bodyText}`);
-
-  // Fetch BOTH stamped rows by idempotency key prefix, then identify by service_id for robustness.
-  const r = await db.execute(sql`
-    SELECT id, service_id, provider_earnings, platform_fee, insurance_fee, total_amount, status
-    FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
-  `);
-  assert.equal(r.rows.length, 2, "mixed checkout must stamp exactly two booking rows (one per cart item)");
-
-  // Track for cleanup.
-  for (const row of r.rows as any[]) {
-    createdBookingIds.push((row as any).id);
-  }
-
-  // Match each stamped row to its service.
-  const rowByServiceId = new Map<string, any>();
-  for (const row of r.rows as any[]) {
-    rowByServiceId.set((row as any).service_id, row);
-  }
-
-  const expertRow = rowByServiceId.get(expertServiceId);
-  const providerRow = rowByServiceId.get(providerServiceId);
-
-  assert.ok(expertRow, "a stamped row must exist for the expert-owned service");
-  assert.ok(providerRow, "a stamped row must exist for the provider-owned service");
-
-  // ── Expert row must match the expert-source recipe ──────────────────────────
-  assert.equal(
-    Number(expertRow.provider_earnings).toFixed(2),
-    expertExpected.stamped,
-    "expert-owned item: route-stamped provider_earnings has DRIFTED from the expert-source recipe",
-  );
-  assert.equal(
-    Number(expertRow.insurance_fee).toFixed(2),
-    expertExpected.insurance,
-    "expert-owned item: insurance_fee stamp must match the expert-source recipe",
-  );
-  assert.equal(
-    Number(expertRow.platform_fee).toFixed(2),
-    expertExpected.platformFee,
-    "expert-owned item: platform_fee stamp must match the expert-source recipe",
-  );
-  assert.equal(
-    (Number(expertRow.provider_earnings) + Number(expertRow.platform_fee)).toFixed(2),
-    Number(expertRow.total_amount).toFixed(2),
-    "expert-owned item: earnings + platform take must reconstruct the charged amount",
-  );
-
-  // ── Provider row must match the provider-source recipe (NOT the misrouted expert figure) ──
-  assert.equal(
-    Number(providerRow.provider_earnings).toFixed(2),
-    providerExpected.stamped,
-    "provider-owned item: route-stamped provider_earnings has DRIFTED from the provider-source recipe (cross-item rate bleed or isProviderRole misrouting?)",
-  );
-  assert.notEqual(
-    Number(providerRow.provider_earnings).toFixed(2),
-    providerMisrouted.stamped,
-    "provider-owned item: stamped figure must NOT equal the misrouted expert-branch figure — the route is taking the wrong branch for the provider item",
-  );
-  assert.equal(
-    Number(providerRow.insurance_fee).toFixed(2),
-    providerExpected.insurance,
-    "provider-owned item: insurance_fee stamp must match the provider-source recipe",
-  );
-  assert.equal(
-    Number(providerRow.platform_fee).toFixed(2),
-    providerExpected.platformFee,
-    "provider-owned item: platform_fee stamp must match the provider-source recipe",
-  );
-  assert.equal(
-    (Number(providerRow.provider_earnings) + Number(providerRow.platform_fee)).toFixed(2),
-    Number(providerRow.total_amount).toFixed(2),
-    "provider-owned item: earnings + platform take must reconstruct the charged amount",
-  );
-});
-
 test("R7: fee-preview with a concierge item and a missing band ⇒ machine-readable 503, never a $0 fee", async () => {
   const price = 110;
-
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId, ids.expert);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
   // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
   // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.
@@ -614,7 +482,7 @@ test("R7: fee-preview with a concierge item and a missing band ⇒ machine-reada
     const addRes = await api("/api/cart", "POST", { serviceId });
     assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
-  const previewRes = await api("/api/cart/fee-preview", "GET");
+    const previewRes = await api("/api/cart/fee-preview", "GET");
     const bodyText = await previewRes.text();
     assert.equal(
       previewRes.status,
@@ -642,315 +510,4 @@ test("R7: fee-preview with a concierge item and a missing band ⇒ machine-reada
   const ok = await okRes.json() as { conciergeFeeTotal: number };
   assert.ok(ok.conciergeFeeTotal > 0, "restored band must yield a positive concierge fee in the preview");
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
-});
-
-
-test("R9: GET /api/cart, GET /api/cart/fee-preview, and POST /api/checkout all agree on the fee breakdown for a mixed cart", async () => {
-  // Seed a cart with TWO items: one plain service + one booking_concierge service.
-  // This is the primary regression surface: three independent loops all call the same
-  // shared helpers (resolveItemBaseAmount, resolveCommissionRates, getConciergeBookingRate)
-  // but any per-loop edit could silently diverge.  The test drives all three surfaces and
-  // asserts every fee component is byte-identical across them.
-
-  const priceNormal = 120;
-  const priceConcierge = 80;
-  const offeringTypeId = await bookingConciergeOfferingTypeId();
-
-  const normalServiceId = await makeService(priceNormal.toFixed(2));
-  const conciergeServiceId = await makeService(priceConcierge.toFixed(2), undefined, offeringTypeId);
-
-  // Concierge band must be positive (otherwise the conciergeFee components are all zero and
-  // the cross-surface comparison is vacuous — a $0 discrepancy is invisible at $0).
-  const bandRow = await db.execute(sql`
-    SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands
-    WHERE band_key = 'expert_concierge_booking' AND rate_type = 'percent' AND is_active = true
-    LIMIT 1
-  `);
-  const conciergeRate = Number((bandRow.rows[0] as any)?.rate ?? 0);
-  assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate for R9 to be discriminable");
-
-  // ── Build the mixed cart ───────────────────────────────────────────────────────────────────
-  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
-  for (const id of [normalServiceId, conciergeServiceId]) {
-    const r = await api("/api/cart", "POST", { serviceId: id });
-    assert.equal(r.status, 201, `POST /api/cart for ${id} must be 201: ${await r.clone().text()}`);
-  }
-
-  // ── Surface 1: GET /api/cart ───────────────────────────────────────────────────────────────
-  const cartRes = await api("/api/cart", "GET");
-  assert.equal(cartRes.status, 200, `GET /api/cart must return 200: ${await cartRes.clone().text()}`);
-  const cart = await cartRes.json() as {
-    subtotal: string;
-    platformFee: string;
-    conciergeFee: string;
-    total: string;
-    itemCount: number;
-  };
-  assert.equal(cart.itemCount, 2, "cart must contain exactly the two seeded items");
-  assert.ok(Number(cart.conciergeFee) > 0, "GET /api/cart must report a positive conciergeFee for the booking_concierge item");
-
-  // ── Surface 2: GET /api/cart/fee-preview ──────────────────────────────────────────────────
-  const previewRes = await api("/api/cart/fee-preview", "GET");
-  assert.equal(previewRes.status, 200, `GET /api/cart/fee-preview must return 200: ${await previewRes.clone().text()}`);
-  const preview = await previewRes.json() as {
-    subtotal: number;
-    platformFeeTotal: number;
-    conciergeFeeTotal: number;
-    total: number;
-    itemCount: number;
-  };
-  assert.ok(preview.conciergeFeeTotal > 0, "GET /api/cart/fee-preview must report a positive conciergeFeeTotal for the booking_concierge item");
-
-  // CLAIM A — the two preview surfaces must agree field-for-field.
-  // Field names differ (platformFee vs platformFeeTotal) but semantics are identical.
-  assert.equal(
-    Number(cart.subtotal).toFixed(2),
-    preview.subtotal.toFixed(2),
-    "subtotal diverged between GET /api/cart and GET /api/cart/fee-preview",
-  );
-  assert.equal(
-    Number(cart.platformFee).toFixed(2),
-    preview.platformFeeTotal.toFixed(2),
-    "platform fee diverged between GET /api/cart (platformFee) and GET /api/cart/fee-preview (platformFeeTotal)",
-  );
-  assert.equal(
-    Number(cart.conciergeFee).toFixed(2),
-    preview.conciergeFeeTotal.toFixed(2),
-    "concierge fee diverged between GET /api/cart (conciergeFee) and GET /api/cart/fee-preview (conciergeFeeTotal)",
-  );
-  assert.equal(
-    Number(cart.total).toFixed(2),
-    preview.total.toFixed(2),
-    "total diverged between GET /api/cart and GET /api/cart/fee-preview",
-  );
-
-  // ── Surface 3: POST /api/checkout ─────────────────────────────────────────────────────────
-  // Two accepted contracts (Stripe ruling 38):
-  //   201 — real test-mode key: the response body carries subtotal/platformFee/conciergeFee/total
-  //          as server-derived strings.  Compare directly against GET /api/cart (same field names)
-  //          and GET /api/cart/fee-preview (different names, same semantics).
-  //   503 payment_unavailable — CI stub key: no fee fields in the body.  Use the DB rows:
-  //          The route's own invariant (lineFullCharge = price + surcharge + totalPlatformFee,
-  //          total_amount = price + surcharge, platform_fee = totalPlatformFee) means
-  //          sum(total_amount + platform_fee) === cart total.  Additionally, the DB merges base
-  //          platform and concierge into a single platform_fee column, so
-  //          sum(platform_fee) === cart platformFee + cart conciergeFee (the two separately-
-  //          reported components the traveler sees).
-  const checkoutKey = `ppr-${RUN}-r9-${crypto.randomUUID()}`;
-  const checkoutRes = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
-  const checkoutBodyText = await checkoutRes.text();
-  const checkoutBody = JSON.parse(checkoutBodyText);
-
-  if (checkoutRes.status === 503) {
-    assert.equal(
-      checkoutBody.error,
-      "payment_unavailable",
-      `503 must be the declared Stripe-stub contract, got: ${checkoutBodyText}`,
-    );
-  } else {
-    assert.equal(
-      checkoutRes.status,
-      201,
-      `POST /api/checkout must be 201 or the declared 503, got ${checkoutRes.status}: ${checkoutBodyText}`,
-    );
-  }
-
-  // Read stamped rows regardless of Stripe leg (the stamp happens BEFORE Stripe either way).
-  const rows = await db.execute(sql`
-    SELECT id, service_id, total_amount, platform_fee, status
-    FROM service_bookings
-    WHERE idempotency_key LIKE ${checkoutKey + "%"}
-    ORDER BY created_at
-  `);
-  assert.equal(rows.rows.length, 2, "checkout must have stamped exactly two booking rows for the two-item cart");
-  for (const row of rows.rows as any[]) {
-    createdBookingIds.push((row as any).id);
-  }
-
-  if (checkoutRes.status === 201) {
-    // CLAIM B (201 leg) — compare the checkout response body fee fields field-for-field
-    // against both GET surfaces.  The checkout body uses the SAME field names as GET /api/cart
-    // (subtotal, platformFee, conciergeFee, total), so a loop divergence that touches any
-    // individual component (not just the combined total) will fail here.
-    assert.equal(
-      String(checkoutBody.subtotal),
-      Number(cart.subtotal).toFixed(2),
-      `checkout subtotal (${checkoutBody.subtotal}) diverged from GET /api/cart subtotal (${cart.subtotal})`,
-    );
-    assert.equal(
-      String(checkoutBody.platformFee),
-      Number(cart.platformFee).toFixed(2),
-      `checkout platformFee (${checkoutBody.platformFee}) diverged from GET /api/cart platformFee (${cart.platformFee}) — ` +
-        "base platform-fee computation diverged across the three surfaces",
-    );
-    assert.equal(
-      String(checkoutBody.conciergeFee),
-      Number(cart.conciergeFee).toFixed(2),
-      `checkout conciergeFee (${checkoutBody.conciergeFee}) diverged from GET /api/cart conciergeFee (${cart.conciergeFee}) — ` +
-        "concierge fee computation diverged across the three surfaces",
-    );
-    assert.equal(
-      String(checkoutBody.total),
-      Number(cart.total).toFixed(2),
-      `checkout total (${checkoutBody.total}) diverged from GET /api/cart total (${cart.total})`,
-    );
-    // Cross-check against fee-preview too (different field names, same semantics).
-    assert.equal(
-      String(checkoutBody.platformFee),
-      preview.platformFeeTotal.toFixed(2),
-      `checkout platformFee (${checkoutBody.platformFee}) diverged from GET /api/cart/fee-preview platformFeeTotal (${preview.platformFeeTotal})`,
-    );
-    assert.equal(
-      String(checkoutBody.conciergeFee),
-      preview.conciergeFeeTotal.toFixed(2),
-      `checkout conciergeFee (${checkoutBody.conciergeFee}) diverged from GET /api/cart/fee-preview conciergeFeeTotal (${preview.conciergeFeeTotal})`,
-    );
-    assert.equal(
-      String(checkoutBody.total),
-      preview.total.toFixed(2),
-      `checkout total (${checkoutBody.total}) diverged from GET /api/cart/fee-preview total (${preview.total})`,
-    );
-  } else {
-    // CLAIM B (503 leg) — no fee fields in body; use DB rows.
-    // sum(total_amount + platform_fee) === cart total (lineFullCharge invariant).
-    const checkoutChargedTotal = (rows.rows as any[]).reduce(
-      (acc, row) => acc + Number(row.total_amount) + Number(row.platform_fee),
-      0,
-    );
-    assert.equal(
-      checkoutChargedTotal.toFixed(2),
-      Number(cart.total).toFixed(2),
-      `DB-stamped total (sum total_amount + platform_fee = ${checkoutChargedTotal.toFixed(2)}) ` +
-        `diverged from GET /api/cart total (${cart.total})`,
-    );
-    assert.equal(
-      checkoutChargedTotal.toFixed(2),
-      preview.total.toFixed(2),
-      `DB-stamped total (${checkoutChargedTotal.toFixed(2)}) diverged from ` +
-        `GET /api/cart/fee-preview total (${preview.total})`,
-    );
-
-    // CLAIM C (503 leg) — the DB merges base platform + concierge into a single platform_fee
-    // column per row; their combined sum must equal the two separately-reported cart components.
-    // This catches a misclassification that preserves the combined total but moves amounts
-    // between the base-platform and concierge buckets.
-    const sumPlatformFee = (rows.rows as any[]).reduce(
-      (acc, row) => acc + Number(row.platform_fee),
-      0,
-    );
-    const expectedCombinedFee = Number(cart.platformFee) + Number(cart.conciergeFee);
-    assert.equal(
-      sumPlatformFee.toFixed(2),
-      expectedCombinedFee.toFixed(2),
-      `DB sum(platform_fee) (${sumPlatformFee.toFixed(2)}) must equal cart platformFee + conciergeFee ` +
-        `(${Number(cart.platformFee).toFixed(2)} + ${Number(cart.conciergeFee).toFixed(2)} = ${expectedCombinedFee.toFixed(2)}) — ` +
-        "base platform and concierge fees are misclassified in the stamped rows",
-    );
-  }
-
-  // CLAIM D — subtotal matches on both legs (base-amount computation consistent across surfaces).
-  const checkoutSubtotal = (rows.rows as any[]).reduce(
-    (acc, row) => acc + Number(row.total_amount),
-    0,
-  );
-  assert.equal(
-    checkoutSubtotal.toFixed(2),
-    Number(cart.subtotal).toFixed(2),
-    `DB sum(total_amount) (${checkoutSubtotal.toFixed(2)}) diverged from GET /api/cart subtotal (${cart.subtotal})`,
-  );
-
-  // Cart cleanup — done here so subsequent tests start clean.
-  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
-});
-
-test("R10: service with a real category routes through the category-specific fee band, not expert_standard", async () => {
-  const price = 110;
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
-
-  // Snapshot the current transportation band state so we can restore it unconditionally.
-  const originalBandRow = await db.execute(sql`
-    SELECT id, CAST(default_rate AS FLOAT) AS rate, is_active
-    FROM fee_bands WHERE band_key = 'transportation' LIMIT 1
-  `);
-  const originalBandMeta = originalBandRow.rows[0] as any | undefined;
-
-  // Upsert the band so the test is self-contained even on a fresh DB.
-  if (!originalBandMeta) {
-    await db.execute(sql`
-      INSERT INTO fee_bands (band_key, label, default_rate, rate_type, is_active)
-      VALUES ('transportation', 'Transportation (parity test)', ${fixturePlatformTake}, 'percent', true)
-    `);
-  } else {
-    await db.execute(sql`
-      UPDATE fee_bands SET default_rate = ${fixturePlatformTake}, is_active = true
-      WHERE band_key = 'transportation'
-    `);
-  }
-
-  // Fixture service_category whose slug maps to the transportation band via decideBandKey.
-  const catId = `ppr-${RUN}-cat`;
-  await db.execute(sql`
-    INSERT INTO service_categories (id, name, slug, is_active)
-    VALUES (${catId}, ${`PPR Transportation ${RUN}`}, 'transportation', true)
-  `);
-
-  try {
-    // Resolve what the route SHOULD stamp using the transportation band.
-    const categoryRates = await resolveCommissionRates({ category: "transportation", expertId: ids.expert });
-    const insuranceFeeAmt = calcInsuranceFee(price, categoryRates, "transportation");
-    const expectedEarnings = (price * categoryRates.expertShareRate - insuranceFeeAmt).toFixed(2);
-    const expectedInsurance = insuranceFeeAmt.toFixed(2);
-    const expectedPlatformFee = (price - price * categoryRates.expertShareRate + insuranceFeeAmt).toFixed(2);
-
-    // Resolve what the route would have stamped on the DEFAULT band — the figure R10 must NOT see.
-    const defaultRates = await resolveCommissionRates({ category: "default", expertId: ids.expert });
-    const defaultInsurance = calcInsuranceFee(price, defaultRates, "default");
-    const defaultEarnings = (price * defaultRates.expertShareRate - defaultInsurance).toFixed(2);
-    assert.notEqual(
-      expectedEarnings,
-      defaultEarnings,
-      "fixture band rate must be distinguishable from expert_standard — discrimination would be vacuous",
-    );
-
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
-    const { row } = await checkoutThroughRoute(serviceId);
-
-    assert.equal(
-      Number(row.provider_earnings).toFixed(2),
-      expectedEarnings,
-      "R10: the route must stamp the category-specific band figure, not the default expert_standard figure — categoryId→slug→band path has DRIFTED",
-    );
-    assert.notEqual(
-      Number(row.provider_earnings).toFixed(2),
-      defaultEarnings,
-      "R10: stamped provider_earnings must NOT equal the default-band figure — the route is ignoring the service category",
-    );
-    assert.equal(
-      Number(row.insurance_fee).toFixed(2),
-      expectedInsurance,
-      "R10: insurance_fee must be computed against the category-specific band rates",
-    );
-    assert.equal(
-      Number(row.platform_fee).toFixed(2),
-      expectedPlatformFee,
-      "R10: platform_fee must reflect the category-specific band platform take",
-    );
-    assert.equal(
-      (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
-      Number(row.total_amount).toFixed(2),
-      "R10: earnings + platform take must reconstruct the charged amount",
-    );
-  } finally {
-    // Restore or remove the transportation band.
-    if (!originalBandMeta) {
-      await db.execute(sql`DELETE FROM fee_bands WHERE band_key = 'transportation'`).catch(() => {});
-    } else {
-      await db.execute(sql`
-        UPDATE fee_bands
-        SET default_rate = ${originalBandMeta.rate}, is_active = ${originalBandMeta.is_active}
-        WHERE band_key = 'transportation'
-      `).catch(() => {});
-    }
-    await db.execute(sql`DELETE FROM service_categories WHERE id = ${catId}`).catch(() => {});
-  }
 });

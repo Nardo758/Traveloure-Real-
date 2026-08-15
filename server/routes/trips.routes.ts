@@ -2867,7 +2867,6 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
           base.setHours(h, m, 0, 0);
           return base.toISOString();
         } catch {
-          // Malformed date/time input — keep the original ISO string unchanged.
           return originalISO;
         }
       };

@@ -106,8 +106,8 @@ export function CityCard(props: CityCardProps) {
       <div className="relative h-40 w-full overflow-hidden group">
         {imageUrl ? (
           <img
-            src={optimizeUnsplashUrl(imageUrl)}
-            {...unsplashResponsiveProps(imageUrl)}
+            src={optimizeUnsplashUrl(imageUrl, { q: 60 })}
+            {...unsplashResponsiveProps(imageUrl, { q: 60 })}
             loading="lazy"
             alt={cityName}
             className="w-full h-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-105"

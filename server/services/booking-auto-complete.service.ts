@@ -37,7 +37,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
-import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — grace windows are day-scale
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000; // after startup settles (and after the release job's first pass)
@@ -109,8 +108,7 @@ class BookingAutoCompleteService {
       let cursor: { confirmedAt: string | null; id: string } | null = null;
       while (lookups < MAX_PI_LOOKUPS_PER_PASS) {
         const result = await db.execute(sql`
-          SELECT sb.id, sb.stripe_payment_intent_id, sb.confirmed_at,
-                 sb.traveler_id, sb.provider_id
+          SELECT sb.id, sb.stripe_payment_intent_id, sb.confirmed_at
           FROM service_bookings sb
           LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
           WHERE sb.status = 'confirmed'
@@ -125,7 +123,7 @@ class BookingAutoCompleteService {
           ORDER BY COALESCE(sb.confirmed_at, 'epoch'::timestamp) ASC, sb.id ASC
           LIMIT ${PAGE_SIZE}
         `);
-        const rows = (result.rows ?? []) as Array<{ id: string; stripe_payment_intent_id: string; confirmed_at: string | null; traveler_id: string | null; provider_id: string | null }>;
+        const rows = (result.rows ?? []) as Array<{ id: string; stripe_payment_intent_id: string; confirmed_at: string | null }>;
         if (rows.length === 0) break;
 
         for (const row of rows) {
@@ -151,40 +149,7 @@ class BookingAutoCompleteService {
             `);
             continue;
           }
-          // Build idempotent notifications for earner and traveler so money
-          // movement is never silent. Each notification is deduped by its own
-          // key (ON CONFLICT DO NOTHING in the same transaction as the flip),
-          // so a crash-retry never sends a duplicate.
-          const earningsAvailableAt = availableAtFor("booking", now);
-          const holdDays = holdWindowDays("booking");
-          const availableDateStr = earningsAvailableAt.toLocaleDateString("en-US", {
-            month: "short", day: "numeric", year: "numeric",
-          });
-          const notifyList = [];
-          if (row.provider_id) {
-            notifyList.push({
-              userId: row.provider_id,
-              type: "booking_auto_completed_earner",
-              title: "Your earnings are on the way",
-              message: `Your booking has been marked complete and your earnings are now held in escrow. They will be available to withdraw on ${availableDateStr}.`,
-              data: { bookingId: row.id, availableAt: earningsAvailableAt.toISOString() },
-              dedupeKey: `booking:${row.id}:auto_completed:earner`,
-            });
-          }
-          if (row.traveler_id) {
-            notifyList.push({
-              userId: row.traveler_id,
-              type: "booking_auto_completed_traveler",
-              title: "Booking marked complete",
-              message: `Your booking has been automatically marked complete. You have ${holdDays} day${holdDays === 1 ? "" : "s"} to raise a dispute if there is an issue.`,
-              data: { bookingId: row.id, holdWindowDays: holdDays },
-              dedupeKey: `booking:${row.id}:auto_completed:traveler`,
-            });
-          }
-          const updated = await storage.updateServiceBookingStatus(
-            row.id, "completed", undefined, ["confirmed"],
-            notifyList.length > 0 ? notifyList : undefined,
-          );
+          const updated = await storage.updateServiceBookingStatus(row.id, "completed", undefined, ["confirmed"]);
           if (updated) completed++;
         }
         cursor = { confirmedAt: rows[rows.length - 1].confirmed_at, id: rows[rows.length - 1].id };

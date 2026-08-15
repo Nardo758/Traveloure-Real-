@@ -17,7 +17,7 @@ import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
-  Users, Route, CalendarClock, Circle, ChevronRight, Pause, Play,
+  Users, Route, CalendarClock, Circle, ChevronRight,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -148,7 +148,6 @@ interface ServiceFormData {
   categoryId: string;
   subcategoryId: string;
   description: string;
-  shortDescription: string;
   basePrice: number;
   priceType: "Fixed" | "Range" | "Per-person" | "Hourly" | "Package tiers" | "Per-event";
   pricingTiers: PricingTier[];
@@ -330,7 +329,6 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     categoryId: "",
     subcategoryId: "",
     description: "",
-    shortDescription: "",
     basePrice: 0,
     priceType: "Fixed",
     pricingTiers: [],
@@ -439,7 +437,6 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     categoryId: s.categoryId || "",
     subcategoryId: s.subcategoryId || "",
     description: s.description || "",
-    shortDescription: s.shortDescription || "",
     basePrice: Number(s.price || 0),
     priceType: mapPriceTypeFromBackend(s.priceType),
     pricingTiers: Array.isArray(s.pricingTiers) ? s.pricingTiers : [],
@@ -644,7 +641,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // URL box, and what satisfies the publish gate without the owner having to paste anything.
   const [deliverableUploading, setDeliverableUploading] = useState(false);
   const [deliverableUploaded, setDeliverableUploaded] = useState(false);
-  const [shortDescSuggesting, setShortDescSuggesting] = useState(false);
   // L27-P3 (§13): only an explicit Confirm/Remove in the picker sends `locationPoint`.
   // Untouched ⇒ the key is omitted entirely ⇒ the server leaves latitude/longitude/
   // location_precision exactly as they are, so an unrelated edit can never turn a
@@ -833,15 +829,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     setCurrentStep(1);
   };
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
-
-  // Task 1220: local mirror of the server-side service status (active/paused/draft).
-  // Initialised once from existingService and updated only by the toggle mutation,
-  // so a successful Pause/Activate never re-triggers the hydration effect
-  // (useEffect([existingService, role]) → mapServiceToForm) and never discards
-  // unsaved form edits.
-  const [serviceStatus, setServiceStatus] = useState<string | null>(null);
-  const serviceStatusSynced = useRef(false);
-
   useEffect(() => {
     const st = initialAutosave.current?.currentStep;
     if (!isEditMode && typeof st === "number" && st >= 1) setCurrentStep(st);
@@ -1082,16 +1069,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [existingService, role]);
 
-  // Task 1220: one-time sync of the local status mirror from the loaded row.
-  // Runs only once (guarded by serviceStatusSynced) so subsequent cache updates
-  // caused by unrelated invalidations don't clobber a toggle the expert just made.
-  useEffect(() => {
-    if (existingService && !serviceStatusSynced.current) {
-      serviceStatusSynced.current = true;
-      setServiceStatus(existingService.status ?? null);
-    }
-  }, [existingService]);
-
   // ── A1: `?step=<key>` deep link ────────────────────────────────────────────────────────────
   // The checklist rows, Catalog's map preview and the pin-health rail all need to re-enter the
   // flow AT a named step ("fix this listing's location" = the Logistics step), and a step NUMBER
@@ -1281,33 +1258,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Task 1220: activate/pause toggle — PATCH /api/expert/services/:id/status.
-  // Only callable in edit mode when the service is approved; the gate below enforces that.
-  const toggleExpertStatusMutation = useMutation({
-    mutationFn: async (newStatus: "active" | "paused") => {
-      return apiRequest("PATCH", `/api/expert/services/${id}/status`, { status: newStatus });
-    },
-    onSuccess: (_, newStatus) => {
-      // Update the local status mirror only — do NOT invalidate the per-service
-      // cache key (["/api/provider/services", id]).  That invalidation would
-      // trigger a refetch → a new existingService reference → the hydration
-      // useEffect([existingService, role]) fires → mapServiceToForm replaces all
-      // formData, discarding any unsaved field edits the expert made before
-      // clicking Pause/Activate.  The expert services list (the Catalog table) is
-      // invalidated separately so it reflects the new status on next visit.
-      setServiceStatus(newStatus);
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
-      toast({ title: "Service status updated" });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Failed to update status",
-        description: err?.message ?? "Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const createMutation = useMutation({
     mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
       // In-person / hybrid services must tell the traveler WHERE to meet before they go live.
@@ -1370,7 +1320,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         categoryId: formData.categoryId || undefined,
         subcategoryId: formData.subcategoryId || undefined,
         description: formData.description,
-        shortDescription: formData.shortDescription.trim() || null,
         price: priceScalar,
         priceType: mapPriceTypeToBackend(formData.priceType),
         pricingTiers: pricingTiersPayload,
@@ -1674,32 +1623,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       }
 
       if (isEditMode) {
-        // Ruling 112 Q8: if identity-changing fields (name, category, delivery method, etc.)
-        // were staged for admin re-review on an approved listing, tell the expert so they
-        // don't wonder why the listing looks unchanged on the live catalog.
-        const stagedKeys: string[] = service?.editReview?.stagedKeys ?? [];
-        if (stagedKeys.length > 0) {
-          const STAGED_KEY_LABELS: Record<string, string> = {
-            serviceName: "service name",
-            categoryId: "category",
-            subcategoryId: "subcategory",
-            deliveryMethod: "delivery method",
-            expertOfferingTypeId: "offering type",
-            serviceOfferingTypeId: "offering type",
-            offeringTypeKey: "offering type",
-            productShape: "product shape",
-          };
-          const changedFields = stagedKeys
-            .map((k) => STAGED_KEY_LABELS[k] ?? k)
-            .filter((v, i, a) => a.indexOf(v) === i) // deduplicate (e.g. two offering-type keys)
-            .join(", ");
-          toast({
-            title: "Changes pending re-approval",
-            description: `Your update to ${changedFields} needs admin review before going live. The rest of your edits are saved and visible immediately.`,
-          });
-        } else {
-          toast({ title: "Service updated" });
-        }
+        toast({ title: "Service updated" });
         navigate(`/${role}/services`);
         return;
       }
@@ -3089,7 +3013,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 )}
                 {formData.pricingTiers.map((tier, idx) => (
                   <div key={idx} className="flex items-start gap-2 p-3 bg-secondary/40 rounded-lg border" data-testid={`tier-row-${idx}`}>
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="flex-1 grid grid-cols-2 gap-2">
                       <Input
                         placeholder="Tier name (e.g. Basic)"
                         value={tier.label}
@@ -3168,7 +3092,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     data-testid="input-event-rate"
                   />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="guestMin">Min guests (optional)</Label>
                     <Input
@@ -3238,79 +3162,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               rows={4}
               className="mt-2"
             />
-          </div>
-
-          {/* Short description — shown on browse cards in place of the full description.
-              Max 150 chars so cards never get awkwardly truncated. */}
-          <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="shortDescription">
-                Short Description{" "}
-                <span className="text-muted-foreground font-normal">(shown on browse cards)</span>
-              </Label>
-              {formData.description.trim() && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 px-2"
-                  data-testid="btn-suggest-short-description"
-                  disabled={shortDescSuggesting}
-                  onClick={async () => {
-                    setShortDescSuggesting(true);
-                    try {
-                      const res = await apiRequest("POST", "/api/ai/suggest-short-description", {
-                        description: formData.description.trim(),
-                      });
-                      const data = await res.json();
-                      if (data.suggestion) {
-                        set("shortDescription", data.suggestion.slice(0, 150));
-                      }
-                    } catch {
-                      toast({ title: "Couldn't generate a suggestion", variant: "destructive" });
-                    } finally {
-                      setShortDescSuggesting(false);
-                    }
-                  }}
-                >
-                  {shortDescSuggesting ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      Suggesting…
-                    </>
-                  ) : formData.shortDescription ? (
-                    "Regenerate"
-                  ) : (
-                    "Suggest short description"
-                  )}
-                </Button>
-              )}
-            </div>
-            <div className="relative mt-2">
-              <Input
-                id="shortDescription"
-                value={formData.shortDescription}
-                onChange={(e) => {
-                  const val = e.target.value.slice(0, 150);
-                  set("shortDescription", val);
-                }}
-                placeholder="One compelling sentence travelers see on the browse card…"
-                maxLength={150}
-                data-testid="input-short-description"
-              />
-              <span
-                className={`absolute right-2 top-1/2 -translate-y-1/2 text-xs ${
-                  formData.shortDescription.length >= 140
-                    ? "text-destructive"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {formData.shortDescription.length}/150
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Leave blank to fall back to the full description on cards.
-            </p>
           </div>
 
           {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
@@ -4412,6 +4263,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       )}
 
 
+
       {onStep("review") && (<>
 
       {/* ── Booking Terms ── */}
@@ -4737,66 +4589,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <div>
               <Label className="text-sm font-medium">Current Status</Label>
               <div className="mt-2">
-                <Badge
-                  variant={
-                    formData.approvalStatus === "approved" || formData.approvalStatus === "submitted"
-                      ? "default"
-                      : "secondary"
-                  }
-                >
-                  {formData.approvalStatus === "draft"
-                    ? "Draft (Not submitted)"
-                    : formData.approvalStatus === "approved"
-                    ? "Approved"
-                    : formData.approvalStatus === "rejected"
-                    ? "Changes requested"
-                    : "Submitted for review"}
+                <Badge variant={formData.approvalStatus === "submitted" ? "default" : "secondary"}>
+                  {formData.approvalStatus === "draft" ? "Draft (Not submitted)" : "Submitted for review"}
                 </Badge>
               </div>
             </div>
-
-            {/* Task 1220: activate/pause toggle — only shown when the service has been
-                approved; draft/submitted services go through the normal review flow and
-                have no actionable status to toggle from within the form. */}
-            {isEditMode && existingService?.approvalStatus === "approved" && (
-              <div className="border-t pt-4">
-                <Label className="text-sm font-medium">Listing Visibility</Label>
-                <div className="mt-2 flex items-center gap-3">
-                  <Badge
-                    variant={serviceStatus === "active" ? "default" : "secondary"}
-                    data-testid="badge-expert-service-visibility"
-                  >
-                    {serviceStatus === "active" ? "Live" : "Paused"}
-                  </Badge>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={toggleExpertStatusMutation.isPending}
-                    onClick={() =>
-                      toggleExpertStatusMutation.mutate(
-                        serviceStatus === "active" ? "paused" : "active"
-                      )
-                    }
-                    data-testid="button-expert-toggle-service-status"
-                  >
-                    {toggleExpertStatusMutation.isPending ? (
-                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    ) : serviceStatus === "active" ? (
-                      <Pause className="w-3.5 h-3.5 mr-1.5" />
-                    ) : (
-                      <Play className="w-3.5 h-3.5 mr-1.5" />
-                    )}
-                    {serviceStatus === "active" ? "Pause listing" : "Activate listing"}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {serviceStatus === "active"
-                    ? "Pausing hides this service from search and new bookings."
-                    : "Activating makes this service visible to travellers again."}
-                </p>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}

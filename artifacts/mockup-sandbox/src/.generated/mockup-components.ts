@@ -5,6 +5,5 @@ export const modules: ModuleMap = {
   "./components/mockups/discover-date/Gap6.tsx": () => import("../components/mockups/discover-date/Gap6.tsx"),
   "./components/mockups/discover-date/Gap7.tsx": () => import("../components/mockups/discover-date/Gap7.tsx"),
   "./components/mockups/discover-date/Reference.tsx": () => import("../components/mockups/discover-date/Reference.tsx"),
-  "./components/mockups/expert-workspace/Workspace.tsx": () => import("../components/mockups/expert-workspace/Workspace.tsx"),
-  "./components/mockups/instagram-banner/InstagramBanner.tsx": () => import("../components/mockups/instagram-banner/InstagramBanner.tsx")
+  "./components/mockups/expert-workspace/Workspace.tsx": () => import("../components/mockups/expert-workspace/Workspace.tsx")
 };

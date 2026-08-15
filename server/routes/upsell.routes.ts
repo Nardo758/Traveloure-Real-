@@ -992,7 +992,6 @@ router.get("/api/feed-composition-config", async (_req, res) => {
     const config = await getFeedCompositionConfig();
     res.json(config);
   } catch {
-    // Best-effort config load — serve safe defaults so the feed always renders.
     res.json(FEED_CONFIG_DEFAULTS);
   }
 });

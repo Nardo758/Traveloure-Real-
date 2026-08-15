@@ -32,7 +32,6 @@ import { adminDigestScheduler } from "./services/admin-digest-scheduler.service"
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
 import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
 import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
-import { fxRateRefreshScheduler } from "./services/fx-rate-refresh.service";
 import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
@@ -586,9 +585,6 @@ if (process.env.NODE_ENV === "production") {
     stripeConnectReminderScheduler.start();
     logger.info("Stripe Connect reminder scheduler started");
 
-    fxRateRefreshScheduler.start();
-    logger.info("FX rate refresh scheduler started");
-
     // R-F: T-48h Trip Card auto-handover nudge (Console Realign, docs/briefs/CONSOLE_REALIGN_BRIEF.md).
     tripCardHandoverScheduler.start();
     logger.info("Trip Card handover scheduler started");
@@ -612,13 +608,9 @@ if (process.env.NODE_ENV === "production") {
     // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
     // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
     setTimeout(() => {
-      runAvailabilityMaterializationSweep().catch((err) =>
-        logger.error({ err }, "[availability-sweep] first pass failed"),
-      );
+      void runAvailabilityMaterializationSweep();
       setInterval(() => {
-        runAvailabilityMaterializationSweep().catch((err) =>
-          logger.error({ err }, "[availability-sweep] scheduled pass failed"),
-        );
+        void runAvailabilityMaterializationSweep();
       }, 24 * 60 * 60 * 1000);
     }, 90 * 60 * 1000);
 
@@ -671,7 +663,7 @@ if (process.env.NODE_ENV === "production") {
       pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
         .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
         .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-    }).catch((err: any) => logger.error({ err }, "[startup:admin-promotion] dynamic db import failed"));
+    }).catch(() => {});
 
     runDatabaseSeeding()
       .then(() => {

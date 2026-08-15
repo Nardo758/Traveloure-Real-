@@ -187,8 +187,8 @@ class LeadRoutingService {
       const reason = ctx.requireCanBookOnBehalf
         ? 'No approved experts with booking-on-behalf permission found'
         : 'No approved experts found';
-      this.logRoutingDecision(ctx, [], null, reason).catch(err => console.error('[lead-routing] logRoutingDecision rejected:', err));
-      this.notifyNullAssign(ctx, 'no_approved_experts').catch(err => console.error('[lead-routing] notifyNullAssign rejected:', err));
+      void this.logRoutingDecision(ctx, [], null, reason);
+      void this.notifyNullAssign(ctx, 'no_approved_experts');
       return { assignedExpertId: null, scores: [], reason };
     }
 
@@ -196,13 +196,13 @@ class LeadRoutingService {
 
     if (top.totalScore === 0) {
       const reason = 'No expert matched the destination or specialty';
-      this.logRoutingDecision(ctx, scores, null, reason).catch(err => console.error('[lead-routing] logRoutingDecision rejected:', err));
-      this.notifyNullAssign(ctx, 'zero_score').catch(err => console.error('[lead-routing] notifyNullAssign rejected:', err));
+      void this.logRoutingDecision(ctx, scores, null, reason);
+      void this.notifyNullAssign(ctx, 'zero_score');
       return { assignedExpertId: null, scores, reason };
     }
 
     const reason = `Assigned to ${top.expertName} (score: ${top.totalScore}/100 — dest: ${top.destinationScore}, specialty: ${top.specialtyScore}, availability: ${top.availabilityScore}, response: ${top.responseRateScore})`;
-    this.logRoutingDecision(ctx, scores, top.expertId, reason).catch(err => console.error('[lead-routing] logRoutingDecision rejected:', err));
+    void this.logRoutingDecision(ctx, scores, top.expertId, reason);
 
     return {
       assignedExpertId: top.expertId,

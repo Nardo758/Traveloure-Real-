@@ -138,24 +138,13 @@ export function resolveNotificationLink(n: ApiNotification): ResolvedNotificatio
         ? `/plans/${n.data.tripId}?item=${itemId}`
         : `/plans/${n.data.tripId}`
       : n.data.workspacePath || `/expert/workspace/${n.data.tripId}`;
-    const isWorkspaceLink =
-      !isTravelerTripLink &&
-      !n.data.workspacePath?.startsWith("/itinerary-view/") &&
-      href.startsWith("/expert/workspace/");
     return {
       href,
       label:
         isTravelerTripLink || n.data.workspacePath?.startsWith("/itinerary-view/")
           ? "View Itinerary"
-          : isWorkspaceLink
-            ? "Open Workspace"
-            : "Open",
+          : "Open",
     };
-  }
-  // workspacePath without tripId: provider booking-request notifications route here
-  // (/provider/bookings) because /expert/workspace is expert-role-gated on the client.
-  if (n.data?.workspacePath && !n.data.tripId) {
-    return { href: n.data.workspacePath, label: "View Booking" };
   }
   if (n.type === "message_received") {
     return { href: n.data?.clientId ? `/chat?clientId=${n.data.clientId}` : "/chat", label: "Open Chat" };

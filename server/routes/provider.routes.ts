@@ -13,7 +13,6 @@ import { deriveCityPatch } from "../utils/service-city";
 // S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the read path
 // (content.routes.ts) so write-time and read-time can never resolve it two different ways.
 import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
-import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -251,7 +250,7 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
     // §14: acting user from the session only — never from the body.
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
-    const body = sanitizeStringFields(bundleCreateSchema.parse(req.body) as Record<string, unknown>) as ReturnType<typeof bundleCreateSchema.parse>;
+    const body = bundleCreateSchema.parse(req.body);
     const components = await validateBundleComponents(userId, body.componentServiceIds, res);
     if (!components) return;
 
@@ -352,7 +351,7 @@ router.patch("/api/provider/bundles/:id", isAuthenticated, async (req, res) => {
     if (!existing || existing.userId !== userId || existing.productShape !== "bundle") {
       return res.status(404).json({ message: "Bundle not found or not owned by you" });
     }
-    const body = sanitizeStringFields(bundlePatchSchema.parse(req.body) as Record<string, unknown>) as ReturnType<typeof bundlePatchSchema.parse>;
+    const body = bundlePatchSchema.parse(req.body);
 
     let components: ProviderServiceRow[] | null = null;
     let componentSetChanged = false;
@@ -558,12 +557,7 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
-    const rawBody = sanitizeStringFields(propertyCreateSchema.parse(req.body) as Record<string, unknown>) as ReturnType<typeof propertyCreateSchema.parse>;
-    // Sanitize nested room text too — sanitizeStringFields is shallow, so rooms array needs a map.
-    const body = {
-      ...rawBody,
-      rooms: rawBody.rooms.map((r) => sanitizeStringFields(r as Record<string, unknown>) as typeof r),
-    };
+    const body = propertyCreateSchema.parse(req.body);
     // Only a confirmed point writes coordinates; precision is server-derived (§13).
     const coords = body.locationPoint
       ? {
@@ -699,7 +693,7 @@ router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) =
     if (!existing || existing.userId !== userId || existing.productShape !== "property") {
       return res.status(404).json({ message: "Property not found or not owned by you" });
     }
-    const body = sanitizeStringFields(propertyPatchSchema.parse(req.body) as Record<string, unknown>) as ReturnType<typeof propertyPatchSchema.parse>;
+    const body = propertyPatchSchema.parse(req.body);
     // Listing-detail fields only — no price lives on the property row itself and room-set
     // changes go through the dedicated room endpoints below (each with its own A3 trigger).
     const patch: Record<string, any> = { updatedAt: new Date() };
@@ -764,7 +758,7 @@ router.post("/api/provider/properties/:id/rooms", isAuthenticated, async (req, r
     if (!property || property.userId !== userId || property.productShape !== "property") {
       return res.status(404).json({ message: "Property not found or not owned by you" });
     }
-    const body = sanitizeStringFields(roomInputSchema.parse(req.body) as Record<string, unknown>) as ReturnType<typeof roomInputSchema.parse>;
+    const body = roomInputSchema.parse(req.body);
 
     // A3: adding a room type to an APPROVED property changes what the admin vetted (the room
     // roster) — re-enter review, mirroring the bundle component-set-changed rule.
@@ -829,7 +823,7 @@ router.patch("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
     if (!existing || existing.userId !== userId || existing.productShape !== "property_room") {
       return res.status(404).json({ message: "Room not found or not owned by you" });
     }
-    const body = sanitizeStringFields(roomPatchSchema.parse(req.body) as Record<string, unknown>) as ReturnType<typeof roomPatchSchema.parse>;
+    const body = roomPatchSchema.parse(req.body);
 
     const patch: Record<string, any> = { updatedAt: new Date() };
     if (body.roomName !== undefined) patch.serviceName = body.roomName;

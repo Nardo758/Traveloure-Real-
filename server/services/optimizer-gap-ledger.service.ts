@@ -89,7 +89,6 @@ export async function recordGapFills(inputs: GapFillInput[]): Promise<{ written:
       try {
         rows.push(insertOptimizerGapFillSchema.parse(normalizeInput(input)));
       } catch {
-        // Validation failure: malformed input is counted as dropped and skipped rather than aborting the batch.
         dropped++;
       }
     }

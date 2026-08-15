@@ -402,7 +402,7 @@ export default function AdminUsers() {
                   <p className="text-sm text-gray-500" data-testid="text-detail-email">{viewUser.email}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-gray-500">Role</p>
                   <Badge className={getRoleDisplay(viewUser.role).className}>

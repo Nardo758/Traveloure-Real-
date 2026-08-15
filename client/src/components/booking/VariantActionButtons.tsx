@@ -509,7 +509,7 @@ export default function VariantActionButtons({
               {/* Social Buttons */}
               <div>
                 <Label>Share on Social Media</Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button
                     variant="outline"
                     onClick={() => window.open(socialUrls!.facebook, '_blank')}
@@ -765,7 +765,7 @@ export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptio
 
               <div>
                 <Label>Share on Social Media</Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button
                     variant="outline"
                     onClick={() => window.open(socialUrls!.facebook, '_blank')}

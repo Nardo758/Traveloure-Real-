@@ -449,11 +449,6 @@ export default function ExpertBookings() {
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
   const [selectedVisaBooking, setSelectedVisaBooking] = useState<Booking | null>(null);
   const [planBooking, setPlanBooking] = useState<Booking | null>(null);
-  const [declineDialog, setDeclineDialog] = useState<{ open: boolean; bookingId: string | null; reason: string }>({
-    open: false,
-    bookingId: null,
-    reason: "",
-  });
   const { toast } = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -461,8 +456,8 @@ export default function ExpertBookings() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
-      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status, ...(reason ? { reason } : {}) }),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
       toast({
@@ -481,24 +476,6 @@ export default function ExpertBookings() {
       });
     },
   });
-
-  const openDeclineDialog = (bookingId: string) => {
-    setDeclineDialog({ open: true, bookingId, reason: "" });
-  };
-
-  const closeDeclineDialog = () => {
-    setDeclineDialog({ open: false, bookingId: null, reason: "" });
-  };
-
-  const confirmDecline = () => {
-    if (!declineDialog.bookingId) return;
-    statusMutation.mutate({
-      id: declineDialog.bookingId,
-      status: "cancelled",
-      reason: declineDialog.reason.trim() || undefined,
-    });
-    closeDeclineDialog();
-  };
 
   const openVisaDialog = (booking: Booking) => {
     setSelectedVisaBooking(booking);
@@ -740,7 +717,7 @@ export default function ExpertBookings() {
                               variant="outline"
                               className="text-red-600 border-red-300 hover:bg-red-50"
                               disabled={statusMutation.isPending}
-                              onClick={() => openDeclineDialog(booking.id)}
+                              onClick={() => statusMutation.mutate({ id: booking.id, status: "cancelled" })}
                               data-testid={`button-decline-booking-${booking.id}`}
                             >
                               Decline
@@ -805,53 +782,6 @@ export default function ExpertBookings() {
         travelerName={planBooking?.travelerName}
         onOpenChange={(open) => { if (!open) setPlanBooking(null); }}
       />
-
-      {/* Decline confirmation dialog with optional reason */}
-      <Dialog open={declineDialog.open} onOpenChange={(open) => { if (!open) closeDeclineDialog(); }}>
-        <DialogContent className="max-w-md" data-testid="dialog-decline-booking">
-          <DialogHeader>
-            <DialogTitle>Decline this booking?</DialogTitle>
-            <DialogDescription>
-              The traveler will be notified. You can optionally include a short reason — it helps them understand what happened and find a better fit.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="decline-reason">Reason (optional)</Label>
-            <Textarea
-              id="decline-reason"
-              value={declineDialog.reason}
-              onChange={(e) => setDeclineDialog((prev) => ({ ...prev, reason: e.target.value }))}
-              placeholder="e.g. I'm fully booked for those dates, or this trip is outside my area of expertise."
-              rows={3}
-              maxLength={500}
-              data-testid="input-decline-reason"
-            />
-            {declineDialog.reason.length > 0 && (
-              <p className="text-xs text-muted-foreground text-right">{declineDialog.reason.length}/500</p>
-            )}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={closeDeclineDialog} data-testid="button-cancel-decline">
-              Keep booking
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDecline}
-              disabled={statusMutation.isPending}
-              data-testid="button-confirm-decline"
-            >
-              {statusMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Declining...
-                </>
-              ) : (
-                "Decline booking"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </ExpertLayout>
   );
 }

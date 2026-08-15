@@ -125,7 +125,6 @@ async function checkExternalAPIs(): Promise<HealthCheck> {
       message: `${breakerNames.length} circuit breakers active`,
     };
   } catch {
-    // Circuit breaker module unavailable — surface a degraded message rather than crashing the health endpoint.
     return {
       status: "healthy",
       message: "Circuit breaker status unavailable",

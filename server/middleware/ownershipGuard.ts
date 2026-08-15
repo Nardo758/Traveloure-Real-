@@ -13,7 +13,6 @@
  *     handler
  *   );
  */
-import { getUserId, getSessionRole } from "../utils/auth";
 
 export function requireOwnership(
   getResourceUserId: (req: any) => Promise<string | number | null>
@@ -26,8 +25,10 @@ export function requireOwnership(
         return res.status(404).json({ message: "Not found" });
       }
 
-      const actorId = getUserId(req);
-      const actorRole = getSessionRole(req);
+      const actorId =
+        (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const actorRole =
+        (req.user as any)?.claims?.role ?? (req.user as any)?.role;
 
       if (
         String(resourceUserId) !== String(actorId) &&

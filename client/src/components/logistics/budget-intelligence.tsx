@@ -143,7 +143,7 @@ export function BudgetIntelligence({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-4 gap-4 mb-4">
           <Card data-testid="card-total-budget">
             <CardContent className="pt-4">
               <div className="text-2xl font-bold">{formatCurrency(convertAmount(totalBudget))}</div>
@@ -351,7 +351,7 @@ export function BudgetIntelligence({
                 <CardDescription>Convert amounts between currencies</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">From {baseCurrency}</label>
                     <div className="text-2xl font-bold mt-1">

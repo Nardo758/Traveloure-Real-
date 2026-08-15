@@ -166,7 +166,7 @@ export function ExpertCoordinationHub({ tripId }: ExpertCoordinationHubProps) {
         {showAddForm && (
           <CardContent>
             <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Vendor Name</Label>
                   <Input
@@ -235,7 +235,7 @@ export function ExpertCoordinationHub({ tripId }: ExpertCoordinationHubProps) {
                     className="h-9"
                   />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label className="text-xs">Start</Label>
                     <Input

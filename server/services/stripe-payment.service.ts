@@ -101,13 +101,6 @@ export function toStripeRefundReason(reason?: string | null): StripeRefundReason
 
 class StripePaymentService {
   /**
-   * Test seam — set this in tests to replace the live Stripe client with a mock for the
-   * refunds.create call only.  Production always leaves this null.  Do NOT set this in any
-   * non-test code path.
-   */
-  _stripeOverride: Pick<typeof stripe, 'refunds'> | null = null;
-
-  /**
    * Return the list of supported currency codes
    */
   getSupportedCurrencies(): string[] {
@@ -971,7 +964,7 @@ class StripePaymentService {
 
     let refund: Stripe.Refund;
     try {
-      refund = await (this._stripeOverride?.refunds ?? stripe.refunds).create(
+      refund = await stripe.refunds.create(
         {
           payment_intent: paymentIntentId,
           amount: amountCents,
@@ -985,24 +978,6 @@ class StripePaymentService {
       await db.execute(sql`UPDATE service_bookings SET status = ${priorStatus}, updated_at = NOW() WHERE id = ${bookingId}`);
       console.error('Service-booking refund error:', err);
       throw new Error(`Refund failed: ${err.message}`);
-    }
-
-    // Decrement the provider-service booking counter — the same floor-at-zero guard that
-    // storage.updateServiceBookingStatus uses, but applied here because refundServiceBooking
-    // sets the terminal status via raw SQL and bypasses that path. Only applies on the FIRST
-    // transition to a terminal status (priorStatus not already cancelled/refunded), exactly
-    // mirroring storage.ts:2442-2448. Best-effort: the Stripe refund already succeeded so a
-    // counter failure must not undo it.
-    if (!['cancelled', 'refunded'].includes(priorStatus)) {
-      try {
-        await db.execute(sql`
-          UPDATE provider_services
-          SET bookings_count = GREATEST(bookings_count - 1, 0), updated_at = NOW()
-          WHERE id = (SELECT service_id FROM service_bookings WHERE id = ${bookingId})
-        `);
-      } catch (cntErr) {
-        console.error(`[refund] bookings_count decrement failed for booking ${bookingId} (non-critical):`, cntErr);
-      }
     }
 
     await db.execute(sql`
@@ -1239,7 +1214,6 @@ class StripePaymentService {
     try {
       return await stripe.paymentIntents.retrieve(paymentIntentId);
     } catch {
-      // Safe failure direction: callers treat null as unverified (see JSDoc above).
       return null;
     }
   }
@@ -1299,9 +1273,7 @@ class StripePaymentService {
             stripeSessionId: session.id,
           },
         });
-      } catch (err) {
-        console.error('[expert-service] T5 funnel event failed (non-fatal, payment already succeeded):', err);
-      }
+      } catch (_) {}
     } catch (error: any) {
       console.error('Error handling expert service payment:', error);
       throw error;

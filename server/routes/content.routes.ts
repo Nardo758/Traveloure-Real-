@@ -1,6 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
-import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
@@ -57,7 +56,7 @@ import {
   getAiItinerariesForUser, getAiItineraryById,
   insertItineraryComparison, updateItineraryComparisonStatus,
   getActiveProviderServices, getDestinationEventsByCity,
-  getExpertUserIds, pickBestExpertForBookingRequest, getAiDiscoveredGemById,
+  getExpertUserIds, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
   insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
@@ -129,7 +128,7 @@ import { partnerEventsCacheService } from "../services/partner-events-cache.serv
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
-import { budgetService, BudgetValidationError } from "../services/budget.service";
+import { budgetService } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
 import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
@@ -157,8 +156,6 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
-import { handleExchangeRates } from "./exchange-rate.handler";
-import { makeGeocodePostHandler } from "./geocode-post.handler";
 import instagramRoutes from "./instagram";
 import bookingsRoutes from "./bookings";
 import bookingActionsRoutes from "./booking-actions";
@@ -175,56 +172,6 @@ import { travelPulseScheduler } from "../services/travelpulse-scheduler.service"
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
-
-// ── Google Places server-side result cache ────────────────────────────────────
-// Keyed on a JSON-serialised normalised tuple so field values containing the
-// delimiter character cannot collide. Each entry holds the mapped results array
-// plus an expiry timestamp.
-//
-// TTL: 7 minutes — long enough to absorb repeated keystrokes from multiple
-// experts browsing the same city, short enough that stale listings don't linger.
-//
-// Bounded: capped at MAX_PLACES_CACHE_ENTRIES to prevent memory exhaustion from
-// unauthenticated callers sending many unique queries. On every SET:
-//   1. Expired entries are swept first (eager eviction).
-//   2. If the map is still at/above the cap, the oldest entry (insertion order)
-//      is deleted to make room (LRU-approximation via Map insertion order).
-//
-// This is an in-process Map (no external dependency). It resets on restart,
-// which is acceptable for a short-TTL read cache.
-const PLACES_CACHE_TTL_MS = 7 * 60 * 1000;    // 7 minutes
-const MAX_PLACES_CACHE_ENTRIES = 500;
-interface PlacesCacheEntry {
-  results: any[];
-  expiresAt: number;
-}
-const placesResultCache = new Map<string, PlacesCacheEntry>();
-
-/** Build a collision-safe cache key from the three pre-normalised search axes.
- *  Inputs are already lowercased/trimmed by the route handler; JSON.stringify
- *  makes the key injective (field values containing the separator cannot collide).
- */
-function buildPlacesCacheKey(q: string, destination: string, category: string): string {
-  return JSON.stringify([q, destination, category]);
-}
-
-/** Sweep expired entries, then enforce the entry cap before inserting. */
-function placesResultCacheSet(key: string, entry: PlacesCacheEntry): void {
-  const now = Date.now();
-  // 1. Eager expiry sweep — remove every stale entry in one pass.
-  // Map.forEach avoids the ES2015 downlevel-iteration incompatibility of for...of.
-  const expiredKeys: string[] = [];
-  placesResultCache.forEach((v, k) => { if (v.expiresAt <= now) expiredKeys.push(k); });
-  expiredKeys.forEach(k => placesResultCache.delete(k));
-  // 2. If still at or above cap, evict the oldest insertion-order entry.
-  while (placesResultCache.size >= MAX_PLACES_CACHE_ENTRIES) {
-    const oldestKey = placesResultCache.keys().next().value;
-    if (oldestKey !== undefined) placesResultCache.delete(oldestKey);
-    else break;
-  }
-  placesResultCache.set(key, entry);
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -936,7 +883,7 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
 router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
-      const input = sanitizeStringFields(insertCustomVenueSchema.parse(req.body));
+      const input = insertCustomVenueSchema.parse(req.body);
       const venue = await storage.createCustomVenue(input);
       res.status(201).json(venue);
     } catch (err) {
@@ -962,7 +909,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       if (venue.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
+      const input = insertCustomVenueSchema.partial().parse(req.body);
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -2801,13 +2748,13 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         return res.status(404).json({ message: "Service not found" });
       }
       
-      const input = sanitizeStringFields(insertServiceReviewSchema.parse({
+      const input = insertServiceReviewSchema.parse({
         ...req.body,
         serviceId: req.params.serviceId,
         travelerId: userId,
         providerId: service.userId,
         status: "pending",
-      }));
+      });
       
       const review = await storage.createServiceReview(input);
       res.status(201).json(review);
@@ -2927,6 +2874,153 @@ router.get("/api/amadeus/locations", async (req, res) => {
   // GET /api/amadeus/flights RETIRED (flight-repoint, Aug 2026): the Amadeus service was
   // deleted (DECISIONS.md ruling 34) and the stub answered `[]` to a client that no longer
   // exists — flights are served by GET /api/catalog/flights (Aviasales/Travelpayouts).
+
+  // Search hotels by city
+
+router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
+    try {
+      const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
+      
+      if (!cityCode || !checkInDate || !checkOutDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: cityCode, checkInDate, checkOutDate, adults" 
+        });
+      }
+      
+      // Amadeus dropped (DECISIONS.md ruling 34) — Booking.com results are served via /api/catalog.
+      res.json([]);
+    } catch (error: any) {
+      console.error('Hotel search error:', error);
+      res.status(500).json({ message: error.message || "Hotel search failed" });
+    }
+  });
+
+  // Search Points of Interest by location
+
+router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius, categories } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      // Amadeus dropped (DECISIONS.md ruling 34) — POIs are served from poi_cache via /api/catalog.
+      res.json([]);
+    } catch (error: any) {
+      console.error('POI search error:', error);
+      res.status(500).json({ message: error.message || "POI search failed" });
+    }
+  });
+
+  // Get POI by ID
+
+router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
+    try {
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live POI lookup.
+      return res.status(404).json({ message: "POI not found" });
+    } catch (error: any) {
+      console.error('POI get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get POI" });
+    }
+  });
+
+  // Search Amadeus Tours & Activities by location
+
+router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      // Amadeus dropped (DECISIONS.md ruling 34) — activities come from Viator (/api/viator/*).
+      res.json([]);
+    } catch (error: any) {
+      console.error('Amadeus activities search error:', error);
+      res.status(500).json({ message: error.message || "Activities search failed" });
+    }
+  });
+
+  // Get Amadeus activity by ID
+
+router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
+    try {
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live activity lookup.
+      return res.status(404).json({ message: "Activity not found" });
+    } catch (error: any) {
+      console.error('Amadeus activity get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get activity" });
+    }
+  });
+
+  // Search airport transfers
+  const transferSearchSchema = z.object({
+    startLocationCode: z.string().min(3).max(4),
+    endAddressLine: z.string().optional(),
+    endCityName: z.string().optional(),
+    endGeoCode: z.object({
+      latitude: z.number(),
+      longitude: z.number()
+    }).optional(),
+    transferType: z.string(),
+    startDateTime: z.string(),
+    passengers: z.union([z.string(), z.number()]).transform((val) => 
+      typeof val === 'string' ? parseInt(val, 10) : val
+    ),
+  });
+
+
+router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = transferSearchSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+      
+      // Amadeus dropped (DECISIONS.md ruling 34) — transfer options come from the
+      // Travelpayouts-backed transport commerce layer, not this legacy route.
+      res.json([]);
+    } catch (error: any) {
+      console.error('Transfers search error:', error);
+      res.status(500).json({ message: error.message || "Transfers search failed" });
+    }
+  });
+
+  // Get safety ratings for a location
+
+router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      // Amadeus dropped (DECISIONS.md ruling 34) — safety ratings had no other provider.
+      res.json([]);
+    } catch (error: any) {
+      console.error('Safety ratings search error:', error);
+      res.status(500).json({ message: error.message || "Safety ratings search failed" });
+    }
+  });
+
+  // Get safety rating by ID
+
+router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
+    try {
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live safety-rating lookup.
+      return res.status(404).json({ message: "Safety rating not found" });
+    } catch (error: any) {
+      console.error('Safety rating get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get safety rating" });
+    }
+  });
 
   // ============ VIATOR API ROUTES ============
 
@@ -3781,13 +3875,39 @@ router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
     }
   });
 
+  // Google Maps Geocoding API - Convert place name to coordinates
+  const geocodeSchema = z.object({
+    address: z.string().min(1),
+  });
+
   // Geocoding endpoint - public access since it's just a geographic lookup.
-  // Handler extracted to server/routes/geocode-post.handler.ts for testability.
-  // Three-tier path: Google geocode → geocode_fallbacks DB row (fallback:true) → 404.
-  // No fabricated coordinate ever — §13 / migration-129 no-fabrication posture.
-  // Both known callers already treat a non-ok response as "no location", not a crash
-  // (client/src/components/provider/catalog-map-view.tsx, client/src/pages/experience-template.tsx).
-router.post("/api/geocode", makeGeocodePostHandler());
+  // Routes through the single server geocode path (server/utils/geocode.ts) — same one
+  // GET /api/geocode uses — instead of hand-rolling its own fetch. No fabricated fallback:
+  // a substring-matched hardcoded city-centre dictionary (FALLBACK_COORDINATES) used to stand
+  // in here on a Google miss, which contradicted the §13 / migration-129 no-fabrication
+  // posture (docs/briefs/PROVIDER_LOGISTICS_DISTRIBUTION_SPEC.md D4). A miss now returns an
+  // honest 404 — never a guessed coordinate. Both known callers already treat a non-ok
+  // response as "no location", not a crash (client/src/components/provider/catalog-map-view.tsx,
+  // client/src/pages/experience-template.tsx).
+
+router.post("/api/geocode", async (req, res) => {
+    try {
+      const parsed = geocodeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const { address } = parsed.data;
+      const result = await geocodeAddress(address);
+      if (!result) {
+        return res.status(404).json({ message: "Location not found" });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error('Geocoding API error:', error);
+      res.status(500).json({ message: error.message || "Geocoding failed" });
+    }
+  });
 
   // === GROK AI INTEGRATION ROUTES ===
 
@@ -5594,12 +5714,6 @@ router.get("/api/travelpulse/enriched/:cityName", async (req, res) => {
                 url: option.url,
                 name: typeof rec.name === "string" ? rec.name : null,
                 provider: typeof option.platform === "string" ? option.platform : null,
-                // EnrichedRecommendation has no destination/city field; fall back to the
-                // authoritative route param cityName so enriched-content tokens are always
-                // destination-aware for expert routing.
-                destination: typeof rec.destination === "string" ? rec.destination
-                  : typeof rec.city === "string" ? rec.city
-                  : cityName,
               });
               optionSlots.push({ option });
             }
@@ -5819,43 +5933,22 @@ router.get("/api/geocode", async (req, res) => {
 
 router.get("/api/search/experiences", async (req, res) => {
     try {
-      const { q: _q, destination: _destination, category: _category, sources } = req.query as Record<string, string>;
-      // Normalise all three search axes once, up-front, so the cache key and
-      // the Places URL construction always use identical canonical values.
-      // All three are lowercased so "Kyoto"/"kyoto" and "Food Tour"/"food tour"
-      // share the same cache entry. Empty category is canonicalised to "all"
-      // (both produce the same Places request — no type filter, default query).
-      const q           = (_q           || "").trim().toLowerCase();
-      const destination = (_destination || "").trim().toLowerCase();
-      const category    = ((_category   || "").trim().toLowerCase()) || "all";
+      const { q, destination, category, sources } = req.query as Record<string, string>;
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
       }
 
       // Sources filter (default "all" — today's exact behavior, every existing caller untouched).
       // "platform" skips the Google Places arm entirely (no API spend); "google" skips the
-      // platform arm; "viator" returns only Viator bookable-activity results.
-      // Response shape is unchanged in every case.
-      const sourcesFilter = sources === "platform" || sources === "google" || sources === "viator" ? sources : "all";
-      const includePlatform = sourcesFilter !== "google" && sourcesFilter !== "viator";
-      const includeGoogle = sourcesFilter !== "platform" && sourcesFilter !== "viator";
-      // Viator is a paid third-party API and is NEVER included in the default "all" set —
-      // only when the caller explicitly requests sources=viator. Additionally, Viator results
-      // are gated on an authenticated session to prevent unauthenticated quota exhaustion.
-      const includeViator = sourcesFilter === "viator";
+      // platform arm. Response shape is unchanged in every case.
+      const sourcesFilter = sources === "platform" || sources === "google" ? sources : "all";
+      const includePlatform = sourcesFilter !== "google";
+      const includeGoogle = sourcesFilter !== "platform";
 
       // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
       // platform arm has nothing for this destination+category and fell through to Google Places
       // — a real occurrence of unmet platform-catalog demand. Fire-and-forget, minimal context
       // (no free-text query — §13 no-PII posture).
-      if (sourcesFilter === "viator") {
-        logDemandSignal({
-          kind: "places_fallthrough",
-          market: destination || null,
-          category: category || null,
-          context: { hasQuery: !!q, source: "viator" },
-        });
-      }
       if (sourcesFilter === "google") {
         logDemandSignal({
           kind: "places_fallthrough",
@@ -5910,14 +6003,7 @@ router.get("/api/search/experiences", async (req, res) => {
           const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
           const descMatch = p.description?.toLowerCase().includes(qLower);
           const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
-          // Task 962: normalize both sides to the city token (first comma-separated
-          // segment, lower-cased) so "Kyoto, Japan", "Kyoto", and "kyoto" all
-          // match a service whose location column stores any of those variants.
-          const destCity = dest.split(",")[0].trim();
-          const locCity = (p.location || "").toLowerCase().split(",")[0].trim();
-          // Guard: if locCity is empty the service has no location and must not
-          // match any destination query (destCity.includes("") is always true).
-          const destMatch = !dest || !destCity || (!!locCity && (locCity.includes(destCity) || destCity.includes(locCity)));
+          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
           const textMatch = !qLower || nameMatch || descMatch;
           if (textMatch && destMatch && catMatch) {
             results.push({
@@ -5941,20 +6027,9 @@ router.get("/api/search/experiences", async (req, res) => {
             });
           }
         }
-      } catch (err) {
-        console.error('[catalog-filter] platform-catalog filtering failed (GET place search):', err);
-      }
+      } catch (_) {}
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
-      // placesUnavailable is set to true when the Places API call fails (non-OK HTTP,
-      // request-denied, billing error, or quota exhaustion) — distinct from ZERO_RESULTS
-      // which is a legitimate "nothing here" answer and leaves the flag false. The flag
-      // travels to the client so it can show an honest "external results unavailable"
-      // notice instead of a silently empty list.
-      let placesUnavailable = false;
-      if (includeGoogle && !apiKey) {
-        placesUnavailable = true;
-      }
       if (includeGoogle && apiKey) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
@@ -5963,163 +6038,47 @@ router.get("/api/search/experiences", async (req, res) => {
           all: "",
         };
         const typeFilter = catToType[category || "all"] || "";
-        // When no free-text query is provided, Places Text Search with just a city name
-        // returns the city itself (1 result) or 0 results when a type filter is also set.
-        // Build a category-appropriate default so results are places *in* the destination.
-        const catDefaultQuery: Record<string, string> = {
-          dining: "restaurants",
-          hotels: "hotels",
-          activities: "things to do",
-          all: "things to do",
-        };
-        const effectiveQ = q || catDefaultQuery[category || "all"] || "things to do";
-        const searchQuery = destination ? `${effectiveQ} in ${destination}` : effectiveQ;
+        const searchQuery = [q, destination].filter(Boolean).join(" in ");
         const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
         placesUrl.searchParams.set("query", searchQuery);
         placesUrl.searchParams.set("key", apiKey);
-        // type= filter is a strict AND on top of the text query — only apply it when the
-        // caller explicitly requested a non-"all" category, to avoid over-filtering.
-        if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
+        if (typeFilter) placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
-        // ── Cache check ──────────────────────────────────────────────────────────
-        // Key uses JSON serialisation (collision-safe; see buildPlacesCacheKey).
-        const placesCacheKey = buildPlacesCacheKey(q, destination, category);
-        const cachedEntry = placesResultCache.get(placesCacheKey);
-        if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
-          // Cache HIT — push cached rows into results and skip the API call.
-          results.push(...cachedEntry.results);
-        } else {
-        // Cache MISS — call the Places API and store results on success.
-        try {
-          const resp = await fetch(placesUrl.toString());
-          if (!resp.ok) {
-            console.error(`[places] HTTP ${resp.status} from Places Text Search`);
-            placesUnavailable = true;
-          } else {
-            const data: any = await resp.json();
-            // Google Places always returns HTTP 200; check the API-level status field.
-            // OK and ZERO_RESULTS are both success cases — ZERO_RESULTS just means no
-            // matches for this query, which is honest. Any other status is an API-level
-            // error (REQUEST_DENIED, OVER_QUERY_LIMIT, INVALID_REQUEST, UNKNOWN_ERROR).
-            const placesStatus: string = data.status || "";
-            if (placesStatus !== "OK" && placesStatus !== "ZERO_RESULTS") {
-              console.error(`[places] API error status="${placesStatus}" error_message="${data.error_message || ""}"`);
-              placesUnavailable = true;
-            } else {
-              const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-              const catFromTypes = (types: string[]): string => {
-                if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
-                if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
-                if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
-                if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
-                return "activity";
-              };
-              const freshPlacesRows: any[] = [];
-              for (const place of (data.results || []).slice(0, 15)) {
-                const photoRef = place.photos?.[0]?.photo_reference;
-                freshPlacesRows.push({
-                  id: `gp_${place.place_id}`,
-                  source: "google_places",
-                  placeId: place.place_id,
-                  name: place.name,
-                  address: place.formatted_address,
-                  category: catFromTypes(place.types || []),
-                  rating: place.rating ?? null,
-                  reviewCount: place.user_ratings_total ?? null,
-                  priceLevel: place.price_level ?? null,
-                  priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
-                  location: place.geometry?.location ?? null,
-                  photoUrl: photoRef
-                    ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
-                    : null,
-                  mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-                });
-              }
-              // Store in cache (including ZERO_RESULTS — an empty array is a
-              // valid cached answer; saves a redundant API hit for the same query).
-              // placesResultCacheSet sweeps expired entries and enforces the cap
-              // before inserting, preventing unbounded memory growth.
-              placesResultCacheSet(placesCacheKey, {
-                results: freshPlacesRows,
-                expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
-              });
-              results.push(...freshPlacesRows);
-            }
-          }
-        } catch (placesErr) {
-          console.error("[places] fetch threw:", placesErr);
-          placesUnavailable = true;
-        }
-        } // end cache-miss block
-      }
-
-      // ── Viator bookable activities (tours & experiences) ──
-      // Auth gate: Viator is a paid API — only authenticated workspace users may trigger it.
-      if (includeViator) {
-        if (!(req as any).isAuthenticated?.()) {
-          return res.status(401).json({ message: "Authentication required for Viator search" });
-        }
-      }
-      let viatorServiceNotice: string | undefined;
-      if (includeViator) {
-        // Check upfront whether the API key is configured so we can surface an honest notice
-        // rather than letting the call fail silently and showing a generic "No results" state.
-        if (!process.env.VIATOR_API_KEY) {
-          viatorServiceNotice = "Viator is temporarily unavailable";
-          console.warn("[viator] VIATOR_API_KEY is not set — skipping Viator search");
-        }
-      }
-      if (includeViator && !viatorServiceNotice) {
-        // Combine free-text query with destination so results are scoped to the right city.
-        // Pattern mirrors the Google Places arm: [q, destination].filter(Boolean).join(" in ").
-        // If only destination is provided (no search text), destination alone is the search term.
-        const searchTerm = q && destination
-          ? `${q} in ${destination}`
-          : q || destination || "";
-        if (searchTerm) {
-          const catLower = (category || "").toLowerCase();
-          // Viator products are activities/experiences. Skip if the caller has filtered
-          // to a category that Viator never covers (dining=restaurant, hotels=lodging).
-          const viatorCatMatch = !catLower || catLower === "all" || catLower === "activities" || catLower === "transport";
-          if (viatorCatMatch) {
-            // searchByFreetext never throws — it catches all HTTP/network errors internally
-            // and returns { unavailable: true } so we can surface an honest notice rather than
-            // silently showing an empty "No Viator results" state.
-            const viatorResult = await viatorService.searchByFreetext(searchTerm, "USD", 15);
-            if (viatorResult.unavailable) {
-              viatorServiceNotice = "Viator is temporarily unavailable";
-            } else {
-              const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-              for (const product of (viatorResult.products || [])) {
-                const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
-                const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
-                const fromPrice = product.pricing?.summary?.fromPrice;
-                results.push({
-                  id: `vtr_${product.productCode}`,
-                  source: "viator",
-                  productCode: product.productCode,
-                  name: product.title,
-                  address: null,
-                  category: "activity",
-                  rating: product.reviews?.combinedAverageRating ?? null,
-                  reviewCount: product.reviews?.totalReviews ?? null,
-                  priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
-                  location: null,
-                  photoUrl: photoVariant?.url ?? null,
-                  mapsUrl: null,
-                });
-              }
-            }
+        const resp = await fetch(placesUrl.toString());
+        if (resp.ok) {
+          const data: any = await resp.json();
+          const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+          const catFromTypes = (types: string[]): string => {
+            if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
+            if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
+            if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
+            if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
+            return "activity";
+          };
+          for (const place of (data.results || []).slice(0, 15)) {
+            const photoRef = place.photos?.[0]?.photo_reference;
+            results.push({
+              id: `gp_${place.place_id}`,
+              source: "google_places",
+              placeId: place.place_id,
+              name: place.name,
+              address: place.formatted_address,
+              category: catFromTypes(place.types || []),
+              rating: place.rating ?? null,
+              reviewCount: place.user_ratings_total ?? null,
+              priceLevel: place.price_level ?? null,
+              priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
+              location: place.geometry?.location ?? null,
+              photoUrl: photoRef
+                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
+                : null,
+              mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+            });
           }
         }
       }
 
-      res.json({
-        results,
-        count: results.length,
-        placesUnavailable: includeGoogle ? placesUnavailable : undefined,
-        serviceNotice: includeViator ? viatorServiceNotice : undefined,
-      });
+      res.json({ results, count: results.length });
     } catch (error: any) {
       console.error("Error in /api/search/experiences:", error);
       res.status(500).json({ message: "Search failed", error: error.message });
@@ -6645,9 +6604,6 @@ router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) =>
       const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
       res.json(conversion);
     } catch (error) {
-      if (error instanceof BudgetValidationError) {
-        return res.status(400).json({ message: error.message });
-      }
       res.status(500).json({ message: "Failed to convert currency" });
     }
   });
@@ -6969,32 +6925,22 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const { itemName, itemDescription, partnerName, partnerCategory, travelDate, travelers, userNotes,
-              bookingToken, affiliateProductId, transportOptionId, partnerRoute,
-              destination: bodyDestination } = req.body;
+              bookingToken, affiliateProductId, transportOptionId, partnerRoute } = req.body;
 
-      // resolved carries a server-derived destination for every reference type that has one,
-      // so expert routing is not dependent on the client supplying a separate body.destination.
-      let resolved: { url: string; name: string | null; partner: string | null; destination: string | null } | null = null;
+      let resolved: { url: string; name: string | null; partner: string | null } | null = null;
       if (typeof bookingToken === "string" && bookingToken) {
         const { resolveBookingToken } = await import("../services/affiliate-url-vault.service");
         const entry = await resolveBookingToken(bookingToken);
-        // VaultedBooking.destination is captured at vault time from each catalog item's
-        // city/destination/location field — no round-trip through the client.
-        if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider, destination: entry.destination };
+        if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider };
       } else if (typeof affiliateProductId === "string" && affiliateProductId) {
         const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
         const product = await affiliateScraperService.getProductById(affiliateProductId, { approvedOnly: true });
         const url = product ? (product.affiliateUrl || product.productUrl || null) : null;
-        if (product && url) resolved = {
-          url, name: product.name ?? null, partner: null,
-          // affiliateProducts carries city and location columns — prefer city as the tighter signal
-          destination: (product.city || product.location || null) as string | null,
-        };
+        if (product && url) resolved = { url, name: product.name ?? null, partner: null };
       } else if (typeof transportOptionId === "string" && transportOptionId) {
         const option = await storage.getTransportBookingOptionById(transportOptionId);
         if (option && option.externalUrl && (option.bookingType === "affiliate" || option.bookingType === "deep_link")) {
-          // transportBookingOptions has no direct destination column; rely on body.destination
-          resolved = { url: option.externalUrl, name: option.title ?? null, partner: option.source ?? null, destination: null };
+          resolved = { url: option.externalUrl, name: option.title ?? null, partner: option.source ?? null };
         }
       } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "12go") {
         const { affiliateService } = await import("../services/affiliate.service");
@@ -7005,8 +6951,6 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
           }),
           name: null,
           partner: "12Go",
-          // 12Go deep-link has a structured destination field
-          destination: typeof partnerRoute.destination === "string" ? partnerRoute.destination : null,
         };
       } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "fever") {
         // Same server-side construction posture as 12Go: the Impact campaign id never
@@ -7016,7 +6960,6 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
           url: affiliateService.buildFeverDeepLink(),
           name: null,
           partner: "Fever",
-          destination: null,
         };
       } else {
         return res.status(400).json({
@@ -7030,20 +6973,9 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
       const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
 
-      // Auto-assign to the best-matched expert: score by destination + category,
-      // prefer lower workload. Destination priority:
-      //   1. Server-resolved from the booking reference (bookingToken vault, affiliateProduct.city,
-      //      partnerRoute.destination) — trusted server-side, covers all reference types
-      //   2. body.destination — fallback for reference types without a structured destination
-      //      (transportOptionId, fever) and for callers that supply it explicitly (result-card flows)
-      // Returns null when no approved expert with accepts_new_handoffs=true exists →
-      // request stays "pending" for admin manual routing (never bypasses the flag).
-      const requestDestination =
-        resolved.destination?.trim() ||
-        (typeof bodyDestination === "string" ? bodyDestination.trim() : null) ||
-        null;
-      const requestCategory = typeof partnerCategory === "string" ? partnerCategory : null;
-      const expertId = await pickBestExpertForBookingRequest(requestDestination, requestCategory);
+      // Auto-assign to an expert based on category (city match optional, fallback any expert)
+      const expertIds2 = await getExpertUserIds(10);
+      const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
       const status = expertId ? "assigned" : "pending";
 
       // Same MONEY_MAP F-5 (dormant) sub_id attribution seam as the /from-catalog variant below:
@@ -7119,12 +7051,8 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       if (!resolved) {
         return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
       }
-      // Auto-assign to the best-matched expert: score by destination + category,
-      // prefer lower workload; falls back to any approved expert, then any expert.
-      const expertId = await pickBestExpertForBookingRequest(
-        typeof destination === "string" ? destination : null,
-        resolved.partnerCategory,
-      );
+      const expertIds3 = await getExpertUserIds(10);
+      const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
       const status = expertId ? "assigned" : "pending";
 
       // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
@@ -7668,7 +7596,6 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
       const user = await storage.getUser(uid);
       return user?.role === "admin";
     } catch {
-      // Fail closed: if the admin-role lookup fails, deny access rather than accidentally granting it.
       return false;
     }
   };
@@ -8635,7 +8562,25 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
 } // end registerDiscoveryRoutes
 
 // === Exchange Rate Endpoint (top-level, always registered) ===
-// Handler extracted to server/routes/exchange-rate.handler.ts for testability.
-router.get("/api/exchange-rates", handleExchangeRates);
+let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
+const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
+
+router.get("/api/exchange-rates", async (_req, res) => {
+  try {
+    const now = Date.now();
+    if (_exchangeRateCache && now - _exchangeRateCache.fetchedAt < EXCHANGE_RATE_TTL_MS) {
+      return res.json({ base: "USD", rates: _exchangeRateCache.rates, cachedAt: _exchangeRateCache.fetchedAt });
+    }
+    const resp = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,AUD,SGD");
+    if (!resp.ok) throw new Error(`Frankfurter API error: ${resp.status}`);
+    const data = await resp.json() as { rates: Record<string, number> };
+    _exchangeRateCache = { rates: data.rates, fetchedAt: now };
+    res.json({ base: "USD", rates: data.rates, cachedAt: now });
+  } catch (err) {
+    console.error("Exchange rate fetch error:", err);
+    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
+    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+  }
+});
 
 export default router;

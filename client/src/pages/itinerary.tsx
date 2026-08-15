@@ -333,10 +333,6 @@ export default function ItineraryPage() {
   }>({
     queryKey: ["/api/cart/fee-preview"],
     staleTime: 30 * 1000,
-    // Poll every 30 s while there's an error so the banner clears automatically once
-    // an admin fixes the fee-band configuration — no page reload needed.
-    refetchInterval: (query) => (query.state.error ? 30_000 : false),
-    retry: false,
   });
   // Task 1108: the server now answers 503 `concierge_fee_unconfigured` when the cart holds a
   // Booking Concierge item but the fee band is misconfigured — surface that as an actionable

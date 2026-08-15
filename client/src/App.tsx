@@ -47,9 +47,6 @@ const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
-
-const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
-const ExpertContractCategories = lazy(() => import("@/pages/expert/contract-categories"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
 const EAClients = lazy(() => import("@/pages/ea/clients"));
@@ -112,7 +109,6 @@ const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
 const ExpertsPage = lazy(() => import("@/pages/experts"));
 const DiscoverPage = lazy(() => import("@/pages/discover"));
-const ExperienceDiscoveryPage = lazy(() => import("@/pages/experience-discovery"));
 const DiscoverLocationPage = lazy(() => import("@/pages/discover-location"));
 const ContactPage = lazy(() => import("@/pages/contact"));
 const FAQPage = lazy(() => import("@/pages/faq"));
@@ -185,7 +181,6 @@ import { Loader2 } from "lucide-react";
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
-import { useSyncTripContextOnSignIn } from "@/hooks/use-sync-trip-context-on-signin";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
@@ -322,8 +317,6 @@ function Router() {
   // Automatically claim guest trips and concierge requests when user signs in
   useClaimGuestTrips();
   useClaimGuestConcierge();
-  // Push any locally-built trip context to the server on sign-in so planning isn't lost
-  useSyncTripContextOnSignIn();
 
   return (
     <Suspense fallback={<PageLoader />}>
@@ -513,7 +506,7 @@ function Router() {
         <ExperienceTemplatePage />
       </Route>
       <Route path="/discover-experiences">
-        <ExperienceDiscoveryPage />
+        <Redirect to="/discover" />
       </Route>
       {/* /deals kept: unique content (flash sales, seasonal, last-minute, bundle listings)
           with countdown timers and discount data not surfaced inside /discover. */}
@@ -753,7 +746,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients/:id">
-        {() => <ProtectedRoute component={ExpertClientDetail} requiredRole="expert" />}
+        {() => <Redirect to="/expert/customers" />}
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
@@ -798,9 +791,6 @@ function Router() {
           page itself is gone — share-tools.tsx carries the primitives for both consoles. */}
       <Route path="/expert/share-promote">
         <Redirect to="/expert/catalog" />
-      </Route>
-      <Route path="/expert/contract-categories">
-        {() => <ProtectedRoute component={ExpertContractCategories} requiredRole="expert" />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}

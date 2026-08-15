@@ -36,8 +36,6 @@ export interface VaultedBooking {
   name: string | null;
   /** Partner/provider label at vault time (server-derived partnerName for the rail). */
   provider: string | null;
-  /** Destination city/location captured at vault time for expert-routing. Never sent to client. */
-  destination: string | null;
 }
 
 /**
@@ -88,10 +86,6 @@ export async function vaultAndStripItems<T extends Record<string, any>>(
         url,
         name: typeof item.title === "string" ? item.title : typeof item.name === "string" ? item.name : null,
         provider: typeof item.provider === "string" ? item.provider : typeof item.source === "string" ? item.source : null,
-        destination: typeof item.destination === "string" ? item.destination
-          : typeof item.city === "string" ? item.city
-          : typeof item.location === "string" ? item.location
-          : null,
       });
     }
   });

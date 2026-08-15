@@ -38,54 +38,6 @@ export function resolveInstagramVerifyStatus(
 }
 
 /**
- * Nulls out the stored Instagram credentials for a user.
- * Called whenever a definitive token-expiry code (102, 104, 190) is detected —
- * on both the /status and /publish paths — so stale tokens never accumulate
- * regardless of which endpoint the user hits first.
- *
- * Exported for unit testing — callers supply the db client so tests can inject
- * a mock without a real database connection.
- */
-export async function nullExpiredInstagramToken(
-  userId: string,
-  dbClient: typeof db,
-): Promise<void> {
-  await dbClient
-    .update(users)
-    .set({ instagramUserId: null, instagramAccessToken: null })
-    .where(eq(users.id, userId));
-}
-
-/**
- * Processes the Graph API verification result for the /status endpoint.
- * Resolves the status payload AND, when the token is definitively expired
- * (error codes 102, 104, 190), nulls out the stored token columns so stale
- * credentials never accumulate.
- *
- * Exported for unit testing — callers supply the db client so tests can inject
- * a mock without a real database connection.
- *
- * @param userId     The authenticated user's id (used for the DB update)
- * @param verifyOk   Whether the HTTP response had a 2xx status code
- * @param verifyData Parsed JSON body from graph.instagram.com/me
- * @param dbClient   Drizzle DB client (real or mock)
- */
-export async function handleInstagramStatusVerify(
-  userId: string,
-  verifyOk: boolean,
-  verifyData: Record<string, unknown>,
-  dbClient: typeof db,
-): Promise<{ connected: boolean; reason?: string; accountType?: string }> {
-  const status = resolveInstagramVerifyStatus(verifyOk, verifyData);
-
-  if (status.reason === "token_expired") {
-    await nullExpiredInstagramToken(userId, dbClient);
-  }
-
-  return status;
-}
-
-/**
  * Maps a token-verification result to a publish-gate error payload.
  * Returns null when the token is valid and publishing should proceed.
  * Exported for unit testing.
@@ -236,8 +188,6 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
     // Verify the token is still valid and check account type.
     // A personal account will succeed the call but return account_type === "PERSONAL".
     // An expired/revoked token returns an OAuthException error.
-    // handleInstagramStatusVerify also nulls out the DB columns when the token
-    // is definitively expired (codes 102, 104, 190) so stale tokens never accumulate.
     try {
       const verifyResponse = await fetch(
         `https://graph.instagram.com/me?fields=id,account_type&access_token=${user.instagramAccessToken}`
@@ -248,8 +198,7 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
         console.warn("Instagram token verification failed:", verifyData.error?.message);
       }
 
-      const status = await handleInstagramStatusVerify(userId, verifyResponse.ok, verifyData, db);
-      return res.json(status);
+      return res.json(resolveInstagramVerifyStatus(verifyResponse.ok, verifyData));
     } catch (verifyErr) {
       // Network error during verification — treat as disconnected but don't
       // wipe the stored token; the user may just be offline temporarily.
@@ -298,12 +247,6 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
           "Instagram publish blocked — token check failed:",
           tokenError.body.reason,
         );
-        // Wipe stored credentials when the token is definitively expired so
-        // the user is not silently stuck retrying against a known-invalid token.
-        // Non-expiry errors (personal_account, auth_error) leave the token intact.
-        if (tokenError.body.reason === "token_expired") {
-          await nullExpiredInstagramToken(userId, db);
-        }
         return res.status(tokenError.statusCode).json(tokenError.body);
       }
     } catch (verifyErr) {
@@ -569,7 +512,6 @@ function parseSignedRequest(signedRequest: string): Record<string, unknown> | nu
   try {
     return JSON.parse(Buffer.from(toBase64(payload), "base64").toString("utf8"));
   } catch {
-    // Malformed base64 or JSON payload — treat as unauthenticated without leaking verification details.
     return null;
   }
 }

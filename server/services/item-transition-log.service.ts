@@ -13,7 +13,7 @@
  * Future subscription hook: the expert PULL→PUSH notification lane will attach a listener to this
  * insert path. Do NOT build notifications here now.
  */
-import { and, count, desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itemTransitionLog, type ItemTransitionLogEntry } from "@shared/schema";
 
@@ -151,27 +151,6 @@ export async function getRecentTripTransitions(
     .select()
     .from(itemTransitionLog)
     .where(eq(itemTransitionLog.tripId, tripId))
-    .orderBy(desc(itemTransitionLog.createdAt))
-    .limit(limit);
-}
-
-/** Workspace status audit trail for admin dispute resolution (task 1030).
- *  Returns only `workspace_status_transition` rows for the given trip, newest first.
- *  READ ONLY — stays append-only (inserts + reads, never UPDATE/DELETE).
- *  Rides the `itl_trip_created_idx` (tripId, createdAt) index. */
-export async function getWorkspaceStatusHistory(
-  tripId: string,
-  limit = 50,
-): Promise<ItemTransitionLogEntry[]> {
-  return db
-    .select()
-    .from(itemTransitionLog)
-    .where(
-      and(
-        eq(itemTransitionLog.tripId, tripId),
-        eq(itemTransitionLog.eventType, "workspace_status_transition"),
-      ),
-    )
     .orderBy(desc(itemTransitionLog.createdAt))
     .limit(limit);
 }

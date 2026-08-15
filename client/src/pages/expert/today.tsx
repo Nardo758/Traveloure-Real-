@@ -303,10 +303,8 @@ interface StripeConnectStatus {
 }
 
 function MoneyStripSection() {
-  // Refresh every 30 s so earnings figures update without a page reload.
   const { data, isLoading } = useQuery<EarningsDetails>({
     queryKey: ["/api/expert/earnings/details"],
-    refetchInterval: 30_000,
   });
   const { data: stripeStatus, isLoading: stripeLoading } = useQuery<StripeConnectStatus>({
     queryKey: ["/api/stripe/connect/status"],
@@ -345,12 +343,6 @@ function MoneyStripSection() {
           <p className="text-sm text-console-mid">Earnings data isn't available right now.</p>
         ) : (
           <div className="flex flex-wrap gap-6" data-testid="row-today-money-figures">
-            <div>
-              <p className="text-xs text-console-mid">Total earned</p>
-              <p className="text-xl font-bold text-console-darkest" data-testid="text-today-total-earnings">
-                {fmt(summary.totalEarnings)}
-              </p>
-            </div>
             <div>
               <p className="text-xs text-console-mid">Cleared</p>
               <p className="text-xl font-bold text-console-darkest" data-testid="text-today-cleared">

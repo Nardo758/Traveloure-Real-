@@ -119,7 +119,6 @@ function parsePlaceNamesJson(raw: string): string[] | null {
       .map((n) => n.trim());
     return names;
   } catch {
-    // Malformed extraction output — no place names could be parsed; return null so the caller skips this source.
     return null;
   }
 }

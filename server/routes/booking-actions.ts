@@ -550,7 +550,7 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
         funnelStage: "T7",
         refToken: shareToken,
       });
-    } catch (_) { /* fire-and-forget funnel event — never blocks the share response */ }
+    } catch (_) {}
 
     res.json({ success: true, shareToken: canonical });
   } catch (error: any) {
@@ -1119,21 +1119,22 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
   try {
     const userId = getUserId(req)!;
     const { assignmentId } = req.params;
-    const { intent } = req.body;
-    if (intent !== "advance") {
-      return res.status(400).json({ message: "Invalid request body. Send { intent: \"advance\" } to advance the workspace status." });
-    }
+    const { workspaceStatus, intent } = req.body;
     const validTransitions: Record<string, string[]> = {
       draft: ["in_review"],
       in_review: ["delivered"],
       delivered: [],
     };
+    const isAdvance = intent === "advance";
+    if (!isAdvance && (!workspaceStatus || !(workspaceStatus in validTransitions))) {
+      return res.status(400).json({ message: "Invalid workspaceStatus. Must be: draft, in_review, or delivered" });
+    }
     const assignment = await storage.getExpertAssignment(assignmentId);
     if (!assignment) return res.status(404).json({ message: "Assignment not found" });
     if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
     const current = assignment.workspaceStatus ?? "draft";
-    // Ruling 25: the server is the sole authority on the next status; clients send an intent only.
-    const nextStatus = validTransitions[current]?.[0];
+    // Ruling 25: the server derives the next status; the client sends an intent, not a target.
+    const nextStatus = isAdvance ? validTransitions[current]?.[0] : workspaceStatus;
     if (!nextStatus || !validTransitions[current]?.includes(nextStatus)) {
       return res.status(400).json({ message: `Cannot transition workspace status from '${current}'${nextStatus ? ` to '${nextStatus}'` : ""}. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
@@ -1540,8 +1541,8 @@ router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
     if (!assignment && !(await isTripAuthor(tripId, userId))) {
       return res.status(403).json({ message: "Not authorized to view notes for this trip" });
     }
-    const { expertNotes, expertModifiedAt } = await storage.getTripExpertNotes(tripId);
-    res.json({ expertNotes, expertNotesUpdatedAt: expertModifiedAt?.toISOString() ?? null });
+    const expertNotes = await storage.getTripExpertNotes(tripId);
+    res.json({ expertNotes });
   } catch (err) {
     console.error("[Expert] getExpertNotes error:", err);
     res.status(500).json({ message: "Failed to get expert notes" });
@@ -1557,9 +1558,8 @@ router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) =>
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
-    const savedAt = new Date();
-    await storage.updateTrip(tripId, { expertNotes, expertModifiedAt: savedAt });
-    res.json({ ok: true, expertNotesUpdatedAt: savedAt.toISOString() });
+    await storage.updateTrip(tripId, { expertNotes });
+    res.json({ ok: true });
   } catch (err) {
     console.error("[Expert] saveExpertNotes error:", err);
     res.status(500).json({ message: "Failed to save expert notes" });

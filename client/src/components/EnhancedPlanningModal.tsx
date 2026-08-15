@@ -470,7 +470,7 @@ export default function EnhancedPlanningModal({
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
                 <Calendar className="w-4 h-4" />
@@ -521,7 +521,7 @@ export default function EnhancedPlanningModal({
             <label className="text-sm font-semibold text-gray-700 mb-3 block">
               What type of experience?
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {EXPERIENCE_TYPES.map((type) => (
                 <button
                   key={type.value}
@@ -650,7 +650,7 @@ export default function EnhancedPlanningModal({
                   </button>
 
                   {showInterests && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2 mt-2">
                       {INTERESTS.map((interest) => (
                         <button
                           key={interest.value}
@@ -729,7 +729,7 @@ export default function EnhancedPlanningModal({
                   </button>
 
                   {showDietary && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2 mt-2">
                       {DIETARY_OPTIONS.map((option) => (
                         <button
                           key={option.value}

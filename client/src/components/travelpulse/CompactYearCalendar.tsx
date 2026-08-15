@@ -496,7 +496,7 @@ export function CompactYearCalendar({
         </div>
       </div>
       
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1.5">
         {monthAbbr.map((name, idx) => {
           const month = idx + 1;
           const summary = monthSummaries.find(s => s.month === month);

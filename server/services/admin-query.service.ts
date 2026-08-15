@@ -1622,14 +1622,6 @@ export async function getProviderServiceById(id: string) {
   return db.select().from(providerServices).where(eq(providerServices.id, id)).limit(1).then(r => r[0] ?? null);
 }
 
-export async function getProviderServicesByIds(ids: string[]) {
-  if (!ids.length) return [];
-  return db.select({
-    id: providerServices.id,
-    serviceName: providerServices.serviceName,
-  }).from(providerServices).where(inArray(providerServices.id, ids));
-}
-
 export async function deleteProviderService(id: string) {
   return db.delete(providerServices).where(eq(providerServices.id, id));
 }

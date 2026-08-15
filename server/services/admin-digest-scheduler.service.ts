@@ -138,9 +138,7 @@ class AdminDigestSchedulerService {
           try {
             const parsed = JSON.parse((notif as any).reason ?? "[]");
             if (Array.isArray(parsed)) reconciliationMismatches.push(...parsed);
-          } catch (parseErr) {
-            console.warn("[AdminDigest] Could not parse reconciliation notification reason — skipping entry:", parseErr);
-          }
+          } catch {}
         }
       } catch (err) {
         console.error("[AdminDigest] Failed to load reconciliation notifications:", err);

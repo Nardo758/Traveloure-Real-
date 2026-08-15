@@ -239,7 +239,6 @@ function parseExtractionJson(raw: string): ExtractedTripFields | null {
     const validated = extractedFieldsSchema.safeParse(parsed);
     return validated.success ? validated.data : null;
   } catch {
-    // Malformed JSON in AI output — treat as no extracted context rather than failing the request.
     return null;
   }
 }

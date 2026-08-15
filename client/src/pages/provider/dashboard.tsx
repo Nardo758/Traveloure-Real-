@@ -169,15 +169,12 @@ export default function ProviderDashboard() {
     queryKey: ["/api/stripe/connect/status"],
   });
 
-  // Refresh every 30 s so booking counts and revenue update without a reload.
   const { data: analytics, isLoading: analyticsLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
-    refetchInterval: 30_000,
   });
 
   const { data: bookings } = useQuery<BookingRequest[]>({
     queryKey: ["/api/provider/bookings"],
-    refetchInterval: 30_000,
   });
 
   const { data: requestsData } = useQuery<{ requests: any[] }>({

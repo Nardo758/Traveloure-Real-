@@ -113,7 +113,7 @@ export function EditTripPanel({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="etp-start">Start date</Label>
               <Input
@@ -137,7 +137,7 @@ export function EditTripPanel({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="etp-travelers">Travelers</Label>
               <Input

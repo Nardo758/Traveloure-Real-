@@ -28,28 +28,8 @@ const CONTEXTS: Array<{ category: string; expertId?: string | null }> = [
   { category: "provider_commission_percent" },
 ];
 
-// Task 1151: /api/booking-fee-config now requires an authenticated session (it exposes
-// per-expert/provider commission context). The parity contexts here carry no expertId/
-// providerId, so ANY authenticated user sees the same category-level rates the charge
-// resolves — register a throwaway session via the app's own auth API and send its cookie.
-async function registerSessionCookie(): Promise<string> {
-  const email = `fee-parity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@parity.test`;
-  const resp = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: "ParityCheck123!", firstName: "Fee", lastName: "Parity" }),
-  });
-  if (resp.status !== 201) {
-    throw new Error(`fee-parity session registration failed: HTTP ${resp.status} — ${await resp.text()}`);
-  }
-  const setCookie = resp.headers.get("set-cookie");
-  if (!setCookie) throw new Error("fee-parity session registration returned no session cookie");
-  return setCookie.split(";")[0];
-}
-
 async function main() {
   let failures = 0;
-  const cookie = await registerSessionCookie();
 
   for (const ctx of CONTEXTS) {
     // Charge's source of truth for this context.
@@ -61,7 +41,7 @@ async function main() {
 
     let actual: any;
     try {
-      const resp = await fetch(`${BASE_URL}/api/booking-fee-config?${qs.toString()}`, { headers: { cookie } });
+      const resp = await fetch(`${BASE_URL}/api/booking-fee-config?${qs.toString()}`);
       if (!resp.ok) { console.error(`[fee-parity] ${ctx.category}: HTTP ${resp.status}`); failures++; continue; }
       actual = await resp.json();
     } catch (e: any) {

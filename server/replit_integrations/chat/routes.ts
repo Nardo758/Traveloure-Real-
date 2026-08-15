@@ -3,14 +3,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { chatStorage } from "./storage";
 import { isAuthenticated } from "../auth";
 import { trackAICost, calculateAnthropicCost } from "../../services/ai-cost-tracker";
-import { requireUserId } from "../../utils/auth";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 function getUserId(req: Request): string {
-  return requireUserId(req);
+  const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+  if (!userId) throw new Error("User ID not found in session");
+  return userId;
 }
 
 function parseId(raw: string): number | null {

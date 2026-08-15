@@ -12,11 +12,10 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, and, or, ilike, gte, lte, asc, sql, inArray, lt } from "drizzle-orm";
+import { eq, and, or, ilike, gte, lte, asc, sql, inArray } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
-import { feverService } from "./fever.service";
 
 // ─────────────────────────────────────────────
 // Discriminated union content model
@@ -328,10 +327,7 @@ class ExperienceCatalogService {
     const conditions = [];
     
     if (params.destination) {
-      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // and "Kyoto" both match a cache row whose destination column stores either form.
-      const destCity = params.destination.split(",")[0].trim();
-      conditions.push(ilike(activityCache.destination, `%${destCity}%`));
+      conditions.push(ilike(activityCache.destination, `%${params.destination}%`));
     }
     if (params.query) {
       conditions.push(
@@ -390,16 +386,9 @@ class ExperienceCatalogService {
 
   private async searchEvents(params: CatalogSearchParams, limit: number, offset: number): Promise<EventItem[]> {
     const conditions = [];
-
-    // Resolve raw destination (e.g. "Paris, France") to the canonical Fever city
-    // name ("Paris") so both the cache query and the live fetch use the same value.
-    // Falls back to the raw string when the destination is not a Fever-supported city
-    // (query will simply return nothing and the fetch-on-miss will also skip safely).
-    const feverCity = params.destination ? feverService.findCity(params.destination) : undefined;
-    const canonicalCity = feverCity?.name ?? params.destination;
-
-    if (canonicalCity) {
-      conditions.push(ilike(feverEventCache.city, `%${canonicalCity}%`));
+    
+    if (params.destination) {
+      conditions.push(ilike(feverEventCache.city, `%${params.destination}%`));
     }
     if (params.query) {
       conditions.push(
@@ -423,37 +412,13 @@ class ExperienceCatalogService {
       conditions.push(inArray(feverEventCache.provider, normalized));
     }
 
-    // Always exclude expired cache rows so stale events are never surfaced.
-    conditions.push(gte(feverEventCache.expiresAt, new Date()));
-
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    let events = await db.select()
+    const events = await db.select()
       .from(feverEventCache)
       .where(whereClause)
       .limit(limit)
       .offset(offset);
-
-    // Fetch-on-miss: if no fresh (non-expired) events are cached for this
-    // destination, trigger a live Fever API call and re-query.  The expired-row
-    // filter above means an empty result set unambiguously means "no live data".
-    const wantsFeverEvents =
-      !params.providers || params.providers.length === 0 || params.providers.includes("fever");
-
-    if (wantsFeverEvents && canonicalCity && events.length === 0) {
-      try {
-        const upserted = await feverService.upsertEventsToCache(canonicalCity);
-        if (upserted > 0) {
-          events = await db.select()
-            .from(feverEventCache)
-            .where(whereClause)
-            .limit(limit)
-            .offset(offset);
-        }
-      } catch (err: any) {
-        this.catalogLogger.warn({ err }, "Fever fetch-on-miss failed, using existing cache");
-      }
-    }
 
     return events.map(e => ({
       id: e.id,
@@ -490,16 +455,10 @@ class ExperienceCatalogService {
     const conditions = [];
     
     if (params.destination) {
-      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // matches a row storing "Kyoto". Also extract a country token for the country
-      // field so "Japan" in "Kyoto, Japan" matches countryName correctly.
-      const destParts = params.destination.split(",");
-      const destCity = destParts[0].trim();
-      const destCountry = destParts.length > 1 ? destParts[destParts.length - 1].trim() : destCity;
       conditions.push(
         or(
-          ilike(hotelCache.city, `%${destCity}%`),
-          ilike(hotelCache.countryName, `%${destCountry}%`)
+          ilike(hotelCache.city, `%${params.destination}%`),
+          ilike(hotelCache.countryName, `%${params.destination}%`)
         )
       );
     }
@@ -572,15 +531,10 @@ class ExperienceCatalogService {
     const conditions = [];
 
     if (params.destination) {
-      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // matches a row storing "Kyoto". Extract country token for the country field.
-      const destParts = params.destination.split(",");
-      const destCity = destParts[0].trim();
-      const destCountry = destParts.length > 1 ? destParts[destParts.length - 1].trim() : destCity;
       conditions.push(
         or(
-          ilike(poiCache.city, `%${destCity}%`),
-          ilike(poiCache.country, `%${destCountry}%`)
+          ilike(poiCache.city, `%${params.destination}%`),
+          ilike(poiCache.country, `%${params.destination}%`)
         )
       );
     }
@@ -636,10 +590,7 @@ class ExperienceCatalogService {
     const conditions = [];
 
     if (params.destination) {
-      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // matches a row storing "Kyoto".
-      const destCity = params.destination.split(",")[0].trim();
-      conditions.push(ilike(restaurantCache.city, `%${destCity}%`));
+      conditions.push(ilike(restaurantCache.city, `%${params.destination}%`));
     }
     if (params.query) {
       conditions.push(
@@ -708,15 +659,12 @@ class ExperienceCatalogService {
    * by sampling from the activity cache.
    */
   private async getDestinationCoords(destination: string): Promise<{ lat: number; lng: number } | null> {
-    // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-    // matches a cache row storing "Kyoto".
-    const destCity = destination.split(",")[0].trim();
     const [activity] = await db
       .select({ lat: activityCache.latitude, lng: activityCache.longitude })
       .from(activityCache)
       .where(
         and(
-          ilike(activityCache.destination, `%${destCity}%`),
+          ilike(activityCache.destination, `%${destination}%`),
           sql`${activityCache.latitude} IS NOT NULL AND ${activityCache.longitude} IS NOT NULL`
         )
       )

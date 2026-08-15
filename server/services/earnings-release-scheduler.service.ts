@@ -31,8 +31,8 @@ class EarningsReleaseSchedulerService {
       return;
     }
     console.log("[EarningsRelease] Starting earnings release scheduler");
-    setTimeout(() => { this.runRelease().catch(err => console.error("[EarningsRelease] scheduled run rejected:", err)); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { this.runRelease().catch(err => console.error("[EarningsRelease] scheduled run rejected:", err)); }, CHECK_INTERVAL_MS);
+    setTimeout(() => { void this.runRelease(); }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => { void this.runRelease(); }, CHECK_INTERVAL_MS);
     console.log(`[EarningsRelease] Scheduled to run every ${CHECK_INTERVAL_MS / (60 * 1000)} minutes`);
   }
 

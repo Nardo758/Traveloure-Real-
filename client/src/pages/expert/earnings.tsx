@@ -13,8 +13,6 @@ import {
   Wallet,
   Loader2,
   TrendingUp,
-  PieChart,
-  Shield,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
@@ -25,20 +23,6 @@ import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/back
 // The one Money ledger endpoint (GET /api/expert/earnings/details, server/routes/experts.routes.ts:220)
 // backed by revenue-tracking.service.ts:252-276. Vocabulary: `availableEarnings` = RELEASABLE (cleared,
 // payable now); `pendingEarnings` = HELD in escrow. This page is its first consumer.
-
-// Task 1193: mirror the server's STALE_PAYOUT_CONTACT_DAYS constant — if a pending/processing
-// payout is older than this many days, show a "Contact support" nudge beneath that row so the
-// earner knows there is a self-service escalation path. The gate bypass (14 days) is server-only;
-// this shorter window is purely informational.
-const PAYOUT_CONTACT_DAYS = 7;
-
-function isPayoutOverdueForContact(payout: { status: string; requestedAt: string }): boolean {
-  if (payout.status !== "pending" && payout.status !== "processing") return false;
-  const requestedAt = new Date(payout.requestedAt);
-  if (isNaN(requestedAt.getTime())) return false;
-  return (Date.now() - requestedAt.getTime()) / 86_400_000 > PAYOUT_CONTACT_DAYS;
-}
-
 interface ExpertEarningRow {
   id: string;
   amount: string;
@@ -81,11 +65,6 @@ interface EarningsDetails {
     paidOut: number;
     totalTips: number;
     totalAffiliateCommissions: number;
-    // Revenue share breakdown from platform_revenue
-    grossBookingValue: number;
-    platformFeeTotal: number;
-    expertShareFromRevenue: number;
-    effectiveShareRate: number | null;
   };
   earnings: ExpertEarningRow[];
   payouts: ExpertPayoutRow[];
@@ -117,8 +96,6 @@ export default function ExpertEarnings() {
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
-      } else if (msg.includes("payout_processing_stale")) {
-        toast({ title: "Payout stuck in processing", description: "Your payout has been in processing for over 14 days. Contact support to resolve it.", variant: "destructive" });
       } else if (msg.includes("stripe_not_connected")) {
         toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
@@ -184,24 +161,6 @@ export default function ExpertEarnings() {
 
         <StripeConnectCard />
 
-        {/* 7-day hold explainer — shown whenever the earner has held funds so they understand
-            why the "Available to pay out" figure differs from their total earned.
-            Hold window from earnings-hold.config.ts: 7 days for service_booking (the default).
-            Template sales are 14 days; tips clear immediately — so the note stays generic. */}
-        {(summary?.pendingEarnings ?? 0) > 0 && (
-          <div
-            className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-            data-testid="banner-hold-explainer"
-          >
-            <Clock className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
-            <span>
-              <strong>Why are some earnings held?</strong> Funds are held in escrow for 7 days after
-              a booking completes. This covers dispute and refund windows. Once the hold clears, the
-              balance moves to <em>Available to pay out</em> automatically.
-            </span>
-          </div>
-        )}
-
         {/* Honest four-card ledger split — held/releasable are never conflated (§13). */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -233,93 +192,6 @@ export default function ExpertEarnings() {
             testId="card-earnings-total"
           />
         </div>
-
-        {/* Booking Revenue Share Breakdown — scoped to booking_commission rows from
-            platform_revenue so tips (shown separately below) and affiliate commissions
-            (also shown separately) cannot inflate the gross or create a double-count.
-            Gross/fee/share come from GET /api/expert/earnings/details summary fields
-            added in revenue-tracking.service.ts. */}
-        <Card data-testid="card-revenue-share">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <PieChart className="w-5 h-5 text-primary" />
-              Booking Revenue Share
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-gross-total">
-                <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
-                <p className="text-xl font-bold text-console-darkest">
-                  ${(summary?.grossBookingValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-console-mid mt-1">Total traveler spend on bookings</p>
-              </div>
-              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
-                <p className="text-sm text-red-600 mb-1">
-                  Platform Fee{summary?.effectiveShareRate != null ? ` (${Math.round((1 - summary.effectiveShareRate) * 100)}%)` : ""}
-                </p>
-                <p className="text-xl font-bold text-red-700">
-                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
-              </div>
-              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">
-                  Your Booking Share{summary?.effectiveShareRate != null ? ` (${Math.round(summary.effectiveShareRate * 100)}%)` : ""}
-                </p>
-                <p className="text-xl font-bold text-green-700">
-                  ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-green-500 mt-1">Your cut of booking revenue</p>
-              </div>
-            </div>
-
-            {/* Fee breakdown line items — booking revenue only, tips/affiliate shown separately */}
-            <div className="mt-4 rounded-lg border border-border bg-muted/30 divide-y divide-border" data-testid="section-fee-breakdown">
-              <div className="flex items-center justify-between px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-3.5 h-3.5 text-red-500" />
-                  <span className="text-sm text-muted-foreground">Platform commission</span>
-                </div>
-                <span className="text-sm font-medium text-red-600" data-testid="text-base-commission">
-                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-950/20 rounded-b-lg">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
-                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Your booking net</span>
-                </div>
-                <span className="text-sm font-bold text-green-600" data-testid="text-net-earnings">
-                  ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-
-            {/* Proportional split bar — only rendered when gross booking data is available */}
-            {summary?.effectiveShareRate != null ? (
-              <>
-                <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
-                  <div
-                    className="h-full bg-primary transition-all"
-                    style={{ width: `${Math.round((1 - summary.effectiveShareRate) * 100)}%` }}
-                  />
-                  <div className="h-full bg-green-500 flex-1" />
-                </div>
-                <div className="flex justify-between text-xs text-console-mid mt-1">
-                  <span>Platform {Math.round((1 - summary.effectiveShareRate) * 100)}%</span>
-                  <span data-testid="text-expert-share-rate">You {Math.round(summary.effectiveShareRate * 100)}%</span>
-                </div>
-                <p className="text-xs text-console-mid mt-1">Booking revenue only — tips and affiliate commissions are shown below.</p>
-              </>
-            ) : (
-              <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">
-                No bookings yet — your split appears here after your first booking.
-              </p>
-            )}
-          </CardContent>
-        </Card>
 
         <EarningsBySourcePanel />
 
@@ -375,48 +247,21 @@ export default function ExpertEarnings() {
             <CardContent>
               {payouts.length > 0 ? (
                 <div className="space-y-3">
-                  {payouts.map((payout) => {
-                    const overdue = isPayoutOverdueForContact(payout);
-                    return (
-                      <div
-                        key={payout.id}
-                        className="p-3 rounded-lg border border-console-light bg-console-bg"
-                        data-testid={`payout-${payout.id}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-console-darkest">
-                              ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </p>
-                            <p className="text-sm text-console-mid">
-                              Requested {new Date(payout.requestedAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <StatusBadge status={payout.status} />
-                        </div>
-                        {/* Task 1193: stale-payout nudge — appears after PAYOUT_CONTACT_DAYS of
-                            no resolution so the earner knows there is an escalation path. The 14-day
-                            server gate (STALE_PAYOUT_PROCESSING_DAYS) allows a fresh request after
-                            that window; this shorter 7-day nudge is purely informational. */}
-                        {overdue && (
-                          <p
-                            className="mt-2 text-xs text-amber-700"
-                            data-testid={`text-payout-stale-${payout.id}`}
-                          >
-                            This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
-                            <a
-                              href="mailto:support@traveloure.com"
-                              className="underline font-medium"
-                              data-testid={`link-payout-support-${payout.id}`}
-                            >
-                              Contact support
-                            </a>{" "}
-                            if you need help.
-                          </p>
-                        )}
+                  {payouts.map((payout) => (
+                    <div
+                      key={payout.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
+                      data-testid={`payout-${payout.id}`}
+                    >
+                      <div>
+                        <p className="font-medium text-console-darkest">
+                          ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-sm text-console-mid">{new Date(payout.requestedAt).toLocaleDateString()}</p>
                       </div>
-                    );
-                  })}
+                      <StatusBadge status={payout.status} />
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <EmptyState title="No payout requests yet" body="Request a payout from your available balance above." testId="empty-payouts" />

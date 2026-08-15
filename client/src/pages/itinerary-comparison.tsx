@@ -1720,7 +1720,7 @@ export default function ItineraryComparisonPage() {
                                   </Badge>
                                 )}
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div className="grid grid-cols-2 gap-2">
                                 {sortedMetrics.slice(0, 4).map((metric) => {
                                   const Icon = getMetricIcon(metric.metricKey);
                                   return (
@@ -2096,7 +2096,7 @@ export default function ItineraryComparisonPage() {
                             <TrendingUp className="h-4 w-4" />
                             Why it's better
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3">
                             {coreMetrics.map((metric) => {
                               const Icon = getMetricIcon(metric.metricKey);
                               return (
@@ -2117,7 +2117,7 @@ export default function ItineraryComparisonPage() {
                             <Sparkles className="h-4 w-4" />
                             Smart Sequencing
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3">
                             {sequencingMetrics.map((metric) => {
                               const Icon = getMetricIcon(metric.metricKey);
                               const scoreValue = parseFloat(metric.value) || 0;
@@ -2145,7 +2145,7 @@ export default function ItineraryComparisonPage() {
                       {/* Other Metrics */}
                       {otherMetrics.length > 0 && (
                         <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3">
                             {otherMetrics.map((metric) => {
                               const Icon = getMetricIcon(metric.metricKey);
                               return (

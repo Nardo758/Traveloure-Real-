@@ -16,7 +16,6 @@ export async function verifyTripOwnership(tripId: string, userId: string): Promi
     const owner = (trip as any).userId ?? (trip as any).user_id;
     return owner != null && owner === userId;
   } catch {
-    // Fail closed: ownership lookup failure means no access.
     return false;
   }
 }

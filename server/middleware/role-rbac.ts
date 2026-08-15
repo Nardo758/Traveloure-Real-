@@ -7,7 +7,6 @@ import { eq } from "drizzle-orm";
 // by isEA, not an expert-family member). EA pages consume /api/ea/* only, so dropping EA
 // from the expert family removes unused server surface, not a working path.
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { getUserId } from "../utils/auth";
 
 /**
  * isExpert — middleware that allows only expert-role users and admins.
@@ -19,7 +18,7 @@ export const isExpert = async (req: any, res: any, next: any) => {
   if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const userId = getUserId(req);
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
   }
@@ -55,7 +54,7 @@ export const isEarner = async (req: any, res: any, next: any) => {
   if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const userId = getUserId(req);
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
   }
@@ -81,7 +80,7 @@ export const isProvider = async (req: any, res: any, next: any) => {
   if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const userId = getUserId(req);
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
   }

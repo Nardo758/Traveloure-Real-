@@ -114,19 +114,13 @@ const formatDate = (d?: string | null) =>
 
 function BookingsSection() {
   const { toast } = useToast();
-  const [declineDialog, setDeclineDialog] = useState<{ open: boolean; bookingId: string | null; reason: string }>({
-    open: false,
-    bookingId: null,
-    reason: "",
-  });
-
   const { data: bookings, isLoading } = useQuery<InboxBooking[]>({
     queryKey: ["/api/expert/bookings"],
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
-      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status, ...(reason ? { reason } : {}) }),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/provider/bookings"] });
@@ -143,132 +137,65 @@ function BookingsSection() {
     },
   });
 
-  const openDeclineDialog = (bookingId: string) => {
-    setDeclineDialog({ open: true, bookingId, reason: "" });
-  };
-
-  const closeDeclineDialog = () => {
-    setDeclineDialog({ open: false, bookingId: null, reason: "" });
-  };
-
-  const confirmDecline = () => {
-    if (!declineDialog.bookingId) return;
-    statusMutation.mutate({
-      id: declineDialog.bookingId,
-      status: "cancelled",
-      reason: declineDialog.reason.trim() || undefined,
-    });
-    closeDeclineDialog();
-  };
-
   const pending = (bookings ?? []).filter((b) => b.status === "pending");
 
   return (
-    <>
-      <section data-testid="section-inbox-bookings">
-        <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-          Bookings needing a response {pending.length > 0 && `(${pending.length})`}
-        </h2>
-        {isLoading ? (
-          <div className="space-y-2">
-            {[1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
-          </div>
-        ) : pending.length === 0 ? (
-          <EmptyState icon={CalendarDays} title="No bookings waiting" body="New booking requests will show up here." testId="empty-inbox-bookings" />
-        ) : (
-          <div className="space-y-2">
-            {pending.map((booking) => (
-              <Card key={booking.id} className="border border-console-light" data-testid={`inbox-booking-${booking.id}`}>
-                <CardContent className="p-4 flex items-start justify-between gap-4 flex-wrap">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-console-darkest flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-console-mid" />
-                        {booking.traveler?.displayName || "Traveler"}
-                      </span>
-                      <StatusBadge status={booking.status} />
-                    </div>
-                    {booking.createdAt && (
-                      <p className="text-xs text-console-mid">
-                        Requested {new Date(booking.createdAt).toLocaleDateString()}
-                      </p>
-                    )}
+    <section data-testid="section-inbox-bookings">
+      <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+        Bookings needing a response {pending.length > 0 && `(${pending.length})`}
+      </h2>
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+        </div>
+      ) : pending.length === 0 ? (
+        <EmptyState icon={CalendarDays} title="No bookings waiting" body="New booking requests will show up here." testId="empty-inbox-bookings" />
+      ) : (
+        <div className="space-y-2">
+          {pending.map((booking) => (
+            <Card key={booking.id} className="border border-console-light" data-testid={`inbox-booking-${booking.id}`}>
+              <CardContent className="p-4 flex items-start justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="font-medium text-console-darkest flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-console-mid" />
+                      {booking.traveler?.displayName || "Traveler"}
+                    </span>
+                    <StatusBadge status={booking.status} />
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      disabled={statusMutation.isPending}
-                      onClick={() => statusMutation.mutate({ id: booking.id, status: "confirmed" })}
-                      data-testid={`button-accept-booking-${booking.id}`}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-red-600 border-red-300 hover:bg-red-50"
-                      disabled={statusMutation.isPending}
-                      onClick={() => openDeclineDialog(booking.id)}
-                      data-testid={`button-decline-booking-${booking.id}`}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Decline confirmation dialog — prevents accidental cancellations */}
-      <Dialog open={declineDialog.open} onOpenChange={(open) => { if (!open) closeDeclineDialog(); }}>
-        <DialogContent className="max-w-md" data-testid="dialog-decline-booking">
-          <DialogHeader>
-            <DialogTitle>Decline this booking?</DialogTitle>
-            <DialogDescription>
-              The traveler will be notified. You can optionally include a short reason — it helps them understand what happened and find a better fit.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="decline-reason-inbox">Reason (optional)</Label>
-            <Textarea
-              id="decline-reason-inbox"
-              value={declineDialog.reason}
-              onChange={(e) => setDeclineDialog((prev) => ({ ...prev, reason: e.target.value }))}
-              placeholder="e.g. I'm fully booked for those dates, or this trip is outside my area of expertise."
-              rows={3}
-              maxLength={500}
-              data-testid="input-decline-reason"
-            />
-            {declineDialog.reason.length > 0 && (
-              <p className="text-xs text-muted-foreground text-right">{declineDialog.reason.length}/500</p>
-            )}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={closeDeclineDialog} data-testid="button-cancel-decline">
-              Keep booking
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDecline}
-              disabled={statusMutation.isPending}
-              data-testid="button-confirm-decline"
-            >
-              {statusMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Declining...
-                </>
-              ) : (
-                "Decline booking"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+                  {booking.createdAt && (
+                    <p className="text-xs text-console-mid">
+                      Requested {new Date(booking.createdAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={statusMutation.isPending}
+                    onClick={() => statusMutation.mutate({ id: booking.id, status: "confirmed" })}
+                    data-testid={`button-accept-booking-${booking.id}`}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                    disabled={statusMutation.isPending}
+                    onClick={() => statusMutation.mutate({ id: booking.id, status: "cancelled" })}
+                    data-testid={`button-decline-booking-${booking.id}`}
+                  >
+                    Decline
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

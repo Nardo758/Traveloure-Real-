@@ -215,7 +215,7 @@ export default function Dashboard() {
         </div>
 
         {/* Two-panel layout */}
-        <div className="flex flex-col sm:flex-row gap-5">
+        <div className="flex gap-5">
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
             {/* R-H: Today's move (single highest-urgency real item on the active trip) +
@@ -235,7 +235,7 @@ export default function Dashboard() {
             />
 
             {/* CTA Row */}
-            <div className="flex flex-col sm:flex-row gap-2.5 mb-[18px]">
+            <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
                 const sub = card.sub;
                 const cardBody = (

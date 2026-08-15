@@ -53,7 +53,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -237,15 +237,8 @@ router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
   // expert_service_offerings is the canonical template catalog.
   // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
 
-// Task 1151: revenue splits expose commercially sensitive rates — admin-only.
-router.get("/api/revenue-splits", isAuthenticated, async (req, res) => {
+router.get("/api/revenue-splits", async (req, res) => {
     try {
-      const userId = getUserId(req)!;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
       const splits = await storage.getRevenueSplits();
       res.json(splits);
     } catch (err) {
@@ -381,14 +374,10 @@ export async function resolveCartSurcharges(cartData: any[]): Promise<Map<string
       .map((i) => i.service.id as string)
       .filter(Boolean),
   ));
-  // N+1 fix: ONE IN-clause query for every zones-mode service's tiers, grouped by serviceId.
   const tiersByService = new Map<string, Array<{ radiusKm: string; fee: string }>>();
-  if (zonesServiceIds.length > 0) {
-    const allTiers = await storage.getSurchargeTiersByServiceIds(zonesServiceIds);
-    for (const sid of zonesServiceIds) tiersByService.set(sid, []);
-    for (const t of allTiers) {
-      tiersByService.get(t.serviceId)!.push({ radiusKm: t.radiusKm, fee: t.fee });
-    }
+  for (const sid of zonesServiceIds) {
+    const tiers = await storage.getServiceSurchargeTiers(sid);
+    tiersByService.set(sid, tiers.map((t) => ({ radiusKm: t.radiusKm, fee: t.fee })));
   }
   for (const item of cartData) {
     if (!item.service) continue;
@@ -666,7 +655,6 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
     SELECT sb.id,
            sb.service_id,
            sb.provider_id,
-           sb.trip_id,
            sb.total_amount,
            sb.booking_details->>'itineraryItemId' AS itinerary_item_id,
            ps.service_name
@@ -708,20 +696,6 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
     // email is the one effect no rollback or TTL can take back.
     try {
       if (raw.provider_id) {
-        const provider = await storage.getUser(String(raw.provider_id));
-        // Route deep-link based on the service owner's role: experts land on their workspace
-        // (booking-request scoped view); providers land on their bookings inbox.
-        // /expert/workspace is expert-role-gated on the client, so providers must not receive tripId.
-        const notifTripId = raw.trip_id && isExpertRole(provider?.role) ? String(raw.trip_id) : undefined;
-        // When no tripId is available and the owner is an expert, still provide a workspacePath
-        // so the notification has an action link. resolveNotificationLink (notification-icons.tsx)
-        // handles the workspacePath-without-tripId branch and labels it "View Booking".
-        // Providers always land on their own bookings inbox; /expert/workspace is expert-role-gated.
-        const notifWorkspacePath = isProviderRole(provider?.role)
-          ? "/provider/bookings"
-          : isExpertRole(provider?.role) && !notifTripId
-            ? "/expert/workspace"
-            : undefined;
         await storage.createNotification({
           userId: String(raw.provider_id),
           type: "booking_request",
@@ -734,17 +708,15 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
             serviceName: raw.service_name ?? null,
             travelerName,
             amount: price.toFixed(2),
-            ...(notifTripId ? { tripId: notifTripId } : {}),
-            ...(notifWorkspacePath ? { workspacePath: notifWorkspacePath } : {}),
           },
         });
-        // Migration 225: skip alert email when provider has opted out (emailBookingAlerts
-        // defaults to true — existing providers are unaffected until they toggle it off).
-        if (provider?.email && provider.emailBookingAlerts !== false) {
+
+        const provider = await storage.getUser(String(raw.provider_id));
+        if (provider?.email) {
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
           await sendBookingAlertEmail({
-            providerEmail: (provider as any).notificationEmail || provider.email,
+            providerEmail: provider.email,
             providerName,
             bookingId,
             serviceName: raw.service_name ?? "a service",
@@ -807,7 +779,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       if (priorClaim.length > 0) {
         const authorized = priorClaim.find((r) => r.stripePaymentIntentId);
         if (authorized) {
-      const { stripePaymentService } = await import("../services/stripe-payment.service");
+          const { stripePaymentService } = await import("../services/stripe-payment.service");
           const pi = await stripePaymentService
             .getPaymentIntentClientSecret(authorized.stripePaymentIntentId!)
             .catch(() => null);
@@ -948,7 +920,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       >();
       for (const item of cartData) {
         if (item.service?.pricingUnit !== "per_night") continue;
-        const stay = roomStays.get(item.id);
+        const stay = getRoomNights(item);
         if (!stay) {
           return res.status(400).json({
             message: `Missing or invalid check-in/check-out dates for "${item.service?.serviceName ?? "a room"}"`,
@@ -1102,7 +1074,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           const claimedThisStay: string[] = [];
           let nightFailed = false;
           for (const d of nightDates) {
-        const claimed = await storage.bookSlot(slotIdByDate.get(d)!);
+            const claimed = await storage.bookSlot(slotIdByDate.get(d)!);
             if (!claimed) { nightFailed = true; break; }
             claimedThisStay.push(claimed.id);
           }
@@ -1151,11 +1123,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
       };
 
-      // Preload category slugs once to avoid N+1 queries.
+      // Preload category slugs once to avoid N+1 queries in the item loops below.
+      // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
       const distinctCatIds = Array.from(new Set(
         cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
       ));
-      const catSlugMap = new Map<string, string>();
+      const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
       if (distinctCatIds.length > 0) {
         const catRows = await storage.getServiceCategorySlugsByIds(distinctCatIds);
         for (const row of catRows) {
@@ -1327,6 +1300,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate),
         });
         checkoutSubtotal += itemPrice;
+        // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
         // conciergeBookingFlatFee is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
@@ -1478,7 +1452,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const rowIdempotencyKey = isClaimRow
           ? checkoutKey
           : `${checkoutKey}#${bookings.length}`;
-        let booking: Awaited<ReturnType<typeof storage.createServiceBooking>> | undefined;
+        let booking: any;
         try {
           booking = await storage.createServiceBooking({
             serviceId: item.serviceId,
@@ -1694,9 +1668,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // Already-authorized balance: a prior call stamped the balance PI — return the SAME
       // clientSecret, never a second PaymentIntent (idempotent).
       if ((booking as any).stripeBalanceIntentId) {
-        const existingPi = (booking as any)?.stripeBalanceIntentId
-          ? await stripePaymentService.getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId).catch(() => null)
-          : null;
+        const existingPi = await stripePaymentService
+          .getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId)
+          .catch(() => null);
         return res.status(200).json({
           success: true,
           duplicate: true,
@@ -1943,6 +1917,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
 router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
     try {
+      const user = req.user as any;
       const invoices = await storage.getInvoicesByCustomer(getUserId(req)!);
       res.json(invoices);
     } catch (error: any) {
@@ -1965,7 +1940,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
       const userId = getUserId(req)!;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
       // Full earner set (shared/roles.ts): the previous ['expert','service_provider'] pair
@@ -1974,12 +1949,13 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
         return res.status(403).json({ error: "Only experts and providers can onboard for payouts" });
       }
 
-      if ((user as any).stripeAccountId && (user as any).stripeAccountStatus === 'active') {
+      const existing = await storage.getUserStripeAccount(userId);
+      if (existing.stripeAccountId && existing.stripeAccountStatus === 'active') {
         return res.status(400).json({ error: "Stripe account already active" });
       }
 
       const { stripeConnectService } = await import('../services/stripe-connect.service');
-      let accountId = (user as any).stripeAccountId as string | null | undefined;
+      let accountId = existing.stripeAccountId;
       if (!accountId) {
         const result = await stripeConnectService.createConnectedAccount(
           // Connect account type follows the role FAMILY (any expert-family role → 'expert'),
@@ -1993,8 +1969,8 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       const link = await stripeConnectService.createOnboardingLink(
         accountId!,
-        `${baseUrl}/settings/payouts?stripe=success`,
-        `${baseUrl}/settings/payouts?stripe=refresh`,
+        `${baseUrl}/stripe/connect/return`,
+        `${baseUrl}/stripe/connect/refresh`
       );
       res.json({ url: link.url, accountId });
     } catch (error: any) {
@@ -2011,7 +1987,13 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
 
       const account = await storage.getUserStripeAccount(userId);
       if (!account.stripeAccountId) {
-        return res.status(400).json({ error: "No Stripe account connected" });
+        return res.json({ connected: false, status: 'not_connected' });
+      }
+      // Honest degrade (§13): an account was previously connected but the key is now
+      // absent (e.g. this environment) — report the last-known DB status rather than
+      // calling Stripe and surfacing a raw SDK error, or worse, faking "active".
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.json({ connected: true, accountId: account.stripeAccountId, status: account.stripeAccountStatus ?? 'unknown', degraded: true });
       }
 
       const { stripeConnectService } = await import('../services/stripe-connect.service');
@@ -2058,11 +2040,6 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
 
 
 router.get("/stripe/connect/return", (req, res) => {
-    // Task 1151: require an authenticated session before processing redirect state.
-    // Unauthenticated hits bounce to login and come back here afterwards.
-    if (!req.isAuthenticated || !req.isAuthenticated()) {
-      return res.redirect("/login?returnTo=" + encodeURIComponent("/stripe/connect/return"));
-    }
     // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
     const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
     if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=connected");
@@ -2072,10 +2049,6 @@ router.get("/stripe/connect/return", (req, res) => {
 
 
 router.get("/stripe/connect/refresh", (req, res) => {
-    // Task 1151: require an authenticated session before processing redirect state.
-    if (!req.isAuthenticated || !req.isAuthenticated()) {
-      return res.redirect("/login?returnTo=" + encodeURIComponent("/stripe/connect/refresh"));
-    }
     // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
     const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
     if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=refresh");
@@ -2086,13 +2059,9 @@ router.get("/stripe/connect/refresh", (req, res) => {
   // === Admin Payouts Management ===
 
 
-router.get("/api/booking-fee-config", isAuthenticated, async (req, res) => {
+router.get("/api/booking-fee-config", async (req, res) => {
     try {
       const category = (req.query.category as string) || "default";
-      // Task 1151: authenticated-only; per-expert/provider rate context is only
-      // visible to an admin or the identified expert/provider themselves (IDOR guard).
-      const sessionUserId = getUserId(req);
-      if (!sessionUserId) return res.status(401).json({ message: "Authentication required" });
       // Forward the SAME context the checkout charge resolves with (category +
       // per-expert override id + early-adopter/provider id) — not a generic default —
       // so display == charge for the SAME booking context, not merely same-source.
@@ -2100,15 +2069,6 @@ router.get("/api/booking-fee-config", isAuthenticated, async (req, res) => {
       // expertId: service.userId }); this mirrors those inputs.
       const expertId = (req.query.expertId as string) || null;
       const providerId = (req.query.providerId as string) || null;
-      if (expertId || providerId) {
-        const requestedIds = [expertId, providerId].filter(Boolean) as string[];
-        if (requestedIds.some((id) => id !== sessionUserId)) {
-          const sessionUser = await storage.getUser(sessionUserId);
-          if (!sessionUser || sessionUser.role !== "admin") {
-            return res.status(403).json({ message: "Forbidden" });
-          }
-        }
-      }
       // Canonical source: fee_bands via the commission resolver. Previously read
       // booking_fee_configs directly, which diverged from the charge once Phase 1.3
       // made fee_bands canonical (12% fallback on prod, where the table was absent).
@@ -2121,17 +2081,11 @@ router.get("/api/booking-fee-config", isAuthenticated, async (req, res) => {
     }
   });
 
-  // ─── Phase 1.4: GET /api/fee-bands/:bandKey ──────────────────────────────────
-  // INTENTIONALLY PUBLIC (no isAuthenticated guard) — audit ref: Task 1163.
-  // Rationale: fee-band rows carry only the platform's own posted rates (e.g.
-  // "PLATFORM_FEE = 0.25"). They contain no user-specific data, no PII, and no
-  // commercially sensitive per-account overrides (those live in booking_fee_configs
-  // and are gated by GET /api/booking-fee-config, which IS authenticated + IDOR-
-  // guarded). This endpoint is used by client-side pricing surfaces (optimize.tsx,
-  // cart fee-preview) so admin edits propagate without a redeploy.
+  // ─── Phase 1.4: GET /api/fee-bands/:bandKey (public; read-only) ──────────────
+  // Returns the live default_rate for a fee_bands row. Used by client-side
+  // pricing surfaces (optimize.tsx, etc.) so admin edits propagate without redeploy.
   // Percent bands return rate as a fraction (0.25 = 25 %); flat bands return rate
-  // as USD dollars (49.99 = $49.99). The rateType field disambiguates.
-  // fee-literal-ok: comment example, fee resolves from config
+  // as USD dollars (49.99 = $49.99). The rateType field disambiguates. // fee-literal-ok: comment example, fee resolves from config
 router.get("/api/fee-bands/:bandKey", async (req, res) => {
     try {
       const bandKey = String(req.params.bandKey || "").trim();
@@ -2186,59 +2140,18 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // §15: one open request at a time. Three sub-cases:
-      //
-      // (A) FRESH pending/processing (age ≤ STALE_PAYOUT_PROCESSING_DAYS) → 409.
-      //
-      // (B) STALE processing (age > STALE_PAYOUT_PROCESSING_DAYS) → 409 with contactSupport.
-      //     A 'processing' row means the admin has the row in hand; a Stripe transfer could
-      //     have been issued out-of-band. Do NOT auto-cancel — the earner must contact support.
-      //     The Money page already shows a 7-day "Contact support" nudge for these rows.
-      //
-      // (C) STALE pending (age > STALE_PAYOUT_PROCESSING_DAYS) → atomic supersession.
-      //     'pending' rows have never been claimed for a Stripe transfer (the claim guard in
-      //     storage.ts only promotes pending→processing at the moment a completed attempt fires).
-      //     Safe to cancel. The cancellation and the new INSERT happen in ONE DB transaction
-      //     with a conditional UPDATE (WHERE status='pending') so a concurrent admin claim
-      //     between our read and the tx causes the UPDATE to return 0 rows, which rolls back
-      //     the entire tx and returns 409 to the earner to retry. The claimForProcessing guards
-      //     also exclude 'failed' (storage.ts task-1193 fix) so a superseded row can never
-      //     have Stripe money moved against it.
+      // §15: one open request at a time — a pending/processing payout blocks a duplicate.
       const existing = isProvider
         ? await storage.getProviderPayouts(userId)
         : await storage.getExpertPayouts(userId);
-
-      // (A) Fresh open payout — normal duplicate gate.
-      const freshOpen = existing.find(
-        (p: any) => (p.status === "pending" || p.status === "processing") && !isPayoutStale(p),
-      );
-      if (freshOpen) {
+      const open = existing.find((p: any) => p.status === "pending" || p.status === "processing");
+      if (open) {
         return res.status(409).json({
           error: "payout_request_pending",
           message: "You already have a payout request awaiting review.",
-          payout: freshOpen,
+          payout: open,
         });
       }
-
-      // (B) Stale processing — cannot auto-cancel; Stripe transfer may have been issued.
-      const staleProcessing = existing.find(
-        (p: any) => p.status === "processing" && isPayoutStale(p),
-      );
-      if (staleProcessing) {
-        return res.status(409).json({
-          error: "payout_processing_stale",
-          message:
-            `Your payout has been in processing for over ${STALE_PAYOUT_PROCESSING_DAYS} days. ` +
-            `Please contact support to resolve it before a new request can be submitted.`,
-          payout: staleProcessing,
-          contactSupport: true,
-        });
-      }
-
-      // (C) Stale pending — safe to supersede atomically.
-      const stalePending = existing.filter(
-        (p: any) => p.status === "pending" && isPayoutStale(p),
-      );
 
       // §14: amount is SERVER-DERIVED from the earner's releasable balance, never from the
       // body (a self-service withdrawal of the user's OWN cleared balance — money-derive-ok).
@@ -2272,74 +2185,10 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       }
 
       const amount = (amountCents / 100).toFixed(2);
-
       // requestedAt is DB-defaulted (defaultNow) — not in the insert type, so it's omitted here.
-      let payout: any;
-      if (stalePending.length > 0) {
-        // (C) Atomic supersession: cancel stale pending row(s) and create replacement in ONE tx.
-        // The conditional UPDATE (WHERE status='pending') is the guard against a concurrent admin
-        // claim between our read above and this tx: if 0 rows are updated the tx rolls back and
-        // we return 409 so the earner can retry.
-        const supersessionNote =
-          `Automatically superseded after ${STALE_PAYOUT_PROCESSING_DAYS} days with no admin resolution. ` +
-          `A fresh payout request was submitted by the earner on ${new Date().toISOString()}. ` +
-          `No Stripe transfer was issued for this row.`;
-        try {
-          payout = await db.transaction(async (tx) => {
-            for (const stale of stalePending) {
-              const cancelled = isProvider
-                ? await tx
-                    .update(providerPayouts)
-                    .set({ status: "failed", notes: supersessionNote })
-                    .where(and(eq(providerPayouts.id, stale.id), eq(providerPayouts.status, "pending")))
-                    .returning()
-                : await tx
-                    .update(expertPayouts)
-                    .set({ status: "failed", failureReason: supersessionNote })
-                    .where(and(eq(expertPayouts.id, stale.id), eq(expertPayouts.status, "pending")))
-                    .returning();
-              if (cancelled.length === 0) {
-                // Admin claimed this payout concurrently — our window closed. Roll back.
-                throw Object.assign(
-                  new Error("Stale payout was claimed concurrently — please try again."),
-                  { code: "concurrent_claim" },
-                );
-              }
-              console.log(
-                `[payouts] superseded stale pending ${isProvider ? "provider" : "expert"} payout ` +
-                `${stale.id} for user ${userId} (age > ${STALE_PAYOUT_PROCESSING_DAYS}d)`,
-              );
-            }
-            // Create the replacement inside the same transaction.
-            if (isProvider) {
-              const [inserted] = await tx
-                .insert(providerPayouts)
-                .values({ providerId: userId, amount, status: "pending", notes: "Requested by provider (superseded stale)" })
-                .returning();
-              return inserted;
-            } else {
-              const [inserted] = await tx
-                .insert(expertPayouts)
-                .values({ expertId: userId, amount, status: "pending", metadata: { source: "self_request_superseded" } })
-                .returning();
-              return inserted;
-            }
-          });
-        } catch (txErr: any) {
-          if (txErr.code === "concurrent_claim") {
-            return res.status(409).json({
-              error: "payout_request_pending",
-              message: "Your payout was just picked up for processing. Please try again in a moment.",
-            });
-          }
-          throw txErr;
-        }
-      } else {
-        // No stale pending rows — normal creation path (unchanged).
-        payout = isProvider
-          ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
-          : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
-      }
+      const payout = isProvider
+        ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
+        : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
 
       res.status(201).json({ ...payout, requesterType: isProvider ? "provider" : "expert" });
     } catch (error: any) {

@@ -64,7 +64,6 @@ export async function searchBusbud(params: BusbudSearchParams): Promise<CatalogI
       }
     }
   } catch {
-    // Best-effort BusBud lookup — preserve the synthetic fallback when the provider is unreachable or returns bad data.
   }
 
   const origin = params.origin || "Origin";

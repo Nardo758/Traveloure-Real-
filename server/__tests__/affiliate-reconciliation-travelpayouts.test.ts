@@ -8,7 +8,6 @@
  *    (never the dead /v1/statistics/* endpoints that 404'd and silently zeroed stats)
  *  - maps action rows to ExternalCommission with paid+processing amounts
  *  - drops rows without an action_id
- *  - returns a FetcherDiagnostic reflecting ok / skipped / error status
  */
 import { test, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
@@ -61,12 +60,12 @@ const wegotripRow = {
 
 const noIdRow = { ...wegotripRow, action_id: "" };
 
-test("maps Travelpayouts action rows to ExternalCommission", async () => {
+test("maps Travelpayouts action rows to ExternalCommission via execute_query", async () => {
   mockFetch(() => ({ body: { results: [wegotripRow, noIdRow], total_rows: 2 } }));
 
   const start = new Date("2026-07-01T00:00:00Z");
   const end = new Date("2026-07-31T00:00:00Z");
-  const { commissions, diagnostic } = await fetchTravelpayoutsCommissions(start, end);
+  const commissions = await fetchTravelpayoutsCommissions(start, end);
 
   // Endpoint + auth shape
   assert.equal(calls.length, 1);
@@ -93,15 +92,9 @@ test("maps Travelpayouts action rows to ExternalCommission", async () => {
   assert.equal(c.currency, "USD");
   assert.equal(c.reportedAt, "2026-07-15");
   assert.deepEqual(c.rawData, wegotripRow);
-
-  // Diagnostic: ok with correct row count
-  assert.equal(diagnostic.status, "ok");
-  assert.equal(diagnostic.partner, "travelpayouts");
-  assert.equal(diagnostic.rowCount, 1);
-  assert.equal(diagnostic.reason, undefined);
 });
 
-test("returns error diagnostic and logs when the API fails — never throws", async () => {
+test("returns [] and logs the error when the API fails — never throws", async () => {
   mockFetch(() => ({ status: 500, body: { error: "boom" } }));
   const logged: string[] = [];
   const realError = console.error;
@@ -109,15 +102,11 @@ test("returns error diagnostic and logs when the API fails — never throws", as
     logged.push(args.map(String).join(" "));
   };
   try {
-    const { commissions, diagnostic } = await fetchTravelpayoutsCommissions(
+    const commissions = await fetchTravelpayoutsCommissions(
       new Date("2026-07-01T00:00:00Z"),
       new Date("2026-07-31T00:00:00Z")
     );
     assert.deepEqual(commissions, []);
-    assert.equal(diagnostic.status, "error");
-    assert.equal(diagnostic.partner, "travelpayouts");
-    assert.equal(diagnostic.rowCount, 0);
-    assert.ok(diagnostic.reason, "error diagnostic must include a reason");
   } finally {
     console.error = realError;
   }
@@ -127,7 +116,7 @@ test("returns error diagnostic and logs when the API fails — never throws", as
   );
 });
 
-test("returns skipped diagnostic with a warning when TRAVELPAYOUTS_TOKEN is not configured", async () => {
+test("skips with a warning when TRAVELPAYOUTS_TOKEN is not configured", async () => {
   const saved = process.env.TRAVELPAYOUTS_TOKEN;
   delete process.env.TRAVELPAYOUTS_TOKEN;
   mockFetch(() => ({ body: { results: [wegotripRow], total_rows: 1 } }));
@@ -137,16 +126,12 @@ test("returns skipped diagnostic with a warning when TRAVELPAYOUTS_TOKEN is not 
     warnings.push(args.map(String).join(" "));
   };
   try {
-    const { commissions, diagnostic } = await fetchTravelpayoutsCommissions(
+    const commissions = await fetchTravelpayoutsCommissions(
       new Date("2026-07-01T00:00:00Z"),
       new Date("2026-07-31T00:00:00Z")
     );
     assert.deepEqual(commissions, []);
     assert.equal(calls.length, 0, "no API call without a token");
-    assert.equal(diagnostic.status, "skipped");
-    assert.equal(diagnostic.partner, "travelpayouts");
-    assert.equal(diagnostic.rowCount, 0);
-    assert.ok(diagnostic.reason?.includes("TRAVELPAYOUTS_TOKEN"), "skipped reason must name the missing credential");
   } finally {
     console.warn = realWarn;
     process.env.TRAVELPAYOUTS_TOKEN = saved;

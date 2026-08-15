@@ -7,7 +7,6 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { isExpertRole } from "@shared/roles";
-import { getUserId } from "../utils/auth";
 import {
   rankCandidates,
   getSlotConfig,
@@ -403,7 +402,7 @@ export async function requireExpertRole(
   req: any,
   res: any,
 ): Promise<{ userId: string; role: string } | null> {
-  const userId = getUserId(req);
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     res.status(401).json({ error: "Authentication required" });
     return null;
@@ -453,8 +452,7 @@ export async function resolveNeighborhoodCity(neighborhoodId: string): Promise<s
       SELECT city, slug FROM city_neighborhoods WHERE id = ${neighborhoodId} LIMIT 1
     `);
     return (nbh.rows?.[0] as any)?.city ?? null;
-  } catch (err) {
-    console.warn("[upsell-query] Failed to resolve city from neighborhood — returning null:", err);
+  } catch {
     return null;
   }
 }
@@ -544,8 +542,7 @@ export async function getExpertEndorsements(
       ORDER BY created_at DESC
     `);
     return result.rows ?? [];
-  } catch (err) {
-    console.warn("[upsell-query] Failed to load upsell candidates — returning empty list:", err);
+  } catch {
     return [];
   }
 }
@@ -686,8 +683,7 @@ export async function getFeedCompositionConfig(): Promise<typeof FEED_CONFIG_DEF
       recLabel: kvMap.feed_rec_label ?? FEED_CONFIG_DEFAULTS.recLabel,
       recAffiliateLabel: kvMap.feed_rec_affiliate_label ?? FEED_CONFIG_DEFAULTS.recAffiliateLabel,
     };
-  } catch (err) {
-    console.warn("[upsell-query] Failed to load feed composition config — using defaults:", err);
+  } catch {
     return { ...FEED_CONFIG_DEFAULTS };
   }
 }

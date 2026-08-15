@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
-import { wipeLocalTripSession } from "@/lib/trip-context";
 
 async function fetchUser(): Promise<User | null> {
   const response = await fetch("/api/auth/user", {
@@ -33,12 +32,6 @@ async function logout(): Promise<void> {
   if (!response.ok) {
     throw new Error(`Logout failed: ${response.status}`);
   }
-  // Synchronous cleanup before navigation. useEffect-based cleanup in
-  // useSyncTripContextOnSignIn fires post-render, which is too late when
-  // window.location.href replaces the document immediately. Wiping here
-  // ensures no pending debounced PUT can fire after the session ends, and the
-  // prior user's context/ownership stamp cannot survive to the next session.
-  wipeLocalTripSession();
   window.location.href = "/";
 }
 

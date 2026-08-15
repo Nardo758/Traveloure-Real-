@@ -1,6 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
-import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
@@ -10,7 +9,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -106,16 +105,12 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
-import { travelpayoutsCache } from "@shared/schema";
-import { sharedCache } from "../services/shared-cache.service";
 import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
-import { getWorkspaceStatusHistory } from "../services/item-transition-log.service";
-import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -167,22 +162,10 @@ import {
   getLocationSummary, getLocationSummaryData, getDestinationDemandReport, getProviderMarketReport,
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
-  getUsersBasicByIds, getProviderServiceById, getProviderServicesByIds, deleteProviderService,
-  isValidTimezone,
+  getUsersBasicByIds, getProviderServiceById, deleteProviderService,
 } from "../services/admin-query.service";
 
 const router = Router();
-
-/**
- * Test seam — populated only by unit tests to intercept the Resend call without
- * hitting the real API. Empty object in production; no behaviour change when unset.
- */
-export const _adminTestEmailHooks: {
-  resendSend?: (payload: Record<string, unknown>) => Promise<{
-    data: { id?: string } | null;
-    error: { message?: string } | null;
-  }>;
-} = {};
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -322,16 +305,13 @@ router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
         })
         .reduce((sum, b) => sum + parseFloat(b.platformFee || "0"), 0);
       
-      // New users today — use the admin's IANA timezone so the day boundary
-      // matches what the admin sees on their own clock (falls back to UTC).
-      const rawTz = req.query.timezone as string | undefined;
-      const tz = rawTz && isValidTimezone(rawTz) ? rawTz : "UTC";
-      const [newTodayResult] = await db
-        .select({
-          newToday: sql<number>`COUNT(*) FILTER (WHERE ((${users.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = (now() AT TIME ZONE ${tz})::date)`,
-        })
-        .from(users);
-      const newUsersToday = Number(newTodayResult?.newToday ?? 0);
+      // New users today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const newUsersToday = allUsers.filter(u => {
+        const created = u.createdAt ? new Date(u.createdAt) : null;
+        return created && created >= today;
+      }).length;
       
       res.json({
         totalUsers,
@@ -357,33 +337,17 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const allBookings = await storage.getServiceBookings(status ? { status } : {});
-
-      // Batch-fetch users and services with IN-clause queries instead of per-row lookups
-      const travelerIds = Array.from(new Set(allBookings.map(b => b.travelerId).filter(Boolean) as string[]));
-      const providerIds = Array.from(new Set(allBookings.map(b => b.providerId).filter(Boolean) as string[]));
-      const serviceIds  = Array.from(new Set(allBookings.map(b => b.serviceId).filter(Boolean)  as string[]));
-
-      const [travelerRows, providerRows, serviceRows] = await Promise.all([
-        getUsersBasicByIds(travelerIds),
-        getUsersBasicByIds(providerIds),
-        getProviderServicesByIds(serviceIds),
-      ]);
-
-      const travelerMap = new Map(travelerRows.map(u => [u.id, u]));
-      const providerMap = new Map(providerRows.map(u => [u.id, u]));
-      const serviceMap  = new Map(serviceRows.map(s => [s.id, s]));
-
-      const enrichedBookings = allBookings.map((booking) => {
-        const traveler = booking.travelerId ? travelerMap.get(booking.travelerId) ?? null : null;
-        const provider = booking.providerId ? providerMap.get(booking.providerId) ?? null : null;
-        const service  = booking.serviceId  ? serviceMap.get(booking.serviceId)   ?? null : null;
+      const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
+        const traveler = booking.travelerId ? await storage.getUser(booking.travelerId) : null;
+        const provider = booking.providerId ? await storage.getUser(booking.providerId) : null;
+        const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
         return {
           ...booking,
           traveler: traveler ? { id: traveler.id, firstName: traveler.firstName, lastName: traveler.lastName, email: traveler.email } : null,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, email: provider.email } : null,
-          service:  service  ? { id: service.id,  serviceName: service.serviceName } : null,
+          service: service ? { id: service.id, serviceName: service.serviceName } : null,
         };
-      });
+      }));
       res.json(enrichedBookings);
     } catch (err) {
       console.error("Admin bookings error:", err);
@@ -1082,25 +1046,10 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     const { bookingId } = req.params;
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     await storage.updateServiceBookingStatus(bookingId, "completed");
-    let auditWarning: string | undefined;
-    await insertAccessAuditLog({
-      actorId: user.id,
-      actorRole: user.role,
-      action: "dispute_rejected",
-      resourceType: "dispute",
-      resourceId: bookingId,
-      metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
-      ipAddress: req.ip ?? null,
-      userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => {
-      console.error("[admin/disputes] audit log failed (non-fatal):", err);
-      auditWarning = `Audit log write failed for dispute_rejected on booking ${bookingId}: ${err?.message ?? "unknown error"}. Status change was applied but this action has no audit trail.`;
-    });
     res.json({
       success: true,
       cleared,
       note: "Dispute rejected; earnings resume release.",
-      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute reject error:", err);
@@ -1143,27 +1092,6 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
-    let auditWarning: string | undefined;
-    await insertAccessAuditLog({
-      actorId: user.id,
-      actorRole: user.role,
-      action: "dispute_refunded",
-      resourceType: "dispute",
-      resourceId: bookingId,
-      metadata: {
-        reason: String(reason ?? "").slice(0, 2000) || "dispute_upheld",
-        reversedEarnings: earnings.reversed,
-        skippedPaidOut: earnings.skippedPaidOut,
-        reversedRevenueRows: revenueRows,
-        revertedPlanItems: routingReversal.reverted,
-      },
-      ipAddress: req.ip ?? null,
-      userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => {
-      console.error("[admin/disputes] audit log failed (non-fatal):", err);
-      auditWarning = `Audit log write failed for dispute_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. Ledger reversal and Stripe refund were applied but this action has no audit trail.`;
-    });
-
     res.json({
       success: true,
       revertedPlanItems: routingReversal.reverted,
@@ -1174,7 +1102,6 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       note: earnings.skippedPaidOut > 0
         ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
         : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
-      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute uphold error:", err);
@@ -1365,159 +1292,6 @@ router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, 
   } catch (err: any) {
     console.error("Manual auto-cancel sweep error:", err);
     res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
-  }
-});
-
-/**
- * GET /api/admin/bookings/backfill-completion/audit
- *
- * AUDIT SURFACE for the historical backfill: how many `confirmed` bookings with a
- * PaymentIntent are stuck past the auto-complete grace window, what is the total
- * provider_earnings at stake, and which rows have already been stamped as unpaid (and
- * will be excluded by the next pass until their recheck window lapses).
- *
- * This is DB-only — no Stripe calls — so it can be run cheaply before triggering the
- * actual backfill pass. The run endpoint (POST below) does the Stripe verification gate.
- *
- * Response shape:
- *   eligibleCount        — rows due now (past grace, PI present, no unexpired unpaid stamp)
- *   eligibleEarningsSum  — SUM(provider_earnings) across those rows (string, numeric)
- *   stampedUnpaidCount   — rows with an unexpired autoCompleteUnpaidRecheckAt stamp (excluded)
- *   noPaymentCount       — confirmed rows with NO PI at all (always excluded by the pass)
- *   sampleCandidates     — up to 20 eligible rows for ops review before triggering
- */
-router.get("/api/admin/bookings/backfill-completion/audit", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  try {
-    const now = new Date().toISOString();
-    const graceDays = Number(process.env.BOOKING_AUTO_COMPLETE_DAYS);
-    const days = Number.isFinite(graceDays) && graceDays >= 0 ? graceDays : 3;
-
-    // Eligible: confirmed + has PI + past grace window + no unexpired unpaid stamp
-    const eligibleResult = await db.execute(sql`
-      SELECT
-        COUNT(*)::int                      AS eligible_count,
-        COALESCE(SUM(COALESCE(sb.provider_earnings, '0')::numeric), 0)::text AS eligible_earnings_sum
-      FROM service_bookings sb
-      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
-      WHERE sb.status = 'confirmed'
-        AND sb.stripe_payment_intent_id IS NOT NULL
-        AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
-            + (${days} || ' days')::interval < ${now}::timestamptz
-        AND (
-          sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NULL
-          OR (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${now}::timestamptz
-        )
-    `);
-
-    // Stamped unpaid: confirmed + has PI + past grace + unexpired stamp (excluded until recheck)
-    const stampedResult = await db.execute(sql`
-      SELECT COUNT(*)::int AS stamped_count
-      FROM service_bookings sb
-      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
-      WHERE sb.status = 'confirmed'
-        AND sb.stripe_payment_intent_id IS NOT NULL
-        AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
-            + (${days} || ' days')::interval < ${now}::timestamptz
-        AND sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NOT NULL
-        AND (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz > ${now}::timestamptz
-    `);
-
-    // No PI: confirmed rows without any stripe_payment_intent_id (always skipped)
-    const noPaymentResult = await db.execute(sql`
-      SELECT COUNT(*)::int AS no_payment_count
-      FROM service_bookings sb
-      WHERE sb.status = 'confirmed'
-        AND sb.stripe_payment_intent_id IS NULL
-    `);
-
-    // Sample: first 20 eligible candidates for ops review
-    const sampleResult = await db.execute(sql`
-      SELECT
-        sb.id,
-        sb.stripe_payment_intent_id,
-        sb.provider_earnings,
-        sb.platform_fee,
-        sb.total_amount,
-        sb.confirmed_at,
-        sb.created_at,
-        sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' AS unpaid_recheck_at,
-        ps.service_name,
-        u.email AS traveler_email
-      FROM service_bookings sb
-      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
-      LEFT JOIN provider_services ps ON ps.id = sb.service_id
-      LEFT JOIN users u ON u.id = sb.traveler_id
-      WHERE sb.status = 'confirmed'
-        AND sb.stripe_payment_intent_id IS NOT NULL
-        AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
-            + (${days} || ' days')::interval < ${now}::timestamptz
-        AND (
-          sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NULL
-          OR (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${now}::timestamptz
-        )
-      ORDER BY COALESCE(sb.confirmed_at, 'epoch'::timestamp) ASC, sb.id ASC
-      LIMIT 20
-    `);
-
-    const eligible = eligibleResult.rows[0] as any;
-    const stamped = stampedResult.rows[0] as any;
-    const noPayment = noPaymentResult.rows[0] as any;
-
-    res.json({
-      eligibleCount: eligible?.eligible_count ?? 0,
-      eligibleEarningsSum: eligible?.eligible_earnings_sum ?? "0",
-      stampedUnpaidCount: stamped?.stamped_count ?? 0,
-      noPaymentCount: noPayment?.no_payment_count ?? 0,
-      graceDays: days,
-      sampleCandidates: sampleResult.rows,
-      note:
-        "DB-only audit — no Stripe calls. eligible = confirmed + has PI + past grace window + no unexpired unpaid stamp. " +
-        "Trigger POST /api/admin/bookings/backfill-completion/run to verify each PI against Stripe and complete eligible bookings. " +
-        "Stamped rows will be re-checked after their recheck window lapses (default 24h).",
-    });
-  } catch (err: any) {
-    console.error("Backfill completion audit error:", err);
-    res.status(500).json({ message: "Failed to run backfill completion audit", error: err.message });
-  }
-});
-
-/**
- * POST /api/admin/bookings/backfill-completion/run
- *
- * Deliberately triggers one auto-completion pass — the same logic the hourly scheduler runs —
- * so ops can backfill historical `confirmed` bookings that were stuck before task 1091.
- *
- * Each candidate's PaymentIntent is verified `succeeded` against Stripe before any flip.
- * Bookings whose PI is NOT succeeded are stamped (autoCompleteUnpaidRecheckAt, +24h) and
- * flagged in the response for manual review — they are NEVER silently minted.
- *
- * Response: AutoCompletionRunResult + a human-readable summary.
- */
-router.post("/api/admin/bookings/backfill-completion/run", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  try {
-    const result = await runBookingAutoCompletion(new Date());
-    const skippedReasons = Object.entries(result.skipped)
-      .map(([reason, count]) => `${reason}: ${count}`)
-      .join(", ");
-    res.json({
-      ...result,
-      summary:
-        `Completed ${result.completed} booking(s), reconciled ${result.reconciled} ledger row(s). ` +
-        `Scanned ${result.scanned}. ` +
-        (skippedReasons ? `Skipped — ${skippedReasons}. ` : "") +
-        `Unpaid rows (PI not succeeded) are stamped for 24h recheck and must be reviewed manually in Stripe.`,
-    });
-  } catch (err: any) {
-    console.error("Backfill completion run error:", err);
-    res.status(500).json({ message: "Backfill completion run failed", error: err.message });
   }
 });
 
@@ -2508,8 +2282,8 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       const categoryRow = await resolveOrCreateItineraryPlanningCategory();
       const esoRow = await createExpertServiceOfferingRow({
         categoryId:  categoryRow.id,
-        name:        sanitizeText(title) as string,
-        description: sanitizeText(description ?? null),
+        name:        title,
+        description: description ?? null,
         price:       suggestedPrice ?? "0",
         isDefault:   true,
         sortOrder:   sortOrder ?? 0,
@@ -2546,7 +2320,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const input = sanitizeStringFields(insertServiceTemplateSchema.partial().parse(req.body));
+      const input = insertServiceTemplateSchema.partial().parse(req.body);
       const updated = await storage.updateServiceTemplate(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Template not found" });
@@ -3312,11 +3086,11 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const period = (req.query.period as string) || "last_35_days";
+      const period = (req.query.period as string) || "this_month";
       const partner = (req.query.partner as string) || undefined;
-      const validPeriods = ["this_month", "last_35_days", "last_month", "last_90_days"];
+      const validPeriods = ["this_month", "last_month", "last_90_days"];
       if (!validPeriods.includes(period)) {
-        return res.status(400).json({ message: "Invalid period. Use: this_month, last_35_days, last_month, last_90_days" });
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
       }
 
       const { affiliateReconciliationService } = await import("../services/affiliate-reconciliation.service");
@@ -4632,8 +4406,8 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
         storage.getAllProviderPayouts(status),
       ]);
       const allPayouts = [
-        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const, isStale: isPayoutStale(p) })),
-        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const, isStale: isPayoutStale(p) })),
+        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
+        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
       ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {
@@ -5118,14 +4892,8 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
 
       const now = new Date();
 
-      // N+1 fix: one batched WHERE id = ANY(...) user lookup for every trip owner,
-      // instead of one storage.getUser round-trip per trip.
-      const ownerIds = Array.from(new Set(allTrips.map((t) => t.userId).filter(Boolean))) as string[];
-      const owners = await getUsersBasicByIds(ownerIds);
-      const ownerById = new Map(owners.map((u) => [u.id, u]));
-
-      const enrichedTrips = allTrips.map((t) => {
-        const owner = t.userId ? ownerById.get(t.userId) : undefined;
+      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
+        const owner = await storage.getUser(t.userId || '');
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -5140,7 +4908,7 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
-      });
+      }));
 
       const phaseFiltered = phaseFilter
         ? enrichedTrips.filter(t => t.status === phaseFilter)
@@ -5159,35 +4927,6 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });
-    }
-  });
-
-  // === Admin: Workspace Status History for a trip (task 1030) ===
-  // Read-only audit trail — `workspace_status_transition` rows from item_transition_log.
-  // Support staff use this to resolve "when was this delivered?" disputes without DB access.
-
-router.get("/api/admin/trips/:tripId/workspace-history", isAuthenticated, requireAdminLocal, async (req, res) => {
-    try {
-      const { tripId } = req.params;
-      const rows = await getWorkspaceStatusHistory(tripId);
-
-      // Batch-resolve actor names for rows that have an actorId.
-      const actorIds = Array.from(new Set(rows.map(r => r.actorId).filter(Boolean))) as string[];
-      const actors = actorIds.length > 0 ? await getUsersBasicByIds(actorIds) : [];
-      const actorById = new Map(actors.map(u => [u.id, u]));
-
-      const result = rows.map(row => {
-        const actor = row.actorId ? actorById.get(row.actorId) : undefined;
-        const actorName = actor
-          ? [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || null
-          : null;
-        return { ...row, actorName };
-      });
-
-      res.json(result);
-    } catch (err) {
-      console.error("Admin workspace history error:", err);
-      res.status(500).json({ message: "Failed to fetch workspace history" });
     }
   });
 
@@ -5266,108 +5005,6 @@ router.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) =>
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
-
-// GET /api/admin/analytics/export?from=&to=&format=csv — CSV download of the same data the
-// analytics overview shows, optionally filtered to a created-at date range. Additive; the
-// overview endpoint is untouched.
-router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  try {
-    const fromRaw = typeof req.query.from === "string" ? req.query.from.trim() : "";
-    const toRaw   = typeof req.query.to   === "string" ? req.query.to.trim()   : "";
-
-    // Parse "from" as start-of-day (00:00:00.000 local/UTC boundary — date-only strings
-    // are interpreted as UTC midnight by the Date constructor, which is correct for a
-    // lower-bound inclusive comparison).
-    const fromParsed = fromRaw ? new Date(fromRaw) : null;
-    const from = fromParsed && !isNaN(fromParsed.getTime()) ? fromParsed : null;
-
-    // Parse "to" as end-of-day so that records created at any time on the selected date
-    // are included.  A date-only string like "2026-08-15" is parsed as midnight UTC, so
-    // we advance by one full day and use a strict-less-than upper bound.
-    let toExclusive: Date | null = null;
-    if (toRaw) {
-      const toParsed = new Date(toRaw);
-      if (!isNaN(toParsed.getTime())) {
-        // If the caller sent a date-only value (exactly 10 chars, YYYY-MM-DD), advance by
-        // one day so the entire selected calendar day is included.
-        if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
-          toExclusive = new Date(toParsed.getTime() + 24 * 60 * 60 * 1000);
-        } else {
-          // Full timestamp — treat as already an inclusive upper bound; add 1 ms.
-          toExclusive = new Date(toParsed.getTime() + 1);
-        }
-      }
-    }
-
-    const inRange = (d: Date | string | null | undefined) => {
-      if (!from && !toExclusive) return true;
-      if (!d) return false;
-      const t = new Date(d).getTime();
-      if (from && t < from.getTime()) return false;
-      if (toExclusive && t >= toExclusive.getTime()) return false;
-      return true;
-    };
-
-    const allUsers = (await getAllUsersBasic()).filter(u => inRange(u.createdAt as any));
-    const allBookings = (await storage.getServiceBookings({})).filter(b => inRange(b.createdAt as any));
-    const allTrips = (await getAllTrips()).filter((t: any) => inRange(t.createdAt));
-    const allReviews = (await getAllServiceReviews()).filter((r: any) => inRange(r.createdAt));
-
-    const completedBookings = allBookings.filter(b => b.status === "completed");
-    const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
-    const avgRating = allReviews.length > 0
-      ? allReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / allReviews.length
-      : 0;
-
-    const destCounts: Record<string, { bookings: number; revenue: number }> = {};
-    allTrips.forEach((t: any) => {
-      const dest = t.destination || "Unknown";
-      if (!destCounts[dest]) destCounts[dest] = { bookings: 0, revenue: 0 };
-      destCounts[dest].bookings++;
-      destCounts[dest].revenue += Number(t.budget || 0);
-    });
-
-    const roleCounts: Record<string, number> = {};
-    allUsers.forEach(u => {
-      const role = u.role || "user";
-      roleCounts[role] = (roleCounts[role] || 0) + 1;
-    });
-
-    const esc = (v: unknown) => {
-      let s = String(v ?? "");
-      // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR would be
-      // evaluated by Excel/Sheets even inside a quoted cell. Prefix with an apostrophe.
-      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines: string[] = [];
-    lines.push("Section,Label,Value");
-    lines.push(`Range,From,${esc(fromRaw || "all time")}`);
-    lines.push(`Range,To,${esc(toRaw || "now")}`);
-    lines.push(`Metrics,Total Users,${allUsers.length}`);
-    lines.push(`Metrics,Total Bookings,${allBookings.length}`);
-    lines.push(`Metrics,Completed Bookings,${completedBookings.length}`);
-    lines.push(`Metrics,Total Revenue,${totalRevenue.toFixed(2)}`);
-    lines.push(`Metrics,Avg Rating,${avgRating.toFixed(2)}`);
-    lines.push(`Metrics,Total Reviews,${allReviews.length}`);
-    Object.entries(destCounts)
-      .sort((a, b) => b[1].bookings - a[1].bookings)
-      .forEach(([name, d]) => lines.push(`Top Destinations,${esc(name)},${d.bookings} trips / $${d.revenue.toFixed(2)}`));
-    Object.entries(roleCounts).forEach(([role, count]) => lines.push(`User Roles,${esc(role)},${count}`));
-
-    const filename = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.send(lines.join("\n"));
-  } catch (err) {
-    console.error("Admin analytics export error:", err);
-    res.status(500).json({ message: "Failed to export analytics" });
-  }
-});
 
   // Country/Region Analytics
 
@@ -5626,7 +5263,6 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       try {
         await pingDb();
       } catch {
-        // DB ping failure is represented as degraded status — never abort the health response.
         dbStatus = "degraded";
       }
       const dbLatency = Date.now() - dbStart;
@@ -5646,18 +5282,14 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         const { aiUsageService: aiSvc } = await import('../services/ai-usage.service');
         const summary = await aiSvc.getSummary();
         aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCostDollars || 0).toFixed(2)}` };
-      } catch (aiErr) {
-        console.warn("[admin/system-health] Could not load AI usage summary — returning defaults:", aiErr);
-      }
+      } catch {}
 
       try {
         const allBookings = await storage.getServiceBookings({});
         const completedBookings = allBookings.filter(b => b.status === "completed");
         const volume = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
         apiUsage = { transactions: allBookings.length, volume: `$${volume.toLocaleString()}` };
-      } catch (bookingErr) {
-        console.warn("[admin/system-health] Could not load booking usage stats — returning defaults:", bookingErr);
-      }
+      } catch {}
 
       res.json({
         services,
@@ -5670,111 +5302,6 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("System health error:", err);
       res.status(500).json({ message: "Failed to fetch system health" });
-    }
-  });
-
-  // === Admin Test Email ===
-
-  router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req);
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const adminUser = await getFullAdminUser(userId);
-      if (!adminUser || adminUser.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
-      // Optional custom recipient — falls back to admin's own address.
-      const rawTo = (req.body?.to as string | undefined)?.trim();
-      if (rawTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawTo)) {
-        return res.status(400).json({ ok: false, error: "Invalid email address in 'to' field" });
-      }
-      const toEmail = rawTo || adminUser.email;
-      if (!toEmail) {
-        return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
-      }
-
-      // Call Resend directly — same pattern as auth-critical emails — so the test
-      // works even when email_notifications_enabled is turned off in platform settings.
-      // This is intentional: admins must be able to verify delivery credentials
-      // regardless of the notification kill-switch state.
-      const { getAppBaseUrl } = await import("../services/email.service");
-      const { Resend } = await import("resend");
-      const appUrl = getAppBaseUrl();
-
-      const apiKey = process.env.RESEND_API_KEY;
-      const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
-      const replyTo = process.env.EMAIL_REPLY_TO ?? toEmail;
-      if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
-      if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
-
-      const resendClient = new Resend(apiKey);
-      const emailPayload: Record<string, unknown> = {
-        from,
-        to: toEmail,
-        replyTo,
-        subject: "[Traveloure] Test email — delivery verified",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-            <h2 style="color: #FF385C; margin-bottom: 8px;">Test Email</h2>
-            <p style="color: #374151;">Hi ${adminUser.firstName ?? adminUser.email},</p>
-            <p style="color: #374151;">
-              This is a test email sent from the Traveloure admin panel to confirm that email
-              delivery is working correctly.
-            </p>
-            <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
-              <tr>
-                <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Sent to</td>
-                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${toEmail}</td>
-              </tr>
-              <tr style="background: #F3F4F6;">
-                <td style="padding: 12px 16px; color: #6B7280;">Sent at</td>
-                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${new Date().toISOString()}</td>
-              </tr>
-              <tr>
-                <td style="padding: 12px 16px; color: #6B7280;">Platform</td>
-                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${appUrl}</td>
-              </tr>
-            </table>
-            <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
-              This email was triggered manually from the admin system settings page.<br>
-              If you did not initiate this, another admin may have sent it.
-            </p>
-          </div>
-        `,
-        text: [
-          "Test Email",
-          "",
-          `Hi ${adminUser.firstName ?? adminUser.email},`,
-          "",
-          "This is a test email sent from the Traveloure admin panel to confirm that email delivery is working correctly.",
-          "",
-          `Sent to:  ${toEmail}`,
-          `Sent at:  ${new Date().toISOString()}`,
-          `Platform: ${appUrl}`,
-          "",
-          "This email was triggered manually from the admin system settings page.",
-        ].join("\n"),
-      };
-
-      // Use test hook when set (unit tests only); real Resend client in production.
-      const sender = _adminTestEmailHooks.resendSend
-        ? _adminTestEmailHooks.resendSend
-        : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
-      const { data: emailData, error: emailError } = await sender(emailPayload);
-
-      if (emailError) {
-        const msg = String((emailError as { message?: string }).message ?? emailError);
-        console.error("[admin/test-email] Resend error:", msg);
-        return res.status(502).json({ ok: false, error: msg });
-      }
-
-      const emailId = (emailData as { id?: string } | null)?.id;
-      return res.json({ ok: true, id: emailId, to: toEmail });
-    } catch (err) {
-      console.error("[admin/test-email] unexpected error:", err);
-      return res.status(500).json({ ok: false, error: "Internal server error" });
     }
   });
 
@@ -6978,7 +6505,7 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
       try {
         const { createExpertAssignmentNotification, getTripLabel } = await import("../services/booking-actions.service");
         const tripLabel = await getTripLabel(row.trip_id);
-        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel, { status: "assigned" });
+        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel);
       } catch (notifyErr) {
         console.error("Failed to notify expert of trip assignment:", notifyErr);
       }
@@ -7994,66 +7521,6 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
-  }
-});
-
-// ─── Travelpayouts cache status & purge ────────────────────────────────────────
-// Both endpoints ride the blanket /api/admin adminApiGuard (§2).
-//
-// GET  /api/admin/travelpayouts-cache/status
-//   Aggregates all cache rows by brand so operators can see whether displayed
-//   eSIM, transport, and activity cards are fresh or stale. refreshedAt
-//   (migration 221, stamped on every upsert by shared-cache.service.ts) is the
-//   accurate last-refresh time — createdAt is immutable after first insert and
-//   is not surfaced here. Pre-migration rows with null refreshedAt are
-//   represented as lastRefreshedAt: null ("unknown").
-//
-// DELETE /api/admin/travelpayouts-cache/:brand/:cacheKey
-//   Purges a single stale entry immediately so the next read triggers a fresh
-//   fetch from the upstream partner API, without waiting for the scheduler.
-router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
-  try {
-    const now = new Date();
-    const rows = await db
-      .select({
-        brand: travelpayoutsCache.brand,
-        cacheKey: travelpayoutsCache.cacheKey,
-        expiresAt: travelpayoutsCache.expiresAt,
-        refreshedAt: travelpayoutsCache.refreshedAt,
-      })
-      .from(travelpayoutsCache)
-      .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
-
-    const { aggregateBrandStatus } = await import("../services/travelpayouts/travelpayouts-cache-status");
-    const brands = aggregateBrandStatus(rows, now);
-    res.json({ brands, retrievedAt: now });
-  } catch (error: any) {
-    console.error("[admin/travelpayouts-cache/status] error:", error);
-    res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
-  }
-});
-
-router.delete("/api/admin/travelpayouts-cache/:brand/:cacheKey", isAuthenticated, requireAdminLocal, async (req, res) => {
-  try {
-    const { brand, cacheKey: compositeKey } = req.params;
-    // compositeKey is the full DB composite key: "brand::logicalKey"
-    // (the client passes keyEntry.cacheKey verbatim, URL-encoded).
-    // sharedCache.del(namespace, key) calls dbKey(namespace, key) = "namespace::key"
-    // internally, so strip the existing "brand::" prefix to avoid double-prefixing.
-    if (!brand || !compositeKey) {
-      return res.status(400).json({ message: "brand and cacheKey are required" });
-    }
-    const dbPrefix = `${brand}::`;
-    const logicalKey = compositeKey.startsWith(dbPrefix)
-      ? compositeKey.slice(dbPrefix.length)
-      : compositeKey;
-
-    await sharedCache.del(brand, logicalKey);
-    console.log(`[admin/travelpayouts-cache/purge] purged brand="${brand}" key="${compositeKey}" by admin ${getUserId(req)}`);
-    res.json({ ok: true, brand, cacheKey: compositeKey });
-  } catch (error: any) {
-    console.error("[admin/travelpayouts-cache/purge] error:", error);
-    res.status(500).json({ message: "Failed to purge cache entry", error: error.message });
   }
 });
 

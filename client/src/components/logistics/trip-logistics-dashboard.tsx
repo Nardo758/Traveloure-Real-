@@ -490,7 +490,7 @@ export function TripLogisticsDashboard({
                   <Skeleton className="h-24 w-full" />
                 ) : participantStats ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       {[
                         { label: "Confirmed", value: participantStats.confirmed, color: "text-green-600", bg: "bg-green-50 dark:bg-green-900/20" },
                         { label: "Pending", value: participantStats.pending, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20" },

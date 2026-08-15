@@ -257,7 +257,6 @@ async function fetchOsmFacts(name: string, lat: number, lng: number, fetchImpl: 
     if (parts.length > 0) facts.openingHours = parts.join(" · ");
     return facts;
   } catch {
-    // Total Overpass failure — return null so enrichment continues without OSM data; never throws to caller.
     return null;
   }
 }

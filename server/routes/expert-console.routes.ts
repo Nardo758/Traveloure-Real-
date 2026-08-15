@@ -15,7 +15,6 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
-import { sanitizeStringFields } from "../utils/text-sanitizer";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -501,12 +500,15 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
     //     (storage.getServiceRoutePoints) rather than re-deriving the rule a second way.
     // An opportunity kind with no honest mapping gets no suggestion (undefined), never a
     // default frame guessed onto it.
-    // N+1 fix: ONE IN-clause query for all slot services' route points, counted per service.
     const slotServiceIds = Array.from(new Set(slotRows.map((s) => s.serviceId)));
-    const routeStopCounts = new Map<string, number>();
-    for (const point of await storage.getRoutePointsByServiceIds(slotServiceIds)) {
-      routeStopCounts.set(point.serviceId, (routeStopCounts.get(point.serviceId) ?? 0) + 1);
-    }
+    const routeStopCounts = new Map(
+      await Promise.all(
+        slotServiceIds.map(async (id): Promise<[string, number]> => {
+          const points = await storage.getServiceRoutePoints(id);
+          return [id, points.length];
+        }),
+      ),
+    );
 
     const opportunities = [
       ...reviewRows.map((r) => {
@@ -615,8 +617,7 @@ router.post("/api/expert/knowledge-nuggets", isAuthenticated, requireLocalExpert
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
     }
-    const sanitized = sanitizeStringFields(parsed.data);
-    res.status(201).json(await createLocalKnowledgeNugget(sanitized));
+    res.status(201).json(await createLocalKnowledgeNugget(parsed.data));
   } catch (err) {
     console.error("[Knowledge Nuggets] create error:", err);
     res.status(500).json({ message: "Failed to create knowledge nugget" });
@@ -635,7 +636,7 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalE
       if (key in req.body) updates[key] = req.body[key];
     }
     updates.updatedAt = new Date();
-    res.json(await updateLocalKnowledgeNugget(id, sanitizeStringFields(updates)));
+    res.json(await updateLocalKnowledgeNugget(id, updates));
   } catch (err) {
     console.error("[Knowledge Nuggets] update error:", err);
     res.status(500).json({ message: "Failed to update knowledge nugget" });

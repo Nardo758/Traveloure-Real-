@@ -188,7 +188,7 @@ export function MultiPersonCoordination({
           </TabsList>
 
           <TabsContent value="rsvp" className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <Card data-testid="card-rsvp-confirmed">
                 <CardContent className="pt-4">
                   <div className="text-2xl font-bold text-green-600">{confirmedCount}</div>
@@ -287,7 +287,7 @@ export function MultiPersonCoordination({
               <Progress value={paymentProgress} className="h-3" data-testid="progress-payments" />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <Card data-testid="card-payment-paid">
                 <CardContent className="pt-4">
                   <div className="text-2xl font-bold text-green-600">{paidCount}</div>
@@ -421,7 +421,7 @@ export function MultiPersonCoordination({
           </TabsContent>
 
           <TabsContent value="requirements" className="space-y-4 mt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <Card data-testid="card-dietary-requirements">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">

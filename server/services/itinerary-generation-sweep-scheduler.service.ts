@@ -58,8 +58,8 @@ class ItineraryGenerationSweepSchedulerService {
       return;
     }
     console.log("[ItineraryGenerationSweep] Starting stale paid-generation sweep scheduler");
-    setTimeout(() => { this.runSweep().catch(err => console.error("[ItineraryGenerationSweep] scheduled run rejected:", err)); }, FIRST_RUN_DELAY_MS);
-    this.timer = setInterval(() => { this.runSweep().catch(err => console.error("[ItineraryGenerationSweep] scheduled run rejected:", err)); }, CHECK_INTERVAL_MS);
+    setTimeout(() => { void this.runSweep(); }, FIRST_RUN_DELAY_MS);
+    this.timer = setInterval(() => { void this.runSweep(); }, CHECK_INTERVAL_MS);
     console.log(`[ItineraryGenerationSweep] Scheduled to run every ${CHECK_INTERVAL_MS / (60 * 1000)} minutes`);
   }
 

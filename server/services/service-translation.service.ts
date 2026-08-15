@@ -102,7 +102,6 @@ function parseDraftJson(raw: string): TranslatableContent | null {
       meetingPoint: field(obj.meetingPoint),
     };
   } catch {
-    // Best-effort translation extraction — callers treat null as "no translation available".
     return null;
   }
 }

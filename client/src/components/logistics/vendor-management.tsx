@@ -168,7 +168,7 @@ export function VendorManagement({
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <Card data-testid="card-total-vendors">
                 <CardContent className="pt-4">
                   <div className="text-2xl font-bold">{vendors.length}</div>
@@ -407,7 +407,7 @@ export function VendorManagement({
           </TabsContent>
 
           <TabsContent value="communication" className="space-y-4 mt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="col-span-1 border rounded-lg p-4">
                 <h4 className="font-medium mb-3">Vendors</h4>
                 <ScrollArea className="h-[350px]">

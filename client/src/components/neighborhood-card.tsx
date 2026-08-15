@@ -37,7 +37,7 @@ export function NeighborhoodCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" />
             <div>

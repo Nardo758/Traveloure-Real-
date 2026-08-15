@@ -1288,9 +1288,9 @@ function FlatFilteredFeed({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="city-feed-flat">
+    <div className="grid grid-cols-2 gap-3" data-testid="city-feed-flat">
       {items.map((item, idx) => (
-        <div key={item.id} className={idx === 0 ? "sm:col-span-2" : ""}>
+        <div key={item.id} className={idx === 0 ? "col-span-2" : ""}>
           <FillerCard
             item={item}
             city={city}
@@ -1589,7 +1589,7 @@ function TripComplementsStrip({
               target={addon.isExternal ? "_blank" : undefined}
               rel={addon.isExternal ? "noopener noreferrer" : undefined}
               onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
-              className="basis-full sm:basis-auto sm:flex-1 min-w-0 sm:min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
+              className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
               data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
               <AddOnFace addon={addon} />
@@ -1643,7 +1643,7 @@ function AddOnAgentCard({ addon, city }: { addon: AddOn; city: string }) {
         agentBooking.book();
       }}
       disabled={agentBooking.isPending || agentBooking.requested}
-      className="basis-full sm:basis-auto sm:flex-1 min-w-0 sm:min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
+      className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
       data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <AddOnFace
@@ -2061,8 +2061,8 @@ export default function DiscoverLocationPage() {
               <Skeleton className="h-9 w-24 rounded-xl" />
               <Skeleton className="h-9 w-20 rounded-xl" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Skeleton className="sm:col-span-2 h-28 rounded-xl" />
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="col-span-2 h-28 rounded-xl" />
               <Skeleton className="h-44 rounded-xl" />
               <Skeleton className="h-44 rounded-xl" />
             </div>

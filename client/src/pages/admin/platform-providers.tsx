@@ -352,7 +352,7 @@ export default function AdminPlatformProviders() {
         )}
 
         {/* Summary stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           {[
             { label: "Connected", value: isLoading ? "…" : connectedCount, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
             { label: "Not connected", value: isLoading ? "…" : notConnectedCount, icon: XCircle, color: "text-gray-500", bg: "bg-gray-50" },

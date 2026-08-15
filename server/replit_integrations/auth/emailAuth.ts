@@ -7,7 +7,6 @@ import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
 import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
-import { getUserId } from "../../utils/auth";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -122,7 +121,7 @@ export function setupEmailAuth(app: Express): void {
         funnelStage: "T1_ACCOUNT_CREATED",
         source: (req.body.source as string) || "direct",
         refToken: (req.body.refToken as string) || undefined,
-      }).catch(() => { /* fire-and-forget funnel event — never blocks signup */ });
+      }).catch(() => {});
 
       // Fire-and-forget verification email. Failure here MUST NOT block signup —
       // the user can request a resend later. RESEND_API_KEY absence is logged
@@ -452,7 +451,7 @@ export function setupEmailAuth(app: Express): void {
   // caller's email. Used by the "Resend verification email" UI button.
   app.post("/api/auth/send-verification", async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (!userId) {
         return res.status(401).json({ message: "Authentication required" });
       }

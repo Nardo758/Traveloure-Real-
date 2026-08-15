@@ -389,43 +389,28 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
 
             // Fire-and-forget payment-failed email to each affected traveler so
             // they know the booking wasn't confirmed and can retry. Non-blocking.
-            // N+1 fix: batch the traveler + service detail lookups (one query each)
-            // instead of a per-row joined query inside the loop.
-            try {
-              const rows = failed.rows as any[];
-              const travelerIds = Array.from(new Set(rows.map((r) => r.traveler_id).filter(Boolean)));
-              const serviceIds = Array.from(new Set(rows.map((r) => r.service_id).filter(Boolean)));
-
-              const userRows = travelerIds.length
-                ? (await db.execute(sql`
-                    SELECT id, email, first_name, last_name
-                    FROM users
-                    WHERE id = ANY(${travelerIds}::varchar[])
-                  `)).rows as any[]
-                : [];
-              const serviceRows = serviceIds.length
-                ? (await db.execute(sql`
-                    SELECT id, service_name
-                    FROM provider_services
-                    WHERE id = ANY(${serviceIds}::varchar[])
-                  `)).rows as any[]
-                : [];
-              const userById = new Map(userRows.map((u) => [u.id, u]));
-              const serviceById = new Map(serviceRows.map((s) => [s.id, s]));
-
-              const { sendPaymentFailedEmail } = await import("../services/email.service");
-              for (const r of rows) {
-                if (!r.traveler_id) continue;
-                const u = userById.get(r.traveler_id);
-                if (!u?.email) continue;
-                sendPaymentFailedEmail({
-                  toEmail: u.email,
-                  userName: [u.first_name, u.last_name].filter(Boolean).join(" ") || null,
-                  bookingTitle: serviceById.get(r.service_id)?.service_name ?? null,
-                }).catch((e: any) => console.error(`[email] payment-failed send error for booking ${r.id}:`, e?.message));
+            for (const r of failed.rows as any[]) {
+              if (!r.traveler_id) continue;
+              try {
+                const detail = await db.execute(sql`
+                  SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
+                  FROM users u
+                  LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+                  WHERE u.id = ${r.traveler_id}
+                  LIMIT 1
+                `);
+                const row = detail.rows?.[0] as any;
+                if (row?.email) {
+                  const { sendPaymentFailedEmail } = await import("../services/email.service");
+                  sendPaymentFailedEmail({
+                    toEmail: row.email,
+                    userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
+                    bookingTitle: row.title ?? null,
+                  }).catch((e: any) => console.error(`[email] payment-failed send error for booking ${r.id}:`, e?.message));
+                }
+              } catch (mailErr: any) {
+                console.error(`[payment_intent.payment_failed] email resolve error for booking ${r.id}:`, mailErr.message);
               }
-            } catch (mailErr: any) {
-              console.error(`[payment_intent.payment_failed] email resolve error:`, mailErr.message);
             }
           }
         } catch (failErr: any) {

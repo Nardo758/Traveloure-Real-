@@ -213,7 +213,7 @@ export function LogisticsIntelligencePanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Card data-testid="card-complexity-overview">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -232,7 +232,7 @@ export function LogisticsIntelligencePanel({
                   </div>
                   <Progress value={overallComplexity} className="h-2" />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Payment</span>
                     <span className={`font-medium capitalize ${getComplexityColor(config.paymentComplexity)}`}>

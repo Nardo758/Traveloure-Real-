@@ -473,7 +473,7 @@ export default function ContentMappingPage() {
             <DialogTitle>{editingId ? "Edit Placement Rule" : "New Placement Rule"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Source Type</Label>
                 <Select value={form.contentSource} onValueChange={v => setForm(f => ({ ...f, contentSource: v as ContentSourceKey }))}>
@@ -507,7 +507,7 @@ export default function ContentMappingPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>City Name</Label>
                 <Input

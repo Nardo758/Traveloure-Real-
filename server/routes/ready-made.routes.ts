@@ -20,8 +20,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users, serviceBookings } from "@shared/schema";
-import { isExpertRole } from "@shared/roles";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
@@ -399,53 +398,6 @@ router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req,
         .where(eq(readyMadeTrips.sourceTripId, tripId))
         .limit(1);
       return res.json({ mode: "authoring", trip: authored, listing: listing ?? null });
-    }
-
-    // Booking-request mode: an EXPERT (server-verified role, never trust session claim) who has
-    // an ACTIVE service booking on this trip may view a scoped workspace context so the
-    // notification deep-link lands meaningfully. Only active statuses qualify — cancelled,
-    // completed, or historical bookings do not grant trip access (access-control boundary).
-    // Service providers are intentionally excluded: they are routed to /provider/bookings via
-    // workspacePath in the notification and must not access this expert-only endpoint.
-    const [callerRow] = await db
-      .select({ role: users.role })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (isExpertRole(callerRow?.role)) {
-      // Include confirmed: checkout promotes payment_pending → confirmed immediately, so the
-      // notification deep-link is clicked against a confirmed booking most of the time.
-      // Exclude terminal statuses: cancelled, completed, refunded, dispute_lost.
-      const ACTIVE_BOOKING_STATUSES = ["pending", "payment_pending", "deposit_paid", "confirmed", "balance_pending"];
-      const [pendingBooking] = await db
-        .select({ id: serviceBookings.id })
-        .from(serviceBookings)
-        .where(
-          and(
-            eq(serviceBookings.providerId, userId),
-            eq(serviceBookings.tripId, tripId),
-            inArray(serviceBookings.status as any, ACTIVE_BOOKING_STATUSES),
-          ),
-        )
-        .limit(1);
-      if (pendingBooking) {
-        // Minimal projection — only the fields the scoped booking-request view renders.
-        // Never return the full trips row (preferences, special requests, traveler PII, etc.).
-        const [tripRow] = await db
-          .select({
-            id: trips.id,
-            title: trips.title,
-            destination: trips.destination,
-            startDate: trips.startDate,
-            endDate: trips.endDate,
-            status: trips.status,
-          })
-          .from(trips)
-          .where(eq(trips.id, tripId))
-          .limit(1);
-        if (!tripRow) return res.status(404).json({ message: "Trip not found" });
-        return res.json({ mode: "booking_request", trip: tripRow });
-      }
     }
 
     return res.status(403).json({ message: "Not assigned to this trip and not its author" });

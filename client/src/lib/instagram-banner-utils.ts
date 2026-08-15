@@ -61,21 +61,3 @@ export function getInstagramBannerButtonLabel(reason: InstagramDisconnectReason)
 export function isInstagramBannerAmberVariant(reason: InstagramDisconnectReason): boolean {
   return reason === "personal_account";
 }
-
-/**
- * The action the banner CTA button should perform.
- *
- * - "retry"  — call queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] }).
- *              Used for verification_error (transient network failure): the account is likely
- *              still connected, so we re-fetch status instead of starting a new OAuth flow.
- * - "oauth"  — initiate an OAuth redirect via connectInstagram().
- *              Used for all other disconnect reasons (never connected, expired token, wrong
- *              account type, generic auth error).
- *
- * This is the authoritative routing table; the component delegates to it so the choice is
- * testable without rendering JSX.
- */
-export function getInstagramBannerAction(reason: InstagramDisconnectReason): "retry" | "oauth" {
-  if (reason === "verification_error") return "retry";
-  return "oauth";
-}

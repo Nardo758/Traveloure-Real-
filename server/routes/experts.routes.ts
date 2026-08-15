@@ -211,10 +211,6 @@ router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
 router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const user = await storage.getUser(userId);
-      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
-        return res.status(403).json({ message: "Provider access required" });
-      }
       const summary = await storage.getProviderEarningsSummary(userId);
       // Ledger 90 (FP-5, S2): the EFFECTIVE payout threshold, server-derived, so the Money page
       // can state one number instead of printing a hardcoded "$10.00" the server may not be the

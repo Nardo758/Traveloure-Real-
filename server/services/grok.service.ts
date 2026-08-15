@@ -824,7 +824,6 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
       });
       return !!response.choices[0].message.content;
     } catch {
-      // Health check: any failure means the service is unavailable — return false, never throw.
       return false;
     }
   }

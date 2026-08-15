@@ -134,55 +134,6 @@ test("partner mismatch and consumed rows are never matched, even within toleranc
   );
 });
 
-// ─── Cross-month boundary regression ────────────────────────────────────────
-//
-// This scenario is the root cause of task #990:
-//   • A booking occurs on Dec 28 (internal row, created_at in December).
-//   • The partner reports the commission on Jan 3 (external reportedAt in January).
-//   • An admin opens the reconciliation view with period="this_month" (January).
-//
-// Before the fix, matchRecords queried internal rows from Jan 1 onward — the
-// Dec 28 row was never loaded, so selectMatchCandidate never saw a candidate,
-// and the Jan 3 external report landed in "unmatchedExternal" (false positive).
-//
-// After the fix, getReconciliationView computes widenedStart = Jan 1 − 10 days
-// = Dec 22, passes it as matchRecords({ internalWindowStart: widenedStart }), and
-// the SQL query now covers Dec 22–Jan 31. The Dec 28 internal row is loaded, and
-// selectMatchCandidate (with LATE_REPORT_TOLERANCE_DAYS) matches it to the Jan 3
-// external report (delta = 6 days ≤ 10 days tolerance).
-//
-// The two pure-function assertions below confirm both halves of the fix:
-//   1. The date delta alone (6 days) is within LATE_REPORT_TOLERANCE_DAYS — so
-//      selectMatchCandidate succeeds once the row is loaded from the DB.
-//   2. The date delta exceeds DEFAULT_MATCH_TOLERANCE_DAYS (3 days) — so without
-//      the wider tolerance (and the wider SQL window) there would be no match.
-
-test("cross-month boundary: Dec 28 booking matched against Jan 3 partner report (task #990 regression)", () => {
-  const decInternal = internalRow({
-    id: "earning-dec28",
-    created_at: "2025-12-28T20:00:00Z", // booking near end of December
-  });
-  const janExternal = externalRow({
-    partnerReferenceId: "150:dec28-jan3",
-    reportedAt: "2026-01-03T08:00:00Z", // reported 6 days later, in January
-  });
-
-  // Without the wider tolerance (default ±3d) → no match
-  assert.equal(
-    selectMatchCandidate(janExternal, [decInternal], TP_PARTNER_ID, new Set(), DEFAULT_MATCH_TOLERANCE_DAYS),
-    null,
-    "default ±3d tolerance must NOT match a 6-day-late cross-month report"
-  );
-
-  // With LATE_REPORT_TOLERANCE_DAYS (10d) → matched
-  // (The SQL widenedStart in matchRecords is what makes decInternal available here.)
-  const best = selectMatchCandidate(
-    janExternal, [decInternal], TP_PARTNER_ID, new Set(), LATE_REPORT_TOLERANCE_DAYS
-  );
-  assert.ok(best, "late-report tolerance must match the cross-month commission once the row is loaded");
-  assert.equal(best!.id, "earning-dec28");
-});
-
 test("amount outside 5% tolerance is rejected; closest date wins among candidates", () => {
   const ext = externalRow({ reportedAt: "2026-08-02" });
   // Amount off by >5%

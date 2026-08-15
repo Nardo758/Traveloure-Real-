@@ -10,7 +10,7 @@
 import { db } from "../db";
 import { affiliateEarnings, affiliateClicks, affiliatePartners } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { pzFetch, getPartnerizeCredentials } from "./partnerize/partnerize-client";
+import { getConversionReport, getPartnerizeCredentials } from "./partnerize/partnerize-client";
 import { fetchTravelpayoutsActions } from "./travelpayouts/statistics.service";
 import { parseAttributionSubId } from "./travelpayouts/travelpayouts-client";
 import { resolveCommissionRates } from "./commission";
@@ -44,31 +44,18 @@ export interface MatchedPair {
   external: ExternalCommission;
 }
 
-export interface FetcherDiagnostic {
-  partner: string;
-  /** ok = API responded and we collected rows (rowCount may be 0 for a legitimately empty period)
-   *  skipped = credentials not configured — results are missing, not empty
-   *  error = credentials were present but the API call failed */
-  status: "ok" | "skipped" | "error";
-  rowCount: number;
-  /** Human-readable detail: which env var is missing, HTTP status, or error message */
-  reason?: string;
-}
-
 export interface ReconciliationResult {
   summary: ReconciliationSummary;
   matchedPairs: MatchedPair[];
   internalEarnings: Array<Record<string, unknown>>;
   unmatchedExternal: ExternalCommission[];
-  /** Per-partner fetch diagnostics so admins can distinguish a broken API from a quiet period */
-  fetcherDiagnostics: FetcherDiagnostic[];
 }
 
 // ---------------------------------------------------------------------------
 // Period helper
 // ---------------------------------------------------------------------------
 
-export function getPeriodDates(period: string): { start: Date; end: Date } {
+function getPeriodDates(period: string): { start: Date; end: Date } {
   const now = new Date();
   if (period === "last_month") {
     return {
@@ -99,29 +86,17 @@ export function getPeriodDates(period: string): { start: Date; end: Date } {
 }
 
 // ---------------------------------------------------------------------------
-// Internal result type for individual fetchers (carries diagnostic alongside data)
-// ---------------------------------------------------------------------------
-
-interface FetcherResult {
-  commissions: ExternalCommission[];
-  diagnostic: FetcherDiagnostic;
-}
-
-// ---------------------------------------------------------------------------
-// Partner report fetchers (normalise to ExternalCommission[] + diagnostic)
+// Partner report fetchers (normalise to ExternalCommission[])
 // ---------------------------------------------------------------------------
 
 export async function fetchTravelpayoutsCommissions(
   start: Date,
   end: Date
-): Promise<FetcherResult> {
+): Promise<ExternalCommission[]> {
   const token = process.env.TRAVELPAYOUTS_TOKEN;
   if (!token) {
     console.warn("[Reconciliation] TRAVELPAYOUTS_TOKEN not set – skipping");
-    return {
-      commissions: [],
-      diagnostic: { partner: "travelpayouts", status: "skipped", rowCount: 0, reason: "TRAVELPAYOUTS_TOKEN not configured" },
-    };
+    return [];
   }
   try {
     // Raw action rows across ALL Travelpayouts campaigns on the account (incl.
@@ -131,7 +106,7 @@ export async function fetchTravelpayoutsCommissions(
       start.toISOString().slice(0, 10),
       end.toISOString().slice(0, 10)
     );
-    const commissions = rows
+    return rows
       .map((item) => {
         const paid = parseFloat(String(item.paid_profit_usd || "0")) || 0;
         const processing = parseFloat(String(item.processing_profit_usd || "0")) || 0;
@@ -146,30 +121,20 @@ export async function fetchTravelpayoutsCommissions(
         } as ExternalCommission;
       })
       .filter((r) => r.partnerReferenceId);
-    return {
-      commissions,
-      diagnostic: { partner: "travelpayouts", status: "ok", rowCount: commissions.length },
-    };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[Reconciliation] Travelpayouts fetch error:", err);
-    return {
-      commissions: [],
-      diagnostic: { partner: "travelpayouts", status: "error", rowCount: 0, reason: err?.message || String(err) },
-    };
+    return [];
   }
 }
 
-export async function fetchViatorCommissions(
+async function fetchViatorCommissions(
   start: Date,
   end: Date
-): Promise<FetcherResult> {
+): Promise<ExternalCommission[]> {
   const apiKey = process.env.VIATOR_API_KEY;
   if (!apiKey) {
     console.warn("[Reconciliation] VIATOR_API_KEY not set – skipping");
-    return {
-      commissions: [],
-      diagnostic: { partner: "viator", status: "skipped", rowCount: 0, reason: "VIATOR_API_KEY not configured" },
-    };
+    return [];
   }
   try {
     // Viator Partner API bookings report
@@ -181,49 +146,34 @@ export async function fetchViatorCommissions(
       },
     });
     if (!res.ok) {
-      const msg = `HTTP ${res.status}`;
       console.warn(`[Reconciliation] Viator bookings API ${res.status}`);
-      return {
-        commissions: [],
-        diagnostic: { partner: "viator", status: "error", rowCount: 0, reason: msg },
-      };
+      return [];
     }
     const json = await res.json();
-    const commissions: ExternalCommission[] = (json.bookings || [])
-      .map((item: any) => ({
-        partnerReferenceId: String(item.bookingRef || item.itemId || item.bookingId || ""),
-        partner: "viator",
-        amount: parseFloat(item.netPrice || item.commission || item.partnerTotal || "0"),
-        currency: item.currency || "USD",
-        reportedAt: item.bookingDate || item.travelDate || start.toISOString(),
-        rawData: item,
-      }))
-      .filter((r: ExternalCommission) => r.partnerReferenceId);
-    return {
-      commissions,
-      diagnostic: { partner: "viator", status: "ok", rowCount: commissions.length },
-    };
-  } catch (err: any) {
+    const rows: ExternalCommission[] = (json.bookings || []).map((item: any) => ({
+      partnerReferenceId: String(item.bookingRef || item.itemId || item.bookingId || ""),
+      partner: "viator",
+      amount: parseFloat(item.netPrice || item.commission || item.partnerTotal || "0"),
+      currency: item.currency || "USD",
+      reportedAt: item.bookingDate || item.travelDate || start.toISOString(),
+      rawData: item,
+    }));
+    return rows.filter((r) => r.partnerReferenceId);
+  } catch (err) {
     console.error("[Reconciliation] Viator fetch error:", err);
-    return {
-      commissions: [],
-      diagnostic: { partner: "viator", status: "error", rowCount: 0, reason: err?.message || String(err) },
-    };
+    return [];
   }
 }
 
-export async function fetchFeverCommissions(
+async function fetchFeverCommissions(
   start: Date,
   end: Date
-): Promise<FetcherResult> {
+): Promise<ExternalCommission[]> {
   const accountSid = process.env.IMPACT_ACCOUNT_SID;
   const authToken = process.env.IMPACT_AUTH_TOKEN;
   if (!accountSid || !authToken) {
     console.warn("[Reconciliation] IMPACT credentials not set – skipping Fever");
-    return {
-      commissions: [],
-      diagnostic: { partner: "fever", status: "skipped", rowCount: 0, reason: "IMPACT_ACCOUNT_SID / IMPACT_AUTH_TOKEN not configured" },
-    };
+    return [];
   }
   try {
     const creds = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
@@ -237,79 +187,46 @@ export async function fetchFeverCommissions(
       headers: { Authorization: `Basic ${creds}`, Accept: "application/json" },
     });
     if (!res.ok) {
-      const msg = `HTTP ${res.status}`;
       console.warn(`[Reconciliation] Impact/Fever conversions API ${res.status}`);
-      return {
-        commissions: [],
-        diagnostic: { partner: "fever", status: "error", rowCount: 0, reason: msg },
-      };
+      return [];
     }
     const json = await res.json();
-    const commissions: ExternalCommission[] = (json.Conversions || [])
-      .map((item: any) => ({
-        partnerReferenceId: String(item.Id || item.OrderId || ""),
-        partner: "fever",
-        amount: parseFloat(item.PubCommission || item.SaleAmount || "0"),
-        currency: item.Currency || "USD",
-        reportedAt: item.EventDate || item.CreatedDate || start.toISOString(),
-        rawData: item,
-      }))
-      .filter((r: ExternalCommission) => r.partnerReferenceId);
-    return {
-      commissions,
-      diagnostic: { partner: "fever", status: "ok", rowCount: commissions.length },
-    };
-  } catch (err: any) {
+    const rows: ExternalCommission[] = (json.Conversions || []).map((item: any) => ({
+      partnerReferenceId: String(item.Id || item.OrderId || ""),
+      partner: "fever",
+      amount: parseFloat(item.PubCommission || item.SaleAmount || "0"),
+      currency: item.Currency || "USD",
+      reportedAt: item.EventDate || item.CreatedDate || start.toISOString(),
+      rawData: item,
+    }));
+    return rows.filter((r) => r.partnerReferenceId);
+  } catch (err) {
     console.error("[Reconciliation] Impact/Fever fetch error:", err);
-    return {
-      commissions: [],
-      diagnostic: { partner: "fever", status: "error", rowCount: 0, reason: err?.message || String(err) },
-    };
+    return [];
   }
 }
 
-export async function fetchPartnerizeCommissions(
+async function fetchPartnerizeCommissions(
   start: Date,
   end: Date
-): Promise<FetcherResult> {
-  const creds = getPartnerizeCredentials();
-  if (!creds) {
+): Promise<ExternalCommission[]> {
+  if (!getPartnerizeCredentials()) {
     console.warn("[Reconciliation] Partnerize credentials not set – skipping");
-    return {
-      commissions: [],
-      diagnostic: { partner: "partnerize", status: "skipped", rowCount: 0, reason: "Partnerize credentials not configured (PARTNERIZE_APPLICATION_KEY / PARTNERIZE_API_KEY / PARTNERIZE_PUBLISHER_ID)" },
-    };
+    return [];
   }
   try {
-    // Call pzFetch directly (not getConversionReport) so non-2xx HTTP errors are thrown
-    // and caught here as status:"error" — getConversionReport has its own internal catch
-    // that swallows errors and returns [], making API failures indistinguishable from
-    // a legitimately empty period.
-    const json = await pzFetch(`/publishers/${creds.publisherId}/reports/conversions.json`, {
-      start_date: start.toISOString().slice(0, 10),
-      end_date: end.toISOString().slice(0, 10),
-    });
-    const rows: any[] = json?.data ?? json?.conversions ?? [];
-    const commissions = rows
-      .map((r: any) => ({
-        partnerReferenceId: String(r.conversion_id ?? r.id ?? ""),
-        partner: "partnerize",
-        amount: parseFloat(r.commission_amount ?? r.commission ?? r.sale_amount ?? r.amount ?? "0"),
-        currency: r.currency || "USD",
-        reportedAt: r.conversion_date ?? r.created_at ?? start.toISOString(),
-        rawData: r,
-      }))
-      .filter((r) => r.partnerReferenceId);
-    return {
-      commissions,
-      diagnostic: { partner: "partnerize", status: "ok", rowCount: commissions.length },
-    };
-  } catch (err: any) {
+    const conversions = await getConversionReport(start, end);
+    return conversions.map((c) => ({
+      partnerReferenceId: c.conversionId,
+      partner: "partnerize",
+      amount: c.commission || c.amount,
+      currency: c.currency || "USD",
+      reportedAt: c.convertedAt,
+      rawData: c.rawData,
+    })).filter((r) => r.partnerReferenceId);
+  } catch (err) {
     console.error("[Reconciliation] Partnerize fetch error:", err);
-    return {
-      commissions: [],
-      diagnostic: { partner: "partnerize", status: "error", rowCount: 0, reason: err?.message || String(err) },
-    };
+    return [];
   }
 }
 
@@ -382,15 +299,13 @@ export function selectMatchCandidate(
 class AffiliateReconciliationService {
   /**
    * Pull external commission reports for all configured partners.
-   * Returns both the flat commission list and per-partner diagnostics so callers
-   * can surface skipped / errored fetchers to admins.
    */
   async fetchExternalReports(
     period: string,
     partner?: string
-  ): Promise<{ commissions: ExternalCommission[]; diagnostics: FetcherDiagnostic[] }> {
+  ): Promise<ExternalCommission[]> {
     const { start, end } = getPeriodDates(period);
-    const fetchers: Promise<FetcherResult>[] = [];
+    const fetchers: Promise<ExternalCommission[]>[] = [];
 
     if (!partner || partner === "travelpayouts") {
       fetchers.push(fetchTravelpayoutsCommissions(start, end));
@@ -406,10 +321,7 @@ class AffiliateReconciliationService {
     }
 
     const results = await Promise.all(fetchers);
-    return {
-      commissions: results.flatMap((r) => r.commissions),
-      diagnostics: results.map((r) => r.diagnostic),
-    };
+    return results.flat();
   }
 
   /**
@@ -475,12 +387,7 @@ class AffiliateReconciliationService {
           LIMIT 1
         `);
         contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
-      } catch (err: any) {
-        console.warn(
-          `[Reconciliation] tracking-number lookup failed for affiliate_earnings ${candidate.id} (click ${candidate.click_id}) — continuing with null tracking number:`,
-          err?.message || err,
-        );
-      }
+      } catch (_) {}
 
       // Idempotent atomic claim (§15 posture): a row already matched by a concurrent/duplicate
       // pass updates 0 rows here instead of being re-adopted.
@@ -553,13 +460,10 @@ class AffiliateReconciliationService {
   async matchRecords(
     period: string,
     partner?: string,
-    options?: { dateToleranceDays?: number; internalWindowStart?: Date }
+    options?: { dateToleranceDays?: number }
   ): Promise<void> {
     const { start, end } = getPeriodDates(period);
     const toleranceDays = options?.dateToleranceDays ?? DEFAULT_MATCH_TOLERANCE_DAYS;
-    // internalWindowStart lets callers widen the SQL query window independently of the
-    // external-report period. When omitted the query starts at the period's own start.
-    const internalStart = options?.internalWindowStart ?? start;
 
     // Build a lookup: external partner key → internal partner_id
     const partnerMapResult = await db.execute(sql`
@@ -577,20 +481,20 @@ class AffiliateReconciliationService {
       }
     }
 
-    // Fetch all unmatched internal earnings for the (potentially widened) internal window
+    // Fetch all unmatched internal earnings for the period
     const internal = await db.execute(sql`
       SELECT ae.*, ap.name AS partner_name
       FROM affiliate_earnings ae
       LEFT JOIN affiliate_partners ap ON ae.partner_id = ap.id
-      WHERE ae.created_at >= ${internalStart.toISOString()}
+      WHERE ae.created_at >= ${start.toISOString()}
         AND ae.created_at <= ${end.toISOString()}
         AND ae.reconciliation_status = 'unmatched'
       ORDER BY ae.created_at
     `);
     const internalRows = internal.rows as any[];
 
-    // Fetch external reports (diagnostics discarded here; surfaced via getReconciliationView)
-    const { commissions: external } = await this.fetchExternalReports(period, partner);
+    // Fetch external reports
+    const external = await this.fetchExternalReports(period, partner);
 
     // Track which internal rows have been consumed in this pass
     const consumed = new Set<string>();
@@ -626,12 +530,7 @@ class AffiliateReconciliationService {
           LIMIT 1
         `);
         contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
-      } catch (err: any) {
-        console.warn(
-          `[Reconciliation] tracking-number lookup failed for affiliate_earnings ${best.id} (click ${best.click_id}) — continuing with null tracking number:`,
-          err?.message || err,
-        );
-      }
+      } catch (_) {}
 
       await db.execute(sql`
         UPDATE affiliate_earnings
@@ -654,20 +553,8 @@ class AffiliateReconciliationService {
   ): Promise<ReconciliationResult> {
     const { start, end } = getPeriodDates(period);
 
-    // Widen the internal-earnings window backward by LATE_REPORT_TOLERANCE_DAYS so that
-    // a booking made near the end of the previous month is still visible here when a
-    // partner reports it in the first days of the current month. The external-report
-    // fetch uses the same period, so cross-month commissions won't produce false
-    // positives in the "unmatched external" list once the widened internal rows match them.
-    const widenedStart = new Date(start.getTime() - LATE_REPORT_TOLERANCE_DAYS * 24 * 60 * 60 * 1000);
-
-    // Run auto-match first (idempotent). Pass internalWindowStart so the SQL query inside
-    // matchRecords starts at widenedStart rather than the period boundary — this is what
-    // makes near-boundary rows available for the fuzzy and exact-token passes.
-    await this.matchRecords(period, partner, {
-      dateToleranceDays: LATE_REPORT_TOLERANCE_DAYS,
-      internalWindowStart: widenedStart,
-    });
+    // Run auto-match first (idempotent)
+    await this.matchRecords(period, partner);
 
     // Fetch internal earnings
     const partnerFilter = partner && partner !== "all"
@@ -678,18 +565,15 @@ class AffiliateReconciliationService {
       SELECT ae.*, ap.name as partner_name
       FROM affiliate_earnings ae
       LEFT JOIN affiliate_partners ap ON ae.partner_id = ap.id
-      WHERE ae.created_at >= ${widenedStart.toISOString()}
+      WHERE ae.created_at >= ${start.toISOString()}
         AND ae.created_at <= ${end.toISOString()}
         ${partnerFilter}
       ORDER BY ae.created_at DESC
     `);
     const internalRows = internalResult.rows as any[];
 
-    // Fetch external commissions again for the "unmatched external" list (with diagnostics)
-    const { commissions: external, diagnostics: fetcherDiagnostics } = await this.fetchExternalReports(
-      period,
-      partner && partner !== "all" ? partner : undefined
-    );
+    // Fetch external commissions again for the "unmatched external" list
+    const external = await this.fetchExternalReports(period, partner && partner !== "all" ? partner : undefined);
 
     // Build a lookup: partnerReferenceId → external commission row
     const externalByRefId = new Map<string, ExternalCommission>(
@@ -743,7 +627,6 @@ class AffiliateReconciliationService {
       matchedPairs,
       internalEarnings: internalRows,
       unmatchedExternal,
-      fetcherDiagnostics,
     };
   }
 

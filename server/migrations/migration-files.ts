@@ -1,4 +1,3 @@
-// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1080,57 +1079,4 @@ export const MIGRATION_FILES = [
   // (source_locale, 'en'|'ja' app-enforced, NO DB CHECK), declared in shared/schema.ts same
   // commit. NULL = pre-216 row = English (ruling 60's baked-in assumption made explicit).
   "216_source_locale.sql",
-  // 217: DB-backed fallbacks for FX rates + geocode city coordinates. Two new tables
-  // (fx_rates, geocode_fallbacks), both seeded with the values the code used to hardcode
-  // (/api/exchange-rates literal + the dead FALLBACK_COORDINATES map). Idempotent
-  // (IF NOT EXISTS + ON CONFLICT DO NOTHING); declared in shared/schema.ts same commit.
-  "217_fx_rates_geocode_fallbacks.sql",
-  // 218: missing B-tree indexes on hot query columns (service_bookings, itinerary_items,
-  // notifications, provider_services, service_reviews). Pure CREATE INDEX IF NOT EXISTS —
-  // no table/column changes. Every index is also declared in shared/schema.ts (deploy-push
-  // durability rule) so the publish-time drizzle push never drops them. (Renumbered from
-  // 217 during rebase: main already shipped 217_fx_rates_geocode_fallbacks.sql.)
-  "218_hot_query_column_indexes.sql",
-  // 219: search quality — pg_trgm extension + GIN indexes for the tsvector/trigram search in
-  // storage.unifiedSearch (typo tolerance, relevance ranking, "did you mean" suggestions).
-  // All idempotent (CREATE EXTENSION/INDEX IF NOT EXISTS), no table/column changes.
-  // (Renumbered from 217→218→219 at merge — main's 217 is fx_rates, 218 is hot-query indexes.)
-  "219_search_fts_trgm.sql",
-  // 220: seed the full currency set the budget converter supports (CAD, CHF, CNY, INR, MXN,
-  // BRL, THB). Migration 217 only seeded EUR/GBP/JPY/AUD/SGD; the daily FX refresh is also
-  // updated (same commit) to fetch all twelve currencies going forward.
-  "220_fx_rates_full_currency_set.sql",
-  // 221: unique index on fever_event_cache(event_id) so concurrent cache-miss fetches cannot
-  // insert duplicate rows for the same Fever event. Duplicate rows from the pre-index era
-  // are removed before the index is created (keep most-recently-updated copy per event_id).
-  // Pure DDL + DELETE — no column/table changes. Declared in shared/schema.ts same commit
-  // (deploy-push durability rule — drizzle push will not drop it).
-  "221_fever_event_cache_unique_event_id.sql",
-  // 222: add refreshed_at to travelpayouts_cache. created_at is immutable (set on first insert
-  // and not overwritten by onConflictDoUpdate), so it cannot serve as a last-refresh indicator.
-  // refreshed_at is stamped on every upsert by shared-cache.service.ts, giving operators an
-  // accurate freshness signal via GET /api/admin/travelpayouts-cache/status. No default so
-  // pre-migration rows carry NULL (surfaced as "unknown" by the status endpoint).
-  "222_travelpayouts_cache_refreshed_at.sql",
-  // 223: One-time backfill of bookings_count and total_revenue on provider_services from
-  // existing service_bookings rows. The live code keeps these counters in sync for new
-  // bookings; this recalculates both fields for any pre-existing bookings that were created
-  // before the sync logic was in place. Fully idempotent UPDATE (re-derives from source of
-  // truth; safe to re-run). Only updates services that have at least one booking row.
-  "223_backfill_service_booking_counters.sql",
-  // 224: add notification_email to users. Experts/providers can set a separate
-  // business email for booking alert emails; falls back to users.email when NULL.
-  // Never touches auth flows. Idempotent (ADD COLUMN IF NOT EXISTS).
-  "224_notification_email.sql",
-  // 225: add email_booking_alerts boolean (default true) to users. Experts can disable
-  // booking-alert emails from Settings → Notifications; the flag is checked at all
-  // sendBookingAlertEmail call sites before the email is dispatched.
-  "225_email_booking_alerts.sql",
-  // 226: retire the `_deprecated_expert_city_queues` table deliberately — following the
-  // guarded-drop pattern of migrations 158/167/168. The table was replaced by
-  // scoring-based lead routing (expert_requests) in 2026-06; it has zero code references
-  // and was absent from shared/schema.ts (making it a silent DROP candidate on every
-  // publish). All 10 rows were empty seed records (expert_ids=[], active_requests=0);
-  // archived to legacy_archives before dropping. Guard refuses if any live rows are found.
-  "226_retire_deprecated_expert_city_queues.sql",
 ] as const;

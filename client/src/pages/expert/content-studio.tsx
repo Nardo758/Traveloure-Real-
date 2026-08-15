@@ -96,7 +96,6 @@ import {
   getInstagramBannerHeading,
   getInstagramBannerButtonLabel,
   isInstagramBannerAmberVariant,
-  getInstagramBannerAction,
   type InstagramDisconnectReason,
 } from "@/lib/instagram-banner-utils";
 
@@ -846,7 +845,7 @@ export default function ContentStudio() {
                 </div>
                 <Button
                   onClick={
-                    getInstagramBannerAction(instagramDisconnectReason) === "retry"
+                    instagramDisconnectReason === "verification_error"
                       ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
                       : handleConnectInstagram
                   }

@@ -104,19 +104,11 @@ interface MatchedPair {
   external: ExternalCommission;
 }
 
-interface FetcherDiagnostic {
-  partner: string;
-  status: "ok" | "skipped" | "error";
-  rowCount: number;
-  reason?: string;
-}
-
 interface ReconciliationData {
   summary: ReconciliationSummary;
   matchedPairs: MatchedPair[];
   internalEarnings: InternalEarning[];
   unmatchedExternal: ExternalCommission[];
-  fetcherDiagnostics?: FetcherDiagnostic[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -646,7 +638,7 @@ export default function AdminAffiliatePartners() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ReconciliationPanel() {
-  const [period, setPeriod] = useState("last_35_days");
+  const [period, setPeriod] = useState("this_month");
   const [partnerFilter, setPartnerFilter] = useState("all");
   const [notesDialogId, setNotesDialogId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState("");
@@ -693,7 +685,6 @@ function ReconciliationPanel() {
   const matchedPairs = data?.matchedPairs || [];
   const internalRows = data?.internalEarnings || [];
   const unmatchedExternal = data?.unmatchedExternal || [];
-  const fetcherDiagnostics = data?.fetcherDiagnostics || [];
 
   const openNotesDialog = (id: string, currentStatus: string) => {
     setNotesDialogId(id);
@@ -717,7 +708,6 @@ function ReconciliationPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="last_35_days">Last 35 Days</SelectItem>
                   <SelectItem value="this_month">This Month</SelectItem>
                   <SelectItem value="last_month">Last Month</SelectItem>
                   <SelectItem value="last_90_days">Last 90 Days</SelectItem>
@@ -744,61 +734,6 @@ function ReconciliationPanel() {
           </div>
         </CardHeader>
       </Card>
-
-      {/* Partner API health — shows skipped/error fetchers so admins know $0 isn't always legitimate */}
-      {!isLoading && fetcherDiagnostics.length > 0 && (
-        <Card data-testid="card-fetcher-diagnostics">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              {fetcherDiagnostics.some((d) => d.status !== "ok") ? (
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-              ) : (
-                <CheckCircle className="h-4 w-4 text-green-500" />
-              )}
-              Partner API Status
-            </CardTitle>
-            <CardDescription>
-              Shows whether each partner's report was fetched, skipped (missing credentials), or failed.
-              A skipped or errored partner means its commissions are absent from this run — not zero.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-3" data-testid="list-fetcher-diagnostics">
-              {fetcherDiagnostics.map((d) => (
-                <div
-                  key={d.partner}
-                  data-testid={`fetcher-status-${d.partner}`}
-                  className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
-                    d.status === "ok"
-                      ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950"
-                      : d.status === "skipped"
-                      ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"
-                      : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
-                  }`}
-                >
-                  <div className="mt-0.5 shrink-0">
-                    {d.status === "ok" ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    ) : d.status === "skipped" ? (
-                      <AlertCircle className="h-4 w-4 text-amber-600" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 text-red-600" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium capitalize">{d.partner}</p>
-                    {d.status === "ok" ? (
-                      <p className="text-xs text-muted-foreground">{d.rowCount} row{d.rowCount !== 1 ? "s" : ""} returned</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">{d.reason}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Summary stat bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="grid-recon-summary">
@@ -1135,7 +1070,7 @@ function PartnerForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="name"
@@ -1172,7 +1107,7 @@ function PartnerForm({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="category"
@@ -1222,7 +1157,7 @@ function PartnerForm({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="affiliateTrackingId"
