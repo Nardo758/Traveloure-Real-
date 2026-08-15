@@ -335,6 +335,16 @@ router.get("/api/me/customers/:userId", isAuthenticated, async (req, res) => {
 
     const clientUserId = req.params.userId;
 
+    // Guard: the Customers list aggregates anonymous bookings under a Guest row
+    // with userId=null. If someone navigates to /expert/clients/null the URL param
+    // arrives here as the literal string "null". Guest rows have no stable identity
+    // so there is no meaningful detail page — return 404 immediately without
+    // touching the DB (passing "null" into eq() predicates would never match the
+    // real NULL travelerId rows anyway).
+    if (!clientUserId || clientUserId === "null" || clientUserId === "undefined") {
+      return res.status(404).json({ message: "Client not found" });
+    }
+
     const now = new Date();
 
     const [bookingRows, purchaseRows, advisorRows, clientUser] = await Promise.all([
