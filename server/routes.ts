@@ -58,6 +58,7 @@ import {
   type InsertContentPlacementRule,
   adminNotifications,
   expertRequests,
+  serviceRequests,
   funnelEvents,
   bundleComponents,
   deliverableDownloads,
@@ -1510,6 +1511,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     notes: z.string().optional().default(""),
     serviceId: z.string().optional(),
     bookingMetadata: z.record(z.any()).optional(),
+    /** Browse-cart handoff: the specific expert to notify (their user id). */
+    expertId: z.string().optional(),
+    /** Browse-cart handoff: destination city for context (from the discover location filter). */
+    destinationCity: z.string().optional(),
+    /** Browse-cart handoff: catalog items the traveler wants the expert to book. */
+    browseCatalogItems: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      price: z.number().nullable().optional(),
+      currency: z.string().optional().default("USD"),
+      provider: z.string().optional(),
+      category: z.string().nullable().optional(),
+    })).optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -1521,7 +1535,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, serviceId, bookingMetadata } = validation.data;
+      const { tripId, notes, serviceId, bookingMetadata, expertId, destinationCity: browseDestinationCity, browseCatalogItems } = validation.data;
       const userId = getUserId(req)!;
       
       // Only validate trip ownership when a tripId is provided
@@ -1668,9 +1682,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // workspace for the trip (a booking-request scoped view). Providers land on
               // their bookings inbox — /expert/workspace is expert-role-gated on the client.
               // ownerRole is hoisted above the if (providerId) block so it is always in scope.
+              //
+              // When a tripId is present and the owner is an expert, embed the tripId so the
+              // notification resolves directly to /expert/workspace/:tripId. When no tripId is
+              // attached (a standalone service booking with no trip context), experts still need
+              // an action link — /expert/workspace is the correct landing because the bookingId
+              // is already in this payload and the workspace inbox surfaces pending bookings.
+              // Providers always use /provider/bookings regardless of tripId.
               ...(tripId && isExpertRole(ownerRole)
                 ? { tripId }
-                : { workspacePath: isProviderRole(ownerRole) ? "/provider/bookings" : undefined }),
+                : {
+                    workspacePath: isExpertRole(ownerRole)
+                      ? "/expert/workspace"
+                      : isProviderRole(ownerRole)
+                        ? "/provider/bookings"
+                        : undefined,
+                  }),
             },
           });
 
@@ -1705,6 +1732,112 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           commissionRate:
             totalAmount > 0 ? Number(platformFeeAmt) / totalAmount : 0,
         };
+      } else if (expertId && browseCatalogItems && browseCatalogItems.length > 0) {
+        // Browse-cart handoff: traveler picked catalog items (Viator/Fever/etc.) on the
+        // discover page and asked a specific expert to book them.
+        //
+        // Security: validate the recipient is a real, eligible expert before creating
+        // any notification or inquiry record. Reject with 4xx on invalid targets so a
+        // malicious client cannot spam arbitrary user IDs.
+        // Validate recipient: must exist and hold an expert role. For local_expert
+        // roles, also require an approved localExpertForms row — matching the
+        // eligibility criteria used by /api/experts. travel_expert, event_planner,
+        // and other expert-family roles are listed publicly without a localExpertForms
+        // row, so they are eligible by role alone.
+        const [expertRow] = await db
+          .select({ id: users.id, role: users.role, formStatus: localExpertForms.status })
+          .from(users)
+          .leftJoin(localExpertForms, eq(localExpertForms.userId, users.id))
+          .where(eq(users.id, expertId))
+          .limit(1);
+
+        if (!expertRow) {
+          return res.status(404).json({ message: "Expert not found" });
+        }
+        if (!isExpertRole(expertRow.role)) {
+          return res.status(400).json({ message: "Target user is not an expert" });
+        }
+        // local_expert requires an approved form; other expert roles do not.
+        if (expertRow.role === "local_expert" && expertRow.formStatus !== "approved") {
+          return res.status(400).json({ message: "Local expert is not yet approved" });
+        }
+
+        // Persist the expert_requests row and notification atomically in one
+        // transaction so a notification-write failure never leaves an orphaned,
+        // undelivered request (and vice-versa). If either insert fails the
+        // whole tx rolls back and we return 500 — the client retains the cart
+        // so the traveler can retry without duplicates.
+        const traveler = await storage.getUser(userId);
+        const travelerName = traveler
+          ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+          : "A traveler";
+
+        const itemSummary = browseCatalogItems
+          .map((item) => {
+            const price = item.price != null
+              ? ` (${item.currency ?? "USD"} ${Number(item.price).toFixed(0)})`
+              : "";
+            return `• ${item.name}${price}${item.provider ? ` via ${item.provider}` : ""}`;
+          })
+          .join("\n");
+
+        const inquiryNotes =
+          `Browse-cart booking request from ${travelerName}:\n${itemSummary}` +
+          (notes ? `\n\nNote: ${notes}` : "");
+
+        const destinationCity = browseDestinationCity || null;
+
+        const { inquiryId } = await db.transaction(async (tx) => {
+          // 1. Durable request row (expert_requests has no NOT NULL city
+          //    constraint, making it the right table for this workflow).
+          const [inquiry] = await tx
+            .insert(expertRequests)
+            .values({
+              userId,
+              assignedExpertId: expertId,
+              requestType: "catalog_booking",
+              notes: inquiryNotes.slice(0, 5000),
+              status: "pending",
+              destinationCity,
+              optimizationContext: { browseCatalogItems } as any,
+            })
+            .returning({ id: expertRequests.id });
+
+          // 2. In-app notification within the same transaction. relatedType
+          //    "expert_request" routes to the expert's requests view.
+          //    The message body contains the full item summary so the expert
+          //    can act even before opening the work-queue detail.
+          const notifMessage =
+            `${travelerName} wants help booking ${browseCatalogItems.length} activit${browseCatalogItems.length === 1 ? "y" : "ies"}:\n${itemSummary}` +
+            (notes ? `\n\nNote: ${notes}` : "");
+
+          await tx.insert(notifications).values({
+            userId: expertId,
+            type: "expert_inquiry",
+            title: "New Booking Request",
+            message: notifMessage,
+            relatedId: inquiry.id,
+            relatedType: "expert_request",
+            data: {
+              inquiryId: inquiry.id,
+              travelerId: userId,
+              travelerName,
+              browseCatalogItems,
+              destinationCity,
+              notes,
+            } as any,
+          });
+
+          return { inquiryId: inquiry.id };
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: "Booking request sent to expert",
+          inquiryId,
+          expertId,
+          requestedAt: new Date().toISOString(),
+        });
       } else if (tripId) {
         // No specific service — route inquiry to relevant experts for the trip destination
         try {

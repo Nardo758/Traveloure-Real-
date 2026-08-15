@@ -72,7 +72,14 @@ import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { UnifiedResult } from "@/components/unified-result-card";
 import type { CatalogItem } from "@/types/catalog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 type ServiceCategory = {
   id: string;
@@ -488,15 +495,25 @@ export default function DiscoverPage() {
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
-  // Search and filter state
+  // Parse filter state from URL so deep-links and back-navigation restore them.
+  // Fall back to expertHandoffDestination for location if no URL param is present.
+  const urlLocationFilter = urlParams.get("location") || expertHandoffDestination;
+  const urlCategory = urlParams.get("category") || "all";
+  const urlMinPrice = Number(urlParams.get("minPrice") || "0");
+  const urlMaxPrice = Number(urlParams.get("maxPrice") || "0");
+  const urlMinRating = Number(urlParams.get("minRating") || "0");
+  const urlSortBy = urlParams.get("sortBy") || "rating";
+
+  // Search and filter state — initialised from URL so filter selections survive
+  // tab switches and back-navigation.
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("rating");
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [minRating, setMinRating] = useState(0);
+  const [locationFilter, setLocationFilter] = useState(urlLocationFilter);
+  const [selectedCategory, setSelectedCategory] = useState(urlCategory);
+  const [sortBy, setSortBy] = useState(urlSortBy);
+  const [minPrice, setMinPrice] = useState(urlMinPrice);
+  const [maxPrice, setMaxPrice] = useState(urlMaxPrice);
+  const [minRating, setMinRating] = useState(urlMinRating);
   const [page, setPage] = useState(0);
   const limit = 12;
 
@@ -519,6 +536,11 @@ export default function DiscoverPage() {
   });
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
+
+  // Browse cart — holds partner catalog items (Viator/Fever/etc.) the user wants
+  // an expert to book. Separate from the native service cart.
+  const [browseCartItems, setBrowseCartItems] = useState<UnifiedResult[]>([]);
+  const [browseCartSheetOpen, setBrowseCartSheetOpen] = useState(false);
   
   // Write browse cart through to sessionStorage whenever it changes.
   useEffect(() => {
@@ -541,10 +563,89 @@ export default function DiscoverPage() {
   const urlCity = urlParams.get("city") || "";
   const [activeTab, setActiveTab] = useState(urlTab);
 
-  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks)
+  // Always-current ref so the state→URL effect can include the active tab in
+  // the URL it writes without declaring activeTab as a dep — which would cause
+  // the effect to fire when a tab-sync updates activeTab, racing against
+  // external URL changes before filter state has been applied.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab; // updated synchronously on every render
+
+  // Tracks the last search string we ourselves wrote, so the URL→state reader
+  // below can skip re-applying our own writes (avoiding a read-write-read loop).
+  const lastWrittenSearch = useRef<string | null>(null);
+
+  // User-driven tab switch: update state AND URL atomically so no intermediate
+  // render can trigger the state→URL effect with a mismatched tab/filter combo.
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    activeTabRef.current = tab;
+    const next = new URLSearchParams(searchString);
+    if (tab && tab !== "travelpulse") {
+      next.set("tab", tab);
+    } else {
+      next.delete("tab");
+    }
+    const newSearch = next.toString();
+    lastWrittenSearch.current = newSearch;
+    setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true });
+  };
+
+  // Sync active tab whenever the URL ?tab= param changes externally
+  // (e.g. nav link, back/forward to a ?tab=… entry).
   useEffect(() => {
     setActiveTab(urlTab);
   }, [urlTab]);
+
+  // URL→state: sync all filter values atomically when an EXTERNAL URL change
+  // arrives (back/forward navigation, link with ?location=…, etc.).
+  // Skips URLs that our own writer just pushed via lastWrittenSearch sentinel.
+  useEffect(() => {
+    if (lastWrittenSearch.current !== null && searchString === lastWrittenSearch.current) {
+      lastWrittenSearch.current = null;
+      return;
+    }
+    const params = new URLSearchParams(searchString);
+    const handoffDest = params.get("destination") || "";
+    setLocationFilter(params.get("location") || handoffDest);
+    setSelectedCategory(params.get("category") || "all");
+    setSortBy(params.get("sortBy") || "rating");
+    setMinPrice(Number(params.get("minPrice") || "0"));
+    setMaxPrice(Number(params.get("maxPrice") || "0"));
+    setMinRating(Number(params.get("minRating") || "0"));
+  }, [searchString]);
+
+  // State→URL: keep filter selections in the URL so they survive tab switches
+  // and back-navigation.  Uses replace (not push) to avoid bloating history.
+  // activeTab is intentionally NOT in deps — tab URL writes go through
+  // handleTabChange to prevent the race where a tab-sync triggers this effect
+  // with stale filter state and overwrites an incoming back/forward URL.
+  // activeTabRef gives access to the current tab value without making it a dep.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    // Preserve context/handoff params that must not be lost on filter changes
+    const preserved = [
+      "showExperts", "destination", "country", "experienceType",
+      "tripId", "startDate", "endDate", "source", "city", "categoryKey",
+    ];
+    preserved.forEach((key) => {
+      const val = urlParams.get(key);
+      if (val) next.set(key, val);
+    });
+    const currentTab = activeTabRef.current;
+    if (currentTab && currentTab !== "travelpulse") next.set("tab", currentTab);
+    if (locationFilter) next.set("location", locationFilter);
+    if (selectedCategory && selectedCategory !== "all") next.set("category", selectedCategory);
+    if (minPrice > 0) next.set("minPrice", String(minPrice));
+    if (maxPrice > 0) next.set("maxPrice", String(maxPrice));
+    if (minRating > 0) next.set("minRating", String(minRating));
+    if (sortBy && sortBy !== "rating") next.set("sortBy", sortBy);
+    const newSearch = next.toString();
+    if (newSearch !== searchString) {
+      lastWrittenSearch.current = newSearch;
+      setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy]);
 
   // Pre-fetch adjacent tabs' data so switching feels instant.
   // Each tab's data has a 5-10 min staleTime, so these are no-ops on revisit.
@@ -861,6 +962,42 @@ export default function DiscoverPage() {
     }
   };
 
+  // Add a partner catalog item to the browse cart and open the sheet
+  const handleBrowseAddToCart = (result: UnifiedResult) => {
+    setBrowseCartItems((prev) => {
+      if (prev.some((item) => item.id === result.id)) return prev;
+      return [...prev, result];
+    });
+    setBrowseCartSheetOpen(true);
+  };
+
+  const removeBrowseCartItem = (id: string) => {
+    setBrowseCartItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Store browse cart in sessionStorage and navigate to /experts.
+  // Uses a distinct key from the native addedServices cart (traveloure_browse_cart)
+  // to avoid payload collision between string[] and UnifiedResult[].
+  const handleGetExpertHelp = () => {
+    const BROWSE_CART_KEY = "traveloure_catalog_cart";
+    const payload = browseCartItems.map((item) => ({
+      id: item.id,
+      name: item.name || item.title || "Activity",
+      price: item.price ?? null,
+      currency: item.currency ?? "USD",
+      provider: item.source,
+      category: item.category ?? null,
+    }));
+    try {
+      sessionStorage.setItem(BROWSE_CART_KEY, JSON.stringify(payload));
+    } catch { /* ignore quota errors */ }
+
+    const params = new URLSearchParams();
+    params.set("browseCart", "1");
+    if (locationFilter) params.set("destination", locationFilter);
+    setLocation(`/experts?${params.toString()}`);
+  };
+
   const clearFilters = () => {
     setSelectedCategory("all");
     setMinPrice(0);
@@ -921,7 +1058,7 @@ export default function DiscoverPage() {
             AI-Suggestions button, Plan-Experience button, and the standalone banner
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
@@ -1464,6 +1601,7 @@ export default function DiscoverPage() {
                         results={catalogActivities}
                         destination={locationFilter}
                         isLoading={catalogActivitiesLoading}
+                        onAddToCart={handleBrowseAddToCart}
                       />
                     </div>
                   )}
@@ -1891,6 +2029,100 @@ export default function DiscoverPage() {
           </div>
         </section>
       </div>
+
+      {/* Browse Cart Sheet — partner catalog items queued for expert booking */}
+      {browseCartItems.length > 0 && (
+        <button
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-primary text-white px-4 py-3 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+          onClick={() => setBrowseCartSheetOpen(true)}
+          data-testid="button-browse-cart-fab"
+          aria-label={`Browse cart — ${browseCartItems.length} item${browseCartItems.length === 1 ? "" : "s"}`}
+        >
+          <ShoppingCart className="w-5 h-5" />
+          <span className="font-semibold text-sm">
+            {browseCartItems.length} item{browseCartItems.length === 1 ? "" : "s"}
+          </span>
+          <span className="text-white/80 text-sm hidden sm:inline">· Get Expert Help</span>
+        </button>
+      )}
+
+      <Sheet open={browseCartSheetOpen} onOpenChange={setBrowseCartSheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md flex flex-col" data-testid="browse-cart-sheet">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-primary" />
+              Activities for Expert Booking
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto py-4 space-y-3">
+            {browseCartItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Add activities from the catalog using the "Add" button on each card.
+              </p>
+            ) : (
+              browseCartItems.map((item) => {
+                const priceDisplay =
+                  item.price != null
+                    ? `${item.currency === "USD" || !item.currency ? "$" : item.currency + " "}${item.price.toFixed(0)}`
+                    : item.priceDisplay ?? item.priceLevel ?? null;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 rounded-lg border border-border p-3"
+                    data-testid={`browse-cart-item-${item.id}`}
+                  >
+                    {item.imageUrl && (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name || item.title || "Activity"}
+                        className="w-14 h-14 rounded-md object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium line-clamp-2">
+                        {item.name || item.title || "Activity"}
+                      </p>
+                      {priceDisplay && (
+                        <p className="text-xs text-emerald-600 font-semibold mt-0.5">{priceDisplay}</p>
+                      )}
+                      {item.source && (
+                        <p className="text-xs text-muted-foreground capitalize mt-0.5">{item.source}</p>
+                      )}
+                    </div>
+                    <button
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                      onClick={() => removeBrowseCartItem(item.id)}
+                      aria-label={`Remove ${item.name || item.title || "item"}`}
+                      data-testid={`button-remove-browse-${item.id}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {browseCartItems.length > 0 && (
+            <div className="pt-4 border-t border-border space-y-2">
+              <p className="text-xs text-muted-foreground">
+                An expert will review your selections and handle the bookings for you.
+              </p>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleGetExpertHelp}
+                data-testid="button-get-expert-help"
+              >
+                <ArrowRight className="w-4 h-4 mr-2" />
+                Get Expert Help ({browseCartItems.length} item{browseCartItems.length === 1 ? "" : "s"})
+              </Button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
       <TripQueueIndicator />
     </>
   );
