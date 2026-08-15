@@ -716,7 +716,7 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
           await sendBookingAlertEmail({
-            providerEmail: provider.email,
+            providerEmail: provider.notificationEmail || provider.email,
             providerName,
             bookingId,
             serviceName: raw.service_name ?? "a service",
