@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # WebKit (Safari-engine) smoke check launcher.
 # Sets the NixOS env WebKit needs (see .agents/memory/webkit-testing-setup.md),
-# then runs scripts/webkit-smoke.mjs. Requires the app serving on port 5000.
+# then runs playwright/crossbrowser/smoke.spec.ts via Playwright test runner.
+# Requires the app serving on port 5000.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,6 +23,19 @@ fi
 GST_DIR="$(mktemp -d)"
 trap 'rm -rf "$GST_DIR"' EXIT
 
+# Guard: this suite registers accounts, seeds carts, and writes admin sessions.
+# Refuse to run against anything that is not a local dev server unless the
+# caller explicitly opts in (mirrors the old webkit-smoke.mjs behaviour).
+BASE_URL="${BASE_URL:-http://127.0.0.1:5000}"
+if ! echo "$BASE_URL" | grep -qE '^https?://(127\.0\.0\.1|localhost)(:[0-9]+)?(/|$)'; then
+  if [ "${WEBKIT_SMOKE_ALLOW:-}" != "1" ]; then
+    echo "ERROR: refusing to run against non-local BASE_URL=$BASE_URL" >&2
+    echo "       Set WEBKIT_SMOKE_ALLOW=1 to override." >&2
+    exit 1
+  fi
+fi
+export BASE_URL
+
 export LD_LIBRARY_PATH="$(cat "$LDPATH_FILE")"
 export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
 export GST_PLUGIN_SYSTEM_PATH_1_0="$GST_DIR"
@@ -30,4 +44,4 @@ export LIBGL_ALWAYS_SOFTWARE=1
 export GIO_EXTRA_MODULES="$GIO_DIR"
 export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
-exec node scripts/webkit-smoke.mjs
+exec npx playwright test --config playwright/crossbrowser/playwright.config.ts "$@"
