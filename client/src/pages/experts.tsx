@@ -142,7 +142,11 @@ export default function ExpertsPage() {
   // Sprint 2.1 plan handoff: the cart's "Find a Trip Planner" link arrives with
   // ?tripId= — carry it into each expert's detail page so the request the
   // traveler makes there shares their trip plan with that expert.
-  const handoffTripId = new URLSearchParams(searchString).get("tripId");
+  const _handoffParams = new URLSearchParams(searchString);
+  const handoffTripId = _handoffParams.get("tripId");
+  // Browse-cart handoff: preserve the destination the traveler filtered by on
+  // /discover so ExpertDetailPage can include it in the booking request city.
+  const handoffDestination = _handoffParams.get("destination") || "";
 
   // Browse cart handoff: when the user clicks "Get Expert Help" from the discover
   // page's catalog cart, items are stored in sessionStorage so experts can see what
@@ -622,6 +626,9 @@ export default function ExpertsPage() {
                         ? `?${[
                             handoffTripId ? `tripId=${encodeURIComponent(handoffTripId)}` : null,
                             browseCartItems.length > 0 ? "browseCart=1" : null,
+                            browseCartItems.length > 0 && handoffDestination
+                              ? `destination=${encodeURIComponent(handoffDestination)}`
+                              : null,
                           ].filter(Boolean).join("&")}`
                         : undefined
                     }
