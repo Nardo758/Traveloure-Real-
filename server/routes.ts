@@ -114,6 +114,7 @@ import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { sanitizeDeep } from "./utils/text-sanitizer";
+import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -6158,7 +6159,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const { status, reason } = req.body;
+      const { status } = req.body;
+      // Normalize and validate the optional decline reason via the shared utility so the
+      // server-side check and the unit-tested production code are the same code path.
+      const reasonResult = normalizeDeclineReason(req.body.reason);
+      if (!reasonResult.ok) {
+        return res.status(reasonResult.status).json({ message: reasonResult.message });
+      }
+      const reason = reasonResult.reason;
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
@@ -6229,10 +6237,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                   userId: booking.travelerId,
                   type: "booking_cancelled",
                   title: "Booking cancelled by provider — full refund issued",
-                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  message: reason
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
@@ -6273,9 +6283,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // branch above returns earlier with its own notification.
               userId: booking.travelerId,
               type: "booking_cancelled",
-              title: "Booking cancelled by provider",
-              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              title: "Booking declined by provider",
+              message: reason
+                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
+                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
               dedupeKey: `booking:${req.params.id}:cancelled`,
             }
         : undefined;
