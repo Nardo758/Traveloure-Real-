@@ -175,6 +175,9 @@ interface Service {
   // concrete value (never null) with the SAME derivation the storefront uses; showPrice defaults true.
   showPrice?: boolean;
   bookingMode?: "instant" | "request" | "hidden";
+  // Per-service performance stats (task 105 backfill — already on the wire via full db.select()).
+  bookingsCount?: number | null;
+  totalRevenue?: string | number | null;
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -993,6 +996,17 @@ function ListingRow({
 
         <p className="text-[12.5px] text-[#7A7A72] mt-0.5 truncate" data-testid={`text-listing-meta-${service.id}`}>
           {listingMetaLine(service)}
+        </p>
+
+        {/* Per-service booking stats — always shown; zero-booking services show "0 bookings · $0 revenue". */}
+        <p className="text-[11.5px] text-[#7A7A72] mt-[3px]" data-testid={`text-service-stats-${service.id}`}>
+          <span data-testid={`text-service-bookings-${service.id}`}>
+            {(service.bookingsCount ?? 0).toLocaleString()} booking{(service.bookingsCount ?? 0) === 1 ? "" : "s"}
+          </span>
+          {" · "}
+          <span data-testid={`text-service-revenue-${service.id}`}>
+            ${Number(service.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} revenue
+          </span>
         </p>
 
         <div className="flex items-center gap-3.5 mt-2.5 flex-wrap">
