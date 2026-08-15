@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
@@ -2282,8 +2283,8 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       const categoryRow = await resolveOrCreateItineraryPlanningCategory();
       const esoRow = await createExpertServiceOfferingRow({
         categoryId:  categoryRow.id,
-        name:        title,
-        description: description ?? null,
+        name:        sanitizeText(title) as string,
+        description: sanitizeText(description ?? null),
         price:       suggestedPrice ?? "0",
         isDefault:   true,
         sortOrder:   sortOrder ?? 0,
@@ -2320,7 +2321,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const input = insertServiceTemplateSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertServiceTemplateSchema.partial().parse(req.body));
       const updated = await storage.updateServiceTemplate(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Template not found" });

@@ -15,6 +15,7 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { sanitizeStringFields } from "../utils/text-sanitizer";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -617,7 +618,8 @@ router.post("/api/expert/knowledge-nuggets", isAuthenticated, requireLocalExpert
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
     }
-    res.status(201).json(await createLocalKnowledgeNugget(parsed.data));
+    const sanitized = sanitizeStringFields(parsed.data);
+    res.status(201).json(await createLocalKnowledgeNugget(sanitized));
   } catch (err) {
     console.error("[Knowledge Nuggets] create error:", err);
     res.status(500).json({ message: "Failed to create knowledge nugget" });
@@ -636,7 +638,7 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalE
       if (key in req.body) updates[key] = req.body[key];
     }
     updates.updatedAt = new Date();
-    res.json(await updateLocalKnowledgeNugget(id, updates));
+    res.json(await updateLocalKnowledgeNugget(id, sanitizeStringFields(updates)));
   } catch (err) {
     console.error("[Knowledge Nuggets] update error:", err);
     res.status(500).json({ message: "Failed to update knowledge nugget" });
