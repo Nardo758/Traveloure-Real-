@@ -212,4 +212,63 @@ test.describe("[Google Places] Expert workspace browse", () => {
 
     console.log("[GP-2] Places unavailable notice rendered correctly ✓");
   });
+
+  /**
+   * [GP-3] Manual search path — expert types a query into the browse search
+   * box after clicking the Google Places pill.  The debounced query fires a
+   * new fetch that must also produce result cards.
+   */
+  test("[GP-3] Google Places pill shows result cards after manual search query", async ({ page }) => {
+    const tripId = await loginAndGetTripId(page);
+    await mockPlacesSearch(page, /* placesUnavailable */ false);
+    await openWorkspace(page, tripId);
+
+    // Click the Google Places pill to switch to the google source.
+    const googlePill = page.locator('[data-testid="button-add-source-google"]');
+    await expect(
+      googlePill,
+      "Google Places pill must be visible in the Add panel",
+    ).toBeVisible({ timeout: 8_000 });
+    await googlePill.click();
+
+    // Locate the browse search input that drives debouncedQuery.
+    const searchInput = page.locator('[data-testid="input-browse-search-google"]');
+    await expect(
+      searchInput,
+      'input-browse-search-google must be visible after clicking the Google Places pill',
+    ).toBeVisible({ timeout: 8_000 });
+
+    // Type a manual search query to trigger the debounced fetch.
+    await searchInput.fill("pastel");
+
+    // Wait for the debounce interval (≥ 350 ms) before asserting results.
+    await page.waitForTimeout(450);
+
+    // At least one card must appear.
+    const firstCard = page.locator('[data-testid^="card-gplace-"]').first();
+    await expect(
+      firstCard,
+      'At least one Google Places result card must appear after typing a manual query',
+    ).toBeVisible({ timeout: 10_000 });
+
+    const cardCount = await page.locator('[data-testid^="card-gplace-"]').count();
+    expect(cardCount, "Expected ≥1 Places result after manual search").toBeGreaterThan(0);
+
+    // Unavailable notice must NOT appear when results are present.
+    await expect(
+      page.locator('[data-testid="notice-places-unavailable"]'),
+      "Unavailable notice must NOT appear when results are returned",
+    ).not.toBeVisible();
+
+    // Spot-check: the first fake result's name must appear inside a card.
+    await expect(
+      page
+        .locator('[data-testid^="card-gplace-"]')
+        .filter({ hasText: FAKE_PLACES_RESULTS[0].name })
+        .first(),
+      `Card for "${FAKE_PLACES_RESULTS[0].name}" must be visible after manual query`,
+    ).toBeVisible({ timeout: 5_000 });
+
+    console.log(`[GP-3] ${cardCount} Google Places card(s) rendered after manual search query ✓`);
+  });
 });
