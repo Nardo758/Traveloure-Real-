@@ -2517,5 +2517,31 @@ malformed-row drop and the §13 no-rows-no-claim negative. `tsc --noEmit` **168 
 new. Guard battery green (`check-undeclared-tables`'s exit 1 is pre-existing, verified by stash).
 Production build clean. Bench render: `docs/design/catalog-rebuild/after-render-it-m3.png`.
 
-**NOT verified:** no `DATABASE_URL` in the session container, so the new public-read field and the
-traveler-page line have not been exercised against a real row — unit-tested and typechecked only.
+### Bench-verified on a real stack (Aug 15, same session)
+
+The decision-maker offered a database URL; a **local** Postgres 16 was stood up in the container
+instead, so nothing real was touched — the app booted against a scratch DB with the repo's own 229
+migrations and full seed set. What actually ran:
+
+- `GET /api/services/:id` on a seeded approved listing: `availabilityPatterns` **empty before**, and
+  after authoring two rows **through the real owner PUT** (not SQL) it returns
+  `[{dayOfWeek:2,startTime:"18:00",endTime:"20:30"},{dayOfWeek:4,…}]` — **`capacity` absent**, as
+  designed.
+- **F2 read-gate holds:** flipping the row to `submitted` makes the same GET **404** (no schedule
+  leak); restoring returns 200.
+- **Traveler page** renders `Runs Tuesdays & Thursdays at 18:00 (Asia/Tokyo)`
+  (`docs/design/catalog-rebuild/traveler-runs-on-m3.png`).
+- **§13 negative on the real stack:** a listing with no patterns returns `[]` and renders **no**
+  weekly line (count 0).
+- **`catalog-map-located.spec.ts` PASSES — 19.7s**, its first real run since being rewritten.
+- **The live Catalog map**, real data, all M2/M3 blocks present:
+  `docs/design/catalog-rebuild/after-map-m3-live.png` (supersedes the fixture render).
+
+**Two things the bench taught, both folded into the spec's header:**
+1. The spec needs `users.terms_accepted_at` AND `privacy_accepted_at` on its provider, or every
+   console route bounces to `/accept-terms`, `button-view-map` never renders, and the auto-waiting
+   click burns the whole test timeout — surfacing as a timeout attributed to the cleanup PATCH in
+   the `finally`, the last place anyone would look. First diagnosis of that hang (tile starvation)
+   was **wrong**; recorded so the next person does not repeat it.
+2. OSM tiles are now aborted in-spec — every assertion is DOM, so the tiles were pure external
+   dependency.
