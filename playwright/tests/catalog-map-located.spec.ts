@@ -43,12 +43,14 @@ const LOCATED_SERVICE = 'Business Meeting Interpretation (Full Day)'; // stays p
  * here is DOM — markers, counts, copy — so the tiles buy the test nothing and cost it a live
  * third-party dependency that simply hangs on a sandboxed or offline runner. Aborted.
  *
- * PRECONDITION, learned the hard way: the seeded provider must have accepted terms
- * (`users.terms_accepted_at` AND `privacy_accepted_at`). Without both, every authenticated console
- * route bounces to `/accept-terms`, so `button-view-map` never renders and the test burns its whole
- * timeout on an auto-waiting click — surfacing as a timeout attributed to the cleanup PATCH in the
- * `finally`, which is the LAST place you would look. If this spec times out with no assertion
- * error, check the terms columns before suspecting the map.
+ * PRECONDITION — now satisfied by the seeder, but worth knowing when this spec misbehaves. The
+ * provider needs a password AND both `users.terms_accepted_at` / `privacy_accepted_at`;
+ * `FIXTURE_LOGIN_BACKFILL` in `server/seeds/e2e-test-accounts.seed.ts` fills all three
+ * idempotently. Before that existed, a bench run without them bounced every authenticated console
+ * route to `/accept-terms`, so `button-view-map` never rendered and the auto-waiting click
+ * consumed the WHOLE test timeout — which Playwright then reported against the cleanup PATCH in
+ * the `finally`, the last place anyone would look. If this spec ever times out with no assertion
+ * error, check those three columns before suspecting the map.
  */
 async function blockMapTiles(page: Page) {
   await page.route(/tile\.openstreetmap\.org/, (route) => route.abort());
