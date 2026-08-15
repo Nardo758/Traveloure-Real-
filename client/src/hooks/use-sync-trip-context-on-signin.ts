@@ -9,73 +9,77 @@ import {
 
 /**
  * sessionStorage key that marks the current session as guest-authored.
- * Set whenever the user is not authenticated (initial load or after logout).
- * Cleared when the user signs in.
  *
- * This flag is what distinguishes a genuine guest context (safe to push) from
- * a legacy pre-feature context that has no ownership stamp but was built by an
- * authenticated user before this feature shipped. Legacy contexts must not be
- * pushed to a newly authenticated account.
+ * Set ONLY when auth has finished loading and we know the user is genuinely
+ * unauthenticated (not just still fetching). This prevents the initial
+ * loading state (user=null, isLoading=true) from being misclassified as a
+ * guest session, which would cause legacy markerless authenticated contexts
+ * to be pushed to the wrong account once auth resolves.
+ *
+ * Cleared on sign-in. Retained across guest writes so the sign-in handler
+ * can distinguish fresh guest content from pre-feature legacy contexts that
+ * have no ownership stamp.
  */
 const GUEST_PROVENANCE_KEY = "trip-context-guest-provenance";
 
 /**
  * Manages trip context ownership across sign-in and sign-out transitions.
  *
- * On sign-in (guest → authenticated):
- *   - Pushes the local trip context to the server if it was explicitly
- *     built during the current guest session (GUEST_PROVENANCE_KEY is set).
- *   - Stamps ownership immediately — before the push — so that planning
- *     the user creates after signing in is attributed to them even if the
- *     context was initially empty or the push failed.
- *   - Clears cross-account remnants (a different user's stamped context)
- *     without pushing them.
+ * On sign-in (confirmed-unauthenticated → authenticated):
+ *   - Stamps ownership immediately so post-sign-in writes are always attributed.
+ *   - Pushes guest context to the server only when GUEST_PROVENANCE_KEY is set
+ *     (i.e., explicitly built during a confirmed-unauthenticated session).
  *   - Skips push for same-user returning (already in sync).
- *   - Skips push for markerless legacy contexts (unknown provenance —
- *     conservative to avoid leaking prior authenticated planning).
+ *   - Clears cross-account remnants without pushing.
+ *   - Skips push for markerless legacy contexts (unknown provenance — safe no-op).
  *
- * On sign-out (authenticated → guest):
- *   - Clears both the local context and the ownership stamp so the
- *     subsequent guest session starts clean.
- *   - Sets GUEST_PROVENANCE_KEY so any planning built during the new
- *     guest session can later be identified as safely pushable.
+ * On sign-out (authenticated → confirmed-unauthenticated, isLoading=false):
+ *   - Clears both the local context and the ownership stamp so subsequent
+ *     guest writes start clean.
+ *   - Sets GUEST_PROVENANCE_KEY so those writes are later identifiable as
+ *     safe to push.
  *
- * Retry: prevUserIdRef tracks the previous userId. On logout the ref
- * resets to null, so a subsequent sign-in (by the same or a different
- * user) re-enters the sign-in branch and can retry a failed push.
+ * Auth loading gate: all state transitions are gated on isLoading===false so
+ * the transient null/undefined user during the initial auth fetch is never
+ * misclassified as a guest session or logout.
+ *
+ * Retry: prevUserIdRef tracks the previous resolved userId. On logout it
+ * resets to null so a subsequent sign-in re-enters the sign-in branch.
  *
  * Call from a top-level component (e.g. Router in App.tsx).
  */
 export function useSyncTripContextOnSignIn(): void {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Do nothing while auth is still fetching — we cannot yet distinguish
+    // "genuinely unauthenticated" from "still loading".
+    if (isLoading) return;
+
     const userId = user?.id ?? null;
     const prevUserId = prevUserIdRef.current;
     prevUserIdRef.current = userId;
 
     if (!userId) {
       if (prevUserId !== null) {
-        // Explicit logout: wipe the context and ownership stamp so the
-        // subsequent guest session starts with a clean slate and is not
-        // contaminated by this user's authenticated planning.
+        // Explicit logout (confirmed: auth resolved to null after being set).
+        // Clear context and stamp so the subsequent guest session starts clean.
         clearTripContext();
         setContextOwner(null);
       }
-      // Mark this tab as being in an unauthenticated (guest) session.
-      // Writing happens here (and not in updateTripContext) so the flag
-      // covers the whole guest session window, including sessions that
-      // begin on a fresh tab with no prior sign-in.
+      // Auth is resolved and user is definitely unauthenticated — mark this
+      // as a guest session so planning built now is identifiable as safe to
+      // push on a future sign-in.
       try {
         sessionStorage.setItem(GUEST_PROVENANCE_KEY, "1");
       } catch {
-        /* ignore */
+        /* ignore storage errors (private browsing, quota) */
       }
       return;
     }
 
-    // userId is non-null. Only act on a sign-in transition.
+    // Auth resolved to an authenticated user. Only act on a sign-in transition.
     if (userId === prevUserId) return;
 
     const owner = getContextOwner();
@@ -89,40 +93,34 @@ export function useSyncTripContextOnSignIn(): void {
       /* ignore */
     }
 
-    // Stamp ownership immediately so that any planning the user creates
-    // after signing in (even if the context was empty, or the push below
-    // fails) is attributed to them. Without this early stamp, a user who
-    // signs in with an empty context, writes planning, then logs out would
-    // leave an unowned context that a different account's sign-in could push.
+    // Stamp ownership immediately — before the push attempt — so any planning
+    // the user creates after signing in is attributed to them even if the
+    // context was empty or the push below fails.
     setContextOwner(userId);
 
     if (owner === userId) {
-      // Same user returning on this tab — context already stamped and in
-      // sync with the server. No push needed.
+      // Same user returning (e.g. page reload while authenticated).
+      // Context already stamped and in sync — no push needed.
       return;
     }
 
     if (owner !== null) {
-      // Cross-account remnant: a different user's stamped context is
-      // present. Clear it (stamp already updated above) to prevent
-      // their planning from appearing in this session.
+      // Cross-account remnant: a different user's stamped context is present.
+      // Clear it (stamp already updated above). Do not push.
       clearTripContext();
       return;
     }
 
-    // owner is null. Decide whether to push based on provenance:
-    if (!hasGuestProvenance) {
-      // No explicit guest-provenance flag — this is either a legacy
-      // pre-feature context (built while authenticated with no stamp) or
-      // an edge case we cannot safely classify. Skip the push to avoid
-      // leaking prior authenticated planning to this account.
-      return;
-    }
+    // owner is null: unowned context. Only push if it was explicitly built
+    // during a confirmed guest session (provenance flag is set). Without
+    // the flag we cannot rule out a legacy pre-feature context that was
+    // created by an authenticated user — pushing it would leak their data.
+    if (!hasGuestProvenance) return;
 
-    // Explicitly guest-built context: push it to the server so the user's
-    // pre-sign-in planning is not lost. keepalive:true survives tab close.
+    // Genuine guest context: deliver to the server so pre-sign-in planning
+    // is not lost. keepalive:true survives immediate tab close after sign-in.
     pushTripContextNow().catch(() => {
-      /* offline — best-effort; stamp already protects post-sign-in writes */
+      /* offline — best-effort; ownership stamp already protects post-sign-in writes */
     });
-  }, [user?.id]);
+  }, [user?.id, isLoading]);
 }
