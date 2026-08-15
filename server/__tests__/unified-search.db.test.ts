@@ -22,6 +22,31 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 
+// ── Disposable-DB guard (mirrors payout-parity-route convention) ─────────────
+// Never defaults to open: the test must be run with JOURNEY_DB_WRITES_OK=1, OR
+// DATABASE_URL must point to a recognized local/CI host.
+const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
+async function assertDisposableDb(): Promise<void> {
+  if (process.env.JOURNEY_DB_WRITES_OK === "1") return;
+  let host: string | null = null;
+  try { host = new URL(process.env.DATABASE_URL ?? "").hostname.toLowerCase(); } catch { host = null; }
+  let serverAddr: string | null = null;
+  try {
+    const { pool: p } = await import("../db");
+    const r = await p.query(`SELECT host(inet_server_addr()) AS addr`);
+    serverAddr = (r.rows[0]?.addr as string) ?? null;
+  } catch { /* local socket → NULL → disposable signal */ }
+  const ok =
+    (host !== null && DISPOSABLE_HOSTS.has(host)) ||
+    (host === null && (serverAddr === null || DISPOSABLE_HOSTS.has(serverAddr)));
+  if (!ok) {
+    throw new Error(
+      `[unified-search] REFUSING to write fixtures: DATABASE_URL host '${host ?? "<none>"}' is not ` +
+      `a recognized disposable dev/CI database. Opt in deliberately with JOURNEY_DB_WRITES_OK=1.`,
+    );
+  }
+}
+
 const tag = `srch-${crypto.randomUUID().slice(0, 8)}`;
 const mainLoc = `TestLoc-${tag}`;        // location shared by main fixture services
 const suggLoc = `SuggLoc-${tag}`;       // location used ONLY by the suggestion fixture
@@ -78,6 +103,7 @@ async function insertPackage(id: string, title: string, destination: string): Pr
 // ── Setup / teardown ─────────────────────────────────────────────────────────
 
 before(async () => {
+  await assertDisposableDb();
   userId = crypto.randomUUID();
   await pool.query(
     `INSERT INTO users (id, email, role) VALUES ($1,$2,'provider')`,

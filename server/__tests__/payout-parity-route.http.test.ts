@@ -286,27 +286,25 @@ test("R1: route-stamped provider_earnings equals the shared recipe (default band
   );
 });
 
-test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
+test("R2: per-service revenueShareRate override is honoured by the checkout route", async () => {
   const price = 110;
-
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
-  const overrideRate = "0.55"; // valid [0,1] override; discriminator asserted below, no fee literal in the EXPECTATION
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
-  const expected = await recipeExpectation(price);
+  const overrideRate = "0.55"; // valid [0,1] override; discriminator: must differ from default band
+  const serviceId = await makeService(price.toFixed(2), overrideRate);
+  const expected = await recipeExpectation(price, overrideRate);
   const defaultBand = await recipeExpectation(price);
   // Belt-and-braces: the override figure must DIFFER from the default-band figure, otherwise
   // this test could not distinguish "route honoured the override" from "route ignored it".
   assert.notEqual(expected.stamped, defaultBand.stamped, "fixture override must be distinguishable from the default band");
   assert.notEqual(parseFloat(overrideRate), expected.defaultBandShare, "override rate must differ from the live band rate");
 
-    const { row } = await checkoutThroughRoute(serviceId);
+  const { row } = await checkoutThroughRoute(serviceId);
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "the route's stamped figure for a service_provider-owned item has DRIFTED from the provider-source recipe (isProviderRole branch misrouting?)",
+    "route-stamped provider_earnings must honour the per-service override (safeParseRate path), not the default band",
   );
-  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the provider-source recipe");
-  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the provider-source recipe");
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the override recipe");
+  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the override recipe");
   assert.equal(
     (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
     Number(row.total_amount).toFixed(2),
@@ -314,12 +312,10 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   );
 });
 
-test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
+test("R3: booking_concierge facilitation fee lands in platform_fee only — provider_earnings stays the plain recipe figure", async () => {
   const price = 110;
-
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
   // The recipe expectation is IDENTICAL to a plain default-band item: the concierge fee is
   // charged ON TOP (rider on the platform take), so the expert's promised figure must not move.
@@ -336,55 +332,54 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate (migrations 064–066)");
   const conciergeFeeAmt = price * conciergeRate;
 
-    const { row } = await checkoutThroughRoute(serviceId);
+  const { row } = await checkoutThroughRoute(serviceId);
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "the route's stamped figure for a service_provider-owned item has DRIFTED from the provider-source recipe (isProviderRole branch misrouting?)",
+    "concierge item: provider_earnings must equal the plain recipe — the concierge fee must NOT reduce the expert's payout",
   );
-  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the provider-source recipe");
-  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the provider-source recipe");
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "concierge item: insurance_fee must match the plain recipe");
+  assert.equal(
+    Number(row.platform_fee).toFixed(2),
+    (Number(expected.platformFee) + conciergeFeeAmt).toFixed(2),
+    "concierge item: platform_fee must absorb the concierge facilitation fee (plain recipe platform_fee + concierge fee)",
+  );
   assert.equal(
     (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
-    Number(row.total_amount).toFixed(2),
-    "earnings + platform take must reconstruct the charged amount",
+    (price + conciergeFeeAmt).toFixed(2),
+    "earnings + platform take (including concierge) must reconstruct the full charged amount",
   );
 });
 
-test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
+test("R4: inactive concierge band causes checkout to 503 honestly — no booking row stamped", async () => {
   const price = 110;
-
-  const fixturePlatformTake = 0.30; // distinguishable from the expert_standard default (0.25 platform take)
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
 
-  // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
-  // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.
   await db.execute(sql`UPDATE fee_bands SET is_active = false WHERE band_key = 'expert_concierge_booking'`);
   try {
     await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
     const addRes = await api("/api/cart", "POST", { serviceId });
     assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
-  const checkoutKey = `ppr-${RUN}-r9-${crypto.randomUUID()}`;
-  const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
-    const bodyText = await previewRes.text();
-    assert.equal(
-      previewRes.status,
-      503,
-      `fee-preview with a concierge item and a missing band must 503 (parallel to R4's checkout posture), got ${previewRes.status}: ${bodyText}`,
+    const checkoutKey = `ppr-${RUN}-r4-${crypto.randomUUID()}`;
+    const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+    const bodyText = await res.text();
+    assert.ok(
+      [500, 503].includes(res.status),
+      `checkout with an inactive concierge band must 500/503, got ${res.status}: ${bodyText}`,
     );
     const body = JSON.parse(bodyText);
-    assert.equal(body.error, "payment_unavailable", `503 must be the declared contract, got: ${bodyText}`);
-  } else {
-    assert.equal(res.status, 201, `POST /api/checkout must be 201 or the declared 503, got ${res.status}: ${bodyText}`);
-  }
+    assert.equal(body.error, "payment_unavailable", `error field must be 'payment_unavailable', got: ${bodyText}`);
 
-  // Fetch BOTH stamped rows (bare key + suffixed key) and sort by service_id.
-    const r = await api("/api/cart", "POST", { serviceId: id });
-    assert.equal(r.rows.length, 0, "a failed concierge-band gate must not stamp any booking row");
+    // No booking row must be stamped when the band gate fires before Stripe.
+    const rows = await db.execute(sql`
+      SELECT id FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
+    `);
+    assert.equal(rows.rows.length, 0, "a failed concierge-band gate must not stamp any booking row");
   } finally {
     await db.execute(sql`UPDATE fee_bands SET is_active = true WHERE band_key = 'expert_concierge_booking'`);
+    await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`).catch(() => {});
   }
   const restored = await db.execute(sql`
     SELECT is_active FROM fee_bands WHERE band_key = 'expert_concierge_booking'
@@ -526,14 +521,10 @@ test("R8: mixed cart (expert item + provider item) stamps each row with its OWN 
   const addProvider = await api("/api/cart", "POST", { serviceId: providerServiceId });
   assert.equal(addProvider.status, 201, `POST /api/cart (provider item) failed: ${await addProvider.clone().text()}`);
 
-  const checkoutKey = `ppr-${RUN}-r9-${crypto.randomUUID()}`;
+  const checkoutKey = `ppr-${RUN}-r8-${crypto.randomUUID()}`;
   const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
-    const bodyText = await previewRes.text();
-    assert.equal(
-      previewRes.status,
-      503,
-      `fee-preview with a concierge item and a missing band must 503 (parallel to R4's checkout posture), got ${previewRes.status}: ${bodyText}`,
-    );
+  const bodyText = await res.text();
+  if (res.status === 503) {
     const body = JSON.parse(bodyText);
     assert.equal(body.error, "payment_unavailable", `503 must be the declared contract, got: ${bodyText}`);
   } else {
@@ -541,7 +532,11 @@ test("R8: mixed cart (expert item + provider item) stamps each row with its OWN 
   }
 
   // Fetch BOTH stamped rows (bare key + suffixed key) and sort by service_id.
-    const r = await api("/api/cart", "POST", { serviceId: id });
+  const r = await db.execute(sql`
+    SELECT id, service_id, provider_earnings, platform_fee, insurance_fee, total_amount, status
+    FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
+    ORDER BY service_id
+  `);
   assert.equal(r.rows.length, 2, "mixed checkout must stamp exactly two booking rows (one per cart item)");
 
   // Track for cleanup.
