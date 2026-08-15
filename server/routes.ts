@@ -1667,9 +1667,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             },
           });
 
-          // Send email alert to the provider
+          // Send email alert to the provider (skipped when they have opted out)
           const provider = await storage.getUser(providerId);
-          if (provider?.email) {
+          if (provider?.email && provider.emailBookingAlerts !== false) {
             const { sendBookingAlertEmail } = await import("./services/email.service");
             const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
             await sendBookingAlertEmail({

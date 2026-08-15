@@ -103,6 +103,9 @@ export const users = pgTable("users", {
   // (enforcement lands in the feature build, not here). Confirmed bookings are unaffected.
   vacationUntil: timestamp("vacation_until"),
   vacationMessage: varchar("vacation_message", { length: 200 }),
+  // Migration 223: opt-out flag for booking-alert emails. Default true = send alerts. Experts
+  // can disable this from Settings → Notifications so they rely on in-app notifications only.
+  emailBookingAlerts: boolean("email_booking_alerts").default(true),
 }, (table) => [
   index("users_role_idx").on(table.role),
 ]);
