@@ -380,7 +380,10 @@ function ServiceCard({
         {/* Card Content */}
         <div className="p-4 flex-1 flex flex-col">
           {/* Description */}
-          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+          <p
+            className="text-sm text-muted-foreground line-clamp-2 mb-3"
+            data-testid={`text-service-description-${service.id}`}
+          >
             {description}
           </p>
 
