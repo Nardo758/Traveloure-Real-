@@ -287,6 +287,49 @@ test.describe('Admin test-email — Resend not configured (502)', () => {
   );
 });
 
+// ── Suite E — EMAIL_FROM misconfiguration (502) shows error banner ─────────────
+
+test.describe('Admin test-email — EMAIL_FROM not configured (502)', () => {
+  test(
+    'error banner appears and contains "EMAIL_FROM" when the backend returns 502 EMAIL_FROM is not configured',
+    async ({ page }) => {
+      test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
+
+      await mockSupportingRoutes(page);
+
+      // Simulate what the real server returns when EMAIL_FROM is absent.
+      let interceptorCalled = false;
+      await page.route('**/api/admin/system/test-email', async (route) => {
+        interceptorCalled = true;
+        expect(route.request().method()).toBe('POST');
+
+        await route.fulfill({
+          status: 502,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: false, error: 'EMAIL_FROM is not configured' }),
+        });
+      });
+
+      await openSystemPage(page);
+
+      await page.getByTestId('button-send-test-email').click();
+
+      // The result banner must appear — not a blank screen or an infinite spinner.
+      const banner = page.getByTestId('test-email-result');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+
+      // The banner must NOT claim success.
+      await expect(banner).not.toContainText('Delivered successfully');
+
+      // The banner must tell the admin which env var to fix.
+      await expect(banner).toContainText('EMAIL_FROM');
+
+      // Confirm the interceptor ran (not short-circuited).
+      expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
+    },
+  );
+});
+
 // ── Suite C — Empty field falls back to admin address ─────────────────────────
 
 test.describe('Admin test-email — empty field falls back to admin address', () => {
