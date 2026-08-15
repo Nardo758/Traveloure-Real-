@@ -7,8 +7,9 @@
  * Each fetcher is verified for:
  *  - correct endpoint URL and auth headers
  *  - row → ExternalCommission mapping (field selection, amount parsing, filtering)
- *  - console.error logging on non-OK responses (never throws, never silent-zeroes)
- *  - early-return + console.warn when credentials are absent
+ *  - error diagnostic on non-OK responses (never throws, never silent-zeroes)
+ *  - skipped diagnostic + console.warn when credentials are absent
+ *  - ok diagnostic with correct rowCount on success
  */
 import { test, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
@@ -79,12 +80,12 @@ const viatorBooking = {
 
 const viatorBookingNoRef = { ...viatorBooking, bookingRef: "", itemId: "", bookingId: "" };
 
-test("[Viator] maps booking rows to ExternalCommission", async () => {
+test("[Viator] maps booking rows to ExternalCommission with ok diagnostic", async () => {
   mockFetch(() => ({
     body: { bookings: [viatorBooking, viatorBookingNoRef] },
   }));
 
-  const commissions = await fetchViatorCommissions(START, END);
+  const { commissions, diagnostic } = await fetchViatorCommissions(START, END);
 
   // Endpoint shape
   assert.equal(calls.length, 1);
@@ -115,28 +116,38 @@ test("[Viator] maps booking rows to ExternalCommission", async () => {
   assert.equal(c.currency, "USD");
   assert.equal(c.reportedAt, "2026-07-15");
   assert.deepEqual(c.rawData, viatorBooking);
+
+  // Diagnostic
+  assert.equal(diagnostic.status, "ok");
+  assert.equal(diagnostic.partner, "viator");
+  assert.equal(diagnostic.rowCount, 1);
+  assert.equal(diagnostic.reason, undefined);
 });
 
 test("[Viator] falls back to itemId and bookingId when bookingRef is absent", async () => {
   const row = { itemId: "ITEM-42", netPrice: "7.00", currency: "EUR", travelDate: "2026-07-20" };
   mockFetch(() => ({ body: { bookings: [row] } }));
 
-  const commissions = await fetchViatorCommissions(START, END);
+  const { commissions } = await fetchViatorCommissions(START, END);
   assert.equal(commissions.length, 1);
   assert.equal(commissions[0].partnerReferenceId, "ITEM-42");
   assert.equal(commissions[0].currency, "EUR");
   assert.equal(commissions[0].reportedAt, "2026-07-20");
 });
 
-test("[Viator] returns [] and logs warning on non-OK response — never throws", async () => {
+test("[Viator] returns error diagnostic and logs warning on non-OK response — never throws", async () => {
   mockFetch(() => ({ status: 503, body: { error: "service unavailable" } }));
 
   const logged: string[] = [];
   const realWarn = console.warn;
   console.warn = (...args: unknown[]) => logged.push(args.map(String).join(" "));
   try {
-    const commissions = await fetchViatorCommissions(START, END);
+    const { commissions, diagnostic } = await fetchViatorCommissions(START, END);
     assert.deepEqual(commissions, []);
+    assert.equal(diagnostic.status, "error");
+    assert.equal(diagnostic.partner, "viator");
+    assert.equal(diagnostic.rowCount, 0);
+    assert.ok(diagnostic.reason?.includes("503"), "error reason must include the HTTP status");
   } finally {
     console.warn = realWarn;
   }
@@ -146,7 +157,7 @@ test("[Viator] returns [] and logs warning on non-OK response — never throws",
   );
 });
 
-test("[Viator] skips with a warning when VIATOR_API_KEY is absent", async () => {
+test("[Viator] returns skipped diagnostic with a warning when VIATOR_API_KEY is absent", async () => {
   const saved = process.env.VIATOR_API_KEY;
   delete process.env.VIATOR_API_KEY;
   mockFetch(() => ({ body: { bookings: [viatorBooking] } }));
@@ -155,9 +166,13 @@ test("[Viator] skips with a warning when VIATOR_API_KEY is absent", async () => 
   const realWarn = console.warn;
   console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(" "));
   try {
-    const commissions = await fetchViatorCommissions(START, END);
+    const { commissions, diagnostic } = await fetchViatorCommissions(START, END);
     assert.deepEqual(commissions, []);
     assert.equal(calls.length, 0, "no HTTP call should be made without a key");
+    assert.equal(diagnostic.status, "skipped");
+    assert.equal(diagnostic.partner, "viator");
+    assert.equal(diagnostic.rowCount, 0);
+    assert.ok(diagnostic.reason?.includes("VIATOR_API_KEY"), "skipped reason must name the missing credential");
   } finally {
     console.warn = realWarn;
     process.env.VIATOR_API_KEY = saved;
@@ -185,12 +200,12 @@ function expectedImpactBasicAuth() {
   return "Basic " + Buffer.from("impact-sid:impact-token").toString("base64");
 }
 
-test("[Fever/Impact] maps Conversion rows to ExternalCommission", async () => {
+test("[Fever/Impact] maps Conversion rows to ExternalCommission with ok diagnostic", async () => {
   mockFetch(() => ({
     body: { Conversions: [impactConversion, impactConversionNoId] },
   }));
 
-  const commissions = await fetchFeverCommissions(START, END);
+  const { commissions, diagnostic } = await fetchFeverCommissions(START, END);
 
   // Endpoint shape
   assert.equal(calls.length, 1);
@@ -215,13 +230,19 @@ test("[Fever/Impact] maps Conversion rows to ExternalCommission", async () => {
   assert.equal(c.currency, "USD");
   assert.equal(c.reportedAt, "2026-07-10");
   assert.deepEqual(c.rawData, impactConversion);
+
+  // Diagnostic
+  assert.equal(diagnostic.status, "ok");
+  assert.equal(diagnostic.partner, "fever");
+  assert.equal(diagnostic.rowCount, 1);
+  assert.equal(diagnostic.reason, undefined);
 });
 
 test("[Fever/Impact] falls back to OrderId and SaleAmount when primary fields are absent", async () => {
   const row = { OrderId: "ORD-99", SaleAmount: "3.20", Currency: "EUR", CreatedDate: "2026-07-05" };
   mockFetch(() => ({ body: { Conversions: [row] } }));
 
-  const commissions = await fetchFeverCommissions(START, END);
+  const { commissions } = await fetchFeverCommissions(START, END);
   assert.equal(commissions.length, 1);
   assert.equal(commissions[0].partnerReferenceId, "ORD-99");
   assert.equal(commissions[0].amount, 3.2);
@@ -229,15 +250,19 @@ test("[Fever/Impact] falls back to OrderId and SaleAmount when primary fields ar
   assert.equal(commissions[0].reportedAt, "2026-07-05");
 });
 
-test("[Fever/Impact] returns [] and logs warning on non-OK response — never throws", async () => {
+test("[Fever/Impact] returns error diagnostic and logs warning on non-OK response — never throws", async () => {
   mockFetch(() => ({ status: 401, body: { error: "unauthorized" } }));
 
   const logged: string[] = [];
   const realWarn = console.warn;
   console.warn = (...args: unknown[]) => logged.push(args.map(String).join(" "));
   try {
-    const commissions = await fetchFeverCommissions(START, END);
+    const { commissions, diagnostic } = await fetchFeverCommissions(START, END);
     assert.deepEqual(commissions, []);
+    assert.equal(diagnostic.status, "error");
+    assert.equal(diagnostic.partner, "fever");
+    assert.equal(diagnostic.rowCount, 0);
+    assert.ok(diagnostic.reason?.includes("401"), "error reason must include the HTTP status");
   } finally {
     console.warn = realWarn;
   }
@@ -247,7 +272,7 @@ test("[Fever/Impact] returns [] and logs warning on non-OK response — never th
   );
 });
 
-test("[Fever/Impact] skips with a warning when Impact credentials are absent", async () => {
+test("[Fever/Impact] returns skipped diagnostic with a warning when Impact credentials are absent", async () => {
   const savedSid = process.env.IMPACT_ACCOUNT_SID;
   const savedToken = process.env.IMPACT_AUTH_TOKEN;
   delete process.env.IMPACT_ACCOUNT_SID;
@@ -258,9 +283,13 @@ test("[Fever/Impact] skips with a warning when Impact credentials are absent", a
   const realWarn = console.warn;
   console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(" "));
   try {
-    const commissions = await fetchFeverCommissions(START, END);
+    const { commissions, diagnostic } = await fetchFeverCommissions(START, END);
     assert.deepEqual(commissions, []);
     assert.equal(calls.length, 0, "no HTTP call should be made without credentials");
+    assert.equal(diagnostic.status, "skipped");
+    assert.equal(diagnostic.partner, "fever");
+    assert.equal(diagnostic.rowCount, 0);
+    assert.ok(diagnostic.reason?.includes("IMPACT"), "skipped reason must name the missing credentials");
   } finally {
     console.warn = realWarn;
     process.env.IMPACT_ACCOUNT_SID = savedSid;
@@ -291,12 +320,12 @@ function expectedPartnerizeAuth() {
   return "Basic " + Buffer.from("pz-app-key:pz-api-key").toString("base64");
 }
 
-test("[Partnerize] maps conversion rows to ExternalCommission", async () => {
+test("[Partnerize] maps conversion rows to ExternalCommission with ok diagnostic", async () => {
   mockFetch(() => ({
     body: { conversions: [pzConversionRow, pzConversionNoId] },
   }));
 
-  const commissions = await fetchPartnerizeCommissions(START, END);
+  const { commissions, diagnostic } = await fetchPartnerizeCommissions(START, END);
 
   // Endpoint shape — Partnerize conversions report
   assert.equal(calls.length, 1);
@@ -317,33 +346,43 @@ test("[Partnerize] maps conversion rows to ExternalCommission", async () => {
   const c = commissions[0];
   assert.equal(c.partner, "partnerize");
   assert.equal(c.partnerReferenceId, "PZ-5001");
-  // commission_amount takes precedence over amount in the mapping
+  // commission_amount takes precedence
   assert.equal(c.amount, 6.0);
   assert.equal(c.currency, "USD");
   assert.equal(c.reportedAt, "2026-07-12");
+
+  // Diagnostic
+  assert.equal(diagnostic.status, "ok");
+  assert.equal(diagnostic.partner, "partnerize");
+  assert.equal(diagnostic.rowCount, 1);
+  assert.equal(diagnostic.reason, undefined);
 });
 
-test("[Partnerize] returns [] and logs warning on non-OK response — never throws", async () => {
-  // pzFetch throws on non-2xx; getConversionReport catches it with console.warn and
-  // returns []. fetchPartnerizeCommissions therefore also returns [] without re-throwing.
+test("[Partnerize] returns error diagnostic on non-OK response — never throws", async () => {
+  // pzFetch throws on non-2xx; fetchPartnerizeCommissions catches it and emits status:"error"
+  // (unlike getConversionReport which swallowed the error, making it indistinguishable from 0 rows)
   mockFetch(() => ({ status: 500, body: { error: "internal server error" } }));
 
   const logged: string[] = [];
-  const realWarn = console.warn;
-  console.warn = (...args: unknown[]) => logged.push(args.map(String).join(" "));
+  const realError = console.error;
+  console.error = (...args: unknown[]) => logged.push(args.map(String).join(" "));
   try {
-    const commissions = await fetchPartnerizeCommissions(START, END);
+    const { commissions, diagnostic } = await fetchPartnerizeCommissions(START, END);
     assert.deepEqual(commissions, []);
+    assert.equal(diagnostic.status, "error", "non-2xx must produce status:error, not ok with 0 rows");
+    assert.equal(diagnostic.partner, "partnerize");
+    assert.equal(diagnostic.rowCount, 0);
+    assert.ok(diagnostic.reason, "error diagnostic must include a reason");
   } finally {
-    console.warn = realWarn;
+    console.error = realError;
   }
   assert.ok(
-    logged.some((l) => l.includes("[Partnerize]")),
-    `expected Partnerize warning log; got: ${JSON.stringify(logged)}`
+    logged.some((l) => l.includes("[Reconciliation] Partnerize fetch error")),
+    `expected Partnerize error log; got: ${JSON.stringify(logged)}`
   );
 });
 
-test("[Partnerize] skips with a warning when Partnerize credentials are absent", async () => {
+test("[Partnerize] returns skipped diagnostic with a warning when Partnerize credentials are absent", async () => {
   const savedAppKey = process.env.PARTNERIZE_APPLICATION_KEY;
   const savedApiKey = process.env.PARTNERIZE_API_KEY;
   const savedPubId = process.env.PARTNERIZE_PUBLISHER_ID;
@@ -356,9 +395,13 @@ test("[Partnerize] skips with a warning when Partnerize credentials are absent",
   const realWarn = console.warn;
   console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(" "));
   try {
-    const commissions = await fetchPartnerizeCommissions(START, END);
+    const { commissions, diagnostic } = await fetchPartnerizeCommissions(START, END);
     assert.deepEqual(commissions, []);
     assert.equal(calls.length, 0, "no HTTP call should be made without credentials");
+    assert.equal(diagnostic.status, "skipped");
+    assert.equal(diagnostic.partner, "partnerize");
+    assert.equal(diagnostic.rowCount, 0);
+    assert.ok(diagnostic.reason?.includes("PARTNERIZE"), "skipped reason must name the missing credentials");
   } finally {
     console.warn = realWarn;
     process.env.PARTNERIZE_APPLICATION_KEY = savedAppKey;
