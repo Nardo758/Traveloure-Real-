@@ -3501,7 +3501,7 @@ export default function ExpertWorkspace() {
   // browseQuery/debouncedQuery/cat with the other drawers (one search-box concept). Sources=viator
   // so the server hits only the Viator arm — no Google or platform results mix in. ──
   const viatorSearchEnabled = rightTab === "add" && addSource === "viator" && !!(debouncedQuery || destination);
-  const { data: viatorSearchData, isFetching: viatorSearchFetching } = useQuery<{ results: any[]; count: number }>({
+  const { data: viatorSearchData, isFetching: viatorSearchFetching } = useQuery<{ results: any[]; count: number; serviceNotice?: string }>({
     queryKey: ["/api/search/experiences", "viator", debouncedQuery, destination, cat],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -3515,6 +3515,7 @@ export default function ExpertWorkspace() {
     staleTime: 5 * 60 * 1000,
   });
   const viatorSearchResults = viatorSearchData?.results || [];
+  const viatorServiceNotice = viatorSearchData?.serviceNotice;
 
   // ── Browse: add result to itinerary (day-aware — targets a chosen day, defaulting to the
   // focused day). GOOGLE-PLACES-SOURCE-PILL: generalized from a hardcoded `focusDay` write to an
@@ -4853,6 +4854,12 @@ export default function ExpertWorkspace() {
                       {destination ? `Search activities in ${destination}` : "Enter a destination to browse Viator"}
                     </div>
                     <div style={{ fontSize: 11, color: FAINT }}>Try "food tour", "day trip", "snorkelling"</div>
+                  </div>
+                ) : viatorServiceNotice ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }} data-testid="viator-service-notice">
+                    <AlertTriangle style={{ width: 28, height: 28, color: WARN, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: INK }}>Viator is temporarily unavailable</div>
+                    <div style={{ fontSize: 11, color: FAINT }}>The Viator integration is not reachable right now. Try again later or search another source.</div>
                   </div>
                 ) : viatorSearchResults.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
