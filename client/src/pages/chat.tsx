@@ -420,6 +420,15 @@ export default function Chat() {
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+
+  // A11y focus management: when a conversation is opened (mouse or keyboard), move focus
+  // to the message input so keyboard users can type immediately.
+  useEffect(() => {
+    if (selectedExpert) {
+      messageInputRef.current?.focus();
+    }
+  }, [selectedExpert?.id]);
 
   // W5-E: mark-read wiring. A "conversation" server-side (server/routes/messages.ts,
   // server/services/messages.service.ts) is keyed by the sorted pair of participant user ids —
@@ -548,8 +557,17 @@ export default function Chat() {
       transition={{ delay: index * 0.05 }}
     >
       <Card
-        className={`cursor-pointer transition-all hover:shadow-md ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open conversation with ${expert.name}`}
+        className={`cursor-pointer transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
         onClick={() => setSelectedExpert(expert)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedExpert(expert);
+          }
+        }}
         data-testid={`card-expert-${expert.id}`}
       >
         <CardContent className="p-4">
@@ -799,7 +817,12 @@ export default function Chat() {
                   </div>
 
                   {/* Messages */}
-                  <ScrollArea className="flex-1 min-h-0 p-4">
+                  <ScrollArea
+                    className="flex-1 min-h-0 p-4"
+                    role="log"
+                    aria-live="polite"
+                    aria-label="Message thread"
+                  >
                     {timelineItems.length > 0 ? (
                       <div className="space-y-4">
                         {timelineItems.map((item) =>
@@ -857,14 +880,17 @@ export default function Chat() {
                       className="flex gap-3"
                     >
                       <Input
+                        ref={messageInputRef}
                         value={message}
                         onChange={handleInputChange}
                         placeholder="Type your message..."
+                        aria-label="Message"
                         className="flex-1"
                         data-testid="input-message"
                       />
                       <Button 
                         type="submit" 
+                        aria-label="Send message"
                         disabled={sendMessageMutation.isPending || !message.trim()}
                         data-testid="button-send"
                       >
