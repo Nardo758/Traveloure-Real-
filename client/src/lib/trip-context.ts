@@ -327,6 +327,18 @@ function tripScopedQuery(context: Pick<TripContext, "tripId">): string {
 
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
 
+/**
+ * Cancels any pending debounced push.
+ * Call before clearing context (logout, cross-account switch) so a
+ * scheduled PUT from a previous user can't fire against the new session.
+ */
+export function cancelPendingPush(): void {
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = undefined;
+  }
+}
+
 function schedulePush(context: TripContext): void {
   if (typeof fetch !== "function") return;
   if (pushTimer) clearTimeout(pushTimer);
@@ -454,6 +466,9 @@ export function useTripContextSync(): void {
 }
 
 export function clearTripContext(): void {
+  // Cancel any pending debounced push first — a scheduled PUT from a previous
+  // user must not fire after the context is cleared (cross-account race).
+  cancelPendingPush();
   try {
     sessionStorage.removeItem(STORAGE_KEY);
   } catch {
