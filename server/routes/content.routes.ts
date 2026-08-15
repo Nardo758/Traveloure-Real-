@@ -5921,7 +5921,10 @@ router.get("/api/search/experiences", async (req, res) => {
       const sourcesFilter = sources === "platform" || sources === "google" || sources === "viator" ? sources : "all";
       const includePlatform = sourcesFilter !== "google" && sourcesFilter !== "viator";
       const includeGoogle = sourcesFilter !== "platform" && sourcesFilter !== "viator";
-      const includeViator = sourcesFilter === "viator" || sourcesFilter === "all";
+      // Viator is a paid third-party API and is NEVER included in the default "all" set —
+      // only when the caller explicitly requests sources=viator. Additionally, Viator results
+      // are gated on an authenticated session to prevent unauthenticated quota exhaustion.
+      const includeViator = sourcesFilter === "viator";
 
       // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
       // platform arm has nothing for this destination+category and fell through to Google Places
@@ -6067,8 +6070,19 @@ router.get("/api/search/experiences", async (req, res) => {
       }
 
       // ── Viator bookable activities (tours & experiences) ──
+      // Auth gate: Viator is a paid API — only authenticated workspace users may trigger it.
+      if (includeViator) {
+        if (!(req as any).isAuthenticated?.()) {
+          return res.status(401).json({ message: "Authentication required for Viator search" });
+        }
+      }
       if (includeViator) try {
-        const searchTerm = q || destination || "";
+        // Combine free-text query with destination so results are scoped to the right city.
+        // Pattern mirrors the Google Places arm: [q, destination].filter(Boolean).join(" in ").
+        // If only destination is provided (no search text), destination alone is the search term.
+        const searchTerm = q && destination
+          ? `${q} in ${destination}`
+          : q || destination || "";
         if (searchTerm) {
           const catLower = (category || "").toLowerCase();
           // Viator products are activities/experiences. Skip if the caller has filtered
