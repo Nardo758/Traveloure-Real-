@@ -53,11 +53,24 @@ function sectionFor(sections: FormatSection[], item: FlatFormatItem): FormatSect
 export function KyotoCulturalView({ format, destination, days, bestSeason }: KyotoCulturalViewProps) {
   // Existing mounted neighborhoods catalog (content.routes.ts GET /api/city-neighborhoods) —
   // the same query ServiceForm's coverage picker uses; default queryFn, no new endpoint.
-  const { data: hoodsResp, isLoading: hoodsLoading } = useQuery<{ data: CityNeighborhood[] }>({
-    queryKey: ["/api/city-neighborhoods"],
-    staleTime: 5 * 60_000,
+  // Fetch all pages of neighborhoods sequentially (reference catalog may exceed 200-row page).
+  const { data: allNeighborhoods = [], isLoading: hoodsLoading } = useQuery<CityNeighborhood[]>({
+    queryKey: ["/api/city-neighborhoods", "all"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const PAGE = 200;
+      let all: CityNeighborhood[] = [];
+      let offset = 0;
+      for (;;) {
+        const res = await fetch(`/api/city-neighborhoods?limit=${PAGE}&offset=${offset}`);
+        const json = await res.json() as { data: CityNeighborhood[]; hasMore: boolean };
+        all = all.concat(json.data);
+        if (!json.hasMore) break;
+        offset += PAGE;
+      }
+      return all;
+    },
   });
-  const allNeighborhoods = hoodsResp?.data ?? [];
 
   const cityKey = (destination ?? "").split(",")[0].trim().toLowerCase();
   const cityDisplay = (destination ?? "").split(",")[0].trim() || "this city";

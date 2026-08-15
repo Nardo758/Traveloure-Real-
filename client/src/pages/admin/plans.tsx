@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   Loader2
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 const typeColors: Record<string, string> = {
@@ -34,20 +34,41 @@ const statusColors: Record<string, string> = {
   past: "bg-blue-100 text-blue-700 border-blue-200",
 };
 
+type PlanRow = { id: string; title: string; type: string; destination: string; startDate: string; endDate: string; guests: number; budget: string; status: string; user: string; created: string };
+type PlansResponse = { trips: PlanRow[]; stats: { total: number; upcoming: number; active: number; past: number }; total: number; hasMore: boolean };
+
+const PAGE_SIZE = 50;
+
 export default function AdminPlans() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  // Server-side pagination: the API pages in SQL now; "Load more" grows the requested page size.
-  const [limit, setLimit] = useState(50);
+  // True offset pagination: fixed page size, offset increments, results append.
+  const [offset, setOffset] = useState(0);
+  const [allTrips, setAllTrips] = useState<PlanRow[]>([]);
 
-  const { data: plansData, isLoading } = useQuery<{
-    trips: Array<{ id: string; title: string; type: string; destination: string; startDate: string; endDate: string; guests: number; budget: string; status: string; user: string; created: string }>;
-    stats: { total: number; upcoming: number; active: number; past: number };
-    total: number;
-    hasMore: boolean;
-  }>({ queryKey: ["/api/admin/trips", { search: searchQuery, status: statusFilter, limit }] });
+  const { data: plansData, isLoading } = useQuery<PlansResponse>({
+    queryKey: ["/api/admin/trips", { search: searchQuery, status: statusFilter, limit: PAGE_SIZE, offset }],
+  });
 
-  if (isLoading) {
+  // Reset accumulator when search/filter changes; append on subsequent pages.
+  useEffect(() => {
+    setOffset(0);
+    setAllTrips([]);
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    if (!plansData?.trips) return;
+    if (offset === 0) {
+      setAllTrips(plansData.trips);
+    } else {
+      setAllTrips((prev) => {
+        const seenIds = new Set(prev.map((t) => t.id));
+        return [...prev, ...plansData.trips.filter((t) => !seenIds.has(t.id))];
+      });
+    }
+  }, [plansData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (isLoading && offset === 0) {
     return (
       <AdminLayout title="Plan Management">
         <div className="flex items-center justify-center h-96">
@@ -57,7 +78,7 @@ export default function AdminPlans() {
     );
   }
 
-  const trips = plansData?.trips ?? [];
+  const trips = allTrips;
 
   // Capitalize first letter of type (eventType)
   const formatType = (type: string): string => {
@@ -234,10 +255,11 @@ export default function AdminPlans() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setLimit((l) => Math.min(l + 50, 200))}
+                  disabled={isLoading}
+                  onClick={() => setOffset((o) => o + PAGE_SIZE)}
                   data-testid="button-load-more-plans"
                 >
-                  Load more ({plans.length} of {plansData.total})
+                  {isLoading ? "Loading…" : `Load more (${trips.length} of ${plansData.total})`}
                 </Button>
               </div>
             )}

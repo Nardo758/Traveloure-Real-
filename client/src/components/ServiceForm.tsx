@@ -866,10 +866,24 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: !!formData.categoryId,
   });
 
-  const { data: neighborhoodsResp } = useQuery<{ data: Array<{ id: string; city: string; country: string; name: string; slug: string }> }>({
-    queryKey: ["/api/city-neighborhoods"],
+  // Fetch all pages of neighborhoods sequentially (reference catalog may exceed 200-row page).
+  const { data: allNeighborhoods = [] } = useQuery<Array<{ id: string; city: string; country: string; name: string; slug: string }>>({
+    queryKey: ["/api/city-neighborhoods", "all"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const PAGE = 200;
+      let all: Array<{ id: string; city: string; country: string; name: string; slug: string }> = [];
+      let offset = 0;
+      for (;;) {
+        const res = await fetch(`/api/city-neighborhoods?limit=${PAGE}&offset=${offset}`);
+        const json = await res.json() as { data: Array<{ id: string; city: string; country: string; name: string; slug: string }>; hasMore: boolean };
+        all = all.concat(json.data);
+        if (!json.hasMore) break;
+        offset += PAGE;
+      }
+      return all;
+    },
   });
-  const allNeighborhoods = neighborhoodsResp?.data ?? [];
   // Ruling 112 Q1: the global 20-city checkbox wall is retired for a single searchable pick —
   // this is its filter text. One neighborhood, because the column is one neighborhood (the old
   // multi-select silently dropped every pick after the first — Run-2 finding R7).
