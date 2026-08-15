@@ -30,6 +30,9 @@ export function optimizeUnsplashUrl(
   const parsed = new URL(url);
   parsed.searchParams.set("auto", "format");
   parsed.searchParams.delete("fm"); // fm=jpg would override auto=format content negotiation
+  // Stored URLs bake in q=80; q=60 is visually indistinguishable in AVIF/WebP
+  // at card sizes and cuts transfer ~30-40%.
+  parsed.searchParams.set("q", "60");
   if (opts.w) parsed.searchParams.set("w", String(opts.w));
   return parsed.toString();
 }
