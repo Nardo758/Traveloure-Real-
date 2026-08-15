@@ -379,6 +379,71 @@ export async function getExpertUserIds(limit = 10): Promise<string[]> {
   return rows.map(r => r.id);
 }
 
+/**
+ * Pick the best expert for an affiliate booking request by scoring against:
+ *   +2  destination appears in expert's declared destinations (case-insensitive substring)
+ *   +1  category matches any of the expert's specialties (case-insensitive substring)
+ *
+ * Only considers approved experts who have accepts_new_handoffs = true.
+ * Returns null (→ request stays "pending") when no such expert exists — never
+ * bypasses the handoff flag to force an assignment.
+ *
+ * Among eligible candidates the one with the fewest open (non-terminal) booking
+ * requests is preferred for equal scores. Terminal statuses:
+ *   completed | confirmed | cancelled | closed
+ *
+ * Used by both POST /api/affiliate-booking-requests variants so the logic lives
+ * in one place and stays consistent.
+ */
+export async function pickBestExpertForBookingRequest(
+  destination?: string | null,
+  category?: string | null,
+): Promise<string | null> {
+  // Normalise signal strings: trim, lowercase, guard empty
+  const destToken = destination?.trim().toLowerCase() || null;
+  const catToken = category?.trim().toLowerCase() || null;
+
+  // Canonical expert-family roles (shared/roles.ts EXPERT_ROLES):
+  // "expert" | "local_expert" | "travel_expert" | "event_planner"
+  // Using a literal array here to avoid a runtime import; must stay in sync with shared/roles.ts.
+  const expertRoleList = sql`('expert','local_expert','travel_expert','event_planner')`;
+
+  // One query: join users → local_expert_forms, score in SQL, count open handoffs
+  // via correlated subquery, order by score DESC + open_count ASC.
+  const rows = await db.execute(sql`
+    SELECT
+      u.id,
+      (
+        CASE WHEN ${destToken !== null ? sql`lower(lef.destinations::text) LIKE ${'%' + destToken + '%'}` : sql`false`}
+             THEN 2 ELSE 0 END
+        +
+        CASE WHEN ${catToken !== null ? sql`lower(lef.specialties::text) LIKE ${'%' + catToken + '%'}` : sql`false`}
+             THEN 1 ELSE 0 END
+      ) AS score,
+      (
+        SELECT COUNT(*)::int
+        FROM affiliate_booking_requests abr
+        WHERE abr.expert_id = u.id
+          AND abr.status NOT IN ('completed', 'confirmed', 'cancelled', 'closed')
+      ) AS open_count
+    FROM users u
+    INNER JOIN local_expert_forms lef ON lef.user_id = u.id
+    WHERE u.role IN ${expertRoleList}
+      AND lef.status = 'approved'
+      AND lef.accepts_new_handoffs = true
+    ORDER BY score DESC, open_count ASC
+    LIMIT 20
+  `);
+
+  const candidates = rows.rows as Array<{ id: string; score: number; open_count: number }>;
+
+  // No eligible expert found — leave request pending rather than bypassing the
+  // accepts_new_handoffs flag. The admin queue surfaces pending requests for manual routing.
+  if (candidates.length === 0) return null;
+
+  return candidates[0].id;
+}
+
 // ─── Gem by ID ────────────────────────────────────────────────────────────────
 
 export async function getAiDiscoveredGemById(id: string): Promise<any | null> {

@@ -113,6 +113,7 @@ import {
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { getWorkspaceStatusHistory } from "../services/item-transition-log.service";
+import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -1351,6 +1352,159 @@ router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, 
   } catch (err: any) {
     console.error("Manual auto-cancel sweep error:", err);
     res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/bookings/backfill-completion/audit
+ *
+ * AUDIT SURFACE for the historical backfill: how many `confirmed` bookings with a
+ * PaymentIntent are stuck past the auto-complete grace window, what is the total
+ * provider_earnings at stake, and which rows have already been stamped as unpaid (and
+ * will be excluded by the next pass until their recheck window lapses).
+ *
+ * This is DB-only — no Stripe calls — so it can be run cheaply before triggering the
+ * actual backfill pass. The run endpoint (POST below) does the Stripe verification gate.
+ *
+ * Response shape:
+ *   eligibleCount        — rows due now (past grace, PI present, no unexpired unpaid stamp)
+ *   eligibleEarningsSum  — SUM(provider_earnings) across those rows (string, numeric)
+ *   stampedUnpaidCount   — rows with an unexpired autoCompleteUnpaidRecheckAt stamp (excluded)
+ *   noPaymentCount       — confirmed rows with NO PI at all (always excluded by the pass)
+ *   sampleCandidates     — up to 20 eligible rows for ops review before triggering
+ */
+router.get("/api/admin/bookings/backfill-completion/audit", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const now = new Date().toISOString();
+    const graceDays = Number(process.env.BOOKING_AUTO_COMPLETE_DAYS);
+    const days = Number.isFinite(graceDays) && graceDays >= 0 ? graceDays : 3;
+
+    // Eligible: confirmed + has PI + past grace window + no unexpired unpaid stamp
+    const eligibleResult = await db.execute(sql`
+      SELECT
+        COUNT(*)::int                      AS eligible_count,
+        COALESCE(SUM(COALESCE(sb.provider_earnings, '0')::numeric), 0)::text AS eligible_earnings_sum
+      FROM service_bookings sb
+      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
+      WHERE sb.status = 'confirmed'
+        AND sb.stripe_payment_intent_id IS NOT NULL
+        AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
+            + (${days} || ' days')::interval < ${now}::timestamptz
+        AND (
+          sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NULL
+          OR (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${now}::timestamptz
+        )
+    `);
+
+    // Stamped unpaid: confirmed + has PI + past grace + unexpired stamp (excluded until recheck)
+    const stampedResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS stamped_count
+      FROM service_bookings sb
+      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
+      WHERE sb.status = 'confirmed'
+        AND sb.stripe_payment_intent_id IS NOT NULL
+        AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
+            + (${days} || ' days')::interval < ${now}::timestamptz
+        AND sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NOT NULL
+        AND (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz > ${now}::timestamptz
+    `);
+
+    // No PI: confirmed rows without any stripe_payment_intent_id (always skipped)
+    const noPaymentResult = await db.execute(sql`
+      SELECT COUNT(*)::int AS no_payment_count
+      FROM service_bookings sb
+      WHERE sb.status = 'confirmed'
+        AND sb.stripe_payment_intent_id IS NULL
+    `);
+
+    // Sample: first 20 eligible candidates for ops review
+    const sampleResult = await db.execute(sql`
+      SELECT
+        sb.id,
+        sb.stripe_payment_intent_id,
+        sb.provider_earnings,
+        sb.platform_fee,
+        sb.total_amount,
+        sb.confirmed_at,
+        sb.created_at,
+        sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' AS unpaid_recheck_at,
+        ps.service_name,
+        u.email AS traveler_email
+      FROM service_bookings sb
+      LEFT JOIN vendor_availability_slots vas ON vas.id = sb.slot_id
+      LEFT JOIN provider_services ps ON ps.id = sb.service_id
+      LEFT JOIN users u ON u.id = sb.traveler_id
+      WHERE sb.status = 'confirmed'
+        AND sb.stripe_payment_intent_id IS NOT NULL
+        AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
+            + (${days} || ' days')::interval < ${now}::timestamptz
+        AND (
+          sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NULL
+          OR (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${now}::timestamptz
+        )
+      ORDER BY COALESCE(sb.confirmed_at, 'epoch'::timestamp) ASC, sb.id ASC
+      LIMIT 20
+    `);
+
+    const eligible = eligibleResult.rows[0] as any;
+    const stamped = stampedResult.rows[0] as any;
+    const noPayment = noPaymentResult.rows[0] as any;
+
+    res.json({
+      eligibleCount: eligible?.eligible_count ?? 0,
+      eligibleEarningsSum: eligible?.eligible_earnings_sum ?? "0",
+      stampedUnpaidCount: stamped?.stamped_count ?? 0,
+      noPaymentCount: noPayment?.no_payment_count ?? 0,
+      graceDays: days,
+      sampleCandidates: sampleResult.rows,
+      note:
+        "DB-only audit — no Stripe calls. eligible = confirmed + has PI + past grace window + no unexpired unpaid stamp. " +
+        "Trigger POST /api/admin/bookings/backfill-completion/run to verify each PI against Stripe and complete eligible bookings. " +
+        "Stamped rows will be re-checked after their recheck window lapses (default 24h).",
+    });
+  } catch (err: any) {
+    console.error("Backfill completion audit error:", err);
+    res.status(500).json({ message: "Failed to run backfill completion audit", error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/bookings/backfill-completion/run
+ *
+ * Deliberately triggers one auto-completion pass — the same logic the hourly scheduler runs —
+ * so ops can backfill historical `confirmed` bookings that were stuck before task 1091.
+ *
+ * Each candidate's PaymentIntent is verified `succeeded` against Stripe before any flip.
+ * Bookings whose PI is NOT succeeded are stamped (autoCompleteUnpaidRecheckAt, +24h) and
+ * flagged in the response for manual review — they are NEVER silently minted.
+ *
+ * Response: AutoCompletionRunResult + a human-readable summary.
+ */
+router.post("/api/admin/bookings/backfill-completion/run", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await runBookingAutoCompletion(new Date());
+    const skippedReasons = Object.entries(result.skipped)
+      .map(([reason, count]) => `${reason}: ${count}`)
+      .join(", ");
+    res.json({
+      ...result,
+      summary:
+        `Completed ${result.completed} booking(s), reconciled ${result.reconciled} ledger row(s). ` +
+        `Scanned ${result.scanned}. ` +
+        (skippedReasons ? `Skipped — ${skippedReasons}. ` : "") +
+        `Unpaid rows (PI not succeeded) are stamped for 24h recheck and must be reviewed manually in Stripe.`,
+    });
+  } catch (err: any) {
+    console.error("Backfill completion run error:", err);
+    res.status(500).json({ message: "Backfill completion run failed", error: err.message });
   }
 });
 

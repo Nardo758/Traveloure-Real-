@@ -56,7 +56,7 @@ import {
   getAiItinerariesForUser, getAiItineraryById,
   insertItineraryComparison, updateItineraryComparisonStatus,
   getActiveProviderServices, getDestinationEventsByCity,
-  getExpertUserIds, getAiDiscoveredGemById,
+  getExpertUserIds, pickBestExpertForBookingRequest, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
   insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
@@ -5543,6 +5543,12 @@ router.get("/api/travelpulse/enriched/:cityName", async (req, res) => {
                 url: option.url,
                 name: typeof rec.name === "string" ? rec.name : null,
                 provider: typeof option.platform === "string" ? option.platform : null,
+                // EnrichedRecommendation has no destination/city field; fall back to the
+                // authoritative route param cityName so enriched-content tokens are always
+                // destination-aware for expert routing.
+                destination: typeof rec.destination === "string" ? rec.destination
+                  : typeof rec.city === "string" ? rec.city
+                  : cityName,
               });
               optionSlots.push({ option });
             }
@@ -6866,22 +6872,32 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const { itemName, itemDescription, partnerName, partnerCategory, travelDate, travelers, userNotes,
-              bookingToken, affiliateProductId, transportOptionId, partnerRoute } = req.body;
+              bookingToken, affiliateProductId, transportOptionId, partnerRoute,
+              destination: bodyDestination } = req.body;
 
-      let resolved: { url: string; name: string | null; partner: string | null } | null = null;
+      // resolved carries a server-derived destination for every reference type that has one,
+      // so expert routing is not dependent on the client supplying a separate body.destination.
+      let resolved: { url: string; name: string | null; partner: string | null; destination: string | null } | null = null;
       if (typeof bookingToken === "string" && bookingToken) {
         const { resolveBookingToken } = await import("../services/affiliate-url-vault.service");
         const entry = await resolveBookingToken(bookingToken);
-        if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider };
+        // VaultedBooking.destination is captured at vault time from each catalog item's
+        // city/destination/location field — no round-trip through the client.
+        if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider, destination: entry.destination };
       } else if (typeof affiliateProductId === "string" && affiliateProductId) {
         const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
         const product = await affiliateScraperService.getProductById(affiliateProductId, { approvedOnly: true });
         const url = product ? (product.affiliateUrl || product.productUrl || null) : null;
-        if (product && url) resolved = { url, name: product.name ?? null, partner: null };
+        if (product && url) resolved = {
+          url, name: product.name ?? null, partner: null,
+          // affiliateProducts carries city and location columns — prefer city as the tighter signal
+          destination: (product.city || product.location || null) as string | null,
+        };
       } else if (typeof transportOptionId === "string" && transportOptionId) {
         const option = await storage.getTransportBookingOptionById(transportOptionId);
         if (option && option.externalUrl && (option.bookingType === "affiliate" || option.bookingType === "deep_link")) {
-          resolved = { url: option.externalUrl, name: option.title ?? null, partner: option.source ?? null };
+          // transportBookingOptions has no direct destination column; rely on body.destination
+          resolved = { url: option.externalUrl, name: option.title ?? null, partner: option.source ?? null, destination: null };
         }
       } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "12go") {
         const { affiliateService } = await import("../services/affiliate.service");
@@ -6892,6 +6908,8 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
           }),
           name: null,
           partner: "12Go",
+          // 12Go deep-link has a structured destination field
+          destination: typeof partnerRoute.destination === "string" ? partnerRoute.destination : null,
         };
       } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "fever") {
         // Same server-side construction posture as 12Go: the Impact campaign id never
@@ -6901,6 +6919,7 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
           url: affiliateService.buildFeverDeepLink(),
           name: null,
           partner: "Fever",
+          destination: null,
         };
       } else {
         return res.status(400).json({
@@ -6914,9 +6933,20 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
       const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
 
-      // Auto-assign to an expert based on category (city match optional, fallback any expert)
-      const expertIds2 = await getExpertUserIds(10);
-      const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
+      // Auto-assign to the best-matched expert: score by destination + category,
+      // prefer lower workload. Destination priority:
+      //   1. Server-resolved from the booking reference (bookingToken vault, affiliateProduct.city,
+      //      partnerRoute.destination) — trusted server-side, covers all reference types
+      //   2. body.destination — fallback for reference types without a structured destination
+      //      (transportOptionId, fever) and for callers that supply it explicitly (result-card flows)
+      // Returns null when no approved expert with accepts_new_handoffs=true exists →
+      // request stays "pending" for admin manual routing (never bypasses the flag).
+      const requestDestination =
+        resolved.destination?.trim() ||
+        (typeof bodyDestination === "string" ? bodyDestination.trim() : null) ||
+        null;
+      const requestCategory = typeof partnerCategory === "string" ? partnerCategory : null;
+      const expertId = await pickBestExpertForBookingRequest(requestDestination, requestCategory);
       const status = expertId ? "assigned" : "pending";
 
       // Same MONEY_MAP F-5 (dormant) sub_id attribution seam as the /from-catalog variant below:
@@ -6992,8 +7022,12 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       if (!resolved) {
         return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
       }
-      const expertIds3 = await getExpertUserIds(10);
-      const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
+      // Auto-assign to the best-matched expert: score by destination + category,
+      // prefer lower workload; falls back to any approved expert, then any expert.
+      const expertId = await pickBestExpertForBookingRequest(
+        typeof destination === "string" ? destination : null,
+        resolved.partnerCategory,
+      );
       const status = expertId ? "assigned" : "pending";
 
       // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
