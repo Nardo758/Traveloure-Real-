@@ -523,7 +523,7 @@ export default function DiscoverPage() {
   // Write browse cart through to sessionStorage whenever it changes.
   useEffect(() => {
     try {
-      sessionStorage.setItem(BROWSE_CART_KEY, JSON.stringify([...addedServices]));
+      sessionStorage.setItem(BROWSE_CART_KEY, JSON.stringify(Array.from(addedServices)));
     } catch { /* ignore quota or private-browsing errors */ }
   }, [addedServices]);
 
