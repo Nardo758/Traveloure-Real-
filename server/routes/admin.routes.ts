@@ -6837,7 +6837,7 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
       try {
         const { createExpertAssignmentNotification, getTripLabel } = await import("../services/booking-actions.service");
         const tripLabel = await getTripLabel(row.trip_id);
-        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel);
+        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel, { status: "assigned" });
       } catch (notifyErr) {
         console.error("Failed to notify expert of trip assignment:", notifyErr);
       }

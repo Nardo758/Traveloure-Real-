@@ -644,13 +644,19 @@ export async function createExpertAssignmentNotification(
   expertUserId: string,
   tripId: string,
   tripLabel: string,
+  options?: { status?: "assigned" | "pending" },
 ): Promise<void> {
+  const isConfirmed = options?.status === "assigned";
+  const title = isConfirmed ? "New trip assignment" : "New trip request";
+  const message = isConfirmed
+    ? `You've been assigned to advise on ${tripLabel} — open your Workspace to get started.`
+    : `You've been invited to advise on ${tripLabel} — accept it in your Inbox to get started.`;
   await db.execute(sql`
     INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
     VALUES (
       ${crypto.randomUUID()}, ${expertUserId}, 'booking_request',
-      'New trip request',
-      ${`You've been invited to advise on ${tripLabel} — accept it in your Inbox to get started.`},
+      ${title},
+      ${message},
       ${JSON.stringify({ tripId, workspacePath: `/expert/workspace/${tripId}` })}::jsonb,
       false, NOW()
     )
