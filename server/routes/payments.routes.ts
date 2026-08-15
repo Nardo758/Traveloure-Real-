@@ -53,7 +53,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -2179,11 +2179,17 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // §15: one open request at a time — a pending/processing payout blocks a duplicate.
+      // §15: one open request at a time — a pending/processing payout blocks a duplicate,
+      // UNLESS it is stale (older than STALE_PAYOUT_PROCESSING_DAYS days). A stale payout
+      // means the admin pipeline is stuck; the earner should not be permanently locked out.
+      // Stale payouts remain visible in the admin queue with `isStale: true` for manual
+      // resolution — this gate bypass does not silently abandon them.
       const existing = isProvider
         ? await storage.getProviderPayouts(userId)
         : await storage.getExpertPayouts(userId);
-      const open = existing.find((p: any) => p.status === "pending" || p.status === "processing");
+      const open = existing.find(
+        (p: any) => (p.status === "pending" || p.status === "processing") && !isPayoutStale(p),
+      );
       if (open) {
         return res.status(409).json({
           error: "payout_request_pending",

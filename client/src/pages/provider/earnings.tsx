@@ -37,6 +37,19 @@ type BookingWithService = ServiceBooking & { service?: ProviderService };
 // above (left untouched — those are a separate, real computation from live bookings, not fabricated,
 // and out of scope here). These two shapes render ONLY fields the API actually returns (§13 — never
 // invented) and use an honest empty state when there's nothing yet.
+
+// Task 1193: if a pending/processing payout is older than 7 days, show a "Contact support" nudge
+// so the earner knows there is a self-service escalation path. The server's gate bypass (14 days)
+// is separate and server-side; this shorter window is purely informational.
+const PAYOUT_CONTACT_DAYS = 7;
+
+function isPayoutOverdueForContact(payout: { status: string; requestedAt: string }): boolean {
+  if (payout.status !== "pending" && payout.status !== "processing") return false;
+  const requestedAt = new Date(payout.requestedAt);
+  if (isNaN(requestedAt.getTime())) return false;
+  return (Date.now() - requestedAt.getTime()) / 86_400_000 > PAYOUT_CONTACT_DAYS;
+}
+
 interface ProviderPayoutRow {
   id: string;
   amount: string;
@@ -879,21 +892,48 @@ export default function ProviderEarnings() {
             <CardContent>
               {payouts && payouts.length > 0 ? (
                 <div className="space-y-3">
-                  {payouts.map((payout) => (
-                    <div
-                      key={payout.id}
-                      className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
-                      data-testid={`payout-${payout.id}`}
-                    >
-                      <div>
-                        <p className="font-medium text-console-darkest">
-                          ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                        <p className="text-sm text-console-mid">{new Date(payout.requestedAt).toLocaleDateString()}</p>
+                  {payouts.map((payout) => {
+                    const overdue = isPayoutOverdueForContact(payout);
+                    return (
+                      <div
+                        key={payout.id}
+                        className="p-3 rounded-lg border border-console-light bg-console-bg"
+                        data-testid={`payout-${payout.id}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-console-darkest">
+                              ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-sm text-console-mid">
+                              Requested {new Date(payout.requestedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <StatusBadge status={payout.status} />
+                        </div>
+                        {/* Task 1193: stale-payout nudge — appears after PAYOUT_CONTACT_DAYS of
+                            no resolution so the earner knows there is an escalation path. The 14-day
+                            server gate (STALE_PAYOUT_PROCESSING_DAYS) allows a fresh request after
+                            that window; this shorter 7-day nudge is purely informational. */}
+                        {overdue && (
+                          <p
+                            className="mt-2 text-xs text-amber-700"
+                            data-testid={`text-payout-stale-${payout.id}`}
+                          >
+                            This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
+                            <a
+                              href="mailto:support@traveloure.com"
+                              className="underline font-medium"
+                              data-testid={`link-payout-support-${payout.id}`}
+                            >
+                              Contact support
+                            </a>{" "}
+                            if you need help.
+                          </p>
+                        )}
                       </div>
-                      <StatusBadge status={payout.status} />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <EmptyState title="No payout requests yet" body="Request a payout from your available balance above." testId="empty-payouts" />
