@@ -142,6 +142,7 @@ const experienceCategories = [
     label: "Travel",
     description: "Plan your next adventure",
     slug: "travel",
+    image: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=800&q=80",
     color: "text-blue-500",
     bgColor: "bg-blue-500",
     categories: [
@@ -156,6 +157,7 @@ const experienceCategories = [
     label: "Weddings",
     description: "Plan the perfect day",
     slug: "wedding",
+    image: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
     color: "text-pink-500",
     bgColor: "bg-pink-500",
     categories: [
@@ -170,6 +172,7 @@ const experienceCategories = [
     label: "Proposals",
     description: "Make it unforgettable",
     slug: "proposal",
+    image: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?auto=format&fit=crop&w=800&q=80",
     color: "text-purple-500",
     bgColor: "bg-purple-500",
     categories: [
@@ -184,6 +187,7 @@ const experienceCategories = [
     label: "Celebrations",
     description: "Mark special moments",
     slug: "celebrations",
+    image: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?auto=format&fit=crop&w=800&q=80",
     color: "text-orange-500",
     bgColor: "bg-orange-500",
     categories: [
@@ -198,6 +202,7 @@ const experienceCategories = [
     label: "Date Nights",
     description: "Plan something special",
     slug: "date-night",
+    image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=800&q=80",
     color: "text-red-500",
     bgColor: "bg-red-500",
     categories: [
@@ -212,6 +217,7 @@ const experienceCategories = [
     label: "Corporate",
     description: "Team building & events",
     slug: "corporate-events",
+    image: "https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80",
     color: "text-slate-600 dark:text-slate-400",
     bgColor: "bg-slate-600",
     categories: [

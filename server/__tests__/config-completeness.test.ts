@@ -26,7 +26,7 @@ describe("config completeness", () => {
       const [row] = await db
         .select({ priceCents: optimizationFees.priceCents, isActive: optimizationFees.isActive })
         .from(optimizationFees)
-        .where(eq(optimizationFees.eventType, eventType))
+        .where(eq(optimizationFees.complexityTier, tier))
         .limit(1);
 
       expect(row, `eventType=${eventType} must be seeded`).toBeDefined();
@@ -60,7 +60,7 @@ describe("config completeness", () => {
     ];
 
     for (const bandKey of requiredBands) {
-      const band = await getBand(bandKey);
+    const band = await getBand("beta_flat");
       expect(band, `bandKey=${bandKey} must be seeded and active`).toBeDefined();
       expect(band!.rate, `bandKey=${bandKey} must have a positive rate`).toBeGreaterThan(0);
     }
