@@ -1551,7 +1551,7 @@ router.get("/api/destinations", async (req, res) => {
       // Alias of /api/catalog/destinations — apply same pagination contract.
       const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
       const all = await experienceCatalogService.getDestinations();
-      const deduped = [...new Set(all)] as string[];
+      const deduped = Array.from(new Set(all)) as string[];
       const page = deduped.slice(offset, offset + limit);
       res.json({ data: page, total: deduped.length, hasMore: offset + page.length < deduped.length, limit, offset });
     } catch (error) {
