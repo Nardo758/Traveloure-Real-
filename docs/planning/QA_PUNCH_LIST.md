@@ -2054,3 +2054,54 @@ the edit-split rail (ruling 112 Q8, CLAUDE.md Locked Decision 23, migration 215,
   `server/utils/sanitize.ts` + tests, authored before #477 landed `server/utils/text-sanitizer.ts`
   (22 tests, wired into provider/expert/traveler write paths). When that branch PRs, fold to ONE
   sanitizer (keep text-sanitizer as canonical; port any case their tests cover that ours miss).
+
+## Folded in Aug 15, 2026 — Logistics/map audit (Claude-in-Chrome round 2; 17 findings, 2 P1)
+
+Audit compared Catalog → Map (traveler preview) and Workstation → step 4 "Logistics" against the
+ratified mock. Verdict "DIVERGES": 2 P1 + 10 P2 + 5 P3. Decision-maker ratified the two flagged
+calls Aug 15 ("go with your recommendations"): **D-9 collapse ratified** (one transport toggle;
+removed questions follow the mock's gap-#13 "stop asking for it" rule; schema untouched) and
+**D-12 autosave ratified** (manual Save Draft + "Route saved" buttons go; stops ride the same
+debounced autosave over the unchanged 22(a) replace-list PUT). Coverage caveats stand: audit
+account had no live listing and no saved stops (D-13 unverified with data), mobile unverified.
+
+### Lane M — Catalog map preview (D-1..D-8, all FIX — this PR)
+
+- **D-1 (P1, FIXED).** "+ Add a pin" only selected a listing — did nothing. Now the mock's
+  "Fix it in step 4 →", a real link to that listing's `/edit?step=logistics`.
+- **D-2 (P2, FIXED).** Read-only posture now stated: notice leads with "Traveler preview —
+  read-only", canvas closes with "Nothing here can be dragged, armed or placed…".
+- **D-3 (P2, FIXED).** Located summary counts PLACE-ANCHORED listings only (shared
+  `isPlaceAnchored`); remote/artifact are "they happen nowhere, and that is a real answer".
+  Unclassifiable rows stay in the place-anchored bucket (never silently excused).
+- **D-4 (P2, FIXED).** "Not located" list names each row's true reason: "no confirmed pin —
+  not drawn" (+fix link) vs "«method» — it happens nowhere" (no fix chip — nothing to fix).
+- **D-5 (P2, FIXED).** One canvas, whole footprint: all located listings render as labeled
+  sibling pins (`ServiceLocationMap` `siblingPins`/`labelPins` — still the ONE renderer, 22(c));
+  clicking a sibling selects it.
+- **D-6 (P2, FIXED).** "open it →" deep-links to the SELECTED listing's step 4 (notice moved
+  inside CatalogMapView to gain listing context), not bare /provider/workstation.
+- **D-7 (P3, FIXED).** Blank names render "Untitled service" in the rail, lists and labels.
+- **D-8 (P3, FIXED).** Market-insight category keys humanized (tour_guide → "Tour guide") in
+  list + popup; "0/1 · +1" badge → "0 of 1 · needs 1 more". Presentation only.
+
+### Lane L — step-4 Logistics authoring (D-9..D-17, all FIX — next PR)
+
+- **D-9 (P1, RATIFIED-FIX).** Six transport questions collapse to ONE toggle ("I collect
+  travelers and drop them back") + conditional spatial detail; transfer duration stays in
+  Scheduling. No schema change; stored answers preserved/derivable.
+- **D-10 (P2).** Layers card: Service radius (gated on confirmed pin), Route stops,
+  Travel-surcharge zones (display-only + Pricing & fees → link).
+- **D-11 (P2).** "Place the meeting pin" arm mode on the canvas — the armed click feeds the SAME
+  confirm-gated picker (22(b): one pin-write path; the canvas is just another way to open it).
+- **D-12 (P2, RATIFIED-FIX).** Autosave replaces Save Draft + "Route saved"; stops fold into the
+  debounced draft autosave over the unchanged replace-list PUT. "Draft · autosaved" chip +
+  footer line per mock.
+- **D-13 (P2).** Route-stops rail: "X of Y located" pill, per-stop Move/Remove, "Place on map"
+  for unlocated stops (nullable lat/lng is already the 22(a) shape). Bench-verify WITH stops.
+- **D-14 (P2).** Osaka neighborhood picker dumps thousands of raw chōme rows; 20(b) says seeds
+  come from OSM place=suburb|neighbourhood|quarter only. Purge non-conforming rows + filter at
+  read.
+- **D-15 (P3).** Full-width canvas, rail as aside ("one canvas with one rail").
+- **D-16 (P3).** Step header "Logistics — where it happens" + "Step 4 of 5".
+- **D-17 (P3).** Radius ring contrast raised to visibly legible at default zoom.
