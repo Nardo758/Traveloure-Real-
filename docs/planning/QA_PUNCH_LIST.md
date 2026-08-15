@@ -1988,3 +1988,50 @@ migrations stamped through 209, six spot-checks green). Wave 3 lanes (S7–S11, 
 - **Maps surface cleanup** — consolidate the remaining map-surface inconsistencies (post-S3: the
   authoring home is the create flow's Logistics step; Catalog map is read-only preview).
 - **377-task backlog triage** — the imported historical task list needs a keep/fold/kill pass.
+
+## Folded in Aug 14, 2026 — service-creation hands-on pass (docs/testing/SERVICE_CREATION_FINDINGS_AUG14.md)
+
+Decision-maker-commissioned hands-on pass: four services end-to-end (transport / remote / tour /
+in-home chef) as `ci-provider@traveloure.test` on the dev preview. Full narrative + repro detail in
+the findings doc (as-of main @ `7e16e85`); section numbers below (§) are that doc's. Post-Q1 build
+(the searchable neighborhood single-select was present), so nothing here is pre-ruling-112 noise.
+What the pass confirmed WORKING and must not regress while fixing: method branching (5→3 steps for
+video call), category blocks on step 5, autosave round-tripping, the derived checklist (§7).
+
+### SC-A — defects (fix first; none need a ruling)
+
+| # | Finding | Disposition / lead |
+|---|---------|--------------------|
+| **SC-1** | §3.1 Required fields never block navigation — empty `Meeting Point *` advances all 5 steps and only surfaces in the end checklist. Reproduced 3×. | **OPEN.** Deliberate-looking (the checklist is the aggregator) but 3× reproduced as a trap; minimum fix = inline "still needed" marker on the step header at Next, not a hard block (autosave + checklist design argue against hard-blocking). |
+| **SC-2** | §1.2/§6.5 Pin confirm discards the geocoded address while `Meeting Point *` stays empty+required; stale "No pin placed" status line with a pin visibly dropped. | **OPEN.** Write the geocoder's display string into Meeting Point as an **editable prefill** on confirm (keeps L27-P3: coordinates still only from the confirmed pin; the TEXT is what prefills). Fix the status line binding alongside. |
+| **SC-3** | §2.4 Service Radius → "Pickup coverage" panel binding: input set to 60 (then 45), panel still says "No radius is set yet." | **OPEN — lead confirmed in code:** `ServiceForm.tsx:4005-4008` renders from `savedRadiusKm` = `existingService.serviceRadius` (the SAVED row), while the input edits live `formData.serviceRadius`. Point the panel at the live value (fall back to saved). |
+| **SC-4** | §3.2 Min party 6 / max party 2 accepted; step-5 seats adds a third unreconciled capacity number. | **OPEN.** Cross-field zod refine (min ≤ max) client+server; seats-vs-party reconciliation needs a small rule (likely max party ≤ seats for transport). |
+| **SC-5** | §5 Osaka neighborhood list is a raw chōme-level table (thousands of rows, visible duplicates) where every other city has a curated 5–10. | **OPEN — data defect.** Consequence of the ruling-20b OSM seeding (`place=suburb|neighbourhood|quarter`) ingesting Osaka's full node set. Needs a curation pass + dedupe; pairs with C7 (picker scoping) above. |
+| **SC-6** | §2.3 "And once you've met — do you transport them?" ships pre-selected **"Not applicable"** — a guessed default on a traveler-visible field, on a flow that twice promises "blank means not stated". | **OPEN — §13 tension.** `formData.transportProvided` defaults `"not_applicable"` and is sent for in-person; give it an untouched `""`/"Not specified" state like the chip group beside it. |
+
+### SC-B — logic & duplication (fix next; small [DM]s inline)
+
+| # | Finding | Disposition / lead |
+|---|---------|--------------------|
+| **SC-7** | §2.1/§2.2 Three transport controls state one fact (toggle / arrival chips / during-service dropdown) and accept contradictory combinations (pickup ON + "No transport") silently. | **OPEN.** Collapse or cross-validate; at minimum a soft warning when toggle and chips disagree. |
+| **SC-8** | §1.1 Up to six location asks on one step (meeting point, address search, pin, neighborhood, pickup, drop-off) — "Kansai International Airport" typed 4× for one listing. | **OPEN.** Largely falls out of SC-2 (prefill) + copy that scopes pickup/drop-off as optional extras. |
+| **SC-9** | §3.4 No way to say "at the traveler's address" — in-home chef forced to invent a meeting point. Affects in-home/mobile categories broadly. | **OPEN — [DM]:** needs a location-model extension (e.g. `location_mode = 'traveler_address'` suppressing pin/meeting-point requirements). Schema change ⇒ decision-maker per CLAUDE.md. |
+| **SC-10** | §3.5 Logistics branches by method but not by category — a walking guide gets the full vehicle/pickup logistics of an airport driver. | **OPEN.** The category machinery exists (step-5 blocks branch correctly); reuse it to gate the transport cards. |
+| **SC-11** | §3.3 Pin (Kansai/Osaka) + neighborhood (Kyoto Station Area) accepted silently — listing files onto Kyoto's market with its only coordinate 50 km away. | **OPEN.** Soft distance check pin↔neighborhood centroid ("your pin is outside Kyoto — is that right?"), never a hard block (§13: don't guess which is wrong). |
+| **SC-12** | §4.2 Change cutoff (numeric, step 2) vs Lead time (free text, step 5) — two booking gates, one enforceable, one decorative. | **OPEN.** Make lead time numeric hours and co-locate; migration needed if `delivery_timeframe` free-text is retired (pairs with D5). |
+
+### SC-C — structure & polish (fix when convenient)
+
+- **SC-13** (§4.1) "Review & submit" contains no review — new required fields instead. Rename or add a summary block. **OPEN.**
+- **SC-14** (§4.3) Capacity is a whole step in-person but a card in video-call; double "Capacity" heading. Fold, as video-call already does. **OPEN.**
+- **SC-15** (§4.4) Step count asserted before an offering/method exists; **Delivery Method defaults to In-Person** even for obviously-remote offerings — silent wrong data. Default from the offering's delivery formats where known, else unset. **OPEN.**
+- **SC-16** (§4.5) Availability required to sell but lives outside the wizard. **Placement is ratified** (C9 / ruling 112 Q7: availability lives on Catalog) — so this is a COPY/handoff fix: the wizard's finish screen should hand off to the availability surface explicitly, not imply completeness. **OPEN — copy.** |
+- **SC-17** (§4.6) Google Maps pin editor + Leaflet preview on one screen. Consolidate to one library (ODbL attribution required wherever OSM renders). **OPEN.**
+- **SC-18** (§6.1/6.2) Digital-deliverable fields (Revisions, Expert Notes) and unfiltered affinity tags leak into non-digital/remote flows. **OPEN** — same gating machinery as SC-10.
+- **SC-19** (§6.3) Photos are URL text fields, not uploads. **Already filed as G5 #16** (extend the ruling-58 objstore rail to images) — cross-ref only, no new item.
+- **SC-20** (§6.4/6.6) Focus bugs: offering search swallows first keystrokes after load; time inputs land on the AM/PM segment mid-click. **OPEN — polish.**
+- **SC-21** (§6.7) Listing-home "Submit for review" disabled with no stated reason (wizard's equivalent explains itself). Carry the same reason chip. **OPEN.**
+- **SC-22** (§6.8) Offering vs Subcategory near-duplicate taxonomy on step 1 ("Airport Pickup & Drop-off Driver" then "Airport Transfer Specialist"). **OPEN — [DM]-adjacent:** touches the two-catalog structure (Locked Decision 4); propose hiding Subcategory when an offering is picked rather than merging vocabularies.
+
+**Annotation to the G5 batch above:** **#17 (edit-path for a live listing) is CLOSED** — landed as
+the edit-split rail (ruling 112 Q8, CLAUDE.md Locked Decision 23, migration 215, PR #474).
