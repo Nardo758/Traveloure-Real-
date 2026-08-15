@@ -50,6 +50,9 @@ const TRIP_ID = `test-xss-${crypto.randomUUID()}`;
 const SERVICE_ID = `test-xss-svc-${crypto.randomUUID()}`;
 const REVIEW_ID = `test-xss-rev-${crypto.randomUUID()}`;
 const BOOKING_ID = `test-xss-bkg-${crypto.randomUUID()}`;
+// Provider service created via the HTTP route (POST /api/provider/services) so
+// the XSS tests exercise the real write path rather than raw SQL inserts.
+let PROVIDER_SVC_HTTP_ID = "";
 
 async function api(method: string, path: string, body?: unknown) {
   const res = await fetch(`${BASE}${path}`, {
@@ -109,6 +112,10 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM service_reviews WHERE id = ${REVIEW_ID}`);
   await db.execute(sql`DELETE FROM service_bookings WHERE id = ${BOOKING_ID}`);
   await db.execute(sql`DELETE FROM provider_services WHERE id = ${SERVICE_ID}`);
+  // Clean up the service created via the HTTP route during provider-service XSS tests.
+  if (PROVIDER_SVC_HTTP_ID) {
+    await db.execute(sql`DELETE FROM provider_services WHERE id = ${PROVIDER_SVC_HTTP_ID}`);
+  }
   await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${TRIP_ID}`);
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP_ID}`);
   await db.execute(sql`DELETE FROM local_expert_forms WHERE user_id = ${userId}`);
@@ -194,6 +201,96 @@ describe("PATCH /api/me/reviews/:id/reply sanitization (defense-in-depth)", () =
       assertSanitized(stored, "service_reviews.provider_reply");
       // Response/storage parity: the API must echo the sanitized (canonical) value.
       expect(body.providerReply, "response must match stored sanitized reply").toBe(stored);
+    });
+  }
+});
+
+/**
+ * Provider listing routes use `sanitizeStringFields` (from server/utils/text-sanitizer.ts)
+ * which calls `sanitizeText` on every string field — stripping real HTML tags while
+ * preserving bare `<` / `>` in prose (intentional; see the policy comment in that file).
+ *
+ * These tests drive the REAL POST and PATCH routes to confirm the write-path sanitizer is
+ * in place and that crafted markup cannot reach the database — covering the regression class
+ * where the handler-level sanitizer call is accidentally removed (the same class the
+ * #1111→#1112 regression exemplified).
+ *
+ * Coverage:
+ *   POST /api/provider/services  — serviceName and description on create
+ *   PATCH /api/provider/services/:id — serviceName and description on update
+ */
+describe("POST /api/provider/services stored-XSS regression (sanitizeText path)", () => {
+  // Create the service once for the whole suite; PATCH tests reuse the same row.
+  // We use the first payload to seed the initial row so both the create AND the
+  // returned id can be checked in the first iteration.
+  it("creates a service and sanitizes serviceName + description (first payload)", async () => {
+    const payload = XSS_PAYLOADS[0];
+    const res = await api("POST", "/api/provider/services", {
+      serviceName: `Tour ${payload}`,
+      description: `A great tour ${payload} for everyone`,
+      status: "draft",
+    });
+    // 201 on success; 400/422 on schema or publish-gate failure.
+    expect(res.status, await res.clone().text()).toBe(201);
+    const body = await res.json();
+    PROVIDER_SVC_HTTP_ID = body.id;
+    expect(PROVIDER_SVC_HTTP_ID, "response must include an id").toBeTruthy();
+
+    const row = await db.execute(
+      sql`SELECT service_name, description FROM provider_services WHERE id = ${PROVIDER_SVC_HTTP_ID}`,
+    );
+    const r = row.rows[0] as any;
+    assertSanitized(r.service_name, "provider_services.service_name (POST)");
+    assertSanitized(r.description, "provider_services.description (POST)");
+  });
+
+  for (const payload of XSS_PAYLOADS.slice(1)) {
+    it(`sanitizes serviceName + description on POST for payload ${payload.slice(0, 20)}...`, async () => {
+      const res = await api("POST", "/api/provider/services", {
+        serviceName: `Tour ${payload}`,
+        description: `Details ${payload} here`,
+        status: "draft",
+      });
+      expect(res.status, await res.clone().text()).toBe(201);
+      const body = await res.json();
+      const createdId: string = body.id;
+
+      try {
+        const row = await db.execute(
+          sql`SELECT service_name, description FROM provider_services WHERE id = ${createdId}`,
+        );
+        const r = row.rows[0] as any;
+        assertSanitized(r.service_name, "provider_services.service_name (POST extra)");
+        assertSanitized(r.description, "provider_services.description (POST extra)");
+      } finally {
+        // Clean up each extra service created in these iterations.
+        await db.execute(sql`DELETE FROM provider_services WHERE id = ${createdId}`);
+      }
+    });
+  }
+});
+
+describe("PATCH /api/provider/services/:id stored-XSS regression (sanitizeText path)", () => {
+  for (const payload of XSS_PAYLOADS) {
+    it(`sanitizes serviceName + description on PATCH for payload ${payload.slice(0, 20)}...`, async () => {
+      // PROVIDER_SVC_HTTP_ID is set by the POST suite's first test above.
+      // If the POST suite was skipped or failed, skip gracefully rather than hitting a 404.
+      if (!PROVIDER_SVC_HTTP_ID) {
+        console.warn("Skipping PATCH XSS test — no provider service id (POST suite may have failed)");
+        return;
+      }
+      const res = await api("PATCH", `/api/provider/services/${PROVIDER_SVC_HTTP_ID}`, {
+        serviceName: `Updated ${payload}`,
+        description: `Refreshed ${payload} description`,
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+
+      const row = await db.execute(
+        sql`SELECT service_name, description FROM provider_services WHERE id = ${PROVIDER_SVC_HTTP_ID}`,
+      );
+      const r = row.rows[0] as any;
+      assertSanitized(r.service_name, "provider_services.service_name (PATCH)");
+      assertSanitized(r.description, "provider_services.description (PATCH)");
     });
   }
 });
