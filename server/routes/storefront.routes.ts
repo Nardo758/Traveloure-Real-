@@ -93,6 +93,7 @@ router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -242,6 +243,7 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -252,7 +254,7 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     // client sees it alongside the JSONB preferences (migration 223).
     res.json({
       ...(prefs.settings ?? {}),
-      emailBookingAlerts: (me as any).emailBookingAlerts ?? true,
+      emailBookingAlerts: me.emailBookingAlerts ?? true,
     });
   } catch (err) {
     console.error("[me/preferences] read error:", err);
@@ -277,6 +279,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -346,6 +349,7 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -407,6 +411,7 @@ router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) 
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -440,6 +445,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -489,6 +495,7 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
         handle: users.handle,
         stripeAccountStatus: users.stripeAccountStatus,
         preferences: users.preferences,
+        emailBookingAlerts: users.emailBookingAlerts,
       })
       .from(users)
       .where(eq(users.id, userId))

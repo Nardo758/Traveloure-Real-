@@ -1990,7 +1990,11 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       }
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const link = await stripeConnectService.createLoginLink(accountId!);
+      const link = await stripeConnectService.createOnboardingLink(
+        accountId!,
+        `${baseUrl}/settings/payouts?stripe=success`,
+        `${baseUrl}/settings/payouts?stripe=refresh`,
+      );
       res.json({ url: link.url, accountId });
     } catch (error: any) {
       console.error('Stripe Connect onboard error:', error);
