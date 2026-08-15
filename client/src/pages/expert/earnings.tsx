@@ -13,6 +13,8 @@ import {
   Wallet,
   Loader2,
   TrendingUp,
+  PieChart,
+  Shield,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
@@ -226,6 +228,106 @@ export default function ExpertEarnings() {
             testId="card-earnings-total"
           />
         </div>
+
+        {/* Revenue Share Breakdown — mirrors the provider Money page layout (§1194).
+            Expert summary only returns totalEarnings (the net/expert share); gross and
+            platform-fee split are not available from this endpoint, so the bar is omitted
+            honestly when there is nothing to compute from. */}
+        <Card data-testid="card-revenue-share">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <PieChart className="w-5 h-5 text-primary" />
+              Revenue Share Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
+                <p className="text-sm text-green-600 mb-1">Your Share (Net Earnings)</p>
+                <p className="text-xl font-bold text-green-700">
+                  ${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
+              </div>
+              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-tips-total">
+                <p className="text-sm text-console-mid mb-1">Tips Received</p>
+                <p className="text-xl font-bold text-console-darkest">
+                  ${(summary?.totalTips ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-console-mid mt-1">From grateful travelers</p>
+              </div>
+              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-affiliate-total">
+                <p className="text-sm text-console-mid mb-1">Affiliate Commissions</p>
+                <p className="text-xl font-bold text-console-darkest">
+                  ${(summary?.totalAffiliateCommissions ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-console-mid mt-1">From partner referrals</p>
+              </div>
+            </div>
+
+            {/* Net earnings summary row */}
+            <div className="mt-4 rounded-lg border border-border bg-muted/30 divide-y divide-border" data-testid="section-fee-breakdown">
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-3.5 h-3.5 text-console-mid" />
+                  <span className="text-sm text-muted-foreground">Service earnings</span>
+                </div>
+                <span className="text-sm font-medium text-console-darkest" data-testid="text-service-earnings">
+                  ${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              {(summary?.totalTips ?? 0) > 0 && (
+                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-tips-fee">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-sm text-muted-foreground">Tips</span>
+                  </div>
+                  <span className="text-sm font-medium text-blue-600">
+                    +${(summary?.totalTips ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+              {(summary?.totalAffiliateCommissions ?? 0) > 0 && (
+                <div className="flex items-center justify-between px-4 py-2.5" data-testid="row-affiliate-fee">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-3.5 h-3.5 text-green-500" />
+                    <span className="text-sm text-muted-foreground">Affiliate commissions</span>
+                  </div>
+                  <span className="text-sm font-medium text-green-600">
+                    +${(summary?.totalAffiliateCommissions ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-950/20 rounded-b-lg">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Total lifetime earnings</span>
+                </div>
+                <span className="text-sm font-bold text-green-600" data-testid="text-net-earnings">
+                  ${((summary?.totalEarnings ?? 0) + (summary?.totalTips ?? 0) + (summary?.totalAffiliateCommissions ?? 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Split bar: expert endpoint does not expose gross/platform-fee breakdown, so we
+                show an honest empty state rather than a fabricated or misleading percentage. */}
+            {(summary?.totalEarnings ?? 0) > 0 ? (
+              <>
+                <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+                  <div className="h-full bg-green-500 w-full" />
+                </div>
+                <div className="flex justify-between text-xs text-console-mid mt-1">
+                  <span>Platform fee not shown here</span>
+                  <span data-testid="text-expert-share-rate">Your net earnings</span>
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">
+                No earnings yet — your breakdown appears here after your first booking.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         <EarningsBySourcePanel />
 
