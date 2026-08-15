@@ -171,7 +171,7 @@ function BookingRequestCard({ request }: { request: BookingRequest }) {
           <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Client Schedule Context</div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div className="flex items-center gap-1">
                 <Calendar className="h-3 w-3 text-blue-500" />
                 Trip Day {ctx.tripDay}
@@ -314,7 +314,7 @@ function BookingRequestCard({ request }: { request: BookingRequest }) {
 
             {showCounter && (
               <div className="border rounded p-3 space-y-2 bg-muted/30">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div>
                     <Label className="text-xs">New Start</Label>
                     <Input
