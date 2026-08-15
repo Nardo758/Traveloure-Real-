@@ -150,8 +150,12 @@ const ANALYTICS_HOME_HREF = "/provider/performance?tab=analytics";
 // The trackable, rails-attributed booking link for the selected listing. REUSE: the short-links
 // rail (`ensureShortLink` → POST /api/short-links, owner-verified server-side; the minted `code`
 // rides checkout as `?ref=` and secures the provider's rails rate via rails-attribution.service).
-// §13: the link is shown only once it actually EXISTS — either already minted (found in
+// §13: the link URL is shown only once it actually EXISTS — either already minted (found in
 // link-analytics) or freshly minted here; no optimistic "link ready" before a code exists.
+// D-4 (mock conformance, Aug 15): minting is NOT a separate step the provider has to know about —
+// Copy link / WhatsApp / Show QR render immediately and the first one clicked mints the link
+// inline (await ensureUrl → act). One click where the mock has one click; the tracked /r/ rail
+// is unchanged underneath.
 // CAPTION HOLD (ruling 74 / 69 disp. 2): the framing claims attribution + rails ONLY, never a
 // fee waiver — no "skip"/"waive"/"service fee" wording.
 function DirectLinkChannel({
@@ -191,8 +195,11 @@ function DirectLinkChannel({
     publicHref: serviceId ? `/services/${serviceId}` : "/",
   });
 
-  async function getLink() {
-    if (!serviceId) return;
+  // Returns the direct link's URL, minting it first if it doesn't exist yet (D-4: the mint is
+  // an implementation detail of the first action, not a step of its own).
+  async function ensureUrl(): Promise<string | null> {
+    if (linkUrl) return linkUrl;
+    if (!serviceId) return null;
     setMinting(true);
     try {
       const url = await ensureShortLink(
@@ -202,30 +209,45 @@ function DirectLinkChannel({
       setMintedUrl(url);
       // Flip the D4 chip honestly: re-read link-analytics so "link ready" reflects the real row.
       queryClient.invalidateQueries({ queryKey: ["/api/me/link-analytics"] });
+      return url;
     } catch {
       toast({ title: "Couldn't create a link", description: "Please try again.", variant: "destructive" });
+      return null;
     } finally {
       setMinting(false);
     }
   }
 
   async function copyLink() {
-    if (!linkUrl) return;
+    const url = await ensureUrl();
+    if (!url) return;
     try {
-      await navigator.clipboard.writeText(linkUrl);
-      toast({ title: "Link copied", description: linkUrl });
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied", description: url });
     } catch {
-      toast({ title: "Couldn't copy", description: "Copy it manually.", variant: "destructive" });
+      // The URL box below is rendered as soon as the link exists — point there.
+      toast({ title: "Couldn't copy", description: "Copy it from the box below.", variant: "destructive" });
     }
   }
 
-  function shareWhatsApp() {
-    if (!linkUrl) return;
+  async function shareWhatsApp() {
+    const url = await ensureUrl();
+    if (!url) return;
     window.open(
-      `https://wa.me/?text=${encodeURIComponent(`${caption}\n\n${linkUrl}`)}`,
+      `https://wa.me/?text=${encodeURIComponent(`${caption}\n\n${url}`)}`,
       "_blank",
       "noopener,noreferrer",
     );
+  }
+
+  async function toggleQr() {
+    if (showQr) {
+      setShowQr(false);
+      return;
+    }
+    const url = await ensureUrl();
+    if (!url) return;
+    setShowQr(true);
   }
 
   return (
@@ -251,57 +273,53 @@ function DirectLinkChannel({
               A booking through your own link is attributed to you and secures your rails rate.
             </p>
 
-            {!linkUrl ? (
-              <Button size="sm" onClick={getLink} disabled={minting} data-testid="button-direct-get-link">
-                <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
-                {minting ? "Creating link…" : "Get link"}
+            {/* D-4: the link URL renders only once the code really exists (§13) — but the
+                actions are one click from the start; the first one mints inline. */}
+            {linkUrl && (
+              <p
+                className="text-[12.5px] text-console-darkest break-all rounded-md border border-console-light bg-console-bg/50 p-2"
+                style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
+                data-testid="text-direct-url"
+              >
+                {linkUrl}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={copyLink} disabled={minting} data-testid="button-direct-copy">
+                <Copy className="w-3.5 h-3.5 mr-1.5" />
+                {minting ? "Creating link…" : "Copy link"}
               </Button>
-            ) : (
-              <div className="space-y-3">
-                <p
-                  className="text-[12.5px] text-console-darkest break-all rounded-md border border-console-light bg-console-bg/50 p-2"
-                  style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
-                  data-testid="text-direct-url"
+              <Button size="sm" variant="outline" onClick={shareWhatsApp} disabled={minting} data-testid="button-direct-whatsapp">
+                <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
+                WhatsApp
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={toggleQr}
+                disabled={minting}
+                data-testid="button-direct-qr-toggle"
+              >
+                <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                {showQr ? "Hide QR" : "Show QR"}
+              </Button>
+            </div>
+            {showQr && linkUrl && (
+              <div className="space-y-2" data-testid="block-direct-qr">
+                <img
+                  src={qrCodeSvgDataUrl(linkUrl)}
+                  alt={`QR code for the direct link to ${serviceName}`}
+                  className="w-40 h-40 rounded-lg border border-console-light bg-white"
+                  data-testid="img-direct-qr"
+                />
+                <a
+                  href={qrCodeSvgDataUrl(linkUrl)}
+                  download={`${serviceId}-direct-qr.svg`}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary"
+                  data-testid="link-direct-qr-download"
                 >
-                  {linkUrl}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={copyLink} data-testid="button-direct-copy">
-                    <Copy className="w-3.5 h-3.5 mr-1.5" />
-                    Copy link
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={shareWhatsApp} data-testid="button-direct-whatsapp">
-                    <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
-                    WhatsApp
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowQr((v) => !v)}
-                    data-testid="button-direct-qr-toggle"
-                  >
-                    <QrCode className="w-3.5 h-3.5 mr-1.5" />
-                    {showQr ? "Hide QR" : "Show QR"}
-                  </Button>
-                </div>
-                {showQr && (
-                  <div className="space-y-2" data-testid="block-direct-qr">
-                    <img
-                      src={qrCodeSvgDataUrl(linkUrl)}
-                      alt={`QR code for the direct link to ${serviceName}`}
-                      className="w-40 h-40 rounded-lg border border-console-light bg-white"
-                      data-testid="img-direct-qr"
-                    />
-                    <a
-                      href={qrCodeSvgDataUrl(linkUrl)}
-                      download={`${serviceId}-direct-qr.svg`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-primary"
-                      data-testid="link-direct-qr-download"
-                    >
-                      <Download className="w-3 h-3" /> Download QR
-                    </a>
-                  </div>
-                )}
+                  <Download className="w-3 h-3" /> Download QR
+                </a>
               </div>
             )}
           </div>
@@ -312,6 +330,8 @@ function DirectLinkChannel({
 }
 
 // ── Social-kit channel (D3, per-listing; S6 — reuse, not reimplementation) ─────────────────────
+// UI label is "Share kit" (mock conformance D-5, Aug 15) — the internal names keep the original
+// channel vocabulary so testids and ruling references stay stable.
 //
 // The share kit — the three real share-image frames + an editable caption + Instagram-publish
 // + copy/WhatsApp/X actions, for THIS listing. S6 mounts the SAME <OfferingShareDetail/> Catalog's
@@ -350,7 +370,7 @@ function SocialKitChannel({ service }: { service: OwnerService | null }) {
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2 text-console-darkest">
           <Images className="w-4 h-4 text-primary" />
-          Social kit
+          Share kit
         </CardTitle>
         <p className="text-sm text-console-mid">
           Ready-to-post images, an editable caption and one-tap Instagram publish for this listing.
@@ -359,7 +379,7 @@ function SocialKitChannel({ service }: { service: OwnerService | null }) {
       <CardContent>
         {!serviceId || !offering ? (
           <p className="text-sm text-console-mid" data-testid="text-social-no-selection">
-            Pick a listing above to see its social kit.
+            Pick a listing above to see its share kit.
           </p>
         ) : readiness.isLoading ? (
           <div className="grid sm:grid-cols-3 gap-3" data-testid="skeleton-social">
@@ -692,13 +712,47 @@ export default function ProviderDistribute() {
   const selectedService = listings.find((s) => s.id === selectedId) ?? null;
   const selectedName = selectedService?.serviceName ?? "this listing";
 
+  // D-1 (mock conformance, Aug 15): arriving from a Catalog card's "Distribute this →" pointer
+  // should FEEL like a continuation, not a cold page load. When the ?listing= param matches one
+  // of the owner's own listings, show the arrival context: a Catalog › Distribute › «name» crumb
+  // line, a "Promoting «name»" banner and a ← Back to Catalog link. A stale/foreign id renders
+  // nothing extra (same silent-ignore posture as the selection logic above).
+  const arrivalService = deepLinkListing
+    ? listings.find((s) => s.id === deepLinkListing) ?? null
+    : null;
+
   return (
     <ProviderLayout title="Distribute">
       <div className="p-6 space-y-6">
+        {arrivalService && (
+          <div
+            className="rounded-xl border border-console-light bg-console-bg/40 px-4 py-3 space-y-1"
+            data-testid="banner-promote-arrival"
+          >
+            <p className="text-[11px] text-console-mid" data-testid="text-arrival-crumbs">
+              <Link href="/provider/services">
+                <span className="underline cursor-pointer">Catalog</span>
+              </Link>
+              {" › "}Distribute{" › "}
+              <span className="text-console-darkest">{arrivalService.serviceName}</span>
+            </p>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm font-semibold text-console-darkest" data-testid="text-arrival-promoting">
+                Promoting «{arrivalService.serviceName}»
+              </p>
+              <Link href="/provider/services">
+                <Button size="sm" variant="ghost" data-testid="button-back-to-catalog">
+                  ← Back to Catalog
+                </Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
         <PageHeader
           icon={Share2}
           title="Distribute"
-          subtitle="One hub for getting what you sell seen — your storefront, the marketplace, direct links, social kits and posting nudges."
+          subtitle="One hub for getting what you sell seen — your storefront, the marketplace, direct links, share kits and posting nudges."
           testId="text-distribute-title"
         />
 
