@@ -713,8 +713,15 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
         // (booking-request scoped view); providers land on their bookings inbox.
         // /expert/workspace is expert-role-gated on the client, so providers must not receive tripId.
         const notifTripId = raw.trip_id && isExpertRole(provider?.role) ? String(raw.trip_id) : undefined;
+        // When no tripId is available and the owner is an expert, still provide a workspacePath
+        // so the notification has an action link. resolveNotificationLink (notification-icons.tsx)
+        // handles the workspacePath-without-tripId branch and labels it "View Booking".
         // Providers always land on their own bookings inbox; /expert/workspace is expert-role-gated.
-        const notifWorkspacePath = isProviderRole(provider?.role) ? "/provider/bookings" : undefined;
+        const notifWorkspacePath = isProviderRole(provider?.role)
+          ? "/provider/bookings"
+          : isExpertRole(provider?.role) && !notifTripId
+            ? "/expert/workspace"
+            : undefined;
         await storage.createNotification({
           userId: String(raw.provider_id),
           type: "booking_request",
