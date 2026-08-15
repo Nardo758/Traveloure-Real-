@@ -1180,7 +1180,7 @@ export async function registerRoutes(
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
-      }).catch(() => { /* fire-and-forget funnel event — never blocks trip creation */ });
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks trip creation
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1445,7 +1445,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
-      }).catch(() => { /* fire-and-forget funnel event — never blocks itinerary response */ });
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks itinerary response
 
       // Rebuild itinerary_items — delete old, insert new.
       // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
@@ -1645,7 +1645,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           eventType: "revenue",
           funnelStage: "T6",
           eventData: { amount: totalAmount },
-        }).catch(() => { /* fire-and-forget funnel event — never blocks booking confirmation */ });
+        }).catch(() => {}); // fire-and-forget funnel event — never blocks booking confirmation
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -8648,7 +8648,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
         eventType: "cart_populated",
         funnelStage: "T4",
-      }).catch(() => { /* fire-and-forget funnel event — never blocks cart response */ });
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks cart response
 
       res.json({
         message:
