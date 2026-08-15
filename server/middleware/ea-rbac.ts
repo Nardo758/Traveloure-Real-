@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { getUserId } from "../utils/auth";
 
 /**
  * isEA — middleware that allows only executive_assistant and admin users.
@@ -16,8 +17,7 @@ export const isEA = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const userId =
-    (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  const userId = getUserId(req);
 
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
