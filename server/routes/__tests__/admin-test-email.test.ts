@@ -389,4 +389,124 @@ describe("admin/system.tsx — test email UI contract", () => {
       "onClick must call setTestEmailResult(null) before triggering the mutation",
     );
   });
+
+  it("input field for custom recipient has data-testid='input-test-email-to'", () => {
+    assert.ok(
+      src.includes('data-testid="input-test-email-to"'),
+      "The 'to' input must have data-testid='input-test-email-to' for automation",
+    );
+  });
+
+  it("mutation body sends 'to' when the field has a value", () => {
+    assert.ok(
+      src.includes("testEmailTo.trim()") && src.includes("{ to: testEmailTo.trim() }"),
+      "mutationFn must include { to: testEmailTo.trim() } in the request body when the field is non-empty",
+    );
+  });
+});
+
+// ── 5. Custom recipient address ────────────────────────────────────────────────
+
+describe("POST /api/admin/system/test-email — custom 'to' address", () => {
+  it("sends to the custom address when a valid 'to' is supplied in the body", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    const capturedPayloads: any[] = [];
+    _adminTestEmailHooks.resendSend = async (payload) => {
+      capturedPayloads.push(payload);
+      return { data: { id: "msg_custom" }, error: null };
+    };
+
+    const req = makeReq("admin-1");
+    req.body = { to: "ops-inbox@company.org" };
+
+    await handler(req, res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.ok, true);
+    assert.equal(captured.body?.to, "ops-inbox@company.org", "Response 'to' must reflect the custom address");
+    assert.equal(capturedPayloads.length, 1, "resendSend must be called exactly once");
+    assert.equal(capturedPayloads[0].to, "ops-inbox@company.org", "Email must be sent to the custom address");
+  });
+
+  it("falls back to admin email when 'to' is an empty string", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    const capturedPayloads: any[] = [];
+    _adminTestEmailHooks.resendSend = async (payload) => {
+      capturedPayloads.push(payload);
+      return { data: { id: "msg_fallback" }, error: null };
+    };
+
+    const req = makeReq("admin-1");
+    req.body = { to: "" };
+
+    await handler(req, res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.to, FAKE_ADMIN.email, "Should fall back to admin's own email");
+    assert.equal(capturedPayloads[0].to, FAKE_ADMIN.email);
+  });
+
+  it("falls back to admin email when 'to' is whitespace only", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    _adminTestEmailHooks.resendSend = async () => ({ data: { id: "msg_ws" }, error: null });
+
+    const req = makeReq("admin-1");
+    req.body = { to: "   " };
+
+    await handler(req, res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.to, FAKE_ADMIN.email);
+  });
+
+  it("returns 400 when 'to' is supplied but not a valid email format", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    const req = makeReq("admin-1");
+    req.body = { to: "not-an-email" };
+
+    await handler(req, res, () => {});
+
+    assert.equal(captured.status, 400);
+    assert.equal(captured.body?.ok, false);
+    assert.ok(
+      String(captured.body?.error ?? "").toLowerCase().includes("email"),
+      `Expected email-related error, got: ${JSON.stringify(captured.body)}`,
+    );
+  });
+
+  it("returns 400 for an address missing the domain part", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    const req = makeReq("admin-1");
+    req.body = { to: "user@" };
+
+    await handler(req, res, () => {});
+
+    assert.equal(captured.status, 400);
+    assert.equal(captured.body?.ok, false);
+  });
 });
