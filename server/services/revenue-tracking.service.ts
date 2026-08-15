@@ -262,12 +262,15 @@ class RevenueTrackingService {
     const affiliateSummary = await storage.getAffiliateEarningsSummary(expertId);
 
     // Pull gross/fee totals from platform_revenue for the Revenue Share Breakdown card.
-    // Exclude reversal rows (gross_amount < 0) so they don't deflate the lifetime figures.
+    // SUM includes both the original positive rows AND the negative compensating reversal rows,
+    // so refunded/reversed bookings net to zero automatically (double-entry ledger semantics).
+    // Filtering to gross >= 0 only would leave the original positive row visible even after
+    // its reversal, overstating the lifetime figure for refunded bookings.
     const [revenueRow] = await db
       .select({
-        grossTotal: sql<string>`COALESCE(SUM(CASE WHEN ${platformRevenue.grossAmount}::numeric >= 0 THEN ${platformRevenue.grossAmount}::numeric ELSE 0 END), 0)`,
-        feeTotal:   sql<string>`COALESCE(SUM(CASE WHEN ${platformRevenue.grossAmount}::numeric >= 0 THEN ${platformRevenue.platformFee}::numeric ELSE 0 END), 0)`,
-        shareTotal: sql<string>`COALESCE(SUM(CASE WHEN ${platformRevenue.grossAmount}::numeric >= 0 THEN ${platformRevenue.expertEarnings}::numeric ELSE 0 END), 0)`,
+        grossTotal: sql<string>`COALESCE(SUM(${platformRevenue.grossAmount}::numeric), 0)`,
+        feeTotal:   sql<string>`COALESCE(SUM(${platformRevenue.platformFee}::numeric), 0)`,
+        shareTotal: sql<string>`COALESCE(SUM(${platformRevenue.expertEarnings}::numeric), 0)`,
       })
       .from(platformRevenue)
       .where(eq(platformRevenue.expertId, expertId));

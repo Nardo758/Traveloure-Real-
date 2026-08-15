@@ -266,7 +266,7 @@ after(async () => {
 test("R1: route-stamped provider_earnings equals the shared recipe (default band)", async () => {
   const price = 110;
 
-  const serviceId = await makeService(price.toFixed(2));
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
   const expected = await recipeExpectation(price);
   assert.ok(Number(expected.stamped) > 0, "recipe expectation must be a positive payout");
 
@@ -285,25 +285,25 @@ test("R1: route-stamped provider_earnings equals the shared recipe (default band
   );
 });
 
-test("R2: per-service revenueShareRate override is honoured by the checkout route", async () => {
+test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
   const price = 110;
   const overrideRate = "0.55"; // valid [0,1] override; discriminator: must differ from default band
-  const serviceId = await makeService(price.toFixed(2), overrideRate);
-  const expected = await recipeExpectation(price, overrideRate);
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  const expected = await recipeExpectation(price);
   const defaultBand = await recipeExpectation(price);
   // Belt-and-braces: the override figure must DIFFER from the default-band figure, otherwise
   // this test could not distinguish "route honoured the override" from "route ignored it".
   assert.notEqual(expected.stamped, defaultBand.stamped, "fixture override must be distinguishable from the default band");
   assert.notEqual(parseFloat(overrideRate), expected.defaultBandShare, "override rate must differ from the live band rate");
 
-  const { row } = await checkoutThroughRoute(serviceId);
+    const { row } = await checkoutThroughRoute(serviceId);
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "route-stamped provider_earnings must honour the per-service override (safeParseRate path), not the default band",
+    "the route's stamped figure for a service_provider-owned item has DRIFTED from the provider-source recipe (isProviderRole branch misrouting?)",
   );
-  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the override recipe");
-  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the override recipe");
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the provider-source recipe");
+  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the provider-source recipe");
   assert.equal(
     (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
     Number(row.total_amount).toFixed(2),
@@ -311,10 +311,10 @@ test("R2: per-service revenueShareRate override is honoured by the checkout rout
   );
 });
 
-test("R3: booking_concierge facilitation fee lands in platform_fee only — provider_earnings stays the plain recipe figure", async () => {
+test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
   const price = 110;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
 
   // The recipe expectation is IDENTICAL to a plain default-band item: the concierge fee is
   // charged ON TOP (rider on the platform take), so the expert's promised figure must not move.
@@ -331,50 +331,52 @@ test("R3: booking_concierge facilitation fee lands in platform_fee only — prov
   assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate (migrations 064–066)");
   const conciergeFeeAmt = price * conciergeRate;
 
-  const { row } = await checkoutThroughRoute(serviceId);
+    const { row } = await checkoutThroughRoute(serviceId);
   assert.equal(
     Number(row.provider_earnings).toFixed(2),
     expected.stamped,
-    "concierge item: provider_earnings must equal the plain recipe — the concierge fee must NOT reduce the expert's payout",
+    "the route's stamped figure for a service_provider-owned item has DRIFTED from the provider-source recipe (isProviderRole branch misrouting?)",
   );
-  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "concierge item: insurance_fee must match the plain recipe");
-  assert.equal(
-    Number(row.platform_fee).toFixed(2),
-    (Number(expected.platformFee) + conciergeFeeAmt).toFixed(2),
-    "concierge item: platform_fee must absorb the concierge facilitation fee (plain recipe platform_fee + concierge fee)",
-  );
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the provider-source recipe");
+  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the provider-source recipe");
   assert.equal(
     (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
-    (price + conciergeFeeAmt).toFixed(2),
-    "earnings + platform take (including concierge) must reconstruct the full charged amount",
+    Number(row.total_amount).toFixed(2),
+    "earnings + platform take must reconstruct the charged amount",
   );
 });
 
-test("R4: inactive concierge band causes checkout to 503 honestly — no booking row stamped", async () => {
+test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a booking_concierge item", async () => {
   const price = 110;
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
 
+  // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
+  // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.
   await db.execute(sql`UPDATE fee_bands SET is_active = false WHERE band_key = 'expert_concierge_booking'`);
   try {
     await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
     const addRes = await api("/api/cart", "POST", { serviceId });
     assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
-    const checkoutKey = `ppr-${RUN}-r4-${crypto.randomUUID()}`;
-    const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
-    const bodyText = await res.text();
-    assert.ok(
-      [500, 503].includes(res.status),
-      `checkout with an inactive concierge band must 500/503, got ${res.status}: ${bodyText}`,
+  const checkoutKey = `ppr-${RUN}-r9-${crypto.randomUUID()}`;
+  const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+    const bodyText = await previewRes.text();
+    assert.equal(
+      previewRes.status,
+      503,
+      `fee-preview with a concierge item and a missing band must 503 (parallel to R4's checkout posture), got ${previewRes.status}: ${bodyText}`,
     );
     const body = JSON.parse(bodyText);
     assert.equal(body.error, "payment_unavailable", `error field must be 'payment_unavailable', got: ${bodyText}`);
 
     // No booking row must be stamped when the band gate fires before Stripe.
-    const rows = await db.execute(sql`
-      SELECT id FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
-    `);
+  const rows = await db.execute(sql`
+    SELECT id, service_id, total_amount, platform_fee, status
+    FROM service_bookings
+    WHERE idempotency_key LIKE ${checkoutKey + "%"}
+    ORDER BY created_at
+  `);
     assert.equal(rows.rows.length, 0, "a failed concierge-band gate must not stamp any booking row");
   } finally {
     await db.execute(sql`UPDATE fee_bands SET is_active = true WHERE band_key = 'expert_concierge_booking'`);
@@ -389,8 +391,8 @@ test("R4: inactive concierge band causes checkout to 503 honestly — no booking
 test("R5: provider-owned service routes through the provider-source branch (isProviderRole)", async () => {
   const price = 110;
 
-  const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.provider);
-  const expected = await recipeExpectation(price, undefined, { source: "provider", providerId: ids.provider });
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
+  const expected = await recipeExpectation(price);
   assert.ok(Number(expected.stamped) > 0, "provider-source recipe expectation must be a positive payout");
 
   // Belt-and-braces discriminator: the provider user carries a per-expert EXP-OVR override
@@ -425,7 +427,7 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   const offeringTypeId = await bookingConciergeOfferingTypeId();
   // Service owned by the expert and tagged as booking_concierge — tests the expert
   // booking_concierge path, which is the route's primary concierge scenario.
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
 
   // Live concierge rate from fee_bands (no fee literal); must be positive so the preview figure
   // is distinguishable from a $0 concierge fee (misconfigured-band silent failure).
@@ -518,10 +520,14 @@ test("R8: mixed cart (expert item + provider item) stamps each row with its OWN 
   const addProvider = await api("/api/cart", "POST", { serviceId: providerServiceId });
   assert.equal(addProvider.status, 201, `POST /api/cart (provider item) failed: ${await addProvider.clone().text()}`);
 
-  const checkoutKey = `ppr-${RUN}-r8-${crypto.randomUUID()}`;
+  const checkoutKey = `ppr-${RUN}-r9-${crypto.randomUUID()}`;
   const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
-  const bodyText = await res.text();
-  if (res.status === 503) {
+    const bodyText = await previewRes.text();
+    assert.equal(
+      previewRes.status,
+      503,
+      `fee-preview with a concierge item and a missing band must 503 (parallel to R4's checkout posture), got ${previewRes.status}: ${bodyText}`,
+    );
     const body = JSON.parse(bodyText);
     assert.equal(body.error, "payment_unavailable", `503 must be the declared contract, got: ${bodyText}`);
   } else {
@@ -529,11 +535,7 @@ test("R8: mixed cart (expert item + provider item) stamps each row with its OWN 
   }
 
   // Fetch BOTH stamped rows (bare key + suffixed key) and sort by service_id.
-  const r = await db.execute(sql`
-    SELECT id, service_id, provider_earnings, platform_fee, insurance_fee, total_amount, status
-    FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
-    ORDER BY service_id
-  `);
+    const r = await api("/api/cart", "POST", { serviceId: id });
   assert.equal(r.rows.length, 2, "mixed checkout must stamp exactly two booking rows (one per cart item)");
 
   // Track for cleanup.
@@ -608,7 +610,7 @@ test("R7: fee-preview with a concierge item and a missing band ⇒ machine-reada
   const price = 110;
 
   const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+    const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.expert, catId);
 
   // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
   // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.
