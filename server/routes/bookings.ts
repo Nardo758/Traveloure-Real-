@@ -72,6 +72,11 @@ router.get('/:id', isAuthenticated, async (req, res) => {
       return res.json(sanitized);
     }
 
+    console.warn(
+      `[IDOR ATTEMPT] User ${userId} tried to access booking ${req.params.id} ` +
+        `(travelerId=${booking.travelerId}, providerId=${booking.providerId}) ` +
+        `at ${req.method} ${req.path}`
+    );
     return res.status(403).json({ message: 'Access denied' });
   } catch (err: any) {
     res.status(500).json({ message: 'Failed to fetch booking' });
