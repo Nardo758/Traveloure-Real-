@@ -5488,6 +5488,7 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  /*
    * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
    * $0.01 (rounding tolerance) past amountDollars; once one row would overshoot, it — and everything
    * after it (oldest-first) — stays releasable. If the releasable total is less than amountDollars
