@@ -68,13 +68,15 @@ test("strips self-closing tags", () => {
 
 test("preserves comparison operator: price < $50", () => {
   const out = sanitizeText("price < $50");
-  // The < is preserved but encoded as &lt;
+  // The bare < is preserved as-is (not an HTML tag); React escapes it at render time.
   assert.ok(!out!.includes("<script"), "no injection risk");
-  // After encoding, < becomes &lt; — the encoded form is acceptable
+  // The text survives intact — no entity-encoding, no corruption.
   assert.ok(
     out!.includes("price") && (out!.includes("$50") || out!.includes("50")),
     `should preserve numeric context; got: ${out}`,
   );
+  // Critically, no double-escaping artifact: the stored value must not contain &lt;
+  assert.ok(!out!.includes("&lt;"), `bare < must not be stored as &lt;; got: ${out}`);
 });
 
 test("preserves comparison: ages 5 < x < 12", () => {
