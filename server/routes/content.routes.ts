@@ -5543,7 +5543,12 @@ router.get("/api/travelpulse/enriched/:cityName", async (req, res) => {
                 url: option.url,
                 name: typeof rec.name === "string" ? rec.name : null,
                 provider: typeof option.platform === "string" ? option.platform : null,
-                destination: typeof rec.destination === "string" ? rec.destination : typeof rec.city === "string" ? rec.city : null,
+                // EnrichedRecommendation has no destination/city field; fall back to the
+                // authoritative route param cityName so enriched-content tokens are always
+                // destination-aware for expert routing.
+                destination: typeof rec.destination === "string" ? rec.destination
+                  : typeof rec.city === "string" ? rec.city
+                  : cityName,
               });
               optionSlots.push({ option });
             }
