@@ -181,6 +181,7 @@ export default function TravelExpertsPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const influencerFromUrl = urlParams.get('influencer') === 'true';
   const authFromUrl = urlParams.get('auth');
+  const errorFromUrl = urlParams.get('error');
   const expertTypeFromUrl = urlParams.get('type') || 'travel_expert';
   const cityFromUrl = urlParams.get('city') || '';
   const countryFromUrl = urlParams.get('country') || '';
@@ -516,6 +517,51 @@ export default function TravelExpertsPage() {
       setIsSubmitting(false);
     }
   };
+
+  // Suspended-account error page — shown when the Facebook OAuth callback
+  // redirects back with error=account_suspended.
+  if (errorFromUrl === "account_suspended") {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] flex flex-col">
+        <header className="bg-white border-b border-border">
+          <div className="container mx-auto px-4 max-w-4xl">
+            <div className="flex items-center h-16">
+              <Link href="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground">
+                <ArrowLeft className="w-5 h-5" />
+                Back to home
+              </Link>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-6">
+          <Card className="max-w-md w-full text-center shadow-md">
+            <CardHeader className="pb-2">
+              <div className="flex justify-center mb-3">
+                <div className="rounded-full bg-red-100 p-4">
+                  <XCircle className="w-10 h-10 text-red-600" />
+                </div>
+              </div>
+              <CardTitle className="text-xl text-red-700">Account Suspended</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground text-sm">
+                Your account has been suspended and you cannot sign in at this time.
+                If you believe this is a mistake, please contact our support team for assistance.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Button asChild variant="default">
+                  <a href="mailto:support@traveloure.com">Contact Support</a>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/">Return to Home</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
