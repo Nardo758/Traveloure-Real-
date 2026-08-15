@@ -62,11 +62,13 @@ export default function AdminSystem() {
     return row.setting_value === "true";
   };
 
+  const [testEmailTo, setTestEmailTo] = React.useState("");
   const [testEmailResult, setTestEmailResult] = React.useState<TestEmailResult | null>(null);
   const sendTestEmail = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/system/test-email");
-      return res as TestEmailResult;
+      const body = testEmailTo.trim() ? { to: testEmailTo.trim() } : undefined;
+      const res = await apiRequest("POST", "/api/admin/system/test-email", body);
+      return await res.json() as TestEmailResult;
     },
     onSuccess: (data) => {
       setTestEmailResult(data);
@@ -258,23 +260,34 @@ export default function AdminSystem() {
                     Verify Email Delivery
                   </Label>
                   <p className="text-sm text-gray-500">
-                    Send a test email to your admin address to confirm Resend is configured correctly.
+                    Send a test email to confirm Resend is configured correctly. Leave blank to send to your admin address.
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setTestEmailResult(null); sendTestEmail.mutate(); }}
-                  disabled={sendTestEmail.isPending}
-                  data-testid="button-send-test-email"
-                >
-                  {sendTestEmail.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4 mr-2" />
-                  )}
-                  Send test email
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="email"
+                    placeholder="Send to (defaults to your address)"
+                    value={testEmailTo}
+                    onChange={(e) => setTestEmailTo(e.target.value)}
+                    className="h-8 text-sm max-w-xs"
+                    data-testid="input-test-email-to"
+                    disabled={sendTestEmail.isPending}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setTestEmailResult(null); sendTestEmail.mutate(); }}
+                    disabled={sendTestEmail.isPending}
+                    data-testid="button-send-test-email"
+                  >
+                    {sendTestEmail.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4 mr-2" />
+                    )}
+                    Send test email
+                  </Button>
+                </div>
                 {testEmailResult && (
                   <div
                     className={`mt-3 flex items-start gap-2 rounded-md p-3 text-sm ${
