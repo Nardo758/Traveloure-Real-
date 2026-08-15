@@ -833,17 +833,15 @@ router.get("/p/:handle", async (req, res, next) => {
     const data = await loadStorefront(req.params.handle);
     if (!data) return next(); // SPA renders its own not-found
 
-    const count = data.services.length + data.templates.length + data.readyMade.length;
     const title = `${data.earner.name} | Traveloure`;
     const description = data.earner.bio
-      ? data.earner.bio.slice(0, 160)
-      : `${count} offering${count !== 1 ? "s" : ""} by ${data.earner.name} on Traveloure`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/p/${req.params.handle}`;
+      ? data.earner.bio.slice(0, 200)
+      : `Explore services, itineraries, and trips from ${data.earner.name} on Traveloure.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
       data.earner.profileImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
-
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
@@ -912,8 +910,8 @@ router.get("/services/:id", async (req, res, next) => {
 
     const title = `${service.serviceName} | Traveloure`;
     const description = service.description
-      ? service.description.slice(0, 160)
-      : `Book ${service.serviceName} on Traveloure`;
+      ? service.description.slice(0, 200)
+      : `Explore this service on Traveloure.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
     const ogImage =
       service.serviceImage ??
