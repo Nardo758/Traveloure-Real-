@@ -726,7 +726,8 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
           await sendBookingAlertEmail({
-            providerEmail: (provider as any).notificationEmail || provider.email,
+            // Migration 224: route alerts to the dedicated notification email when set.
+            providerEmail: provider.notificationEmail || provider.email,
             providerName,
             bookingId,
             serviceName: raw.service_name ?? "a service",
@@ -789,7 +790,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       if (priorClaim.length > 0) {
         const authorized = priorClaim.find((r) => r.stripePaymentIntentId);
         if (authorized) {
-      const { stripePaymentService } = await import("../services/stripe-payment.service");
+          const { stripePaymentService } = await import("../services/stripe-payment.service");
           const pi = await stripePaymentService
             .getPaymentIntentClientSecret(authorized.stripePaymentIntentId!)
             .catch(() => null);
@@ -930,7 +931,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       >();
       for (const item of cartData) {
         if (item.service?.pricingUnit !== "per_night") continue;
-        const stay = roomStays.get(item.id);
+        const stay = getRoomNights(item);
         if (!stay) {
           return res.status(400).json({
             message: `Missing or invalid check-in/check-out dates for "${item.service?.serviceName ?? "a room"}"`,
@@ -1084,7 +1085,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           const claimedThisStay: string[] = [];
           let nightFailed = false;
           for (const d of nightDates) {
-        const claimed = await storage.bookSlot(itemSlotId);
+            const claimed = await storage.bookSlot(slotIdByDate.get(d)!);
             if (!claimed) { nightFailed = true; break; }
             claimedThisStay.push(claimed.id);
           }
@@ -1133,11 +1134,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
       };
 
-      // Preload category slugs once to avoid N+1 queries.
+      // Preload category slugs once to avoid N+1 queries in the item loops below.
+      // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
       const distinctCatIds = Array.from(new Set(
         cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
       ));
-      const catSlugMap = new Map<string, string>();
+      const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
       if (distinctCatIds.length > 0) {
         const catRows = await storage.getServiceCategorySlugsByIds(distinctCatIds);
         for (const row of catRows) {
@@ -1152,7 +1154,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       ));
       const offeringTypeKeyMap = new Map<string, string>();
       if (distinctOfferingTypeIds.length > 0) {
-        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctPreviewOfferingTypeIds);
+        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctOfferingTypeIds);
         for (const row of typeRows) {
           offeringTypeKeyMap.set(row.id, row.key);
         }
@@ -1278,7 +1280,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         if (!item.service) continue;
         // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
         // existing price × quantity.
-        const itemPrice = resolveItemBaseAmount(item, previewStayRates);
+        const itemPrice = resolveItemBaseAmount(item, stayRatesByItemId);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
@@ -1304,17 +1306,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // can price (expert-owned, or a refusal) is byte-identical to pre-1C.
         const itemRails = railsByItemId.get(item.id);
         const { shareRate: itemExpertShare } = pickOwnerShareRate({
-          railsShareRate: null,
-          direct: await resolveDirectProviderRate({
-            serviceOwnerUserId: item.service.userId ?? null,
-            ownerRole: ownerRolePreview,
-            categoryId: item.service.categoryId ?? null,
-            serviceId: item.service.id ?? item.serviceId,
-          }),
-          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate),
+          railsShareRate: itemRails?.rate?.providerShareRate ?? null,
+          direct: directRateByItemId.get(item.id) ?? null,
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate),
         });
-        previewSubtotal += itemPrice;
-        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
+        checkoutSubtotal += itemPrice;
+        // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
+        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
         // conciergeBookingFlatFee is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
         const isBookingConcierge = item.service.expertOfferingTypeId
@@ -1465,7 +1463,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const rowIdempotencyKey = isClaimRow
           ? checkoutKey
           : `${checkoutKey}#${bookings.length}`;
-      const booking = await storage.getServiceBooking(bookingId);
+        let booking: any;
         try {
           booking = await storage.createServiceBooking({
             serviceId: item.serviceId,
@@ -1681,9 +1679,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // Already-authorized balance: a prior call stamped the balance PI — return the SAME
       // clientSecret, never a second PaymentIntent (idempotent).
       if ((booking as any).stripeBalanceIntentId) {
-        const existingPi = (refreshed as any)?.stripeBalanceIntentId
-          ? await stripePaymentService.getPaymentIntentClientSecret((refreshed as any).stripeBalanceIntentId).catch(() => null)
-          : null;
+        const existingPi = await stripePaymentService
+          .getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId)
+          .catch(() => null);
         return res.status(200).json({
           success: true,
           duplicate: true,
@@ -1930,7 +1928,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
 router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser(userId);
+      const user = req.user as any;
       const invoices = await storage.getInvoicesByCustomer(getUserId(req)!);
       res.json(invoices);
     } catch (error: any) {
@@ -1953,7 +1951,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
       const userId = getUserId(req)!;
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
       // Full earner set (shared/roles.ts): the previous ['expert','service_provider'] pair
@@ -1962,9 +1960,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
         return res.status(403).json({ error: "Only experts and providers can onboard for payouts" });
       }
 
-      const existing = isProvider
-        ? await storage.getProviderPayouts(userId)
-        : await storage.getExpertPayouts(userId);
+      const existing = await storage.getUserStripeAccount(userId);
       if (existing.stripeAccountId && existing.stripeAccountStatus === 'active') {
         return res.status(400).json({ error: "Stripe account already active" });
       }
@@ -1982,7 +1978,11 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       }
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const link = await stripeConnectService.createLoginLink(account.stripeAccountId);
+      const link = await stripeConnectService.createOnboardingLink(
+        accountId!,
+        `${baseUrl}/stripe/connect/return`,
+        `${baseUrl}/stripe/connect/refresh`
+      );
       res.json({ url: link.url, accountId });
     } catch (error: any) {
       console.error('Stripe Connect onboard error:', error);
@@ -1998,7 +1998,13 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
 
       const account = await storage.getUserStripeAccount(userId);
       if (!account.stripeAccountId) {
-        return res.status(400).json({ error: "No Stripe account connected" });
+        return res.json({ connected: false, status: 'not_connected' });
+      }
+      // Honest degrade (§13): an account was previously connected but the key is now
+      // absent (e.g. this environment) — report the last-known DB status rather than
+      // calling Stripe and surfacing a raw SDK error, or worse, faking "active".
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.json({ connected: true, accountId: account.stripeAccountId, status: account.stripeAccountStatus ?? 'unknown', degraded: true });
       }
 
       const { stripeConnectService } = await import('../services/stripe-connect.service');
