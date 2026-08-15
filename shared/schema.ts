@@ -2744,7 +2744,10 @@ export const locationCache = pgTable("location_cache", {
 
 export const feverEventCache = pgTable("fever_event_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  eventId: varchar("event_id", { length: 100 }).notNull().unique(),
+  // unique() removed from column — the migration-created index idx_fever_event_cache_event_id
+  // is declared in the extras block below with its exact name; keeping column .unique() would
+  // cause drizzle push to also create a second fever_event_cache_event_id_unique constraint.
+  eventId: varchar("event_id", { length: 100 }).notNull(),
   title: varchar("title", { length: 500 }).notNull(),
   slug: varchar("slug", { length: 500 }),
   description: text("description"),
@@ -2780,7 +2783,12 @@ export const feverEventCache = pgTable("fever_event_cache", {
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
-});
+}, (table) => [
+  // Migration 221: unique index on event_id for cache-hit lookups.
+  // The column.unique() was removed above — declaring here with the migration's exact index
+  // name prevents drizzle push from dropping the live index and creating a differently-named one.
+  uniqueIndex("idx_fever_event_cache_event_id").on(table.eventId),
+]);
 
 // ============ USER FILTER PREFERENCES TABLE ============
 // Stores user's persistent filter and sorting preferences per item type
@@ -6798,10 +6806,12 @@ export const feeLedger = pgTable(
   },
   (table) => ({
     idempotencyKeyIdx: uniqueIndex("fee_ledger_idempotency_key_idx").on(table.idempotencyKey),
-    bookingIdx: index("fee_ledger_booking_idx").on(table.bookingId),
+    // Migration 179: partial indexes — WHERE predicates mirror the migration verbatim.
+    // Declared here — drizzle push drops indexes absent from this file on publish.
+    bookingIdx: index("fee_ledger_booking_idx").on(table.bookingId).where(sql`booking_id IS NOT NULL`),
     sourceIdx: index("fee_ledger_source_idx").on(table.sourceType, table.sourceId),
-    paymentRefIdx: index("fee_ledger_payment_ref_idx").on(table.stripePaymentRef),
-    reversesIdx: index("fee_ledger_reverses_idx").on(table.reversesLedgerId),
+    paymentRefIdx: index("fee_ledger_payment_ref_idx").on(table.stripePaymentRef).where(sql`stripe_payment_ref IS NOT NULL`),
+    reversesIdx: index("fee_ledger_reverses_idx").on(table.reversesLedgerId).where(sql`reverses_ledger_id IS NOT NULL`),
   }),
 );
 export type FeeLedgerRow = typeof feeLedger.$inferSelect;
@@ -6928,7 +6938,12 @@ export const eventPackages = pgTable("event_packages", {
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Migration 019 / baseline: partial indexes for active-package queries.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("event_packages_event_type_idx").on(table.eventType).where(sql`status = 'active'`),
+  index("event_packages_market_idx").on(table.market).where(sql`status = 'active'`),
+]);
 
 export const insertEventPackageSchema = createInsertSchema(eventPackages).omit({ id: true, createdAt: true, updatedAt: true });
 export type EventPackage = typeof eventPackages.$inferSelect;
@@ -7196,7 +7211,11 @@ export const feeBands = pgTable("fee_bands", {
   updatedBy: varchar("updated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Migration 031: partial index for active-band lookups.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_fee_bands_active").on(table.isActive).where(sql`is_active = true`),
+]);
 export type FeeBand = typeof feeBands.$inferSelect;
 export const insertFeeBandSchema = createInsertSchema(feeBands).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFeeBand = z.infer<typeof insertFeeBandSchema>;
