@@ -305,6 +305,35 @@ describe("POST /api/admin/system/test-email — Resend integration", () => {
     assert.equal(captured.body?.to,       "cto@myplatform.io");
   });
 
+  it("falls back to EMAIL_FROM when EMAIL_FROM_NOREPLY is absent", async () => {
+    // Regression guard: the route uses `process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM`.
+    // If that expression is removed or reversed, the `from` field on the Resend payload will
+    // either be undefined/empty (causing a 502) or be the wrong address.  This test catches both.
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    // Only EMAIL_FROM is set — EMAIL_FROM_NOREPLY is deliberately absent.
+    setEmailEnv({ apiKey: "re_test_key", from: "general@example.com" /* fromNoreply omitted */ });
+
+    const capturedPayloads: any[] = [];
+    _adminTestEmailHooks.resendSend = async (payload) => {
+      capturedPayloads.push(payload);
+      return { data: { id: "msg_from_fallback" }, error: null };
+    };
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 200, `Expected 200 but got ${captured.status}: ${JSON.stringify(captured.body)}`);
+    assert.equal(captured.body?.ok, true, "ok must be true when EMAIL_FROM is the fallback sender");
+    assert.equal(capturedPayloads.length, 1, "resendSend must be called exactly once");
+    assert.equal(
+      capturedPayloads[0].from,
+      "general@example.com",
+      "Resend payload 'from' must equal EMAIL_FROM when EMAIL_FROM_NOREPLY is absent",
+    );
+  });
+
   it("prefers EMAIL_FROM_NOREPLY over EMAIL_FROM as the sender", async () => {
     const handler = getHandler();
     const { captured, res } = makeRes();
