@@ -76,3 +76,30 @@ export function sanitizeStringFields<T extends Record<string, unknown>>(
   }
   return out as T;
 }
+
+/**
+ * Recursively sanitize any JSON-safe value before storage.
+ *
+ * - Strings are passed through `sanitizeText` (HTML tags stripped, stray angle
+ *   brackets entity-encoded).
+ * - Arrays are mapped element-by-element with the same recursion, so nested
+ *   arrays (e.g. [[tag]], arrays-of-objects) are fully covered.
+ * - Plain objects are copied with every value recursed.
+ * - All other values (numbers, booleans, null, undefined) are returned as-is.
+ *
+ * Use this on free-text form payloads (e.g. expert application bodies) before
+ * writing them to the database so that stored-XSS payloads cannot reach any
+ * surface that renders these fields as HTML.
+ */
+export function sanitizeDeep(val: unknown): unknown {
+  if (typeof val === "string") return sanitizeText(val);
+  if (Array.isArray(val)) return val.map(sanitizeDeep);
+  if (val !== null && typeof val === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(val as object)) {
+      out[key] = sanitizeDeep((val as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return val;
+}
