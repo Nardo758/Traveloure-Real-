@@ -2722,6 +2722,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  /*
    * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
    * the sole author of provisional-claim transitions; this parameter is how the OWNER rail refuses
    * to touch a row the claim machine owns. Why it had to exist: `PATCH /api/provider/bookings/
