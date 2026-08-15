@@ -163,19 +163,20 @@ describe("experience-catalog.service.ts — normalization present in all surface
     assert.ok(src.length > 0, "file must not be empty");
   });
 
-  it("contains city-token extraction (destCity = ...split(',')[0].trim()) in at least 5 locations", () => {
-    // searchActivities  → params.destination.split(",")[0].trim()
-    // searchHotels      → destParts[0].trim()
-    // searchPOIs        → destParts[0].trim()
-    // searchRestaurants → params.destination.split(",")[0].trim()
-    // getDestinationCoords → destination.split(",")[0].trim()
+  it("contains city-token extraction (.split(',')[0].trim()) in at least 5 locations", () => {
+    // One per surface method:
+    //   searchActivities     → params.destination.split(",")[0].trim()
+    //   searchHotels         → params.destination ? params.destination.split(",")[0].trim() : null
+    //   searchPOIs           → params.destination.split(",")[0].trim()
+    //   searchRestaurants    → params.destination ? params.destination.split(",")[0].trim() : null
+    //   getDestinationCoords → destination.split(",")[0].trim()
     const src = fs.readFileSync(SERVICE_PATH, "utf-8");
-    // Match any assignment whose RHS extracts the first comma-separated token
-    const pattern = /destCity\s*=\s*(?:params\.destination|destination|destParts\[0\])(?:\.split\(","\)\[0\])?\.trim\(\)/g;
+    // Count the extraction expression itself regardless of surrounding form.
+    const pattern = /\.split\(","\)\[0\]\.trim\(\)/g;
     const matches = src.match(pattern);
     assert.ok(
       matches && matches.length >= 5,
-      `Expected ≥5 city-token extraction assignments, found ${matches?.length ?? 0}`,
+      `Expected ≥5 city-token extraction expressions (.split(",")[0].trim()), found ${matches?.length ?? 0}`,
     );
   });
 
@@ -194,12 +195,27 @@ describe("experience-catalog.service.ts — normalization present in all surface
       /ilike\s*\(\s*hotelCache\.city\s*,\s*`%\$\{destCity\}%`\s*\)/.test(src),
       'searchHotels must use ilike(hotelCache.city, `%${destCity}%`)',
     );
-    // Confirm the OR-country clause is gone — it caused "Kyoto, Japan" to match all
+    // The OR-country clause was removed: it caused "Kyoto, Japan" to match all
     // Japanese hotels, breaking parity with the bare "Kyoto" query.
     assert.equal(
       /ilike\s*\(\s*hotelCache\.countryName/.test(src),
       false,
       "searchHotels must NOT filter by countryName — city-only filter required for parity",
+    );
+  });
+
+  it("searchHotels fetch-on-miss: passes normalized destCity to Booking.com, not raw params.destination", () => {
+    const src = fs.readFileSync(SERVICE_PATH, "utf-8");
+    // The fetch-on-miss must call upsertHotelsToCache(destCity), not upsertHotelsToCache(params.destination).
+    // If it used params.destination, "Kyoto, Japan" and "Kyoto" would trigger distinct upstream fetches.
+    assert.ok(
+      /upsertHotelsToCache\s*\(\s*destCity\s*\)/.test(src),
+      "searchHotels fetch-on-miss must call upsertHotelsToCache(destCity) — not upsertHotelsToCache(params.destination)",
+    );
+    assert.equal(
+      /upsertHotelsToCache\s*\(\s*params\.destination\s*\)/.test(src),
+      false,
+      "searchHotels must NOT call upsertHotelsToCache(params.destination) — raw destination breaks fetch-path parity",
     );
   });
 
@@ -209,11 +225,24 @@ describe("experience-catalog.service.ts — normalization present in all surface
       /ilike\s*\(\s*poiCache\.city\s*,\s*`%\$\{destCity\}%`\s*\)/.test(src),
       'searchPOIs must use ilike(poiCache.city, `%${destCity}%`)',
     );
-    // Confirm the OR-country clause is gone for the same parity reason.
+    // OR-country removed for the same parity reason.
     assert.equal(
       /ilike\s*\(\s*poiCache\.country/.test(src),
       false,
       "searchPOIs must NOT filter by country — city-only filter required for parity",
+    );
+  });
+
+  it("searchRestaurants fetch-on-miss: passes normalized destCity to OpenTable, not raw params.destination", () => {
+    const src = fs.readFileSync(SERVICE_PATH, "utf-8");
+    assert.ok(
+      /upsertRestaurantsToCache\s*\(\s*destCity\s*\)/.test(src),
+      "searchRestaurants fetch-on-miss must call upsertRestaurantsToCache(destCity) — not upsertRestaurantsToCache(params.destination)",
+    );
+    assert.equal(
+      /upsertRestaurantsToCache\s*\(\s*params\.destination\s*\)/.test(src),
+      false,
+      "searchRestaurants must NOT call upsertRestaurantsToCache(params.destination) — raw destination breaks fetch-path parity",
     );
   });
 
@@ -306,18 +335,16 @@ async function fetchCatalog(
 
 describe("GET /api/catalog/search — destination parity (Kyoto, Japan vs Kyoto)", () => {
   for (const type of TYPES) {
-    it(`type=${type}: identical item IDs and total count`, async () => {
+    it(`type=${type}: identical item IDs and total count`, async (t) => {
       const [withCountry, withoutCountry] = await Promise.all([
         fetchCatalog("Kyoto, Japan", type),
         fetchCatalog("Kyoto", type),
       ]);
 
       if (withCountry === SERVER_UNAVAILABLE || withoutCountry === SERVER_UNAVAILABLE) {
-        // Dev server not running — log and skip. Any HTTP error from a running
-        // server throws before reaching here, so this is only a cold-start skip.
-        console.log(
-          `[SKIP] Dev server not reachable for type=${type}; start the app to run live parity checks.`,
-        );
+        // Use t.skip() so the test-runner records an explicit SKIP rather than
+        // silently passing — a passing test with no server is a vacuous assertion.
+        t.skip("Dev server not reachable — start the app to run live parity checks");
         return;
       }
 
@@ -336,16 +363,14 @@ describe("GET /api/catalog/search — destination parity (Kyoto, Japan vs Kyoto)
       );
     });
 
-    it(`type=${type}: bare "kyoto" (lowercase) also returns identical IDs`, async () => {
+    it(`type=${type}: bare "kyoto" (lowercase) also returns identical IDs`, async (t) => {
       const [withCountry, lowercase] = await Promise.all([
         fetchCatalog("Kyoto, Japan", type),
         fetchCatalog("kyoto", type),
       ]);
 
       if (withCountry === SERVER_UNAVAILABLE || lowercase === SERVER_UNAVAILABLE) {
-        console.log(
-          `[SKIP] Dev server not reachable for type=${type}; start the app to run live parity checks.`,
-        );
+        t.skip("Dev server not reachable — start the app to run live parity checks");
         return;
       }
 

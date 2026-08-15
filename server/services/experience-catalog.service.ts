@@ -488,14 +488,13 @@ class ExperienceCatalogService {
 
   private async searchHotels(params: CatalogSearchParams, limit: number, offset: number): Promise<HotelItem[]> {
     const conditions = [];
-    
-    if (params.destination) {
-      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // and "Kyoto" both resolve to "Kyoto" and return an identical result set.
-      // The country segment is intentionally ignored: filtering by city alone is
-      // precise (no false matches from other cities in the same country) and
-      // ensures query-variant parity.
-      const destCity = params.destination.split(",")[0].trim();
+
+    // Normalize once here so both the cache filter AND the fetch-on-miss provider
+    // call use the identical city token.  "Kyoto, Japan" and "Kyoto" both resolve
+    // to "Kyoto", ensuring query-variant parity across the full hot+cold path.
+    const destCity = params.destination ? params.destination.split(",")[0].trim() : null;
+
+    if (destCity) {
       conditions.push(ilike(hotelCache.city, `%${destCity}%`));
     }
     if (params.query) {
@@ -518,12 +517,14 @@ class ExperienceCatalogService {
       .limit(limit)
       .offset(offset);
 
-    // Fetch-on-miss: if no Booking.com results exist for this destination, trigger a live fetch and re-query
+    // Fetch-on-miss: if no Booking.com results exist for this destination, trigger a live fetch and re-query.
+    // Use the already-normalized destCity token so "Kyoto, Japan" and "Kyoto" both
+    // trigger and cache under the same city, guaranteeing fetch-path parity.
     const hasBookingComResults = hotels.some(h => h.provider === "booking_com");
     const wantsBookingCom = !params.providers || params.providers.length === 0 || params.providers.includes("booking_com");
-    if (!hasBookingComResults && params.destination && wantsBookingCom) {
+    if (!hasBookingComResults && destCity && wantsBookingCom) {
       try {
-        await bookingComService.upsertHotelsToCache(params.destination);
+        await bookingComService.upsertHotelsToCache(destCity);
         hotels = await db.select().from(hotelCache).where(whereClause).limit(limit).offset(offset);
       } catch (err: any) {
         this.catalogLogger.warn({ err }, "Booking.com fetch-on-miss failed, using existing cache");
@@ -625,10 +626,11 @@ class ExperienceCatalogService {
   private async searchRestaurants(params: CatalogSearchParams, limit: number, offset: number): Promise<RestaurantItem[]> {
     const conditions = [];
 
-    if (params.destination) {
-      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // matches a row storing "Kyoto".
-      const destCity = params.destination.split(",")[0].trim();
+    // Normalize once so both the cache filter AND the fetch-on-miss call use the
+    // same city token — "Kyoto, Japan" and "Kyoto" both resolve to "Kyoto".
+    const destCity = params.destination ? params.destination.split(",")[0].trim() : null;
+
+    if (destCity) {
       conditions.push(ilike(restaurantCache.city, `%${destCity}%`));
     }
     if (params.query) {
@@ -651,10 +653,12 @@ class ExperienceCatalogService {
       .limit(limit)
       .offset(offset);
 
-    // Fetch-on-miss: if cache is empty for this destination, trigger a live OpenTable fetch
-    if (restaurants.length === 0 && params.destination) {
+    // Fetch-on-miss: if cache is empty for this destination, trigger a live OpenTable fetch.
+    // Use the already-normalized destCity token so "Kyoto, Japan" and "Kyoto" both
+    // fetch and cache under the same city key, guaranteeing fetch-path parity.
+    if (restaurants.length === 0 && destCity) {
       try {
-        await openTableService.upsertRestaurantsToCache(params.destination);
+        await openTableService.upsertRestaurantsToCache(destCity);
         restaurants = await db.select().from(restaurantCache).where(whereClause).limit(limit).offset(offset);
       } catch (err: any) {
         this.catalogLogger.warn({ err }, "OpenTable fetch-on-miss failed, returning empty");
