@@ -488,15 +488,25 @@ export default function DiscoverPage() {
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
-  // Search and filter state
+  // Parse filter state from URL so deep-links and back-navigation restore them.
+  // Fall back to expertHandoffDestination for location if no URL param is present.
+  const urlLocationFilter = urlParams.get("location") || expertHandoffDestination;
+  const urlCategory = urlParams.get("category") || "all";
+  const urlMinPrice = Number(urlParams.get("minPrice") || "0");
+  const urlMaxPrice = Number(urlParams.get("maxPrice") || "0");
+  const urlMinRating = Number(urlParams.get("minRating") || "0");
+  const urlSortBy = urlParams.get("sortBy") || "rating";
+
+  // Search and filter state — initialised from URL so filter selections survive
+  // tab switches and back-navigation.
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("rating");
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [minRating, setMinRating] = useState(0);
+  const [locationFilter, setLocationFilter] = useState(urlLocationFilter);
+  const [selectedCategory, setSelectedCategory] = useState(urlCategory);
+  const [sortBy, setSortBy] = useState(urlSortBy);
+  const [minPrice, setMinPrice] = useState(urlMinPrice);
+  const [maxPrice, setMaxPrice] = useState(urlMaxPrice);
+  const [minRating, setMinRating] = useState(urlMinRating);
   const [page, setPage] = useState(0);
   const limit = 12;
 
@@ -545,6 +555,37 @@ export default function DiscoverPage() {
   useEffect(() => {
     setActiveTab(urlTab);
   }, [urlTab]);
+
+  // Keep filter selections in the URL so they survive tab switches and
+  // back-navigation.  Use replace (not push) to avoid bloating history.
+  // Non-filter params (showExperts, destination, etc.) are preserved as-is.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    // Preserve context/handoff params that must not be lost on filter changes
+    const preserved = [
+      "showExperts", "destination", "country", "experienceType",
+      "tripId", "startDate", "endDate", "source", "city", "categoryKey",
+    ];
+    preserved.forEach((key) => {
+      const val = urlParams.get(key);
+      if (val) next.set(key, val);
+    });
+    // Tab
+    if (activeTab && activeTab !== "travelpulse") next.set("tab", activeTab);
+    // Filters — only write non-default values to keep URLs clean
+    if (locationFilter) next.set("location", locationFilter);
+    if (selectedCategory && selectedCategory !== "all") next.set("category", selectedCategory);
+    if (minPrice > 0) next.set("minPrice", String(minPrice));
+    if (maxPrice > 0) next.set("maxPrice", String(maxPrice));
+    if (minRating > 0) next.set("minRating", String(minRating));
+    if (sortBy && sortBy !== "rating") next.set("sortBy", sortBy);
+    const newSearch = next.toString();
+    // Only navigate when the search string actually changes to avoid loops
+    if (newSearch !== searchString) {
+      setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true } as any);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, activeTab]);
 
   // Pre-fetch adjacent tabs' data so switching feels instant.
   // Each tab's data has a 5-10 min staleTime, so these are no-ops on revisit.
