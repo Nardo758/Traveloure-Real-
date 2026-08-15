@@ -49,6 +49,7 @@ const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
 
 const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
+const ExpertContractCategories = lazy(() => import("@/pages/expert/contract-categories"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
 const EAClients = lazy(() => import("@/pages/ea/clients"));
@@ -793,6 +794,9 @@ function Router() {
           page itself is gone — share-tools.tsx carries the primitives for both consoles. */}
       <Route path="/expert/share-promote">
         <Redirect to="/expert/catalog" />
+      </Route>
+      <Route path="/expert/contract-categories">
+        {() => <ProtectedRoute component={ExpertContractCategories} requiredRole="expert" />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
