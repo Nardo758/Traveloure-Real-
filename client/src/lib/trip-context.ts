@@ -292,7 +292,17 @@ function schedulePush(context: TripContext): void {
  * Uses fetch keepalive:true so the request survives immediate tab close or
  * navigation after sign-in — the exact scenario this is designed to handle.
  */
-export function pushTripContextNow(): boolean {
+/**
+ * Immediately PUT the local trip context to the server, cancelling any pending
+ * debounced push. Uses keepalive:true so the request survives a tab close or
+ * navigation immediately after sign-in.
+ *
+ * Returns a Promise that resolves to true when the server acknowledged the PUT
+ * (2xx response), or false when the context was empty / the network call failed.
+ * Callers that need to take action after confirmed delivery (e.g. stamping
+ * ownership) should await this promise.
+ */
+export async function pushTripContextNow(): Promise<boolean> {
   if (typeof fetch !== "function") return false;
   const context = getTripContext();
   if (Object.keys(context).length === 0) return false;
@@ -301,16 +311,19 @@ export function pushTripContextNow(): boolean {
     clearTimeout(pushTimer);
     pushTimer = undefined;
   }
-  fetch(`/api/trip-context${tripScopedQuery(context)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    keepalive: true,
-    body: JSON.stringify({ context }),
-  }).catch(() => {
+  try {
+    const res = await fetch(`/api/trip-context${tripScopedQuery(context)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      keepalive: true,
+      body: JSON.stringify({ context }),
+    });
+    return res.ok;
+  } catch {
     /* offline — best-effort */
-  });
-  return true;
+    return false;
+  }
 }
 let hydrated = false;
 

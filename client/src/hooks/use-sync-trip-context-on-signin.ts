@@ -44,7 +44,13 @@ export function useSyncTripContextOnSignIn(): void {
 
     const owner = getContextOwner();
 
-    if (owner !== null && owner !== user.id) {
+    if (owner === user.id) {
+      // Same user returning — context already uploaded and attributed; no push
+      // needed. The stamp is already set so no action required.
+      return;
+    }
+
+    if (owner !== null) {
       // Context was left by a different authenticated user — clear it to
       // prevent cross-account contamination, then stamp as owned by the new user.
       clearTripContext();
@@ -52,12 +58,16 @@ export function useSyncTripContextOnSignIn(): void {
       return;
     }
 
-    // owner is null (guest-built / unowned) or already this user.
-    // Push whatever planning the user built before signing in; no-op if empty.
-    pushTripContextNow();
-
-    // Always stamp ownership regardless of whether we pushed — so that any
-    // context writes the user makes AFTER signing in are attributed to them.
-    setContextOwner(user.id);
+    // owner is null: context was built while unauthenticated (guest-owned).
+    // Push it now and stamp ownership only after the server acknowledges.
+    pushTripContextNow().then((delivered) => {
+      if (delivered) {
+        // Server confirmed receipt — mark this context as belonging to the
+        // current user so a future same-tab sign-in doesn't re-upload.
+        setContextOwner(user.id);
+      }
+      // If delivery failed (offline / network error) we intentionally leave
+      // the stamp unset so the next sign-in event can retry the push.
+    });
   }, [user?.id]);
 }

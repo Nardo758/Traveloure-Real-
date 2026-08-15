@@ -1095,7 +1095,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           const claimedThisStay: string[] = [];
           let nightFailed = false;
           for (const d of nightDates) {
-        const claimed = await storage.bookSlot(itemSlotId);
+        const claimed = await storage.bookSlot(slotIdByDate.get(d)!);
             if (!claimed) { nightFailed = true; break; }
             claimedThisStay.push(claimed.id);
           }
@@ -1163,7 +1163,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       ));
       const offeringTypeKeyMap = new Map<string, string>();
       if (distinctOfferingTypeIds.length > 0) {
-        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctPreviewOfferingTypeIds);
+        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctOfferingTypeIds);
         for (const row of typeRows) {
           offeringTypeKeyMap.set(row.id, row.key);
         }
@@ -1289,7 +1289,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         if (!item.service) continue;
         // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
         // existing price × quantity.
-        const itemPrice = resolveItemBaseAmount(item, previewStayRates);
+        const itemPrice = resolveItemBaseAmount(item, stayRatesByItemId);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
@@ -1315,17 +1315,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // can price (expert-owned, or a refusal) is byte-identical to pre-1C.
         const itemRails = railsByItemId.get(item.id);
         const { shareRate: itemExpertShare } = pickOwnerShareRate({
-          railsShareRate: null,
-          direct: await resolveDirectProviderRate({
-            serviceOwnerUserId: item.service.userId ?? null,
-            ownerRole: ownerRolePreview,
-            categoryId: item.service.categoryId ?? null,
-            serviceId: item.service.id ?? item.serviceId,
-          }),
-          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate),
+          railsShareRate: itemRails?.rate?.providerShareRate ?? null,
+          direct: directRateByItemId.get(item.id) ?? null,
+          legacyShareRate: safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate),
         });
-        previewSubtotal += itemPrice;
-        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
+        checkoutSubtotal += itemPrice;
+        const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
         // conciergeBookingFlatFee is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
         const isBookingConcierge = item.service.expertOfferingTypeId
@@ -1476,7 +1471,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const rowIdempotencyKey = isClaimRow
           ? checkoutKey
           : `${checkoutKey}#${bookings.length}`;
-      const booking = await storage.getServiceBooking(bookingId);
+        let booking: Awaited<ReturnType<typeof storage.createServiceBooking>> | undefined;
         try {
           booking = await storage.createServiceBooking({
             serviceId: item.serviceId,
@@ -1692,8 +1687,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // Already-authorized balance: a prior call stamped the balance PI — return the SAME
       // clientSecret, never a second PaymentIntent (idempotent).
       if ((booking as any).stripeBalanceIntentId) {
-        const existingPi = (refreshed as any)?.stripeBalanceIntentId
-          ? await stripePaymentService.getPaymentIntentClientSecret((refreshed as any).stripeBalanceIntentId).catch(() => null)
+        const existingPi = (booking as any)?.stripeBalanceIntentId
+          ? await stripePaymentService.getPaymentIntentClientSecret((booking as any).stripeBalanceIntentId).catch(() => null)
           : null;
         return res.status(200).json({
           success: true,
@@ -1989,7 +1984,11 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       }
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const link = await stripeConnectService.createLoginLink(account.stripeAccountId);
+      const link = await stripeConnectService.createOnboardingLink(
+        accountId!,
+        `${baseUrl}/settings/payouts?stripe=success`,
+        `${baseUrl}/settings/payouts?stripe=refresh`,
+      );
       res.json({ url: link.url, accountId });
     } catch (error: any) {
       console.error('Stripe Connect onboard error:', error);
