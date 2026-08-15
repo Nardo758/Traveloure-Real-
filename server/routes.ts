@@ -114,6 +114,7 @@ import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeDeep } from "./utils/text-sanitizer";
 import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
@@ -409,24 +410,11 @@ function sanitizeInput(input: string): string {
     .trim();
 }
 
-// Sanitize object string fields recursively (traverses arrays and nested plain objects)
+// Sanitize all string fields in a plain object, including every nested array and object.
+// Delegates to the exported, tested sanitizeDeep (server/utils/text-sanitizer.ts) so that
+// the recursion is exercised by unit tests independently of this route module.
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    const val = result[key];
-    if (typeof val === 'string') {
-      result[key] = sanitizeInput(val);
-    } else if (Array.isArray(val)) {
-      result[key] = val.map((item: any) => {
-        if (typeof item === 'string') return sanitizeInput(item);
-        if (item !== null && typeof item === 'object' && !Array.isArray(item)) return sanitizeObject(item);
-        return item;
-      });
-    } else if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-      result[key] = sanitizeObject(val);
-    }
-  }
-  return result;
+  return sanitizeDeep(obj) as T;
 }
 
 // Migration 151 (§17 Product Builder): bundle_components.component_service_id is
