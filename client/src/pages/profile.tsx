@@ -36,6 +36,7 @@ export default function Profile() {
   const EARNER_ROLES = new Set(["expert","local_expert","travel_expert","event_planner","service_provider"]);
   const isEarner = user?.role != null && EARNER_ROLES.has(user.role);
   const [notificationEmail, setNotificationEmail] = useState<string>("");
+  const [notificationEmailError, setNotificationEmailError] = useState<string>("");
   const hydratedNotifEmail = useRef(false);
 
   const { data: savedNotificationEmail } = useQuery<{ notificationEmail: string | null }>({
@@ -124,7 +125,34 @@ export default function Profile() {
     toast({ title: "Photo removed", description: "Your profile photo has been removed." });
   };
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateNotificationEmail = (value: string): string => {
+    if (value.trim() === "") return "";
+    return EMAIL_RE.test(value.trim()) ? "" : "Please enter a valid email address.";
+  };
+
+  const handleNotificationEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNotificationEmail(value);
+    // Clear error immediately once the value becomes empty or valid
+    if (value.trim() === "" || EMAIL_RE.test(value.trim())) {
+      setNotificationEmailError("");
+    }
+  };
+
+  const handleNotificationEmailBlur = () => {
+    setNotificationEmailError(validateNotificationEmail(notificationEmail));
+  };
+
   const handleSave = async () => {
+    if (isEarner) {
+      const emailErr = validateNotificationEmail(notificationEmail);
+      if (emailErr) {
+        setNotificationEmailError(emailErr);
+        return;
+      }
+    }
     setIsLoading(true);
     try {
       const saves: Promise<any>[] = [saveTravelPreferencesMutation.mutateAsync()];
@@ -302,13 +330,22 @@ export default function Profile() {
                   type="email"
                   placeholder={user?.email || "your@business.com"}
                   value={notificationEmail}
-                  onChange={(e) => setNotificationEmail(e.target.value)}
-                  className="border-border"
+                  onChange={handleNotificationEmailChange}
+                  onBlur={handleNotificationEmailBlur}
+                  className={`border-border${notificationEmailError ? " border-destructive" : ""}`}
                   data-testid="input-notification-email"
+                  aria-invalid={!!notificationEmailError}
+                  aria-describedby={notificationEmailError ? "notification-email-error" : "notification-email-hint"}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Booking alerts will go here instead of your account email. Leave blank to use your account email.
-                </p>
+                {notificationEmailError ? (
+                  <p id="notification-email-error" className="text-xs text-destructive" data-testid="error-notification-email">
+                    {notificationEmailError}
+                  </p>
+                ) : (
+                  <p id="notification-email-hint" className="text-xs text-muted-foreground">
+                    Booking alerts will go here instead of your account email. Leave blank to use your account email.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

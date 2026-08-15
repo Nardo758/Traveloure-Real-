@@ -328,7 +328,10 @@ class ExperienceCatalogService {
     const conditions = [];
     
     if (params.destination) {
-      conditions.push(ilike(activityCache.destination, `%${params.destination}%`));
+      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
+      // and "Kyoto" both match a cache row whose destination column stores either form.
+      const destCity = params.destination.split(",")[0].trim();
+      conditions.push(ilike(activityCache.destination, `%${destCity}%`));
     }
     if (params.query) {
       conditions.push(
@@ -487,10 +490,16 @@ class ExperienceCatalogService {
     const conditions = [];
     
     if (params.destination) {
+      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
+      // matches a row storing "Kyoto". Also extract a country token for the country
+      // field so "Japan" in "Kyoto, Japan" matches countryName correctly.
+      const destParts = params.destination.split(",");
+      const destCity = destParts[0].trim();
+      const destCountry = destParts.length > 1 ? destParts[destParts.length - 1].trim() : destCity;
       conditions.push(
         or(
-          ilike(hotelCache.city, `%${params.destination}%`),
-          ilike(hotelCache.countryName, `%${params.destination}%`)
+          ilike(hotelCache.city, `%${destCity}%`),
+          ilike(hotelCache.countryName, `%${destCountry}%`)
         )
       );
     }
@@ -563,10 +572,15 @@ class ExperienceCatalogService {
     const conditions = [];
 
     if (params.destination) {
+      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
+      // matches a row storing "Kyoto". Extract country token for the country field.
+      const destParts = params.destination.split(",");
+      const destCity = destParts[0].trim();
+      const destCountry = destParts.length > 1 ? destParts[destParts.length - 1].trim() : destCity;
       conditions.push(
         or(
-          ilike(poiCache.city, `%${params.destination}%`),
-          ilike(poiCache.country, `%${params.destination}%`)
+          ilike(poiCache.city, `%${destCity}%`),
+          ilike(poiCache.country, `%${destCountry}%`)
         )
       );
     }
@@ -622,7 +636,10 @@ class ExperienceCatalogService {
     const conditions = [];
 
     if (params.destination) {
-      conditions.push(ilike(restaurantCache.city, `%${params.destination}%`));
+      // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
+      // matches a row storing "Kyoto".
+      const destCity = params.destination.split(",")[0].trim();
+      conditions.push(ilike(restaurantCache.city, `%${destCity}%`));
     }
     if (params.query) {
       conditions.push(
@@ -691,12 +708,15 @@ class ExperienceCatalogService {
    * by sampling from the activity cache.
    */
   private async getDestinationCoords(destination: string): Promise<{ lat: number; lng: number } | null> {
+    // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
+    // matches a cache row storing "Kyoto".
+    const destCity = destination.split(",")[0].trim();
     const [activity] = await db
       .select({ lat: activityCache.latitude, lng: activityCache.longitude })
       .from(activityCache)
       .where(
         and(
-          ilike(activityCache.destination, `%${destination}%`),
+          ilike(activityCache.destination, `%${destCity}%`),
           sql`${activityCache.latitude} IS NOT NULL AND ${activityCache.longitude} IS NOT NULL`
         )
       )

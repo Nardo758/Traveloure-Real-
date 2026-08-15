@@ -13,6 +13,8 @@ import {
   Wallet,
   Loader2,
   TrendingUp,
+  PieChart,
+  Shield,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
@@ -79,6 +81,11 @@ interface EarningsDetails {
     paidOut: number;
     totalTips: number;
     totalAffiliateCommissions: number;
+    // Revenue share breakdown from platform_revenue
+    grossBookingValue: number;
+    platformFeeTotal: number;
+    expertShareFromRevenue: number;
+    effectiveShareRate: number | null;
   };
   earnings: ExpertEarningRow[];
   payouts: ExpertPayoutRow[];
@@ -226,6 +233,93 @@ export default function ExpertEarnings() {
             testId="card-earnings-total"
           />
         </div>
+
+        {/* Booking Revenue Share Breakdown — scoped to booking_commission rows from
+            platform_revenue so tips (shown separately below) and affiliate commissions
+            (also shown separately) cannot inflate the gross or create a double-count.
+            Gross/fee/share come from GET /api/expert/earnings/details summary fields
+            added in revenue-tracking.service.ts. */}
+        <Card data-testid="card-revenue-share">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <PieChart className="w-5 h-5 text-primary" />
+              Booking Revenue Share
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-gross-total">
+                <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
+                <p className="text-xl font-bold text-console-darkest">
+                  ${(summary?.grossBookingValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-console-mid mt-1">Total traveler spend on bookings</p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
+                <p className="text-sm text-red-600 mb-1">
+                  Platform Fee{summary?.effectiveShareRate != null ? ` (${Math.round((1 - summary.effectiveShareRate) * 100)}%)` : ""}
+                </p>
+                <p className="text-xl font-bold text-red-700">
+                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
+              </div>
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
+                <p className="text-sm text-green-600 mb-1">
+                  Your Booking Share{summary?.effectiveShareRate != null ? ` (${Math.round(summary.effectiveShareRate * 100)}%)` : ""}
+                </p>
+                <p className="text-xl font-bold text-green-700">
+                  ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-green-500 mt-1">Your cut of booking revenue</p>
+              </div>
+            </div>
+
+            {/* Fee breakdown line items — booking revenue only, tips/affiliate shown separately */}
+            <div className="mt-4 rounded-lg border border-border bg-muted/30 divide-y divide-border" data-testid="section-fee-breakdown">
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-3.5 h-3.5 text-red-500" />
+                  <span className="text-sm text-muted-foreground">Platform commission</span>
+                </div>
+                <span className="text-sm font-medium text-red-600" data-testid="text-base-commission">
+                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 dark:bg-green-950/20 rounded-b-lg">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Your booking net</span>
+                </div>
+                <span className="text-sm font-bold text-green-600" data-testid="text-net-earnings">
+                  ${(summary?.expertShareFromRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Proportional split bar — only rendered when gross booking data is available */}
+            {summary?.effectiveShareRate != null ? (
+              <>
+                <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round((1 - summary.effectiveShareRate) * 100)}%` }}
+                  />
+                  <div className="h-full bg-green-500 flex-1" />
+                </div>
+                <div className="flex justify-between text-xs text-console-mid mt-1">
+                  <span>Platform {Math.round((1 - summary.effectiveShareRate) * 100)}%</span>
+                  <span data-testid="text-expert-share-rate">You {Math.round(summary.effectiveShareRate * 100)}%</span>
+                </div>
+                <p className="text-xs text-console-mid mt-1">Booking revenue only — tips and affiliate commissions are shown below.</p>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">
+                No bookings yet — your split appears here after your first booking.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         <EarningsBySourcePanel />
 

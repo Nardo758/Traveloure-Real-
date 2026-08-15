@@ -70,6 +70,8 @@ const {
   resetHydrationForTesting,
   getTripContext,
   clearTripContext,
+  updateTripContext,
+  switchTripContext,
 } = await import("../trip-context");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -256,4 +258,85 @@ test("non-ok response: nothing is written for a 401 guest response", async () =>
     "sessionStorage must not be modified on a 401 response",
   );
   assert.equal(dispatchedEvents.length, 0, "no change event must be dispatched on 401");
+});
+
+// ── 7. First-touch origin (A2): guest_invite is never overwritten ─────────────
+
+test("first-touch origin: guest_invite is preserved when a later update passes a different origin", () => {
+  // Simulate an initial write that stamps the provenance as guest_invite.
+  // fetch will be called by schedulePush but the 1500 ms timer won't fire
+  // during this synchronous test — stub it to a no-op to silence the check.
+  (globalThis as any).fetch = async () => new Response("{}", { status: 200 });
+
+  setLocalContext({ origin: "guest_invite", destination: "London" });
+
+  // A later merge (e.g. an organic browsing action) tries to overwrite origin.
+  const result = updateTripContext({ origin: "organic", destination: "Paris" });
+
+  // Origin must stay as the first-touch value.
+  assert.equal(result.origin, "guest_invite", "origin must not be overwritten after first touch");
+
+  // The non-origin field in the patch must still be applied.
+  assert.equal(result.destination, "Paris", "destination must be updated by the patch");
+
+  // Confirm what is persisted in storage matches.
+  const persisted = getTripContext();
+  assert.equal(persisted.origin, "guest_invite", "persisted origin must remain guest_invite");
+  assert.equal(persisted.destination, "Paris", "persisted destination must be updated");
+});
+
+// ── 8. switchTripContext: SWITCH_FIELDS clearing & non-SWITCH_FIELDS survival ─
+
+test("switchTripContext: unmentioned SWITCH_FIELDS are cleared, non-SWITCH_FIELDS survive", () => {
+  (globalThis as any).fetch = async () => new Response("{}", { status: 200 });
+
+  // Populate a full context including both SWITCH_FIELDS and non-SWITCH_FIELDS.
+  setLocalContext({
+    // SWITCH_FIELDS
+    tripId: "trip-old-99",
+    destination: "Barcelona",
+    startDate: "2026-09-10",
+    endDate: "2026-09-17",
+    title: "Old trip title",
+    travelers: 3,
+    experienceType: "city",
+    // non-SWITCH_FIELDS — must survive
+    origin: "guest_invite",
+    selectedServices: [{ name: "Airport transfer", provider: "AcmeCabs", price: 45 }],
+    experienceSlug: "city-break",
+    city: "BCN",
+    intent: "leisure",
+  });
+
+  // Switch with only a subset of SWITCH_FIELDS — destination and travelers.
+  // title, endDate, startDate, tripId, experienceType are intentionally omitted.
+  const result = switchTripContext({ destination: "Vienna", travelers: 2 });
+
+  // ── SWITCH_FIELDS: omitted ones must be cleared ───────────────────────────
+  assert.equal(result.tripId, undefined, "tripId must be cleared when not passed to switchTripContext");
+  assert.equal(result.title, undefined, "title must be cleared when not passed to switchTripContext");
+  assert.equal(result.startDate, undefined, "startDate must be cleared when not passed to switchTripContext");
+  assert.equal(result.endDate, undefined, "endDate must be cleared when not passed to switchTripContext");
+  assert.equal(result.experienceType, undefined, "experienceType must be cleared when not passed to switchTripContext");
+
+  // ── SWITCH_FIELDS: provided ones must be set ──────────────────────────────
+  assert.equal(result.destination, "Vienna", "destination passed to switchTripContext must be set");
+  assert.equal(result.travelers, 2, "travelers passed to switchTripContext must be set");
+
+  // ── non-SWITCH_FIELDS: must be carried over unchanged ─────────────────────
+  assert.equal(result.origin, "guest_invite", "origin (non-SWITCH_FIELD) must survive a trip switch");
+  assert.deepEqual(
+    result.selectedServices,
+    [{ name: "Airport transfer", provider: "AcmeCabs", price: 45 }],
+    "selectedServices (non-SWITCH_FIELD) must survive a trip switch",
+  );
+  assert.equal(result.experienceSlug, "city-break", "experienceSlug must survive a trip switch");
+  assert.equal(result.city, "BCN", "city must survive a trip switch");
+  assert.equal(result.intent, "leisure", "intent must survive a trip switch");
+
+  // Confirm storage reflects the same state.
+  const persisted = getTripContext();
+  assert.equal(persisted.origin, "guest_invite", "persisted origin must survive a trip switch");
+  assert.equal(persisted.tripId, undefined, "persisted tripId must be cleared after switch");
+  assert.equal(persisted.destination, "Vienna", "persisted destination must be updated");
 });

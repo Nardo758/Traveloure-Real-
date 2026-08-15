@@ -176,6 +176,56 @@ import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
 
+// ── Google Places server-side result cache ────────────────────────────────────
+// Keyed on a JSON-serialised normalised tuple so field values containing the
+// delimiter character cannot collide. Each entry holds the mapped results array
+// plus an expiry timestamp.
+//
+// TTL: 7 minutes — long enough to absorb repeated keystrokes from multiple
+// experts browsing the same city, short enough that stale listings don't linger.
+//
+// Bounded: capped at MAX_PLACES_CACHE_ENTRIES to prevent memory exhaustion from
+// unauthenticated callers sending many unique queries. On every SET:
+//   1. Expired entries are swept first (eager eviction).
+//   2. If the map is still at/above the cap, the oldest entry (insertion order)
+//      is deleted to make room (LRU-approximation via Map insertion order).
+//
+// This is an in-process Map (no external dependency). It resets on restart,
+// which is acceptable for a short-TTL read cache.
+const PLACES_CACHE_TTL_MS = 7 * 60 * 1000;    // 7 minutes
+const MAX_PLACES_CACHE_ENTRIES = 500;
+interface PlacesCacheEntry {
+  results: any[];
+  expiresAt: number;
+}
+const placesResultCache = new Map<string, PlacesCacheEntry>();
+
+/** Build a collision-safe cache key from the three pre-normalised search axes.
+ *  Inputs are already lowercased/trimmed by the route handler; JSON.stringify
+ *  makes the key injective (field values containing the separator cannot collide).
+ */
+function buildPlacesCacheKey(q: string, destination: string, category: string): string {
+  return JSON.stringify([q, destination, category]);
+}
+
+/** Sweep expired entries, then enforce the entry cap before inserting. */
+function placesResultCacheSet(key: string, entry: PlacesCacheEntry): void {
+  const now = Date.now();
+  // 1. Eager expiry sweep — remove every stale entry in one pass.
+  // Map.forEach avoids the ES2015 downlevel-iteration incompatibility of for...of.
+  const expiredKeys: string[] = [];
+  placesResultCache.forEach((v, k) => { if (v.expiresAt <= now) expiredKeys.push(k); });
+  expiredKeys.forEach(k => placesResultCache.delete(k));
+  // 2. If still at or above cap, evict the oldest insertion-order entry.
+  while (placesResultCache.size >= MAX_PLACES_CACHE_ENTRIES) {
+    const oldestKey = placesResultCache.keys().next().value;
+    if (oldestKey !== undefined) placesResultCache.delete(oldestKey);
+    else break;
+  }
+  placesResultCache.set(key, entry);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -5769,7 +5819,15 @@ router.get("/api/geocode", async (req, res) => {
 
 router.get("/api/search/experiences", async (req, res) => {
     try {
-      const { q, destination, category, sources } = req.query as Record<string, string>;
+      const { q: _q, destination: _destination, category: _category, sources } = req.query as Record<string, string>;
+      // Normalise all three search axes once, up-front, so the cache key and
+      // the Places URL construction always use identical canonical values.
+      // All three are lowercased so "Kyoto"/"kyoto" and "Food Tour"/"food tour"
+      // share the same cache entry. Empty category is canonicalised to "all"
+      // (both produce the same Places request — no type filter, default query).
+      const q           = (_q           || "").trim().toLowerCase();
+      const destination = (_destination || "").trim().toLowerCase();
+      const category    = ((_category   || "").trim().toLowerCase()) || "all";
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
       }
@@ -5923,6 +5981,15 @@ router.get("/api/search/experiences", async (req, res) => {
         // caller explicitly requested a non-"all" category, to avoid over-filtering.
         if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
+        // ── Cache check ──────────────────────────────────────────────────────────
+        // Key uses JSON serialisation (collision-safe; see buildPlacesCacheKey).
+        const placesCacheKey = buildPlacesCacheKey(q, destination, category);
+        const cachedEntry = placesResultCache.get(placesCacheKey);
+        if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+          // Cache HIT — push cached rows into results and skip the API call.
+          results.push(...cachedEntry.results);
+        } else {
+        // Cache MISS — call the Places API and store results on success.
         try {
           const resp = await fetch(placesUrl.toString());
           if (!resp.ok) {
@@ -5947,9 +6014,10 @@ router.get("/api/search/experiences", async (req, res) => {
                 if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
                 return "activity";
               };
+              const freshPlacesRows: any[] = [];
               for (const place of (data.results || []).slice(0, 15)) {
                 const photoRef = place.photos?.[0]?.photo_reference;
-                results.push({
+                freshPlacesRows.push({
                   id: `gp_${place.place_id}`,
                   source: "google_places",
                   placeId: place.place_id,
@@ -5967,12 +6035,22 @@ router.get("/api/search/experiences", async (req, res) => {
                   mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
                 });
               }
+              // Store in cache (including ZERO_RESULTS — an empty array is a
+              // valid cached answer; saves a redundant API hit for the same query).
+              // placesResultCacheSet sweeps expired entries and enforces the cap
+              // before inserting, preventing unbounded memory growth.
+              placesResultCacheSet(placesCacheKey, {
+                results: freshPlacesRows,
+                expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
+              });
+              results.push(...freshPlacesRows);
             }
           }
         } catch (placesErr) {
           console.error("[places] fetch threw:", placesErr);
           placesUnavailable = true;
         }
+        } // end cache-miss block
       }
 
       // ── Viator bookable activities (tours & experiences) ──
@@ -5982,7 +6060,16 @@ router.get("/api/search/experiences", async (req, res) => {
           return res.status(401).json({ message: "Authentication required for Viator search" });
         }
       }
-      if (includeViator) try {
+      let viatorServiceNotice: string | undefined;
+      if (includeViator) {
+        // Check upfront whether the API key is configured so we can surface an honest notice
+        // rather than letting the call fail silently and showing a generic "No results" state.
+        if (!process.env.VIATOR_API_KEY) {
+          viatorServiceNotice = "Viator is temporarily unavailable";
+          console.warn("[viator] VIATOR_API_KEY is not set — skipping Viator search");
+        }
+      }
+      if (includeViator && !viatorServiceNotice) {
         // Combine free-text query with destination so results are scoped to the right city.
         // Pattern mirrors the Google Places arm: [q, destination].filter(Boolean).join(" in ").
         // If only destination is provided (no search text), destination alone is the search term.
@@ -5995,35 +6082,44 @@ router.get("/api/search/experiences", async (req, res) => {
           // to a category that Viator never covers (dining=restaurant, hotels=lodging).
           const viatorCatMatch = !catLower || catLower === "all" || catLower === "activities" || catLower === "transport";
           if (viatorCatMatch) {
+            // searchByFreetext never throws — it catches all HTTP/network errors internally
+            // and returns { unavailable: true } so we can surface an honest notice rather than
+            // silently showing an empty "No Viator results" state.
             const viatorResult = await viatorService.searchByFreetext(searchTerm, "USD", 15);
-            const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-            for (const product of (viatorResult.products || [])) {
-              const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
-              const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
-              const fromPrice = product.pricing?.summary?.fromPrice;
-              results.push({
-                id: `vtr_${product.productCode}`,
-                source: "viator",
-                productCode: product.productCode,
-                name: product.title,
-                address: null,
-                category: "activity",
-                rating: product.reviews?.combinedAverageRating ?? null,
-                reviewCount: product.reviews?.totalReviews ?? null,
-                priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
-                location: null,
-                photoUrl: photoVariant?.url ?? null,
-                mapsUrl: null,
-              });
+            if (viatorResult.unavailable) {
+              viatorServiceNotice = "Viator is temporarily unavailable";
+            } else {
+              const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+              for (const product of (viatorResult.products || [])) {
+                const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
+                const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
+                const fromPrice = product.pricing?.summary?.fromPrice;
+                results.push({
+                  id: `vtr_${product.productCode}`,
+                  source: "viator",
+                  productCode: product.productCode,
+                  name: product.title,
+                  address: null,
+                  category: "activity",
+                  rating: product.reviews?.combinedAverageRating ?? null,
+                  reviewCount: product.reviews?.totalReviews ?? null,
+                  priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
+                  location: null,
+                  photoUrl: photoVariant?.url ?? null,
+                  mapsUrl: null,
+                });
+              }
             }
           }
         }
-      } catch (err) {
-        console.error("[viator] searchByFreetext failed in /api/search/experiences:", err);
-        // Non-fatal — Viator unavailable should never fail the whole search response
       }
 
-      res.json({ results, count: results.length, placesUnavailable: includeGoogle ? placesUnavailable : undefined });
+      res.json({
+        results,
+        count: results.length,
+        placesUnavailable: includeGoogle ? placesUnavailable : undefined,
+        serviceNotice: includeViator ? viatorServiceNotice : undefined,
+      });
     } catch (error: any) {
       console.error("Error in /api/search/experiences:", error);
       res.status(500).json({ message: "Search failed", error: error.message });

@@ -260,6 +260,142 @@ function VerificationPanel({ verification, testId }: { verification: any; testId
   );
 }
 
+/** Inline detail panel for a Viator activity card. Fetches
+ *  GET /api/viator/activities/:productCode on demand and renders
+ *  description, duration, inclusions, exclusions, and cancellation policy.
+ *  Lives outside the workspace component so it can use useQuery without
+ *  violating the rules-of-hooks ordering. */
+function ViatorDetailPanel({ productCode }: { productCode: string }) {
+  const { data, isLoading, isError } = useQuery<any>({
+    queryKey: [`/api/viator/activities/${productCode}`],
+    staleTime: 5 * 60 * 1000,
+  });
+  // Description "show more" — collapsed at 400 chars so the card doesn't dominate
+  // the panel; experts can expand to read the full text before adding.
+  const DESC_COLLAPSE = 400;
+  const [descExpanded, setDescExpanded] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: "10px 0 4px" }}>
+        {[1, 2, 3].map(i => (
+          <div key={i} style={{ height: 14, borderRadius: 4, background: "var(--console-ground)", marginBottom: 7 }} />
+        ))}
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div style={{ padding: "8px 0 2px", fontSize: 11, color: "var(--console-faint)", fontStyle: "italic" }}>
+        Could not load activity details.
+      </div>
+    );
+  }
+
+  const formatDuration = (dur: any): string | null => {
+    if (!dur) return null;
+    if (dur.fixedDurationInMinutes) {
+      const h = Math.floor(dur.fixedDurationInMinutes / 60);
+      const m = dur.fixedDurationInMinutes % 60;
+      return h > 0 ? (m > 0 ? `${h}h ${m}min` : `${h}h`) : `${m}min`;
+    }
+    if (dur.variableDurationFromMinutes != null && dur.variableDurationToMinutes != null) {
+      const fmtMin = (n: number) => {
+        const h = Math.floor(n / 60); const m = n % 60;
+        return h > 0 ? (m > 0 ? `${h}h ${m}min` : `${h}h`) : `${m}min`;
+      };
+      return `${fmtMin(dur.variableDurationFromMinutes)} – ${fmtMin(dur.variableDurationToMinutes)}`;
+    }
+    return null;
+  };
+
+  const dur = formatDuration(data.duration ?? data.itinerary?.duration);
+  // All inclusions and exclusions — no artificial slice limit.
+  const inclusions: string[] = (data.inclusions ?? [])
+    .map((inc: any) => inc.otherDescription ?? inc.typeDescription ?? inc.categoryDescription)
+    .filter(Boolean);
+  const exclusions: string[] = (data.exclusions ?? [])
+    .map((exc: any) => exc.otherDescription ?? exc.typeDescription ?? exc.categoryDescription)
+    .filter(Boolean);
+
+  const cancelPolicy = data.cancellationPolicy;
+  const cancelLabel = cancelPolicy?.type === "STANDARD" ? "Standard (free cancellation available)"
+    : cancelPolicy?.type === "ALL_SALES_FINAL" ? "Non-refundable"
+    : cancelPolicy?.description ?? cancelPolicy?.type ?? null;
+
+  const fullDesc: string = data.description ?? "";
+  const descNeedsToggle = fullDesc.length > DESC_COLLAPSE;
+  const visibleDesc = descNeedsToggle && !descExpanded
+    ? `${fullDesc.slice(0, DESC_COLLAPSE)}…`
+    : fullDesc;
+
+  return (
+    <div
+      data-testid={`viator-detail-panel-${productCode}`}
+      style={{ paddingTop: 10, borderTop: `1px solid var(--console-line)`, marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}
+    >
+      {/* Description — full text with optional collapse for long entries */}
+      {fullDesc && (
+        <div>
+          <div style={{ fontSize: 11.5, color: "var(--console-ink)", lineHeight: 1.55 }}>
+            {visibleDesc}
+          </div>
+          {descNeedsToggle && (
+            <button
+              onClick={() => setDescExpanded(e => !e)}
+              data-testid={`button-viator-desc-toggle-${productCode}`}
+              style={{ background: "none", border: "none", padding: "3px 0 0", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "var(--console-brand)" }}
+            >
+              {descExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Duration */}
+      {dur && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--console-mid)" }}>
+          <Clock style={{ width: 11, height: 11, flexShrink: 0 }} />
+          <span><strong style={{ color: "var(--console-ink)" }}>Duration:</strong> {dur}</span>
+        </div>
+      )}
+
+      {/* Inclusions — all items */}
+      {inclusions.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--console-faint)", marginBottom: 3 }}>Included</div>
+          <ul style={{ margin: 0, paddingLeft: 14, display: "flex", flexDirection: "column", gap: 2 }}>
+            {inclusions.map((inc, i) => (
+              <li key={i} style={{ fontSize: 11, color: "var(--console-mid)", lineHeight: 1.4 }}>{inc}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Exclusions — all items */}
+      {exclusions.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--console-faint)", marginBottom: 3 }}>Not included</div>
+          <ul style={{ margin: 0, paddingLeft: 14, display: "flex", flexDirection: "column", gap: 2 }}>
+            {exclusions.map((exc, i) => (
+              <li key={i} style={{ fontSize: 11, color: "var(--console-mid)", lineHeight: 1.4 }}>{exc}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Cancellation policy */}
+      {cancelLabel && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 5, fontSize: 11, color: "var(--console-mid)" }}>
+          <Shield style={{ width: 11, height: 11, flexShrink: 0, marginTop: 1 }} />
+          <span><strong style={{ color: "var(--console-ink)" }}>Cancellation:</strong> {cancelLabel}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -2825,6 +2961,8 @@ export default function ExpertWorkspace() {
   // Add-panel source pill (§17 "Add panel = the Central Content network").
   const [addSource, setAddSource] = useState("dmo");
   const [cat, setCat] = useState("all");
+  // Viator detail expand — tracks which result card (by productCode) is currently expanded.
+  const [expandedViatorId, setExpandedViatorId] = useState<string | null>(null);
   // P2-13: ONE day-focus control for the whole Add panel — every add row targets this day.
   const [focusDay, setFocusDay] = useState<number>(1);
   // A-1 "+ Day": highest expert-added target day. MUST live here with the other top-level
@@ -3501,7 +3639,7 @@ export default function ExpertWorkspace() {
   // browseQuery/debouncedQuery/cat with the other drawers (one search-box concept). Sources=viator
   // so the server hits only the Viator arm — no Google or platform results mix in. ──
   const viatorSearchEnabled = rightTab === "add" && addSource === "viator" && !!(debouncedQuery || destination);
-  const { data: viatorSearchData, isFetching: viatorSearchFetching } = useQuery<{ results: any[]; count: number }>({
+  const { data: viatorSearchData, isFetching: viatorSearchFetching } = useQuery<{ results: any[]; count: number; serviceNotice?: string }>({
     queryKey: ["/api/search/experiences", "viator", debouncedQuery, destination, cat],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -3515,6 +3653,7 @@ export default function ExpertWorkspace() {
     staleTime: 5 * 60 * 1000,
   });
   const viatorSearchResults = viatorSearchData?.results || [];
+  const viatorServiceNotice = viatorSearchData?.serviceNotice;
 
   // ── Browse: add result to itinerary (day-aware — targets a chosen day, defaulting to the
   // focused day). GOOGLE-PLACES-SOURCE-PILL: generalized from a hardcoded `focusDay` write to an
@@ -4854,6 +4993,12 @@ export default function ExpertWorkspace() {
                     </div>
                     <div style={{ fontSize: 11, color: FAINT }}>Try "food tour", "day trip", "snorkelling"</div>
                   </div>
+                ) : viatorServiceNotice ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }} data-testid="viator-service-notice">
+                    <AlertTriangle style={{ width: 28, height: 28, color: WARN, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: INK }}>Viator is temporarily unavailable</div>
+                    <div style={{ fontSize: 11, color: FAINT }}>The Viator integration is not reachable right now. Try again later or search another source.</div>
+                  </div>
                 ) : viatorSearchResults.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
                     <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
@@ -4867,47 +5012,74 @@ export default function ExpertWorkspace() {
                     <div style={{ fontSize: 10, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, paddingLeft: 2 }}>
                       {viatorSearchResults.length} result{viatorSearchResults.length !== 1 ? "s" : ""}
                     </div>
-                    {viatorSearchResults.map((result: any) => (
-                      <div
-                        key={result.id}
-                        data-testid={`card-viator-result-${result.id}`}
-                        style={{ display: "flex", flexDirection: "column", gap: 6, padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, background: CARD, marginBottom: 7 }}
-                      >
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 7, background: result.photoUrl ? "transparent" : GROUND, border: result.photoUrl ? "none" : `1px solid ${LINE}`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            {result.photoUrl
-                              ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                              : <MapPin style={{ width: 16, height: 16, color: FAINT }} />}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{result.name}</span>
-                              <StateChip tone="brand">Viator</StateChip>
+                    {viatorSearchResults.map((result: any) => {
+                      const isExpanded = expandedViatorId === result.productCode;
+                      const toggleExpand = () =>
+                        setExpandedViatorId(isExpanded ? null : (result.productCode ?? null));
+                      return (
+                        <div
+                          key={result.id}
+                          data-testid={`card-viator-result-${result.id}`}
+                          style={{ display: "flex", flexDirection: "column", padding: 9, borderRadius: 9, border: `1px solid ${isExpanded ? BRAND : LINE}`, background: CARD, marginBottom: 7, transition: "border-color 0.15s" }}
+                        >
+                          {/* Card header row — click anywhere except the Add button to expand */}
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                            <button
+                              onClick={toggleExpand}
+                              aria-expanded={isExpanded}
+                              data-testid={`button-viator-expand-${result.id}`}
+                              style={{ width: 44, height: 44, borderRadius: 7, background: result.photoUrl ? "transparent" : GROUND, border: result.photoUrl ? "none" : `1px solid ${LINE}`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, cursor: "pointer" }}
+                            >
+                              {result.photoUrl
+                                ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                : <MapPin style={{ width: 16, height: 16, color: FAINT }} />}
+                            </button>
+                            <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={toggleExpand}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{result.name}</span>
+                                <StateChip tone="brand">Viator</StateChip>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 10.5, color: MID, flexWrap: "wrap" }}>
+                                {result.rating != null && (
+                                  <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                    <Star style={{ width: 9, height: 9, color: WARN }} />
+                                    {result.rating.toFixed(1)}{result.reviewCount != null && ` (${result.reviewCount.toLocaleString()})`}
+                                  </span>
+                                )}
+                                {result.rating != null && result.priceLabel && <span style={{ color: FAINT }}>·</span>}
+                                {result.priceLabel && <span style={{ fontWeight: 600, color: OK }}>{result.priceLabel}</span>}
+                                {(result.rating != null || result.priceLabel) && <span style={{ color: FAINT }}>·</span>}
+                                <span style={{ textTransform: "capitalize" }}>{result.category}</span>
+                              </div>
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 10.5, color: MID, flexWrap: "wrap" }}>
-                              {result.rating != null && (
-                                <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                  <Star style={{ width: 9, height: 9, color: WARN }} />
-                                  {result.rating.toFixed(1)}{result.reviewCount != null && ` (${result.reviewCount.toLocaleString()})`}
-                                </span>
-                              )}
-                              {result.rating != null && result.priceLabel && <span style={{ color: FAINT }}>·</span>}
-                              {result.priceLabel && <span style={{ fontWeight: 600, color: OK }}>{result.priceLabel}</span>}
-                              {(result.rating != null || result.priceLabel) && <span style={{ color: FAINT }}>·</span>}
-                              <span style={{ textTransform: "capitalize" }}>{result.category}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                              <button
+                                onClick={toggleExpand}
+                                aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: FAINT, padding: 2, display: "flex", alignItems: "center" }}
+                              >
+                                {isExpanded
+                                  ? <ChevronUp style={{ width: 14, height: 14 }} />
+                                  : <ChevronDown style={{ width: 14, height: 14 }} />}
+                              </button>
+                              <button
+                                onClick={() => addFromSearchMutation.mutate({ result, day: focusDay })}
+                                disabled={addFromSearchMutation.isPending}
+                                data-testid={`button-add-viator-${result.id}`}
+                                style={{ padding: "4px 10px", borderRadius: 8, background: BRAND_SOFT, color: BRAND, border: `1px solid ${BRAND}`, fontSize: 11, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}
+                              >
+                                + Day {focusDay}
+                              </button>
                             </div>
                           </div>
-                          <button
-                            onClick={() => addFromSearchMutation.mutate({ result, day: focusDay })}
-                            disabled={addFromSearchMutation.isPending}
-                            data-testid={`button-add-viator-${result.id}`}
-                            style={{ padding: "4px 10px", borderRadius: 8, background: BRAND_SOFT, color: BRAND, border: `1px solid ${BRAND}`, fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
-                          >
-                            + Day {focusDay}
-                          </button>
+
+                          {/* Inline detail section — rendered only when expanded */}
+                          {isExpanded && result.productCode && (
+                            <ViatorDetailPanel productCode={result.productCode} />
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </>
                 )}
               </div>
