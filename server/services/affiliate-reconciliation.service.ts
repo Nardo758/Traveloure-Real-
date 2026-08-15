@@ -10,7 +10,7 @@
 import { db } from "../db";
 import { affiliateEarnings, affiliateClicks, affiliatePartners } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { getConversionReport, getPartnerizeCredentials } from "./partnerize/partnerize-client";
+import { pzFetch, getPartnerizeCredentials } from "./partnerize/partnerize-client";
 import { fetchTravelpayoutsActions } from "./travelpayouts/statistics.service";
 import { parseAttributionSubId } from "./travelpayouts/travelpayouts-client";
 import { resolveCommissionRates } from "./commission";
@@ -272,23 +272,32 @@ export async function fetchPartnerizeCommissions(
   start: Date,
   end: Date
 ): Promise<FetcherResult> {
-  if (!getPartnerizeCredentials()) {
+  const creds = getPartnerizeCredentials();
+  if (!creds) {
     console.warn("[Reconciliation] Partnerize credentials not set – skipping");
     return {
       commissions: [],
-      diagnostic: { partner: "partnerize", status: "skipped", rowCount: 0, reason: "Partnerize credentials not configured" },
+      diagnostic: { partner: "partnerize", status: "skipped", rowCount: 0, reason: "Partnerize credentials not configured (PARTNERIZE_APPLICATION_KEY / PARTNERIZE_API_KEY / PARTNERIZE_PUBLISHER_ID)" },
     };
   }
   try {
-    const conversions = await getConversionReport(start, end);
-    const commissions = conversions
-      .map((c) => ({
-        partnerReferenceId: c.conversionId,
+    // Call pzFetch directly (not getConversionReport) so non-2xx HTTP errors are thrown
+    // and caught here as status:"error" — getConversionReport has its own internal catch
+    // that swallows errors and returns [], making API failures indistinguishable from
+    // a legitimately empty period.
+    const json = await pzFetch(`/publishers/${creds.publisherId}/reports/conversions.json`, {
+      start_date: start.toISOString().slice(0, 10),
+      end_date: end.toISOString().slice(0, 10),
+    });
+    const rows: any[] = json?.data ?? json?.conversions ?? [];
+    const commissions = rows
+      .map((r: any) => ({
+        partnerReferenceId: String(r.conversion_id ?? r.id ?? ""),
         partner: "partnerize",
-        amount: c.commission || c.amount,
-        currency: c.currency || "USD",
-        reportedAt: c.convertedAt,
-        rawData: c.rawData,
+        amount: parseFloat(r.commission_amount ?? r.commission ?? r.sale_amount ?? r.amount ?? "0"),
+        currency: r.currency || "USD",
+        reportedAt: r.conversion_date ?? r.created_at ?? start.toISOString(),
+        rawData: r,
       }))
       .filter((r) => r.partnerReferenceId);
     return {
