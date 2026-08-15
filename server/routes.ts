@@ -187,6 +187,7 @@ import {
   tripExpertAdvisors,
   templatePurchases,
 } from "@shared/schema";
+import { sanitizeText } from "./utils/text-sanitizer";
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
@@ -5129,7 +5130,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         purchaseId: purchase.id,
         reviewerId: userId,
         rating: req.body.rating,
-        review: req.body.review,
+        review: sanitizeText(req.body.review),
       });
 
       res.json(review);
