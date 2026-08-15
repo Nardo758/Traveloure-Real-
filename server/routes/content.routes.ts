@@ -176,6 +176,21 @@ import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
 
+// ── Google Places server-side result cache ────────────────────────────────────
+// Keyed on "q|destination|category" (lower-cased). Each entry holds the mapped
+// results array plus an expiry timestamp. TTL is 7 minutes — long enough to
+// absorb repeated keystrokes from multiple experts browsing the same city, short
+// enough that new Places listings surface promptly.
+// This is intentionally a plain Map (no external dependency). It is process-local
+// and reset on restart, which is fine for a short-TTL read cache.
+const PLACES_CACHE_TTL_MS = 7 * 60 * 1000; // 7 minutes
+interface PlacesCacheEntry {
+  results: any[];
+  expiresAt: number;
+}
+const placesResultCache = new Map<string, PlacesCacheEntry>();
+// ─────────────────────────────────────────────────────────────────────────────
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -5923,6 +5938,20 @@ router.get("/api/search/experiences", async (req, res) => {
         // caller explicitly requested a non-"all" category, to avoid over-filtering.
         if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
+        // ── Cache check ──────────────────────────────────────────────────────────
+        // Key is normalised so "Tokyo" and "tokyo" share an entry, and a missing
+        // field doesn't produce a false miss (undefined → "").
+        const placesCacheKey = [
+          (q || "").toLowerCase().trim(),
+          (destination || "").toLowerCase().trim(),
+          (category || "").toLowerCase().trim(),
+        ].join("|");
+        const cachedEntry = placesResultCache.get(placesCacheKey);
+        if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+          // Cache HIT — push cached rows into results and skip the API call.
+          results.push(...cachedEntry.results);
+        } else {
+        // Cache MISS — call the Places API and store results on success.
         try {
           const resp = await fetch(placesUrl.toString());
           if (!resp.ok) {
@@ -5947,9 +5976,10 @@ router.get("/api/search/experiences", async (req, res) => {
                 if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
                 return "activity";
               };
+              const freshPlacesRows: any[] = [];
               for (const place of (data.results || []).slice(0, 15)) {
                 const photoRef = place.photos?.[0]?.photo_reference;
-                results.push({
+                freshPlacesRows.push({
                   id: `gp_${place.place_id}`,
                   source: "google_places",
                   placeId: place.place_id,
@@ -5967,12 +5997,20 @@ router.get("/api/search/experiences", async (req, res) => {
                   mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
                 });
               }
+              // Store in cache (including ZERO_RESULTS — an empty array is a
+              // valid cached answer; saves a redundant API hit for the same query).
+              placesResultCache.set(placesCacheKey, {
+                results: freshPlacesRows,
+                expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
+              });
+              results.push(...freshPlacesRows);
             }
           }
         } catch (placesErr) {
           console.error("[places] fetch threw:", placesErr);
           placesUnavailable = true;
         }
+        } // end cache-miss block
       }
 
       // ── Viator bookable activities (tours & experiences) ──
