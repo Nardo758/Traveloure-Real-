@@ -178,6 +178,91 @@ test.describe("[Google Places] Expert workspace browse", () => {
   });
 
   /**
+   * [GP-3] Write path — clicking the add-button on a Places card POSTs to
+   * /api/trips/:tripId/itinerary-items with googlePlaceId in the body, and the
+   * button transitions to the "Added to Day N" green chip.
+   *
+   * The POST endpoint is mocked to return 201 so no real DB write occurs.
+   * We capture the request body and assert:
+   *   • googlePlaceId matches the card's placeId
+   *   • title matches the result's name
+   *   • the button testid now shows "Day <N>" text (green chip state)
+   */
+  test("[GP-3] Add-button POSTs googlePlaceId and transitions to added-chip state", async ({ page }) => {
+    const tripId = await loginAndGetTripId(page);
+    await mockPlacesSearch(page, /* placesUnavailable */ false);
+
+    // Intercept the itinerary-items POST; let GETs pass through to the real server.
+    let capturedPostBody: Record<string, any> | null = null;
+    await page.route(`**/api/trips/${tripId}/itinerary-items`, async (route) => {
+      if (route.request().method() === "POST") {
+        try { capturedPostBody = route.request().postDataJSON(); } catch { /* ignore */ }
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: "gp3-test-item",
+            tripId,
+            title: FAKE_PLACES_RESULTS[0].name,
+            dayNumber: 1,
+            googlePlaceId: FAKE_PLACES_RESULTS[0].placeId,
+            itemType: "activity",
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await openWorkspace(page, tripId);
+
+    // Open the Google Places drawer.
+    const googlePill = page.locator('[data-testid="button-add-source-google"]');
+    await expect(googlePill, "Google Places pill must be visible").toBeVisible({ timeout: 8_000 });
+    await googlePill.click();
+
+    // Wait for the first result card to appear.
+    const placeKey = FAKE_PLACES_RESULTS[0].placeId; // "ChIJhWMsPimGGQ0RoZEUjOHFpcc"
+    const firstCard = page.locator(`[data-testid="card-gplace-${placeKey}"]`);
+    await expect(firstCard, "First Places result card must be visible").toBeVisible({ timeout: 10_000 });
+
+    // The split-button's left side ("+ Day N") shares the same testid as the post-add chip.
+    const addButton = page.locator(`[data-testid="button-add-gplace-${placeKey}"]`);
+    await expect(addButton, "Split-button add target must be visible").toBeVisible({ timeout: 5_000 });
+
+    // Click the add button (left side → adds to focusDay, default Day 1).
+    await addButton.click();
+
+    // After the mock 201 resolves, the React state update swaps the split-button (<button>) for
+    // the green chip (<span>).  Both share the same data-testid, but only the chip is a <span>.
+    // Scoping the locator to `span[data-testid=...]` means it can ONLY match the post-add state —
+    // the pre-click <button> element is explicitly excluded, so the assertion cannot pass early.
+    const addedChip = page.locator(`span[data-testid="button-add-gplace-${placeKey}"]`);
+    await expect(
+      addedChip,
+      '"Added to Day N" chip (<span>) must appear at the same testid after a successful add',
+    ).toBeVisible({ timeout: 8_000 });
+    // The chip text must be exactly "Day 1" (focusDay default) — no "+" prefix.
+    await expect(addedChip).toContainText("Day 1");
+
+    // Assert the POST body carried googlePlaceId and the correct title.
+    expect(capturedPostBody, "POST to itinerary-items must have been intercepted").not.toBeNull();
+    expect(
+      capturedPostBody!.googlePlaceId,
+      "POST body must include googlePlaceId matching the card's placeId",
+    ).toBe(placeKey);
+    expect(
+      capturedPostBody!.title,
+      "POST body title must match the Places result name",
+    ).toBe(FAKE_PLACES_RESULTS[0].name);
+
+    console.log(
+      `[GP-3] POST captured — googlePlaceId="${capturedPostBody!.googlePlaceId}", ` +
+      `title="${capturedPostBody!.title}"; chip transitioned to added state ✓`,
+    );
+  });
+
+  /**
    * [GP-2] Unavailable path — server sets placesUnavailable:true.
    * data-testid="notice-places-unavailable" must appear; no result cards.
    */
