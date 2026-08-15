@@ -177,6 +177,24 @@ interface Service {
   // concrete value (never null) with the SAME derivation the storefront uses; showPrice defaults true.
   showPrice?: boolean;
   bookingMode?: "instant" | "request" | "hidden";
+  // M-9 (gap #13, "Render it, or stop collecting it"): the map preview reads these answers back
+  // in traveler words. All already on the wire (getProviderServices is an unfiltered db.select())
+  // — this only names them. Every one is optional: NULL means the provider never answered, and
+  // the read-out omits it rather than defaulting it into a claim (§13).
+  serviceRadius?: string | number | null;
+  partySizeMin?: number | null;
+  partySizeMax?: number | null;
+  leadTimeHours?: number | null;
+  cancellationPolicyType?: string | null;
+  earliestStartTime?: string | null;
+  durationMinutes?: number | null;
+  deliveryLanguages?: string[] | null;
+  pickupAddress?: string | null;
+  dropOffPoint?: string | null;
+  surchargeMode?: string | null;
+  surchargeFlatAmount?: string | number | null;
+  surchargePerKm?: string | number | null;
+  surchargeMaxKm?: number | null;
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -1339,6 +1357,27 @@ export default function ProviderServices() {
        stays inside the shared container. */
     <ProviderLayout title="Catalog" width={viewMode === "map" ? "full" : "contained"}>
       <div className="p-6 space-y-4">
+        {/* ── M-10 (mock conformance round 2): entering Map mode switches the mock's crumb bar
+            to "Catalog › Map · Traveler preview". The console has no global crumb bar, so this
+            follows the Distribute arrival-crumb precedent — a text crumb line above the header,
+            rendered only in the mode that has a second level. ─────────────────────────────── */}
+        {viewMode === "map" && (
+          <p className="text-[12.5px]" style={{ color: "#7A7A72" }} data-testid="text-map-crumbs">
+            <button
+              onClick={() => setViewMode("list")}
+              className="underline underline-offset-2"
+              style={{ color: "#35605A" }}
+              data-testid="button-crumb-catalog"
+            >
+              Catalog
+            </button>
+            {" › "}
+            <span className="font-semibold" style={{ color: "#1A1A18" }}>
+              Map · Traveler preview
+            </span>
+          </p>
+        )}
+
         {/* ── Header (mock: title + real N-listing subtitle + black Add New Service) ────── */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
@@ -1375,33 +1414,33 @@ export default function ProviderServices() {
         {/* ── Toolbar card (mock: search + status chips + Manage/Preview + List/Map) ─────── */}
         {totalServices > 0 && (
           <div className="bg-white border border-[#E8E8E2] rounded-[7px] px-[18px] py-[14px] flex items-center gap-2.5 flex-wrap">
-            {viewMode === "list" && (
-              <>
-                <div className="relative flex-shrink-0">
-                  <Search className="w-3.5 h-3.5 text-[#7A7A72] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search your listings"
-                    aria-label="Search listings"
-                    className="h-9 w-[210px] pl-8 text-[13.5px] border-[#E8E8E2] rounded-[6px] bg-white focus-visible:ring-1 focus-visible:ring-[#35605A]"
-                    data-testid="input-catalog-search"
-                  />
-                </div>
-                <Seg>
-                  {STATUS_CHIPS.map((chip) => (
-                    <SegButton
-                      key={chip.key}
-                      active={statusFilter === chip.key}
-                      onClick={() => setStatusFilter(chip.key)}
-                      testId={`button-status-filter-${chip.key.replace("_", "-")}`}
-                    >
-                      {chip.label} ({statusCounts[chip.key]})
-                    </SegButton>
-                  ))}
-                </Seg>
-              </>
-            )}
+            {/* M-13: the mock keeps search + status chips in BOTH modes — they were list-only
+                here, so entering Map mode dropped half the toolbar. They now filter the map's
+                listing set too, and the map's coverage caption names the filter when one is
+                active so a filtered count is never read as the whole catalog (§13). */}
+            <div className="relative flex-shrink-0">
+              <Search className="w-3.5 h-3.5 text-[#7A7A72] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search your listings"
+                aria-label="Search listings"
+                className="h-9 w-[210px] pl-8 text-[13.5px] border-[#E8E8E2] rounded-[6px] bg-white focus-visible:ring-1 focus-visible:ring-[#35605A]"
+                data-testid="input-catalog-search"
+              />
+            </div>
+            <Seg>
+              {STATUS_CHIPS.map((chip) => (
+                <SegButton
+                  key={chip.key}
+                  active={statusFilter === chip.key}
+                  onClick={() => setStatusFilter(chip.key)}
+                  testId={`button-status-filter-${chip.key.replace("_", "-")}`}
+                >
+                  {chip.label} ({statusCounts[chip.key]})
+                </SegButton>
+              ))}
+            </Seg>
             <div className="ml-auto flex items-center gap-2.5 flex-wrap">
               {viewMode === "list" && (
                 <Seg>
@@ -1446,8 +1485,25 @@ export default function ProviderServices() {
           <div className="space-y-2">
             {/* Ruling 22(c): a read-only traveler-eye preview — authoring lives in the create
                 flow's Logistics step. Lane M (D-2/D-6): the posture notice moved INSIDE
-                CatalogMapView so its "open it →" can land on the SELECTED listing's step 4. */}
-            <CatalogMapView services={services ?? []} />
+                CatalogMapView so its "open it →" can land on the SELECTED listing's step 4.
+                M-13: the toolbar's search/status filter now reaches the map, and `filterLabel`
+                lets the coverage caption say so rather than passing a filtered count off as the
+                whole catalog. */}
+            <CatalogMapView
+              services={filteredServices}
+              filterLabel={
+                statusFilter !== "all" || searchQuery.trim()
+                  ? [
+                      statusFilter !== "all"
+                        ? STATUS_CHIPS.find((c) => c.key === statusFilter)?.label.toLowerCase()
+                        : null,
+                      searchQuery.trim() ? `matching “${searchQuery.trim()}”` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : null
+              }
+            />
           </div>
         ) : isFilterEmpty ? (
           <Card>
