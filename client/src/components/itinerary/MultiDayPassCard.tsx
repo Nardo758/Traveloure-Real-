@@ -71,7 +71,7 @@ export function MultiDayPassCard({ pass, readOnly = false }: MultiDayPassCardPro
       </div>
 
       {/* Key Info: Price, Validity, Savings */}
-      <div className="grid grid-cols-3 gap-3 text-center text-xs bg-muted/50 rounded-lg p-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center text-xs bg-muted/50 rounded-lg p-3">
         <div>
           <div className="font-semibold text-base">{pass.priceDisplay}</div>
           <div className="text-muted-foreground">Price</div>

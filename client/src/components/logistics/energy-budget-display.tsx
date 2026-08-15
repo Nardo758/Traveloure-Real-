@@ -198,7 +198,7 @@ export function EnergyBudgetDisplay({ tripId }: EnergyBudgetDisplayProps) {
 
             {/* Summary */}
             <Separator />
-            <div className="grid grid-cols-3 gap-2 text-center text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center text-sm">
               <div>
                 <div className="font-medium">{result.totalDays}</div>
                 <div className="text-xs text-muted-foreground">Days</div>

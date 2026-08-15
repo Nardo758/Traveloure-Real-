@@ -240,7 +240,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
             <div className="space-y-4">
               {guests.map((guest, index) => (
                 <div key={index} className="flex gap-2 items-start">
-                  <div className="flex-1 grid grid-cols-3 gap-2">
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <Input
                       placeholder="Guest Name *"
                       value={guest.name}

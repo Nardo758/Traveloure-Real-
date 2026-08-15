@@ -217,7 +217,7 @@ export function IntakePanel({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="intake-start">Start date</Label>
                   <Input
@@ -314,7 +314,7 @@ export function IntakePanel({
             </div>
 
             <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2.5">
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {typesLoading && (
                   <div className="col-span-2 flex items-center justify-center py-6 text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -369,7 +369,7 @@ export function IntakePanel({
                   </button>
 
                   {showAllTypes && (
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {more.map((type) => {
                         const isSelected = selectedSlug === type.slug;
                         return (
