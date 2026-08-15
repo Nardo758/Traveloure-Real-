@@ -6,19 +6,49 @@
  * (scripts/backfill-provider-text-sanitize.ts) to clean rows written before the
  * write-path guard existed.
  *
+ * ─── CANONICAL SANITIZATION POLICY ─────────────────────────────────────────────
+ *
+ * The codebase uses TWO sanitizers for user-authored text. Choose based on the
+ * rendering context of the field, not the role of the author:
+ *
+ * 1. `sanitizeText` / `sanitizeStringFields` / `sanitizeDeep`  (THIS FILE)
+ *    ▸ For: provider listing fields (serviceName, description, meetingPoint, etc.)
+ *           rendered exclusively through React's text-node path (never innerHTML).
+ *    ▸ What it does: strips real HTML/XML tags; leaves bare `<` and `>` in prose
+ *      ("price < $50") intact.
+ *    ▸ Why bare angle-brackets are NOT entity-encoded: React escapes at render time
+ *      via DOM text nodes. A value stored as `&lt;` would display as the literal six
+ *      characters `&lt;` on screen — a double-escaping artifact visible to the user.
+ *    ▸ Safe for: React UI, AI prompts, server-side string processing.
+ *    ▸ NOT sufficient for: non-React rendering paths that write raw HTML (email
+ *      templates, PDF generators, CSV/HTML exports). If a new non-React surface is
+ *      added that renders listing text as raw HTML, the rendering layer MUST apply
+ *      its own HTML-escaping (e.g. template engine auto-escape, entity encoding in
+ *      the email renderer) rather than relying solely on this write-path guard.
+ *
+ * 2. `sanitizeInput`  (server/utils/sanitize.ts)
+ *    ▸ For: expert profile fields, storefront bios, review replies, expert notes —
+ *           any field that may flow into a non-React surface NOW (e.g. provider-reply
+ *           stored and re-read in admin consoles, email footers, future PDF reports).
+ *    ▸ What it does: strips HTML tags AND entity-encodes remaining `< > ' "`.
+ *    ▸ Safe for: React UI AND raw-HTML rendering paths.
+ *    ▸ Trade-off: entity-encoded values display correctly in React only because JSX
+ *      renders text nodes (not innerHTML); the entity characters are stored in the DB
+ *      and are a valid persistent form.
+ *
+ * The divergence is INTENTIONAL. Provider listing text has a well-established React-
+ * only render path today. The `sanitizeText` approach avoids double-encoding artifacts
+ * (e.g. a café description stored as `caf&eacute;` displayed literally). If a future
+ * non-React export path is added, its rendering layer must own the HTML escaping step.
+ *
+ * ────────────────────────────────────────────────────────────────────────────────
+ *
  * Strategy:
  *   1. Strip ACTUAL HTML/XML tags — sequences that begin with `<`, start with a
  *      letter, `/`, or `!` (marking a tag name, closing tag, comment, or DOCTYPE),
  *      and end with `>`. Plain angle-brackets in prose ("price < $50", "3 < x < 10")
  *      are NOT matched and are preserved as-is.
  *   2. Trim surrounding whitespace.
- *
- * Why bare `<` and `>` are NOT entity-encoded:
- *   React renders text via DOM text nodes, not innerHTML. An entity-encoded `&lt;`
- *   stored in the database would display as the literal six characters `&lt;` on
- *   screen — a double-escaping artifact. React handles its own escaping at render
- *   time; the sanitizer's job is only to strip injection vectors (HTML tags), not
- *   to pre-encode for any particular renderer.
  *
  * Null / undefined values are returned unchanged so callers don't need to guard
  * nullable columns.
