@@ -11008,6 +11008,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // AI-powered short description suggester for service listings.
+  // Accepts { description } and returns { suggestion } (≤150 chars).
+  // Protected by aiRateLimit (shared AI bucket) + isAuthenticated so unauthenticated
+  // callers cannot burn LLM tokens.
+  app.post("/api/ai/suggest-short-description", aiRateLimit, isAuthenticated, asyncHandler(async (req, res) => {
+    const { description } = req.body ?? {};
+    if (typeof description !== "string" || !description.trim()) {
+      return res.status(400).json({ message: "description is required" });
+    }
+    const truncated = description.slice(0, 4000); // cap input to avoid runaway tokens
+    const message = await anthropic.messages.create({
+      model: "claude-3-5-haiku-20241022",
+      max_tokens: 100,
+      messages: [
+        {
+          role: "user",
+          content: `You are a copywriter helping a travel service provider write a compelling one-sentence teaser for their listing card.
+
+Given the full service description below, write a single punchy sentence (maximum 150 characters) that markets the service and makes travelers want to click. Do not use quotation marks. Return only the sentence, nothing else.
+
+Description:
+${truncated}`,
+        },
+      ],
+    });
+    const raw = (message.content[0] as any)?.text ?? "";
+    const suggestion = raw.replace(/^["']|["']$/g, "").trim().slice(0, 150);
+    res.json({ suggestion });
+  }));
+
   // `aiRateLimit` (the existing shared AI limiter, applied limiter-before-auth exactly as
   // `heavyReadRateLimit` is on /api/itinerary-comparisons): this handler is the only one of the
   // three that makes a REAL outbound LLM call (itinerary-intelligence.service.ts
