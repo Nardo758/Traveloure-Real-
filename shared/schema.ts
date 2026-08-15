@@ -140,7 +140,11 @@ export const trips = pgTable("trips", {
   finalizedAt: timestamp("finalized_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Migration 133: partial index used by ready-made trip authoring queries (author_id IS NOT NULL).
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_trips_author_id").on(table.authorId).where(sql`author_id IS NOT NULL`),
+]);
 
 export const generatedItineraries = pgTable("generated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -2576,7 +2580,16 @@ export const coordinationFeeCredits = pgTable("coordination_fee_credits", {
   consumedByCoordinationId: varchar("consumed_by_coordination_id").references(() => coordinationStates.id, { onDelete: "set null" }),
   consumedAt: timestamp("consumed_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Migrations 125 + 126: partial indexes for credit availability and event-scoped lookups.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_coord_fee_credits_available")
+    .on(table.userId, table.createdAt)
+    .where(sql`consumed_by_coordination_id IS NULL`),
+  index("idx_coord_fee_credits_event_scoped")
+    .on(table.userId, table.eventType, table.createdAt)
+    .where(sql`consumed_by_coordination_id IS NULL`),
+]);
 
 export const coordinationBookings = pgTable("coordination_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -4725,7 +4738,23 @@ export const affiliateClicks = pgTable("affiliate_clicks", {
   agentType: varchar("agent_type", { length: 20 }), // grok | claude | system | null
   sessionId: varchar("session_id", { length: 255 }), // AI planning session trace ID
   clickedAt: timestamp("clicked_at").defaultNow(),
-});
+  // Migration 085: content attribution fields — which item surface the click originated from.
+  sourceImpressionId: varchar("source_impression_id"), // FK to content_impressions.id (not enforced — opportunistic)
+  clickContentType: text("click_content_type"),   // gem | expert | provider_service | ...
+  clickContentId: text("click_content_id"),
+}, (table) => [
+  // Migration 085: partial indexes for affiliate attribution queries.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_affiliate_clicks_content")
+    .on(table.clickContentType, table.clickContentId)
+    .where(sql`click_content_type IS NOT NULL`),
+  index("idx_affiliate_clicks_product")
+    .on(table.productId)
+    .where(sql`product_id IS NOT NULL`),
+  index("idx_affiliate_clicks_user")
+    .on(table.userId)
+    .where(sql`user_id IS NOT NULL`),
+]);
 
 // Insert schemas for affiliate tables
 export const insertAffiliatePartnerSchema = createInsertSchema(affiliatePartners).omit({
@@ -5394,7 +5423,23 @@ export const contentImpressions = pgTable("content_impressions", {
   sessionId: varchar("session_id", { length: 255 }).notNull(),
   userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }), // opportunistic — feed is public
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  // Partial indexes for feed analytics queries (user and city breakdowns).
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  //
+  // NOTE: uq_ci_session_content and content_impressions_session_dedup (both UNIQUE on
+  // (session_id, content_type, content_id)) are intentionally NOT declared here.
+  // Migration 116 creates uq_ci_session_content inside a guard that degrades to a plain
+  // (non-unique) index when duplicate rows already exist, so on such a database the live
+  // index is not unique and declaring it UNIQUE would make drizzle push fail. Both
+  // content_impressions unique indexes are analytics-only (no money semantics) and are
+  // documented as intentionally unmanaged in scripts/preflight-prod-unique-indexes.cjs.
+  index("idx_ci_city").on(table.city, table.createdAt).where(sql`city IS NOT NULL`),
+  index("idx_ci_user").on(table.userId, table.createdAt).where(sql`user_id IS NOT NULL`),
+  index("idx_ci_dedup_user_session")
+    .on(table.contentType, table.contentId, table.userId, table.sessionId)
+    .where(sql`user_id IS NOT NULL AND session_id IS NOT NULL`),
+]);
 
 // AI Usage Logs - Track API calls and costs for all AI providers
 export const aiUsageLogs = pgTable("ai_usage_logs", {
@@ -6494,6 +6539,12 @@ export const bookings = pgTable("bookings", {
   expertSlotUnique: uniqueIndex("bookings_expert_slot_unique_idx")
     .on(table.expertId, table.bookingDate, table.bookingTime)
     .where(sql`expert_id IS NOT NULL AND booking_date IS NOT NULL AND booking_time IS NOT NULL`),
+
+  // Migration 098: partial index for dispute lookups (only rows with an active dispute).
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  disputeIdIdx: index("bookings_dispute_id_idx")
+    .on(table.disputeId)
+    .where(sql`dispute_id IS NOT NULL`),
 }));
 
 export const platformFees = pgTable("platform_fees", {
@@ -7603,7 +7654,11 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   verification: jsonb("verification"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Baseline migration: partial index for expert-scoped affiliate booking lookups.
+  // Declared here — drizzle push drops indexes absent from this file on publish.
+  index("idx_abr_expert_id").on(table.expertId).where(sql`expert_id IS NOT NULL`),
+]);
 
 export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAffiliateBookingRequest = z.infer<typeof insertAffiliateBookingRequestSchema>;
