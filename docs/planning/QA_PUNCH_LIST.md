@@ -2169,3 +2169,56 @@ account had no live listing and no saved stops (D-13 unverified with data), mobi
   Lesson folded forward: any new "fix this listing" affordance must route through
   `propertyEditorHref` first — the guard page existing is proof the ServiceForm door is wrong
   for these shapes.
+
+## Folded in Aug 15, 2026 — the spec-rot audit (regression-spec lane, ledger row 120)
+
+Acting on the test strategy's #1 P0 ("commit the regression specs") surfaced a bigger problem than
+the one being fixed: **only ~14 of the repo's ~53 Playwright specs are referenced by any
+workflow.** The other ~39 are committed, were correct the day they were written, and have not run
+since. Four of them assert against provider-console surfaces that PRs #484–#487 renamed — and all
+four PRs merged with 54/54 green, because nothing ran them.
+
+### Fixed here
+
+- **Four rotted specs repaired.** `catalog-map-located` (unpinned rail → not-located list, count
+  copy, add-a-pin chip → real fix link), `service-logistics-step` (segmented transport provision →
+  the D-9 one-toggle), `distribute-channels` (the D-4 "Get link" button auto-mint removed),
+  `distribute-shell` (D-11 badge copy). Each now also asserts the NEW ruling, so the repair is
+  coverage rather than an assertion downgrade.
+- **They were DEAD ON ARRIVAL, not merely stale — two independent reasons.** (1) All four log in
+  as `kyoto-interpreter@traveloure.test`, which `phase-d-kyoto-vendors.seed.ts` creates with **no
+  password** and no other seeder touches — every run 401'd at the door, in every environment.
+  (2) Two of them asserted a seeded fact that never existed: they claim
+  `Business Document Translation` is approved+**draft**, but that seed inserts every vendor
+  service `approvalStatus:'approved', status:'active'` in one shared insert. Fixed at the source:
+  `e2e-test-accounts.seed.ts` grew an idempotent FIXTURE_LOGIN_BACKFILL (fills a NULL password and
+  a NULL storefront handle only, never overwrites, never steals a claimed handle), and
+  `distribute-shell` now CREATES its not-live listing instead of assuming one.
+- **A one-way door found while fixing it:** an un-verified provider can PATCH a listing to
+  `draft` but cannot PATCH it back to `active` (403 VERIFICATION_GATE), so "pause a seeded row and
+  restore it" silently corrodes the shared fixture on every run. Specs needing a not-live listing
+  must create a throwaway (born `submitted` per migration 111) and DELETE it. Recorded because the
+  next spec author will reach for the pause.
+- **New coverage** for the biggest untested change of the week: step-4 map authoring — D-16 step
+  header, D-10 Layers card (incl. the Pricing & fees href the dynamic-links gate caught), D-13
+  located pill, and D-12's autosave proven by ROUND-TRIP (reorder in the UI → read the row back →
+  new order persisted **with both stops' coordinates intact**, which a lossy replace-list would
+  fail while looking identical on screen).
+- **i18n key parity** (`playwright/tests/i18n-key-parity.spec.ts`): diffs en ⇄ ja key sets across
+  all 6 namespaces, both directions, plus namespace-file parity and a SUPPORTED_LOCALES cross-check.
+  **286 keys, zero gaps today.** Mutation-proved it can actually go red (delete a key → red; add an
+  orphan → red; stale allowlist entry → red). The allowlist ships empty by design.
+- **`.github/workflows/provider-console-gate.yml`** — the structural fix. Runs the four repaired
+  specs + i18n parity on every PR, with the repo's spec-file-existence guard (a renamed spec must
+  fail loudly, never reduce the gate to zero assertions) and `--workers=1` because these specs
+  mutate and restore one shared fixture.
+
+### Still open
+
+- **`catalog-preview-toggle.spec.ts` is NOT gated** — it shares the false "one listing is draft"
+  premise and needs the same create-a-throwaway treatment; deferred rather than half-fixed. Its
+  count assertion fails on a live bench today.
+- **~34 other ungated specs.** This lane gated the console surfaces that the redesign rulings churn
+  most; the rest are unaudited and may be rotted or dead in the same two ways. Worth one sweep:
+  for each, does it run, and does it pass? (Cheap to answer, and the answer is load-bearing —
+  every one of them currently reads as coverage while providing none.)
