@@ -23,7 +23,7 @@ export function isUnsplashUrl(url: string | null | undefined): url is string {
 /** Append/override params on an Unsplash URL; returns non-Unsplash URLs untouched. */
 export function optimizeUnsplashUrl(
   url: string | null | undefined,
-  opts: { w?: number } = {},
+  opts: { w?: number; q?: number } = {},
 ): string | undefined {
   if (!url) return undefined;
   if (!isUnsplashUrl(url)) return url;
@@ -31,6 +31,9 @@ export function optimizeUnsplashUrl(
   parsed.searchParams.set("auto", "format");
   parsed.searchParams.delete("fm"); // fm=jpg would override auto=format content negotiation
   if (opts.w) parsed.searchParams.set("w", String(opts.w));
+  // Opt-in quality override (stored URLs bake in q=80; q=60 in AVIF/WebP is
+  // visually indistinguishable at card sizes and cuts transfer ~15-20%).
+  if (opts.q) parsed.searchParams.set("q", String(opts.q));
   return parsed.toString();
 }
 
@@ -43,11 +46,12 @@ export function unsplashResponsiveProps(
   {
     widths = [400, 640, 1080],
     sizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw",
-  }: { widths?: number[]; sizes?: string } = {},
+    q,
+  }: { widths?: number[]; sizes?: string; q?: number } = {},
 ): { srcSet?: string; sizes?: string } {
   if (!isUnsplashUrl(url)) return {};
   return {
-    srcSet: widths.map((w) => `${optimizeUnsplashUrl(url, { w })} ${w}w`).join(", "),
+    srcSet: widths.map((w) => `${optimizeUnsplashUrl(url, { w, q })} ${w}w`).join(", "),
     sizes,
   };
 }
