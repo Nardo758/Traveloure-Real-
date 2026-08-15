@@ -40,6 +40,19 @@ import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/serv
 import { parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
 import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
 import { CANCELLATION_POLICY_TYPE_LABELS } from "@shared/schema";
+// Lane M3: the traveler page's OWN formatters. Importing them is the point — see travelerFacts.
+import {
+  formatHours,
+  formatMinutes,
+  formatPartySize,
+  formatStartWindow,
+  formatTransportProvision,
+  formatResponseWindow,
+  formatWeeklyPattern,
+  resolveDepositPreview,
+  hasDepositTerms,
+  type WeeklyPatternLike,
+} from "@/lib/service-good-to-know";
 import { isPropertyEditorShape, propertyEditorHref } from "@/lib/property-editor-link";
 
 export interface CatalogMapService {
@@ -62,13 +75,25 @@ export interface CatalogMapService {
   // the traveler reads them. EVERY field here is optional and NULL means "the provider never told
   // us": an absent answer is omitted from the read-out with a count, never defaulted into a claim
   // the provider did not make (§13). Nothing on this surface writes any of them.
+  price?: string | number | null;
   partySizeMin?: number | null;
   partySizeMax?: number | null;
   leadTimeHours?: number | null;
+  changeCutoffHours?: number | null;
+  bufferMinutes?: number | null;
   cancellationPolicyType?: string | null;
   earliestStartTime?: string | null;
+  latestStartTime?: string | null;
+  serviceTimezone?: string | null;
   durationMinutes?: number | null;
   deliveryLanguages?: string[] | null;
+  transportProvision?: string | null;
+  responseWindowHours?: number | null;
+  scopeStatement?: string | null;
+  depositEnabled?: boolean | null;
+  depositType?: string | null;
+  depositPercentage?: number | null;
+  depositFlatAmount?: string | number | null;
   pickupAvailable?: boolean | null;
   pickupAddress?: string | null;
   dropOffPoint?: string | null;
@@ -284,15 +309,6 @@ function PropChip({ children }: { children: ReactNode }) {
   );
 }
 
-/** Minutes → the mock's own phrasing ("runs about 2½ hours"). Never rounds a number into existence. */
-function formatDuration(min: number): string {
-  if (min < 60) return `${min} minutes`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (m === 0) return `${h} hour${h === 1 ? "" : "s"}`;
-  if (m === 30) return `${h}½ hours`;
-  return `${h}h ${m}m`;
-}
 
 function toNum(v: string | number | null | undefined): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -576,14 +592,33 @@ function MarketInsightsView() {
 }
 
 // ── gap #13, "Render it, or stop collecting it" ───────────────────────────────────────────────────
-// The mock's proposed rule: every answer the create flow collects either has a TRAVELER-SIDE
-// representation, or an explicit decision that it is provider-only. This resolver reads the
-// selected listing's OWN stored answers back in traveler words.
+// THE RULE (mock legend ⑬): every answer the create flow collects either has a TRAVELER-SIDE
+// representation, or an explicit decision that it is provider-only. Anything that is neither —
+// collected, stored, shown to nobody — stops being asked for.
+//
+// NOT A PROPOSAL. The mock's "Proposed — ratify or amend" chip predates its own ratification:
+// gap #13 was ratified by ledger row 92 (the mock in full, incl. "G5's #13 panel") and EXECUTED by
+// lane T-REP, ledger row 101 — "RENDER chosen throughout, zero fields removed" — which built the
+// traveler detail page's "Good to know" card and the pure module below.
+//
+// WHY THIS DELEGATES (lane M3). The first cut of this block re-implemented the same derivations
+// with different wording, so a card captioned "What the traveler sees" showed words the traveler
+// does NOT see ("1–8 people · you can book for up to 8" here vs "1–8 people" there; "24 hours
+// before the start" vs formatHours' "1 day"). That is the class CLAUDE.md §18 rule 1 names —
+// *derivation delegates, never re-implements* — and it is worse here than usual, because the whole
+// claim of this card is that it is the traveler's view. Every value below now comes from
+// `@/lib/service-good-to-know`, the SAME module `client/src/pages/service-detail.tsx` renders, in
+// the same order and behind the same gates. If the traveler's wording changes, this changes with it.
 //
 // §13 THROUGHOUT: a field the provider never answered is OMITTED and counted, never defaulted into
 // a claim ("no travel fee", "English", "up to 8 people" are all things a provider must have said).
-// The two mock rows with no column behind them at all — "Bring" and "Access" — are named as the
-// open half of the gap rather than faked; that is the amendment this section exists to surface.
+//
+// STILL UNBACKED: the mock draws a "Bring" and an "Access" row, and NEITHER has a column anywhere
+// on `provider_services` — the flow never asks, so there is nothing to render. (The
+// `accessibilityNeeds`/`mobilityLevel` columns in the schema belong to `trip_participants` — a
+// TRAVELER's stated needs, not a host's access notes.) They are the inverse of the case T-REP
+// audited: drawn and never collected, rather than collected and never read. Named here rather than
+// faked; closing them needs two additive columns + wizard fields, which is a schema decision.
 const GAP13_UNBACKED_ROWS = ["Bring", "Access"] as const;
 
 interface TravelerFact {
@@ -592,33 +627,38 @@ interface TravelerFact {
   value: string;
 }
 
-function travelerFacts(s: CatalogMapService): { facts: TravelerFact[]; omitted: string[] } {
+/** The ordered fact list, resolved with the traveler page's own formatters. Mirrors the "Good to
+ *  know" card's row set and gating; the labels are the mock's left column. */
+function travelerFacts(
+  s: CatalogMapService,
+  patterns: WeeklyPatternLike[] | undefined,
+): { facts: TravelerFact[]; omitted: string[] } {
   const facts: TravelerFact[] = [];
   const omitted: string[] = [];
   const add = (key: string, label: string, value: string | null) => {
     if (value) facts.push({ key, label, value });
     else omitted.push(label);
   };
+  const positiveHours = (v: number | null | undefined) =>
+    typeof v === "number" && v > 0 ? formatHours(v) : null;
 
-  add(
-    "party",
-    "Party size",
-    s.partySizeMin != null && s.partySizeMax != null
-      ? `${s.partySizeMin}–${s.partySizeMax} people · you can book for up to ${s.partySizeMax}`
-      : s.partySizeMax != null
-        ? `Up to ${s.partySizeMax} people`
-        : s.partySizeMin != null
-          ? `From ${s.partySizeMin} people`
-          : null,
-  );
+  add("party", "Party size", formatPartySize(s.partySizeMin, s.partySizeMax));
 
-  add(
-    "leadtime",
-    "Book by",
-    s.leadTimeHours != null && s.leadTimeHours > 0
-      ? `${s.leadTimeHours} hours before the start — the host's lead time`
-      : null,
-  );
+  // The row that finishes the mock's "Starts" (lane M3). The weekly repeat rule lives in
+  // `service_availability_patterns`, NOT on the listing row, so it arrives from its own owner read
+  // — the same rhythm the traveler now sees on the public detail page.
+  add("weekly", "Runs on", formatWeeklyPattern(patterns, s.serviceTimezone));
+  add("startwindow", "Start window", formatStartWindow(s.earliestStartTime, s.latestStartTime, s.serviceTimezone));
+
+  const lead = positiveHours(s.leadTimeHours);
+  add("leadtime", "Book by", lead ? `Book at least ${lead} ahead` : null);
+  const cutoff = positiveHours(s.changeCutoffHours);
+  add("changecutoff", "Changes until", cutoff ? `Changes accepted up to ${cutoff} before the start` : null);
+
+  const duration = typeof s.durationMinutes === "number" && s.durationMinutes > 0 ? formatMinutes(s.durationMinutes) : null;
+  add("duration", "Duration", duration);
+  const buffer = typeof s.bufferMinutes === "number" && s.bufferMinutes > 0 ? formatMinutes(s.bufferMinutes) : null;
+  add("buffer", "Buffer", buffer ? `${buffer} kept free around each booking` : null);
 
   add(
     "cancellation",
@@ -626,19 +666,6 @@ function travelerFacts(s: CatalogMapService): { facts: TravelerFact[]; omitted: 
     s.cancellationPolicyType && s.cancellationPolicyType in CANCELLATION_POLICY_TYPE_LABELS
       ? CANCELLATION_POLICY_TYPE_LABELS[s.cancellationPolicyType as keyof typeof CANCELLATION_POLICY_TYPE_LABELS]
       : null,
-  );
-
-  const dur = s.durationMinutes != null && s.durationMinutes > 0 ? formatDuration(s.durationMinutes) : null;
-  add(
-    "starts",
-    "Starts",
-    s.earliestStartTime && dur
-      ? `${s.earliestStartTime} · runs about ${dur}`
-      : s.earliestStartTime
-        ? `From ${s.earliestStartTime}`
-        : dur
-          ? `Runs about ${dur}`
-          : null,
   );
 
   const langs = Array.isArray(s.deliveryLanguages) ? s.deliveryLanguages.filter(Boolean) : [];
@@ -655,8 +682,22 @@ function travelerFacts(s: CatalogMapService): { facts: TravelerFact[]; omitted: 
           ? `Make your own way to ${s.meetingPoint}`
           : null,
   );
-
   add("dropoff", "Getting back", s.dropOffPoint ? s.dropOffPoint : null);
+  add("transport", "Transport", formatTransportProvision(s.transportProvision));
+
+  // Deposit: the SAME display-only preview the traveler reads, with the page's own fallback for a
+  // percentage deposit on a listing with no price yet. Never a second source of truth — checkout
+  // re-derives the real charge server-side (§14).
+  const priceNum = Number(s.price ?? 0);
+  const deposit = hasDepositTerms(s)
+    ? resolveDepositPreview(s, (n) => `$${n.toFixed(2)}`, Number.isFinite(priceNum) ? priceNum : 0) ??
+      "Deposit required — details at checkout"
+    : null;
+  add("deposit", "Deposit", deposit);
+
+  // Async lane (S9): both are ordinary public pre-purchase facts on the traveler page.
+  add("responsewindow", "Response time", formatResponseWindow(s.responseWindowHours));
+  add("scope", "What's covered", (s.scopeStatement ?? "").trim() || null);
 
   // Travel fee. `surchargeMode` DEFAULTs 'none' at the column, and 'none' is server-enforced as
   // "no surcharge, ever" (ruling 81) — so it is a real answer, not an absent one.
@@ -742,6 +783,15 @@ export function CatalogMapView({
   // below are rendered from this response and edited nowhere on this surface.
   const { data: detail } = useQuery<{ routePoints?: RoutePointRow[] } | undefined>({
     queryKey: [`/api/provider/services/${selectedId}`],
+    enabled: !!selectedId,
+  });
+
+  // Lane M3 — the weekly repeat rule, for gap #13's "Starts" row. It lives in
+  // `service_availability_patterns`, a CHILD table, so it is not on the listing row this view is
+  // handed; this is the owner read of the same rows the traveler now sees on the public detail
+  // page. Absent/empty ⇒ the listing declares no weekly rhythm and the row is omitted (§13).
+  const { data: patternRows } = useQuery<WeeklyPatternLike[]>({
+    queryKey: [`/api/provider/services/${selectedId}/availability-patterns`],
     enabled: !!selectedId,
   });
 
@@ -846,7 +896,9 @@ export function CatalogMapView({
   const door = selected ? authoringDoor(selected) : null;
   const radiusKm = toNum(selected?.serviceRadius);
   const unlocatedStops = stops.filter((s) => s.lat === null || s.lng === null);
-  const { facts, omitted } = selected ? travelerFacts(selected) : { facts: [], omitted: [] as string[] };
+  const { facts, omitted } = selected
+    ? travelerFacts(selected, patternRows)
+    : { facts: [], omitted: [] as string[] };
 
   return (
     <div className="space-y-5" data-testid="catalog-map-preview">
@@ -1214,12 +1266,13 @@ export function CatalogMapView({
         <section data-testid="render-it-section">
           <h3 className="text-[18px] font-semibold tracking-[-0.01em] flex items-center gap-2.5 flex-wrap" style={{ color: INK }}>
             Render it, or stop collecting it
-            <PropChip>Proposed — gap #13 · ratify or amend</PropChip>
+            <PropChip>Ratified — gap #13 · rendered, T-REP (ledger 101)</PropChip>
           </h3>
           <p className="text-[13px] mt-1 mb-3.5 max-w-[74ch]" style={{ color: MUTED }}>
-            The create flow asks a provider a lot of questions. The proposed rule: every answer
-            either has a traveler-side representation, or an explicit decision that it is
-            provider-only. Here are this listing's answers actually rendered.
+            The rule: every answer the create flow collects either has a traveler-side
+            representation, or an explicit decision that it is provider-only. These are this
+            listing's real answers, resolved with the same formatters the traveler's own page
+            uses — not a paraphrase of them.
           </p>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
@@ -1270,9 +1323,10 @@ export function CatalogMapView({
                   </div>
                   <div className="text-[12.5px] leading-[1.6]" style={{ color: MUTED }}>
                     Every question the flow asks is something a traveler can read before paying.
-                    Where a field has no traveler-side home, the proposal is to{" "}
+                    Where a field has no traveler-side home, the rule is to{" "}
                     <b style={{ color: INK }}>stop asking for it</b> rather than store an answer
-                    nobody will ever see.
+                    nobody will ever see. T-REP chose <b style={{ color: INK }}>render</b> for
+                    every field it audited — nothing was dropped.
                   </div>
                 </CardContent>
               </Card>
@@ -1283,7 +1337,7 @@ export function CatalogMapView({
                     Deliberately provider-only
                   </div>
                   <div className="text-[12.5px] leading-[1.6] mb-2.5" style={{ color: MUTED }}>
-                    Not everything should surface. These are proposed as{" "}
+                    Not everything should surface. These stay{" "}
                     <b style={{ color: INK }}>private by decision</b>, not by accident:
                   </div>
                   <div className="flex gap-1.5 flex-wrap">
