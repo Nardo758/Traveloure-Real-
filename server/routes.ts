@@ -420,6 +420,30 @@ function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   return sanitizeDeep(obj) as T;
 }
 
+/**
+ * Explicitly sanitize the nested `answer` string inside each knowledge-proof answer item.
+ *
+ * `knowledgeProofAnswers` is a JSONB array stored as-is; `sanitizeObject` / `sanitizeDeep`
+ * already recurse into it, but the nested structure warrants an explicit, targeted pass so
+ * the protection is unambiguous on code inspection and not reliant on recursive side-effects.
+ *
+ * Only the `answer` field (free-text, user-authored) is touched; other fields (e.g. question
+ * id / index) are structural and left intact.
+ */
+function sanitizeKnowledgeProofAnswers(answers: unknown): unknown[] {
+  if (!Array.isArray(answers)) return [];
+  return answers.map((item: unknown) => {
+    if (item !== null && typeof item === "object") {
+      const cast = item as Record<string, unknown>;
+      return {
+        ...cast,
+        answer: typeof cast.answer === "string" ? sanitizeInput(cast.answer) : cast.answer,
+      };
+    }
+    return item;
+  });
+}
+
 // Migration 151 (§17 Product Builder): bundle_components.component_service_id is
 // ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
 // removed from the bundle. Postgres surfaces that as FK violation 23503; translate it into
@@ -2035,6 +2059,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
+          // Explicitly sanitize nested answer strings inside knowledgeProofAnswers
+          // (defense-in-depth on top of sanitizeObject's recursive pass).
+          input.knowledgeProofAnswers = sanitizeKnowledgeProofAnswers(input.knowledgeProofAnswers);
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -2057,6 +2084,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
+      // Explicitly sanitize nested answer strings inside knowledgeProofAnswers
+      // (defense-in-depth on top of sanitizeObject's recursive pass).
+      input.knowledgeProofAnswers = sanitizeKnowledgeProofAnswers(input.knowledgeProofAnswers);
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2090,6 +2120,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
+          // Explicitly sanitize nested answer strings inside knowledgeProofAnswers
+          // (defense-in-depth on top of sanitizeObject's recursive pass).
+          input.knowledgeProofAnswers = sanitizeKnowledgeProofAnswers(input.knowledgeProofAnswers);
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -2111,6 +2144,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
+      // Explicitly sanitize nested answer strings inside knowledgeProofAnswers
+      // (defense-in-depth on top of sanitizeObject's recursive pass).
+      input.knowledgeProofAnswers = sanitizeKnowledgeProofAnswers(input.knowledgeProofAnswers);
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
