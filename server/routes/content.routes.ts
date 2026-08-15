@@ -177,18 +177,53 @@ import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 const router = Router();
 
 // ── Google Places server-side result cache ────────────────────────────────────
-// Keyed on "q|destination|category" (lower-cased). Each entry holds the mapped
-// results array plus an expiry timestamp. TTL is 7 minutes — long enough to
-// absorb repeated keystrokes from multiple experts browsing the same city, short
-// enough that new Places listings surface promptly.
-// This is intentionally a plain Map (no external dependency). It is process-local
-// and reset on restart, which is fine for a short-TTL read cache.
-const PLACES_CACHE_TTL_MS = 7 * 60 * 1000; // 7 minutes
+// Keyed on a JSON-serialised normalised tuple so field values containing the
+// delimiter character cannot collide. Each entry holds the mapped results array
+// plus an expiry timestamp.
+//
+// TTL: 7 minutes — long enough to absorb repeated keystrokes from multiple
+// experts browsing the same city, short enough that stale listings don't linger.
+//
+// Bounded: capped at MAX_PLACES_CACHE_ENTRIES to prevent memory exhaustion from
+// unauthenticated callers sending many unique queries. On every SET:
+//   1. Expired entries are swept first (eager eviction).
+//   2. If the map is still at/above the cap, the oldest entry (insertion order)
+//      is deleted to make room (LRU-approximation via Map insertion order).
+//
+// This is an in-process Map (no external dependency). It resets on restart,
+// which is acceptable for a short-TTL read cache.
+const PLACES_CACHE_TTL_MS = 7 * 60 * 1000;    // 7 minutes
+const MAX_PLACES_CACHE_ENTRIES = 500;
 interface PlacesCacheEntry {
   results: any[];
   expiresAt: number;
 }
 const placesResultCache = new Map<string, PlacesCacheEntry>();
+
+/** Build a collision-safe, normalised cache key from the three search axes. */
+function buildPlacesCacheKey(q: string, destination: string, category: string): string {
+  return JSON.stringify([
+    q.toLowerCase().trim(),
+    destination.toLowerCase().trim(),
+    category.toLowerCase().trim(),
+  ]);
+}
+
+/** Sweep expired entries, then enforce the entry cap before inserting. */
+function placesResultCacheSet(key: string, entry: PlacesCacheEntry): void {
+  const now = Date.now();
+  // 1. Eager expiry sweep — remove every stale entry in one pass.
+  for (const [k, v] of placesResultCache) {
+    if (v.expiresAt <= now) placesResultCache.delete(k);
+  }
+  // 2. If still at or above cap, evict the oldest insertion-order entry.
+  while (placesResultCache.size >= MAX_PLACES_CACHE_ENTRIES) {
+    const oldestKey = placesResultCache.keys().next().value;
+    if (oldestKey !== undefined) placesResultCache.delete(oldestKey);
+    else break;
+  }
+  placesResultCache.set(key, entry);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({
@@ -5939,13 +5974,8 @@ router.get("/api/search/experiences", async (req, res) => {
         if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
         // ── Cache check ──────────────────────────────────────────────────────────
-        // Key is normalised so "Tokyo" and "tokyo" share an entry, and a missing
-        // field doesn't produce a false miss (undefined → "").
-        const placesCacheKey = [
-          (q || "").toLowerCase().trim(),
-          (destination || "").toLowerCase().trim(),
-          (category || "").toLowerCase().trim(),
-        ].join("|");
+        // Key uses JSON serialisation (collision-safe; see buildPlacesCacheKey).
+        const placesCacheKey = buildPlacesCacheKey(q || "", destination || "", category || "");
         const cachedEntry = placesResultCache.get(placesCacheKey);
         if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
           // Cache HIT — push cached rows into results and skip the API call.
@@ -5999,7 +6029,9 @@ router.get("/api/search/experiences", async (req, res) => {
               }
               // Store in cache (including ZERO_RESULTS — an empty array is a
               // valid cached answer; saves a redundant API hit for the same query).
-              placesResultCache.set(placesCacheKey, {
+              // placesResultCacheSet sweeps expired entries and enforces the cap
+              // before inserting, preventing unbounded memory growth.
+              placesResultCacheSet(placesCacheKey, {
                 results: freshPlacesRows,
                 expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
               });
