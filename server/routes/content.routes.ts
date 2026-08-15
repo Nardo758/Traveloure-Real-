@@ -5822,10 +5822,12 @@ router.get("/api/search/experiences", async (req, res) => {
       const { q: _q, destination: _destination, category: _category, sources } = req.query as Record<string, string>;
       // Normalise all three search axes once, up-front, so the cache key and
       // the Places URL construction always use identical canonical values.
-      // category is lower-cased so catToType/catDefaultQuery lookups are case-insensitive.
-      const q           = (_q           || "").trim();
-      const destination = (_destination || "").trim();
-      const category    = (_category    || "").trim().toLowerCase();
+      // All three are lowercased so "Kyoto"/"kyoto" and "Food Tour"/"food tour"
+      // share the same cache entry. Empty category is canonicalised to "all"
+      // (both produce the same Places request — no type filter, default query).
+      const q           = (_q           || "").trim().toLowerCase();
+      const destination = (_destination || "").trim().toLowerCase();
+      const category    = ((_category   || "").trim().toLowerCase()) || "all";
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
       }
