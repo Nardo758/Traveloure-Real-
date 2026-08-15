@@ -3,9 +3,13 @@
 /**
  * Popular Cities Content Seed
  *
- * Seeds hidden gems (8 per city) and at least one active providerServices
- * row for Tokyo, Kyoto, and Paris so the location feed is never empty in a
- * fresh environment.
+ * Seeds hidden gems so the location feed is never empty in a fresh environment.
+ * HIDDEN GEMS ONLY (ruling 117, §13): every entry is a REAL named place with real
+ * coordinates — editorial content, the platform's own TravelPulse scoring vocabulary.
+ * The former provider-services half (a fake bookable "seed provider" with fabricated
+ * review averages) was REMOVED by ruling 117: marketplace supply is never seeded —
+ * an empty service lane in a new market renders honestly and is the provider-
+ * acquisition funnel, not a gap to paper over.
  *
  * Each city has gems covering all four feed categories:
  *   Eat  — placeType includes: restaurant | cafe | dining | food
@@ -22,10 +26,9 @@
  */
 
 import { db } from "../db";
-import { travelPulseHiddenGems, providerServices, users } from "@shared/schema";
-import { and, eq, ilike, isNull, or } from "drizzle-orm";
+import { travelPulseHiddenGems } from "@shared/schema";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { logger } from "../infrastructure";
-import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
 
 interface GemSeed {
   city: string;
@@ -1392,134 +1395,410 @@ const HIDDEN_GEMS: GemSeed[] = [
     neighborhood: "south-bank",
     imageUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80",
   },
+
+  // ── VIETNAM (ruling 117 — decision-maker: "seed up-and-coming markets like Vietnam") ──
+  // Every place below is REAL and verifiable; coordinates are city-accurate approximations.
+  // No Stay entries: unlike the launch cities we have no vetted hidden stays to name, and a
+  // guessed hotel would violate §13 — the category is simply absent rather than fabricated.
+  // imageUrl is omitted throughout (no verified photo rights) — the feed renders imageless
+  // cards honestly.
+
+  // ── HANOI (3 Eat · 3 Do · 2 Photo) ──
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Cafe Giang", placeType: "cafe",
+    address: "39 Nguyen Huu Huan, Hoan Kiem, Hanoi",
+    latitude: "21.0339000", longitude: "105.8527000",
+    localRating: "4.6", touristMentions: 480, localMentions: 1200, gemScore: 74,
+    discoveryStatus: "emerging", daysUntilMainstream: 90,
+    description: "The birthplace of Hanoi egg coffee (ca phe trung), run by the founding family since 1946 — whipped egg yolk over dark robusta, served up a narrow staircase off the Old Quarter.",
+    whyLocalsLoveIt: "The original recipe, unchanged; locals take the upstairs corner seats tourists walk past.",
+    bestFor: ["coffee", "rainy mornings", "solo travel"],
+    priceRange: "$", neighborhood: "hoan-kiem",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Banh Cuon Gia Truyen Thanh Van", placeType: "restaurant",
+    address: "14 Hang Ga, Hoan Kiem, Hanoi",
+    latitude: "21.0353000", longitude: "105.8461000",
+    localRating: "4.5", touristMentions: 90, localMentions: 760, gemScore: 81,
+    discoveryStatus: "hidden", daysUntilMainstream: 240,
+    description: "Steamed rice-sheet rolls (banh cuon) made to order on cloth steamers at the front counter, filled with minced pork and wood-ear mushroom, eaten at dawn with fried shallots.",
+    whyLocalsLoveIt: "Breakfast counter theatre — the steamer never stops, and it is gone by late morning.",
+    bestFor: ["breakfast", "street food", "early risers"],
+    priceRange: "$", neighborhood: "hoan-kiem",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Tong Duy Tan food street", placeType: "food street",
+    address: "Tong Duy Tan, Hoan Kiem, Hanoi",
+    latitude: "21.0296000", longitude: "105.8442000",
+    localRating: "4.3", touristMentions: 150, localMentions: 900, gemScore: 72,
+    discoveryStatus: "emerging", daysUntilMainstream: 150,
+    description: "Hanoi's designated 24-hour eating street — ga tan (medicinal braised chicken), pho cuon and late-night hotpot, at its best after 10pm when the kitchens cook for locals.",
+    whyLocalsLoveIt: "The only street where everything is still open at 2am, and the ga tan broth is winter medicine.",
+    bestFor: ["late night", "street food", "groups"],
+    priceRange: "$", neighborhood: "hoan-kiem",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Quang Ba flower market at dawn", placeType: "market",
+    address: "Au Co, Tay Ho, Hanoi",
+    latitude: "21.0705000", longitude: "105.8280000",
+    localRating: "4.7", touristMentions: 60, localMentions: 540, gemScore: 86,
+    discoveryStatus: "hidden", daysUntilMainstream: 300,
+    description: "Hanoi's wholesale flower market, busiest between 3am and 6am — motorbikes stacked with lotus, lilies and chrysanthemums under sodium lights on the West Lake dyke road.",
+    whyLocalsLoveIt: "Where every flower shop in the city buys before sunrise; go once and you never forget the smell.",
+    bestFor: ["sunrise", "photography", "off the path"],
+    priceRange: "$", neighborhood: "tay-ho",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Phung Hung mural street", placeType: "attraction",
+    address: "Phung Hung, Hoan Kiem, Hanoi",
+    latitude: "21.0362000", longitude: "105.8440000",
+    localRating: "4.2", touristMentions: 200, localMentions: 480, gemScore: 68,
+    discoveryStatus: "emerging", daysUntilMainstream: 120,
+    description: "The railway-viaduct arches along Phung Hung painted as a public gallery of old-Hanoi scenes — tram cars, street vendors, Tet flower markets — beside the real Long Bien rail line.",
+    whyLocalsLoveIt: "Weekend ao dai photo shoots and grandparents pointing at the Hanoi they grew up in.",
+    bestFor: ["walking", "photography", "families"],
+    priceRange: "$", neighborhood: "hoan-kiem",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Long Bien Bridge sunrise walk", placeType: "viewpoint",
+    address: "Long Bien Bridge, Hanoi",
+    latitude: "21.0435000", longitude: "105.8590000",
+    localRating: "4.6", touristMentions: 260, localMentions: 700, gemScore: 76,
+    discoveryStatus: "emerging", daysUntilMainstream: 180,
+    description: "The 1902 Eiffel-era cantilever bridge across the Red River — walk the pedestrian lane at first light as trains rattle past and farmers carry produce in from the banana groves.",
+    whyLocalsLoveIt: "The bridge survived the war and the city grew around it; sunrise here is Hanoi's quietest hour.",
+    bestFor: ["sunrise", "photography", "history"],
+    priceRange: "$", neighborhood: "long-bien",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Red River banana island rock field (Bai da song Hong)", placeType: "photo spot",
+    address: "Ngoc Thuy banks, Red River, Hanoi",
+    latitude: "21.0600000", longitude: "105.8300000",
+    localRating: "4.1", touristMentions: 30, localMentions: 390, gemScore: 79,
+    discoveryStatus: "hidden", daysUntilMainstream: 240,
+    description: "A stretch of river flats and gardens below the dyke where Hanoians come for engagement photos among reeds, banana palms and the river light — ten minutes from the Old Quarter, a world away.",
+    whyLocalsLoveIt: "Golden-hour picnics with the city skyline behind the reeds.",
+    bestFor: ["golden hour", "photography", "couples"],
+    priceRange: "$", neighborhood: "tay-ho",
+  },
+  {
+    city: "Hanoi", country: "Vietnam",
+    placeName: "Hanoi Ceramic Mosaic Mural road", placeType: "attraction",
+    address: "Au Co - Nghi Tam dyke road, Hanoi",
+    latitude: "21.0620000", longitude: "105.8360000",
+    localRating: "4.0", touristMentions: 110, localMentions: 350, gemScore: 66,
+    discoveryStatus: "emerging", daysUntilMainstream: 200,
+    description: "A four-kilometre ceramic mosaic along the Red River dyke — one of the world's largest — telling Vietnam's history from Dong Son drums to modern Hanoi, best seen slowly by bicycle.",
+    whyLocalsLoveIt: "Made for the city's 1000th birthday; every neighborhood contributed a panel.",
+    bestFor: ["cycling", "history", "photography"],
+    priceRange: "$", neighborhood: "tay-ho",
+  },
+
+  // ── DA NANG (3 Eat · 3 Do · 2 Photo) ──
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Banh Xeo Ba Duong", placeType: "restaurant",
+    address: "K280/23 Hoang Dieu, Hai Chau, Da Nang",
+    latitude: "16.0590000", longitude: "108.2170000",
+    localRating: "4.6", touristMentions: 140, localMentions: 980, gemScore: 80,
+    discoveryStatus: "hidden", daysUntilMainstream: 200,
+    description: "Down a lane off Hoang Dieu, the city's benchmark banh xeo — turmeric crepes fried to order, rolled in rice paper with herbs and dipped in the house peanut-liver sauce.",
+    whyLocalsLoveIt: "The alley address filters out anyone not serious; the nem lui skewers are the move.",
+    bestFor: ["dinner", "street food", "groups"],
+    priceRange: "$", neighborhood: "hai-chau",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Mi Quang 1A", placeType: "restaurant",
+    address: "1 Hai Phong, Hai Chau, Da Nang",
+    latitude: "16.0740000", longitude: "108.2210000",
+    localRating: "4.4", touristMentions: 180, localMentions: 850, gemScore: 71,
+    discoveryStatus: "emerging", daysUntilMainstream: 150,
+    description: "The classic address for the region's signature dish — mi quang turmeric noodles with shrimp, pork and rice crackers, served since the 1970s and still packed with office workers at lunch.",
+    whyLocalsLoveIt: "This is the bowl Da Nang people bring visiting relatives to first.",
+    bestFor: ["lunch", "local classics", "first-timers"],
+    priceRange: "$", neighborhood: "hai-chau",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Con Market street-food lane", placeType: "market",
+    address: "Cho Con, 269 Ong Ich Khiem, Hai Chau, Da Nang",
+    latitude: "16.0678000", longitude: "108.2140000",
+    localRating: "4.3", touristMentions: 220, localMentions: 1100, gemScore: 69,
+    discoveryStatus: "emerging", daysUntilMainstream: 120,
+    description: "The food lanes inside Da Nang's oldest market — banh beo, che sweet soups, quang-style noodles and grilled rice paper, eaten on plastic stools among the fabric stalls.",
+    whyLocalsLoveIt: "A dozen dishes in one sitting for the price of one beach-road main.",
+    bestFor: ["grazing", "budget", "rainy days"],
+    priceRange: "$", neighborhood: "hai-chau",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Nam O fishing village", placeType: "activity",
+    address: "Nam O, Lien Chieu, Da Nang",
+    latitude: "16.1130000", longitude: "108.1290000",
+    localRating: "4.5", touristMentions: 40, localMentions: 420, gemScore: 84,
+    discoveryStatus: "hidden", daysUntilMainstream: 300,
+    description: "The village that invented Nam O fish sauce, at the foot of the Hai Van pass — dawn fish auctions on the beach, a coral reef offshore in the dry season, and mam nem sold from family courtyards.",
+    whyLocalsLoveIt: "The reef at Nam O rocks turns emerald in April–August and most of the city has still never been.",
+    bestFor: ["sunrise", "culture", "off the path"],
+    priceRange: "$", neighborhood: "lien-chieu",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Son Tra peninsula coast road", placeType: "activity",
+    address: "Hoang Sa road, Son Tra, Da Nang",
+    latitude: "16.1000000", longitude: "108.2780000",
+    localRating: "4.7", touristMentions: 380, localMentions: 760, gemScore: 73,
+    discoveryStatus: "emerging", daysUntilMainstream: 150,
+    description: "The jungle headland locals call Monkey Mountain — a coast road of empty coves past the Linh Ung pagoda, home to the endangered red-shanked douc langur; go by motorbike before 8am.",
+    whyLocalsLoveIt: "Ten minutes from the beach strip and you can have a cove to yourself on a weekday.",
+    bestFor: ["motorbike", "nature", "swimming"],
+    priceRange: "$", neighborhood: "son-tra",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Man Thai beach basket boats at dawn", placeType: "photo spot",
+    address: "Man Thai beach, Son Tra, Da Nang",
+    latitude: "16.0830000", longitude: "108.2520000",
+    localRating: "4.4", touristMentions: 50, localMentions: 380, gemScore: 82,
+    discoveryStatus: "hidden", daysUntilMainstream: 240,
+    description: "The fishing end of the city beach — round thung chai basket boats coming in at first light, nets sorted on the sand, and the day's catch sold straight off the boats.",
+    whyLocalsLoveIt: "The working beach the resort strip forgot; the light at 5:30am is the photograph.",
+    bestFor: ["sunrise", "photography", "culture"],
+    priceRange: "$", neighborhood: "son-tra",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Hai Van Pass north viewpoint", placeType: "viewpoint",
+    address: "Hai Van Pass, QL1A, Da Nang",
+    latitude: "16.2000000", longitude: "108.1130000",
+    localRating: "4.8", touristMentions: 900, localMentions: 600, gemScore: 65,
+    discoveryStatus: "trending", daysUntilMainstream: 60,
+    description: "The 'ocean cloud pass' between Da Nang and Hue — brick war-era gate towers at the summit, and a hairpin coast view that earns the motorbike ride up.",
+    whyLocalsLoveIt: "Da Nang side up at dawn beats the tour-bus hour by a full morning.",
+    bestFor: ["motorbike", "views", "day trips"],
+    priceRange: "$", neighborhood: "lien-chieu",
+  },
+  {
+    city: "Da Nang", country: "Vietnam",
+    placeName: "Thanh Khe fish sauce lane breakfast", placeType: "food",
+    address: "Nguyen Tat Thanh coastal road, Thanh Khe, Da Nang",
+    latitude: "16.0770000", longitude: "108.1900000",
+    localRating: "4.2", touristMentions: 20, localMentions: 310, gemScore: 78,
+    discoveryStatus: "hidden", daysUntilMainstream: 300,
+    description: "The bay-side stretch where fishing families sell bun cha ca (fish-cake noodle soup) from front rooms facing the water — the fish came off the boats an hour earlier.",
+    whyLocalsLoveIt: "The broth is judged by fishermen, which keeps everyone honest.",
+    bestFor: ["breakfast", "seafood", "budget"],
+    priceRange: "$", neighborhood: "thanh-khe",
+  },
+
+  // ── HOI AN (3 Eat · 3 Do · 2 Photo) ──
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Banh Mi Madam Khanh", placeType: "restaurant",
+    address: "115 Tran Cao Van, Hoi An",
+    latitude: "15.8830000", longitude: "108.3250000",
+    localRating: "4.5", touristMentions: 520, localMentions: 640, gemScore: 67,
+    discoveryStatus: "trending", daysUntilMainstream: 60,
+    description: "'The Banh Mi Queen' — a family stall a block outside the tourist core, layering pate, herbs, papaya and five sauces into the town's benchmark sandwich since the 1980s.",
+    whyLocalsLoveIt: "Still assembled by the founding family, still under two dollars.",
+    bestFor: ["lunch", "street food", "budget"],
+    priceRange: "$", neighborhood: "cam-pho",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Cao Lau Thanh", placeType: "restaurant",
+    address: "26 Thai Phien, Hoi An",
+    latitude: "15.8790000", longitude: "108.3300000",
+    localRating: "4.4", touristMentions: 90, localMentions: 520, gemScore: 77,
+    discoveryStatus: "hidden", daysUntilMainstream: 180,
+    description: "A no-sign family kitchen for Hoi An's own noodle — chewy cao lau made the old way, with char siu pork, greens and crisp croutons, in a dish that exists nowhere else in Vietnam.",
+    whyLocalsLoveIt: "Legend says real cao lau needs water from the town's ancient Ba Le well; this family still believes it.",
+    bestFor: ["lunch", "local classics", "food history"],
+    priceRange: "$", neighborhood: "minh-an",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Reaching Out Tea House", placeType: "cafe",
+    address: "131 Tran Phu, Hoi An",
+    latitude: "15.8770000", longitude: "108.3270000",
+    localRating: "4.8", touristMentions: 610, localMentions: 340, gemScore: 70,
+    discoveryStatus: "emerging", daysUntilMainstream: 90,
+    description: "A silent teahouse in a 200-year-old shophouse, staffed by deaf and speech-impaired hosts — orders pass on wooden message blocks, and the old town's noise stays outside.",
+    whyLocalsLoveIt: "A social enterprise the town is proud of, and the quietest room on the busiest street.",
+    bestFor: ["tea", "quiet", "meaningful travel"],
+    priceRange: "$$", neighborhood: "minh-an",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Tra Que vegetable village", placeType: "activity",
+    address: "Tra Que, Cam Ha, Hoi An",
+    latitude: "15.8990000", longitude: "108.3400000",
+    localRating: "4.5", touristMentions: 340, localMentions: 460, gemScore: 68,
+    discoveryStatus: "emerging", daysUntilMainstream: 120,
+    description: "The herb-garden village between the old town and An Bang beach — seaweed-composted beds worked by hand, reachable by bicycle through the rice paddies in fifteen minutes.",
+    whyLocalsLoveIt: "The mint and rau ram in every good Hoi An dish comes from these exact beds.",
+    bestFor: ["cycling", "food origins", "families"],
+    priceRange: "$", neighborhood: "cam-ha",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Cam Thanh coconut forest by basket boat", placeType: "activity",
+    address: "Cam Thanh, Hoi An",
+    latitude: "15.8660000", longitude: "108.3720000",
+    localRating: "4.2", touristMentions: 700, localMentions: 380, gemScore: 62,
+    discoveryStatus: "trending", daysUntilMainstream: 45,
+    description: "Seven hectares of water-coconut palms in the Thu Bon estuary, paddled in round basket boats — go early with a village rower rather than midday with the karaoke flotillas.",
+    whyLocalsLoveIt: "The palms hid resistance fighters in the war; the grandmothers who paddle you remember.",
+    bestFor: ["morning", "families", "slow travel"],
+    priceRange: "$$", neighborhood: "cam-thanh",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Hoi An riverfront fish market at dawn", placeType: "market",
+    address: "Bach Dang, Hoi An",
+    latitude: "15.8770000", longitude: "108.3310000",
+    localRating: "4.6", touristMentions: 80, localMentions: 540, gemScore: 83,
+    discoveryStatus: "hidden", daysUntilMainstream: 240,
+    description: "Before the lanterns switch on for tourists, the same riverfront hosts the town's real economy — boats unloading at 5am, headlamp auctions, and the day's cao lau pork changing hands.",
+    whyLocalsLoveIt: "The only hour when the ancient town belongs to the people who live in it.",
+    bestFor: ["sunrise", "photography", "culture"],
+    priceRange: "$", neighborhood: "minh-an",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "An Bang beach north end", placeType: "photo spot",
+    address: "An Bang, Cam An, Hoi An",
+    latitude: "15.9050000", longitude: "108.3390000",
+    localRating: "4.4", touristMentions: 450, localMentions: 520, gemScore: 66,
+    discoveryStatus: "emerging", daysUntilMainstream: 90,
+    description: "Walk ten minutes north of the main beach entrance and the sunbed rows give way to fishing-family shacks, basket boats and an empty horizon toward the Cham Islands.",
+    whyLocalsLoveIt: "Same beach, none of the crowd — and the seafood shacks charge village prices.",
+    bestFor: ["swimming", "seafood", "sunset"],
+    priceRange: "$", neighborhood: "cam-an",
+  },
+  {
+    city: "Hoi An", country: "Vietnam",
+    placeName: "Tan Thanh beach weekend flea market", placeType: "market",
+    address: "Tan Thanh beach, Cam An, Hoi An",
+    latitude: "15.9010000", longitude: "108.3360000",
+    localRating: "4.1", touristMentions: 60, localMentions: 290, gemScore: 75,
+    discoveryStatus: "hidden", daysUntilMainstream: 180,
+    description: "A Saturday-morning beachfront market of local makers — ceramics, secondhand ao dai, natural dyes and coffee carts on the sand, started by the neighborhood after the pandemic.",
+    whyLocalsLoveIt: "Hoi An's young creative scene in one place, with a swim after.",
+    bestFor: ["weekends", "shopping", "coffee"],
+    priceRange: "$$", neighborhood: "cam-an",
+  },
+
+  // ── HO CHI MINH CITY (3 Eat · 3 Do · 2 Photo) ──
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "The Lunch Lady (Nguyen Thi Thanh)", placeType: "restaurant",
+    address: "23 Hoang Sa, Da Kao, District 1, Ho Chi Minh City",
+    latitude: "10.7920000", longitude: "106.6980000",
+    localRating: "4.5", touristMentions: 640, localMentions: 720, gemScore: 64,
+    discoveryStatus: "trending", daysUntilMainstream: 60,
+    description: "A canal-side stall with a different noodle soup every day of the week — bun bo Hue on Monday, bun mam on Friday — made famous abroad but still cooking for the neighborhood first.",
+    whyLocalsLoveIt: "You eat whatever day it is; regulars plan their week around Thursday's bun thai.",
+    bestFor: ["lunch", "street food", "adventurous eaters"],
+    priceRange: "$", neighborhood: "da-kao",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "Cheo Leo Cafe", placeType: "cafe",
+    address: "36/12 Nguyen Thien Thuat, District 3, Ho Chi Minh City",
+    latitude: "10.7680000", longitude: "106.6810000",
+    localRating: "4.7", touristMentions: 70, localMentions: 610, gemScore: 85,
+    discoveryStatus: "hidden", daysUntilMainstream: 240,
+    description: "Saigon's oldest cafe (1938), third-generation, still brewing ca phe vot through cloth 'socks' in clay pots over charcoal — deep in an alley the width of a motorbike.",
+    whyLocalsLoveIt: "The last of the true vot houses; the owner will show you the 80-year-old roasting pan.",
+    bestFor: ["coffee", "history", "mornings"],
+    priceRange: "$", neighborhood: "district-3",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "Thanh Da island evening food strip", placeType: "food street",
+    address: "Thanh Da, Binh Thanh, Ho Chi Minh City",
+    latitude: "10.8280000", longitude: "106.7190000",
+    localRating: "4.2", touristMentions: 30, localMentions: 450, gemScore: 80,
+    discoveryStatus: "hidden", daysUntilMainstream: 300,
+    description: "A river-ringed peninsula ten minutes from the towers where Saigon goes for breeze and snails — oc restaurants, grilled rice-field rat for the brave, and hammock cafes on the water.",
+    whyLocalsLoveIt: "The city's cheapest waterfront table, and the skyline view belongs to the locals.",
+    bestFor: ["evening", "seafood", "off the path"],
+    priceRange: "$", neighborhood: "binh-thanh",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "Hao Si Phuong heritage alley", placeType: "attraction",
+    address: "206 Tran Hung Dao B, District 5, Ho Chi Minh City",
+    latitude: "10.7520000", longitude: "106.6620000",
+    localRating: "4.3", touristMentions: 120, localMentions: 380, gemScore: 74,
+    discoveryStatus: "emerging", daysUntilMainstream: 120,
+    description: "A century-old double-decker Chinese tenement alley in Cho Lon — pastel balconies, shrine doors and shared staircases that have housed the same families for four generations.",
+    whyLocalsLoveIt: "Cho Lon's living room; residents tolerate photographers who say hello first.",
+    bestFor: ["photography", "history", "walking"],
+    priceRange: "$", neighborhood: "cho-lon",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "Binh Tay Market (Cho Lon)", placeType: "market",
+    address: "57A Thap Muoi, District 6, Ho Chi Minh City",
+    latitude: "10.7500000", longitude: "106.6510000",
+    localRating: "4.2", touristMentions: 380, localMentions: 820, gemScore: 63,
+    discoveryStatus: "emerging", daysUntilMainstream: 90,
+    description: "The 1920s clock-tower market at the heart of Chinatown — wholesale spice pyramids, dried seafood, and a courtyard shrine to the founder, with a food floor tourists rarely find.",
+    whyLocalsLoveIt: "Ben Thanh sells to visitors; Binh Tay sells to the city.",
+    bestFor: ["markets", "spices", "breakfast"],
+    priceRange: "$", neighborhood: "cho-lon",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "Giac Lam Pagoda", placeType: "temple",
+    address: "565 Lac Long Quan, Tan Binh, Ho Chi Minh City",
+    latitude: "10.7920000", longitude: "106.6500000",
+    localRating: "4.6", touristMentions: 90, localMentions: 470, gemScore: 78,
+    discoveryStatus: "hidden", daysUntilMainstream: 240,
+    description: "The city's oldest pagoda (1744) — a courtyard of frangipani and bodhi trees, 98 carved hardwood pillars and gilded arhats, with none of the downtown temple crowds.",
+    whyLocalsLoveIt: "Where Saigon families actually come to pray on the 1st and 15th of the lunar month.",
+    bestFor: ["quiet", "architecture", "culture"],
+    priceRange: "$", neighborhood: "tan-binh",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "14 Ton That Dam old apartment cafes", placeType: "photo spot",
+    address: "14 Ton That Dam, District 1, Ho Chi Minh City",
+    latitude: "10.7710000", longitude: "106.7040000",
+    localRating: "4.3", touristMentions: 260, localMentions: 520, gemScore: 69,
+    discoveryStatus: "emerging", daysUntilMainstream: 90,
+    description: "A crumbling 1960s apartment block colonized floor-by-floor by independent cafes, vintage shops and studios — climb the bare stairwell and pick a balcony over the old bank district.",
+    whyLocalsLoveIt: "Each floor is someone's twenty-something dream; the stairwell graffiti is part of the lease.",
+    bestFor: ["coffee", "photography", "rainy afternoons"],
+    priceRange: "$$", neighborhood: "district-1",
+  },
+  {
+    city: "Ho Chi Minh City", country: "Vietnam",
+    placeName: "Saigon riverside at Thu Thiem crossing", placeType: "viewpoint",
+    address: "Thu Thiem riverside park, Thu Duc, Ho Chi Minh City",
+    latitude: "10.7830000", longitude: "106.7220000",
+    localRating: "4.4", touristMentions: 150, localMentions: 680, gemScore: 71,
+    discoveryStatus: "emerging", daysUntilMainstream: 120,
+    description: "The grass bank across the river from District 1 — the full skyline from Bitexco to Landmark 81 at dusk, food carts, kite flyers and the cross-river breeze the old city lost.",
+    whyLocalsLoveIt: "Saigon's free front-row seat to its own skyline; sunset picnics without a rooftop-bar bill.",
+    bestFor: ["sunset", "picnics", "skyline photos"],
+    priceRange: "$", neighborhood: "thu-thiem",
+  },
+
 ];
 
-interface ServiceSeed {
-  serviceName: string;
-  shortDescription: string;
-  description: string;
-  serviceType: string;
-  price: string;
-  location: string;
-  neighborhood: string;
-  deliveryMethod: string;
-  deliveryTimeframe: string;
-  whatIncluded: string[];
-  averageRating: string;
-}
-
-const CITY_SERVICES: ServiceSeed[] = [
-  {
-    serviceName: "Tokyo Hidden Bars Night Walk",
-    shortDescription: "A guided evening through Golden Gai, Memory Lane, and secret basement bars",
-    description: "Your local guide leads a 3-hour evening tour through Tokyo's most atmospheric bar districts — Golden Gai's 200 micro-bars, Omoide Yokocho (Memory Lane) yakitori under the Shinjuku tracks, and one or two secret spots known only to regulars. Includes first-round drinks at two venues.",
-    serviceType: "experience",
-    price: "89.00",
-    location: "Tokyo, Japan",
-    neighborhood: "shinjuku",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "3 hours (starts 8pm)",
-    whatIncluded: ["3-hour guided walk", "First drinks at 2 venues", "Door-to-door bar tips", "Pocket neighborhood map", "Post-tour recommendations list"],
-    averageRating: "4.9",
-  },
-  {
-    serviceName: "Kyoto Dawn Temple Private Tour",
-    shortDescription: "Beat the crowds with a private guide at Fushimi Inari and Gion at sunrise",
-    description: "Begin at 5am at Fushimi Inari before the first tour buses arrive, then walk through the lantern-lit streets of Gion as geiko return from evening engagements. Finishes with a private matcha ceremony at a neighborhood tea room. Limited to 4 guests.",
-    serviceType: "experience",
-    price: "120.00",
-    location: "Kyoto, Japan",
-    neighborhood: "gion",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "4 hours (starts 5am)",
-    whatIncluded: ["Private licensed guide", "Fushimi Inari summit hike", "Gion dawn walk", "Private matcha ceremony", "Transport between sites"],
-    averageRating: "5.0",
-  },
-  {
-    serviceName: "Paris Secret Passages and Natural Wine Tour",
-    shortDescription: "Explore 19th-century covered arcades and taste cutting-edge natural wines",
-    description: "A 3-hour afternoon experience combining Paris's hidden glass-roofed shopping arcades (Vivienne, Colbert, Jouffroy) with stops at two of the city's best natural-wine bars. Your guide is a sommelier and former Galeries Lafayette buyer.",
-    serviceType: "experience",
-    price: "95.00",
-    location: "Paris, France",
-    neighborhood: "le-marais",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "3 hours (2pm–5pm)",
-    whatIncluded: ["Licensed sommelier guide", "Entry to 3 covered passages", "Natural wine tastings at 2 bars", "Cheese pairing", "Take-home wine map"],
-    averageRating: "4.8",
-  },
-  {
-    serviceName: "Barcelona Hidden Barrios Food and Vermouth Walk",
-    shortDescription: "A tapas and vermouth crawl through Gràcia and El Born away from La Rambla",
-    description: "A 3-hour morning food walk through two neighbourhoods tourists rarely explore properly — Gràcia's local market and bar scene and El Born's medieval cava bars. Includes vermouth at two family-run bars, pintxos at a Basque counter, and seasonal produce tasting at Mercat de l'Abaceria.",
-    serviceType: "experience",
-    price: "79.00",
-    location: "Barcelona, Spain",
-    neighborhood: "gracia",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "3 hours (10am–1pm)",
-    whatIncluded: ["Local guide", "Vermouth at 2 bars", "Pintxos tasting", "Market visit and seasonal produce", "Neighbourhood map with recommendations"],
-    averageRating: "4.9",
-  },
-  {
-    serviceName: "Bali Sunrise Rice Terrace and Temple Private Tour",
-    shortDescription: "Catch Jatiluwih terraces at dawn then Tanah Lot at dusk — Bali's full visual arc",
-    description: "A full-day private tour combining a pre-dawn drive to Jatiluwih UNESCO rice terraces for sunrise photography, a traditional Balinese cooking class in a local family compound, and the Tanah Lot sea temple at golden hour. Maximum 4 guests.",
-    serviceType: "experience",
-    price: "149.00",
-    location: "Bali, Indonesia",
-    neighborhood: "ubud",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "Full day (5am–7pm)",
-    whatIncluded: ["Private driver-guide", "Jatiluwih sunrise walk", "Balinese cooking class", "Lunch with host family", "Tanah Lot sunset entry"],
-    averageRating: "5.0",
-  },
-  {
-    serviceName: "New York Off-Grid Brooklyn Food Tour",
-    shortDescription: "The Brooklyn food stops New York insiders actually visit — no tourist traps",
-    description: "A 4-hour Saturday food tour starting at Smorgasburg on the Williamsburg waterfront, continuing through the neighbourhood for a Di Fara-style slice, a Russ & Daughters bagel in the Lower East Side, and finishing with craft beer at a Red Hook brewpub. Small groups of 6.",
-    serviceType: "experience",
-    price: "99.00",
-    location: "New York, USA",
-    neighborhood: "williamsburg",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "4 hours (10am–2pm, Saturdays)",
-    whatIncluded: ["Local food guide", "Smorgasburg tastings", "Pizza and bagel stops", "Craft beer finish", "Neighbourhood food map"],
-    averageRating: "4.8",
-  },
-  {
-    serviceName: "Rome Trastevere and Testaccio Neighbourhood Food Walk",
-    shortDescription: "Roman cucina povera and neighbourhood history in two of Rome's most authentic districts",
-    description: "A 3.5-hour evening walk through Trastevere and Testaccio — the two neighbourhoods where Roman food culture has changed least. Includes Mercato Testaccio porchetta sandwich, supplì from a local bar, cacio e pepe tasting, and Aperol spritz in a piazza locals use daily.",
-    serviceType: "experience",
-    price: "85.00",
-    location: "Rome, Italy",
-    neighborhood: "trastevere",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "3.5 hours (5pm–8:30pm)",
-    whatIncluded: ["Local Roman guide", "Mercato Testaccio visit", "Porchetta and supplì tastings", "Cacio e pepe stop", "Aperitivo in local piazza"],
-    averageRating: "4.9",
-  },
-  {
-    serviceName: "London East End Food and Street Art Morning Walk",
-    shortDescription: "Shoreditch street art, Columbia Road flowers, and Brick Lane bagels before the crowds",
-    description: "A 3-hour Sunday morning walk starting at the Columbia Road Flower Market at 8am, through Shoreditch's ever-changing street art murals, to Brick Lane for a salt beef bagel and coffee, finishing with a guided look at the Leake Street graffiti tunnel under Waterloo. Maximum 8 guests.",
-    serviceType: "experience",
-    price: "69.00",
-    location: "London, United Kingdom",
-    neighborhood: "shoreditch",
-    deliveryMethod: "in_person",
-    deliveryTimeframe: "3 hours (8am–11am, Sundays)",
-    whatIncluded: ["Local guide", "Columbia Road Market", "Street art tour", "Brick Lane bagel", "Leake Street tunnel finish"],
-    averageRating: "4.8",
-  },
-];
-
-const SEED_PROVIDER_EMAIL = "seed-provider@traveloure.internal";
-
-export async function seedPopularCitiesContent(): Promise<{ gems: number; services: number }> {
+export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
   let gemsCreated = 0;
-  let servicesCreated = 0;
 
   // ── Hidden Gems ──────────────────────────────────────────────────────────
   for (const gem of HIDDEN_GEMS) {
@@ -1578,89 +1857,14 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number; servic
     gemsCreated++;
   }
 
-  // ── Provider Services ────────────────────────────────────────────────────
-  // Resolve or create a deterministic seed provider user so this works in
-  // completely fresh environments where no users have been created yet.
-  let userId: string;
-
-  const existingUser = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, SEED_PROVIDER_EMAIL))
-    .limit(1);
-
-  if (existingUser.length > 0) {
-    userId = existingUser[0].id;
-  } else {
-    const anyUser = await db.select({ id: users.id }).from(users).limit(1);
-    if (anyUser.length > 0) {
-      userId = anyUser[0].id;
-    } else {
-      const [created] = await db.insert(users).values({
-        email: SEED_PROVIDER_EMAIL,
-        firstName: "Traveloure",
-        lastName: "Seed Provider",
-        // Canonical vocabulary (shared/roles.ts): "service_provider" — the bare "provider"
-        // this seed previously wrote is not a real stored role anywhere in the platform.
-        role: "service_provider",
-      }).returning({ id: users.id });
-      userId = created.id;
-    }
-  }
-
-  for (const svc of CITY_SERVICES) {
-    const cityKeyword = svc.location.split(",")[0].trim();
-    const existing = await db
-      .select({ id: providerServices.id })
-      .from(providerServices)
-      .where(
-        and(
-          ilike(providerServices.location, `%${cityKeyword}%`),
-          eq(providerServices.serviceName, svc.serviceName),
-        ),
-      )
-      .limit(1);
-
-    if (existing.length > 0) continue;
-
-    // Migration-129 pattern applied at insert time: resolve the neighborhood
-    // slug to its city_neighborhoods centroid so this row isn't born
-    // NULL-coordinate (never fabricates — a miss just leaves it NULL).
-    const centroid = await resolveNeighborhoodCentroid(svc.neighborhood);
-
-    await db.insert(providerServices).values({
-      userId,
-      serviceName: svc.serviceName,
-      shortDescription: svc.shortDescription,
-      description: svc.description,
-      serviceType: svc.serviceType,
-      price: svc.price,
-      location: svc.location,
-      neighborhood: svc.neighborhood,
-      deliveryMethod: svc.deliveryMethod,
-      deliveryTimeframe: svc.deliveryTimeframe,
-      whatIncluded: svc.whatIncluded,
-      averageRating: svc.averageRating,
-      status: "active",
-      isFeatured: true,
-      ...(centroid && {
-        latitude: centroid.latitude,
-        longitude: centroid.longitude,
-        city: centroid.city,
-        locationPrecision: centroid.locationPrecision,
-      }),
-    });
-    servicesCreated++;
-  }
-
-  return { gems: gemsCreated, services: servicesCreated };
+  return { gems: gemsCreated };
 }
 
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 if (isMainModule) {
   seedPopularCitiesContent()
-    .then(({ gems, services }) => {
-      console.log(`[popular-cities-content] Seed complete: ${gems} gems, ${services} services inserted.`);
+    .then(({ gems }) => {
+      console.log(`[popular-cities-content] Seed complete: ${gems} gems inserted.`);
       process.exit(0);
     })
     .catch((err) => {
