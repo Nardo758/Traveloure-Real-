@@ -104,6 +104,7 @@ type Service = {
   providerLastName?: string | null;
   providerImageUrl?: string | null;
   providerRating?: string | null;
+  providerBusinessName?: string | null;
 };
 
 type DiscoverResult = {
@@ -216,12 +217,16 @@ function ServiceCard({
     return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
   };
 
-  // Build real provider display name from API data
-  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || "Provider";
+  // Build real provider display name from API data.
+  // Fallback chain: firstName+lastName → businessName (from service_provider_forms) → "Provider"
+  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || service.providerBusinessName || "Provider";
   const providerImageUrl = service.providerImageUrl || null;
 
-  // Initials fallback for providers without a profile photo
-  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase() || "P";
+  // Initials fallback for providers without a profile photo.
+  // When no first/last name is set, use the first letter of the business name instead.
+  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase()
+    || service.providerBusinessName?.[0]?.toUpperCase()
+    || "P";
 
   const getStatusColor = (rating: number) => {
     if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
