@@ -3582,12 +3582,34 @@ export default function ExpertWorkspace() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [noteSaveStatus, travelerNoteSaveStatus]);
 
-  // ── safeNavigate: intercept in-app navigation while save is pending ──
-  const safeNavigate = (path: string) => {
-    if (noteSaveStatus === "saving" || travelerNoteSaveStatus === "saving") {
-      const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
-      if (!confirmed) return;
+  // ── safeNavigate: flush pending note saves before navigating ──
+  // Instead of warning the expert, we immediately fire the mutation (cancelling the debounce
+  // timer first) and await completion before changing the route. A brief toast confirms the
+  // flush so the expert knows their work was preserved.
+  const safeNavigate = async (path: string) => {
+    const flushes: Promise<unknown>[] = [];
+
+    if (noteSaveStatus === "saving") {
+      if (notesDebounceRef.current) {
+        clearTimeout(notesDebounceRef.current);
+        notesDebounceRef.current = null;
+      }
+      flushes.push(autoSaveNotesMutation.mutateAsync(noteText).catch(() => {}));
     }
+
+    if (travelerNoteSaveStatus === "saving") {
+      if (travelerNotesDebounceRef.current) {
+        clearTimeout(travelerNotesDebounceRef.current);
+        travelerNotesDebounceRef.current = null;
+      }
+      flushes.push(autoSaveTravelerNoteMutation.mutateAsync(travelerNoteText).catch(() => {}));
+    }
+
+    if (flushes.length > 0) {
+      await Promise.all(flushes);
+      toast({ title: "Notes saved", description: "Your notes were saved before leaving." });
+    }
+
     setLocation(path);
   };
 
