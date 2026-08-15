@@ -91,11 +91,14 @@ test.describe('/provider/distribute — Direct · Social · state strip · Promo
     // ── D2: Direct-link — a real link + copy affordance, caption hold ───────────────────────────
     const directCard = page.getByTestId('card-channel-direct');
     await expect(directCard).toBeVisible();
-    const getLinkBtn = page.getByTestId('button-direct-get-link');
-    if (await getLinkBtn.isVisible().catch(() => false)) {
-      await getLinkBtn.click();
-    }
-    // The link and its Copy affordance are shown once a code exists (minted now or already present).
+    // D-4 (ledger row 119): minting is NOT a step of its own any more — the separate "Get link"
+    // button is gone and the first ACTION mints inline. Its absence is the ruling, so assert it.
+    await expect(page.getByTestId('button-direct-get-link')).toHaveCount(0);
+    await expect(page.getByTestId('button-direct-copy')).toBeVisible();
+    // Clicking Copy mints the tracked /r/ link, then copies it. (A headless clipboard denial is
+    // caught by the component and does not block the mint — the URL still renders.)
+    await page.getByTestId('button-direct-copy').click();
+    // §13 holds: the URL text appears only once a real code exists.
     await expect(page.getByTestId('text-direct-url')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('text-direct-url')).toContainText('/r/');
     await expect(page.getByTestId('button-direct-copy')).toBeVisible();

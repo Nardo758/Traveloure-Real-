@@ -1,0 +1,234 @@
+name: Provider Console Gate
+
+# WHY THIS GATE EXISTS (the rot it stops).
+#
+# The repo has ~53 Playwright specs but only ~14 were referenced by any workflow. The rest were
+# committed, correct on the day they were written, and then never run again. On Aug 15 2026 that
+# bill came due: the Distribute/Catalog/Logistics conformance lanes (PRs #484–#487, ledger row
+# 119) renamed testids and copy that FOUR committed specs asserted on —
+#   · catalog-map-located.spec.ts   (unpinned rail → not-located list; count copy; add-a-pin chip)
+#   · service-logistics-step.spec.ts (segmented transport provision → the one D-9 toggle)
+#   · distribute-channels.spec.ts    (the D-4 "Get link" button that auto-mint removed)
+# — and all four PRs merged with 54/54 checks green, because nothing ran those specs. The specs
+# were repaired in the same PR that added this gate; the gate is what keeps them honest.
+#
+# SCOPE: the provider-console surfaces that the console-redesign rulings churn most (Catalog map
+# preview, Distribute channels, the ServiceForm branched steps + step-4 map authoring). These are
+# behaviour gates against a locally-built PR artifact on localhost:5000 — never the shared
+# deployed app — following the selection-controls-gate pattern, including its build-identity check.
+#
+# ANTI-VACUITY: `npx playwright test <name>` exits 0 when the name matches nothing, so a renamed
+# or deleted spec would turn this gate green while testing zero assertions. Every spec path is
+# therefore asserted to exist BEFORE Playwright is invoked, and the specs are passed as explicit
+# paths rather than substrings.
+#
+# DELIBERATELY NOT GATED YET — playwright/tests/catalog-preview-toggle.spec.ts. It asserts that
+# "Business Document Translation" is approved+DRAFT (so Preview shows 2 of the interpreter's 3
+# listings), but that service's row carries no explicit status in
+# server/seeds/phase-d-kyoto-vendors.seed.ts, and on the verification bench it is approved+ACTIVE
+# (3 cards → the count assertion fails). That is a seeded-fact question, not a regression from
+# the rulings this gate covers, and it could not be settled from a session-mutated bench. Filed
+# in QA_PUNCH_LIST; add it here once its premise is confirmed against a FRESH CI database.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  i18n-key-parity:
+    name: i18n-key-parity (logic gate, no DB or browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Assert spec file exists (i18n-key-parity)
+        run: |
+          if [ ! -f "playwright/tests/i18n-key-parity.spec.ts" ]; then
+            echo "::error file=.github/workflows/provider-console-gate.yml::Spec file not found: playwright/tests/i18n-key-parity.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+      - name: Locale key parity (en ⇄ ja, every namespace)
+        # Pure static analysis over client/src/locales — no server, no browser, no DB.
+        # A key added to en but not ja silently falls back to English (fallbackLng is
+        # deliberate, ruling 60); this supplies the detection that fallback hides.
+        run: npx playwright test playwright/tests/i18n-key-parity.spec.ts
+        env:
+          CI: 'true'
+
+  e2e-provider-console:
+    name: e2e-provider-console (DOM gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Assert every gated spec exists at its expected path
+        # See ANTI-VACUITY in the header: a missing path must fail LOUDLY here rather than
+        # silently reduce this gate to zero assertions.
+        #
+        # Fix when this fails: restore the spec to its path, OR update both this list and the
+        # "Provider-console DOM specs" step below to the new location.
+        run: |
+          set -euo pipefail
+          FAIL=0
+          for f in \
+            playwright/tests/catalog-map-located.spec.ts \
+            playwright/tests/distribute-channels.spec.ts \
+            playwright/tests/distribute-shell.spec.ts \
+            playwright/tests/service-logistics-step.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error file=.github/workflows/provider-console-gate.yml::Spec file not found: $f"
+              FAIL=1
+            else
+              echo "✅  $f"
+            fi
+          done
+          [ "$FAIL" -eq 0 ] || { echo "::error::One or more gated specs are missing."; exit 1; }
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Start dev server (PR artifact — localhost only)
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Stripe key stub — stripe.service.ts throws at import if this is unset. These specs
+          # touch no payment path; no real Stripe call is made.
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          E2E_AI_STUB: "1"
+          # Loopback-only rate-limit exemption (server/infrastructure/rate-limiter.ts), same as the
+          # auth-routes / discover-tabs / journey gates. Load-bearing here: this gate runs several
+          # spec files that each log in as the same fixture, and Playwright retries log in again —
+          # without it the auth limiter starts answering 429 and every retry fails at the door,
+          # masking the real first failure. (Observed on this gate's first run.)
+          RATE_LIMIT_LOOPBACK_SKIP: "1"
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server and seeding
+        # The gated specs authenticate as the BOOT-SEEDED provider
+        # kyoto-interpreter@traveloure.test (server/seeds/phase-d-kyoto-vendors.seed.ts) and read
+        # its seeded listings, so waiting for "ready":true (seeding complete) is load-bearing —
+        # not just a port check.
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+      - name: Verify build identity (artifact == PR commit)
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA. Tests would run against the wrong artifact."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA ✅"
+      - name: Provider-console DOM specs
+        # Explicit paths (not substrings) so a typo or a move fails loudly rather than matching
+        # nothing. Workers=1: several of these mutate the shared seeded provider's rows and
+        # restore them in a finally block, so they must not interleave.
+        run: |
+          npx playwright test --project=chromium --workers=1 \
+            playwright/tests/catalog-map-located.spec.ts \
+            playwright/tests/distribute-channels.spec.ts \
+            playwright/tests/distribute-shell.spec.ts \
+            playwright/tests/service-logistics-step.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-console-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR completion comment)
+    runs-on: ubuntu-latest
+    needs: [i18n-key-parity, e2e-provider-console]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Provider Console Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> **i18n-key-parity**: diffs the key sets of every en/ja locale namespace. A key added to en but not ja silently falls back to English — this is the detection that fallback hides.',
+              '> **e2e-provider-console**: Catalog map preview, Distribute channels and the ServiceForm branched steps (incl. step-4 map authoring) against a locally-built artifact on localhost:5000.',
+              '> These specs existed but ran in NO workflow until Aug 15 2026 — four merged PRs silently rotted three of them. A red gate here is a real console regression.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
