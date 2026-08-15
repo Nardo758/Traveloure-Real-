@@ -244,6 +244,49 @@ test.describe('Admin test-email — invalid email format', () => {
   );
 });
 
+// ── Suite D — Resend misconfiguration (502) shows error banner ─────────────────
+
+test.describe('Admin test-email — Resend not configured (502)', () => {
+  test(
+    'error banner appears when the backend returns 502 RESEND_API_KEY is not configured',
+    async ({ page }) => {
+      test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
+
+      await mockSupportingRoutes(page);
+
+      // Simulate what the real server returns when RESEND_API_KEY is absent.
+      let interceptorCalled = false;
+      await page.route('**/api/admin/system/test-email', async (route) => {
+        interceptorCalled = true;
+        expect(route.request().method()).toBe('POST');
+
+        await route.fulfill({
+          status: 502,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: false, error: 'RESEND_API_KEY is not configured' }),
+        });
+      });
+
+      await openSystemPage(page);
+
+      await page.getByTestId('button-send-test-email').click();
+
+      // The result banner must appear — not a blank screen or an infinite spinner.
+      const banner = page.getByTestId('test-email-result');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+
+      // The banner must NOT claim success.
+      await expect(banner).not.toContainText('Delivered successfully');
+
+      // The error text from the 502 body must be surfaced somewhere in the banner.
+      await expect(banner).toContainText('RESEND_API_KEY');
+
+      // Confirm the interceptor ran (not short-circuited).
+      expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
+    },
+  );
+});
+
 // ── Suite C — Empty field falls back to admin address ─────────────────────────
 
 test.describe('Admin test-email — empty field falls back to admin address', () => {
