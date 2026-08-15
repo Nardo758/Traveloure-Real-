@@ -36,17 +36,27 @@ interface CacheStatus {
   cacheDurationHours: number;
 }
 
-interface TravelpayoutsCacheEntry {
-  brand: string;
-  cacheKey: string;
+interface TravelpayoutsBrandKey {
+  cacheKey: string;       // full composite DB key: "brand::logicalKey"
+  refreshedAt: string | null;
   expiresAt: string;
-  lastRefreshedAt: string | null;
   isStale: boolean;
-  entryCount: number;
+}
+
+interface TravelpayoutsBrandStatus {
+  brand: string;
+  totalKeys: number;
+  staleKeys: number;
+  freshKeys: number;
+  lastRefreshedAt: string | null;
+  earliestExpiresAt: string | null;
+  latestExpiresAt: string | null;
+  isStale: boolean;
+  keys: TravelpayoutsBrandKey[];
 }
 
 interface TravelpayoutsCacheStatus {
-  brands: TravelpayoutsCacheEntry[];
+  brands: TravelpayoutsBrandStatus[];
   retrievedAt: string;
 }
 
@@ -977,7 +987,6 @@ export default function AdminData() {
                     <tr className="border-b border-gray-200">
                       <th className="text-left py-2 px-3 font-medium text-gray-600">Brand</th>
                       <th className="text-left py-2 px-3 font-medium text-gray-600">Cache key</th>
-                      <th className="text-left py-2 px-3 font-medium text-gray-600">Entries</th>
                       <th className="text-left py-2 px-3 font-medium text-gray-600">Last refreshed</th>
                       <th className="text-left py-2 px-3 font-medium text-gray-600">Expires</th>
                       <th className="text-left py-2 px-3 font-medium text-gray-600">Status</th>
@@ -985,54 +994,59 @@ export default function AdminData() {
                     </tr>
                   </thead>
                   <tbody>
-                    {tpCacheStatus.brands.map((entry) => {
-                      const rowKey = `${entry.brand}::${entry.cacheKey}`;
-                      const isPurging = purgingKey === rowKey;
-                      return (
-                        <tr
-                          key={rowKey}
-                          className="border-b border-gray-100 hover:bg-gray-50"
-                          data-testid={`row-tp-cache-${entry.brand}-${entry.cacheKey}`}
-                        >
-                          <td className="py-2 px-3 font-medium">{entry.brand}</td>
-                          <td className="py-2 px-3 text-gray-600 font-mono text-xs">{entry.cacheKey}</td>
-                          <td className="py-2 px-3 text-right">{entry.entryCount}</td>
-                          <td className="py-2 px-3 text-gray-500">
-                            {entry.lastRefreshedAt ? getTimeSince(entry.lastRefreshedAt) : "—"}
-                          </td>
-                          <td className="py-2 px-3 text-gray-500">
-                            {entry.expiresAt ? getTimeSince(entry.expiresAt) : "—"}
-                          </td>
-                          <td className="py-2 px-3">
-                            {entry.isStale ? (
-                              <Badge className="bg-red-100 text-red-700 border-red-200">Stale</Badge>
-                            ) : (
-                              <Badge className="bg-green-100 text-green-700 border-green-200">Fresh</Badge>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={isPurging}
-                              data-testid={`btn-purge-${entry.brand}-${entry.cacheKey}`}
-                              onClick={() => {
-                                setPurgingKey(rowKey);
-                                purgeCacheMutation.mutate({ brand: entry.brand, cacheKey: entry.cacheKey });
-                              }}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              {isPurging ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
+                    {tpCacheStatus.brands.flatMap((brandEntry) =>
+                      brandEntry.keys.map((keyEntry) => {
+                        // keyEntry.cacheKey is the composite DB key: "brand::logicalKey"
+                        // Use it as the unique row key and pass it verbatim to the purge endpoint.
+                        const rowKey = keyEntry.cacheKey;
+                        const isPurging = purgingKey === rowKey;
+                        return (
+                          <tr
+                            key={rowKey}
+                            className="border-b border-gray-100 hover:bg-gray-50"
+                            data-testid={`row-tp-cache-${rowKey}`}
+                          >
+                            <td className="py-2 px-3 font-medium">{brandEntry.brand}</td>
+                            <td className="py-2 px-3 text-gray-600 font-mono text-xs">{keyEntry.cacheKey}</td>
+                            <td className="py-2 px-3 text-gray-500">
+                              {keyEntry.refreshedAt ? getTimeSince(keyEntry.refreshedAt) : "—"}
+                            </td>
+                            <td className="py-2 px-3 text-gray-500">
+                              {getTimeSince(keyEntry.expiresAt)}
+                            </td>
+                            <td className="py-2 px-3">
+                              {keyEntry.isStale ? (
+                                <Badge className="bg-red-100 text-red-700 border-red-200">Stale</Badge>
                               ) : (
-                                <Trash2 className="w-3 h-3" />
+                                <Badge className="bg-green-100 text-green-700 border-green-200">Fresh</Badge>
                               )}
-                              <span className="ml-1">Purge</span>
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={isPurging}
+                                data-testid={`btn-purge-${rowKey}`}
+                                onClick={() => {
+                                  setPurgingKey(rowKey);
+                                  // Pass the full composite key; the endpoint strips the brand:: prefix
+                                  // before calling sharedCache.del to avoid double-prefixing.
+                                  purgeCacheMutation.mutate({ brand: brandEntry.brand, cacheKey: keyEntry.cacheKey });
+                                }}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                {isPurging ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3" />
+                                )}
+                                <span className="ml-1">Purge</span>
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

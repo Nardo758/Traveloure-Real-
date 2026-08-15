@@ -7919,13 +7919,22 @@ router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req
 
 router.delete("/api/admin/travelpayouts-cache/:brand/:cacheKey", isAuthenticated, requireAdminLocal, async (req, res) => {
   try {
-    const { brand, cacheKey } = req.params;
-    if (!brand || !cacheKey) {
+    const { brand, cacheKey: compositeKey } = req.params;
+    // compositeKey is the full DB composite key: "brand::logicalKey"
+    // (the client passes keyEntry.cacheKey verbatim, URL-encoded).
+    // sharedCache.del(namespace, key) calls dbKey(namespace, key) = "namespace::key"
+    // internally, so strip the existing "brand::" prefix to avoid double-prefixing.
+    if (!brand || !compositeKey) {
       return res.status(400).json({ message: "brand and cacheKey are required" });
     }
-    await sharedCache.del(brand, cacheKey);
-    console.log(`[admin/travelpayouts-cache/purge] purged brand="${brand}" key="${cacheKey}" by admin ${getUserId(req)}`);
-    res.json({ ok: true, brand, cacheKey });
+    const dbPrefix = `${brand}::`;
+    const logicalKey = compositeKey.startsWith(dbPrefix)
+      ? compositeKey.slice(dbPrefix.length)
+      : compositeKey;
+
+    await sharedCache.del(brand, logicalKey);
+    console.log(`[admin/travelpayouts-cache/purge] purged brand="${brand}" key="${compositeKey}" by admin ${getUserId(req)}`);
+    res.json({ ok: true, brand, cacheKey: compositeKey });
   } catch (error: any) {
     console.error("[admin/travelpayouts-cache/purge] error:", error);
     res.status(500).json({ message: "Failed to purge cache entry", error: error.message });
