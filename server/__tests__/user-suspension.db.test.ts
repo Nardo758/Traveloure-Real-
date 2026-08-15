@@ -29,7 +29,9 @@ import passport from "passport";
 // HTTP so the test server (no TLS) can replay it on subsequent requests.
 process.env.SESSION_COOKIE_INSECURE ??= "1";
 process.env.DATABASE_URL ??= "postgresql://claude:claude@localhost:5432/traveloure_test";
-process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy";
+// Force a dummy Stripe key so importing the admin router never calls out to Stripe,
+// regardless of whether a live STRIPE_SECRET_KEY is already set in the environment.
+process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
 process.env.SESSION_SECRET ??= "test-session-secret-not-for-prod";
 
 const { db, pool } = await import("../db");
@@ -596,6 +598,131 @@ describe("unsuspend endpoint — rejects non-admin callers", () => {
 
     // Undo the self-suspension so the after() cleanup can delete the user.
     await unsuspendUser(regularUserId);
+  });
+});
+
+// ── Suite 6: suspended admin session — both endpoints reject the stale cookie ──
+//
+// Scenario: an admin logs in and gets a valid session cookie, then their account
+// is suspended in the DB (e.g. by a super-admin directly, simulating a bypass).
+// isAuthenticated checks isSuspended on EVERY request and calls req.logout()
+// when it detects a suspension, which destroys the session in the store.
+// That means only ONE request per stale cookie is valid for assertion — any
+// further request with the same cookie gets 401 (session no longer exists).
+//
+// To test both the /suspend and /unsuspend endpoints independently we therefore
+// use two separate admin users, each with their own login session, each
+// suspended after login.  Both responses are captured in before() so that
+// individual it() blocks assert on the already-captured snapshots.
+
+describe("suspended admin session — both endpoints reject the stale cookie", () => {
+  // Admin A: used to test the /suspend endpoint
+  let adminAId: string;
+  let adminACookieUsed = false;
+  let suspendResponse: HttpResult;  // ONE request to /suspend with adminA's stale cookie
+
+  // Admin B: used to test the /unsuspend endpoint (self-unsuspend attempt)
+  let adminBId: string;
+  let unsuspendResponse: HttpResult; // ONE request to /unsuspend with adminB's stale cookie
+
+  // A plain target that adminA would have tried to suspend
+  let regularTargetId: string;
+
+  let server: http.Server;
+
+  before(async () => {
+    server = await getAdminGuardServer();
+
+    // ── Admin A setup ──────────────────────────────────────────────────────
+    adminAId = await createTestUser({ role: "admin" });
+    regularTargetId = await createTestUser({ role: "user" });
+
+    const adminAEmail = (await getUserRow(adminAId)).email;
+    const loginA = await post(server, "/api/auth/login", {
+      email: adminAEmail,
+      password: TEST_PASSWORD,
+    });
+    assert.equal(loginA.status, 200, `Admin A login must succeed; got ${loginA.status}`);
+    assert.ok(loginA.setCookie, "Admin A login must issue a session cookie");
+    const cookieA = loginA.setCookie!;
+
+    // Suspend admin A in the DB while their session is still live.
+    await suspendUser(adminAId, "Suspended by super-admin while session was active");
+
+    // Make ONE request with the stale cookie — isAuthenticated detects the
+    // suspension, returns 403, and calls req.logout() (destroying the session).
+    suspendResponse = await patch(
+      server,
+      `/api/admin/users/${regularTargetId}/suspend`,
+      { reason: "Suspended admin trying to suspend a regular user" },
+      cookieA
+    );
+    adminACookieUsed = true;
+
+    // ── Admin B setup ──────────────────────────────────────────────────────
+    adminBId = await createTestUser({ role: "admin" });
+    const adminBEmail = (await getUserRow(adminBId)).email;
+    const loginB = await post(server, "/api/auth/login", {
+      email: adminBEmail,
+      password: TEST_PASSWORD,
+    });
+    assert.equal(loginB.status, 200, `Admin B login must succeed; got ${loginB.status}`);
+    assert.ok(loginB.setCookie, "Admin B login must issue a session cookie");
+    const cookieB = loginB.setCookie!;
+
+    // Suspend admin B in the DB while their session is still live.
+    await suspendUser(adminBId, "Suspended by super-admin — self-unsuspend attempt test");
+
+    // Make ONE request with admin B's stale cookie to the unsuspend endpoint
+    // (self-unsuspend attempt).
+    unsuspendResponse = await patch(
+      server,
+      `/api/admin/users/${adminBId}/unsuspend`,
+      {},
+      cookieB
+    );
+  });
+
+  after(async () => {
+    await unsuspendUser(adminAId).catch(() => {});
+    await unsuspendUser(adminBId).catch(() => {});
+    await deleteTestUser(adminAId);
+    await deleteTestUser(adminBId);
+    await deleteTestUser(regularTargetId);
+  });
+
+  it("suspend endpoint returns 403 for a suspended admin's stale session", () => {
+    assert.equal(
+      suspendResponse.status,
+      403,
+      `Expected 403 when a suspended admin calls /suspend, got ${suspendResponse.status}. Body: ${JSON.stringify(suspendResponse.data)}`
+    );
+  });
+
+  it("suspend endpoint leaves the regular target unsuspended after the rejected call", async () => {
+    const row = await getUserRow(regularTargetId);
+    assert.equal(
+      row.isSuspended,
+      false,
+      "Regular target must remain unsuspended after the suspended admin's blocked /suspend call"
+    );
+  });
+
+  it("unsuspend endpoint returns 403 when a suspended admin tries to lift their own suspension", () => {
+    assert.equal(
+      unsuspendResponse.status,
+      403,
+      `Expected 403 when suspended admin calls /unsuspend on themselves, got ${unsuspendResponse.status}. Body: ${JSON.stringify(unsuspendResponse.data)}`
+    );
+  });
+
+  it("admin account remains suspended after the self-unsuspend attempt is rejected", async () => {
+    const row = await getUserRow(adminBId);
+    assert.equal(
+      row.isSuspended,
+      true,
+      "Admin B account must remain suspended after the rejected self-unsuspend attempt"
+    );
   });
 });
 
