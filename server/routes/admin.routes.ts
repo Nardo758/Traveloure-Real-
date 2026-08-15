@@ -247,8 +247,20 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-  const user = await getAdminRole(getUserId(req)!);
+  // Use getFullAdminUser (SELECT *) so we can also check isSuspended — getAdminRole
+  // only fetches { role } and would allow a suspended admin session through.
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  // Replicate the same suspension gate that isAuthenticated enforces.  Routes that
+  // skip isAuthenticated and use only requireAdminLocal would otherwise let a
+  // suspended admin's stale session reach handler logic.
+  if (user.isSuspended) {
+    req.logout(() => {});
+    return res.status(403).json({
+      message: "Your account has been suspended. Please contact support.",
+      reason: (user as any).suspensionReason ?? undefined,
+    });
+  }
   next();
 };
 
