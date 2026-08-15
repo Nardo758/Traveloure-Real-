@@ -188,19 +188,32 @@ describe("experience-catalog.service.ts — normalization present in all surface
     );
   });
 
-  it("searchHotels: ilike uses destCity in hotel_cache.city filter", () => {
+  it("searchHotels: ilike uses city-only destCity (no OR-country clause)", () => {
     const src = fs.readFileSync(SERVICE_PATH, "utf-8");
     assert.ok(
       /ilike\s*\(\s*hotelCache\.city\s*,\s*`%\$\{destCity\}%`\s*\)/.test(src),
       'searchHotels must use ilike(hotelCache.city, `%${destCity}%`)',
     );
+    // Confirm the OR-country clause is gone — it caused "Kyoto, Japan" to match all
+    // Japanese hotels, breaking parity with the bare "Kyoto" query.
+    assert.equal(
+      /ilike\s*\(\s*hotelCache\.countryName/.test(src),
+      false,
+      "searchHotels must NOT filter by countryName — city-only filter required for parity",
+    );
   });
 
-  it("searchPOIs: ilike uses destCity in poi_cache.city filter", () => {
+  it("searchPOIs: ilike uses city-only destCity (no OR-country clause)", () => {
     const src = fs.readFileSync(SERVICE_PATH, "utf-8");
     assert.ok(
       /ilike\s*\(\s*poiCache\.city\s*,\s*`%\$\{destCity\}%`\s*\)/.test(src),
       'searchPOIs must use ilike(poiCache.city, `%${destCity}%`)',
+    );
+    // Confirm the OR-country clause is gone for the same parity reason.
+    assert.equal(
+      /ilike\s*\(\s*poiCache\.country/.test(src),
+      false,
+      "searchPOIs must NOT filter by country — city-only filter required for parity",
     );
   });
 
@@ -263,22 +276,32 @@ const TYPES: Array<"activity" | "hotel" | "poi" | "restaurant"> = [
   "restaurant",
 ];
 
+/** Sentinel returned when the dev server is not reachable (ECONNREFUSED / timeout). */
+const SERVER_UNAVAILABLE = Symbol("SERVER_UNAVAILABLE");
+
 async function fetchCatalog(
   destination: string,
   type: string,
-): Promise<{ items: Array<{ id: string }>; total: number } | null> {
+): Promise<{ items: Array<{ id: string }>; total: number } | typeof SERVER_UNAVAILABLE> {
+  // The route parses `type` as a comma-separated string — NOT an array param.
   const url =
     `${BASE}/api/catalog/search` +
     `?destination=${encodeURIComponent(destination)}` +
-    `&type[]=${type}` +
+    `&type=${encodeURIComponent(type)}` +
     `&limit=100`;
+  let res: Response;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    return (await res.json()) as { items: Array<{ id: string }>; total: number };
+    res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   } catch {
-    return null; // server not running or timed out — skip gracefully
+    // ECONNREFUSED, AbortError, etc. — server not running; skip gracefully.
+    return SERVER_UNAVAILABLE;
   }
+  // Any HTTP error from a running server is a real failure, not a skip.
+  if (!res.ok) {
+    const body = await res.text().catch(() => "(unreadable)");
+    throw new Error(`GET ${url} returned HTTP ${res.status}: ${body}`);
+  }
+  return (await res.json()) as { items: Array<{ id: string }>; total: number };
 }
 
 describe("GET /api/catalog/search — destination parity (Kyoto, Japan vs Kyoto)", () => {
@@ -289,10 +312,11 @@ describe("GET /api/catalog/search — destination parity (Kyoto, Japan vs Kyoto)
         fetchCatalog("Kyoto", type),
       ]);
 
-      if (withCountry === null || withoutCountry === null) {
-        // Server unreachable — skip rather than fail CI in a cold environment.
+      if (withCountry === SERVER_UNAVAILABLE || withoutCountry === SERVER_UNAVAILABLE) {
+        // Dev server not running — log and skip. Any HTTP error from a running
+        // server throws before reaching here, so this is only a cold-start skip.
         console.log(
-          `[SKIP] Server not reachable for type=${type}; run with the app running to get live results.`,
+          `[SKIP] Dev server not reachable for type=${type}; start the app to run live parity checks.`,
         );
         return;
       }
@@ -318,9 +342,9 @@ describe("GET /api/catalog/search — destination parity (Kyoto, Japan vs Kyoto)
         fetchCatalog("kyoto", type),
       ]);
 
-      if (withCountry === null || lowercase === null) {
+      if (withCountry === SERVER_UNAVAILABLE || lowercase === SERVER_UNAVAILABLE) {
         console.log(
-          `[SKIP] Server not reachable for type=${type}; run with the app running to get live results.`,
+          `[SKIP] Dev server not reachable for type=${type}; start the app to run live parity checks.`,
         );
         return;
       }

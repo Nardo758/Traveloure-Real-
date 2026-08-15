@@ -491,17 +491,12 @@ class ExperienceCatalogService {
     
     if (params.destination) {
       // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // matches a row storing "Kyoto". Also extract a country token for the country
-      // field so "Japan" in "Kyoto, Japan" matches countryName correctly.
-      const destParts = params.destination.split(",");
-      const destCity = destParts[0].trim();
-      const destCountry = destParts.length > 1 ? destParts[destParts.length - 1].trim() : destCity;
-      conditions.push(
-        or(
-          ilike(hotelCache.city, `%${destCity}%`),
-          ilike(hotelCache.countryName, `%${destCountry}%`)
-        )
-      );
+      // and "Kyoto" both resolve to "Kyoto" and return an identical result set.
+      // The country segment is intentionally ignored: filtering by city alone is
+      // precise (no false matches from other cities in the same country) and
+      // ensures query-variant parity.
+      const destCity = params.destination.split(",")[0].trim();
+      conditions.push(ilike(hotelCache.city, `%${destCity}%`));
     }
     if (params.query) {
       conditions.push(ilike(hotelCache.name, `%${params.query}%`));
@@ -573,16 +568,11 @@ class ExperienceCatalogService {
 
     if (params.destination) {
       // Normalize to city token (first comma-separated segment) so "Kyoto, Japan"
-      // matches a row storing "Kyoto". Extract country token for the country field.
-      const destParts = params.destination.split(",");
-      const destCity = destParts[0].trim();
-      const destCountry = destParts.length > 1 ? destParts[destParts.length - 1].trim() : destCity;
-      conditions.push(
-        or(
-          ilike(poiCache.city, `%${destCity}%`),
-          ilike(poiCache.country, `%${destCountry}%`)
-        )
-      );
+      // and "Kyoto" both resolve to "Kyoto" and return an identical result set.
+      // The country segment is intentionally ignored for the same parity reason as
+      // searchHotels: city-only filtering is precise and variant-neutral.
+      const destCity = params.destination.split(",")[0].trim();
+      conditions.push(ilike(poiCache.city, `%${destCity}%`));
     }
     if (params.query) {
       conditions.push(ilike(poiCache.name, `%${params.query}%`));
