@@ -5306,6 +5306,86 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     }
   });
 
+  // === Admin Test Email ===
+
+  router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const adminUser = await getFullAdminUser(userId);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const toEmail = adminUser.email;
+      if (!toEmail) {
+        return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
+      }
+
+      // Import sendEmail directly — bypass the email_notifications_enabled flag
+      // so admins can verify delivery credentials even when notifications are off.
+      const { sendEmail, getAppBaseUrl } = await import("../services/email.service");
+      const appUrl = getAppBaseUrl();
+
+      const result = await sendEmail({
+        to: toEmail,
+        subject: "[Traveloure] Test email — delivery verified",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+            <h2 style="color: #FF385C; margin-bottom: 8px;">Test Email</h2>
+            <p style="color: #374151;">Hi ${adminUser.firstName ?? adminUser.email},</p>
+            <p style="color: #374151;">
+              This is a test email sent from the Traveloure admin panel to confirm that email
+              delivery is working correctly.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+              <tr>
+                <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Sent to</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${toEmail}</td>
+              </tr>
+              <tr style="background: #F3F4F6;">
+                <td style="padding: 12px 16px; color: #6B7280;">Sent at</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${new Date().toISOString()}</td>
+              </tr>
+              <tr>
+                <td style="padding: 12px 16px; color: #6B7280;">Platform</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${appUrl}</td>
+              </tr>
+            </table>
+            <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+              This email was triggered manually from the admin system settings page.<br>
+              If you did not initiate this, another admin may have sent it.
+            </p>
+          </div>
+        `,
+        text: [
+          "Test Email",
+          "",
+          `Hi ${adminUser.firstName ?? adminUser.email},`,
+          "",
+          "This is a test email sent from the Traveloure admin panel to confirm that email delivery is working correctly.",
+          "",
+          `Sent to:  ${toEmail}`,
+          `Sent at:  ${new Date().toISOString()}`,
+          `Platform: ${appUrl}`,
+          "",
+          "This email was triggered manually from the admin system settings page.",
+        ].join("\n"),
+        replyTo: toEmail,
+      });
+
+      if (!result.ok) {
+        return res.status(502).json({ ok: false, error: result.error });
+      }
+
+      return res.json({ ok: true, id: result.id, to: toEmail });
+    } catch (err) {
+      console.error("[admin/test-email] unexpected error:", err);
+      return res.status(500).json({ ok: false, error: "Internal server error" });
+    }
+  });
+
   // === Admin Global Search ===
 
 router.get("/api/admin/search", isAuthenticated, async (req, res) => {
