@@ -2584,7 +2584,7 @@ export const coordinationFeeCredits = pgTable("coordination_fee_credits", {
   // Migrations 125 + 126: partial indexes for credit availability and event-scoped lookups.
   // Declared here — drizzle push drops indexes absent from this file on publish.
   index("idx_coord_fee_credits_available")
-    .on(table.userId, table.createdAt)
+    .on(table.userId, table.createdAt.desc())
     .where(sql`consumed_by_coordination_id IS NULL`),
   index("idx_coord_fee_credits_event_scoped")
     .on(table.userId, table.eventType, table.createdAt)

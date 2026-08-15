@@ -112,7 +112,7 @@ export const users = pgTable("users", {
   // Declared here — drizzle push drops indexes not present in this file, which would
   // remove these before any migration re-runs them.
   index("users_is_deleted_idx").on(table.isDeleted).where(sql`is_deleted = true`),
-  index("users_is_suspended_idx").on(table.isSuspended).where(sql`is_suspended = true`),
+  index("users_is_suspended_idx").on(table.id).where(sql`is_suspended = true`),
 ]);
 
 export type UpsertUser = typeof users.$inferInsert;
