@@ -1,6 +1,8 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
+import { parsePagination } from '../utils/pagination';
 import { Router } from "express";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
@@ -9,7 +11,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -105,6 +107,7 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+import { travelpayoutsCache } from "@shared/schema";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -123,7 +126,7 @@ import {
   getAllExpertServiceOfferings, updateExpertServiceOfferingRoles,
   validateDefaultCommissionBandInheritance, validateCommissionBand,
   getPayoutRecipientId, getPayoutAmount, getAdminUsersPaginated, getAdminUsersPage,
-  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips,
+  getUserTripCount, getUserBookingSpend, getUserServiceBookings, getAdminTripsList, getAdminTrips, getAdminTripsPage,
   getAllServiceReviewsForAnalytics, getAllTripsForAnalytics, getAllTrips, getAllServiceReviews,
   getExpertsByCountryAnalytics, getProvidersByCountryAnalytics, getTripsByDestinationAnalytics,
   getExpertsByCountryDetailed, getExpertsByCity, getExpertStatusSummary, getExpertsByExperience,
@@ -166,6 +169,19 @@ import {
 } from "../services/admin-query.service";
 
 const router = Router();
+
+/**
+ * Test seam — populated only by unit tests to intercept the Resend call without
+ * hitting the real API. Empty object in production; no behaviour change when unset.
+ */
+export const _adminTestEmailHooks: {
+  resendSend?: (payload: Record<string, unknown>) => Promise<{
+    data: { id?: string } | null;
+    error: { message?: string } | null;
+  }>;
+  /** Override the Resend call timeout (ms). Defaults to 12 000 in production; set low in tests. */
+  resendTimeoutMs?: number;
+} = {};
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -230,8 +246,20 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-  const user = await getAdminRole(getUserId(req)!);
+  // Use getFullAdminUser (SELECT *) so we can also check isSuspended — getAdminRole
+  // only fetches { role } and would allow a suspended admin session through.
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  // Replicate the same suspension gate that isAuthenticated enforces.  Routes that
+  // skip isAuthenticated and use only requireAdminLocal would otherwise let a
+  // suspended admin's stale session reach handler logic.
+  if (user.isSuspended) {
+    req.logout(() => {});
+    return res.status(403).json({
+      message: "Your account has been suspended. Please contact support.",
+      reason: (user as any).suspensionReason ?? undefined,
+    });
+  }
   next();
 };
 
@@ -1046,10 +1074,25 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     const { bookingId } = req.params;
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     await storage.updateServiceBookingStatus(bookingId, "completed");
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_rejected",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_rejected on booking ${bookingId}: ${err?.message ?? "unknown error"}. Status change was applied but this action has no audit trail.`;
+    });
     res.json({
       success: true,
       cleared,
       note: "Dispute rejected; earnings resume release.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute reject error:", err);
@@ -1092,6 +1135,27 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_refunded",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: {
+        reason: String(reason ?? "").slice(0, 2000) || "dispute_upheld",
+        reversedEarnings: earnings.reversed,
+        skippedPaidOut: earnings.skippedPaidOut,
+        reversedRevenueRows: revenueRows,
+        revertedPlanItems: routingReversal.reverted,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. Ledger reversal and Stripe refund were applied but this action has no audit trail.`;
+    });
+
     res.json({
       success: true,
       revertedPlanItems: routingReversal.reverted,
@@ -1102,6 +1166,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       note: earnings.skippedPaidOut > 0
         ? `${earnings.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`
         : "Dispute upheld: earnings reversed, platform revenue reversed, traveler refunded.",
+      ...(auditWarning ? { auditWarning } : {}),
     });
   } catch (err: any) {
     console.error("Admin dispute uphold error:", err);
@@ -2282,8 +2347,8 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       const categoryRow = await resolveOrCreateItineraryPlanningCategory();
       const esoRow = await createExpertServiceOfferingRow({
         categoryId:  categoryRow.id,
-        name:        title,
-        description: description ?? null,
+        name:        sanitizeText(title) as string,
+        description: sanitizeText(description ?? null),
         price:       suggestedPrice ?? "0",
         isDefault:   true,
         sortOrder:   sortOrder ?? 0,
@@ -2320,7 +2385,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const input = insertServiceTemplateSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertServiceTemplateSchema.partial().parse(req.body));
       const updated = await storage.updateServiceTemplate(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Template not found" });
@@ -4406,8 +4471,8 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
         storage.getAllProviderPayouts(status),
       ]);
       const allPayouts = [
-        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
-        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
+        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const, isStale: isPayoutStale(p) })),
+        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const, isStale: isPayoutStale(p) })),
       ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {
@@ -4874,26 +4939,27 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
       // §13: `status` filtering used to run `eq(trips.status, status)` against the dead field —
       // it never matched the client's "active"/"pending"/"completed" filter values (which aren't
       // trips.status vocabulary at all) and would have silently returned zero rows. Phase is now
-      // derived post-fetch (below) and the requested phase, if any, filters on that instead.
-      const phaseFilter = req.query.status as string | undefined;
+      // date-derived IN SQL (getAdminTripsPage) so filtering + paging happen before enrichment.
+      const rawPhase = req.query.status as string | undefined;
+      const phaseFilter = rawPhase === "upcoming" || rawPhase === "active" || rawPhase === "past" ? rawPhase : undefined;
+      const { limit, offset } = parsePagination(req.query);
 
-      const conditions: any[] = [];
-      if (search) {
-        conditions.push(
-          or(
-            like(trips.title, `%${search}%`),
-            like(trips.destination, `%${search}%`)
-          )
-        );
-      }
-
-      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-      const allTrips = await getAdminTrips(whereClause);
+      const { rows, stats, filteredTotal } = await getAdminTripsPage({
+        search: search || undefined,
+        phase: phaseFilter,
+        limit,
+        offset,
+      });
 
       const now = new Date();
 
-      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
-        const owner = await storage.getUser(t.userId || '');
+      // Batch owner lookup (one query per page, not one per trip).
+      const ownerIds = Array.from(new Set(rows.map((t) => t.userId).filter((id): id is string => !!id)));
+      const owners = await getUsersBasicByIds(ownerIds);
+      const ownerMap = new Map(owners.map((u) => [u.id, u]));
+
+      const enrichedTrips = rows.map((t) => {
+        const owner = t.userId ? ownerMap.get(t.userId) : undefined;
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -4908,22 +4974,24 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
-      }));
+      });
 
-      const phaseFiltered = phaseFilter
-        ? enrichedTrips.filter(t => t.status === phaseFilter)
-        : enrichedTrips;
-
-      // Honest labels (§13) — no fabricated "completed"/"pending" bucket derived from a field
-      // nothing writes; the three buckets below are exactly the three deriveTripPhase can return.
+      // Honest labels (§13) — the three buckets are exactly the three phases SQL can derive.
       const statusCounts = {
-        total: enrichedTrips.length,
-        upcoming: enrichedTrips.filter(t => t.status === "upcoming").length,
-        active: enrichedTrips.filter(t => t.status === "active").length,
-        past: enrichedTrips.filter(t => t.status === "past").length,
+        total: Number(stats.total ?? 0),
+        upcoming: Number(stats.upcoming ?? 0),
+        active: Number(stats.active ?? 0),
+        past: Number(stats.past ?? 0),
       };
 
-      res.json({ trips: phaseFiltered, stats: statusCounts });
+      res.json({
+        trips: enrichedTrips,
+        stats: statusCounts,
+        total: filteredTotal,
+        hasMore: offset + enrichedTrips.length < filteredTotal,
+        limit,
+        offset,
+      });
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });
@@ -5005,6 +5073,85 @@ router.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) =>
       res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
+
+// GET /api/admin/analytics/export?from=&to=&format=csv — CSV download of the same data the
+// analytics overview shows, optionally filtered to a created-at date range. Additive; the
+// overview endpoint is untouched.
+router.get("/api/admin/analytics/export", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const fromParam = typeof req.query.from === "string" && req.query.from ? new Date(req.query.from) : null;
+    const toParam = typeof req.query.to === "string" && req.query.to ? new Date(req.query.to) : null;
+    const from = fromParam && !isNaN(fromParam.getTime()) ? fromParam : null;
+    const to = toParam && !isNaN(toParam.getTime()) ? toParam : null;
+    const inRange = (d: Date | string | null | undefined) => {
+      if (!from && !to) return true;
+      if (!d) return false;
+      const t = new Date(d).getTime();
+      if (from && t < from.getTime()) return false;
+      if (to && t > to.getTime()) return false;
+      return true;
+    };
+
+    const allUsers = (await getAllUsersBasic()).filter(u => inRange(u.createdAt as any));
+    const allBookings = (await storage.getServiceBookings({})).filter(b => inRange(b.createdAt as any));
+    const allTrips = (await getAllTrips()).filter((t: any) => inRange(t.createdAt));
+    const allReviews = (await getAllServiceReviews()).filter((r: any) => inRange(r.createdAt));
+
+    const completedBookings = allBookings.filter(b => b.status === "completed");
+    const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+    const avgRating = allReviews.length > 0
+      ? allReviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / allReviews.length
+      : 0;
+
+    const destCounts: Record<string, { bookings: number; revenue: number }> = {};
+    allTrips.forEach((t: any) => {
+      const dest = t.destination || "Unknown";
+      if (!destCounts[dest]) destCounts[dest] = { bookings: 0, revenue: 0 };
+      destCounts[dest].bookings++;
+      destCounts[dest].revenue += Number(t.budget || 0);
+    });
+
+    const roleCounts: Record<string, number> = {};
+    allUsers.forEach(u => {
+      const role = u.role || "user";
+      roleCounts[role] = (roleCounts[role] || 0) + 1;
+    });
+
+    const esc = (v: unknown) => {
+      let s = String(v ?? "");
+      // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR would be
+      // evaluated by Excel/Sheets even inside a quoted cell. Prefix with an apostrophe.
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines: string[] = [];
+    lines.push("Section,Label,Value");
+    lines.push(`Range,From,${esc(from ? from.toISOString() : "all time")}`);
+    lines.push(`Range,To,${esc(to ? to.toISOString() : "now")}`);
+    lines.push(`Metrics,Total Users,${allUsers.length}`);
+    lines.push(`Metrics,Total Bookings,${allBookings.length}`);
+    lines.push(`Metrics,Completed Bookings,${completedBookings.length}`);
+    lines.push(`Metrics,Total Revenue,${totalRevenue.toFixed(2)}`);
+    lines.push(`Metrics,Avg Rating,${avgRating.toFixed(2)}`);
+    lines.push(`Metrics,Total Reviews,${allReviews.length}`);
+    Object.entries(destCounts)
+      .sort((a, b) => b[1].bookings - a[1].bookings)
+      .forEach(([name, d]) => lines.push(`Top Destinations,${esc(name)},${d.bookings} trips / $${d.revenue.toFixed(2)}`));
+    Object.entries(roleCounts).forEach(([role, count]) => lines.push(`User Roles,${esc(role)},${count}`));
+
+    const filename = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(lines.join("\n"));
+  } catch (err) {
+    console.error("Admin analytics export error:", err);
+    res.status(500).json({ message: "Failed to export analytics" });
+  }
+});
 
   // Country/Region Analytics
 
@@ -5263,6 +5410,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       try {
         await pingDb();
       } catch {
+        // DB ping failure is represented as degraded status — never abort the health response.
         dbStatus = "degraded";
       }
       const dbLatency = Date.now() - dbStart;
@@ -5282,14 +5430,18 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         const { aiUsageService: aiSvc } = await import('../services/ai-usage.service');
         const summary = await aiSvc.getSummary();
         aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCostDollars || 0).toFixed(2)}` };
-      } catch {}
+      } catch (aiErr) {
+        console.warn("[admin/system-health] Could not load AI usage summary — returning defaults:", aiErr);
+      }
 
       try {
         const allBookings = await storage.getServiceBookings({});
         const completedBookings = allBookings.filter(b => b.status === "completed");
         const volume = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
         apiUsage = { transactions: allBookings.length, volume: `$${volume.toLocaleString()}` };
-      } catch {}
+      } catch (bookingErr) {
+        console.warn("[admin/system-health] Could not load booking usage stats — returning defaults:", bookingErr);
+      }
 
       res.json({
         services,
@@ -5302,6 +5454,138 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("System health error:", err);
       res.status(500).json({ message: "Failed to fetch system health" });
+    }
+  });
+
+  // === Admin Test Email ===
+
+  router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const adminUser = await getFullAdminUser(userId);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Optional custom recipient — falls back to admin's own address.
+      const rawTo = (req.body?.to as string | undefined)?.trim();
+      if (rawTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawTo)) {
+        return res.status(400).json({ ok: false, error: "Invalid email address in 'to' field" });
+      }
+      const toEmail = rawTo || adminUser.email;
+      if (!toEmail) {
+        return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
+      }
+
+      // Call Resend directly — same pattern as auth-critical emails — so the test
+      // works even when email_notifications_enabled is turned off in platform settings.
+      // This is intentional: admins must be able to verify delivery credentials
+      // regardless of the notification kill-switch state.
+      const { getAppBaseUrl } = await import("../services/email.service");
+      const { Resend } = await import("resend");
+      const appUrl = getAppBaseUrl();
+
+      const apiKey = process.env.RESEND_API_KEY;
+      const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
+      const replyTo = process.env.EMAIL_REPLY_TO ?? toEmail;
+      if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
+      if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
+
+      const resendClient = new Resend(apiKey);
+      const emailPayload: Record<string, unknown> = {
+        from,
+        to: toEmail,
+        replyTo,
+        subject: "[Traveloure] Test email — delivery verified",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+            <h2 style="color: #FF385C; margin-bottom: 8px;">Test Email</h2>
+            <p style="color: #374151;">Hi ${adminUser.firstName ?? adminUser.email},</p>
+            <p style="color: #374151;">
+              This is a test email sent from the Traveloure admin panel to confirm that email
+              delivery is working correctly.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+              <tr>
+                <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Sent to</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${toEmail}</td>
+              </tr>
+              <tr style="background: #F3F4F6;">
+                <td style="padding: 12px 16px; color: #6B7280;">Sent at</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${new Date().toISOString()}</td>
+              </tr>
+              <tr>
+                <td style="padding: 12px 16px; color: #6B7280;">Platform</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${appUrl}</td>
+              </tr>
+            </table>
+            <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+              This email was triggered manually from the admin system settings page.<br>
+              If you did not initiate this, another admin may have sent it.
+            </p>
+          </div>
+        `,
+        text: [
+          "Test Email",
+          "",
+          `Hi ${adminUser.firstName ?? adminUser.email},`,
+          "",
+          "This is a test email sent from the Traveloure admin panel to confirm that email delivery is working correctly.",
+          "",
+          `Sent to:  ${toEmail}`,
+          `Sent at:  ${new Date().toISOString()}`,
+          `Platform: ${appUrl}`,
+          "",
+          "This email was triggered manually from the admin system settings page.",
+        ].join("\n"),
+      };
+
+      // Use test hook when set (unit tests only); real Resend client in production.
+      const sender = _adminTestEmailHooks.resendSend
+        ? _adminTestEmailHooks.resendSend
+        : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
+
+      const timeoutMs = _adminTestEmailHooks.resendTimeoutMs ?? 12_000;
+
+      let sendResult: { data: { id?: string } | null; error: { message?: string } | null };
+      try {
+        sendResult = await Promise.race([
+          sender(emailPayload),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("__RESEND_TIMEOUT__")),
+              timeoutMs,
+            ),
+          ),
+        ]);
+      } catch (sendErr) {
+        const errMsg = (sendErr as Error)?.message ?? String(sendErr);
+        if (errMsg === "__RESEND_TIMEOUT__") {
+          console.error("[admin/test-email] Resend API timed out after", timeoutMs, "ms");
+          return res.status(504).json({
+            ok: false,
+            error: "Email service did not respond in time. Please try again.",
+          });
+        }
+        console.error("[admin/test-email] send error:", errMsg);
+        return res.status(502).json({ ok: false, error: errMsg });
+      }
+
+      const { data: emailData, error: emailError } = sendResult;
+
+      if (emailError) {
+        const msg = String((emailError as { message?: string }).message ?? emailError);
+        console.error("[admin/test-email] Resend error:", msg);
+        return res.status(502).json({ ok: false, error: msg });
+      }
+
+      const emailId = (emailData as { id?: string } | null)?.id;
+      return res.json({ ok: true, id: emailId, to: toEmail });
+    } catch (err) {
+      console.error("[admin/test-email] unexpected error:", err);
+      return res.status(500).json({ ok: false, error: "Internal server error" });
     }
   });
 
@@ -7521,6 +7805,35 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
+  }
+});
+
+// ─── Travelpayouts cache status ────────────────────────────────────────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Aggregates all cache rows by
+// brand so operators can see whether displayed eSIM, transport, and activity
+// cards are fresh or stale. refreshedAt (migration 221, stamped on every upsert
+// by shared-cache.service.ts) is the accurate last-refresh time — createdAt is
+// immutable after first insert and is not surfaced here. Pre-migration rows with
+// null refreshedAt are represented as lastRefreshedAt: null ("unknown").
+router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
+  try {
+    const now = new Date();
+    const rows = await db
+      .select({
+        brand: travelpayoutsCache.brand,
+        cacheKey: travelpayoutsCache.cacheKey,
+        expiresAt: travelpayoutsCache.expiresAt,
+        refreshedAt: travelpayoutsCache.refreshedAt,
+      })
+      .from(travelpayoutsCache)
+      .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
+
+    const { aggregateBrandStatus } = await import("../services/travelpayouts/travelpayouts-cache-status");
+    const brands = aggregateBrandStatus(rows, now);
+    res.json({ brands, retrievedAt: now });
+  } catch (error: any) {
+    console.error("[admin/travelpayouts-cache/status] error:", error);
+    res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
   }
 });
 

@@ -13,6 +13,7 @@
     "test:upsell-contract": "tsx --test server/services/__tests__/upsell-engine.test.ts",
     "test:payout-parity": "tsx --test server/__tests__/payout-parity.db.test.ts",
     "test:payout-parity-route": "tsx --test server/__tests__/payout-parity-route.http.test.ts",
+    "test:user-suspension": "tsx --test server/__tests__/user-suspension.db.test.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",

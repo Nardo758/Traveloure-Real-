@@ -250,8 +250,19 @@ export async function extractMarketGeography(
   return { bbox, water: layers.water, parks: layers.parks, roads: layers.roads, wayCounts };
 }
 
+/**
+ * D-14 (mock-conformance audit round 2, ledger row 119): Japanese cities tag every numbered
+ * city block — chōme (丁目) — as `place=quarter`/`neighbourhood` in OSM, so a naive extract of
+ * the 20(b) vocabulary dumps THOUSANDS of address blocks (万代一丁目, 三先二丁目, …) into a
+ * picker meant for a curated neighborhood list (live instance: Osaka). A chōme is an address
+ * component, not a neighborhood a traveler files a listing under. Matched by the standard
+ * suffix: one or more kanji/arabic/full-width numerals + 丁目 at the end of the name.
+ */
+export const CHOME_BLOCK_PATTERN = /[0-90-9一二三四五六七八九十百]+丁目$/;
+
 /** Runs the neighborhood-node extract for a bbox: named suburb/neighbourhood/quarter place nodes.
- *  Unnamed nodes are skipped — never invented (§13). Throws on Overpass failure, same as
+ *  Unnamed nodes are skipped — never invented (§13); chōme address blocks are skipped — they are
+ *  address components, not neighborhoods (D-14). Throws on Overpass failure, same as
  *  extractMarketGeography. */
 export async function extractNeighborhoods(
   bbox: Bbox,
@@ -266,6 +277,7 @@ export async function extractNeighborhoods(
     if (el.type !== "node") continue;
     const name = el.tags?.name?.trim();
     if (!name) continue; // unnamed — skip, never invent (§13)
+    if (CHOME_BLOCK_PATTERN.test(name)) continue; // address block, not a neighborhood (D-14)
     if (typeof el.lat !== "number" || typeof el.lon !== "number") continue;
     out.push({ name, lat: el.lat, lon: el.lon });
   }

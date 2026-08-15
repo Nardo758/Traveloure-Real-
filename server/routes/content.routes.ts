@@ -1,7 +1,9 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
+import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
 import { Router } from "express";
@@ -128,7 +130,7 @@ import { partnerEventsCacheService } from "../services/partner-events-cache.serv
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
-import { budgetService } from "../services/budget.service";
+import { budgetService, BudgetValidationError } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
 import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
@@ -729,13 +731,22 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Vendors Routes
 
-router.get("/api/city-neighborhoods", async (_req, res) => {
+router.get("/api/city-neighborhoods", async (req, res) => {
     try {
+      // Reference data — high default (200, also the hard cap) so existing consumers still see
+      // the full catalog today, while the response can never grow unbounded.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const [agg] = await db
+        .select({ total: count() })
+        .from(cityNeighborhoods);
+      const total = Number(agg?.total ?? 0);
       const rows = await db
         .select()
         .from(cityNeighborhoods)
-        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name);
-      res.json(rows);
+        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name)
+        .limit(limit)
+        .offset(offset);
+      res.json({ data: rows, total, hasMore: offset + rows.length < total, limit, offset });
     } catch (err) {
       console.error("Error fetching city neighborhoods:", err);
       res.status(500).json({ message: "Failed to fetch neighborhoods" });
@@ -861,12 +872,15 @@ router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
 
 router.get("/api/custom-venues", async (req, res) => {
     const { userId, tripId, experienceType } = req.query;
-    const venues = await storage.getCustomVenues(
+    const { limit, offset } = parsePagination(req.query);
+    const { venues, total } = await storage.getCustomVenuesPage(
       userId as string | undefined,
       tripId as string | undefined,
-      experienceType as string | undefined
+      experienceType as string | undefined,
+      limit,
+      offset,
     );
-    res.json(venues);
+    res.json({ data: venues, total, hasMore: offset + venues.length < total, limit, offset });
   });
 
   // Get single custom venue
@@ -883,7 +897,7 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
 router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
-      const input = insertCustomVenueSchema.parse(req.body);
+      const input = sanitizeStringFields(insertCustomVenueSchema.parse(req.body));
       const venue = await storage.createCustomVenue(input);
       res.status(201).json(venue);
     } catch (err) {
@@ -909,7 +923,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       if (venue.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const input = insertCustomVenueSchema.partial().parse(req.body);
+      const input = sanitizeStringFields(insertCustomVenueSchema.partial().parse(req.body));
       const updated = await storage.updateCustomVenue(req.params.id, input);
       if (!updated) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -1117,8 +1131,13 @@ router.get("/api/catalog/items/:type/:id", async (req, res) => {
 
 router.get("/api/catalog/destinations", async (req, res) => {
     try {
+      // Reference data — high default limit (200 = cap); paged from the deduped in-memory set
+      // (its sources are already capped at 100 distinct rows each).
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
       const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      const total = destinations.length;
+      const page = destinations.slice(offset, offset + limit);
+      res.json({ data: page, total, hasMore: offset + page.length < total, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
@@ -1529,8 +1548,12 @@ router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
 
 router.get("/api/destinations", async (req, res) => {
     try {
-      const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      // Alias of /api/catalog/destinations — apply same pagination contract.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const all = await experienceCatalogService.getDestinations();
+      const deduped = Array.from(new Set(all)) as string[];
+      const page = deduped.slice(offset, offset + limit);
+      res.json({ data: page, total: deduped.length, hasMore: offset + page.length < deduped.length, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
@@ -2392,6 +2415,7 @@ router.get("/api/services", async (req, res) => {
   // Unified Discovery Search (public - with advanced filtering)
 
 router.get("/api/discover", async (req, res) => {
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 20 });
     const filters = {
       query: req.query.q as string | undefined,
       categoryId: req.query.categoryId as string | undefined,
@@ -2400,8 +2424,8 @@ router.get("/api/discover", async (req, res) => {
       maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice as string) : undefined,
       minRating: req.query.minRating ? parseFloat(req.query.minRating as string) : undefined,
       sortBy: req.query.sortBy as "rating" | "price_low" | "price_high" | "reviews" | undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
-      offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
+      limit,
+      offset,
     };
     const result = await storage.unifiedSearch(filters);
 
@@ -2421,7 +2445,13 @@ router.get("/api/discover", async (req, res) => {
     }
 
     // Content-gate (§10): packages in search results are teaser-redacted like every public read.
-    res.json({ ...result, packages: (result.packages ?? []).map(redactTemplateContent) });
+    res.json({
+      ...result,
+      packages: (result.packages ?? []).map(redactTemplateContent),
+      hasMore: offset + result.services.length < result.total,
+      limit,
+      offset,
+    });
   });
 
   // Analytics: Get destination search trends
@@ -2748,13 +2778,13 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         return res.status(404).json({ message: "Service not found" });
       }
       
-      const input = insertServiceReviewSchema.parse({
+      const input = sanitizeStringFields(insertServiceReviewSchema.parse({
         ...req.body,
         serviceId: req.params.serviceId,
         travelerId: userId,
         providerId: service.userId,
         status: "pending",
-      });
+      }));
       
       const review = await storage.createServiceReview(input);
       res.status(201).json(review);
@@ -2874,153 +2904,6 @@ router.get("/api/amadeus/locations", async (req, res) => {
   // GET /api/amadeus/flights RETIRED (flight-repoint, Aug 2026): the Amadeus service was
   // deleted (DECISIONS.md ruling 34) and the stub answered `[]` to a client that no longer
   // exists — flights are served by GET /api/catalog/flights (Aviasales/Travelpayouts).
-
-  // Search hotels by city
-
-router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
-    try {
-      const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
-      
-      if (!cityCode || !checkInDate || !checkOutDate || !adults) {
-        return res.status(400).json({ 
-          message: "Required fields: cityCode, checkInDate, checkOutDate, adults" 
-        });
-      }
-      
-      // Amadeus dropped (DECISIONS.md ruling 34) — Booking.com results are served via /api/catalog.
-      res.json([]);
-    } catch (error: any) {
-      console.error('Hotel search error:', error);
-      res.status(500).json({ message: error.message || "Hotel search failed" });
-    }
-  });
-
-  // Search Points of Interest by location
-
-router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
-    try {
-      const { latitude, longitude, radius, categories } = req.query;
-      
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
-      
-      // Amadeus dropped (DECISIONS.md ruling 34) — POIs are served from poi_cache via /api/catalog.
-      res.json([]);
-    } catch (error: any) {
-      console.error('POI search error:', error);
-      res.status(500).json({ message: error.message || "POI search failed" });
-    }
-  });
-
-  // Get POI by ID
-
-router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
-    try {
-      // Amadeus dropped (DECISIONS.md ruling 34) — no live POI lookup.
-      return res.status(404).json({ message: "POI not found" });
-    } catch (error: any) {
-      console.error('POI get error:', error);
-      res.status(500).json({ message: error.message || "Failed to get POI" });
-    }
-  });
-
-  // Search Amadeus Tours & Activities by location
-
-router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
-    try {
-      const { latitude, longitude, radius } = req.query;
-      
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
-      
-      // Amadeus dropped (DECISIONS.md ruling 34) — activities come from Viator (/api/viator/*).
-      res.json([]);
-    } catch (error: any) {
-      console.error('Amadeus activities search error:', error);
-      res.status(500).json({ message: error.message || "Activities search failed" });
-    }
-  });
-
-  // Get Amadeus activity by ID
-
-router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
-    try {
-      // Amadeus dropped (DECISIONS.md ruling 34) — no live activity lookup.
-      return res.status(404).json({ message: "Activity not found" });
-    } catch (error: any) {
-      console.error('Amadeus activity get error:', error);
-      res.status(500).json({ message: error.message || "Failed to get activity" });
-    }
-  });
-
-  // Search airport transfers
-  const transferSearchSchema = z.object({
-    startLocationCode: z.string().min(3).max(4),
-    endAddressLine: z.string().optional(),
-    endCityName: z.string().optional(),
-    endGeoCode: z.object({
-      latitude: z.number(),
-      longitude: z.number()
-    }).optional(),
-    transferType: z.string(),
-    startDateTime: z.string(),
-    passengers: z.union([z.string(), z.number()]).transform((val) => 
-      typeof val === 'string' ? parseInt(val, 10) : val
-    ),
-  });
-
-
-router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
-    try {
-      const parseResult = transferSearchSchema.safeParse(req.body);
-      
-      if (!parseResult.success) {
-        return res.status(400).json({ 
-          message: "Invalid request body",
-          errors: parseResult.error.flatten().fieldErrors
-        });
-      }
-      
-      // Amadeus dropped (DECISIONS.md ruling 34) — transfer options come from the
-      // Travelpayouts-backed transport commerce layer, not this legacy route.
-      res.json([]);
-    } catch (error: any) {
-      console.error('Transfers search error:', error);
-      res.status(500).json({ message: error.message || "Transfers search failed" });
-    }
-  });
-
-  // Get safety ratings for a location
-
-router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
-    try {
-      const { latitude, longitude, radius } = req.query;
-      
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
-      
-      // Amadeus dropped (DECISIONS.md ruling 34) — safety ratings had no other provider.
-      res.json([]);
-    } catch (error: any) {
-      console.error('Safety ratings search error:', error);
-      res.status(500).json({ message: error.message || "Safety ratings search failed" });
-    }
-  });
-
-  // Get safety rating by ID
-
-router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
-    try {
-      // Amadeus dropped (DECISIONS.md ruling 34) — no live safety-rating lookup.
-      return res.status(404).json({ message: "Safety rating not found" });
-    } catch (error: any) {
-      console.error('Safety rating get error:', error);
-      res.status(500).json({ message: error.message || "Failed to get safety rating" });
-    }
-  });
 
   // ============ VIATOR API ROUTES ============
 
@@ -3899,10 +3782,17 @@ router.post("/api/geocode", async (req, res) => {
 
       const { address } = parsed.data;
       const result = await geocodeAddress(address);
-      if (!result) {
-        return res.status(404).json({ message: "Location not found" });
+      if (result) {
+        return res.json(result);
       }
-      res.json(result);
+      // DB-backed fallback (migration 217): admin-curated city-centre coordinates in
+      // geocode_fallbacks — curated data, not fabrication, so the §13 posture holds.
+      // A miss there too stays an honest 404, never a guessed coordinate.
+      const dbFallback = await storage.getGeocodeFallback(address);
+      if (dbFallback) {
+        return res.json({ ...dbFallback, fallback: true });
+      }
+      return res.status(404).json({ message: "Location not found" });
     } catch (error: any) {
       console.error('Geocoding API error:', error);
       res.status(500).json({ message: error.message || "Geocoding failed" });
@@ -6604,6 +6494,9 @@ router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) =>
       const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
       res.json(conversion);
     } catch (error) {
+      if (error instanceof BudgetValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to convert currency" });
     }
   });
@@ -7596,6 +7489,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
       const user = await storage.getUser(uid);
       return user?.role === "admin";
     } catch {
+      // Fail closed: if the admin-role lookup fails, deny access rather than accidentally granting it.
       return false;
     }
   };
@@ -8578,8 +8472,23 @@ router.get("/api/exchange-rates", async (_req, res) => {
     res.json({ base: "USD", rates: data.rates, cachedAt: now });
   } catch (err) {
     console.error("Exchange rate fetch error:", err);
-    const fallback = { EUR: 0.92, GBP: 0.79, JPY: 149.50, AUD: 1.53, SGD: 1.34 };
-    res.json({ base: "USD", rates: fallback, cachedAt: Date.now(), fallback: true });
+    // DB-backed fallback (migration 217): fx_rates is seeded at migration time and
+    // refreshed daily by fx-rate-refresh.service.ts — never a hardcoded literal that
+    // goes stale between deploys. If the DB has no rows either, say so honestly.
+    try {
+      const dbRates = await storage.getLatestFxRates();
+      if (dbRates) {
+        return res.json({
+          base: "USD",
+          rates: dbRates.rates,
+          cachedAt: dbRates.updatedAt ? new Date(dbRates.updatedAt).getTime() : Date.now(),
+          fallback: true,
+        });
+      }
+    } catch (dbErr) {
+      console.error("Exchange rate DB fallback error:", dbErr);
+    }
+    res.status(503).json({ base: "USD", rates: null, error: "Exchange rates unavailable" });
   }
 });
 

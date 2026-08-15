@@ -24,11 +24,12 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { serviceReviews, providerServices, users } from "@shared/schema";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { parsePagination } from "../utils/pagination";
 
 const router = Router();
 
@@ -36,6 +37,19 @@ router.get("/api/me/reviews", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    const { limit, offset } = parsePagination(req.query);
+
+    // Summary aggregates run over the FULL set (avg/awaiting must not shift with the page).
+    const [agg] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        avgRating: sql<number>`coalesce(avg(${serviceReviews.rating}), 0)::float`,
+        awaitingReply: sql<number>`count(*) filter (where ${serviceReviews.providerReply} is null)::int`,
+      })
+      .from(serviceReviews)
+      .innerJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+      .where(eq(providerServices.userId, userId));
 
     const rows = await db
       .select({
@@ -55,7 +69,9 @@ router.get("/api/me/reviews", isAuthenticated, async (req: any, res) => {
       .innerJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
       .leftJoin(users, eq(serviceReviews.travelerId, users.id))
       .where(eq(providerServices.userId, userId))
-      .orderBy(desc(serviceReviews.createdAt));
+      .orderBy(desc(serviceReviews.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     const reviews = rows.map((r) => ({
       id: r.id,
@@ -70,14 +86,18 @@ router.get("/api/me/reviews", isAuthenticated, async (req: any, res) => {
         [r.travelerFirstName, r.travelerLastName].filter(Boolean).join(" ") || "Traveler",
     }));
 
-    const total = reviews.length;
-    const avgRating =
-      total > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / total : 0;
-    const awaitingReply = reviews.filter((r) => !r.providerReply).length;
-
+    const total = agg?.total ?? 0;
     res.json({
       reviews,
-      summary: { total, avgRating, awaitingReply },
+      summary: {
+        total,
+        avgRating: agg?.avgRating ?? 0,
+        awaitingReply: agg?.awaitingReply ?? 0,
+      },
+      total,
+      hasMore: offset + reviews.length < total,
+      limit,
+      offset,
     });
   } catch (err) {
     console.error("[me/reviews] read error:", err);

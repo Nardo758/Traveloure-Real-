@@ -2035,3 +2035,123 @@ video call), category blocks on step 5, autosave round-tripping, the derived che
 
 **Annotation to the G5 batch above:** **#17 (edit-path for a live listing) is CLOSED** — landed as
 the edit-split rail (ruling 112 Q8, CLAUDE.md Locked Decision 23, migration 215, PR #474).
+
+### Folded in Aug 15, 2026 — workspace-reconciliation follow-ups (lanes E/F, ledger row 118)
+
+- **Router-guard comment-strip fragility (latent, §18d candidate).** `check-unmounted-routers.cjs`
+  strips block comments with a naive regex BEFORE line comments, so a `/*` glob inside a `//`
+  comment (e.g. "All /api/admin/* routes…") opens a bogus block that can swallow the mount
+  section when later REAL `/* … */` comments change the pairing — lane F hit exactly this (guard
+  reported 15 mounted routers dead; fixed by using `//` comments instead). The guard predicate
+  needs a line-comments-first strip + committed `--self-test` fixtures per §18d. Until then:
+  avoid inline `/* … */` in server/routes.ts.
+- **Payout-parity R8–R10 rewrites (deferred from lane F).** R8 must adopt the suite's own
+  dual-leg Stripe contract (assert per-owner stamps on the provisional rows in the 503 leg —
+  the stamp happens before Stripe); R10's raw `INSERT INTO service_categories` must match
+  canonical schema; helper signatures (makeService owner arg, recipeExpectation source option)
+  need porting from the workspace file. Tests only — no product risk while deferred.
+- **TWO parallel sanitizers to reconcile.** Replit's exercise-branch push (`d69b089a`) adds
+  `server/utils/sanitize.ts` + tests, authored before #477 landed `server/utils/text-sanitizer.ts`
+  (22 tests, wired into provider/expert/traveler write paths). When that branch PRs, fold to ONE
+  sanitizer (keep text-sanitizer as canonical; port any case their tests cover that ours miss).
+
+## Folded in Aug 15, 2026 — Distribute-vs-mock audit (Claude-in-Chrome, artifact d1c16852; 11 findings, 0 P1)
+
+Audit compared /provider/distribute against the ratified mockup
+(docs/design/provider-console-mockup/mockup.html). Verdict "DIVERGES": 6 P2 + 5 P3. Triage: 7 fixed
+in the conformance lane (this PR), 3 accepted-as-built (mock to be amended), 1 filed as enhancement.
+Audit coverage caveats stand: the CI reviewer account had 0 live listings and no handle, and mobile
+was unverified — re-audit those two surfaces opportunistically.
+
+### Fixed here (lane D — Distribute mock conformance)
+
+- **D-1 (P2, FIXED).** Arriving from Catalog's "Promote this →" (`?listing=<id>`) gave no arrival
+  context. Now: `banner-promote-arrival` — Catalog › Distribute › «name» crumbs, "Promoting «name»",
+  ← Back to Catalog. Stale/foreign ids still silently ignored (unchanged selection posture).
+- **D-2 (P2, FIXED).** Storefront card led with the generic "Your storefront" while the mock leads
+  with WHOSE page it is. Now: avatar (profileImageUrl or shared `initialsFromUser`) + business name
+  (businessName → firstName+lastName fallback — same chain as Profile/sidebar), "Your storefront"
+  demoted to eyebrow.
+- **D-4 (P2, FIXED).** Direct link required a separate "Get link" step before Copy/QR existed.
+  Now: Copy link / WhatsApp / Show QR render immediately; the first action mints the tracked /r/
+  link inline (`ensureUrl()`), then acts. §13 held: the URL text renders only once the code exists.
+- **D-5 (P3, FIXED).** Card title "Social kit" → "Share kit" (mock verbatim). Internal
+  names/testids keep the original channel vocabulary.
+- **D-7 (P3, FIXED).** Frame sublabels led with pixel dimensions. Now purpose-first: "Feed post ·
+  portrait card · 1080×1350", "Story · full-screen · 1080×1920", "Route map · portrait card ·
+  1080×1350".
+- **D-8 (P2, FIXED).** Route frame carried no on-surface honesty statement. Now a guardrail line
+  under the Route label: "Shows your stops in order — not a travel route, and no distances or
+  times" (ruling 22(c) stated where the provider sees it).
+- **D-11 (P3, FIXED).** Storefront badge "Live · N approved service(s)" spoke approval vocabulary.
+  Now "Live · showing X of Y listings" (X = approved+active, Y = all owner listings — same
+  predicate, clearer claim about what the public page shows).
+
+### Accepted as built — mock amendments (no code change)
+
+- **D-3 (P2, ACCEPT + AMEND MOCK).** Mock shows storefront URL as `traveloure.com/@handle`; built
+  namespace is `/p/:handle` and is load-bearing (OG injection, `/r/` short-link expansion, reserved
+  handles, ruling 116 language overlay all key on `/p/`). KEEP `/p/`; amend the mock.
+- **D-6 (P2, ACCEPT + AMEND MOCK).** Mock's feed frame is square 1080×1080; built is 1080×1350
+  4:5 portrait — the higher-performing IG feed shape and what the satori template renders. KEEP
+  1080×1350; amend the mock.
+- **D-9 (P3, ACCEPT AS BUILT).** Section titles differ slightly from mock ("Marketplace" card copy
+  etc.) — built titles are more accurate to what each channel does; mock titles were placeholders.
+
+### Filed (enhancement, needs its own lane)
+
+- **D-10 (P3, FILED).** Mock sketches per-channel "last shared" recency hints on the channel strip.
+  Needs a data source (short-link mint timestamps exist; share-action events don't) — and any
+  metric rendering on Distribute must stay within ruling 74 disp. 8 / 22(d) (measurement lives on
+  Performance). Design first, then a lane.
+
+## Folded in Aug 15, 2026 — Logistics/map audit (Claude-in-Chrome round 2; 17 findings, 2 P1)
+
+Audit compared Catalog → Map (traveler preview) and Workstation → step 4 "Logistics" against the
+ratified mock. Verdict "DIVERGES": 2 P1 + 10 P2 + 5 P3. Decision-maker ratified the two flagged
+calls Aug 15 ("go with your recommendations"): **D-9 collapse ratified** (one transport toggle;
+removed questions follow the mock's gap-#13 "stop asking for it" rule; schema untouched) and
+**D-12 autosave ratified** (manual Save Draft + "Route saved" buttons go; stops ride the same
+debounced autosave over the unchanged 22(a) replace-list PUT). Coverage caveats stand: audit
+account had no live listing and no saved stops (D-13 unverified with data), mobile unverified.
+
+### Lane M — Catalog map preview (D-1..D-8, all FIX — this PR)
+
+- **D-1 (P1, FIXED).** "+ Add a pin" only selected a listing — did nothing. Now the mock's
+  "Fix it in step 4 →", a real link to that listing's `/edit?step=logistics`.
+- **D-2 (P2, FIXED).** Read-only posture now stated: notice leads with "Traveler preview —
+  read-only", canvas closes with "Nothing here can be dragged, armed or placed…".
+- **D-3 (P2, FIXED).** Located summary counts PLACE-ANCHORED listings only (shared
+  `isPlaceAnchored`); remote/artifact are "they happen nowhere, and that is a real answer".
+  Unclassifiable rows stay in the place-anchored bucket (never silently excused).
+- **D-4 (P2, FIXED).** "Not located" list names each row's true reason: "no confirmed pin —
+  not drawn" (+fix link) vs "«method» — it happens nowhere" (no fix chip — nothing to fix).
+- **D-5 (P2, FIXED).** One canvas, whole footprint: all located listings render as labeled
+  sibling pins (`ServiceLocationMap` `siblingPins`/`labelPins` — still the ONE renderer, 22(c));
+  clicking a sibling selects it.
+- **D-6 (P2, FIXED).** "open it →" deep-links to the SELECTED listing's step 4 (notice moved
+  inside CatalogMapView to gain listing context), not bare /provider/workstation.
+- **D-7 (P3, FIXED).** Blank names render "Untitled service" in the rail, lists and labels.
+- **D-8 (P3, FIXED).** Market-insight category keys humanized (tour_guide → "Tour guide") in
+  list + popup; "0/1 · +1" badge → "0 of 1 · needs 1 more". Presentation only.
+
+### Lane L — step-4 Logistics authoring (D-9..D-17, all FIX — next PR)
+
+- **D-9 (P1, RATIFIED-FIX).** Six transport questions collapse to ONE toggle ("I collect
+  travelers and drop them back") + conditional spatial detail; transfer duration stays in
+  Scheduling. No schema change; stored answers preserved/derivable.
+- **D-10 (P2).** Layers card: Service radius (gated on confirmed pin), Route stops,
+  Travel-surcharge zones (display-only + Pricing & fees → link).
+- **D-11 (P2).** "Place the meeting pin" arm mode on the canvas — the armed click feeds the SAME
+  confirm-gated picker (22(b): one pin-write path; the canvas is just another way to open it).
+- **D-12 (P2, RATIFIED-FIX).** Autosave replaces Save Draft + "Route saved"; stops fold into the
+  debounced draft autosave over the unchanged replace-list PUT. "Draft · autosaved" chip +
+  footer line per mock.
+- **D-13 (P2).** Route-stops rail: "X of Y located" pill, per-stop Move/Remove, "Place on map"
+  for unlocated stops (nullable lat/lng is already the 22(a) shape). Bench-verify WITH stops.
+- **D-14 (P2).** Osaka neighborhood picker dumps thousands of raw chōme rows; 20(b) says seeds
+  come from OSM place=suburb|neighbourhood|quarter only. Purge non-conforming rows + filter at
+  read.
+- **D-15 (P3).** Full-width canvas, rail as aside ("one canvas with one rail").
+- **D-16 (P3).** Step header "Logistics — where it happens" + "Step 4 of 5".
+- **D-17 (P3).** Radius ring contrast raised to visibly legible at default zoom.

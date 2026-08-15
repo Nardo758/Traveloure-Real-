@@ -53,7 +53,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents } from "../config/payout.config";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -239,6 +239,14 @@ router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
 
 router.get("/api/revenue-splits", async (req, res) => {
     try {
+      // Task 1151 (workspace reconciliation): revenue splits expose commercially
+      // sensitive rate config (§18 posture) — admin-only.
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       const splits = await storage.getRevenueSplits();
       res.json(splits);
     } catch (err) {
@@ -712,11 +720,14 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
         });
 
         const provider = await storage.getUser(String(raw.provider_id));
-        if (provider?.email) {
+        // Migration 225: skip alert email when provider has opted out (emailBookingAlerts
+        // defaults to true — existing providers are unaffected until they toggle it off).
+        if (provider?.email && provider.emailBookingAlerts !== false) {
           const { sendBookingAlertEmail } = await import("../services/email.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
           await sendBookingAlertEmail({
-            providerEmail: provider.email,
+            // Migration 224: route alerts to the dedicated notification email when set.
+            providerEmail: provider.notificationEmail || provider.email,
             providerName,
             bookingId,
             serviceName: raw.service_name ?? "a service",
@@ -2140,18 +2151,59 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         });
       }
 
-      // §15: one open request at a time — a pending/processing payout blocks a duplicate.
+      // §15: one open request at a time. Three sub-cases:
+      //
+      // (A) FRESH pending/processing (age ≤ STALE_PAYOUT_PROCESSING_DAYS) → 409.
+      //
+      // (B) STALE processing (age > STALE_PAYOUT_PROCESSING_DAYS) → 409 with contactSupport.
+      //     A 'processing' row means the admin has the row in hand; a Stripe transfer could
+      //     have been issued out-of-band. Do NOT auto-cancel — the earner must contact support.
+      //     The Money page already shows a 7-day "Contact support" nudge for these rows.
+      //
+      // (C) STALE pending (age > STALE_PAYOUT_PROCESSING_DAYS) → atomic supersession.
+      //     'pending' rows have never been claimed for a Stripe transfer (the claim guard in
+      //     storage.ts only promotes pending→processing at the moment a completed attempt fires).
+      //     Safe to cancel. The cancellation and the new INSERT happen in ONE DB transaction
+      //     with a conditional UPDATE (WHERE status='pending') so a concurrent admin claim
+      //     between our read and the tx causes the UPDATE to return 0 rows, which rolls back
+      //     the entire tx and returns 409 to the earner to retry. The claimForProcessing guards
+      //     also exclude 'failed' (storage.ts task-1193 fix) so a superseded row can never
+      //     have Stripe money moved against it.
       const existing = isProvider
         ? await storage.getProviderPayouts(userId)
         : await storage.getExpertPayouts(userId);
-      const open = existing.find((p: any) => p.status === "pending" || p.status === "processing");
-      if (open) {
+
+      // (A) Fresh open payout — normal duplicate gate.
+      const freshOpen = existing.find(
+        (p: any) => (p.status === "pending" || p.status === "processing") && !isPayoutStale(p),
+      );
+      if (freshOpen) {
         return res.status(409).json({
           error: "payout_request_pending",
           message: "You already have a payout request awaiting review.",
-          payout: open,
+          payout: freshOpen,
         });
       }
+
+      // (B) Stale processing — cannot auto-cancel; Stripe transfer may have been issued.
+      const staleProcessing = existing.find(
+        (p: any) => p.status === "processing" && isPayoutStale(p),
+      );
+      if (staleProcessing) {
+        return res.status(409).json({
+          error: "payout_processing_stale",
+          message:
+            `Your payout has been in processing for over ${STALE_PAYOUT_PROCESSING_DAYS} days. ` +
+            `Please contact support to resolve it before a new request can be submitted.`,
+          payout: staleProcessing,
+          contactSupport: true,
+        });
+      }
+
+      // (C) Stale pending — safe to supersede atomically.
+      const stalePending = existing.filter(
+        (p: any) => p.status === "pending" && isPayoutStale(p),
+      );
 
       // §14: amount is SERVER-DERIVED from the earner's releasable balance, never from the
       // body (a self-service withdrawal of the user's OWN cleared balance — money-derive-ok).
@@ -2185,10 +2237,74 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       }
 
       const amount = (amountCents / 100).toFixed(2);
+
       // requestedAt is DB-defaulted (defaultNow) — not in the insert type, so it's omitted here.
-      const payout = isProvider
-        ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
-        : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+      let payout: any;
+      if (stalePending.length > 0) {
+        // (C) Atomic supersession: cancel stale pending row(s) and create replacement in ONE tx.
+        // The conditional UPDATE (WHERE status='pending') is the guard against a concurrent admin
+        // claim between our read above and this tx: if 0 rows are updated the tx rolls back and
+        // we return 409 so the earner can retry.
+        const supersessionNote =
+          `Automatically superseded after ${STALE_PAYOUT_PROCESSING_DAYS} days with no admin resolution. ` +
+          `A fresh payout request was submitted by the earner on ${new Date().toISOString()}. ` +
+          `No Stripe transfer was issued for this row.`;
+        try {
+          payout = await db.transaction(async (tx) => {
+            for (const stale of stalePending) {
+              const cancelled = isProvider
+                ? await tx
+                    .update(providerPayouts)
+                    .set({ status: "failed", notes: supersessionNote })
+                    .where(and(eq(providerPayouts.id, stale.id), eq(providerPayouts.status, "pending")))
+                    .returning()
+                : await tx
+                    .update(expertPayouts)
+                    .set({ status: "failed", failureReason: supersessionNote })
+                    .where(and(eq(expertPayouts.id, stale.id), eq(expertPayouts.status, "pending")))
+                    .returning();
+              if (cancelled.length === 0) {
+                // Admin claimed this payout concurrently — our window closed. Roll back.
+                throw Object.assign(
+                  new Error("Stale payout was claimed concurrently — please try again."),
+                  { code: "concurrent_claim" },
+                );
+              }
+              console.log(
+                `[payouts] superseded stale pending ${isProvider ? "provider" : "expert"} payout ` +
+                `${stale.id} for user ${userId} (age > ${STALE_PAYOUT_PROCESSING_DAYS}d)`,
+              );
+            }
+            // Create the replacement inside the same transaction.
+            if (isProvider) {
+              const [inserted] = await tx
+                .insert(providerPayouts)
+                .values({ providerId: userId, amount, status: "pending", notes: "Requested by provider (superseded stale)" })
+                .returning();
+              return inserted;
+            } else {
+              const [inserted] = await tx
+                .insert(expertPayouts)
+                .values({ expertId: userId, amount, status: "pending", metadata: { source: "self_request_superseded" } })
+                .returning();
+              return inserted;
+            }
+          });
+        } catch (txErr: any) {
+          if (txErr.code === "concurrent_claim") {
+            return res.status(409).json({
+              error: "payout_request_pending",
+              message: "Your payout was just picked up for processing. Please try again in a moment.",
+            });
+          }
+          throw txErr;
+        }
+      } else {
+        // No stale pending rows — normal creation path (unchanged).
+        payout = isProvider
+          ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
+          : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+      }
 
       res.status(201).json({ ...payout, requesterType: isProvider ? "provider" : "expert" });
     } catch (error: any) {

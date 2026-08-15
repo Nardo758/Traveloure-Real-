@@ -360,7 +360,9 @@ export function OfferingShareDetail({
       {showImages ? (
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Feed (1080×1350)</p>
+            {/* D-7 (mock conformance, Aug 15): lead with what the frame is FOR; the pixel size
+                is the trailing detail, not the name. */}
+            <p className="text-xs font-medium text-muted-foreground">Feed post · portrait card · 1080×1350</p>
             <img
               src={`/api/share-image/service/${offering.id}.png?format=feed`}
               alt={`${offering.name} — feed share card`}
@@ -385,7 +387,7 @@ export function OfferingShareDetail({
             />
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Story (1080×1920)</p>
+            <p className="text-xs font-medium text-muted-foreground">Story · full-screen · 1080×1920</p>
             <img
               src={`/api/share-image/service/${offering.id}.png?format=story`}
               alt={`${offering.name} — story share card`}
@@ -411,7 +413,17 @@ export function OfferingShareDetail({
           </div>
           {offering.lane === "service" && (
             <div className="space-y-2">
-              {routeAvailable && <p className="text-xs font-medium text-muted-foreground">Route (1080×1350)</p>}
+              {routeAvailable && (
+                <>
+                  <p className="text-xs font-medium text-muted-foreground">Route map · portrait card · 1080×1350</p>
+                  {/* D-8 (mock conformance, Aug 15): ruling 22(c) honesty stated ON the surface —
+                      the frame draws the stop SEQUENCE, never travel routing or invented
+                      distances/durations. */}
+                  <p className="text-[11px] text-muted-foreground" data-testid={`text-route-guardrail-${offering.id}`}>
+                    Shows your stops in order — not a travel route, and no distances or times.
+                  </p>
+                </>
+              )}
               {routeAvailable && (
                 <>
                   <img

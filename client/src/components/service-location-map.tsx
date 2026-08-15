@@ -21,7 +21,7 @@
  * by hand at all.
  */
 import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Circle, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -64,6 +64,16 @@ function pinDivIcon(testId: string): L.DivIcon {
     html: `<div data-testid="${testId}" style="width:26px;height:26px;border-radius:50%;background:${BRAND};border:3px solid ${CARD};box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
+  });
+}
+
+/** D-5 sibling listing marker — smaller and neutral so the selected listing's pin stays primary. */
+function siblingDivIcon(testId: string): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div data-testid="${testId}" style="width:18px;height:18px;border-radius:50%;background:${CARD};border:2.5px solid ${MID};box-shadow:0 2px 6px rgba(0,0,0,0.25);cursor:pointer;"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
   });
 }
 
@@ -141,6 +151,9 @@ export function ServiceLocationMap({
   onStopDragEnd,
   onCanvasClick,
   placementActive = false,
+  siblingPins,
+  onSiblingPinClick,
+  labelPins = false,
 }: {
   /** The service's CONFIRMED meeting pin (migration-129 latitude/longitude), or null. */
   pin: ServicePinView | null;
@@ -175,16 +188,32 @@ export function ServiceLocationMap({
   onCanvasClick?: (lat: number, lng: number) => void;
   /** Purely cosmetic: crosshair cursor + a visible "armed" ring while placement is on. */
   placementActive?: boolean;
+  /**
+   * Lane M (mock conformance D-5, Aug 15): the OTHER located listings of the same owner, drawn
+   * as smaller neutral markers so the Catalog preview shows the whole footprint on ONE canvas —
+   * the mock's "every located listing with name labels" rule. Display-only siblings: clicking
+   * one only calls `onSiblingPinClick` (the Catalog selects that listing); they are never
+   * draggable and carry no radius/zone/stop layers of their own. Traveler surfaces omit this.
+   */
+  siblingPins?: ReadonlyArray<{ id: string; lat: number; lng: number; label: string }> | null;
+  onSiblingPinClick?: (id: string) => void;
+  /** Permanent name labels on pins (the footprint view); popups-only when false (default). */
+  labelPins?: boolean;
 }) {
   const authoring = !!onStopDragEnd || !!onCanvasClick;
   const located = stops
     .filter((s): s is ServiceRouteStopView & { lat: number; lng: number } => s.lat !== null && s.lng !== null)
     .sort((a, b) => a.position - b.position);
+  const siblings = siblingPins ?? [];
 
   // §13: nothing real to draw ⇒ no map at all (the caller shows its own "no location yet" state).
-  if (!pin && located.length === 0) return null;
+  if (!pin && located.length === 0 && siblings.length === 0) return null;
 
-  const center: [number, number] = pin ? [pin.lat, pin.lng] : [located[0].lat, located[0].lng];
+  const center: [number, number] = pin
+    ? [pin.lat, pin.lng]
+    : located.length > 0
+      ? [located[0].lat, located[0].lng]
+      : [siblings[0].lat, siblings[0].lng];
   const showConnector = located.length >= 2;
 
   return (
@@ -205,13 +234,20 @@ export function ServiceLocationMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
-        <FitToContent pin={pin} radiusKm={radiusKm ?? null} located={located} authoring={authoring} />
+        <FitToContent
+          pin={pin}
+          radiusKm={radiusKm ?? null}
+          located={[...located.map((s) => ({ lat: s.lat, lng: s.lng })), ...siblings.map((p) => ({ lat: p.lat, lng: p.lng }))]}
+          authoring={authoring}
+        />
         {onCanvasClick && <CanvasClickBridge onCanvasClick={onCanvasClick} />}
+        {/* D-17 (mock conformance, Aug 15): the ring must be legible at default zoom — the old
+            0.5/0.07 opacities read as absent against pale tiles. */}
         {pin && radiusKm && radiusKm > 0 && (
           <Circle
             center={[pin.lat, pin.lng]}
             radius={radiusKm * 1000}
-            pathOptions={{ color: BRAND, weight: 1.5, opacity: 0.5, fillColor: BRAND, fillOpacity: 0.07 }}
+            pathOptions={{ color: BRAND, weight: 2.5, opacity: 0.85, fillColor: BRAND, fillOpacity: 0.14 }}
           />
         )}
         {/* Ruling 112 Q3: surcharge-zone rings — dashed, amber, display-only. Each popup names
@@ -241,8 +277,26 @@ export function ServiceLocationMap({
             pathOptions={{ color: BRAND, weight: 2.5, opacity: 0.7, dashArray: "6 8" }}
           />
         )}
+        {/* D-5 sibling pins: smaller neutral dots with permanent name labels — the footprint. */}
+        {siblings.map((p) => (
+          <Marker
+            key={`sibling-${p.id}`}
+            position={[p.lat, p.lng]}
+            icon={siblingDivIcon(`${testIdPrefix}-sibling-${p.id}`)}
+            eventHandlers={onSiblingPinClick ? { click: () => onSiblingPinClick(p.id) } : undefined}
+          >
+            <Tooltip permanent direction="bottom" offset={[0, 8]} className="service-map-pin-label">
+              {p.label}
+            </Tooltip>
+          </Marker>
+        ))}
         {pin && (
           <Marker position={[pin.lat, pin.lng]} icon={pinDivIcon(`${testIdPrefix}-pin`)}>
+            {labelPins && pinLabel ? (
+              <Tooltip permanent direction="bottom" offset={[0, 10]} className="service-map-pin-label">
+                {pinLabel}
+              </Tooltip>
+            ) : null}
             {pinLabel ? (
               <Popup>
                 <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", fontSize: 13, fontWeight: 700, color: INK }}>

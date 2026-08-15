@@ -23,6 +23,7 @@ import {
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   expertServiceCategories, expertServiceOfferings, expertSpecializations,
   destinationEvents, destinationSeasons, locationCache,
+  fxRates, geocodeFallbacks,
   experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
   experienceUniversalFilters, experienceUniversalFilterOptions,
   expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
@@ -164,22 +165,31 @@ export interface BookingStatusNotification {
 export interface IStorage {
   // Trips
   getTrips(userId?: string): Promise<Trip[]>;
+
   getTrip(id: string): Promise<Trip | undefined>;
+
   createTrip(trip: InsertTrip & { userId: string }): Promise<Trip>;
+
   updateTrip(id: string, trip: Partial<InsertTrip>): Promise<Trip | undefined>;
+
   deleteTrip(id: string): Promise<void>;
 
   // Itineraries
+
   createGeneratedItinerary(itinerary: InsertGeneratedItinerary): Promise<GeneratedItinerary>;
+
   getGeneratedItineraryByTripId(tripId: string): Promise<GeneratedItinerary | undefined>;
 
   // Tourist Places
+
   searchTouristPlaces(query: string): Promise<TouristPlaceResult[]>;
 
   // Users
+
   getUser(userId: string): Promise<User | undefined>;
 
   // Security & Audit Logging
+
   logAccess(log: {
     actorId: string;
     actorRole: string;
@@ -190,68 +200,115 @@ export interface IStorage {
     metadata?: any;
     ipAddress?: string;
     userAgent?: string;
+
   }): Promise<void>;
 
   // Chats
+
   getChats(userId: string): Promise<UserAndExpertChat[]>;
+
   createChat(chat: any): Promise<UserAndExpertChat>;
 
   // Help Guide Trips
+
   getHelpGuideTrips(): Promise<HelpGuideTrip[]>;
+
   getHelpGuideTrip(id: string): Promise<HelpGuideTrip | undefined>;
 
   // Vendors
+
   getVendors(category?: string, city?: string): Promise<Vendor[]>;
+
   getVendor(id: string): Promise<Vendor | undefined>;
+
   createVendor(vendor: InsertVendor): Promise<Vendor>;
 
   // Local Expert Forms
+
   getLocalExpertForm(userId: string): Promise<LocalExpertForm | undefined>;
+
   getLocalExpertForms(status?: string): Promise<LocalExpertForm[]>;
+
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
+
   updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined>;
+
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+
   updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined>;
+
   updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
+
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
+
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
+
   updateLocalExpertFormProfileFields(userId: string, fields: Partial<Pick<InsertLocalExpertForm, "displayName" | "headline" | "city" | "country" | "languages" | "bio" | "firstName" | "lastName">>): Promise<void>;
+
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
 
   // Provider Verification (publish-gate Step 1)
+
   updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void>;
 
   // Service Provider Forms
+
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
+
   getServiceProviderForms(status?: string): Promise<ServiceProviderForm[]>;
+
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
+
   updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
+
   updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
   // Ruling 85: owner-gated (by userId, never a body id) set/update/clear of the account-level
   // office location. The value is a pre-validated {address,lat,lng} or null-to-clear.
+
   updateServiceProviderFormOfficeLocation(userId: string, officeLocation: { address: string | null; lat: number; lng: number } | null): Promise<ServiceProviderForm | undefined>;
 
   // Provider Services
+
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
+
   getAllProviderServices(): Promise<ProviderService[]>;
+
   getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
+
+  getRoutePointsByServiceIds(serviceIds: string[]): Promise<ServiceRoutePoint[]>;
+
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
+
   getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
+
+  getSurchargeTiersByServiceIds(serviceIds: string[]): Promise<ServiceSurchargeTier[]>;
+
   replaceServiceSurchargeTiers(serviceId: string, tiers: Array<{ radiusKm: number; fee: number }>): Promise<ServiceSurchargeTier[]>;
   // S7 availability model (DECISIONS.md ledger 102) — replace-list write rails, patterns.md
   // route-points precedent (delete+insert under a parent-row lock).
+
   getServiceAvailabilityPatterns(serviceId: string): Promise<ServiceAvailabilityPattern[]>;
+
   replaceServiceAvailabilityPatterns(serviceId: string, patterns: Array<{ dayOfWeek: number; startTime: string; endTime: string; capacity: number }>): Promise<ServiceAvailabilityPattern[]>;
+
   getServiceDateRanges(serviceId: string): Promise<ServiceDateRange[]>;
+
   replaceServiceDateRanges(serviceId: string, ranges: Array<{ startDate: string; endDate: string; nightlyPrice: number | null; capacity: number }>): Promise<ServiceDateRange[]>;
+
   getServiceAvailabilityBlackouts(serviceId: string): Promise<ServiceAvailabilityBlackout[]>;
+
   replaceServiceAvailabilityBlackouts(serviceId: string, blackouts: Array<{ startDate: string; endDate: string; reason: string | null }>): Promise<ServiceAvailabilityBlackout[]>;
+
   getServiceAttestations(serviceId: string): Promise<ServiceAttestation[]>;
+
   affirmServiceAttestations(serviceId: string, keys: string[], affirmedBy: string): Promise<ServiceAttestation[]>;
 
   // Ruling 60 Phase B — provider CONTENT translation (service_translations).
+
   getServiceTranslation(serviceId: string, locale: string): Promise<ServiceTranslation | undefined>;
+
   getServiceTranslations(serviceId: string): Promise<ServiceTranslation[]>;
+
   upsertServiceTranslation(input: {
     serviceId: string;
     locale: string;
@@ -259,80 +316,134 @@ export interface IStorage {
     status: "draft" | "approved";
     source: "human" | "ai_draft";
     updatedBy: string;
+
   }): Promise<ServiceTranslation>;
+
   approveServiceTranslation(serviceId: string, locale: string, updatedBy: string): Promise<ServiceTranslation | undefined>;
+
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
+
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   // Ruling 112 Q8 (CLAUDE.md §23): the edit-split rail's three writers/readers. stage merges an
   // identity-field patch into pending_changes; apply/discard are atomic conditionals on
   // edit_review_status='pending' so a double admin click is one effect.
+
   stagePendingChanges(serviceId: string, patch: Record<string, unknown>): Promise<ProviderService | undefined>;
+
   applyPendingChanges(serviceId: string, adminId: string): Promise<ProviderService | undefined>;
+
   discardPendingChanges(serviceId: string): Promise<ProviderService | undefined>;
+
   getEditReviewServiceListings(): Promise<(ProviderServiceListing & { editReview: true; pendingChanges: Record<string, unknown> })[]>;
+
   deleteProviderService(id: string): Promise<void>;
+
   upsertProviderNeighborhoodCoverage(providerId: string, categoryKey: string, neighborhoodSlugs: string[]): Promise<void>;
 
   // Category Field Schema
+
   getCategoryFieldSchema(categoryKey: string): Promise<any[]>;
 
   // Service Categories (Enhanced for Admin Management)
+
   getServiceCategories(type?: string): Promise<ServiceCategory[]>;
+
   getServiceCategoryById(id: string): Promise<ServiceCategory | undefined>;
+
   getServiceCategoryBySlug(slug: string): Promise<ServiceCategory | undefined>;
+
   createServiceCategory(category: InsertServiceCategory): Promise<ServiceCategory>;
+
   updateServiceCategory(id: string, updates: Partial<InsertServiceCategory>): Promise<ServiceCategory | undefined>;
+
   deleteServiceCategory(id: string): Promise<void>;
+
   getServiceSubcategories(categoryId: string): Promise<ServiceSubcategory[]>;
+
   getAllServiceSubcategories(): Promise<ServiceSubcategory[]>;
+
   createServiceSubcategory(subcategory: InsertServiceSubcategory): Promise<ServiceSubcategory>;
+
   updateServiceSubcategory(id: string, updates: Partial<InsertServiceSubcategory>): Promise<ServiceSubcategory | undefined>;
+
   deleteServiceSubcategory(id: string): Promise<void>;
 
   // FAQs
+
   getFAQs(category?: string): Promise<FAQ[]>;
+
   createFAQ(faq: InsertFAQ): Promise<FAQ>;
+
   updateFAQ(id: string, updates: Partial<InsertFAQ>): Promise<FAQ | undefined>;
+
   deleteFAQ(id: string): Promise<void>;
 
   // Wallets
+
   getWallet(userId: string): Promise<Wallet | undefined>;
+
   getOrCreateWallet(userId: string): Promise<Wallet>;
+
   addCredits(userId: string, amount: number, description: string, referenceId?: string): Promise<CreditTransaction>;
+
   deductCredits(userId: string, amount: number, description: string, referenceId?: string): Promise<CreditTransaction | null>;
+
   getCreditTransactions(walletId: string): Promise<CreditTransaction[]>;
 
   // Service Templates
+
   getServiceTemplates(categoryId?: string): Promise<ServiceTemplate[]>;
+
   getServiceTemplate(id: string): Promise<ServiceTemplate | undefined>;
+
   createServiceTemplate(template: InsertServiceTemplate): Promise<ServiceTemplate>;
+
   updateServiceTemplate(id: string, updates: Partial<InsertServiceTemplate>): Promise<ServiceTemplate | undefined>;
+
   deleteServiceTemplate(id: string): Promise<void>;
 
   // Enhanced Provider Services (for Expert Services Menu)
+
   getProviderServiceById(id: string): Promise<ProviderService | undefined>;
+
   getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]>;
+
   getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]>;
+
   toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined>;
+
   duplicateService(id: string, userId: string): Promise<ProviderService | undefined>;
+
   incrementServiceBookings(id: string, amount: number): Promise<void>;
 
   // Service Bookings
+
   getServiceBookings(filters: { providerId?: string; travelerId?: string; status?: string }): Promise<ServiceBooking[]>;
+
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
+
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
-  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined>;
+
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[]): Promise<ServiceBooking | undefined>;
+
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
+
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
+
   getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
+
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
+
   getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
+
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
+
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
 
   // Unified Discovery
+
   unifiedSearch(filters: {
     query?: string;
     categoryId?: string;
@@ -343,250 +454,424 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[]; packages: ExpertTemplate[]; total: number }>;
+
+  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null })[]; packages: ExpertTemplate[]; total: number; packagesTotal: number; suggestion: string | null }>;
 
   // Cart
+
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
+
   getGuestCartItems(guestSessionId: string, experienceSlug?: string): Promise<any[]>;
+
   getCartItemById(id: string): Promise<any | undefined>;
+
   addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any>;
+
   updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null }): Promise<any | undefined>;
+
   removeFromCart(id: string): Promise<void>;
+
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
+
   migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
 
   // Contracts
+
   getContract(id: string): Promise<any | undefined>;
   // travelerId/earnerId REQUIRED (migration 157) — see the implementation note.
+
   createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string; travelerId: string; earnerId: string | null }): Promise<any>;
+
   updateContractStatus(id: string, status: string, paymentUrl?: string): Promise<any | undefined>;
 
   // Notifications
+
   getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]>;
+
   getUnreadCount(userId: string): Promise<number>;
+
   createNotification(notification: InsertNotification): Promise<Notification>;
+
   markAsRead(id: string, userId: string): Promise<Notification | undefined>;
+
   markAllAsRead(userId: string): Promise<void>;
+
   deleteNotification(id: string, userId: string): Promise<boolean>;
 
   // Experience Types
+
   getExperienceTypes(): Promise<ExperienceType[]>;
+
   getExperienceType(id: string): Promise<ExperienceType | undefined>;
+
   getExperienceTypeBySlug(slug: string): Promise<ExperienceType | undefined>;
+
   getExperienceTemplateSteps(experienceTypeId: string): Promise<ExperienceTemplateStep[]>;
   
   // Experience Template Tabs & Filters
+
   getExperienceTemplateTabs(experienceTypeId: string): Promise<any[]>;
+
   getExperienceTemplateFilters(tabId: string): Promise<any[]>;
+
   getExperienceUniversalFilters(experienceTypeId: string): Promise<any[]>;
   
   // User Experiences
+
   getUserExperiences(userId: string): Promise<UserExperience[]>;
+
   getUserExperienceById(experienceId: string): Promise<UserExperience | null>;
+
   getUserExperience(id: string): Promise<UserExperience | undefined>;
+
   createUserExperience(experience: InsertUserExperience & { userId: string }): Promise<UserExperience>;
+
   updateUserExperience(id: string, updates: Partial<InsertUserExperience>): Promise<UserExperience | undefined>;
+
   deleteUserExperience(id: string): Promise<void>;
   
   // User Experience Items
+
   getUserExperienceItems(userExperienceId: string): Promise<UserExperienceItem[]>;
+
   addUserExperienceItem(item: InsertUserExperienceItem): Promise<UserExperienceItem>;
+
   updateUserExperienceItem(id: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined>;
+
   removeUserExperienceItem(id: string): Promise<void>;
 
   // Expert Experience Types
+
   getExpertExperienceTypes(expertId: string): Promise<ExpertExperienceType[]>;
+
   getExpertsByExperienceType(experienceTypeId: string): Promise<any[]>;
+
   addExpertExperienceType(data: InsertExpertExperienceType): Promise<ExpertExperienceType>;
+
   removeExpertExperienceType(id: string): Promise<void>;
 
   // Expert Service Categories & Offerings
+
   getExpertServiceCategories(): Promise<any[]>;
+
   getExpertServiceOfferings(categoryId?: string): Promise<any[]>;
+
   getActiveExpertOfferingTypes(): Promise<any[]>;
+
   getExpertSelectedServices(expertId: string): Promise<any[]>;
+
   getApprovedServicesForExpert(expertId: string): Promise<any[]>;
+
   addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any>;
+
   removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void>;
   
   // Expert Specializations
+
   getExpertSpecializations(expertId: string): Promise<any[]>;
+
   addExpertSpecialization(expertId: string, specialization: string): Promise<any>;
+
   removeExpertSpecialization(expertId: string, specialization: string): Promise<void>;
   
   // Get experts with full profile (experience types, services, specializations)
+
   getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]>;
 
   // Expert Custom Services
+
   getProviderServiceListings(expertId: string): Promise<ProviderServiceListing[]>;
+
   getProviderServiceListingById(id: string): Promise<ProviderServiceListing | undefined>;
+
   getProviderServiceListingsByStatus(status: string): Promise<ProviderServiceListing[]>;
+
   createProviderServiceListing(expertId: string, service: InsertProviderServiceListing): Promise<ProviderServiceListing>;
+
   updateProviderServiceListing(id: string, updates: Partial<InsertProviderServiceListing>): Promise<ProviderServiceListing | undefined>;
+
   submitProviderServiceListing(id: string): Promise<ProviderServiceListing | undefined>;
+
   approveProviderServiceListing(id: string, reviewedBy: string, goLive: boolean): Promise<ProviderServiceListing | undefined>;
+
   rejectProviderServiceListing(id: string, reviewedBy: string, reason: string): Promise<ProviderServiceListing | undefined>;
+
   deleteProviderServiceListing(id: string): Promise<void>;
+
   getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]>;
 
   // Custom Venues
+
   getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
+
   getCustomVenue(id: string): Promise<CustomVenue | undefined>;
+
   createCustomVenue(venue: InsertCustomVenue): Promise<CustomVenue>;
+
   updateCustomVenue(id: string, venue: Partial<InsertCustomVenue>): Promise<CustomVenue | undefined>;
+
   deleteCustomVenue(id: string): Promise<void>;
 
   // Vendor Availability Slots
+
   getVendorAvailabilitySlots(serviceId: string, date?: string): Promise<VendorAvailabilitySlot[]>;
+
   getVendorAvailabilitySlotsInRange(serviceId: string, startDate: string, endDate: string): Promise<VendorAvailabilitySlot[]>;
+
   getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]>;
+
   getVendorAvailabilitySlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
+
   createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot>;
+
   updateVendorAvailabilitySlot(id: string, updates: Partial<InsertVendorAvailabilitySlot>): Promise<VendorAvailabilitySlot | undefined>;
+
   deleteVendorAvailabilitySlot(id: string): Promise<void>;
+
   bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
   // C3: compensation release for a claimed slot (failed multi-item claim / future refund path).
+
   releaseSlot(id: string): Promise<void>;
 
   // Coordination States
+
   getCoordinationStates(userId: string): Promise<CoordinationState[]>;
+
   getCoordinationState(id: string): Promise<CoordinationState | undefined>;
+
   getCoordinationStatesByTripId(tripId: string): Promise<CoordinationState[]>;
+
   getActiveCoordinationState(userId: string, experienceType: string): Promise<CoordinationState | undefined>;
+
   createCoordinationState(state: InsertCoordinationState): Promise<CoordinationState>;
+
   updateCoordinationState(id: string, updates: Partial<InsertCoordinationState>): Promise<CoordinationState | undefined>;
+
   updateCoordinationStatus(id: string, status: string, historyEntry?: any): Promise<CoordinationState | undefined>;
+
   deleteCoordinationState(id: string): Promise<void>;
 
   // Coordination Bookings
+
   getCoordinationBookings(coordinationId: string): Promise<CoordinationBooking[]>;
+
   getCoordinationBooking(id: string): Promise<CoordinationBooking | undefined>;
+
   createCoordinationBooking(booking: InsertCoordinationBooking): Promise<CoordinationBooking>;
+
   updateCoordinationBooking(id: string, updates: Partial<InsertCoordinationBooking>): Promise<CoordinationBooking | undefined>;
+
   confirmCoordinationBooking(id: string, bookingReference: string, confirmationDetails?: any): Promise<CoordinationBooking | undefined>;
+
   deleteCoordinationBooking(id: string): Promise<void>;
 
   // Expert Workspace
+
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
-  // WRITE-access variant (ruling, Aug 7 2026 — "a PENDING advisor may not write"): excludes
-  // 'pending' from the allow-list. Use this to gate trip-item mutation paths that grant access
-  // via the advisor role; use `isExpertAssignedToTrip` above for read surfaces.
+
   isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean>;
 
   // Destination Calendar Events
+
   getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]>;
+
   getApprovedDestinationEvents(country: string, city?: string): Promise<DestinationEvent[]>;
+
   getDestinationEventById(id: string): Promise<DestinationEvent | undefined>;
+
   getContributorDestinationEvents(contributorId: string): Promise<DestinationEvent[]>;
+
   getPendingDestinationEvents(): Promise<DestinationEvent[]>;
+
   createDestinationEvent(event: InsertDestinationEvent): Promise<DestinationEvent>;
+
   updateDestinationEvent(id: string, updates: Partial<InsertDestinationEvent>): Promise<DestinationEvent | undefined>;
+
   submitDestinationEvent(id: string): Promise<DestinationEvent | undefined>;
+
   approveDestinationEvent(id: string, reviewedBy: string): Promise<DestinationEvent | undefined>;
+
   rejectDestinationEvent(id: string, reviewedBy: string, reason: string): Promise<DestinationEvent | undefined>;
+
   deleteDestinationEvent(id: string): Promise<void>;
   
   // Destination Seasons
+
   getDestinationSeasons(country: string, city?: string): Promise<DestinationSeason[]>;
+
   createDestinationSeason(season: InsertDestinationSeason): Promise<DestinationSeason>;
+
   updateDestinationSeason(id: string, updates: Partial<InsertDestinationSeason>): Promise<DestinationSeason | undefined>;
+
   deleteDestinationSeason(id: string): Promise<void>;
   
   // Get unique countries with calendar data
+
   getCalendarCountries(): Promise<string[]>;
 
+  // FX rates (migration 217) — DB-backed fallback for /api/exchange-rates.
+
+  getLatestFxRates(): Promise<{ rates: Record<string, number>; updatedAt: Date | null } | null>;
+
+  upsertFxRates(rates: Record<string, number>): Promise<number>;
+
+  // Geocode fallbacks (migration 217) — admin-curated city-centre coordinates,
+  // consulted only when the live geocode misses. Null when the city is unknown.
+
+  getGeocodeFallback(cityName: string): Promise<{ lat: number; lng: number; formattedAddress: string } | null>;
+
   // Location Cache
+
   searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]>;
+
   upsertLocationCache(location: InsertLocationCache): Promise<LocationCache>;
+
   getLocationByIataCode(iataCode: string, locationType?: string): Promise<LocationCache | undefined>;
 
   // Expert Templates
+
   getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; category?: string; destination?: string }): Promise<ExpertTemplate[]>;
+
   getExpertTemplate(id: string): Promise<ExpertTemplate | undefined>;
+
   createExpertTemplate(template: InsertExpertTemplate): Promise<ExpertTemplate>;
+
   updateExpertTemplate(id: string, updates: Partial<InsertExpertTemplate>): Promise<ExpertTemplate | undefined>;
+
   deleteExpertTemplate(id: string): Promise<void>;
+
   getSubmittedExpertTemplates(): Promise<ExpertTemplate[]>;
+
   submitExpertTemplate(id: string): Promise<ExpertTemplate | undefined>;
+
   approveExpertTemplate(id: string, reviewedBy: string): Promise<ExpertTemplate | undefined>;
+
   rejectExpertTemplate(id: string, reviewedBy: string, reason: string): Promise<ExpertTemplate | undefined>;
+
   incrementTemplateView(id: string): Promise<void>;
   
   // Template Purchases
+
   getTemplatePurchases(filters?: { buyerId?: string; expertId?: string }): Promise<TemplatePurchase[]>;
+
   getTemplatePurchase(id: string): Promise<TemplatePurchase | undefined>;
+
   createTemplatePurchase(purchase: InsertTemplatePurchase): Promise<TemplatePurchase>;
+
   hasUserPurchasedTemplate(userId: string, templateId: string): Promise<boolean>;
   
   // Template Reviews
+
   getTemplateReviews(templateId: string): Promise<TemplateReview[]>;
+
   createTemplateReview(review: InsertTemplateReview): Promise<TemplateReview>;
   
   // Expert Earnings
+
   getExpertEarnings(expertId: string): Promise<ExpertEarning[]>;
+
   getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
+
   createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning>;
   
   // Expert Payouts
+
   getExpertPayouts(expertId: string): Promise<ExpertPayout[]>;
+
   createExpertPayout(payout: InsertExpertPayout): Promise<ExpertPayout>;
   
   // Revenue Splits
+
   getRevenueSplits(): Promise<RevenueSplit[]>;
+
   getRevenueSplit(type: string): Promise<RevenueSplit | undefined>;
   
   // Expert Tips
+
   getExpertTips(expertId: string): Promise<ExpertTip[]>;
+
   createExpertTip(tip: InsertExpertTip): Promise<ExpertTip>;
+
   getTipsForExpert(expertId: string): Promise<{ tips: ExpertTip[]; totalAmount: number }>;
   
   // Expert Referrals
+
   getExpertReferrals(referrerId: string): Promise<ExpertReferral[]>;
+
   createExpertReferral(referral: InsertExpertReferral): Promise<ExpertReferral>;
+
   getReferralByCode(code: string): Promise<ExpertReferral | undefined>;
+
   updateReferralStatus(id: string, status: string, qualifiedAt?: Date): Promise<void>;
   
   // Affiliate Earnings
+
   getAffiliateEarnings(expertId: string): Promise<AffiliateEarning[]>;
+
   createAffiliateEarning(earning: InsertAffiliateEarning): Promise<AffiliateEarning>;
+
   getAffiliateEarningsSummary(expertId: string): Promise<{ total: number; pending: number; confirmed: number; paid: number }>;
   
   // Provider Earnings
+
   getProviderEarnings(providerId: string): Promise<ProviderEarning[]>;
+
   getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
+
   createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning>;
+
   releaseMaturedEarnings(now?: Date): Promise<{ expert: number; provider: number }>;
+
   releaseEarningsForBooking(bookingId: string, now?: Date): Promise<number>;
+
   setBookingEarningsDispute(bookingId: string, open: boolean, now?: Date): Promise<number>;
+
   reverseEarningsForBooking(bookingId: string, now?: Date): Promise<{ reversed: number; skippedPaidOut: number }>;
+
   reversePlatformRevenueForBooking(bookingId: string, now?: Date, fraction?: number): Promise<number>;
 
   // Provider Payouts
+
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
+
   createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout>;
 
   // Admin Payouts
+
   getAllExpertPayouts(status?: string): Promise<(ExpertPayout & { requesterName?: string; requesterEmail?: string })[]>;
+
   getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]>;
+
   updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout>;
+
   updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
+
   claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined>;
+
   claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined>;
+
   markEarningsPaidOutForPayout(
     earnerType: 'expert' | 'provider',
     earnerId: string,
     payoutId: string,
     amountDollars: number,
+
   ): Promise<{ flippedCount: number; flippedAmount: number; shortfall: number }>;
 
   // Stripe Connect
+
   updateUserStripeAccount(userId: string, stripeAccountId: string, status: string): Promise<void>;
+
   getUserStripeAccount(userId: string): Promise<{ stripeAccountId: string | null; stripeAccountStatus: string | null; canReceivePayments: boolean | null }>;
 
   // Platform Revenue
+
   hasPlatformRevenueForSource(sourceId: string): Promise<boolean>;
+
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
+
   getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]>;
+
   getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
     totalGross: number;
     totalPlatformFee: number;
@@ -597,104 +882,164 @@ export interface IStorage {
     totalReversedGross: number;
     totalReversedFee: number;
     reversedBySource: Record<string, number>;
+
   }>;
   
   // Daily Revenue Summary
+
   getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined>;
+
   updateDailyRevenueSummary(date: string, updates: Partial<InsertDailyRevenueSummary>): Promise<DailyRevenueSummary>;
 
   // Logistics - Temporal Anchors
+
   getTemporalAnchors(tripId: string): Promise<TemporalAnchor[]>;
+
   getTemporalAnchorById(id: string): Promise<TemporalAnchor | undefined>;
+
   createTemporalAnchor(anchor: InsertTemporalAnchor): Promise<TemporalAnchor>;
+
   updateTemporalAnchor(id: string, updates: Partial<InsertTemporalAnchor>): Promise<TemporalAnchor | undefined>;
+
   deleteTemporalAnchor(id: string): Promise<void>;
 
   // Logistics - Day Boundaries
+
   getDayBoundaries(tripId: string): Promise<DayBoundary[]>;
+
   createDayBoundary(boundary: InsertDayBoundary): Promise<DayBoundary>;
 
   // Logistics - Energy Tracking
+
   getEnergyTracking(tripId: string): Promise<EnergyTracking[]>;
+
   saveEnergyTracking(entry: InsertEnergyTracking): Promise<EnergyTracking>;
 
   // Provider Settings
+
   getProviderSettings(userId: string): Promise<any>;
+
   upsertProviderSettings(userId: string, settings: Partial<any>): Promise<any>;
 
   // Itinerary Items CRUD
+
   getItineraryItems(tripId: string): Promise<any[]>;
+
   createItineraryItem(item: any): Promise<any>;
+
   updateItineraryItem(id: string, updates: any): Promise<any>;
+
   deleteItineraryItem(id: string): Promise<void>;
 
   // Expert Workspace Status
+
   getExpertAssignment(assignmentId: string): Promise<any>;
+
   updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string, actorId?: string): Promise<any>;
 
   // Expert/Provider Logistics
+
   getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
+
   getProviderAvailabilityById(id: string): Promise<ProviderAvailabilitySchedule | undefined>;
+
   setProviderAvailability(schedule: InsertProviderAvailabilitySchedule): Promise<ProviderAvailabilitySchedule>;
+
   updateProviderAvailabilityRule(id: string, providerId: string, updates: Partial<InsertProviderAvailabilitySchedule>): Promise<ProviderAvailabilitySchedule | undefined>;
+
   deleteProviderAvailability(id: string): Promise<void>;
+
   getProviderBlackoutDates(providerId: string): Promise<ProviderBlackoutDate[]>;
+
   getProviderBlackoutDateById(id: string): Promise<ProviderBlackoutDate | undefined>;
+
   addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate>;
   // SECURITY (§13 cross-provider IDOR): `providerId` is a REQUIRED owner scope, enforced in
   // the WHERE clause. Returns true iff a row owned by that provider was deleted.
+
   deleteProviderBlackoutDate(id: string, providerId: string): Promise<boolean>;
-  isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
+
   createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any>;
+
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
+
   getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]>;
+
   createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest>;
   // SECURITY (§13 cross-provider IDOR): `providerId` is a REQUIRED owner scope, enforced in
   // the WHERE clause (mirrors `updateProviderAvailabilityRule`). Undefined when no row owned
   // by that provider matches.
+
   updateBookingRequest(id: string, providerId: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined>;
+
   getVendorCoordination(tripId: string): Promise<ExpertVendorCoordination[]>;
+
   createVendorCoordination(vendor: InsertExpertVendorCoordination): Promise<ExpertVendorCoordination>;
+
   updateVendorCoordination(id: string, updates: Partial<InsertExpertVendorCoordination>): Promise<ExpertVendorCoordination | undefined>;
+
   deleteVendorCoordination(id: string): Promise<void>;
   // Grok Analytics
+
   createExpertMatchAnalytics(data: InsertExpertMatchAnalytics): Promise<ExpertMatchAnalytics>;
+
   getExpertMatchAnalytics(expertId: string): Promise<ExpertMatchAnalytics[]>;
+
   getExpertMatchTrends(expertId: string, days?: number): Promise<{ avgScore: number; matchCount: number; selectionRate: number }>;
+
   createDestinationSearchPattern(data: InsertDestinationSearchPattern): Promise<DestinationSearchPattern>;
+
   getDestinationSearchTrends(days?: number): Promise<Array<{ destination: string; searchCount: number; conversionRate: number }>>;
+
   createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory>;
+
   getDestinationMetricsHistory(destination: string, metricType: string, days?: number): Promise<DestinationMetricsHistory[]>;
 
   // Market insights (lane B2, ruling 84) — READ-ONLY rollups for the Catalog map overlay.
+
   getProviderMarketCities(userId: string): Promise<string[]>;
+
   getMarketNeighborhoods(cities: string[]): Promise<MarketNeighborhoodRow[]>;
+
   getCoverageTargetsForNeighborhoods(neighborhoodIds: string[]): Promise<MarketCoverageTargetRow[]>;
+
   getLocatedSupplyForCities(cities: string[]): Promise<MarketSupplyServiceRow[]>;
+
   getMarketDemandRows(cities: string[], neighborhoodTokens: string[], days: number): Promise<MarketDemandRow[]>;
 
   // Itinerary Changes (PlanCard change tracking)
+
   getItineraryChanges(tripId: string, limit?: number): Promise<ItineraryChange[]>;
+
   createItineraryChange(change: InsertItineraryChange): Promise<ItineraryChange>;
+
   deleteItineraryChange(id: string): Promise<void>;
 
   // Affiliate Booking Requests
+
   createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest>;
+
   getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined>;
+
   getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
+
   getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
+
   updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // R4/F7 (§15): atomic pending→confirmed claim used by the confirm site so a duplicate/concurrent
   // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
   // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
+
   confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // AI booking copilot verification leg (migration 170). Persists ONLY the verification jsonb
   // snapshot — never touches affiliateUrl or any other column. §16: the snapshot itself must never
   // carry the URL; that's enforced by the caller (booking-verification.service.ts) never putting it
   // in the object it hands here.
+
   setAffiliateBookingRequestVerification(id: string, verification: Record<string, unknown>): Promise<AffiliateBookingRequest | undefined>;
 
   // Affiliate Content Registry helpers
+
   registerAffiliateProduct(product: {
     id: string;
     name: string;
@@ -704,9 +1049,13 @@ export interface IStorage {
     price?: string | null;
     isActive?: boolean | null;
     partnerName?: string;
+
   }): Promise<string>;
+
   getAffiliateProviders(): Promise<{ id: string; name: string; isActive: boolean; productCount: number }[]>;
+
   backfillAffiliateProviderMetadata(): Promise<{ updated: number }>;
+
   getContentRegistry(filters?: {
     status?: string;
     contentType?: string;
@@ -715,113 +1064,197 @@ export interface IStorage {
     provider?: string;
     limit?: number;
     offset?: number;
+
   }): Promise<ContentRegistry[]>;
 
   // ── Identity verification (webhook callbacks) ─────────────────────────────
+
   updateFormIdentityVerification(formType: 'expert' | 'provider', userId: string, status: string, verifiedAt?: Date): Promise<void>;
+
   updateProviderBusinessVerificationByInquiry(inquiryId: string, status: string): Promise<void>;
+
   hasPaymentIntentRevenue(paymentIntentId: string): Promise<boolean>;
 
   // ── Booking status queries ─────────────────────────────────────────────────
+
   getBookingStatusForUser(bookingId: string, userId: string): Promise<{ status: string } | null>;
+
   getBulkBookingStatuses(bookingIds: string[], userId: string): Promise<Record<string, { status: string; confirmationCode: string | null }>>;
 
   // ── DMO Workspace ──────────────────────────────────────────────────────────
+
   getDmoRawContentById(id: string): Promise<any | null>;
+
   getDmoScrapeJobById(id: string): Promise<any | null>;
 
   // ── Cross-sell ─────────────────────────────────────────────────────────────
+
   recordCrossSellEvents(events: any[]): Promise<number>;
+
   getProviderServiceIdsForUser(userId: string): Promise<string[]>;
 
   // ── Payments / fee resolution ──────────────────────────────────────────────
+
   getServiceCategorySlugsByIds(ids: string[]): Promise<{ id: string; slug: string | null }[]>;
+
   getExpertOfferingTypeKeysByIds(ids: string[]): Promise<{ id: string; key: string }[]>;
+
   getFeeBandByKey(bandKey: string): Promise<any | null>;
   // === Trip-level mutations ===
+
   setTripShareToken(tripId: string, token: string): Promise<Trip | undefined>;
+
   claimTrip(tripId: string, userId: string): Promise<Trip | undefined>;
+
   getTripEventType(tripId: string): Promise<string | null>;
+
   getTripExpertNotes(tripId: string): Promise<string>;
   // === Generated itinerary ===
+
   updateGeneratedItineraryData(id: string, itineraryData: any, status: string): Promise<GeneratedItinerary | undefined>;
+
   replaceItineraryItems(tripId: string, items: any[]): Promise<void>;
   // === Itinerary comparison & variants ===
+
   getItineraryComparison(id: string): Promise<any | null>;
+
   getComparisonByTripAndUser(tripId: string, userId: string): Promise<any | null>;
+
   createItineraryComparison(data: any): Promise<any>;
+
   getAiVariantByComparison(comparisonId: string): Promise<any | null>;
+
   createItineraryVariant(data: { comparisonId: string; name: string; source: string; status: string }): Promise<any>;
+
   getItineraryVariantById(id: string): Promise<any | null>;
+
   getItineraryVariantItemsByVariantId(variantId: string): Promise<any[]>;
+
   getComparisonTripId(comparisonId: string): Promise<string | null>;
   // === Cart ===
+
   replaceUserCartWithVariantItems(userId: string, variantItems: Array<{ providerServiceId: string | null; dayNumber: number | null; timeSlot: string | null }>): Promise<number>;
   // === AI-generated itinerary ===
+
   saveAiGeneratedItinerary(data: any): Promise<any>;
   // === Shared itinerary & maps export ===
+
   createSharedItinerary(data: any): Promise<void>;
+
   getSharedItineraryByToken(token: string): Promise<any | null>;
+
   getTransportLegsByVariantId(variantId: string): Promise<any[]>;
+
   getMapsExportCacheByVariantId(variantId: string): Promise<any | null>;
+
   updateMapsExportCache(variantId: string, updates: { kmlContent?: string; gpxContent?: string }): Promise<void>;
   // === Expert review ===
+
   updateSharedItineraryExpertReview(id: string, status: string, opts?: { notes?: string; diff?: any }): Promise<void>;
+
   saveExpertUpdatedItinerary(data: any): Promise<void>;
   // === Trip analytics ===
+
   upsertTripAnalytics(data: any): Promise<void>;
   // === Itinerary item lookup ===
+
   getItineraryItemByIdAndTrip(itemId: string, tripId: string): Promise<any | null>;
   // === Expert advisor assignment ===
+
   getTripExpertAdvisoryAssignment(tripId: string, expertId: string): Promise<any | null>;
   // === Optimization gate ===
+
   getRecentOptimizationRun(userId: string, cutoffDate: Date): Promise<{ id: string } | null>;
+
   getComparisonByOptimizationPaymentId(paymentId: string): Promise<{ id: string } | null>;
+
   sweepStaleGeneratingComparisons(staleBefore: Date): Promise<Array<{ id: string; userId: string }>>;
+
   getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null>;
+
   getCartItemsWithServices(userId: string): Promise<Array<{ cartItem: any; service: any | null }>>;
+
   getActiveProviderServices(limit?: number): Promise<any[]>;
+
   getComparisonsByUserId(userId: string): Promise<any[]>;
   // === Share info ===
+
   getComparisonsByTripAndUser(tripId: string, userId: string): Promise<Array<{ id: string; selectedVariantId: string | null }>>;
+
   getVariantsByComparisonIds(comparisonIds: string[]): Promise<Array<{ id: string; comparisonId: string }>>;
+
   getSharedItinerariesByVariantIds(variantIds: string[], sharedByUserId: string): Promise<any[]>;
   // === Public share view ===
+
   incrementSharedItineraryViewCount(id: string, currentViewCount: number): Promise<void>;
+
   getUserPublicProfile(userId: string): Promise<{ id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null } | null>;
   // === Transport ===
+
   getSelectedVariantByTrip(tripId: string): Promise<{ selectedVariantId: string } | null>;
+
   getTransportLegById(legId: string): Promise<any | null>;
+
   getVariantWithComparisonOwner(variantId: string): Promise<{ comparisonId: string; userId: string } | null>;
+
   getSharedItineraryByTokenAndVariant(shareToken: string, variantId: string): Promise<any | null>;
+
   updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number }): Promise<void>;
+
   getUserTransportLegsWithJoin(userId: string): Promise<any[]>;
+
   getTransportLegByDayOrder(variantId: string, dayNumber: number, legOrder: number): Promise<any | null>;
   // === Optimizer scores ===
+
   getLatestComparisonByTripId(tripId: string): Promise<{ id: string } | null>;
+
   getLatestVariantByComparisonId(comparisonId: string): Promise<{ id: string } | null>;
+
   getVariantMetricsByKeys(variantId: string, keys: string[]): Promise<any[]>;
+
   getFirstVariantByComparisonId(comparisonId: string): Promise<any | null>;
+
   getOrderedVariantItemsByVariantId(variantId: string): Promise<any[]>;
+
   getOrderedTransportLegsByVariantId(variantId: string): Promise<any[]>;
+
   getVariantMetricFirstByVariantId(variantId: string): Promise<any | null>;
+
   getVariantMetricsAllByVariantId(variantId: string): Promise<any[]>;
+
   getFullComparisonByTripId(tripId: string): Promise<any | null>;
+
   getBookingOptionsByVariantId(variantId: string): Promise<any[]>;
+
   getTransportBookingOptionById(optionId: string): Promise<any | null>;
+
   updateTransportBookingOptionStatus(optionId: string, data: Record<string, any>): Promise<void>;
+
   createAffiliateClick(data: any): Promise<void>;
+
   getBookingOptionsByLegId(legId: string): Promise<any[]>;
+
   getTopAiVariantByComparison(comparisonId: string): Promise<any | null>;
+
   deleteItineraryItemsByTrip(tripId: string): Promise<void>;
+
   deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }>;
+
   bulkInsertItineraryItems(items: any[]): Promise<void>;
+
   updateComparisonOptimizedAt(comparisonId: string, variantId: string): Promise<void>;
+
   getItineraryComparisonByTripId(tripId: string): Promise<any | null>;
+
   getBookingOptionsByLegIds(legIds: string[]): Promise<any[]>;
+
   updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void>;
+
   updateTransportLegUserSelectedMode(legId: string, mode: string): Promise<void>;
+
   getVendorContractsByIds(ids: string[]): Promise<Array<{ id: string; vendorPhone: string | null }>>;
+
+  getCustomVenuesPage(userId: string | undefined, tripId: string | undefined, experienceType: string | undefined, limit: number, offset: number): Promise<{ venues: CustomVenue[]; total: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1328,6 +1761,13 @@ export class DatabaseStorage implements IStorage {
       .orderBy(serviceRoutePoints.position);
   }
 
+  async getRoutePointsByServiceIds(serviceIds: string[]): Promise<ServiceRoutePoint[]> {
+    if (serviceIds.length === 0) return [];
+    return await db.select().from(serviceRoutePoints)
+      .where(inArray(serviceRoutePoints.serviceId, serviceIds))
+      .orderBy(serviceRoutePoints.serviceId, serviceRoutePoints.position);
+  }
+
   // Ruling 22: replace-list write — the route editor submits the full ordered list and the
   // server derives 1-based positions from array order (never client-numbered). Atomic
   // delete+insert so a failed save can't leave a half-replaced route. lat/lng arrive already
@@ -1371,6 +1811,13 @@ export class DatabaseStorage implements IStorage {
   // Atomic delete+insert under a parent-row lock so a failed save can't half-replace and two parallel
   // saves can't collide on the (service_id, position) UNIQUE. radius_km/fee arrive already validated
   // (both present, non-negative) from the route's allowlist parse.
+  async getSurchargeTiersByServiceIds(serviceIds: string[]): Promise<ServiceSurchargeTier[]> {
+    if (serviceIds.length === 0) return [];
+    return await db.select().from(serviceSurchargeTiers)
+      .where(inArray(serviceSurchargeTiers.serviceId, serviceIds))
+      .orderBy(serviceSurchargeTiers.serviceId, serviceSurchargeTiers.position);
+  }
+
   async replaceServiceSurchargeTiers(
     serviceId: string,
     tiers: Array<{ radiusKm: number; fee: number }>,
@@ -1696,7 +2143,8 @@ export class DatabaseStorage implements IStorage {
         ownerIsProvider,
         feeCategory,
       });
-    } catch {
+    } catch (err) {
+      console.warn("[storage] Failed to resolve service owner share rate — returning null:", err);
       return null;
     }
   }
@@ -2271,15 +2719,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * SD-1 (provider money-hardening lane, ruling 42) — `expectedFromStatuses`.
-   *
-   * When supplied, the write becomes the §15 ATOMIC CONDITIONAL
-   * (`UPDATE … WHERE id = ? AND status IN (<expected>)`) instead of an unconditional
-   * `WHERE id = ?`, and the transition ITSELF is the concurrency guard: a caller whose row is no
-   * longer in an expected state matches 0 rows and gets `undefined`, rather than overwriting
-   * whatever state the row actually reached. A caller that omits it keeps the previous
-   * unconditional behaviour verbatim (admin complete, dispute, traveler cancel) — no regression.
-   *
    * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
    * the sole author of provisional-claim transitions; this parameter is how the OWNER rail refuses
    * to touch a row the claim machine owns. Why it had to exist: `PATCH /api/provider/bookings/
@@ -2598,123 +3037,231 @@ export class DatabaseStorage implements IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }> {
+  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number; packagesTotal: number; suggestion: string | null }> {
     // F2 public read-gate: unified search is a public surface — approved listings only.
-    const conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
+    // Search-quality task: ILIKE '%q%' replaced with Postgres full-text search (tsvector,
+    // name setweight 'A' > description 'B') plus a pg_trgm trigram fallback that fires when
+    // the tsquery matches nothing (typo tolerance). Backed by migration 219's GIN indexes.
+    // Price/rating filters now run in SQL (decimal columns compare numerically), not Node.
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
+
+    if (filters.categoryId) {
+      baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
+    }
+    if (filters.location) {
+      baseConditions.push(ilike(providerServices.location, `%${filters.location}%`));
+    }
+    if (filters.minPrice) {
+      baseConditions.push(sqlOp`${providerServices.price} >= ${filters.minPrice}`);
+    }
+    if (filters.maxPrice) {
+      baseConditions.push(sqlOp`${providerServices.price} <= ${filters.maxPrice}`);
+    }
+    if (filters.minRating) {
+      baseConditions.push(sqlOp`COALESCE(${providerServices.averageRating}, 0) >= ${filters.minRating}`);
+    }
+
+    // Clamp to 200 so no single request can dump the entire table.
+    const limit = Math.min(filters.limit || 20, 200);
+    const offset = filters.offset || 0;
+
+    // Weighted document: name ranks above description (setweight A vs B).
+    const tsVector = sqlOp`(setweight(to_tsvector('english', coalesce(${providerServices.serviceName}, '')), 'A') || setweight(to_tsvector('english', coalesce(${providerServices.description}, '')), 'B'))`;
+
+    // Sort expression shared by both search paths; relevance (when present) is prepended.
+    const sortOrder = (relevance: ReturnType<typeof sqlOp> | null) => {
+      const keys: any[] = [];
+      if (relevance) keys.push(desc(relevance));
+      switch (filters.sortBy) {
+        case "rating": keys.push(sqlOp`COALESCE(${providerServices.averageRating}, 0) DESC`); break;
+        case "price_low": keys.push(sqlOp`${providerServices.price} ASC NULLS LAST`); break;
+        case "price_high": keys.push(sqlOp`${providerServices.price} DESC NULLS LAST`); break;
+        case "reviews": keys.push(desc(providerServices.reviewCount)); break;
+      }
+      keys.push(desc(providerServices.bookingsCount));
+      return keys;
+    };
+
+    let pageServices: ProviderService[] = [];
+    let total = 0;
+    let suggestion: string | null = null;
+
+    const runSearch = async (matchCondition: ReturnType<typeof sqlOp> | null, relevance: ReturnType<typeof sqlOp> | null) => {
+      const where = matchCondition ? and(...baseConditions, matchCondition) : and(...baseConditions);
+      const [{ value: cnt }] = await db.select({ value: count() }).from(providerServices).where(where);
+      if (cnt === 0) return 0;
+      pageServices = await db.select().from(providerServices)
+        .where(where)
+        .orderBy(...sortOrder(relevance))
+        .limit(limit)
+        .offset(offset);
+      return cnt;
+    };
 
     if (filters.query) {
-      conditions.push(
-        or(
-          ilike(providerServices.serviceName, `%${filters.query}%`),
-          ilike(providerServices.description, `%${filters.query}%`)
-        )!
+      // Primary path: full-text search ranked by ts_rank.
+      const tsQuery = sqlOp`websearch_to_tsquery('english', ${filters.query})`;
+      total = await runSearch(
+        sqlOp`${tsVector} @@ ${tsQuery}`,
+        sqlOp`ts_rank(${tsVector}, ${tsQuery})`,
       );
+
+      if (total === 0) {
+        // Fuzzy fallback: trigram similarity against the name (typo tolerance —
+        // "resturant", "kayacking"). word_similarity tolerates the query being a
+        // fragment of a longer name.
+        total = await runSearch(
+          sqlOp`(word_similarity(${filters.query}, ${providerServices.serviceName}) > 0.35 OR similarity(${providerServices.serviceName}, ${filters.query}) > 0.3)`,
+          sqlOp`GREATEST(word_similarity(${filters.query}, ${providerServices.serviceName}), similarity(${providerServices.serviceName}, ${filters.query}))`,
+        );
+      }
+
+      if (total === 0) {
+        // "Did you mean…?" — closest service name by trigram similarity, only when
+        // it is plausibly close (threshold keeps garbage suggestions out).
+        const [closest] = await db
+          .select({
+            name: providerServices.serviceName,
+            sim: sqlOp<number>`similarity(${providerServices.serviceName}, ${filters.query})`,
+          })
+          .from(providerServices)
+          .where(and(
+            eq(providerServices.status, "active"),
+            eq(providerServices.approvalStatus, "approved"),
+            sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) > 0.2`,
+          ))
+          .orderBy(sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) DESC`)
+          .limit(1);
+        suggestion = closest?.name ?? null;
+      }
+    } else {
+      total = await runSearch(null, null);
     }
-    
-    if (filters.categoryId) {
-      conditions.push(eq(providerServices.categoryId, filters.categoryId));
-    }
-    
-    if (filters.location) {
-      conditions.push(ilike(providerServices.location, `%${filters.location}%`));
-    }
-    
-    // Get total count first
-    const allMatching = await db.select().from(providerServices)
-      .where(and(...conditions));
-    
-    // Filter by price and rating in memory (since they're stored as strings)
-    let filtered = allMatching.filter(s => {
-      const price = parseFloat(s.price || "0") || 0;
-      const rating = parseFloat(s.averageRating || "0") || 0;
-      
-      if (filters.minPrice && price < filters.minPrice) return false;
-      if (filters.maxPrice && price > filters.maxPrice) return false;
-      if (filters.minRating && rating < filters.minRating) return false;
-      
-      return true;
-    });
-    
-    // Sort
-    switch (filters.sortBy) {
-      case "rating":
-        filtered.sort((a, b) => parseFloat(b.averageRating || "0") - parseFloat(a.averageRating || "0"));
-        break;
-      case "price_low":
-        filtered.sort((a, b) => parseFloat(a.price || "0") - parseFloat(b.price || "0"));
-        break;
-      case "price_high":
-        filtered.sort((a, b) => parseFloat(b.price || "0") - parseFloat(a.price || "0"));
-        break;
-      case "reviews":
-        filtered.sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
-        break;
-      default:
-        filtered.sort((a, b) => (b.bookingsCount || 0) - (a.bookingsCount || 0));
-    }
-    
-    const limit = filters.limit || 20;
-    const offset = filters.offset || 0;
 
     // Packages (expert_templates) — discovery parity with services: search the SAME public set
     // the packages feed shows (approved + published only). Content is redacted at the route
     // layer (teaser only). Category-locked browses are services-only (template categories are a
     // different vocabulary than service_categories), so skip packages when categoryId is set.
     let packages: ExpertTemplate[] = [];
+    let packagesTotal = 0;
     if (!filters.categoryId) {
-      const pkgConditions = [
+      const pkgBaseConditions = [
         eq(expertTemplates.approvalStatus, "approved"),
         eq(expertTemplates.isPublished, true),
       ];
-      if (filters.query) {
-        pkgConditions.push(
-          or(
-            ilike(expertTemplates.title, `%${filters.query}%`),
-            ilike(expertTemplates.description, `%${filters.query}%`),
-            ilike(expertTemplates.destination, `%${filters.query}%`)
-          )!
-        );
-      }
       if (filters.location) {
-        pkgConditions.push(ilike(expertTemplates.destination, `%${filters.location}%`));
+        pkgBaseConditions.push(ilike(expertTemplates.destination, `%${filters.location}%`));
       }
-      const pkgRows = await db
-        .select()
-        .from(expertTemplates)
-        .where(and(...pkgConditions))
-        .orderBy(
-          // Remediation P2: standardize package quality ordering to match the recommender +
-          // upsell-query (featured → salesCount → averageRating → recency). unifiedSearch was the
-          // one site dropping the averageRating tier, so search silently ranked packages differently.
-          desc(expertTemplates.isFeatured),
-          desc(expertTemplates.salesCount),
-          desc(expertTemplates.averageRating),
-          desc(expertTemplates.createdAt)
-        )
-        .limit(6);
-      // Price filters in memory (decimal stored as string), mirroring the services handling.
-      packages = pkgRows.filter((t) => {
-        const price = parseFloat(t.price || "0") || 0;
-        if (filters.minPrice && price < filters.minPrice) return false;
-        if (filters.maxPrice && price > filters.maxPrice) return false;
-        return true;
-      });
+      // Search-quality task: price filters pushed into SQL (decimal column, numeric compare)
+      // so the six-result cap can no longer be silently underfilled by post-limit filtering.
+      if (filters.minPrice) {
+        pkgBaseConditions.push(sqlOp`${expertTemplates.price} >= ${filters.minPrice}`);
+      }
+      if (filters.maxPrice) {
+        pkgBaseConditions.push(sqlOp`${expertTemplates.price} <= ${filters.maxPrice}`);
+      }
+
+      // Same layered strategy as services: weighted FTS (title/destination 'A' > description
+      // 'B', matching migration 217's idx_expert_templates_fts expression) with a trigram
+      // fallback on title/destination when the tsquery matches nothing.
+      const pkgTsVector = sqlOp`(setweight(to_tsvector('english', coalesce(${expertTemplates.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${expertTemplates.destination}, '')), 'A') || setweight(to_tsvector('english', coalesce(${expertTemplates.description}, '')), 'B'))`;
+
+      const runPkgSearch = async (matchCondition: ReturnType<typeof sqlOp> | null, relevance: ReturnType<typeof sqlOp> | null) => {
+        const where = matchCondition ? and(...pkgBaseConditions, matchCondition) : and(...pkgBaseConditions);
+        // packagesTotal: actual pre-LIMIT match count, not the post-cap page size.
+        const [{ value: pkgCount }] = await db
+          .select({ value: count() })
+          .from(expertTemplates)
+          .where(where);
+        if (pkgCount === 0) return 0;
+        packages = await db
+          .select()
+          .from(expertTemplates)
+          .where(where)
+          .orderBy(
+            // Relevance first when searching; then the Remediation-P2 standardized package
+            // quality ordering (featured → salesCount → averageRating → recency), matching
+            // the recommender + upsell-query.
+            ...(relevance ? [desc(relevance)] : []),
+            desc(expertTemplates.isFeatured),
+            desc(expertTemplates.salesCount),
+            desc(expertTemplates.averageRating),
+            desc(expertTemplates.createdAt)
+          )
+          .limit(6);
+        return pkgCount;
+      };
+
+      if (filters.query) {
+        const pkgTsQuery = sqlOp`websearch_to_tsquery('english', ${filters.query})`;
+        packagesTotal = await runPkgSearch(
+          sqlOp`${pkgTsVector} @@ ${pkgTsQuery}`,
+          sqlOp`ts_rank(${pkgTsVector}, ${pkgTsQuery})`,
+        );
+        if (packagesTotal === 0) {
+          // Trigram typo-tolerance fallback against title and destination.
+          const pkgSim = sqlOp`GREATEST(word_similarity(${filters.query}, ${expertTemplates.title}), similarity(${expertTemplates.title}, ${filters.query}), word_similarity(${filters.query}, ${expertTemplates.destination}), similarity(${expertTemplates.destination}, ${filters.query}))`;
+          packagesTotal = await runPkgSearch(sqlOp`${pkgSim} > 0.3`, pkgSim);
+        }
+      } else {
+        packagesTotal = await runPkgSearch(null, null);
+      }
     }
 
-    const pageServices = filtered.slice(offset, offset + limit);
-
-    // Enrich page results with real provider name and profile image from users table
-    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[] = pageServices;
+    // Enrich page results with real provider name, profile image, portfolio-wide avg rating,
+    // and businessName from service_provider_forms as a secondary name fallback when the
+    // users row has no firstName/lastName set.
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null })[] = pageServices;
     if (pageServices.length > 0) {
       const userIds = [...new Set(pageServices.map(s => s.userId))];
-      const userRows = await db
-        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
-        .from(users)
-        .where(inArray(users.id, userIds));
+      const [userRows, ratingRows, formRows] = await Promise.all([
+        db
+          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+          .from(users)
+          .where(inArray(users.id, userIds)),
+        db
+          .select({
+            userId: providerServices.userId,
+            // Review-count-weighted average: sum(rating * reviews) / sum(reviews).
+            // Only approved, active services count — unapproved listings must not
+            // influence the public marketplace trust signal.
+            // Returns NULL (-> null in JS) when no approved service has any reviews.
+            avgRating: sqlOp<string | null>`
+              CASE WHEN sum(${providerServices.reviewCount}) = 0 OR sum(${providerServices.reviewCount}) IS NULL
+                   THEN NULL
+                   ELSE sum(${providerServices.averageRating}::numeric * ${providerServices.reviewCount}::numeric)
+                        / sum(${providerServices.reviewCount}::numeric)
+              END`,
+          })
+          .from(providerServices)
+          .where(and(
+            inArray(providerServices.userId, userIds),
+            eq(providerServices.status, "active"),
+            eq(providerServices.approvalStatus, "approved"),
+          ))
+          .groupBy(providerServices.userId),
+        db
+          .select({ userId: serviceProviderForms.userId, businessName: serviceProviderForms.businessName, name: serviceProviderForms.name })
+          .from(serviceProviderForms)
+          .where(inArray(serviceProviderForms.userId, userIds)),
+      ]);
       const userMap = new Map(userRows.map(u => [u.id, u]));
+      const ratingMap = new Map(ratingRows.map(r => [r.userId, r.avgRating]));
+      const formMap = new Map(formRows.map(f => [f.userId, f]));
       enrichedServices = pageServices.map(s => {
         const u = userMap.get(s.userId);
-        return { ...s, providerFirstName: u?.firstName ?? null, providerLastName: u?.lastName ?? null, providerImageUrl: u?.profileImageUrl ?? null };
+        const avgRating = ratingMap.get(s.userId);
+        const f = formMap.get(s.userId);
+        // Secondary name fallback: prefer businessName, then the contact name from the form
+        const providerBusinessName = f?.businessName || f?.name || null;
+        return {
+          ...s,
+          providerFirstName: u?.firstName ?? null,
+          providerLastName: u?.lastName ?? null,
+          providerImageUrl: u?.profileImageUrl ?? null,
+          providerRating: avgRating != null ? String(avgRating) : null,
+          providerBusinessName,
+        };
       });
     }
 
@@ -2742,7 +3289,9 @@ export class DatabaseStorage implements IStorage {
         totalRevenue: null,
       })),
       packages,
-      total: filtered.length
+      total,
+      packagesTotal,
+      suggestion,
     };
   }
 
@@ -4000,6 +4549,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Destination Seasons
+  // ── FX rates & geocode fallbacks (migration 217) ────────────────────────────
+  async getLatestFxRates(): Promise<{ rates: Record<string, number>; updatedAt: Date | null } | null> {
+    const rows = await db.select().from(fxRates);
+    if (rows.length === 0) return null;
+    const rates: Record<string, number> = {};
+    let updatedAt: Date | null = null;
+    for (const row of rows) {
+      rates[row.currencyCode] = row.rateToUsd;
+      if (!updatedAt || row.updatedAt > updatedAt) updatedAt = row.updatedAt;
+    }
+    return { rates, updatedAt };
+  }
+
+  async upsertFxRates(rates: Record<string, number>): Promise<number> {
+    let upserted = 0;
+    for (const [code, rate] of Object.entries(rates)) {
+      if (!Number.isFinite(rate) || rate <= 0) continue;
+      await db
+        .insert(fxRates)
+        .values({ currencyCode: code, rateToUsd: rate, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: fxRates.currencyCode,
+          set: { rateToUsd: rate, updatedAt: new Date() },
+        });
+      upserted++;
+    }
+    return upserted;
+  }
+
+  async getGeocodeFallback(cityName: string): Promise<{ lat: number; lng: number; formattedAddress: string } | null> {
+    const slug = cityName.trim().toLowerCase();
+    if (!slug) return null;
+    const [row] = await db.select().from(geocodeFallbacks).where(eq(geocodeFallbacks.slug, slug)).limit(1);
+    if (!row) return null;
+    return { lat: row.lat, lng: row.lng, formattedAddress: row.formattedAddress };
+  }
+
   async getDestinationSeasons(country: string, city?: string): Promise<DestinationSeason[]> {
     const conditions = [eq(destinationSeasons.country, country)];
     if (city) conditions.push(eq(destinationSeasons.city, city));
@@ -4849,17 +5435,21 @@ export class DatabaseStorage implements IStorage {
   // if not already completed/processing. Returns undefined if another caller already claimed/
   // completed it — the transition IS the concurrency guard, so a double-invocation transfers once.
   async claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined> {
+    // Guard: only claim rows that are in a pre-transfer state. 'completed' is already done;
+    // 'processing' is already claimed by another concurrent call; 'failed' is a terminal state
+    // (an admin rejection OR a stale-supersession) and must never be re-driven to Stripe.
     const [row] = await db.update(expertPayouts)
       .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing')`))
+      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing','failed')`))
       .returning();
     return row;
   }
 
   async claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined> {
+    // Same guard as claimExpertPayoutForProcessing — 'failed' must not be re-claimable.
     const [row] = await db.update(providerPayouts)
       .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing')`))
+      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing','failed')`))
       .returning();
     return row;
   }
@@ -4891,12 +5481,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Task #141 — flip an earner's `releasable` earning rows to `paid_out`, oldest-created-first,
-   * until `amountDollars` is covered. Public entry point: opens its own transaction (for standalone/
-   * backfill callers); `markEarningsPaidOutForPayoutTx` below is the tx-taking variant composed into
-   * update{Expert,Provider}PayoutStatus's own transaction so the payout-completion flip and the
-   * earnings flip commit/roll back together.
-   *
    * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
    * $0.01 (rounding tolerance) past amountDollars; once one row would overshoot, it — and everything
    * after it (oldest-first) — stays releasable. If the releasable total is less than amountDollars
@@ -7032,6 +7616,30 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inviteTemplates)
       .where(eq(inviteTemplates.userId, userId))
       .orderBy(desc(inviteTemplates.createdAt));
+  }
+
+  async getCustomVenuesPage(
+    userId: string | undefined,
+    tripId: string | undefined,
+    experienceType: string | undefined,
+    limit: number,
+    offset: number,
+  ): Promise<{ venues: CustomVenue[]; total: number }> {
+    const conditions = [];
+    if (userId) conditions.push(eq(customVenues.userId, userId));
+    if (tripId) conditions.push(eq(customVenues.tripId, tripId));
+    if (experienceType) conditions.push(eq(customVenues.experienceType, experienceType));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [agg] = await db.select({ total: count() }).from(customVenues).where(whereClause);
+    const venues = await db
+      .select()
+      .from(customVenues)
+      .where(whereClause)
+      .orderBy(desc(customVenues.createdAt))
+      .limit(limit)
+      .offset(offset);
+    return { venues, total: Number(agg?.total ?? 0) };
   }
 }
 

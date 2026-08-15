@@ -45,6 +45,8 @@
 import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { initialsFromUser } from "@/lib/initials";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -228,6 +230,15 @@ export function ProviderStorefrontHeader() {
   const publicPath = handle ? `/p/${handle}` : null;
   const publicUrl = publicPath ? `${window.location.origin}${publicPath}` : null;
 
+  // D-2 (mock conformance, Aug 15): the card leads with WHO the storefront belongs to — avatar +
+  // business name (same businessName → firstName+lastName fallback the provider Profile header
+  // and sidebar use; initialsFromUser is the shared computation so the three can never disagree).
+  const businessDisplayName =
+    ((user as any)?.businessName as string | undefined) ||
+    [(user as any)?.firstName, (user as any)?.lastName].filter(Boolean).join(" ") ||
+    "Your storefront";
+  const totalCount = Array.isArray(services.data) ? services.data.length : 0;
+
   async function copyLink() {
     if (!publicUrl || !publicPath) return;
     // Same tracked short-link rail the share tools use, full-URL fallback on any error.
@@ -240,8 +251,19 @@ export function ProviderStorefrontHeader() {
     <Card className="border border-console-light" data-testid="card-storefront-header">
       <CardContent className="p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
+          <Avatar className="w-10 h-10 border border-console-light" data-testid="avatar-storefront">
+            {(user as any)?.profileImageUrl && (
+              <AvatarImage src={(user as any).profileImageUrl} alt={businessDisplayName} />
+            )}
+            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+              {initialsFromUser(user as any)}
+            </AvatarFallback>
+          </Avatar>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-console-darkest">Your storefront</h2>
+            <h2 className="text-sm font-semibold text-console-darkest" data-testid="text-storefront-business-name">
+              {businessDisplayName}
+            </h2>
+            <p className="text-[11px] text-console-mid uppercase tracking-wide">Your storefront</p>
             {handle ? (
               <p
                 className="text-[12.5px] text-console-mid truncate"
@@ -272,7 +294,10 @@ export function ProviderStorefrontHeader() {
                   className="text-xs border bg-green-100 text-green-800 border-green-200"
                   data-testid="badge-storefront-live"
                 >
-                  Live · {approvedCount} approved service{approvedCount === 1 ? "" : "s"}
+                  {/* D-11 (mock conformance, Aug 15): say what the storefront actually SHOWS —
+                      the live (approved+active) subset of the catalog — instead of raw
+                      approval-vocabulary. Same predicate, clearer claim. */}
+                  Live · showing {approvedCount} of {totalCount} listing{totalCount === 1 ? "" : "s"}
                 </Badge>
               ) : (
                 <Badge
@@ -1420,13 +1445,8 @@ export default function ProviderServices() {
         ) : viewMode === "map" ? (
           <div className="space-y-2">
             {/* Ruling 22(c): a read-only traveler-eye preview — authoring lives in the create
-                flow's Logistics step (mock item ⑨/⑩). */}
-            <p className="text-[11.5px] text-[#7A7A72]">
-              Pins, radius, zones and route stops are authored in the create flow's Logistics step —{" "}
-              <Link href="/provider/workstation">
-                <span className="text-[#35605A] underline underline-offset-2 cursor-pointer">open it →</span>
-              </Link>
-            </p>
+                flow's Logistics step. Lane M (D-2/D-6): the posture notice moved INSIDE
+                CatalogMapView so its "open it →" can land on the SELECTED listing's step 4. */}
             <CatalogMapView services={services ?? []} />
           </div>
         ) : isFilterEmpty ? (

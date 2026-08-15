@@ -551,7 +551,7 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
         funnelStage: "T7",
         refToken: shareToken,
       });
-    } catch (_) {}
+    } catch (_) { /* fire-and-forget funnel event — never blocks the share response */ }
 
     res.json({ success: true, shareToken: canonical });
   } catch (error: any) {

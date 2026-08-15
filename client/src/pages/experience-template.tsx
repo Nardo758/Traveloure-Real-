@@ -94,18 +94,16 @@ import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
-import { AmadeusPOIs } from "@/components/amadeus-pois";
-import { AmadeusSafety } from "@/components/amadeus-safety";
-import { AmadeusTransfers } from "@/components/amadeus-transfers";
 import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
-import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
+import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { updateTripContext, useTripContext, switchTripContextPreservingId, getTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
+import { DestinationTransfersSection } from "@/components/destination-transfers-section";
 
 interface VenueResult {
   id: string;
@@ -1222,10 +1220,11 @@ export default function ExperienceTemplatePage() {
     setShowDestPrompt(false);
   };
 
-  const { data: customVenues = [] } = useQuery<CustomVenue[]>({
+  const { data: customVenuesResp } = useQuery<{ data: CustomVenue[] }>({
     queryKey: ["/api/custom-venues", { experienceType: slug }],
     enabled: !!slug,
   });
+  const customVenues = customVenuesResp?.data ?? [];
 
   const createComparison = async () => {
     if (cart.length === 0) {
@@ -2396,35 +2395,6 @@ export default function ExperienceTemplatePage() {
                 <TravelpayoutsActivities destination={destination} />
               )}
 
-              {/* Points of Interest and Destination Safety */}
-              {destinationCenter && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                  <div className="md:col-span-2">
-                    <AmadeusPOIs
-                      latitude={destinationCenter.lat}
-                      longitude={destinationCenter.lng}
-                      onAddToCart={(item) => {
-                        addToCart({
-                          id: item.id,
-                          type: item.type,
-                          name: item.name,
-                          price: item.price,
-                          quantity: item.quantity,
-                          provider: item.provider,
-                          details: item.details,
-                          isExternal: item.isExternal,
-                        });
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <AmadeusSafety
-                      latitude={destinationCenter.lat}
-                      longitude={destinationCenter.lng}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -2435,15 +2405,22 @@ export default function ExperienceTemplatePage() {
                 destination={destination}
                 startDate={startDate?.toISOString().split('T')[0]}
                 endDate={endDate?.toISOString().split('T')[0]}
+                onAddToCart={(item) => {
+                  addToCart({
+                    ...item,
+                    type: "event",
+                    isExternal: true,
+                  });
+                }}
               />
             </div>
           )}
 
           {/* P5: tabType-registry driven — any tab with tabType "transport" */}
-          {currentTabType === "transport" && (
+          {currentTabType === "transport" && destination && (
             <div className="mb-6">
-              <AmadeusTransfers
-                destination={destination || ""}
+              <DestinationTransfersSection
+                destination={destination}
                 startDate={startDate?.toISOString().split('T')[0]}
                 travelers={adults + kids}
                 onAddToCart={(item) => {
@@ -2455,7 +2432,7 @@ export default function ExperienceTemplatePage() {
                     quantity: item.quantity,
                     provider: item.provider,
                     details: item.details,
-                    isExternal: item.isExternal,
+                    isExternal: true,
                   });
                 }}
               />
@@ -2785,6 +2762,7 @@ export default function ExperienceTemplatePage() {
                     price: i.price,
                     quantity: i.quantity,
                     provider: i.provider,
+                    details: i.details,
                   }))}
                   total={cartTotal}
                   onRemove={removeFromCart}

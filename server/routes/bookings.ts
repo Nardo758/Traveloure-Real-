@@ -9,12 +9,12 @@ import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
 import { isAuthenticated } from '../replit_integrations/auth';
-import { requireOwnership } from '../middleware/ownershipGuard';
 import { storage } from '../storage';
 import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { getUserId } from '../utils/auth';
+import { getUserId, getSessionRole } from '../utils/auth';
+import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
@@ -36,34 +36,52 @@ async function getServiceBookingOwnerId(bookingId: string): Promise<string | nul
 
 /**
  * GET /api/bookings/:id
- * Fetch a single service booking by ID.
- * Protected by requireOwnership — only the traveler who made the booking or an admin may access.
+ * Canonical single booking handler — three access tiers:
+ *   - Admin: full row
+ *   - Traveler (owner): full row
+ *   - Provider (earner): row filtered through sanitizeBookingForExpert (strips Stripe intent IDs etc.)
+ * Any other authenticated user receives 403.
  */
-router.get(
-  '/:id',
-  isAuthenticated,
-  requireOwnership(async (req) => {
+router.get('/:id', isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const userRole = getSessionRole(req);
+
     const rows = await db
-      .select({ travelerId: serviceBookings.travelerId })
+      .select()
       .from(serviceBookings)
       .where(eq(serviceBookings.id, req.params.id))
       .limit(1);
-    return rows[0]?.travelerId ?? null;
-  }),
-  async (req, res) => {
-    try {
-      const rows = await db
-        .select()
-        .from(serviceBookings)
-        .where(eq(serviceBookings.id, req.params.id))
-        .limit(1);
-      if (!rows[0]) return res.status(404).json({ message: 'Booking not found' });
-      res.json(rows[0]);
-    } catch (err: any) {
-      res.status(500).json({ message: 'Failed to fetch booking' });
+
+    if (!rows[0]) return res.status(404).json({ message: 'Booking not found' });
+    const booking = rows[0];
+
+    // Admin sees everything
+    if (userRole === 'admin') {
+      return res.json(booking);
     }
+
+    // Traveler (owner) sees full booking
+    if (booking.travelerId === userId) {
+      return res.json(booking);
+    }
+
+    // Provider (earner) sees sanitized booking — Stripe payment fields stripped
+    if (booking.providerId === userId) {
+      const sanitized = sanitizeBookingForExpert(booking, userRole, userId);
+      return res.json(sanitized);
+    }
+
+    console.warn(
+      `[IDOR ATTEMPT] User ${userId} tried to access booking ${req.params.id} ` +
+        `(travelerId=${booking.travelerId}, providerId=${booking.providerId}) ` +
+        `at ${req.method} ${req.path}`
+    );
+    return res.status(403).json({ message: 'Access denied' });
+  } catch (err: any) {
+    res.status(500).json({ message: 'Failed to fetch booking' });
   }
-);
+});
 
 /**
  * POST /api/bookings/process-cart

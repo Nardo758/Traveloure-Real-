@@ -113,6 +113,8 @@ import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { sanitizeDeep } from "./utils/text-sanitizer";
+import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -184,6 +186,8 @@ import {
   tripExpertAdvisors,
   templatePurchases,
 } from "@shared/schema";
+import { sanitizeText } from "./utils/text-sanitizer";
+import { sanitizeStringFields } from "./utils/text-sanitizer";
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
@@ -407,16 +411,16 @@ function sanitizeInput(input: string): string {
     .trim();
 }
 
-// Sanitize object string fields recursively
+// Sanitize all string fields in a plain object, including every nested array and object.
+// Delegates to the exported, tested sanitizeDeep (server/utils/text-sanitizer.ts) so that
+// the recursion is exercised by unit tests independently of this route module.
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    if (typeof result[key] === 'string') {
-      result[key] = sanitizeInput(result[key]);
-    }
-  }
-  return result;
+  return sanitizeDeep(obj) as T;
 }
+
+// Note: knowledgeProofAnswers[].answer is sanitized by sanitizeObject (via sanitizeDeep),
+// which recurses into JSONB arrays and objects and applies sanitizeText to every nested string.
+// The unit tests in server/utils/__tests__/text-sanitizer.test.ts verify this path explicitly.
 
 // Migration 151 (§17 Product Builder): bundle_components.component_service_id is
 // ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
@@ -1176,7 +1180,7 @@ export async function registerRoutes(
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks trip creation
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1441,7 +1445,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks itinerary response
 
       // Rebuild itinerary_items — delete old, insert new.
       // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
@@ -1641,7 +1645,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           eventType: "revenue",
           funnelStage: "T6",
           eventData: { amount: totalAmount },
-        }).catch(() => {});
+        }).catch(() => {}); // fire-and-forget funnel event — never blocks booking confirmation
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -1664,13 +1668,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             },
           });
 
-          // Send email alert to the provider
+          // Send email alert to the provider (skipped when they have opted out)
           const provider = await storage.getUser(providerId);
-          if (provider?.email) {
+          if (provider?.email && provider.emailBookingAlerts !== false) {
             const { sendBookingAlertEmail } = await import("./services/email.service");
             const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
             await sendBookingAlertEmail({
-              providerEmail: provider.email,
+              providerEmail: provider.notificationEmail || provider.email,
               providerName,
               bookingId: booking.id,
               serviceName: service.serviceName,
@@ -1891,7 +1895,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+          const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1913,7 +1918,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+      const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -1946,7 +1952,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing) {
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
-          const input = insertLocalExpertFormSchema.parse(req.body);
+          // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+          const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
@@ -1967,7 +1974,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
-      const input = insertLocalExpertFormSchema.parse(req.body);
+      // sanitizeObject (via sanitizeDeep) recurses into knowledgeProofAnswers[].answer.
+      const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
@@ -2926,7 +2934,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const translation = await storage.upsertServiceTranslation({
         serviceId: owned.service.id,
         locale,
-        content: normalizeContent(parsed.data),
+        // Sanitize translated free-text before storing (task 1135 / task 1138).
+        content: sanitizeStringFields(normalizeContent(parsed.data)) as ReturnType<typeof normalizeContent>,
         status: "approved",
         source: "human",
         updatedBy: owned.userId,
@@ -3016,7 +3025,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // is 'exact' only for a point the earner actually confirmed (§13; see
       // utils/service-location.ts for the full rule set).
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.parse(bodyWithoutLocation);
+      // Sanitize provider-authored free-text fields to strip HTML injection vectors before
+      // they reach the database, emails, or AI prompts (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -3276,7 +3287,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
       // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
-      const input = insertProviderServiceSchema.partial().parse(bodyWithoutLocation);
+      // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
+      const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -3648,6 +3660,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const photoUrl = pexelsPhotos[0]?.url ?? null;
           return res.json({ photoUrl });
         } catch {
+          // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
         }
       }
@@ -5120,7 +5133,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         purchaseId: purchase.id,
         reviewerId: userId,
         rating: req.body.rating,
-        review: req.body.review,
+        review: sanitizeText(req.body.review),
       });
 
       res.json(review);
@@ -5463,6 +5476,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         displayName,
       });
     } catch {
+      // Fail closed: if the verification profile cannot be read, report as unverified.
       res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });
@@ -5997,38 +6011,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get single booking
-  // NOTE: If requester is provider, traveler info is sanitized
-  app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
-    const booking = await storage.getServiceBooking(req.params.id);
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-    // Check if user is traveler or provider
-    if (booking.travelerId !== userId && booking.providerId !== userId) {
-      return res.status(403).json({ message: "Not authorized to view this booking" });
-    }
-    
-    // If the user is the traveler, they see full booking
-    // If the user is the provider, sanitize the traveler info
-    if (booking.travelerId === userId) {
-      res.json(booking);
-    } else {
-      // Provider viewing - sanitize traveler info
-      const traveler = await storage.getUser(booking.travelerId);
-      const sanitizedBooking = sanitizeBookingForExpert(booking, userRole, userId);
-      res.json({
-        ...sanitizedBooking,
-        traveler: traveler ? {
-          ...sanitizeUserForRole(traveler, userRole, false),
-          displayName: getDisplayName(traveler.firstName, traveler.lastName)
-        } : null
-      });
-    }
-  });
-
   // Get client profile (for experts/providers) - sanitized view
   // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
@@ -6177,7 +6159,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const { status, reason } = req.body;
+      const { status } = req.body;
+      // Normalize and validate the optional decline reason via the shared utility so the
+      // server-side check and the unit-tested production code are the same code path.
+      const reasonResult = normalizeDeclineReason(req.body.reason);
+      if (!reasonResult.ok) {
+        return res.status(reasonResult.status).json({ message: reasonResult.message });
+      }
+      const reason = reasonResult.reason;
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
@@ -6248,13 +6237,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                   userId: booking.travelerId,
                   type: "booking_cancelled",
                   title: "Booking cancelled by provider — full refund issued",
-                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  message: reason
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+              }
+              // Send a cancellation + refund email so the traveler sees both the reason and
+              // confirmation that their money is being returned.
+              try {
+                const traveler = await storage.getUser(booking.travelerId);
+                if (traveler?.email) {
+                  const { sendBookingCancellationWithRefundEmail } = await import("./services/email.service");
+                  await sendBookingCancellationWithRefundEmail({
+                    toEmail: traveler.email,
+                    travelerName: traveler.firstName ?? null,
+                    bookingTrackingNumber: booking.trackingNumber ?? null,
+                    serviceName: (booking as any).serviceName ?? null,
+                    refundAmount: amountPaid,
+                    cancellationReason: reason ?? null,
+                  });
+                }
+              } catch (emailErr) {
+                console.error("Failed to send cancellation+refund email to traveler:", emailErr);
               }
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
@@ -6292,9 +6301,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // branch above returns earlier with its own notification.
               userId: booking.travelerId,
               type: "booking_cancelled",
-              title: "Booking cancelled by provider",
-              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              title: "Booking declined by provider",
+              message: reason
+                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
+                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
               dedupeKey: `booking:${req.params.id}:cancelled`,
             }
         : undefined;
@@ -6306,6 +6317,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // notification (the notify insert lives inside the same transaction the lost race rolled
         // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
+
+      // Send a decline email so the traveler sees the reason even if they don't check the app.
+      // Non-fatal: a delivery failure must never roll back the already-committed status flip.
+      if (status === "cancelled" && booking.travelerId) {
+        try {
+          const traveler = await storage.getUser(booking.travelerId);
+          if (traveler?.email) {
+            const { sendBookingDeclineEmail } = await import("./services/email.service");
+            await sendBookingDeclineEmail({
+              toEmail: traveler.email,
+              travelerName: traveler.firstName ?? null,
+              bookingTrackingNumber: booking.trackingNumber ?? null,
+              serviceName: (booking as any).serviceName ?? null,
+              declineReason: reason ?? null,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send decline email to traveler:", emailErr);
+        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
@@ -8617,7 +8648,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
         eventType: "cart_populated",
         funnelStage: "T4",
-      }).catch(() => {});
+      }).catch(() => {}); // fire-and-forget funnel event — never blocks cart response
 
       res.json({
         message:
@@ -9240,12 +9271,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       } catch (inner) {
         // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
-        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch(() => {});
+        // Best-effort rollback — if either step fails, log but still re-throw the original error
+        // so the outer handler can surface it; a partial rollback is better than a silent hang.
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) => {
+          console.warn("[coordination/payment] Could not release claimed credit during rollback:", rollbackErr);
+        });
         await db
           .update(coordinationStates)
           .set({ feePaymentStatus: "unpaid" })
           .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
-          .catch(() => {});
+          .catch((rollbackErr) => {
+            console.warn("[coordination/payment] Could not reset feePaymentStatus to 'unpaid' during rollback:", rollbackErr);
+          });
         throw inner;
       }
     } catch (error: any) {
@@ -9710,33 +9747,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     })),
   });
 
-  // Google Maps Geocoding API - Convert place name to coordinates
-  const geocodeSchema = z.object({
-    address: z.string().min(1),
-  });
-
-  const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number; formattedAddress: string }> = {
-    "rome": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
-    "paris": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
-    "london": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
-    "tokyo": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
-    "new york": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
-    "barcelona": { lat: 41.3874, lng: 2.1686, formattedAddress: "Barcelona, Spain" },
-    "bangkok": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
-    "sydney": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
-    "dubai": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
-    "marrakech": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
-    "bali": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
-    "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
-    "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
-    "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
-    "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
-    "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
-    "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
-    "berlin": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
-    "hong kong": { lat: 22.3193, lng: 114.1694, formattedAddress: "Hong Kong" },
-    "goa": { lat: 15.2993, lng: 74.1240, formattedAddress: "Goa, India" },
-  };
+  // NOTE: the hardcoded FALLBACK_COORDINATES map that used to live here (and its unused
+  // geocodeSchema twin) is gone — city-coordinate fallbacks are now admin-curated rows in
+  // the geocode_fallbacks table (migration 217), consulted by POST /api/geocode in
+  // server/routes/content.routes.ts via storage.getGeocodeFallback().
 
   // === GROK AI INTEGRATION ROUTES ===
 
