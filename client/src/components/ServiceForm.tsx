@@ -866,9 +866,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: !!formData.categoryId,
   });
 
-  const { data: allNeighborhoods = [] } = useQuery<Array<{ id: string; city: string; country: string; name: string; slug: string }>>({
+  const { data: neighborhoodsResp } = useQuery<{ data: Array<{ id: string; city: string; country: string; name: string; slug: string }> }>({
     queryKey: ["/api/city-neighborhoods"],
   });
+  const allNeighborhoods = neighborhoodsResp?.data ?? [];
   // Ruling 112 Q1: the global 20-city checkbox wall is retired for a single searchable pick —
   // this is its filter text. One neighborhood, because the column is one neighborhood (the old
   // multi-select silently dropped every pick after the first — Run-2 finding R7).
@@ -4186,7 +4187,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </CardContent>
         </Card>
       )}
-
 
 
       {onStep("review") && (<>

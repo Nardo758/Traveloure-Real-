@@ -37,11 +37,15 @@ const statusColors: Record<string, string> = {
 export default function AdminPlans() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Server-side pagination: the API pages in SQL now; "Load more" grows the requested page size.
+  const [limit, setLimit] = useState(50);
 
   const { data: plansData, isLoading } = useQuery<{
     trips: Array<{ id: string; title: string; type: string; destination: string; startDate: string; endDate: string; guests: number; budget: string; status: string; user: string; created: string }>;
     stats: { total: number; upcoming: number; active: number; past: number };
-  }>({ queryKey: ["/api/admin/trips", { search: searchQuery, status: statusFilter }] });
+    total: number;
+    hasMore: boolean;
+  }>({ queryKey: ["/api/admin/trips", { search: searchQuery, status: statusFilter, limit }] });
 
   if (isLoading) {
     return (
@@ -225,6 +229,18 @@ export default function AdminPlans() {
                 </div>
               </div>
             ))}
+            {plansData?.hasMore && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLimit((l) => Math.min(l + 50, 200))}
+                  data-testid="button-load-more-plans"
+                >
+                  Load more ({plans.length} of {plansData.total})
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

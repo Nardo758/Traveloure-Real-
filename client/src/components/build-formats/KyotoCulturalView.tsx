@@ -53,10 +53,11 @@ function sectionFor(sections: FormatSection[], item: FlatFormatItem): FormatSect
 export function KyotoCulturalView({ format, destination, days, bestSeason }: KyotoCulturalViewProps) {
   // Existing mounted neighborhoods catalog (content.routes.ts GET /api/city-neighborhoods) —
   // the same query ServiceForm's coverage picker uses; default queryFn, no new endpoint.
-  const { data: allNeighborhoods = [], isLoading: hoodsLoading } = useQuery<CityNeighborhood[]>({
+  const { data: hoodsResp, isLoading: hoodsLoading } = useQuery<{ data: CityNeighborhood[] }>({
     queryKey: ["/api/city-neighborhoods"],
     staleTime: 5 * 60_000,
   });
+  const allNeighborhoods = hoodsResp?.data ?? [];
 
   const cityKey = (destination ?? "").split(",")[0].trim().toLowerCase();
   const cityDisplay = (destination ?? "").split(",")[0].trim() || "this city";

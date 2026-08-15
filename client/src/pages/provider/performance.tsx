@@ -87,6 +87,8 @@ interface ProviderReview {
 interface ProviderReviewsResponse {
   reviews: ProviderReview[];
   summary: { total: number; avgRating: number; awaitingReply: number };
+  total: number;
+  hasMore: boolean;
 }
 
 // Demand tab response shapes (§10/§11/§12, GET /api/me/demand-signals /
@@ -568,8 +570,10 @@ function ReviewReplyRow({ review }: { review: ProviderReview }) {
 }
 
 function ReviewsTab() {
+  // Server-side pagination — "Load more" grows the requested page size (server caps at 200).
+  const [reviewsLimit, setReviewsLimit] = useState(50);
   const { data, isLoading } = useQuery<ProviderReviewsResponse>({
-    queryKey: ["/api/me/reviews"],
+    queryKey: ["/api/me/reviews", { limit: reviewsLimit }],
   });
 
   const reviews = data?.reviews ?? [];
@@ -646,6 +650,18 @@ function ReviewsTab() {
           {reviews.map((review) => (
             <ReviewReplyRow key={review.id} review={review} />
           ))}
+          {data?.hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReviewsLimit((l) => Math.min(l + 50, 200))}
+                data-testid="button-load-more-reviews"
+              >
+                Load more ({reviews.length} of {data.total})
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

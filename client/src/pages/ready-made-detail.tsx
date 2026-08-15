@@ -107,9 +107,9 @@ interface CityNeighborhood {
  * neighborhood rows — never a fabricated strip (§13).
  */
 function NeighborhoodStrip({ market }: { market: string }) {
-  const { data } = useQuery<CityNeighborhood[]>({ queryKey: ["/api/city-neighborhoods"] });
+  const { data } = useQuery<{ data: CityNeighborhood[] }>({ queryKey: ["/api/city-neighborhoods"] });
   const city = market.split(",")[0].trim().toLowerCase();
-  const hoods = (data ?? []).filter((n) => n.city.trim().toLowerCase() === city);
+  const hoods = (data?.data ?? []).filter((n) => n.city.trim().toLowerCase() === city);
   if (hoods.length === 0) return null;
   return (
     <div className="mb-5 rounded-xl border border-border bg-muted/40 px-4 py-3" data-testid="lead-map-strip">

@@ -2812,10 +2812,14 @@ export default function ExpertWorkspace() {
   // P1-2 unified builds list, W-3 task 3: the authored lane rides GET /api/expert/ready-made/builds
   // — every authored trip, INCLUDING unshipped builds with no listing yet, LEFT-JOINed with the
   // store listing when one exists (one row per trip, so no duplicates). Home-only.
+  // Server-side pagination: explicit limit; "Load more" grows the page size (server caps at 200).
+  const [buildsLimit, setBuildsLimit] = useState(50);
   const { data: myBuildsData } = useQuery<{
     builds: Array<{ id: string; title: string | null; destination: string | null; startDate: string | null; endDate: string | null; status: string | null; createdAt: string | null; listingId: string | null; listingStatus: string | null }>;
+    total: number;
+    hasMore: boolean;
   }>({
-    queryKey: ["/api/expert/ready-made/builds"],
+    queryKey: ["/api/expert/ready-made/builds", { limit: buildsLimit }],
     enabled: !tripId,
   });
   const smartLandingFired = useRef(false);
@@ -3700,6 +3704,18 @@ export default function ExpertWorkspace() {
                 </span>
               </div>
             ))}
+            {myBuildsData?.hasMore && (
+              <button
+                onClick={() => setBuildsLimit((l) => Math.min(l + 50, 200))}
+                data-testid="button-load-more-builds"
+                style={{
+                  padding: "9px 14px", borderRadius: 10, border: `1px dashed ${LINE}`, background: "none",
+                  color: MID, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Load more builds ({builds.length} of {myBuildsData.total})
+              </button>
+            )}
           </div>
         )}
 
