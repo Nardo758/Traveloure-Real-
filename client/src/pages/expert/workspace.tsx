@@ -3461,7 +3461,7 @@ export default function ExpertWorkspace() {
   // never a duplicated query field) but hits sources=google so results are Google-only — no
   // platform inventory shows up here (that stays the platform pill's job). ──
   const googleSearchEnabled = rightTab === "add" && addSource === "google" && !!(debouncedQuery || destination);
-  const { data: googleSearchData, isFetching: googleSearchFetching } = useQuery<{ results: any[]; count: number }>({
+  const { data: googleSearchData, isFetching: googleSearchFetching } = useQuery<{ results: any[]; count: number; placesUnavailable?: boolean }>({
     queryKey: ["/api/search/experiences", "google", debouncedQuery, destination, cat],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -3475,6 +3475,10 @@ export default function ExpertWorkspace() {
     staleTime: 2 * 60 * 1000,
   });
   const googleSearchResults = googleSearchData?.results || [];
+  // placesUnavailable: the server sets this when the Places API call fails (billing error,
+  // quota exhaustion, key misconfiguration) so the client can show an honest notice rather
+  // than a silently empty list. It is only present when sources=google was requested.
+  const googlePlacesUnavailable = !!(googleSearchData?.placesUnavailable);
   // Per-result "added" state (green check chip) — keyed by placeId (falls back to the result's
   // own id if a placeId is ever absent). Best-effort cross-link: matched against whatever the
   // platform drawer's OWN query currently has cached (may be empty/stale if that drawer was never
@@ -4636,6 +4640,16 @@ export default function ExpertWorkspace() {
                 {googleSearchFetching && googleSearchResults.length === 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     {[1, 2, 3].map(i => <div key={i} style={{ height: 72, borderRadius: 8, background: GROUND }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
+                  </div>
+                ) : googlePlacesUnavailable ? (
+                  <div data-testid="notice-places-unavailable" style={{ textAlign: "center", padding: "24px 16px", color: MID }}>
+                    <MapPin style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, color: INK }}>
+                      External results unavailable
+                    </div>
+                    <div style={{ fontSize: 11, color: FAINT, lineHeight: 1.5 }}>
+                      Google Places couldn't be reached right now. Platform and Viator results are still available on the other tabs.
+                    </div>
                   </div>
                 ) : googleSearchResults.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>

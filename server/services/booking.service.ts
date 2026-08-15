@@ -582,6 +582,7 @@ class BookingService {
     return { links };
   }
 
+  /**
    * Security gates (in order):
    *  1. Stripe PaymentIntent must have status === 'succeeded'; reject 402 otherwise.
    *  2. Booking must exist; reject 404 otherwise.

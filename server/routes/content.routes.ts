@@ -6028,6 +6028,15 @@ router.get("/api/search/experiences", async (req, res) => {
       }
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
+      // placesUnavailable is set to true when the Places API call fails (non-OK HTTP,
+      // request-denied, billing error, or quota exhaustion) — distinct from ZERO_RESULTS
+      // which is a legitimate "nothing here" answer and leaves the flag false. The flag
+      // travels to the client so it can show an honest "external results unavailable"
+      // notice instead of a silently empty list.
+      let placesUnavailable = false;
+      if (includeGoogle && !apiKey) {
+        placesUnavailable = true;
+      }
       if (includeGoogle && apiKey) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
@@ -6036,43 +6045,73 @@ router.get("/api/search/experiences", async (req, res) => {
           all: "",
         };
         const typeFilter = catToType[category || "all"] || "";
-        const searchQuery = [q, destination].filter(Boolean).join(" in ");
+        // When no free-text query is provided, Places Text Search with just a city name
+        // returns the city itself (1 result) or 0 results when a type filter is also set.
+        // Build a category-appropriate default so results are places *in* the destination.
+        const catDefaultQuery: Record<string, string> = {
+          dining: "restaurants",
+          hotels: "hotels",
+          activities: "things to do",
+          all: "things to do",
+        };
+        const effectiveQ = q || catDefaultQuery[category || "all"] || "things to do";
+        const searchQuery = destination ? `${effectiveQ} in ${destination}` : effectiveQ;
         const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
         placesUrl.searchParams.set("query", searchQuery);
         placesUrl.searchParams.set("key", apiKey);
-        if (typeFilter) placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
+        // type= filter is a strict AND on top of the text query — only apply it when the
+        // caller explicitly requested a non-"all" category, to avoid over-filtering.
+        if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
-        const resp = await fetch(placesUrl.toString());
-        if (resp.ok) {
-          const data: any = await resp.json();
-          const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-          const catFromTypes = (types: string[]): string => {
-            if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
-            if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
-            if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
-            if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
-            return "activity";
-          };
-          for (const place of (data.results || []).slice(0, 15)) {
-            const photoRef = place.photos?.[0]?.photo_reference;
-            results.push({
-              id: `gp_${place.place_id}`,
-              source: "google_places",
-              placeId: place.place_id,
-              name: place.name,
-              address: place.formatted_address,
-              category: catFromTypes(place.types || []),
-              rating: place.rating ?? null,
-              reviewCount: place.user_ratings_total ?? null,
-              priceLevel: place.price_level ?? null,
-              priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
-              location: place.geometry?.location ?? null,
-              photoUrl: photoRef
-                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
-                : null,
-              mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-            });
+        try {
+          const resp = await fetch(placesUrl.toString());
+          if (!resp.ok) {
+            console.error(`[places] HTTP ${resp.status} from Places Text Search`);
+            placesUnavailable = true;
+          } else {
+            const data: any = await resp.json();
+            // Google Places always returns HTTP 200; check the API-level status field.
+            // OK and ZERO_RESULTS are both success cases — ZERO_RESULTS just means no
+            // matches for this query, which is honest. Any other status is an API-level
+            // error (REQUEST_DENIED, OVER_QUERY_LIMIT, INVALID_REQUEST, UNKNOWN_ERROR).
+            const placesStatus: string = data.status || "";
+            if (placesStatus !== "OK" && placesStatus !== "ZERO_RESULTS") {
+              console.error(`[places] API error status="${placesStatus}" error_message="${data.error_message || ""}"`);
+              placesUnavailable = true;
+            } else {
+              const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+              const catFromTypes = (types: string[]): string => {
+                if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
+                if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
+                if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
+                if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
+                return "activity";
+              };
+              for (const place of (data.results || []).slice(0, 15)) {
+                const photoRef = place.photos?.[0]?.photo_reference;
+                results.push({
+                  id: `gp_${place.place_id}`,
+                  source: "google_places",
+                  placeId: place.place_id,
+                  name: place.name,
+                  address: place.formatted_address,
+                  category: catFromTypes(place.types || []),
+                  rating: place.rating ?? null,
+                  reviewCount: place.user_ratings_total ?? null,
+                  priceLevel: place.price_level ?? null,
+                  priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
+                  location: place.geometry?.location ?? null,
+                  photoUrl: photoRef
+                    ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
+                    : null,
+                  mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+                });
+              }
+            }
           }
+        } catch (placesErr) {
+          console.error("[places] fetch threw:", placesErr);
+          placesUnavailable = true;
         }
       }
 
@@ -6124,7 +6163,7 @@ router.get("/api/search/experiences", async (req, res) => {
         // Non-fatal — Viator unavailable should never fail the whole search response
       }
 
-      res.json({ results, count: results.length });
+      res.json({ results, count: results.length, placesUnavailable: includeGoogle ? placesUnavailable : undefined });
     } catch (error: any) {
       console.error("Error in /api/search/experiences:", error);
       res.status(500).json({ message: "Search failed", error: error.message });
