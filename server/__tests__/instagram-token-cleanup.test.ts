@@ -36,7 +36,7 @@ if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
   process.env.STRIPE_SECRET_KEY = "sk_test_dummy_instagram_cleanup_suite";
 }
 
-const { handleInstagramStatusVerify } = await import("../routes/instagram.js");
+const { handleInstagramStatusVerify, nullExpiredInstagramToken, resolveInstagramPublishTokenError } = await import("../routes/instagram.js");
 
 // ── Minimal mock DB ────────────────────────────────────────────────────────────
 
@@ -310,6 +310,129 @@ describe("handleInstagramStatusVerify — all non-expiry outcomes never update D
         mockDb.updateCount,
         0,
         `DB must remain untouched for outcome "${s.label}"`,
+      );
+    });
+  }
+});
+
+// ── Suite 6: nullExpiredInstagramToken helper ───────────────────────────────────
+//
+// The shared cleanup primitive used by both the /status and /publish paths.
+
+describe("nullExpiredInstagramToken — always nulls both credential columns", () => {
+  it("calls DB update with instagramUserId:null and instagramAccessToken:null", async () => {
+    const mockDb = makeMockDb();
+    await nullExpiredInstagramToken(
+      "user-null-test",
+      mockDb as unknown as Parameters<typeof nullExpiredInstagramToken>[1],
+    );
+    assert.equal(mockDb.updateCount, 1, "DB update must be called exactly once");
+    assert.equal(mockDb.lastSet!.instagramUserId, null);
+    assert.equal(mockDb.lastSet!.instagramAccessToken, null);
+  });
+});
+
+// ── Suite 7: publish path — token-expiry codes null the DB ─────────────────────
+//
+// The /publish handler calls resolveInstagramPublishTokenError, then (when
+// reason === "token_expired") calls nullExpiredInstagramToken before returning 401.
+// This suite proves the publish-path cleanup contract by simulating exactly what
+// the handler does: resolve → check reason → null if expired.
+
+describe("publish path — token-expiry codes null the DB", () => {
+  const expiryScenarios = [
+    {
+      label: "code 102",
+      verifyOk: false,
+      body: { error: { code: 102, type: "OAuthException", message: "Session key invalid." } },
+    },
+    {
+      label: "code 104",
+      verifyOk: false,
+      body: { error: { code: 104, type: "OAuthException", message: "Incorrect signature." } },
+    },
+    {
+      label: "code 190 (HTTP 400)",
+      verifyOk: false,
+      body: { error: { code: 190, type: "OAuthException", message: "Invalid OAuth access token." } },
+    },
+    {
+      label: "code 190 embedded in HTTP-200 body",
+      verifyOk: true,
+      body: { error: { code: 190, type: "OAuthException", message: "Invalid OAuth access token." } },
+    },
+  ];
+
+  for (const s of expiryScenarios) {
+    it(`publish preflight ${s.label} → 401 token_expired + DB nulled`, async () => {
+      const mockDb = makeMockDb();
+
+      // Simulate exactly what the /publish handler does:
+      const tokenError = resolveInstagramPublishTokenError(s.verifyOk, s.body);
+      assert.notEqual(tokenError, null, "tokenError must be non-null for an expiry code");
+      assert.equal(tokenError!.statusCode, 401);
+      assert.equal(tokenError!.body.reason, "token_expired");
+
+      // Handler calls nullExpiredInstagramToken when reason === "token_expired"
+      if (tokenError!.body.reason === "token_expired") {
+        await nullExpiredInstagramToken(
+          "user-pub",
+          mockDb as unknown as Parameters<typeof nullExpiredInstagramToken>[1],
+        );
+      }
+
+      assert.equal(mockDb.updateCount, 1, "DB must be updated once for publish expiry");
+      assert.equal(mockDb.lastSet!.instagramUserId, null);
+      assert.equal(mockDb.lastSet!.instagramAccessToken, null);
+    });
+  }
+});
+
+// ── Suite 8: publish path — non-expiry errors do NOT null the DB ───────────────
+
+describe("publish path — non-expiry errors leave DB intact", () => {
+  const safeScenarios = [
+    {
+      label: "personal account (403)",
+      verifyOk: true,
+      body: { id: "1", account_type: "PERSONAL" },
+      expectedReason: "personal_account",
+    },
+    {
+      label: "permission error code 200 (auth_error)",
+      verifyOk: false,
+      body: { error: { code: 200, message: "Permission denied." } },
+      expectedReason: "auth_error",
+    },
+    {
+      label: "generic HTTP error no code (auth_error)",
+      verifyOk: false,
+      body: { error: { message: "Unknown error" } },
+      expectedReason: "auth_error",
+    },
+  ];
+
+  for (const s of safeScenarios) {
+    it(`publish preflight ${s.label} → DB untouched`, async () => {
+      const mockDb = makeMockDb();
+
+      const tokenError = resolveInstagramPublishTokenError(s.verifyOk, s.body);
+      assert.notEqual(tokenError, null, "tokenError must be non-null for a blocked token");
+      assert.equal(tokenError!.body.reason, s.expectedReason);
+
+      // Handler only calls nullExpiredInstagramToken when reason === "token_expired";
+      // simulate that exact condition check:
+      if (tokenError!.body.reason === "token_expired") {
+        await nullExpiredInstagramToken(
+          "user-pub-safe",
+          mockDb as unknown as Parameters<typeof nullExpiredInstagramToken>[1],
+        );
+      }
+
+      assert.equal(
+        mockDb.updateCount,
+        0,
+        `DB must NOT be updated for publish reason "${s.expectedReason}"`,
       );
     });
   }

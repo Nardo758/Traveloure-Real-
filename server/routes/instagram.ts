@@ -38,6 +38,25 @@ export function resolveInstagramVerifyStatus(
 }
 
 /**
+ * Nulls out the stored Instagram credentials for a user.
+ * Called whenever a definitive token-expiry code (102, 104, 190) is detected —
+ * on both the /status and /publish paths — so stale tokens never accumulate
+ * regardless of which endpoint the user hits first.
+ *
+ * Exported for unit testing — callers supply the db client so tests can inject
+ * a mock without a real database connection.
+ */
+export async function nullExpiredInstagramToken(
+  userId: string,
+  dbClient: typeof db,
+): Promise<void> {
+  await dbClient
+    .update(users)
+    .set({ instagramUserId: null, instagramAccessToken: null })
+    .where(eq(users.id, userId));
+}
+
+/**
  * Processes the Graph API verification result for the /status endpoint.
  * Resolves the status payload AND, when the token is definitively expired
  * (error codes 102, 104, 190), nulls out the stored token columns so stale
@@ -60,13 +79,7 @@ export async function handleInstagramStatusVerify(
   const status = resolveInstagramVerifyStatus(verifyOk, verifyData);
 
   if (status.reason === "token_expired") {
-    // Wipe stored credentials so expired tokens never accumulate. We do this
-    // only for definitive token-expiry codes (102, 104, 190); non-token errors
-    // (network failures, permission errors) leave the token intact.
-    await dbClient
-      .update(users)
-      .set({ instagramUserId: null, instagramAccessToken: null })
-      .where(eq(users.id, userId));
+    await nullExpiredInstagramToken(userId, dbClient);
   }
 
   return status;
@@ -285,6 +298,12 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
           "Instagram publish blocked — token check failed:",
           tokenError.body.reason,
         );
+        // Wipe stored credentials when the token is definitively expired so
+        // the user is not silently stuck retrying against a known-invalid token.
+        // Non-expiry errors (personal_account, auth_error) leave the token intact.
+        if (tokenError.body.reason === "token_expired") {
+          await nullExpiredInstagramToken(userId, db);
+        }
         return res.status(tokenError.statusCode).json(tokenError.body);
       }
     } catch (verifyErr) {
