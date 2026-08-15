@@ -127,18 +127,28 @@ class CacheSchedulerService {
     // between the 24h full-refresh cycles.  First run is delayed 10 minutes so
     // it doesn't compete with server start-up work.
     setTimeout(() => {
-      sharedCache.flushExpired().catch((err) =>
+      this.pruneExpiredCacheNow().catch((err) =>
         console.error("[CacheScheduler] Initial Travelpayouts cache prune failed:", err)
       );
     }, 10 * 60 * 1000);
 
     this.travelpayoutsCachePruneTimer = setInterval(() => {
-      sharedCache.flushExpired().catch((err) =>
+      this.pruneExpiredCacheNow().catch((err) =>
         console.error("[CacheScheduler] Travelpayouts cache prune failed:", err)
       );
     }, TRAVELPAYOUTS_CACHE_PRUNE_INTERVAL_MS);
 
     console.log(`[CacheScheduler] Travelpayouts cache prune scheduled every ${TRAVELPAYOUTS_CACHE_PRUNE_INTERVAL_MS / (60 * 1000)} minutes`);
+  }
+
+  /**
+   * Prune all expired travelpayouts_cache rows immediately.
+   * This is the exact function the hourly setInterval callback delegates to —
+   * exposing it publicly allows tests to invoke the scheduler's registered
+   * prune path directly, without waiting for the timer to fire.
+   */
+  async pruneExpiredCacheNow(): Promise<number> {
+    return sharedCache.flushExpired();
   }
 
   // Poll Travelpayouts for commission action rows and auto-match them against
