@@ -563,8 +563,16 @@ class AffiliateReconciliationService {
   ): Promise<ReconciliationResult> {
     const { start, end } = getPeriodDates(period);
 
-    // Run auto-match first (idempotent)
-    await this.matchRecords(period, partner);
+    // Widen the internal-earnings window backward by LATE_REPORT_TOLERANCE_DAYS so that
+    // a booking made near the end of the previous month is still visible here when a
+    // partner reports it in the first days of the current month. The external-report
+    // fetch uses the same period, so cross-month commissions won't produce false
+    // positives in the "unmatched external" list once the widened internal rows match them.
+    const widenedStart = new Date(start.getTime() - LATE_REPORT_TOLERANCE_DAYS * 24 * 60 * 60 * 1000);
+
+    // Run auto-match first (idempotent). Pass the widened period so matchRecords also
+    // considers near-boundary internal rows when finding candidates.
+    await this.matchRecords(period, partner, { dateToleranceDays: LATE_REPORT_TOLERANCE_DAYS });
 
     // Fetch internal earnings
     const partnerFilter = partner && partner !== "all"
@@ -575,7 +583,7 @@ class AffiliateReconciliationService {
       SELECT ae.*, ap.name as partner_name
       FROM affiliate_earnings ae
       LEFT JOIN affiliate_partners ap ON ae.partner_id = ap.id
-      WHERE ae.created_at >= ${start.toISOString()}
+      WHERE ae.created_at >= ${widenedStart.toISOString()}
         AND ae.created_at <= ${end.toISOString()}
         ${partnerFilter}
       ORDER BY ae.created_at DESC

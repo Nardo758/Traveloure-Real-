@@ -638,7 +638,7 @@ export default function AdminAffiliatePartners() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ReconciliationPanel() {
-  const [period, setPeriod] = useState("this_month");
+  const [period, setPeriod] = useState("last_35_days");
   const [partnerFilter, setPartnerFilter] = useState("all");
   const [notesDialogId, setNotesDialogId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState("");
@@ -708,6 +708,7 @@ function ReconciliationPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="last_35_days">Last 35 Days</SelectItem>
                   <SelectItem value="this_month">This Month</SelectItem>
                   <SelectItem value="last_month">Last Month</SelectItem>
                   <SelectItem value="last_90_days">Last 90 Days</SelectItem>

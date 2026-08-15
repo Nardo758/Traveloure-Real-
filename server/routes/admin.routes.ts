@@ -3140,11 +3140,11 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const period = (req.query.period as string) || "this_month";
+      const period = (req.query.period as string) || "last_35_days";
       const partner = (req.query.partner as string) || undefined;
-      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      const validPeriods = ["this_month", "last_35_days", "last_month", "last_90_days"];
       if (!validPeriods.includes(period)) {
-        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_35_days, last_month, last_90_days" });
       }
 
       const { affiliateReconciliationService } = await import("../services/affiliate-reconciliation.service");
