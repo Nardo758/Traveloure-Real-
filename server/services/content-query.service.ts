@@ -403,6 +403,11 @@ export async function pickBestExpertForBookingRequest(
   const destToken = destination?.trim().toLowerCase() || null;
   const catToken = category?.trim().toLowerCase() || null;
 
+  // Canonical expert-family roles (shared/roles.ts EXPERT_ROLES):
+  // "expert" | "local_expert" | "travel_expert" | "event_planner"
+  // Using a literal array here to avoid a runtime import; must stay in sync with shared/roles.ts.
+  const expertRoleList = sql`('expert','local_expert','travel_expert','event_planner')`;
+
   // One query: join users → local_expert_forms, score in SQL, count open handoffs
   // via correlated subquery, order by score DESC + open_count ASC.
   const rows = await db.execute(sql`
@@ -423,7 +428,7 @@ export async function pickBestExpertForBookingRequest(
       ) AS open_count
     FROM users u
     INNER JOIN local_expert_forms lef ON lef.user_id = u.id
-    WHERE u.role = 'expert'
+    WHERE u.role IN ${expertRoleList}
       AND lef.status = 'approved'
       AND lef.accepts_new_handoffs = true
     ORDER BY score DESC, open_count ASC
