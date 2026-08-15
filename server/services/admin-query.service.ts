@@ -1546,6 +1546,56 @@ export async function getAdminTrips(whereClause?: any) {
   return db.select().from(trips).where(whereClause).orderBy(desc(trips.createdAt)).limit(200);
 }
 
+/**
+ * Paged admin trips list. Search + date-derived phase (§13 — trips.status is dead) are pushed
+ * into SQL, phase counts come from one aggregate query, and only the requested page is returned,
+ * so the route enriches a bounded set of rows.
+ */
+export async function getAdminTripsPage(opts: {
+  search?: string;
+  phase?: "upcoming" | "active" | "past";
+  limit: number;
+  offset: number;
+}) {
+  const searchWhere = opts.search
+    ? or(like(trips.title, `%${opts.search}%`), like(trips.destination, `%${opts.search}%`))
+    : undefined;
+
+  const upcomingCond = sql`${trips.startDate}::timestamp > now()`;
+  const activeCond = sql`${trips.startDate}::timestamp <= now() and ${trips.endDate}::timestamp >= now()`;
+  const pastCond = sql`${trips.endDate}::timestamp < now()`;
+
+  const [stats] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      upcoming: sql<number>`count(*) filter (where ${upcomingCond})::int`,
+      active: sql<number>`count(*) filter (where ${activeCond})::int`,
+      past: sql<number>`count(*) filter (where ${pastCond})::int`,
+    })
+    .from(trips)
+    .where(searchWhere);
+
+  const phaseCond =
+    opts.phase === "upcoming" ? upcomingCond
+    : opts.phase === "active" ? activeCond
+    : opts.phase === "past" ? pastCond
+    : undefined;
+  const pageWhere = phaseCond ? (searchWhere ? and(searchWhere, phaseCond) : phaseCond) : searchWhere;
+
+  const rows = await db
+    .select()
+    .from(trips)
+    .where(pageWhere)
+    .orderBy(desc(trips.createdAt))
+    .limit(opts.limit)
+    .offset(opts.offset);
+
+  const statsRow = stats ?? { total: 0, upcoming: 0, active: 0, past: 0 };
+  const filteredTotal = opts.phase ? Number(statsRow[opts.phase] ?? 0) : Number(statsRow.total ?? 0);
+
+  return { rows, stats: statsRow, filteredTotal };
+}
+
 export async function getAnalyticsByCountry() {
   const [expertsByCountry, providersByCountry, tripsByDestination] = await Promise.all([
     getExpertsByCountryAnalytics(),

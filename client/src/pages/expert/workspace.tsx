@@ -2812,12 +2812,29 @@ export default function ExpertWorkspace() {
   // P1-2 unified builds list, W-3 task 3: the authored lane rides GET /api/expert/ready-made/builds
   // — every authored trip, INCLUDING unshipped builds with no listing yet, LEFT-JOINed with the
   // store listing when one exists (one row per trip, so no duplicates). Home-only.
+  // True offset pagination: fixed 50-row pages; Load more increments offset and appends.
+  const BUILDS_PAGE = 50;
+  const [buildsOffset, setBuildsOffset] = useState(0);
+  const [allBuilds, setAllBuilds] = useState<Array<{ id: string; title: string | null; destination: string | null; startDate: string | null; endDate: string | null; status: string | null; createdAt: string | null; listingId: string | null; listingStatus: string | null }>>([]);
   const { data: myBuildsData } = useQuery<{
     builds: Array<{ id: string; title: string | null; destination: string | null; startDate: string | null; endDate: string | null; status: string | null; createdAt: string | null; listingId: string | null; listingStatus: string | null }>;
+    total: number;
+    hasMore: boolean;
   }>({
-    queryKey: ["/api/expert/ready-made/builds"],
+    queryKey: ["/api/expert/ready-made/builds", { limit: BUILDS_PAGE, offset: buildsOffset }],
     enabled: !tripId,
   });
+  useEffect(() => {
+    if (!myBuildsData?.builds) return;
+    if (buildsOffset === 0) {
+      setAllBuilds(myBuildsData.builds);
+    } else {
+      setAllBuilds((prev) => {
+        const seen = new Set(prev.map((b) => b.id));
+        return [...prev, ...myBuildsData.builds.filter((b) => !seen.has(b.id))];
+      });
+    }
+  }, [myBuildsData]); // eslint-disable-line react-hooks/exhaustive-deps
   const smartLandingFired = useRef(false);
   useEffect(() => {
     if (tripId || smartLandingFired.current) return;
@@ -3524,7 +3541,7 @@ export default function ExpertWorkspace() {
 
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {
-    const builds = myBuildsData?.builds ?? [];
+    const builds = allBuilds.length > 0 ? allBuilds : (myBuildsData?.builds ?? []);
     type BuildRow = { key: string; title: string; sub: React.ReactNode; open: () => void; sortKey: string; deleteId?: string };
     const rows: BuildRow[] = [
       ...(assignedTrips ?? []).map((t): BuildRow => ({
@@ -3700,6 +3717,18 @@ export default function ExpertWorkspace() {
                 </span>
               </div>
             ))}
+            {myBuildsData?.hasMore && (
+              <button
+                onClick={() => setBuildsOffset((o) => o + BUILDS_PAGE)}
+                data-testid="button-load-more-builds"
+                style={{
+                  padding: "9px 14px", borderRadius: 10, border: `1px dashed ${LINE}`, background: "none",
+                  color: MID, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Load more builds ({builds.length} of {myBuildsData.total})
+              </button>
+            )}
           </div>
         )}
 

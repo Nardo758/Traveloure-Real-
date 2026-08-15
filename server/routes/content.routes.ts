@@ -3,6 +3,7 @@ import { getUserId } from "../utils/auth";
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
+import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
 import { Router } from "express";
@@ -730,13 +731,22 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Vendors Routes
 
-router.get("/api/city-neighborhoods", async (_req, res) => {
+router.get("/api/city-neighborhoods", async (req, res) => {
     try {
+      // Reference data — high default (200, also the hard cap) so existing consumers still see
+      // the full catalog today, while the response can never grow unbounded.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const [agg] = await db
+        .select({ total: count() })
+        .from(cityNeighborhoods);
+      const total = Number(agg?.total ?? 0);
       const rows = await db
         .select()
         .from(cityNeighborhoods)
-        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name);
-      res.json(rows);
+        .orderBy(cityNeighborhoods.city, cityNeighborhoods.name)
+        .limit(limit)
+        .offset(offset);
+      res.json({ data: rows, total, hasMore: offset + rows.length < total, limit, offset });
     } catch (err) {
       console.error("Error fetching city neighborhoods:", err);
       res.status(500).json({ message: "Failed to fetch neighborhoods" });
@@ -862,12 +872,15 @@ router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
 
 router.get("/api/custom-venues", async (req, res) => {
     const { userId, tripId, experienceType } = req.query;
-    const venues = await storage.getCustomVenues(
+    const { limit, offset } = parsePagination(req.query);
+    const { venues, total } = await storage.getCustomVenuesPage(
       userId as string | undefined,
       tripId as string | undefined,
-      experienceType as string | undefined
+      experienceType as string | undefined,
+      limit,
+      offset,
     );
-    res.json(venues);
+    res.json({ data: venues, total, hasMore: offset + venues.length < total, limit, offset });
   });
 
   // Get single custom venue
@@ -1118,8 +1131,13 @@ router.get("/api/catalog/items/:type/:id", async (req, res) => {
 
 router.get("/api/catalog/destinations", async (req, res) => {
     try {
+      // Reference data — high default limit (200 = cap); paged from the deduped in-memory set
+      // (its sources are already capped at 100 distinct rows each).
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
       const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      const total = destinations.length;
+      const page = destinations.slice(offset, offset + limit);
+      res.json({ data: page, total, hasMore: offset + page.length < total, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
@@ -1530,8 +1548,12 @@ router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
 
 router.get("/api/destinations", async (req, res) => {
     try {
-      const destinations = await experienceCatalogService.getDestinations();
-      res.json(destinations);
+      // Alias of /api/catalog/destinations — apply same pagination contract.
+      const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      const all = await experienceCatalogService.getDestinations();
+      const deduped = Array.from(new Set(all)) as string[];
+      const page = deduped.slice(offset, offset + limit);
+      res.json({ data: page, total: deduped.length, hasMore: offset + page.length < deduped.length, limit, offset });
     } catch (error) {
       console.error("Error fetching destinations:", error);
       res.status(500).json({ message: "Failed to fetch destinations" });
@@ -2393,6 +2415,7 @@ router.get("/api/services", async (req, res) => {
   // Unified Discovery Search (public - with advanced filtering)
 
 router.get("/api/discover", async (req, res) => {
+    const { limit, offset } = parsePagination(req.query, { defaultLimit: 20 });
     const filters = {
       query: req.query.q as string | undefined,
       categoryId: req.query.categoryId as string | undefined,
@@ -2401,8 +2424,8 @@ router.get("/api/discover", async (req, res) => {
       maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice as string) : undefined,
       minRating: req.query.minRating ? parseFloat(req.query.minRating as string) : undefined,
       sortBy: req.query.sortBy as "rating" | "price_low" | "price_high" | "reviews" | undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
-      offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
+      limit,
+      offset,
     };
     const result = await storage.unifiedSearch(filters);
 
@@ -2422,7 +2445,13 @@ router.get("/api/discover", async (req, res) => {
     }
 
     // Content-gate (§10): packages in search results are teaser-redacted like every public read.
-    res.json({ ...result, packages: (result.packages ?? []).map(redactTemplateContent) });
+    res.json({
+      ...result,
+      packages: (result.packages ?? []).map(redactTemplateContent),
+      hasMore: offset + result.services.length < result.total,
+      limit,
+      offset,
+    });
   });
 
   // Analytics: Get destination search trends

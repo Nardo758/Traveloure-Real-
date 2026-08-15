@@ -1220,10 +1220,11 @@ export default function ExperienceTemplatePage() {
     setShowDestPrompt(false);
   };
 
-  const { data: customVenues = [] } = useQuery<CustomVenue[]>({
+  const { data: customVenuesResp } = useQuery<{ data: CustomVenue[] }>({
     queryKey: ["/api/custom-venues", { experienceType: slug }],
     enabled: !!slug,
   });
+  const customVenues = customVenuesResp?.data ?? [];
 
   const createComparison = async () => {
     if (cart.length === 0) {

@@ -26,6 +26,7 @@ import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.s
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { getAuthoredTrip } from "../utils/trip-authorship";
+import { parsePagination } from "../utils/pagination";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
@@ -199,6 +200,14 @@ router.get("/api/expert/ready-made/builds", isAuthenticated, async (req, res) =>
       return res.status(403).json({ message: STORE_GATE_MESSAGE });
     }
 
+    const { limit, offset } = parsePagination(req.query);
+
+    const [agg] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(trips)
+      .where(eq(trips.authorId, userId));
+    const total = agg?.total ?? 0;
+
     const rows = await db
       .select({
         id: trips.id,
@@ -214,9 +223,11 @@ router.get("/api/expert/ready-made/builds", isAuthenticated, async (req, res) =>
       .from(trips)
       .leftJoin(readyMadeTrips, eq(readyMadeTrips.sourceTripId, trips.id))
       .where(eq(trips.authorId, userId))
-      .orderBy(desc(trips.createdAt));
+      .orderBy(desc(trips.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.json({ builds: rows });
+    res.json({ builds: rows, total, hasMore: offset + rows.length < total, limit, offset });
   } catch (err: any) {
     console.error("[ready-made] builds error:", err);
     res.status(500).json({ message: "Failed to load builds", error: err.message });

@@ -1253,6 +1253,8 @@ export interface IStorage {
   updateTransportLegUserSelectedMode(legId: string, mode: string): Promise<void>;
 
   getVendorContractsByIds(ids: string[]): Promise<Array<{ id: string; vendorPhone: string | null }>>;
+
+  getCustomVenuesPage(userId: string | undefined, tripId: string | undefined, experienceType: string | undefined, limit: number, offset: number): Promise<{ venues: CustomVenue[]; total: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2716,17 +2718,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-/**
-   * SD-1 (provider money-hardening lane, ruling 42) — `expectedFromStatuses`.
-   *
-   * When supplied, the write becomes the §15 ATOMIC CONDITIONAL
-   * (`UPDATE … WHERE id = ? AND status IN (<expected>)`) instead of an unconditional
-   * `WHERE id = ?`, and the transition ITSELF is the concurrency guard: a caller whose row is no
-   * longer in an expected state matches 0 rows and gets `undefined`, rather than overwriting
-   * whatever state the row actually reached. A caller that omits it keeps the previous
-   * unconditional behaviour verbatim (admin complete, dispute, traveler cancel) — no regression.
-   *
-   *    * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
+  /**
+   * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
    * the sole author of provisional-claim transitions; this parameter is how the OWNER rail refuses
    * to touch a row the claim machine owns. Why it had to exist: `PATCH /api/provider/bookings/
    * :id/status` checked the TARGET status and never the CURRENT one, so a provider clicking Accept
@@ -3068,7 +3061,8 @@ export class DatabaseStorage implements IStorage {
       baseConditions.push(sqlOp`COALESCE(${providerServices.averageRating}, 0) >= ${filters.minRating}`);
     }
 
-    const limit = filters.limit || 20;
+    // Clamp to 200 so no single request can dump the entire table.
+    const limit = Math.min(filters.limit || 20, 200);
     const offset = filters.offset || 0;
 
     // Weighted document: name ranks above description (setweight A vs B).
@@ -5486,14 +5480,8 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-/**
-   * Task #141 — flip an earner's `releasable` earning rows to `paid_out`, oldest-created-first,
-   * until `amountDollars` is covered. Public entry point: opens its own transaction (for standalone/
-   * backfill callers); `markEarningsPaidOutForPayoutTx` below is the tx-taking variant composed into
-   * update{Expert,Provider}PayoutStatus's own transaction so the payout-completion flip and the
-   * earnings flip commit/roll back together.
-   *
-   *    * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
+  /**
+   * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
    * $0.01 (rounding tolerance) past amountDollars; once one row would overshoot, it — and everything
    * after it (oldest-first) — stays releasable. If the releasable total is less than amountDollars
    * (e.g. a reversal/dispute/concurrent payout consumed rows since this payout was requested), flips
@@ -7628,6 +7616,30 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inviteTemplates)
       .where(eq(inviteTemplates.userId, userId))
       .orderBy(desc(inviteTemplates.createdAt));
+  }
+
+  async getCustomVenuesPage(
+    userId: string | undefined,
+    tripId: string | undefined,
+    experienceType: string | undefined,
+    limit: number,
+    offset: number,
+  ): Promise<{ venues: CustomVenue[]; total: number }> {
+    const conditions = [];
+    if (userId) conditions.push(eq(customVenues.userId, userId));
+    if (tripId) conditions.push(eq(customVenues.tripId, tripId));
+    if (experienceType) conditions.push(eq(customVenues.experienceType, experienceType));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [agg] = await db.select({ total: count() }).from(customVenues).where(whereClause);
+    const venues = await db
+      .select()
+      .from(customVenues)
+      .where(whereClause)
+      .orderBy(desc(customVenues.createdAt))
+      .limit(limit)
+      .offset(offset);
+    return { venues, total: Number(agg?.total ?? 0) };
   }
 }
 
