@@ -16,6 +16,7 @@ import { isTripAuthor } from '../utils/trip-authorship';
 import { isTripAdvisor, TRIP_ADVISOR_ACCESS_STATUSES } from '../utils/trip-advisor';
 import { logItemTransition } from '../services/item-transition-log.service';
 import { getUserId } from '../utils/auth';
+import { sanitizeInput } from '../utils/sanitize';
 import { storage } from '../storage';
 import { db } from '../db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -1558,7 +1559,9 @@ router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) =>
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
-    await storage.updateTrip(tripId, { expertNotes });
+    // #1123: sanitize even though the field is private today (self-XSS only) —
+    // closes the hole before the notes are ever surfaced to another viewer.
+    await storage.updateTrip(tripId, { expertNotes: sanitizeInput(expertNotes) });
     res.json({ ok: true });
   } catch (err) {
     console.error("[Expert] saveExpertNotes error:", err);
