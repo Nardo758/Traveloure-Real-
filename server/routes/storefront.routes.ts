@@ -72,7 +72,7 @@ const claimSchema = z.object({
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = claimSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid handle" });
     }
@@ -262,7 +262,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -319,7 +319,7 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -411,7 +411,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
+    const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
