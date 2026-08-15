@@ -506,11 +506,27 @@ export default function DiscoverPage() {
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showAllPackages, setShowAllPackages] = useState(false);
 
-  // Cart state
-  const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
+  // Browse cart state — persisted to sessionStorage so selections survive tab
+  // switches and page refreshes (same session, no backend required).
+  const BROWSE_CART_KEY = "traveloure_browse_cart";
+  const [addedServices, setAddedServices] = useState<Set<string>>(() => {
+    try {
+      const stored = sessionStorage.getItem(BROWSE_CART_KEY);
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
   
+  // Write browse cart through to sessionStorage whenever it changes.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(BROWSE_CART_KEY, JSON.stringify([...addedServices]));
+    } catch { /* ignore quota or private-browsing errors */ }
+  }, [addedServices]);
+
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
