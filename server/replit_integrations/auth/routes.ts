@@ -57,6 +57,7 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/users/me", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -72,6 +73,7 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -87,6 +89,7 @@ export function registerAuthRoutes(app: Express): void {
   app.patch("/api/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const validation = updateProfileSchema.safeParse(req.body);
       if (!validation.success) {
         return res.status(400).json({
@@ -109,6 +112,7 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/user/profile", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -124,6 +128,7 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/me", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       res.json(sanitizeUser(user));
     } catch (error) {
@@ -135,6 +140,7 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const user = await authStorage.getUser(userId);
       res.json(sanitizeUser(user));
     } catch (error) {
@@ -147,6 +153,7 @@ export function registerAuthRoutes(app: Express): void {
   app.post("/api/auth/accept-terms", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const validation = acceptTermsSchema.safeParse(req.body);
       if (!validation.success) {

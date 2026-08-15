@@ -112,6 +112,7 @@ import {
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
+import { getWorkspaceStatusHistory } from "../services/item-transition-log.service";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -4991,6 +4992,35 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });
+    }
+  });
+
+  // === Admin: Workspace Status History for a trip (task 1030) ===
+  // Read-only audit trail — `workspace_status_transition` rows from item_transition_log.
+  // Support staff use this to resolve "when was this delivered?" disputes without DB access.
+
+router.get("/api/admin/trips/:tripId/workspace-history", isAuthenticated, requireAdminLocal, async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const rows = await getWorkspaceStatusHistory(tripId);
+
+      // Batch-resolve actor names for rows that have an actorId.
+      const actorIds = Array.from(new Set(rows.map(r => r.actorId).filter(Boolean))) as string[];
+      const actors = actorIds.length > 0 ? await getUsersBasicByIds(actorIds) : [];
+      const actorById = new Map(actors.map(u => [u.id, u]));
+
+      const result = rows.map(row => {
+        const actor = row.actorId ? actorById.get(row.actorId) : undefined;
+        const actorName = actor
+          ? [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || null
+          : null;
+        return { ...row, actorName };
+      });
+
+      res.json(result);
+    } catch (err) {
+      console.error("Admin workspace history error:", err);
+      res.status(500).json({ message: "Failed to fetch workspace history" });
     }
   });
 
