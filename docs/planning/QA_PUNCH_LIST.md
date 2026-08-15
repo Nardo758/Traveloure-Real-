@@ -2170,7 +2170,145 @@ account had no live listing and no saved stops (D-13 unverified with data), mobi
   `propertyEditorHref` first — the guard page existing is proof the ServiceForm door is wrong
   for these shapes.
 
-## Folded in Aug 15, 2026 — the spec-rot audit (regression-spec lane, ledger row 120)
+## Lane M2 — Catalog map preview, mock conformance round 2 (Aug 15, 2026)
+
+**Why a second round.** Decision-maker report: *"the Provider Console Catalog Map still does not
+look like the mock-up."* Lane M (D-1..D-8) fixed the surface's **honesty** — what it counts, what
+it names, where its links go — and every one of those fixes holds. It did not touch the surface's
+**shape**, and three whole blocks of the ratified mock
+(`docs/design/provider-console-mockup/mockup.html`, `#cat-map-mode`) had never been built at all.
+That is what this lane closes. Audit method: the mock's map-mode markup read block by block against
+the shipped `CatalogMapView`; 13 divergences, no contradiction of a locked decision.
+
+### Structure — the difference you see first
+
+- **M-1 (P1, FIXED).** **Layout.** The mock is ONE full-width canvas in ONE card. The ship was a
+  `240px | canvas | 320px` grid: a tall listing rail on the left and a Meeting-pin / Route-stops
+  rail on the right, squeezing the map into the middle third. The rails are gone. The listing
+  selector is now a compact wrapping chip row under the canvas (same `map-view-select-*` doors);
+  the pin card's *content* moved into the ⑪ strip and its *door* into the ⑬ block, so nothing the
+  rails carried was dropped — only the columns.
+- **M-4 (P2, FIXED).** The coverage caption was **above** the map as its own bordered card, with
+  the "nothing can be dragged" sentence stranded in a third place below. The mock has all three
+  sentences as one `.capline` **under** the canvas. It does now.
+- **M-5 (P2, FIXED).** The "Not located" list was a separate card above the map built from bare
+  `<li>`s. It is now inside the same card as the canvas, as the mock's `.stop` rows (position
+  chip · name · warn flag · action).
+- **M-6 (P3, FIXED).** When nothing was unlocated the whole block **disappeared**. The mock prints
+  "Every place-anchored listing has a confirmed pin." — an answer worth reading, not an absence
+  worth hiding.
+
+### Copy and treatment
+
+- **M-2 (P2, FIXED).** The notice dropped the mock's second sentence — the one recording that this
+  placement **amends** ruling 22(b)'s "Catalog is the map's authoring home" rather than silently
+  contradicting it. Restored verbatim.
+- **M-3 (P2, FIXED).** The notice rendered in the console's neutral grey (`#FAFAF8`/`#E8E8E2`);
+  the mock uses its amber `.notice` family (`#FBF6EC`/`#D9C79A`/`#6B551F`). The read-only posture
+  did not read as a callout. The mock's tokens are now literals at the top of the component.
+
+### Blocks that were never built
+
+- **M-7 (P1, FIXED).** **"What the traveler sees" (⑪)** — absent. The mock's three-card strip
+  teaching the three rendering rules: confirmed pin + radius; route partly located ("X of Y stops
+  located"); no coordinates → no map ("Location shared after booking"). Built. **Departure from
+  the mock, deliberately:** the mock draws three illustrations; these render the *selected
+  listing's real state*, so the rule is demonstrated on the provider's own data and cannot drift
+  from it. Where the listing is not in a given state the card says so (§13) instead of drawing a
+  specimen — the third card keeps the mock's static panel because it is a rule, not a datum, and
+  names how many of the owner's listings render that way today.
+- **M-8 (P2, FIXED).** **The ⑫ market-insight placement note** — absent, while the
+  Map preview ⇄ Market insights toggle it is *about* shipped at the top of the surface (ruling 84).
+  The mock flags that placement as analytics-not-authoring, proposes moving it to Performance, and
+  says in as many words that the move **is not part of this approval** — "flagged here so it is not
+  decided by accident". An undecided question nobody can see is exactly how it gets decided by
+  accident, so the note is now on the page, beside the toggle. **Nothing was moved.**
+- **M-9 (P2, FIXED).** **"Render it, or stop collecting it" (⑬)** — absent. Built against the
+  selected listing's REAL stored answers (party size, lead time, cancellation policy, start +
+  duration, languages, getting there/back, travel fee), plus the mock's "The rule this
+  demonstrates" and "Deliberately provider-only" pills. The mock's `propchip`
+  ("Proposed — gap #13 · ratify or amend") is preserved: this renders a proposal, it does not
+  ratify one. Two §13 rules hold inside it: an unanswered question is **omitted and counted**,
+  never defaulted into a claim the host did not make; and the two mock rows with **no column
+  behind them at all** — *Bring* and *Access* — are named as gap #13's open half rather than
+  faked. Reads only; nothing on this surface writes.
+
+### Chrome
+
+- **M-10 (P3, FIXED).** No breadcrumb. The mock switches its crumb bar to
+  `Catalog › Map · Traveler preview` on entering map mode. Added as a text crumb line on the
+  Distribute arrival-crumb precedent (the console has no global crumb bar).
+- **M-11 (P3, FIXED).** Canvas height 480 → 300, the mock's `.travelmap`.
+- **M-13 (P2, FIXED).** The toolbar's **search box and status chips vanished in map mode**
+  (`viewMode === "list" &&`), so half the mock's toolbar was missing from the screen it is drawn
+  on. They render in both modes now and **filter the map's listing set too** — with the coverage
+  caption naming the active filter ("showing draft only"), because a filtered count read as the
+  whole catalog would be the same §13 error this surface exists to avoid. Selection falls back to
+  a still-visible listing when a filter removes the selected one.
+
+### Deliberately NOT carried over
+
+- **M-12.** The mock's "Map preview — illustrative" corner label. The mock's canvas is a hand-drawn
+  SVG and needs the disclaimer; the ship renders real Leaflet/OSM tiles at real coordinates, so
+  copying that label would be the *dishonest* move. ODbL attribution rides the shared
+  `ServiceLocationMap` wherever it renders (§20/§22c) — unchanged.
+
+### The two judgment calls — AUDITED, then RATIFIED (decision-maker, Aug 15: "lets go with your
+### recommendation"; ledger row 120)
+
+Both were flagged as calls, audited against the code before either was decided, and ratified on
+that evidence. No code changed at ratification — M2 already shipped both this way.
+
+**(a) The right rail stays removed (M-1).** The audit's finding: it was **never a preview
+affordance**. `git show 9a412b9` (lane A1) deletes the `LocationPointPicker`, the per-stop
+`Remove` and the `Save route` button *out of those two cards* — what M2 removed was the
+**authoring** rail ruling 22(b) had put on Catalog, with its verbs stripped and the husk left
+standing. Three further facts, all from the code:
+- Ruling 93 §5 enumerates what the Aug 12 amendment preserves — the located partition, the
+  off-canvas list, "X of Y stops located", the located-only canvas, ODbL attribution. **The rail
+  is not on that list.** All five survive M2.
+- The sibling lane already shipped this layout: **D-15, "full-width canvas, rail as aside"**, is
+  what `service-map-authoring.tsx` (step 4) does today. The two map surfaces now agree.
+- Nothing is orphaned. Pin state also lives on the Catalog list row's Listing Health `exact_pin`
+  check and the listing-home checklist; the pin card itself survives inside the ⑬ block
+  (`map-view-pin-card` / `text-pin-state` / `button-edit-location`), and `meetingPoint` moved to
+  the ⑪ pin card's footer.
+
+**KNOWN AND ACCEPTED — the one real loss.** The ordered **named** list of every route stop
+(`map-view-route-card`) is gone. A **located** stop's name is now a click-to-open Leaflet popup
+(`service-location-map.tsx`), not always-visible text. That is what the mock specifies — its route
+card names only the *unlocated* stops under "3 of 5 stops located" — and the full ordered list
+keeps its home in step 4's rail (`route-stop-row-*`). Restoring it on Catalog would duplicate a
+readout the authoring step already owns.
+
+**(b) The map obeys the toolbar filter (M-13).** The audit's finding: **the mock cannot settle
+this** — its search input and status chips carry no listeners anywhere in `mockup.html` (only
+`cat-mode-seg` is wired), so they are decoration there. The repo settles it instead:
+`previewServices` is derived from `filteredServices`, so search + status chips have **always**
+governed Catalog **Preview** — a second, non-list rendering of the same set. Map ignoring them
+would have made it the only view that does not. And `searchQuery`/`statusFilter` are page-level
+state untouched by `viewMode`, so pre-M2 the combination was a *live filter with hidden controls*;
+the incoherent option was the one that was shipping.
+
+**THE CONSEQUENCE, NAMED.** `catalogStatusBucket` buckets on `approvalStatus`/`status`, so
+selecting **Live** hides the draft rows most likely to be missing a pin — which is the map's main
+job — and the "Previewing" chip row follows the filter too, so a filtered-out listing cannot be
+inspected. Default is `"all"`, and the coverage caption names the active filter ("showing live
+only") so a narrowed count is never read as the whole catalog (§13). Watch for this if a provider
+reports "my unpinned listing isn't in the Not-located list".
+
+**Bench evidence.** `docs/design/catalog-rebuild/after-map-m2.png` — the rebuilt surface rendered
+from fixture rows (no DB in the session container, so a throwaway Vite harness mounted the
+component directly; the harness was deleted, it is not in the tree). Tiles render grey because the
+sandbox blocks the OSM tile host — the layout, copy and every block are the real component.
+
+**Proof.** `playwright/tests/catalog-map-located.spec.ts` — rewritten. It had been left behind by
+Lane M and was asserting removed copy ("X of Y services located on the map") and removed testids
+(`catalog-map-unpinned-rail`, `button-add-pin-*`), i.e. it could not have passed. It now covers the
+crumb, the notice + amends sentence, the place-anchored caption, the "happens nowhere" row with no
+fix chip, the §13 no-pin negative, and the presence of the ⑫ and ⑬ blocks.
+
+## Folded in Aug 15, 2026 — the spec-rot audit (regression-spec lane, ledger row 121)
 
 Acting on the test strategy's #1 P0 ("commit the regression specs") surfaced a bigger problem than
 the one being fixed: **only ~14 of the repo's ~53 Playwright specs are referenced by any

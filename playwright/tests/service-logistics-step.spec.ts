@@ -180,6 +180,17 @@ test.describe('ServiceForm — Transport & Logistics across the branched steps (
         timeout: 30_000,
       });
 
+      // Land on step 4 DETERMINISTICALLY. The `?step=` deep link raced the row's hydration on the
+      // CI runner (the header was still reading "Basics" 15s in, while the same mechanism with
+      // `?step=scheduling` landed fine in the test above), and this test's subject is the step's
+      // own surface — not the router. Clicking the chip is idempotent when the deep link already
+      // won, and deep-link arrival stays covered by the first test in this file.
+      await expect(page.getByTestId('service-form-steps')).toBeVisible({ timeout: 20_000 });
+      const step4 = page.getByTestId('button-step-4');
+      await expect(step4).toHaveAttribute('data-step-key', 'logistics');
+      await step4.click();
+      await expect(step4).toHaveAttribute('aria-current', 'step');
+
       // ── D-16: the step names itself and its position in THIS branch's flow. ──
       await expect(page.getByTestId('text-step-long-title')).toHaveText('Logistics — where it happens', {
         timeout: 15_000,
