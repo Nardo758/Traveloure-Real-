@@ -47,6 +47,9 @@ const PASSWORD = "TestPass123!";
 let cookie = "";
 let userId = "";
 const TRIP_ID = `test-xss-${crypto.randomUUID()}`;
+const SERVICE_ID = `test-xss-svc-${crypto.randomUUID()}`;
+const REVIEW_ID = `test-xss-rev-${crypto.randomUUID()}`;
+const BOOKING_ID = `test-xss-bkg-${crypto.randomUUID()}`;
 
 async function api(method: string, path: string, body?: unknown) {
   const res = await fetch(`${BASE}${path}`, {
@@ -85,9 +88,27 @@ beforeAll(async () => {
     INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status)
     VALUES (${crypto.randomUUID()}, ${TRIP_ID}, ${userId}, 'active')
   `);
+
+  // Seed a provider service + review owned by the test user so the review-reply
+  // route (ownership joined through provider_services.user_id) authorizes us.
+  await db.execute(sql`
+    INSERT INTO provider_services (id, user_id, service_name)
+    VALUES (${SERVICE_ID}, ${userId}, 'XSS regression service')
+  `);
+  await db.execute(sql`
+    INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount)
+    VALUES (${BOOKING_ID}, ${SERVICE_ID}, ${userId}, ${userId}, 'completed', 100.00)
+  `);
+  await db.execute(sql`
+    INSERT INTO service_reviews (id, booking_id, service_id, provider_id, traveler_id, rating, review_text, status)
+    VALUES (${REVIEW_ID}, ${BOOKING_ID}, ${SERVICE_ID}, ${userId}, ${userId}, 5, 'great', 'approved')
+  `);
 }, 30000);
 
 afterAll(async () => {
+  await db.execute(sql`DELETE FROM service_reviews WHERE id = ${REVIEW_ID}`);
+  await db.execute(sql`DELETE FROM service_bookings WHERE id = ${BOOKING_ID}`);
+  await db.execute(sql`DELETE FROM provider_services WHERE id = ${SERVICE_ID}`);
   await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${TRIP_ID}`);
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP_ID}`);
   await db.execute(sql`DELETE FROM local_expert_forms WHERE user_id = ${userId}`);
@@ -143,6 +164,36 @@ describe("#1123 PATCH /api/trips/:tripId/expert-notes sanitization", () => {
 
       const t = await db.execute(sql`SELECT expert_notes FROM trips WHERE id = ${TRIP_ID}`);
       assertSanitized((t.rows[0] as any).expert_notes, "trips.expert_notes");
+    });
+  }
+});
+
+describe("PATCH /api/me/storefront bio sanitization (defense-in-depth)", () => {
+  for (const payload of XSS_PAYLOADS) {
+    it(`sanitizes storefront bio for payload ${payload.slice(0, 20)}...`, async () => {
+      const res = await api("PATCH", "/api/me/storefront", { bio: `intro ${payload} end` });
+      expect(res.status, await res.clone().text()).toBe(200);
+
+      const u = await db.execute(sql`SELECT bio FROM users WHERE id = ${userId}`);
+      assertSanitized((u.rows[0] as any).bio, "users.bio (storefront patch)");
+    });
+  }
+});
+
+describe("PATCH /api/me/reviews/:id/reply sanitization (defense-in-depth)", () => {
+  for (const payload of XSS_PAYLOADS) {
+    it(`sanitizes provider reply for payload ${payload.slice(0, 20)}...`, async () => {
+      const res = await api("PATCH", `/api/me/reviews/${REVIEW_ID}/reply`, {
+        reply: `thanks ${payload} end`,
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      const body = await res.json();
+
+      const r = await db.execute(sql`SELECT provider_reply FROM service_reviews WHERE id = ${REVIEW_ID}`);
+      const stored = (r.rows[0] as any).provider_reply;
+      assertSanitized(stored, "service_reviews.provider_reply");
+      // Response/storage parity: the API must echo the sanitized (canonical) value.
+      expect(body.providerReply, "response must match stored sanitized reply").toBe(stored);
     });
   }
 });

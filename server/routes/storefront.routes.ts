@@ -20,6 +20,7 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
@@ -340,6 +341,9 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const current = (me.preferences as any) ?? {};
     const currentStorefront = current.storefront ?? {};
     const patch = parsed.data;
+    // Defense-in-depth (stored XSS): React auto-escapes on render, but future non-React
+    // rendering paths (emails, PDFs, exports) may not — sanitize before persisting.
+    if (typeof patch.bio === "string") patch.bio = sanitizeInput(patch.bio);
     const nextStorefront = {
       ...currentStorefront,
       ...(patch.coverImageUrl !== undefined ? { coverImageUrl: patch.coverImageUrl } : {}),
