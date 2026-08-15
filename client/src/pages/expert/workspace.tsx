@@ -3185,21 +3185,23 @@ export default function ExpertWorkspace() {
   const energyCalcRef = useRef(false);
   const energyRecalcInFlight = useRef(false);
   const triggerEnergyRecalc = useCallback(() => {
-    if (!tripId || energyRecalcInFlight.current) return;
+    // booking_request mode: provider/expert has no assignment yet — skip all trip-scoped writes.
+    if (!tripId || isBookingRequest || energyRecalcInFlight.current) return;
     energyRecalcInFlight.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .finally(() => { energyRecalcInFlight.current = false; });
-  }, [tripId]);
+  }, [tripId, isBookingRequest]);
 
   useEffect(() => {
-    if (!tripId || energyCalcRef.current) return;
+    // booking_request mode: no assignment, no trip-scoped writes allowed.
+    if (!tripId || isBookingRequest || energyCalcRef.current) return;
     energyCalcRef.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => {});
-  }, [tripId]);
+  }, [tripId, isBookingRequest]);
 
   const presetsAppliedRef = useRef(false);
   useEffect(() => {

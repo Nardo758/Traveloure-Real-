@@ -413,7 +413,10 @@ router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req,
       .where(eq(users.id, userId))
       .limit(1);
     if (isExpertRole(callerRow?.role)) {
-      const ACTIVE_BOOKING_STATUSES = ["pending", "payment_pending", "deposit_paid"];
+      // Include confirmed: checkout promotes payment_pending → confirmed immediately, so the
+      // notification deep-link is clicked against a confirmed booking most of the time.
+      // Exclude terminal statuses: cancelled, completed, refunded, dispute_lost.
+      const ACTIVE_BOOKING_STATUSES = ["pending", "payment_pending", "deposit_paid", "confirmed", "balance_pending"];
       const [pendingBooking] = await db
         .select({ id: serviceBookings.id })
         .from(serviceBookings)
