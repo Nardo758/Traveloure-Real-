@@ -832,6 +832,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     setCurrentStep(1);
   };
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
+
+  // Task 1220: local mirror of the server-side service status (active/paused/draft).
+  // Initialised once from existingService and updated only by the toggle mutation,
+  // so a successful Pause/Activate never re-triggers the hydration effect
+  // (useEffect([existingService, role]) → mapServiceToForm) and never discards
+  // unsaved form edits.
+  const [serviceStatus, setServiceStatus] = useState<string | null>(null);
+  const serviceStatusSynced = useRef(false);
+
   useEffect(() => {
     const st = initialAutosave.current?.currentStep;
     if (!isEditMode && typeof st === "number" && st >= 1) setCurrentStep(st);
@@ -1072,6 +1081,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [existingService, role]);
 
+  // Task 1220: one-time sync of the local status mirror from the loaded row.
+  // Runs only once (guarded by serviceStatusSynced) so subsequent cache updates
+  // caused by unrelated invalidations don't clobber a toggle the expert just made.
+  useEffect(() => {
+    if (existingService && !serviceStatusSynced.current) {
+      serviceStatusSynced.current = true;
+      setServiceStatus(existingService.status ?? null);
+    }
+  }, [existingService]);
+
   // ── A1: `?step=<key>` deep link ────────────────────────────────────────────────────────────
   // The checklist rows, Catalog's map preview and the pin-health rail all need to re-enter the
   // flow AT a named step ("fix this listing's location" = the Logistics step), and a step NUMBER
@@ -1267,8 +1286,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     mutationFn: async (newStatus: "active" | "paused") => {
       return apiRequest("PATCH", `/api/expert/services/${id}/status`, { status: newStatus });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/provider/services", id] });
+    onSuccess: (_, newStatus) => {
+      // Update the local status mirror only — do NOT invalidate the per-service
+      // cache key (["/api/provider/services", id]).  That invalidation would
+      // trigger a refetch → a new existingService reference → the hydration
+      // useEffect([existingService, role]) fires → mapServiceToForm replaces all
+      // formData, discarding any unsaved field edits the expert made before
+      // clicking Pause/Activate.  The expert services list (the Catalog table) is
+      // invalidated separately so it reflects the new status on next visit.
+      setServiceStatus(newStatus);
       queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
       toast({ title: "Service status updated" });
     },
@@ -4719,10 +4745,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <Label className="text-sm font-medium">Listing Visibility</Label>
                 <div className="mt-2 flex items-center gap-3">
                   <Badge
-                    variant={existingService?.status === "active" ? "default" : "secondary"}
+                    variant={serviceStatus === "active" ? "default" : "secondary"}
                     data-testid="badge-expert-service-visibility"
                   >
-                    {existingService?.status === "active" ? "Live" : "Paused"}
+                    {serviceStatus === "active" ? "Live" : "Paused"}
                   </Badge>
                   <Button
                     type="button"
@@ -4731,23 +4757,23 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     disabled={toggleExpertStatusMutation.isPending}
                     onClick={() =>
                       toggleExpertStatusMutation.mutate(
-                        existingService?.status === "active" ? "paused" : "active"
+                        serviceStatus === "active" ? "paused" : "active"
                       )
                     }
                     data-testid="button-expert-toggle-service-status"
                   >
                     {toggleExpertStatusMutation.isPending ? (
                       <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    ) : existingService?.status === "active" ? (
+                    ) : serviceStatus === "active" ? (
                       <Pause className="w-3.5 h-3.5 mr-1.5" />
                     ) : (
                       <Play className="w-3.5 h-3.5 mr-1.5" />
                     )}
-                    {existingService?.status === "active" ? "Pause listing" : "Activate listing"}
+                    {serviceStatus === "active" ? "Pause listing" : "Activate listing"}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  {existingService?.status === "active"
+                  {serviceStatus === "active"
                     ? "Pausing hides this service from search and new bookings."
                     : "Activating makes this service visible to travellers again."}
                 </p>
