@@ -2817,10 +2817,23 @@ export class DatabaseStorage implements IStorage {
         db
           .select({
             userId: providerServices.userId,
-            avgRating: avg(providerServices.averageRating),
+            // Review-count-weighted average: sum(rating * reviews) / sum(reviews).
+            // Only approved, active services count — unapproved listings must not
+            // influence the public marketplace trust signal.
+            // Returns NULL (-> null in JS) when no approved service has any reviews.
+            avgRating: sqlOp<string | null>`
+              CASE WHEN sum(${providerServices.reviewCount}) = 0 OR sum(${providerServices.reviewCount}) IS NULL
+                   THEN NULL
+                   ELSE sum(${providerServices.averageRating}::numeric * ${providerServices.reviewCount}::numeric)
+                        / sum(${providerServices.reviewCount}::numeric)
+              END`,
           })
           .from(providerServices)
-          .where(and(inArray(providerServices.userId, userIds), eq(providerServices.status, "active")))
+          .where(and(
+            inArray(providerServices.userId, userIds),
+            eq(providerServices.status, "active"),
+            eq(providerServices.approvalStatus, "approved"),
+          ))
           .groupBy(providerServices.userId),
       ]);
       const userMap = new Map(userRows.map(u => [u.id, u]));
