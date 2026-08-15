@@ -1682,9 +1682,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // workspace for the trip (a booking-request scoped view). Providers land on
               // their bookings inbox — /expert/workspace is expert-role-gated on the client.
               // ownerRole is hoisted above the if (providerId) block so it is always in scope.
+              //
+              // When a tripId is present and the owner is an expert, embed the tripId so the
+              // notification resolves directly to /expert/workspace/:tripId. When no tripId is
+              // attached (a standalone service booking with no trip context), experts still need
+              // an action link — /expert/workspace is the correct landing because the bookingId
+              // is already in this payload and the workspace inbox surfaces pending bookings.
+              // Providers always use /provider/bookings regardless of tripId.
               ...(tripId && isExpertRole(ownerRole)
                 ? { tripId }
-                : { workspacePath: isProviderRole(ownerRole) ? "/provider/bookings" : undefined }),
+                : {
+                    workspacePath: isExpertRole(ownerRole)
+                      ? "/expert/workspace"
+                      : isProviderRole(ownerRole)
+                        ? "/provider/bookings"
+                        : undefined,
+                  }),
             },
           });
 
