@@ -1126,4 +1126,11 @@ export const MIGRATION_FILES = [
   // booking-alert emails from Settings → Notifications; the flag is checked at all
   // sendBookingAlertEmail call sites before the email is dispatched.
   "225_email_booking_alerts.sql",
+  // 226: retire the `_deprecated_expert_city_queues` table deliberately — following the
+  // guarded-drop pattern of migrations 158/167/168. The table was replaced by
+  // scoring-based lead routing (expert_requests) in 2026-06; it has zero code references
+  // and was absent from shared/schema.ts (making it a silent DROP candidate on every
+  // publish). All 10 rows were empty seed records (expert_ids=[], active_requests=0);
+  // archived to legacy_archives before dropping. Guard refuses if any live rows are found.
+  "226_retire_deprecated_expert_city_queues.sql",
 ] as const;
