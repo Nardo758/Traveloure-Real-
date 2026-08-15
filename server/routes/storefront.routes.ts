@@ -72,7 +72,7 @@ const claimSchema = z.object({
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
-    const parsed = claimSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid handle" });
     }
@@ -267,9 +267,9 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
@@ -337,9 +337,9 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: "Invalid storefront settings", errors: parsed.error.flatten() });
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
     const [me] = await db
@@ -433,7 +433,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
-    const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
+    const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
@@ -834,13 +834,11 @@ router.get("/p/:handle", async (req, res, next) => {
     if (!data) return next(); // SPA renders its own not-found
 
     const count = data.services.length + data.templates.length + data.readyMade.length;
-    const title = `${data.earner.name} | Traveloure`;
-    const description = data.earner.bio
-      ? data.earner.bio.slice(0, 160)
-      : `${data.earner.name} offers ${count} curated experience${count !== 1 ? "s" : ""} on Traveloure.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
+    const title = `${listing.title} | Traveloure`;
+    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
-      data.earner.profileImageUrl ??
+      listing.heroImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -909,13 +907,11 @@ router.get("/services/:id", async (req, res, next) => {
 
     if (!service) return next(); // SPA renders its own not-found
 
-    const title = `${service.serviceName} | Traveloure`;
-    const description = service.description
-      ? service.description.slice(0, 160)
-      : `Book ${service.serviceName} — a curated travel experience on Traveloure.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    const title = `${listing.title} | Traveloure`;
+    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
     const ogImage =
-      service.serviceImage ??
+      listing.heroImageUrl ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
