@@ -4693,8 +4693,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <div>
               <Label className="text-sm font-medium">Current Status</Label>
               <div className="mt-2">
-                <Badge variant={formData.approvalStatus === "submitted" ? "default" : "secondary"}>
-                  {formData.approvalStatus === "draft" ? "Draft (Not submitted)" : "Submitted for review"}
+                <Badge
+                  variant={
+                    formData.approvalStatus === "approved" || formData.approvalStatus === "submitted"
+                      ? "default"
+                      : "secondary"
+                  }
+                >
+                  {formData.approvalStatus === "draft"
+                    ? "Draft (Not submitted)"
+                    : formData.approvalStatus === "approved"
+                    ? "Approved"
+                    : formData.approvalStatus === "rejected"
+                    ? "Changes requested"
+                    : "Submitted for review"}
                 </Badge>
               </div>
             </div>
