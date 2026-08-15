@@ -127,7 +127,7 @@ export async function fetchTravelpayoutsCommissions(
   }
 }
 
-async function fetchViatorCommissions(
+export async function fetchViatorCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {
@@ -165,7 +165,7 @@ async function fetchViatorCommissions(
   }
 }
 
-async function fetchFeverCommissions(
+export async function fetchFeverCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {
@@ -206,7 +206,7 @@ async function fetchFeverCommissions(
   }
 }
 
-async function fetchPartnerizeCommissions(
+export async function fetchPartnerizeCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {
