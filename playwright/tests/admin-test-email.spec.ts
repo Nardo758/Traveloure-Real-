@@ -205,8 +205,16 @@ test.describe('Admin test-email — invalid email format', () => {
         const bodyText = route.request().postData() ?? '{}';
         const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
 
-        // The `to` field must be present and must match what the user typed.
-        expect(typeof bodyJson.to, '`to` field must be a string').toBe('string');
+        // The `to` field must equal the exact invalid string the user typed.
+        // A UI regression that posts a different value or omits `to` fails here.
+        expect(bodyJson.to, '`to` must equal the typed invalid value').toBe('not-an-email-address');
+
+        // Confirm the value is not a valid email format (the premise of this test).
+        const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        expect(
+          EMAIL_RE.test(String(bodyJson.to)),
+          'The submitted value must not be a valid email address',
+        ).toBe(false);
 
         await route.fulfill({
           status: 400,
@@ -253,15 +261,17 @@ test.describe('Admin test-email — empty field falls back to admin address', ()
 
         const bodyText = route.request().postData();
 
-        // When the field is blank the UI sends no body or a body without `to`.
-        // This matches the client code: `const body = testEmailTo.trim() ? { to: ... } : undefined`.
-        if (bodyText && bodyText !== 'undefined') {
+        // When the field is blank the UI sends no body (undefined) or an empty
+        // JSON body.  It must never include a `to` key.
+        // Client code: `const body = testEmailTo.trim() ? { to: ... } : undefined`
+        if (bodyText) {
           const bodyJson = JSON.parse(bodyText) as Record<string, unknown>;
           expect(
-            bodyJson.to,
-            'POST body must NOT include a `to` field when the input is blank',
-          ).toBeUndefined();
+            Object.prototype.hasOwnProperty.call(bodyJson, 'to'),
+            'POST body must NOT include a `to` key when the input is blank',
+          ).toBe(false);
         }
+        // No body at all (bodyText is null/empty) is also correct — fall through.
 
         // Server uses the admin's own address and echoes it back.
         await route.fulfill({
