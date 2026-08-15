@@ -176,6 +176,56 @@ import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
 const router = Router();
 
+// ── Google Places server-side result cache ────────────────────────────────────
+// Keyed on a JSON-serialised normalised tuple so field values containing the
+// delimiter character cannot collide. Each entry holds the mapped results array
+// plus an expiry timestamp.
+//
+// TTL: 7 minutes — long enough to absorb repeated keystrokes from multiple
+// experts browsing the same city, short enough that stale listings don't linger.
+//
+// Bounded: capped at MAX_PLACES_CACHE_ENTRIES to prevent memory exhaustion from
+// unauthenticated callers sending many unique queries. On every SET:
+//   1. Expired entries are swept first (eager eviction).
+//   2. If the map is still at/above the cap, the oldest entry (insertion order)
+//      is deleted to make room (LRU-approximation via Map insertion order).
+//
+// This is an in-process Map (no external dependency). It resets on restart,
+// which is acceptable for a short-TTL read cache.
+const PLACES_CACHE_TTL_MS = 7 * 60 * 1000;    // 7 minutes
+const MAX_PLACES_CACHE_ENTRIES = 500;
+interface PlacesCacheEntry {
+  results: any[];
+  expiresAt: number;
+}
+const placesResultCache = new Map<string, PlacesCacheEntry>();
+
+/** Build a collision-safe cache key from the three pre-normalised search axes.
+ *  Inputs are already lowercased/trimmed by the route handler; JSON.stringify
+ *  makes the key injective (field values containing the separator cannot collide).
+ */
+function buildPlacesCacheKey(q: string, destination: string, category: string): string {
+  return JSON.stringify([q, destination, category]);
+}
+
+/** Sweep expired entries, then enforce the entry cap before inserting. */
+function placesResultCacheSet(key: string, entry: PlacesCacheEntry): void {
+  const now = Date.now();
+  // 1. Eager expiry sweep — remove every stale entry in one pass.
+  // Map.forEach avoids the ES2015 downlevel-iteration incompatibility of for...of.
+  const expiredKeys: string[] = [];
+  placesResultCache.forEach((v, k) => { if (v.expiresAt <= now) expiredKeys.push(k); });
+  expiredKeys.forEach(k => placesResultCache.delete(k));
+  // 2. If still at or above cap, evict the oldest insertion-order entry.
+  while (placesResultCache.size >= MAX_PLACES_CACHE_ENTRIES) {
+    const oldestKey = placesResultCache.keys().next().value;
+    if (oldestKey !== undefined) placesResultCache.delete(oldestKey);
+    else break;
+  }
+  placesResultCache.set(key, entry);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -5769,7 +5819,15 @@ router.get("/api/geocode", async (req, res) => {
 
 router.get("/api/search/experiences", async (req, res) => {
     try {
-      const { q, destination, category, sources } = req.query as Record<string, string>;
+      const { q: _q, destination: _destination, category: _category, sources } = req.query as Record<string, string>;
+      // Normalise all three search axes once, up-front, so the cache key and
+      // the Places URL construction always use identical canonical values.
+      // All three are lowercased so "Kyoto"/"kyoto" and "Food Tour"/"food tour"
+      // share the same cache entry. Empty category is canonicalised to "all"
+      // (both produce the same Places request — no type filter, default query).
+      const q           = (_q           || "").trim().toLowerCase();
+      const destination = (_destination || "").trim().toLowerCase();
+      const category    = ((_category   || "").trim().toLowerCase()) || "all";
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
       }
@@ -5923,6 +5981,15 @@ router.get("/api/search/experiences", async (req, res) => {
         // caller explicitly requested a non-"all" category, to avoid over-filtering.
         if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
+        // ── Cache check ──────────────────────────────────────────────────────────
+        // Key uses JSON serialisation (collision-safe; see buildPlacesCacheKey).
+        const placesCacheKey = buildPlacesCacheKey(q, destination, category);
+        const cachedEntry = placesResultCache.get(placesCacheKey);
+        if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+          // Cache HIT — push cached rows into results and skip the API call.
+          results.push(...cachedEntry.results);
+        } else {
+        // Cache MISS — call the Places API and store results on success.
         try {
           const resp = await fetch(placesUrl.toString());
           if (!resp.ok) {
@@ -5947,9 +6014,10 @@ router.get("/api/search/experiences", async (req, res) => {
                 if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
                 return "activity";
               };
+              const freshPlacesRows: any[] = [];
               for (const place of (data.results || []).slice(0, 15)) {
                 const photoRef = place.photos?.[0]?.photo_reference;
-                results.push({
+                freshPlacesRows.push({
                   id: `gp_${place.place_id}`,
                   source: "google_places",
                   placeId: place.place_id,
@@ -5967,12 +6035,22 @@ router.get("/api/search/experiences", async (req, res) => {
                   mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
                 });
               }
+              // Store in cache (including ZERO_RESULTS — an empty array is a
+              // valid cached answer; saves a redundant API hit for the same query).
+              // placesResultCacheSet sweeps expired entries and enforces the cap
+              // before inserting, preventing unbounded memory growth.
+              placesResultCacheSet(placesCacheKey, {
+                results: freshPlacesRows,
+                expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
+              });
+              results.push(...freshPlacesRows);
             }
           }
         } catch (placesErr) {
           console.error("[places] fetch threw:", placesErr);
           placesUnavailable = true;
         }
+        } // end cache-miss block
       }
 
       // ── Viator bookable activities (tours & experiences) ──
