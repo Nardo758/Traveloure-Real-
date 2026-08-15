@@ -1726,10 +1726,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Security: validate the recipient is a real, eligible expert before creating
         // any notification or inquiry record. Reject with 4xx on invalid targets so a
         // malicious client cannot spam arbitrary user IDs.
-        // Validate recipient: must exist, hold an expert role, and have an
-        // approved localExpertForms row. Expert verification lives on
-        // local_expert_forms.status, not on the users table (which has no
-        // status column).
+        // Validate recipient: must exist and hold an expert role. For local_expert
+        // roles, also require an approved localExpertForms row — matching the
+        // eligibility criteria used by /api/experts. travel_expert, event_planner,
+        // and other expert-family roles are listed publicly without a localExpertForms
+        // row, so they are eligible by role alone.
         const [expertRow] = await db
           .select({ id: users.id, role: users.role, formStatus: localExpertForms.status })
           .from(users)
@@ -1743,8 +1744,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!isExpertRole(expertRow.role)) {
           return res.status(400).json({ message: "Target user is not an expert" });
         }
-        if (expertRow.formStatus !== "approved") {
-          return res.status(400).json({ message: "Expert is not yet approved" });
+        // local_expert requires an approved form; other expert roles do not.
+        if (expertRow.role === "local_expert" && expertRow.formStatus !== "approved") {
+          return res.status(400).json({ message: "Local expert is not yet approved" });
         }
 
         // Persist the expert_requests row and notification atomically in one
