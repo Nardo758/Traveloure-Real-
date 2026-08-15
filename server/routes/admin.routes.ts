@@ -177,6 +177,8 @@ export const _adminTestEmailHooks: {
     data: { id?: string } | null;
     error: { message?: string } | null;
   }>;
+  /** Override the Resend call timeout (ms). Defaults to 12 000 in production; set low in tests. */
+  resendTimeoutMs?: number;
 } = {};
 
 const anthropic = new Anthropic({
@@ -5414,7 +5416,34 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       const sender = _adminTestEmailHooks.resendSend
         ? _adminTestEmailHooks.resendSend
         : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
-      const { data: emailData, error: emailError } = await sender(emailPayload);
+
+      const timeoutMs = _adminTestEmailHooks.resendTimeoutMs ?? 12_000;
+
+      let sendResult: { data: { id?: string } | null; error: { message?: string } | null };
+      try {
+        sendResult = await Promise.race([
+          sender(emailPayload),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("__RESEND_TIMEOUT__")),
+              timeoutMs,
+            ),
+          ),
+        ]);
+      } catch (sendErr) {
+        const errMsg = (sendErr as Error)?.message ?? String(sendErr);
+        if (errMsg === "__RESEND_TIMEOUT__") {
+          console.error("[admin/test-email] Resend API timed out after", timeoutMs, "ms");
+          return res.status(504).json({
+            ok: false,
+            error: "Email service did not respond in time. Please try again.",
+          });
+        }
+        console.error("[admin/test-email] send error:", errMsg);
+        return res.status(502).json({ ok: false, error: errMsg });
+      }
+
+      const { data: emailData, error: emailError } = sendResult;
 
       if (!result.ok) {
         return res.status(502).json({ ok: false, error: result.error });
