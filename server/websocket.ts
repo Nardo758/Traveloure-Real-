@@ -183,6 +183,17 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: st
               recipientClient.ws.send(JSON.stringify(response));
             }
           } catch (err) {
+            // Block enforcement: createChat throws a sentinel when a block row exists.
+            // Surface a specific error type so the client can distinguish a policy
+            // rejection from an infrastructure failure and show the right message.
+            if ((err as any)?.code === "BLOCKED_USER") {
+              ws.send(JSON.stringify({
+                type: "error",
+                errorCode: "BLOCKED_USER",
+                error: "You cannot send messages to this user.",
+              }));
+              break;
+            }
             console.error("Failed to save chat message:", err);
             ws.send(JSON.stringify({
               type: "error",

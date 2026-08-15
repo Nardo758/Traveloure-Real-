@@ -572,9 +572,14 @@ export default function Chat() {
   }, [selectedExpert]);
 
   const handleWsError = useCallback((error: string) => {
+    // Distinguish a policy block from an infrastructure failure so the user
+    // understands they are blocked rather than experiencing a network error.
+    const isBlocked = error.toLowerCase().includes("cannot send messages");
     toast({
-      title: "Message failed",
-      description: error || "Failed to send message. Please try again.",
+      title: isBlocked ? "Message not delivered" : "Message failed",
+      description: isBlocked
+        ? error
+        : (error || "Failed to send message. Please try again."),
       variant: "destructive",
     });
   }, [toast]);
