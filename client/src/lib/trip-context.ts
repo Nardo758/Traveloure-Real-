@@ -63,8 +63,22 @@ export type TripContextPatch = Omit<Partial<TripContext>, "startDate" | "endDate
 };
 
 const STORAGE_KEY = "experienceContext";
+
+/** Tracks which identity owns the local context: a userId string, or absent/null for guest. */
+const OWNER_KEY = "trip-context-owner";
 const CHANGE_EVENT = "trip-context-change";
 
+/**
+ * Returns the userId that owns the current local context, or null when the
+ * context was built while unauthenticated (guest-owned / unowned).
+ */
+export function getContextOwner(): string | null {
+  try {
+    return sessionStorage.getItem(OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
 function normalizeDate(value: string | Date | null | undefined): string | undefined {
   if (value === null || value === undefined || value === "") return undefined;
   if (value instanceof Date) {
@@ -269,6 +283,35 @@ function schedulePush(context: TripContext): void {
   }, 1500);
 }
 
+/**
+ * Immediately push the current local trip context to the server, cancelling
+ * any pending debounced push. Returns false (no-op) when the context is empty.
+ * Intended for the sign-in transition so planning built as a guest is not lost
+ * if the user closes the tab immediately after authenticating.
+ *
+ * Uses fetch keepalive:true so the request survives immediate tab close or
+ * navigation after sign-in — the exact scenario this is designed to handle.
+ */
+export function pushTripContextNow(): boolean {
+  if (typeof fetch !== "function") return false;
+  const context = getTripContext();
+  if (Object.keys(context).length === 0) return false;
+  // Cancel any pending debounced push — this immediate call supersedes it.
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = undefined;
+  }
+  fetch(`/api/trip-context${tripScopedQuery(context)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    keepalive: true,
+    body: JSON.stringify({ context }),
+  }).catch(() => {
+    /* offline — best-effort */
+  });
+  return true;
+}
 let hydrated = false;
 
 /**
@@ -343,6 +386,12 @@ export function clearTripContext(): void {
   } catch {
     /* ignore */
   }
+  // Clear the ownership stamp so the next user starts with a clean guest-owned context.
+  try {
+    sessionStorage.removeItem(OWNER_KEY);
+  } catch {
+    /* ignore */
+  }
   try {
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
@@ -375,4 +424,21 @@ export function useTripContext(): [TripContext, (patch: TripContextPatch) => voi
   }, []);
 
   return [context, update];
+}
+
+/**
+ * Stamps the local context with an owner userId (or clears the stamp when
+ * called with null, reverting to guest-owned). Call after a successful
+ * sign-in push so subsequent identity checks can detect cross-account reuse.
+ */
+export function setContextOwner(owner: string | null): void {
+  try {
+    if (owner === null) {
+      sessionStorage.removeItem(OWNER_KEY);
+    } else {
+      sessionStorage.setItem(OWNER_KEY, owner);
+    }
+  } catch {
+    /* ignore */
+  }
 }
