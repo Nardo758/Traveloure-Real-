@@ -39,6 +39,7 @@ import { Loader2, MapPin, MapPinOff, Pencil, TrendingUp, AlertTriangle } from "l
 import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/service-location-map";
 import { parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
 import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
+import { isPropertyEditorShape, propertyEditorHref } from "@/lib/property-editor-link";
 
 export interface CatalogMapService {
   id: string;
@@ -50,6 +51,8 @@ export interface CatalogMapService {
   serviceRadius?: string | number | null;
   location?: string;
   productShape?: string | null;
+  // FP-3 fix-door routing: a property_room row's editor needs its parent property's id.
+  parentServiceId?: string | null;
   // Lane M (D-3/D-4): classifies rows that HAPPEN NOWHERE (remote/artifact) so they are never
   // counted as "missing" a pin — shared predicate, same vocabulary as the wizard and storefront.
   deliveryMethod?: string | null;
@@ -443,8 +446,19 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   );
   const locatedCount = stops.filter((s) => s.lat !== null && s.lng !== null).length;
 
-  /** The one door to authoring: the flow's step 4. Same door the draft checklist uses. */
-  const logisticsHref = (id: string) => `/provider/services/${id}/edit?step=logistics`;
+  /** The one door to authoring THIS row's location — SHAPE-AWARE (FP-3). A service row's door
+   *  is the flow's step 4 (same door the draft checklist uses). A property/room row's door is
+   *  the Workstation property editor: its `/edit` route renders only the "Properties are edited
+   *  in the Workstation" guard, so sending it to `?step=logistics` was a dead end (the bug the
+   *  decision-maker hit clicking a property's "Fix it in step 4 →" after Lane M shipped). One
+   *  shared resolver (`propertyEditorHref`) so this view and Catalog's cards can never disagree. */
+  const authoringDoor = (s: CatalogMapService) => {
+    const propHref = propertyEditorHref(s);
+    if (propHref) {
+      return { href: propHref, fixLabel: "Fix it in the Workstation →", isProperty: true };
+    }
+    return { href: `/provider/services/${s.id}/edit?step=logistics`, fixLabel: "Fix it in step 4 →", isProperty: false };
+  };
 
 
   // Sibling toggle bar (ruling 84) — map preview ⇄ market insights. Shown above every branch.
@@ -508,13 +522,15 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
         <span className="font-semibold" style={{ color: "#1A1A18" }}>
           Traveler preview — read-only.
         </span>{" "}
-        This is what a traveler sees. Pins, radius, zones and route stops are authored in the create
-        flow's step 4, "Logistics"
+        This is what a traveler sees.{" "}
+        {selected && isPropertyEditorShape(selected.productShape)
+          ? "This property's location is authored in the Workstation property editor"
+          : 'Pins, radius, zones and route stops are authored in the create flow\'s step 4, "Logistics"'}
         {selected ? (
           <>
             {" — "}
             <a
-              href={logisticsHref(selected.id)}
+              href={authoringDoor(selected).href}
               className="text-[#35605A] underline underline-offset-2"
               data-testid="link-open-logistics"
             >
@@ -569,11 +585,11 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
                     no confirmed pin — not drawn
                   </Badge>
                   <a
-                    href={logisticsHref(s.id)}
+                    href={authoringDoor(s).href}
                     className="text-[12px] font-medium text-[#35605A] underline underline-offset-2"
                     data-testid={`link-fix-step4-${s.id}`}
                   >
-                    Fix it in step 4 →
+                    {authoringDoor(s).fixLabel}
                   </a>
                 </span>
               </li>
@@ -686,15 +702,24 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
             )}
             {selected && (
               <Button asChild variant="outline" size="sm" className="w-full" data-testid="button-edit-location">
-                <a href={logisticsHref(selected.id)}>
+                <a href={authoringDoor(selected).href}>
                   <Pencil className="w-3.5 h-3.5 mr-1.5" />
                   {pin ? "Edit location & route" : "Add a location"}
                 </a>
               </Button>
             )}
             <p className="text-[11px] text-muted-foreground">
-              Opens this listing&apos;s <strong>Logistics</strong> step — the one place the pin, the
-              radius and the stops are authored.
+              {selected && authoringDoor(selected).isProperty ? (
+                <>
+                  Opens the <strong>Workstation property editor</strong> — where this property's
+                  details and location are authored.
+                </>
+              ) : (
+                <>
+                  Opens this listing&apos;s <strong>Logistics</strong> step — the one place the pin,
+                  the radius and the stops are authored.
+                </>
+              )}
             </p>
           </CardContent>
         </Card>
