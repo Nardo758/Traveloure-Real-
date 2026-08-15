@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
 import * as messagingService from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
+import { broadcastToUser } from "./websocket";
 import { validateImageDataUrl } from "./utils/imageValidation";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
@@ -1840,6 +1841,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       const chat = await storage.createChat({ ...input, senderId: sessionUserId });
+
+      // Live-push to the recipient's open chat client (same frame shape as the /ws relay).
+      broadcastToUser(String(chat.receiverId), {
+        type: "chat",
+        id: chat.id,
+        senderId: sessionUserId,
+        recipientId: chat.receiverId,
+        content: chat.message,
+        timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
+      });
+
       res.status(201).json(chat);
     } catch (err) {
       if (err instanceof z.ZodError) {
