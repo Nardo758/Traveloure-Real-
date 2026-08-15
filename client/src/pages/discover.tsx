@@ -103,6 +103,7 @@ type Service = {
   providerFirstName?: string | null;
   providerLastName?: string | null;
   providerImageUrl?: string | null;
+  providerRating?: string | null;
 };
 
 type DiscoverResult = {
@@ -342,6 +343,19 @@ function ServiceCard({
                 </h3>
                 <div className="flex items-center gap-2 text-white/90 text-sm">
                   <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  {service.providerRating && parseFloat(service.providerRating) > 0 && (
+                    <>
+                      <span className="text-white/60">•</span>
+                      <span
+                        className="flex items-center gap-0.5"
+                        data-testid={`text-provider-rating-${service.id}`}
+                        title={`Provider portfolio rating: ${parseFloat(service.providerRating).toFixed(1)}/5`}
+                      >
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        <span className="text-amber-300 font-semibold">{parseFloat(service.providerRating).toFixed(1)}</span>
+                      </span>
+                    </>
+                  )}
                   <span className="text-white/60">•</span>
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
