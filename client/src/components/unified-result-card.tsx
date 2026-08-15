@@ -407,7 +407,9 @@ export function UnifiedResultGrid({
   template?: string;
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
+  onAddToCart?: (result: UnifiedResult) => void;
   isLoading?: boolean;
+  showInquiryButton?: boolean;
 }) {
   if (isLoading) {
     return (

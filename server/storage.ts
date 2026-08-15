@@ -1108,7 +1108,7 @@ export interface IStorage {
 
   getTripEventType(tripId: string): Promise<string | null>;
 
-  getTripExpertNotes(tripId: string): Promise<{ expertNotes: string; expertModifiedAt: Date | null }>;
+  getTripExpertNotes(tripId: string): Promise<string>;
   // === Generated itinerary ===
 
   updateGeneratedItineraryData(id: string, itineraryData: any, status: string): Promise<GeneratedItinerary | undefined>;
@@ -1759,6 +1759,13 @@ export class DatabaseStorage implements IStorage {
       .orderBy(serviceRoutePoints.position);
   }
 
+  async getRoutePointsByServiceIds(serviceIds: string[]): Promise<ServiceRoutePoint[]> {
+    if (serviceIds.length === 0) return [];
+    return await db.select().from(serviceRoutePoints)
+      .where(inArray(serviceRoutePoints.serviceId, serviceIds))
+      .orderBy(serviceRoutePoints.serviceId, serviceRoutePoints.position);
+  }
+
   // Ruling 22: replace-list write — the route editor submits the full ordered list and the
   // server derives 1-based positions from array order (never client-numbered). Atomic
   // delete+insert so a failed save can't leave a half-replaced route. lat/lng arrive already
@@ -1802,6 +1809,13 @@ export class DatabaseStorage implements IStorage {
   // Atomic delete+insert under a parent-row lock so a failed save can't half-replace and two parallel
   // saves can't collide on the (service_id, position) UNIQUE. radius_km/fee arrive already validated
   // (both present, non-negative) from the route's allowlist parse.
+  async getSurchargeTiersByServiceIds(serviceIds: string[]): Promise<ServiceSurchargeTier[]> {
+    if (serviceIds.length === 0) return [];
+    return await db.select().from(serviceSurchargeTiers)
+      .where(inArray(serviceSurchargeTiers.serviceId, serviceIds))
+      .orderBy(serviceSurchargeTiers.serviceId, serviceSurchargeTiers.position);
+  }
+
   async replaceServiceSurchargeTiers(
     serviceId: string,
     tiers: Array<{ radiusKm: number; fee: number }>,
@@ -2702,7 +2716,17 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-   * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
+/**
+   * SD-1 (provider money-hardening lane, ruling 42) — `expectedFromStatuses`.
+   *
+   * When supplied, the write becomes the §15 ATOMIC CONDITIONAL
+   * (`UPDATE … WHERE id = ? AND status IN (<expected>)`) instead of an unconditional
+   * `WHERE id = ?`, and the transition ITSELF is the concurrency guard: a caller whose row is no
+   * longer in an expected state matches 0 rows and gets `undefined`, rather than overwriting
+   * whatever state the row actually reached. A caller that omits it keeps the previous
+   * unconditional behaviour verbatim (admin complete, dispute, traveler cancel) — no regression.
+   *
+   *    * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
    * the sole author of provisional-claim transitions; this parameter is how the OWNER rail refuses
    * to touch a row the claim machine owns. Why it had to exist: `PATCH /api/provider/bookings/
    * :id/status` checked the TARGET status and never the CURRENT one, so a provider clicking Accept
@@ -5462,7 +5486,14 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-   * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
+/**
+   * Task #141 — flip an earner's `releasable` earning rows to `paid_out`, oldest-created-first,
+   * until `amountDollars` is covered. Public entry point: opens its own transaction (for standalone/
+   * backfill callers); `markEarningsPaidOutForPayoutTx` below is the tx-taking variant composed into
+   * update{Expert,Provider}PayoutStatus's own transaction so the payout-completion flip and the
+   * earnings flip commit/roll back together.
+   *
+   *    * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
    * $0.01 (rounding tolerance) past amountDollars; once one row would overshoot, it — and everything
    * after it (oldest-first) — stays releasable. If the releasable total is less than amountDollars
    * (e.g. a reversal/dispute/concurrent payout consumed rows since this payout was requested), flips
