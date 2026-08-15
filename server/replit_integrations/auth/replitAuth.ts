@@ -13,6 +13,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
+import { getUserId } from "../../utils/auth";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 const getOidcConfig = memoize(
@@ -220,7 +221,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   const user = req.user as any;
-  const userId: string | undefined = user?.claims?.sub ?? user?.id;
+  const userId = getUserId(req) ?? undefined;
 
   // Reject soft-deleted accounts regardless of auth method.
   // This DB check catches accounts deleted after the session was created (e.g. an
