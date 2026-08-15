@@ -1,376 +1,392 @@
 /**
  * admin-test-email.test.ts
  *
- * Covers the POST /api/admin/system/test-email endpoint introduced to let
- * admins verify Resend email delivery from the system settings page.
+ * Integration tests for POST /api/admin/system/test-email.
  *
- * Strategy: static source-code inspection (no real DB or network needed) plus
- * a lightweight mock of the Resend client to exercise the handler logic.
+ * Strategy:
+ * – Env vars (STRIPE_SECRET_KEY, DATABASE_URL) are set before any module that
+ *   validates them at import time (Stripe service checks the key at module
+ *   evaluation; setting it beforehand prevents the startup throw).
+ * – db and adminRouter are loaded via dynamic `await import()` so the env is
+ *   already in place when those modules initialise.
+ * – db.select is monkey-patched so getFullAdminUser returns controlled data
+ *   without touching the real database.
+ * – _adminTestEmailHooks.resendSend is set per-test to intercept the Resend
+ *   call without touching the real API (same seam pattern as _emailTestHooks
+ *   in email.service.ts).
+ * – process.env.RESEND_API_KEY / EMAIL_FROM are set / cleared per-test.
  *
  * Run with: npx tsx --test server/routes/__tests__/admin-test-email.test.ts
  */
 
-import { describe, it, before } from "node:test";
+import { describe, it, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 
-// ── helpers ────────────────────────────────────────────────────────────────
+// ── env bootstrap — must come before any import that reads these at init time ──
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL || "postgresql://test:test@localhost:5432/test";
+if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
+  process.env.STRIPE_SECRET_KEY = "sk_test_dummy_admin_test_email";
+}
 
-const ROUTES_FILE = path.resolve(
-  import.meta.dirname,
-  "../admin.routes.ts"
-);
+// ── dynamic imports so env is already set when modules evaluate ───────────────
+const { db } = await import("../../db.js");
+const { default: adminRouter, _adminTestEmailHooks } = await import("../admin.routes.js");
 
-const CLIENT_FILE = path.resolve(
-  import.meta.dirname,
-  "../../../client/src/pages/admin/system.tsx"
-);
+// ── helpers ────────────────────────────────────────────────────────────────────
 
-const routesSrc = fs.readFileSync(ROUTES_FILE, "utf-8");
-const clientSrc = fs.readFileSync(CLIENT_FILE, "utf-8");
+/** Chainable thenable drizzle-orm mock that resolves to `value`. */
+function makeChain(value: unknown = null): any {
+  const chain: any = {};
+  const p = Promise.resolve(value);
+  for (const m of ["from", "where", "set", "values", "limit", "orderBy", "returning"]) {
+    chain[m] = (..._: unknown[]) => chain;
+  }
+  chain.then = (resolve: any, reject?: any) => p.then(resolve, reject);
+  chain.catch = (reject: any) => p.catch(reject);
+  chain[Symbol.toStringTag] = "Promise";
+  return chain;
+}
 
-// ── 1. Route file sanity ───────────────────────────────────────────────────
+/** Find the real handler (last in stack) for POST /api/admin/system/test-email. */
+function getHandler(): (req: any, res: any, next: any) => Promise<void> {
+  const targetPath = "/api/admin/system/test-email";
+  const layer = (adminRouter as any).stack.find(
+    (l: any) => l.route?.path === targetPath && l.route?.methods?.post,
+  );
+  assert.ok(layer, `Could not find POST ${targetPath} in adminRouter`);
+  const handlers: any[] = layer.route.stack;
+  // handlers[0] = isAuthenticated middleware, handlers[last] = real handler
+  return handlers[handlers.length - 1].handle;
+}
 
-describe("POST /api/admin/system/test-email — route registration", () => {
-  it("route is registered in admin.routes.ts", () => {
+/** Minimal mock req for a logged-in user (passport/email-auth shape). */
+function makeReq(userId: string | null = "admin-1"): any {
+  return {
+    user: userId ? { id: userId } : undefined,
+    isAuthenticated: () => Boolean(userId),
+    body: {},
+    params: {},
+  };
+}
+
+/** Minimal mock res that captures status + body. */
+function makeRes() {
+  const captured = { status: 200, body: null as any };
+  const res = {
+    status(code: number) {
+      captured.status = code;
+      return { json(data: any) { captured.body = data; } };
+    },
+    json(data: any) { captured.body = data; },
+  };
+  return { captured, res };
+}
+
+// ── fixtures ───────────────────────────────────────────────────────────────────
+
+const FAKE_ADMIN = {
+  id: "admin-1",
+  role: "admin",
+  email: "admin@example.com",
+  firstName: "Admin",
+  lastName: "User",
+};
+
+// ── saved originals ────────────────────────────────────────────────────────────
+
+let origDbSelect: typeof db.select;
+let savedResendApiKey: string | undefined;
+let savedEmailFrom: string | undefined;
+let savedEmailFromNoreply: string | undefined;
+
+before(() => {
+  origDbSelect = db.select.bind(db);
+  savedResendApiKey     = process.env.RESEND_API_KEY;
+  savedEmailFrom        = process.env.EMAIL_FROM;
+  savedEmailFromNoreply = process.env.EMAIL_FROM_NOREPLY;
+});
+
+after(() => {
+  (db as any).select = origDbSelect;
+  delete _adminTestEmailHooks.resendSend;
+
+  const restore = (key: string, saved: string | undefined) => {
+    if (saved !== undefined) { process.env[key] = saved; } else { delete process.env[key]; }
+  };
+  restore("RESEND_API_KEY",     savedResendApiKey);
+  restore("EMAIL_FROM",         savedEmailFrom);
+  restore("EMAIL_FROM_NOREPLY", savedEmailFromNoreply);
+});
+
+afterEach(() => {
+  (db as any).select = origDbSelect;
+  delete _adminTestEmailHooks.resendSend;
+});
+
+/** Set email-related env vars for one test. Omit a key to delete it. */
+function setEmailEnv(opts: { apiKey?: string; from?: string; fromNoreply?: string } = {}) {
+  if (opts.apiKey !== undefined)      { process.env.RESEND_API_KEY     = opts.apiKey; }
+  else                                { delete process.env.RESEND_API_KEY; }
+  if (opts.from !== undefined)        { process.env.EMAIL_FROM         = opts.from; }
+  else                                { delete process.env.EMAIL_FROM; }
+  if (opts.fromNoreply !== undefined) { process.env.EMAIL_FROM_NOREPLY = opts.fromNoreply; }
+  else                                { delete process.env.EMAIL_FROM_NOREPLY; }
+}
+
+// ── 1. Auth / admin gate ───────────────────────────────────────────────────────
+
+describe("POST /api/admin/system/test-email — auth & admin gate", () => {
+  it("returns 401 when there is no authenticated user", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+    await handler(makeReq(null), res, () => {});
+    assert.equal(captured.status, 401);
+  });
+
+  it("returns 403 when user exists but is not admin", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([{ ...FAKE_ADMIN, role: "user" }]);
+    setEmailEnv({ apiKey: "re_test", from: "noreply@example.com" });
+
+    await handler(makeReq("user-1"), res, () => {});
+
+    assert.equal(captured.status, 403);
     assert.ok(
-      routesSrc.includes('router.post("/api/admin/system/test-email"'),
-      "Route must be registered with router.post"
+      String(captured.body?.message ?? "").toLowerCase().includes("admin"),
+      `Expected 'admin' in message, got: ${JSON.stringify(captured.body)}`,
     );
   });
 
-  it("route is protected by isAuthenticated middleware", () => {
-    // The handler must sit behind isAuthenticated.
-    // Search for the registration line and confirm isAuthenticated appears on it.
-    const registrationLine = routesSrc
-      .split("\n")
-      .find((l) => l.includes('router.post("/api/admin/system/test-email"'));
-    assert.ok(registrationLine, "Registration line not found");
-    assert.ok(
-      registrationLine.includes("isAuthenticated"),
-      "Route must include isAuthenticated as a middleware argument"
-    );
+  it("returns 403 when getFullAdminUser returns null (user not found)", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([]);
+    setEmailEnv({ apiKey: "re_test", from: "noreply@example.com" });
+
+    await handler(makeReq("ghost-user"), res, () => {});
+
+    assert.equal(captured.status, 403);
   });
 });
 
-// ── 2. Admin gate (403 for non-admins) ────────────────────────────────────
-
-describe("POST /api/admin/system/test-email — admin gate", () => {
-  it("returns 403 when user role is not admin", () => {
-    // Verify the source enforces the role check and returns 403.
-    assert.ok(
-      routesSrc.includes("res.status(403)") &&
-        routesSrc.includes("Admin access required"),
-      "Handler must return 403 with 'Admin access required' for non-admin users"
-    );
-  });
-
-  it("returns 401 when userId is missing", () => {
-    assert.ok(
-      routesSrc.includes("res.status(401)") &&
-        routesSrc.includes("Unauthorized"),
-      "Handler must return 401 when no userId is present"
-    );
-  });
-
-  it("checks getFullAdminUser result before sending email", () => {
-    // Verify role is checked via getFullAdminUser, not just the middleware.
-    assert.ok(
-      routesSrc.includes("getFullAdminUser") &&
-        routesSrc.includes("adminUser.role !== \"admin\""),
-      "Handler must call getFullAdminUser and verify role === 'admin'"
-    );
-  });
-});
-
-// ── 3. Configuration guards ────────────────────────────────────────────────
+// ── 2. Configuration guards ────────────────────────────────────────────────────
 
 describe("POST /api/admin/system/test-email — configuration guards", () => {
-  it("returns 502 when RESEND_API_KEY is missing", () => {
+  it("returns 400 when admin account has no email address", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([{ ...FAKE_ADMIN, email: null }]);
+    setEmailEnv({ apiKey: "re_test", from: "noreply@example.com" });
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 400);
+    assert.equal(captured.body?.ok, false);
     assert.ok(
-      routesSrc.includes("RESEND_API_KEY is not configured"),
-      "Handler must guard against missing RESEND_API_KEY with a 502"
+      String(captured.body?.error ?? "").toLowerCase().includes("email"),
+      `Expected email-related error, got: ${JSON.stringify(captured.body)}`,
     );
-    assert.ok(
-      routesSrc.includes("res.status(502)"),
-      "Handler must use status 502 for misconfiguration errors"
-    );
-  });
-
-  it("returns 502 when EMAIL_FROM is missing", () => {
-    assert.ok(
-      routesSrc.includes("EMAIL_FROM is not configured"),
-      "Handler must guard against missing EMAIL_FROM with a 502"
-    );
-  });
-
-  it("returns 400 when admin email address is absent", () => {
-    assert.ok(
-      routesSrc.includes("Admin account has no email address on file"),
-      "Handler must return 400 when toEmail is empty"
-    );
-    // 400 should appear in the source (for this specific guard)
-    const lines = routesSrc.split("\n");
-    const emailGuardLine = lines.findIndex((l) =>
-      l.includes("Admin account has no email address on file")
-    );
-    assert.ok(emailGuardLine > -1, "Email-guard line not found");
-    // Walk backwards a few lines to find the status(400)
-    const surrounding = lines.slice(Math.max(0, emailGuardLine - 2), emailGuardLine + 2).join("\n");
-    assert.ok(
-      surrounding.includes("status(400)"),
-      "Email-guard must respond with status 400"
-    );
-  });
-});
-
-// ── 4. Success response shape ──────────────────────────────────────────────
-
-describe("POST /api/admin/system/test-email — success response shape", () => {
-  it("returns { ok: true, id, to } on Resend success", () => {
-    // The handler must produce { ok: true, id: emailId, to: toEmail }.
-    assert.ok(
-      routesSrc.includes("ok: true") && routesSrc.includes("id: emailId") && routesSrc.includes("to: toEmail"),
-      "Handler must return { ok: true, id: emailId, to: toEmail } on success"
-    );
-  });
-
-  it("returns { ok: false, error } on Resend API error", () => {
-    assert.ok(
-      routesSrc.includes("ok: false") && routesSrc.includes("emailError"),
-      "Handler must return { ok: false, error } when Resend returns an error"
-    );
-  });
-});
-
-// ── 5. Mock handler logic ──────────────────────────────────────────────────
-
-describe("POST /api/admin/system/test-email — mock handler behaviour", () => {
-  /**
-   * Build a minimal fake handler that mirrors the real handler logic so we can
-   * test it without touching a real DB or Resend.
-   */
-  function makeHandler(opts: {
-    userId: string | null;
-    adminUser: { role: string; email: string | null; firstName?: string } | null;
-    apiKey: string | undefined;
-    from: string | undefined;
-    resendResult: { data: { id: string } | null; error: { message?: string } | null };
-  }) {
-    return async () => {
-      const responses: Array<{ status: number; body: unknown }> = [];
-      const res = {
-        status(code: number) { return { json(body: unknown) { responses.push({ status: code, body }); } }; },
-        json(body: unknown) { responses.push({ status: 200, body }); },
-      };
-
-      const { userId, adminUser, apiKey, from, resendResult } = opts;
-
-      if (!userId) { res.status(401).json({ message: "Unauthorized" }); return responses[0]; }
-      if (!adminUser || adminUser.role !== "admin") {
-        res.status(403).json({ message: "Admin access required" });
-        return responses[0];
-      }
-
-      const toEmail = adminUser.email;
-      if (!toEmail) {
-        res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
-        return responses[0];
-      }
-
-      if (!apiKey) { res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" }); return responses[0]; }
-      if (!from)   { res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" }); return responses[0]; }
-
-      const { data: emailData, error: emailError } = resendResult;
-      if (emailError) {
-        const msg = String(emailError.message ?? emailError);
-        res.status(502).json({ ok: false, error: msg });
-        return responses[0];
-      }
-
-      const emailId = (emailData as { id?: string } | null)?.id;
-      res.json({ ok: true, id: emailId, to: toEmail });
-      return responses[0];
-    };
-  }
-
-  it("returns 401 when userId is null", async () => {
-    const run = makeHandler({
-      userId: null,
-      adminUser: { role: "admin", email: "admin@test.com" },
-      apiKey: "re_test",
-      from: "noreply@test.com",
-      resendResult: { data: { id: "msg_1" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 401);
-  });
-
-  it("returns 403 when user is not admin", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: { role: "user", email: "user@test.com" },
-      apiKey: "re_test",
-      from: "noreply@test.com",
-      resendResult: { data: { id: "msg_1" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 403);
-    assert.equal((result?.body as any).message, "Admin access required");
-  });
-
-  it("returns 403 when adminUser is null (user not found)", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: null,
-      apiKey: "re_test",
-      from: "noreply@test.com",
-      resendResult: { data: { id: "msg_1" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 403);
-  });
-
-  it("returns 400 when admin has no email", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: { role: "admin", email: null },
-      apiKey: "re_test",
-      from: "noreply@test.com",
-      resendResult: { data: { id: "msg_1" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 400);
-    assert.ok((result?.body as any).error.includes("no email address"));
   });
 
   it("returns 502 when RESEND_API_KEY is not set", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: { role: "admin", email: "admin@test.com" },
-      apiKey: undefined,
-      from: "noreply@test.com",
-      resendResult: { data: { id: "msg_1" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 502);
-    assert.ok((result?.body as any).error.includes("RESEND_API_KEY"));
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ from: "noreply@example.com" }); // no apiKey
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 502);
+    assert.equal(captured.body?.ok, false);
+    assert.ok(
+      String(captured.body?.error ?? "").includes("RESEND_API_KEY"),
+      `Expected RESEND_API_KEY in error, got: ${JSON.stringify(captured.body)}`,
+    );
   });
 
   it("returns 502 when EMAIL_FROM is not set", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: { role: "admin", email: "admin@test.com" },
-      apiKey: "re_test",
-      from: undefined,
-      resendResult: { data: { id: "msg_1" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 502);
-    assert.ok((result?.body as any).error.includes("EMAIL_FROM"));
-  });
+    const handler = getHandler();
+    const { captured, res } = makeRes();
 
-  it("returns 502 when Resend returns an error", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: { role: "admin", email: "admin@test.com" },
-      apiKey: "re_test",
-      from: "noreply@test.com",
-      resendResult: { data: null, error: { message: "Invalid API key" } },
-    });
-    const result = await run();
-    assert.equal(result?.status, 502);
-    assert.ok((result?.body as any).error.includes("Invalid API key"));
-  });
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test" }); // no from
 
-  it("returns { ok: true, id, to } on success", async () => {
-    const run = makeHandler({
-      userId: "user-1",
-      adminUser: { role: "admin", email: "admin@test.com" },
-      apiKey: "re_test",
-      from: "noreply@test.com",
-      resendResult: { data: { id: "msg_abc123" }, error: null },
-    });
-    const result = await run();
-    assert.equal(result?.status, 200);
-    const body = result?.body as any;
-    assert.equal(body.ok, true);
-    assert.equal(body.id, "msg_abc123");
-    assert.equal(body.to, "admin@test.com");
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 502);
+    assert.equal(captured.body?.ok, false);
+    assert.ok(
+      String(captured.body?.error ?? "").includes("EMAIL_FROM"),
+      `Expected EMAIL_FROM in error, got: ${JSON.stringify(captured.body)}`,
+    );
   });
 });
 
-// ── 6. Client — UI elements present ───────────────────────────────────────
+// ── 3. Resend integration (via _adminTestEmailHooks seam) ─────────────────────
 
-describe("admin/system.tsx — test email UI", () => {
-  it("has a Send test email button with correct testid", () => {
+describe("POST /api/admin/system/test-email — Resend integration", () => {
+  it("returns { ok: true, id, to } when Resend succeeds", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+    _adminTestEmailHooks.resendSend = async () => ({ data: { id: "msg_abc123" }, error: null });
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.ok,  true);
+    assert.equal(captured.body?.id,  "msg_abc123");
+    assert.equal(captured.body?.to,  FAKE_ADMIN.email);
+  });
+
+  it("returns { ok: true, to } when Resend returns no message id", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+    _adminTestEmailHooks.resendSend = async () => ({ data: null, error: null });
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.ok, true);
+    assert.equal(captured.body?.to, FAKE_ADMIN.email);
+  });
+
+  it("returns 502 { ok: false, error } when Resend returns an API error", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+    _adminTestEmailHooks.resendSend = async () => ({
+      data: null,
+      error: { message: "Invalid API key" },
+    });
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 502);
+    assert.equal(captured.body?.ok, false);
     assert.ok(
-      clientSrc.includes('data-testid="button-send-test-email"'),
-      "Button must have data-testid='button-send-test-email'"
+      String(captured.body?.error ?? "").includes("Invalid API key"),
+      `Expected Resend error message, got: ${JSON.stringify(captured.body)}`,
     );
   });
 
-  it("posts to /api/admin/system/test-email", () => {
+  it("sends to the admin's own email address (not a hardcoded value)", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    const customAdmin = { ...FAKE_ADMIN, email: "cto@myplatform.io" };
+    (db as any).select = () => makeChain([customAdmin]);
+    setEmailEnv({ apiKey: "re_test_key", from: "noreply@example.com" });
+
+    const capturedPayloads: any[] = [];
+    _adminTestEmailHooks.resendSend = async (payload) => {
+      capturedPayloads.push(payload);
+      return { data: { id: "msg_xyz" }, error: null };
+    };
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(capturedPayloads.length, 1, "resendSend must be called exactly once");
+    assert.equal(capturedPayloads[0].to, "cto@myplatform.io");
+    assert.equal(captured.body?.to,       "cto@myplatform.io");
+  });
+
+  it("prefers EMAIL_FROM_NOREPLY over EMAIL_FROM as the sender", async () => {
+    const handler = getHandler();
+    const { captured, res } = makeRes();
+
+    (db as any).select = () => makeChain([FAKE_ADMIN]);
+    setEmailEnv({
+      apiKey:      "re_test_key",
+      from:        "general@example.com",
+      fromNoreply: "noreply-specific@example.com",
+    });
+
+    const capturedPayloads: any[] = [];
+    _adminTestEmailHooks.resendSend = async (payload) => {
+      capturedPayloads.push(payload);
+      return { data: { id: "msg_noreply" }, error: null };
+    };
+
+    await handler(makeReq("admin-1"), res, () => {});
+
+    assert.equal(captured.status, 200);
+    assert.equal(capturedPayloads.length, 1);
+    assert.equal(
+      capturedPayloads[0].from,
+      "noreply-specific@example.com",
+      "Should prefer EMAIL_FROM_NOREPLY over EMAIL_FROM",
+    );
+  });
+});
+
+// ── 4. Client UI contract (narrow static checks) ───────────────────────────────
+
+describe("admin/system.tsx — test email UI contract", () => {
+  const clientPath = new URL(
+    "../../../client/src/pages/admin/system.tsx",
+    import.meta.url,
+  ).pathname;
+
+  let src: string;
+  before(async () => {
+    const { readFileSync } = await import("node:fs");
+    src = readFileSync(clientPath, "utf-8");
+  });
+
+  it("mutation POSTs to /api/admin/system/test-email", () => {
     assert.ok(
-      clientSrc.includes('"/api/admin/system/test-email"'),
-      "Client mutation must POST to /api/admin/system/test-email"
+      src.includes('"/api/admin/system/test-email"'),
+      "sendTestEmail mutation must target /api/admin/system/test-email",
     );
   });
 
-  it("renders result banner with testid test-email-result", () => {
+  it("send button has data-testid='button-send-test-email'", () => {
     assert.ok(
-      clientSrc.includes('data-testid="test-email-result"'),
-      "Result banner must have data-testid='test-email-result'"
+      src.includes('data-testid="button-send-test-email"'),
+      "Button must have data-testid='button-send-test-email' for automation",
     );
   });
 
-  it("shows success message when ok is true", () => {
+  it("result banner has data-testid='test-email-result'", () => {
     assert.ok(
-      clientSrc.includes("Delivered successfully"),
-      "Client must display 'Delivered successfully' on ok=true"
+      src.includes('data-testid="test-email-result"'),
+      "Result banner must have data-testid='test-email-result'",
     );
   });
 
-  it("shows error message when ok is false", () => {
+  it("success branch reads ok field and displays recipient address", () => {
     assert.ok(
-      clientSrc.includes("Delivery failed"),
-      "Client must display 'Delivery failed' on ok=false"
+      src.includes("testEmailResult.ok") && src.includes("testEmailResult.to"),
+      "Success branch must reference testEmailResult.ok and display testEmailResult.to",
     );
   });
 
-  it("displays the recipient address in the success banner", () => {
+  it("failure branch displays error string from server", () => {
     assert.ok(
-      clientSrc.includes("testEmailResult.to"),
-      "Success banner must show testEmailResult.to (recipient address)"
+      src.includes("testEmailResult.error"),
+      "Failure branch must render testEmailResult.error",
     );
   });
 
-  it("displays the Resend message ID when present", () => {
+  it("result is reset to null before each new send", () => {
     assert.ok(
-      clientSrc.includes("testEmailResult.id"),
-      "Success banner must show testEmailResult.id when present"
-    );
-  });
-
-  it("displays error string in failure banner", () => {
-    assert.ok(
-      clientSrc.includes("testEmailResult.error"),
-      "Failure banner must show testEmailResult.error"
-    );
-  });
-
-  it("button is disabled while request is in-flight", () => {
-    assert.ok(
-      clientSrc.includes("sendTestEmail.isPending"),
-      "Button must be disabled while the mutation is pending"
-    );
-  });
-
-  it("resets result to null before each new send", () => {
-    assert.ok(
-      clientSrc.includes("setTestEmailResult(null)"),
-      "onClick must reset testEmailResult to null before triggering mutation"
+      src.includes("setTestEmailResult(null)"),
+      "onClick must call setTestEmailResult(null) before triggering the mutation",
     );
   });
 });

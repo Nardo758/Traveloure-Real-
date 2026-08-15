@@ -173,6 +173,17 @@ import {
 
 const router = Router();
 
+/**
+ * Test seam — populated only by unit tests to intercept the Resend call without
+ * hitting the real API. Empty object in production; no behaviour change when unset.
+ */
+export const _adminTestEmailHooks: {
+  resendSend?: (payload: Record<string, unknown>) => Promise<{
+    data: { id?: string } | null;
+    error: { message?: string } | null;
+  }>;
+} = {};
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -5694,7 +5705,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
 
       const resendClient = new Resend(apiKey);
-      const { data: emailData, error: emailError } = await resendClient.emails.send({
+      const emailPayload: Record<string, unknown> = {
         from,
         to: toEmail,
         replyTo,
@@ -5740,7 +5751,13 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
           "",
           "This email was triggered manually from the admin system settings page.",
         ].join("\n"),
-      });
+      };
+
+      // Use test hook when set (unit tests only); real Resend client in production.
+      const sender = _adminTestEmailHooks.resendSend
+        ? _adminTestEmailHooks.resendSend
+        : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
+      const { data: emailData, error: emailError } = await sender(emailPayload);
 
       if (emailError) {
         const msg = String((emailError as { message?: string }).message ?? emailError);
