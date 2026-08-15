@@ -2253,14 +2253,49 @@ the shipped `CatalogMapView`; 13 divergences, no contradiction of a locked decis
   copying that label would be the *dishonest* move. ODbL attribution rides the shared
   `ServiceLocationMap` wherever it renders (§20/§22c) — unchanged.
 
-### For the decision-maker — two judgment calls to ratify or amend
+### The two judgment calls — AUDITED, then RATIFIED (decision-maker, Aug 15: "lets go with your
+### recommendation"; ledger row 120)
 
-1. **The right rail's removal (M-1).** "Meeting pin" and "Route stops" were read-only cards the
-   mock does not have. Their content is now in the ⑪ strip and their authoring door in ⑬. If you
-   want the standing rail back, it is a layout revert, not a rebuild.
-2. **The map obeying the toolbar filter (M-13).** The mock shows the controls in map mode but is
-   static, so it does not say whether they should *do* anything there. Making them inert would be
-   the smaller change; making them work seemed the honest reading of a visible control.
+Both were flagged as calls, audited against the code before either was decided, and ratified on
+that evidence. No code changed at ratification — M2 already shipped both this way.
+
+**(a) The right rail stays removed (M-1).** The audit's finding: it was **never a preview
+affordance**. `git show 9a412b9` (lane A1) deletes the `LocationPointPicker`, the per-stop
+`Remove` and the `Save route` button *out of those two cards* — what M2 removed was the
+**authoring** rail ruling 22(b) had put on Catalog, with its verbs stripped and the husk left
+standing. Three further facts, all from the code:
+- Ruling 93 §5 enumerates what the Aug 12 amendment preserves — the located partition, the
+  off-canvas list, "X of Y stops located", the located-only canvas, ODbL attribution. **The rail
+  is not on that list.** All five survive M2.
+- The sibling lane already shipped this layout: **D-15, "full-width canvas, rail as aside"**, is
+  what `service-map-authoring.tsx` (step 4) does today. The two map surfaces now agree.
+- Nothing is orphaned. Pin state also lives on the Catalog list row's Listing Health `exact_pin`
+  check and the listing-home checklist; the pin card itself survives inside the ⑬ block
+  (`map-view-pin-card` / `text-pin-state` / `button-edit-location`), and `meetingPoint` moved to
+  the ⑪ pin card's footer.
+
+**KNOWN AND ACCEPTED — the one real loss.** The ordered **named** list of every route stop
+(`map-view-route-card`) is gone. A **located** stop's name is now a click-to-open Leaflet popup
+(`service-location-map.tsx`), not always-visible text. That is what the mock specifies — its route
+card names only the *unlocated* stops under "3 of 5 stops located" — and the full ordered list
+keeps its home in step 4's rail (`route-stop-row-*`). Restoring it on Catalog would duplicate a
+readout the authoring step already owns.
+
+**(b) The map obeys the toolbar filter (M-13).** The audit's finding: **the mock cannot settle
+this** — its search input and status chips carry no listeners anywhere in `mockup.html` (only
+`cat-mode-seg` is wired), so they are decoration there. The repo settles it instead:
+`previewServices` is derived from `filteredServices`, so search + status chips have **always**
+governed Catalog **Preview** — a second, non-list rendering of the same set. Map ignoring them
+would have made it the only view that does not. And `searchQuery`/`statusFilter` are page-level
+state untouched by `viewMode`, so pre-M2 the combination was a *live filter with hidden controls*;
+the incoherent option was the one that was shipping.
+
+**THE CONSEQUENCE, NAMED.** `catalogStatusBucket` buckets on `approvalStatus`/`status`, so
+selecting **Live** hides the draft rows most likely to be missing a pin — which is the map's main
+job — and the "Previewing" chip row follows the filter too, so a filtered-out listing cannot be
+inspected. Default is `"all"`, and the coverage caption names the active filter ("showing live
+only") so a narrowed count is never read as the whole catalog (§13). Watch for this if a provider
+reports "my unpinned listing isn't in the Not-located list".
 
 **Bench evidence.** `docs/design/catalog-rebuild/after-map-m2.png` — the rebuilt surface rendered
 from fixture rows (no DB in the session container, so a throwaway Vite harness mounted the
