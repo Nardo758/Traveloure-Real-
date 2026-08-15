@@ -80,6 +80,10 @@ export const users = pgTable("users", {
   stripeAccountId: varchar("stripe_account_id", { length: 255 }),
   stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
   canReceivePayments: boolean("can_receive_payments").default(false),
+  // Notification email (migration 207): experts/providers can set a separate business
+  // email for booking alert emails. Falls back to `email` when null. Never used for
+  // login/auth — account email is always authoritative for security flows.
+  notificationEmail: varchar("notification_email", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).
@@ -99,6 +103,9 @@ export const users = pgTable("users", {
   // (enforcement lands in the feature build, not here). Confirmed bookings are unaffected.
   vacationUntil: timestamp("vacation_until"),
   vacationMessage: varchar("vacation_message", { length: 200 }),
+  // Migration 223: opt-out flag for booking-alert emails. Default true = send alerts. Experts
+  // can disable this from Settings → Notifications so they rely on in-app notifications only.
+  emailBookingAlerts: boolean("email_booking_alerts").default(true),
 }, (table) => [
   index("users_role_idx").on(table.role),
 ]);

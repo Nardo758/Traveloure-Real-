@@ -495,14 +495,19 @@ class BookingService {
               const peopleRow = await db.execute(sql`
                 SELECT
                   t.first_name AS t_first, t.last_name AS t_last,
-                  p.email AS p_email, p.first_name AS p_first, p.last_name AS p_last
+                  p.email AS p_email, p.notification_email AS p_notification_email,
+                  p.first_name AS p_first, p.last_name AS p_last,
+                  p.email_booking_alerts AS p_email_booking_alerts
                 FROM users t, users p
                 WHERE t.id = ${userId} AND p.id = ${providerId}
               `);
               const row = peopleRow.rows?.[0] as any;
               const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
-              const providerEmail = row?.p_email as string | null;
+              // Use notification_email (task #114) if set, else fall back to primary email
+              const providerEmail = (row?.p_notification_email || row?.p_email) as string | null;
               const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+              // Migration 225: skip alert email when provider has opted out (default true)
+              const providerEmailBookingAlerts = row?.p_email_booking_alerts !== false;
 
               await storage.createNotification({
                 userId: providerId,
@@ -514,7 +519,7 @@ class BookingService {
                 data: { bookingRequestId: reqId, serviceTitle: title, travelerName, requestedDate: date, requestedTime: time ?? null },
               });
 
-              if (providerEmail) {
+              if (providerEmail && providerEmailBookingAlerts) {
                 sendBookingAlertEmail({
                   providerEmail,
                   providerName,
@@ -578,8 +583,6 @@ class BookingService {
   }
 
   /**
-   * Confirm booking after successful payment.
-   *
    * Security gates (in order):
    *  1. Stripe PaymentIntent must have status === 'succeeded'; reject 402 otherwise.
    *  2. Booking must exist; reject 404 otherwise.
@@ -782,14 +785,19 @@ class BookingService {
         const peopleRow = await db.execute(sql`
           SELECT
             t.first_name AS t_first, t.last_name AS t_last,
-            p.email AS p_email, p.first_name AS p_first, p.last_name AS p_last
+            p.email AS p_email, p.notification_email AS p_notification_email,
+            p.first_name AS p_first, p.last_name AS p_last,
+            p.email_booking_alerts AS p_email_booking_alerts
           FROM users t, users p
           WHERE t.id = ${userId} AND p.id = ${providerId}
         `);
         const row = peopleRow.rows?.[0] as any;
         const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
-        const providerEmail = row?.p_email as string | null;
+        // Use notification_email (task #114) if set, else fall back to primary email
+        const providerEmail = (row?.p_notification_email || row?.p_email) as string | null;
         const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+        // Migration 225: skip alert email when provider has opted out (default true)
+        const providerEmailBookingAlerts = row?.p_email_booking_alerts !== false;
 
         await storage.createNotification({
           userId: providerId,
@@ -808,7 +816,7 @@ class BookingService {
           },
         });
 
-        if (providerEmail) {
+        if (providerEmail && providerEmailBookingAlerts) {
           sendBookingAlertEmail({
             providerEmail,
             providerName,

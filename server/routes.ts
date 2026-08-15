@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import express from "express";
+import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
 import { validateImageDataUrl } from "./utils/imageValidation";
@@ -113,6 +114,7 @@ import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
+import { normalizeDeclineReason } from "./utils/normalize-decline-reason";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -1176,7 +1178,7 @@ export async function registerRoutes(
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks trip creation */ });
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1441,7 +1443,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks itinerary response */ });
 
       // Rebuild itinerary_items — delete old, insert new.
       // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
@@ -1550,6 +1552,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         let platformFeeAmt: string;
         let providerEarningsAmt: string;
         let bookingType: BookingType;
+        // Hoisted outside if (providerId) so the notification block below can read it.
+        let ownerRole: string | null = null;
 
         if (providerId) {
           const [ownerRow] = await db
@@ -1557,7 +1561,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .from(users)
             .where(eq(users.id, providerId))
             .limit(1);
-          const ownerRole = ownerRow?.role ?? null;
+          ownerRole = ownerRow?.role ?? null;
 
           // isNewExpert: registered within the last 90 days
           const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
@@ -1641,7 +1645,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           eventType: "revenue",
           funnelStage: "T6",
           eventData: { amount: totalAmount },
-        }).catch(() => {});
+        }).catch(() => { /* fire-and-forget funnel event — never blocks booking confirmation */ });
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -1661,16 +1665,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               serviceName: service.serviceName,
               travelerName,
               amount: totalAmount.toFixed(2),
+              // Route deep-link based on the service owner's role. Experts land on their
+              // workspace for the trip (a booking-request scoped view). Providers land on
+              // their bookings inbox — /expert/workspace is expert-role-gated on the client.
+              // ownerRole is hoisted above the if (providerId) block so it is always in scope.
+              ...(tripId && isExpertRole(ownerRole)
+                ? { tripId }
+                : { workspacePath: isProviderRole(ownerRole) ? "/provider/bookings" : undefined }),
             },
           });
 
-          // Send email alert to the provider
+          // Send email alert to the provider (skipped when they have opted out)
           const provider = await storage.getUser(providerId);
-          if (provider?.email) {
+          if (provider?.email && provider.emailBookingAlerts !== false) {
             const { sendBookingAlertEmail } = await import("./services/email.service");
             const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
             await sendBookingAlertEmail({
-              providerEmail: provider.email,
+              providerEmail: provider.notificationEmail || provider.email,
               providerName,
               bookingId: booking.id,
               serviceName: service.serviceName,
@@ -3648,6 +3659,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const photoUrl = pexelsPhotos[0]?.url ?? null;
           return res.json({ photoUrl });
         } catch {
+          // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
         }
       }
@@ -5463,6 +5475,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         displayName,
       });
     } catch {
+      // Fail closed: if the verification profile cannot be read, report as unverified.
       res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
     }
   });
@@ -6177,7 +6190,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const { status, reason } = req.body;
+      const { status } = req.body;
+      // Normalize and validate the optional decline reason via the shared utility so the
+      // server-side check and the unit-tested production code are the same code path.
+      const reasonResult = normalizeDeclineReason(req.body.reason);
+      if (!reasonResult.ok) {
+        return res.status(reasonResult.status).json({ message: reasonResult.message });
+      }
+      const reason = reasonResult.reason;
       if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
         return res.status(400).json({
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
@@ -6248,10 +6268,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                   userId: booking.travelerId,
                   type: "booking_cancelled",
                   title: "Booking cancelled by provider — full refund issued",
-                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  message: reason
+                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method. Reason: ${reason}`
+                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
                   relatedId: req.params.id,
                   relatedType: "booking",
-                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider", ...(reason ? { reason } : {}) },
                 });
               } catch (notifyErr) {
                 console.error("Failed to notify traveler of provider cancellation:", notifyErr);
@@ -6292,9 +6314,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // branch above returns earlier with its own notification.
               userId: booking.travelerId,
               type: "booking_cancelled",
-              title: "Booking cancelled by provider",
-              message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
-              data: { bookingId: req.params.id, cancelledBy: "provider" },
+              title: "Booking declined by provider",
+              message: reason
+                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
+                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
+              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
               dedupeKey: `booking:${req.params.id}:cancelled`,
             }
         : undefined;
@@ -8617,7 +8641,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
         eventType: "cart_populated",
         funnelStage: "T4",
-      }).catch(() => {});
+      }).catch(() => { /* fire-and-forget funnel event — never blocks cart response */ });
 
       res.json({
         message:
@@ -9240,12 +9264,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       } catch (inner) {
         // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
-        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch(() => {});
+        // Best-effort rollback — if either step fails, log but still re-throw the original error
+        // so the outer handler can surface it; a partial rollback is better than a silent hang.
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) => {
+          console.warn("[coordination/payment] Could not release claimed credit during rollback:", rollbackErr);
+        });
         await db
           .update(coordinationStates)
           .set({ feePaymentStatus: "unpaid" })
           .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
-          .catch(() => {});
+          .catch((rollbackErr) => {
+            console.warn("[coordination/payment] Could not reset feePaymentStatus to 'unpaid' during rollback:", rollbackErr);
+          });
         throw inner;
       }
     } catch (error: any) {
@@ -11385,6 +11415,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // /api/trips/:tripId/itinerary-items/:itemId). Express matches in registration order, so
   // an inline route registered earlier claims a shared path before this router sees it.
   app.use(tripsRoutes);
+
+  // ── Test-only: trigger the Stripe Connect reminder scheduler on demand ───────
+  // Enabled only when RATE_LIMIT_BYPASS_KEY is set AND the request supplies it
+  // in the X-Test-Secret header. This prevents arbitrary callers on preview or
+  // staging instances from triggering bulk notification writes. Used by the
+  // Playwright e2e suite to invoke runReminders() synchronously so the test can
+  // observe its effects without waiting for the 72-hour timer.
+  if (process.env.NODE_ENV !== "production" && process.env.RATE_LIMIT_BYPASS_KEY) {
+    app.post("/api/test/stripe-reminder-run", async (req, res) => {
+      const providedSecret = req.headers["x-test-secret"];
+      if (providedSecret !== process.env.RATE_LIMIT_BYPASS_KEY) {
+        return res.status(403).json({ ok: false, error: "Forbidden" });
+      }
+      try {
+        await stripeConnectReminderScheduler.runReminders();
+        res.json({ ok: true });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err.message });
+      }
+    });
+  }
 
   return httpServer;
 }

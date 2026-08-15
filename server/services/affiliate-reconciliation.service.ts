@@ -55,7 +55,7 @@ export interface ReconciliationResult {
 // Period helper
 // ---------------------------------------------------------------------------
 
-function getPeriodDates(period: string): { start: Date; end: Date } {
+export function getPeriodDates(period: string): { start: Date; end: Date } {
   const now = new Date();
   if (period === "last_month") {
     return {
@@ -127,7 +127,7 @@ export async function fetchTravelpayoutsCommissions(
   }
 }
 
-async function fetchViatorCommissions(
+export async function fetchViatorCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {
@@ -165,7 +165,7 @@ async function fetchViatorCommissions(
   }
 }
 
-async function fetchFeverCommissions(
+export async function fetchFeverCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {
@@ -206,7 +206,7 @@ async function fetchFeverCommissions(
   }
 }
 
-async function fetchPartnerizeCommissions(
+export async function fetchPartnerizeCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {
@@ -465,10 +465,13 @@ class AffiliateReconciliationService {
   async matchRecords(
     period: string,
     partner?: string,
-    options?: { dateToleranceDays?: number }
+    options?: { dateToleranceDays?: number; internalWindowStart?: Date }
   ): Promise<void> {
     const { start, end } = getPeriodDates(period);
     const toleranceDays = options?.dateToleranceDays ?? DEFAULT_MATCH_TOLERANCE_DAYS;
+    // internalWindowStart lets callers widen the SQL query window independently of the
+    // external-report period. When omitted the query starts at the period's own start.
+    const internalStart = options?.internalWindowStart ?? start;
 
     // Build a lookup: external partner key → internal partner_id
     const partnerMapResult = await db.execute(sql`
@@ -486,12 +489,12 @@ class AffiliateReconciliationService {
       }
     }
 
-    // Fetch all unmatched internal earnings for the period
+    // Fetch all unmatched internal earnings for the (potentially widened) internal window
     const internal = await db.execute(sql`
       SELECT ae.*, ap.name AS partner_name
       FROM affiliate_earnings ae
       LEFT JOIN affiliate_partners ap ON ae.partner_id = ap.id
-      WHERE ae.created_at >= ${start.toISOString()}
+      WHERE ae.created_at >= ${internalStart.toISOString()}
         AND ae.created_at <= ${end.toISOString()}
         AND ae.reconciliation_status = 'unmatched'
       ORDER BY ae.created_at
@@ -563,8 +566,20 @@ class AffiliateReconciliationService {
   ): Promise<ReconciliationResult> {
     const { start, end } = getPeriodDates(period);
 
-    // Run auto-match first (idempotent)
-    await this.matchRecords(period, partner);
+    // Widen the internal-earnings window backward by LATE_REPORT_TOLERANCE_DAYS so that
+    // a booking made near the end of the previous month is still visible here when a
+    // partner reports it in the first days of the current month. The external-report
+    // fetch uses the same period, so cross-month commissions won't produce false
+    // positives in the "unmatched external" list once the widened internal rows match them.
+    const widenedStart = new Date(start.getTime() - LATE_REPORT_TOLERANCE_DAYS * 24 * 60 * 60 * 1000);
+
+    // Run auto-match first (idempotent). Pass internalWindowStart so the SQL query inside
+    // matchRecords starts at widenedStart rather than the period boundary — this is what
+    // makes near-boundary rows available for the fuzzy and exact-token passes.
+    await this.matchRecords(period, partner, {
+      dateToleranceDays: LATE_REPORT_TOLERANCE_DAYS,
+      internalWindowStart: widenedStart,
+    });
 
     // Fetch internal earnings
     const partnerFilter = partner && partner !== "all"
@@ -575,7 +590,7 @@ class AffiliateReconciliationService {
       SELECT ae.*, ap.name as partner_name
       FROM affiliate_earnings ae
       LEFT JOIN affiliate_partners ap ON ae.partner_id = ap.id
-      WHERE ae.created_at >= ${start.toISOString()}
+      WHERE ae.created_at >= ${widenedStart.toISOString()}
         AND ae.created_at <= ${end.toISOString()}
         ${partnerFilter}
       ORDER BY ae.created_at DESC

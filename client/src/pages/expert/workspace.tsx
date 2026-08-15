@@ -31,7 +31,7 @@ import {
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
-  Trash2, RefreshCw, Route, Building2,
+  Trash2, RefreshCw, Route, Building2, Briefcase,
 } from "lucide-react";
 // L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
@@ -289,10 +289,50 @@ interface TravelerProfile {
   profileImageUrl: string | null;
 }
 
-function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider: string; bookingUrl?: string; tripId: string; onClose: () => void }) {
+function BookingBriefModal({
+  provider, bookingUrl, tripId, onClose,
+  itemId, itemTitle, onConfirm, onConfirmed,
+}: {
+  provider: string;
+  bookingUrl?: string;
+  tripId: string;
+  onClose: () => void;
+  /** When set, the "Confirm booking" action PATCHes this item's bookingStatus to "pending". */
+  itemId?: string;
+  /** Displayed in the modal sub-header as the item being booked. */
+  itemTitle?: string;
+  /** Called after the server PATCH succeeds (or immediately if no itemId / no status change). */
+  onConfirm?: () => void;
+  /** Called with the provider name after the expert clicks "Continue" — used by the
+   *  session-level confirmedProviders set (task #128) to show "already confirmed" badges. */
+  onConfirmed?: (provider: string) => void;
+}) {
+  const { toast } = useToast();
   const { data: profile, isLoading } = useQuery<TravelerProfile>({
     queryKey: [`/api/trips/${tripId}/traveler-profile`],
     enabled: !!tripId,
+  });
+  // Opt-in checkbox: the expert explicitly decides whether opening the brief means they
+  // are starting the booking (→ mark pending). Unchecked by default so that merely
+  // reviewing PII does not silently change item state.
+  const [markPending, setMarkPending] = useState(false);
+
+  const statusMutation = useMutation({
+    mutationFn: async () => {
+      if (!itemId || !markPending) return;
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/itinerary-items/${itemId}`, { bookingStatus: "pending" });
+      return res.json();
+    },
+    onSuccess: () => {
+      if (itemId && markPending) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+        toast({ title: "Booking started", description: "Item marked as pending — complete the booking with the vendor." });
+      }
+      onConfirm?.();
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "Could not update status", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   const formatDateLocal = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -310,8 +350,18 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
     if (bookingUrl) {
       window.open(bookingUrl, "_blank", "noopener,noreferrer");
     }
-    onClose();
+    onConfirmed?.(provider);
+    if (itemId) {
+      statusMutation.mutate();
+    } else {
+      onConfirm?.();
+      onClose();
+    }
   };
+
+  const subtitle = itemTitle
+    ? `Secure client details — ${itemTitle}`
+    : `Secure client details for ${provider}`;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -319,10 +369,19 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${LINE}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center" }}><ShieldCheck style={{ width: 16, height: 16, color: BRAND }} /></div>
-            <div><div style={{ fontSize: 14, fontWeight: 700, color: INK }}>Booking Brief</div><div style={{ fontSize: 11, color: MID }}>Secure client details for {provider}</div></div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: INK }}>Booking Brief</div>
+              <div style={{ fontSize: 11, color: MID, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
+            </div>
           </div>
           <button onClick={onClose} data-testid="button-close-booking-brief" style={{ background: "none", border: "none", cursor: "pointer", color: FAINT, padding: 4, display: "flex" }}><X style={{ width: 18, height: 18 }} /></button>
         </div>
+        {itemTitle && (
+          <div style={{ margin: "12px 18px 0", padding: "6px 10px", background: BRAND_SOFT, border: `1px solid ${BRAND}`, borderRadius: 8, fontSize: 11.5, fontWeight: 600, color: INK }}>
+            <FileText style={{ width: 11, height: 11, display: "inline", marginRight: 5, verticalAlign: "middle" }} />
+            {itemTitle}
+          </div>
+        )}
         <div style={{ margin: "12px 18px 0", padding: "8px 12px", background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
           <Lock style={{ width: 13, height: 13, color: MID, flexShrink: 0, marginTop: 1 }} />
           <span style={{ fontSize: 11, color: MID, lineHeight: 1.5 }}>Booking context only. Use these details to complete your client's reservation. Do not save or share with unrelated third parties.</span>
@@ -344,10 +403,33 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
             </div>
           ))}
         </div>
+        {itemId && (
+          <div style={{ margin: "0 18px 2px", padding: "8px 10px", background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <input
+              type="checkbox"
+              id="booking-brief-mark-pending"
+              checked={markPending}
+              onChange={e => setMarkPending(e.target.checked)}
+              data-testid="checkbox-mark-booking-pending"
+              style={{ marginTop: 2, cursor: "pointer", accentColor: BRAND }}
+            />
+            <label htmlFor="booking-brief-mark-pending" style={{ fontSize: 11.5, color: MID, lineHeight: 1.5, cursor: "pointer" }}>
+              I'm starting this booking — mark item as <strong style={{ color: INK }}>pending</strong>
+            </label>
+          </div>
+        )}
         <div style={{ padding: "14px 18px", display: "flex", gap: 8 }}>
-          <button onClick={onClose} style={{ ...btnQuietStyle, flex: 1, padding: "8px", fontSize: 13, color: MID }}>Cancel</button>
-          <button onClick={handleContinue} data-testid="button-confirm-booking" style={{ ...btnPrimaryStyle, flex: 2, padding: "8px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <ExternalLink style={{ width: 13, height: 13 }} /> Continue to {provider}
+          <button onClick={onClose} disabled={statusMutation.isPending} style={{ ...btnQuietStyle, flex: 1, padding: "8px", fontSize: 13, color: MID }}>Cancel</button>
+          <button
+            onClick={handleContinue}
+            disabled={statusMutation.isPending}
+            data-testid="button-confirm-booking"
+            style={{ ...btnPrimaryStyle, flex: 2, padding: "8px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: statusMutation.isPending ? 0.6 : 1 }}
+          >
+            {statusMutation.isPending
+              ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
+              : <ExternalLink style={{ width: 13, height: 13 }} />}
+            {bookingUrl ? `Continue to ${provider}` : "Got the details"}
           </button>
         </div>
       </div>
@@ -800,6 +882,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   }
 }
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /** A-2 / C-1 (Workstation audit): the canvas item editor. Collapsible, day-grouped list of
  *  every item on the build with a "Move to day" select (A-2) and an "Expert note" textarea
  *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
@@ -817,7 +900,8 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
+  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, confirmedProviders,
+  onConfirmedProvider, resolveBookingUrl, focusItemId, onFocusHandled, onSelectItem,
   suggestOrderForDay, onSuggestHandled,
 }: {
   tripId: string;
@@ -833,6 +917,15 @@ function ItemsEditorPanel({
   // item directly there), so any row this panel can show is already either author-owned or
   // client-approved. Nothing here needs to re-check approval state.
   onOpenBookingBrief: (network: string) => void;
+  /** Providers the expert has already confirmed (clicked "Continue to …") this session.
+   *  Used to show an "already confirmed" badge on the per-item Book button. */
+  confirmedProviders?: Set<string>;
+  /** Called after the expert clicks "Continue" in the per-item BookingBriefModal.
+   *  Must update the confirmedProviders set in the parent so the badge reflects the change. */
+  onConfirmedProvider?: (provider: string) => void;
+  /** Resolves a partner-network name to its affiliate booking URL so the per-item modal can
+   *  open the vendor site for partner-sourced items (same source as the partner-card path). */
+  resolveBookingUrl?: (network: string) => string | undefined;
   // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
   // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
   // request (a one-shot signal, not a controlled/sticky prop).
@@ -865,6 +958,11 @@ function ItemsEditorPanel({
   // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
   // explicit confirm (never auto-applied).
   const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
+  // Per-item Booking Brief: hoveredItemId drives hover highlighting on the "Book" button
+  // (always rendered for keyboard/touch accessibility); bookingBriefItem stores whichever item
+  // has the modal open, plus the resolved partner booking URL.
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+  const [bookingBriefItem, setBookingBriefItem] = useState<{ item: ItineraryItem; bookingUrl?: string } | null>(null);
 
   useEffect(() => {
     if (!focusItemId) return;
@@ -1079,8 +1177,17 @@ function ItemsEditorPanel({
                   // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
                   // `days` at all IS the gate — see the prop comment above.
                   const partnerSource = parsePartnerSource(item.description);
+                  const alreadyConfirmed = partnerSource
+                    ? (confirmedProviders?.has(normalizeProvider(partnerSource.network)) ?? false)
+                    : false;
                   return (
-                    <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
+                    <div
+                      key={item.id}
+                      data-testid={`item-editor-row-${item.id}`}
+                      onMouseEnter={() => setHoveredItemId(item.id)}
+                      onMouseLeave={() => setHoveredItemId(id => id === item.id ? null : id)}
+                      style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}
+                    >
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {/* Item 18: within-day reorder — swaps this item with its neighbor and
                             sends the day's full ordered id list to the existing reorder endpoint.
@@ -1120,6 +1227,31 @@ function ItemsEditorPanel({
                             <MapPin style={{ width: 13, height: 13 }} />
                           </button>
                         )}
+                        {/* Per-item Booking Brief: always visible (keyboard/touch accessible);
+                            hover lifts opacity to full. Shows "✓ on file" when this provider
+                            has already been confirmed this session (task #128). */}
+                        <button
+                          onClick={() => {
+                            const ps = parsePartnerSource(item.description);
+                            const bookingUrl = ps ? resolveBookingUrl?.(ps.network) : undefined;
+                            setBookingBriefItem({ item, bookingUrl });
+                          }}
+                          data-testid={`button-book-item-${item.id}`}
+                          title="Pull client details to book this item"
+                          style={{
+                            ...btnQuietStyle,
+                            padding: "3px 9px",
+                            fontSize: 11,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            opacity: hoveredItemId === item.id ? 1 : 0.45,
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          <ShieldCheck style={{ width: 11, height: 11 }} /> Book
+                          {alreadyConfirmed && <StateChip tone="ok">✓ on file</StateChip>}
+                        </button>
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : item.id)}
                           data-testid={`button-expand-item-${item.id}`}
@@ -1200,15 +1332,6 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
-                    {partnerSource && (
-                      <button
-                        onClick={() => onOpenBookingBrief(partnerSource.network)}
-                        data-testid={`button-booking-brief-${item.id}`}
-                        style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
-                      >
-                        <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
-                      </button>
-                    )}
                     <button
                       onClick={() => {
                         if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
@@ -1236,10 +1359,27 @@ function ItemsEditorPanel({
           })}
         </div>
       )}
+      {/* Per-item Booking Brief modal — opened from any item's "Book" button.
+          Provides client PII for vendor bookings; on confirm (with checkbox) PATCHes
+          bookingStatus → "pending" so the center panel reflects the change. */}
+      {bookingBriefItem && (
+        <BookingBriefModal
+          tripId={tripId}
+          provider={parsePartnerSource(bookingBriefItem.item.description)?.network ?? bookingBriefItem.item.locationName ?? bookingBriefItem.item.title}
+          bookingUrl={bookingBriefItem.bookingUrl}
+          itemId={bookingBriefItem.item.id}
+          itemTitle={bookingBriefItem.item.title}
+          onClose={() => setBookingBriefItem(null)}
+          onConfirm={() => setBookingBriefItem(null)}
+          onConfirmed={(provider) => {
+            onConfirmedProvider?.(provider);
+            setBookingBriefItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }
-
 // ── L4b: the between-stops transport-leg editor (docs/briefs/L4-transport-legs.md) ──────────────
 // Server contracts (L4a, migration 154 — final, do not adjust to fit the client):
 //   POST   /api/trips/:tripId/transport-legs/generate           → born 'proposed', replaces the
@@ -2403,6 +2543,7 @@ const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean
   { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
   { k: "google", l: "Google Places", caption: "Live Google Places search for this destination — nothing here is stored in Traveloure's catalog." },
+  { k: "viator", l: "Viator", caption: "Bookable tours and activities from Viator — add them straight to the itinerary." },
   { k: "partner", l: "Partner inventory", caption: "Browse tours & activities from Traveloure's partner networks, or jump straight to a network's booking site." },
   { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
@@ -2640,6 +2781,36 @@ function writeExtraMaxDay(tripId: string, value: number): void {
   }
 }
 
+// ── Booking-brief session cache (trip-scoped, sessionStorage-backed) ─────────
+// Keyed per tripId so confirming a provider for one trip never skips the modal
+// on a different client's trip. sessionStorage survives page reloads but is
+// cleared when the browser tab/session ends — matching "same session" semantics.
+// All errors are swallowed: private-browsing / quota failures silently degrade
+// to in-memory-only behaviour (the state Set still works for the current mount).
+const BOOKING_BRIEF_STORE = (tripId: string) => `booking-brief-confirmed:${tripId}`;
+const normalizeProvider = (p: string) => p.trim().toLowerCase();
+
+function readConfirmedFromSession(tripId: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(BOOKING_BRIEF_STORE(tripId));
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeConfirmedToSession(tripId: string, providers: Set<string>): void {
+  try {
+    sessionStorage.setItem(BOOKING_BRIEF_STORE(tripId), JSON.stringify(Array.from(providers)));
+  } catch {
+    // quota / private-browsing — silently degrade
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
@@ -2712,6 +2883,9 @@ export default function ExpertWorkspace() {
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Persists across renders: true when the last flush attempt for private notes failed so that
+  // safeNavigate retries on every subsequent navigation click until a flush succeeds.
+  const noteFlushFailedRef = useRef(false);
   // CLAUDE.md §21 (ratified Aug 9, 2026) — the trip-level "Expert Notes" card, traveler-visible
   // (trips.expert_traveler_note, migration 187), distinct from the private Build notes state
   // directly above. Mirrors that card's own save/debounce/status pattern exactly.
@@ -2721,7 +2895,36 @@ export default function ExpertWorkspace() {
   const [travelerNotesOpen, setTravelerNotesOpen] = useState(false);
   const travelerNoteInitialized = useRef(false);
   const travelerNotesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Same failure-tracking ref for traveler-facing notes (mirrors noteFlushFailedRef above).
+  const travelerNoteFlushFailedRef = useRef(false);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
+  // Session cache: normalized provider names already confirmed (via "Continue to [Provider]")
+  // for the CURRENT trip in this browser session. Keyed by tripId in sessionStorage so
+  // switching trips never carries over a previous client's confirmations.
+  const [confirmedProviders, setConfirmedProviders] = useState<Set<string>>(() =>
+    tripId ? readConfirmedFromSession(tripId) : new Set(),
+  );
+  // Re-hydrate whenever the active trip changes (e.g. sidebar navigation without full reload).
+  useEffect(() => {
+    if (tripId) setConfirmedProviders(readConfirmedFromSession(tripId));
+  }, [tripId]);
+
+  /** Session-aware booking brief opener.
+   *  First click for a given provider (per trip) → shows the full modal.
+   *  Subsequent clicks in the same session for the same trip → skips the modal, opens the
+   *  URL directly, and shows a brief toast so the expert knows client details are still in play. */
+  const handleOpenBookingBrief = useCallback((provider: string, bookingUrl?: string) => {
+    if (confirmedProviders.has(normalizeProvider(provider))) {
+      if (bookingUrl) window.open(bookingUrl, "_blank", "noopener,noreferrer");
+      toast({
+        title: "Client details on file",
+        description: `Opening ${provider} — your client's details are ready to use.`,
+      });
+      return;
+    }
+    setBookingBrief({ provider, bookingUrl });
+  }, [confirmedProviders, toast]);
+
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
   // log-a-booking form open. One at a time, mirroring ItemsEditorPanel's single-expanded-row pattern.
@@ -2764,7 +2967,7 @@ export default function ExpertWorkspace() {
   // Mode resolution is the SERVER's call (ready-made brief §2): assignment (an advisor row exists)
   // vs authoring (this expert is the trip's author). The client never infers it from a role string.
   const { data: workspaceCtx, isLoading: ctxLoading } = useQuery<{
-    mode: "assignment" | "authoring";
+    mode: "assignment" | "authoring" | "booking_request";
     trip: any;
     listing?: ReadyMadeListing | null;
   }>({
@@ -2773,6 +2976,8 @@ export default function ExpertWorkspace() {
     retry: false,
   });
   const isAuthoring = workspaceCtx?.mode === "authoring";
+  /** Provider landed here via a booking-request notification — advisor row not yet created. */
+  const isBookingRequest = workspaceCtx?.mode === "booking_request";
   const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
 
   // Decision-maker ruling (Aug 8 2026): the workspace ALWAYS lands on Add — building comes
@@ -2781,7 +2986,9 @@ export default function ExpertWorkspace() {
 
   const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({
     queryKey: ["/api/expert/assigned-trips"],
-    enabled: !isAuthoring, // an authoring trip is never in the assignment list (it has no advisor row)
+    // Wait for workspace-context to resolve so isAuthoring/isBookingRequest are known before firing.
+    // authoring trips have no advisor row; booking_request providers are not assigned advisors yet.
+    enabled: !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
   const { data: expertRoleData } = useQuery<{ role: string; roleLabel: string | null; applicationStatus: string | null }>({
@@ -2919,8 +3126,10 @@ export default function ExpertWorkspace() {
 
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
+  // booking_request mode: provider landed via a notification link before the advisor row exists —
+  // shape the context trip the same way so the rest of the page can render with the trip data.
   // Shape the context's trip row into the same view model the whole page already reads.
-  const trip: AssignedTrip | undefined = assignedTrip ?? (isAuthoring && workspaceCtx?.trip ? {
+  const trip: AssignedTrip | undefined = assignedTrip ?? ((isAuthoring || isBookingRequest) && workspaceCtx?.trip ? {
     trip_id: workspaceCtx.trip.id,
     trip_title: workspaceCtx.trip.title ?? "Untitled build",
     destination: workspaceCtx.trip.destination ?? "",
@@ -2932,19 +3141,23 @@ export default function ExpertWorkspace() {
     suggestion_count: 0,
   } : undefined);
 
+  // booking_request mode: provider landed via a notification link with an active booking but
+  // no advisor assignment yet. Every trip-scoped sub-query is gated on !!workspaceCtx so the
+  // mode is known before any request fires — on the initial render workspaceCtx is undefined,
+  // making isBookingRequest false, which would otherwise enable the queries prematurely.
   const { data: itineraryData, isLoading: itemsLoading } = useQuery<ItineraryData>({
     queryKey: [`/api/trips/${tripId}/itinerary-items`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
 
   const { data: assignment, isLoading: assignmentLoading } = useQuery<MyAssignment>({
     queryKey: [`/api/trips/${tripId}/my-assignment`],
-    enabled: !!tripId && !isAuthoring,
+    enabled: !!tripId && !!workspaceCtx && !isAuthoring && !isBookingRequest,
   });
 
-  const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
+  const { data: expertNotesData } = useQuery<{ expertNotes: string; expertNotesUpdatedAt?: string | null }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
   });
 
   // CLAUDE.md §21 — the trip-level traveler-facing note's INITIAL value. There is no dedicated
@@ -2955,14 +3168,14 @@ export default function ExpertWorkspace() {
   // invalidates, so this stays in sync for free rather than adding a second cache to babysit.
   const { data: plancardForNote } = useQuery<{ trip?: { expertTravelerNote?: string | null } }>({
     queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
     staleTime: 30 * 1000,
     retry: false,
   });
 
   const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
-    enabled: !!tripId,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest,
     staleTime: 30 * 1000,
   });
 
@@ -2971,7 +3184,7 @@ export default function ExpertWorkspace() {
   // estimator per same-day pair — no reason to pay for it on every workspace load).
   const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
     queryKey: [`/api/trips/${tripId}/transport-gaps`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
   });
 
   // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape TransportLegsPanel and
@@ -2979,7 +3192,7 @@ export default function ExpertWorkspace() {
   // entry, gated the same "only while the tab is open" way transportGaps above is.
   const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
     queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
   });
 
   // Advisor Phase 2-4 — reorder-nudge source (route-efficiency), stays card (stay-anchor), and
@@ -2989,14 +3202,14 @@ export default function ExpertWorkspace() {
   // tab) — react-query's own `isError` flag is read directly rather than a toast.
   const { data: advisorRouteEfficiency, isError: advisorRouteEfficiencyError } = useQuery<AdvisorRouteEfficiencyResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/route-efficiency`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
 
   const { data: advisorStayAnchor, isError: advisorStayAnchorError } = useQuery<AdvisorStayAnchorResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/stay-anchor`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -3011,7 +3224,7 @@ export default function ExpertWorkspace() {
       if (res.status === 204) return null;
       return res.json();
     },
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -3037,7 +3250,7 @@ export default function ExpertWorkspace() {
   // than fake results (§13).
   const { data: fundamentalsData, isLoading: fundamentalsLoading, isError: fundamentalsError } = useQuery<AdvisorFundamentalsResponse>({
     queryKey: [`/api/trips/${tripId}/advisor/fundamentals`],
-    enabled: !!tripId && rightTab === "gaps",
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && rightTab === "gaps",
     staleTime: 30 * 1000,
     retry: false,
   });
@@ -3070,7 +3283,7 @@ export default function ExpertWorkspace() {
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: !!tripId && isEvent,
+    enabled: !!tripId && !!workspaceCtx && !isBookingRequest && isEvent,
     staleTime: 60 * 1000,
   });
 
@@ -3175,21 +3388,23 @@ export default function ExpertWorkspace() {
   const energyCalcRef = useRef(false);
   const energyRecalcInFlight = useRef(false);
   const triggerEnergyRecalc = useCallback(() => {
-    if (!tripId || energyRecalcInFlight.current) return;
+    // booking_request mode: provider/expert has no assignment yet — skip all trip-scoped writes.
+    if (!tripId || isBookingRequest || energyRecalcInFlight.current) return;
     energyRecalcInFlight.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .finally(() => { energyRecalcInFlight.current = false; });
-  }, [tripId]);
+  }, [tripId, isBookingRequest]);
 
   useEffect(() => {
-    if (!tripId || energyCalcRef.current) return;
+    // booking_request mode: no assignment, no trip-scoped writes allowed.
+    if (!tripId || isBookingRequest || energyCalcRef.current) return;
     energyCalcRef.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
       .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
       .catch(() => {});
-  }, [tripId]);
+  }, [tripId, isBookingRequest]);
 
   const presetsAppliedRef = useRef(false);
   useEffect(() => {
@@ -3213,6 +3428,9 @@ export default function ExpertWorkspace() {
   useEffect(() => {
     if (expertNotesData !== undefined && !noteInitialized.current) {
       setNoteText(expertNotesData.expertNotes || "");
+      if (expertNotesData.expertNotesUpdatedAt) {
+        setLastSavedAt(new Date(expertNotesData.expertNotesUpdatedAt));
+      }
       noteInitialized.current = true;
     }
   }, [expertNotesData]);
@@ -3255,7 +3473,7 @@ export default function ExpertWorkspace() {
   // never a duplicated query field) but hits sources=google so results are Google-only — no
   // platform inventory shows up here (that stays the platform pill's job). ──
   const googleSearchEnabled = rightTab === "add" && addSource === "google" && !!(debouncedQuery || destination);
-  const { data: googleSearchData, isFetching: googleSearchFetching } = useQuery<{ results: any[]; count: number }>({
+  const { data: googleSearchData, isFetching: googleSearchFetching } = useQuery<{ results: any[]; count: number; placesUnavailable?: boolean }>({
     queryKey: ["/api/search/experiences", "google", debouncedQuery, destination, cat],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -3269,11 +3487,34 @@ export default function ExpertWorkspace() {
     staleTime: 2 * 60 * 1000,
   });
   const googleSearchResults = googleSearchData?.results || [];
+  // placesUnavailable: the server sets this when the Places API call fails (billing error,
+  // quota exhaustion, key misconfiguration) so the client can show an honest notice rather
+  // than a silently empty list. It is only present when sources=google was requested.
+  const googlePlacesUnavailable = !!(googleSearchData?.placesUnavailable);
   // Per-result "added" state (green check chip) — keyed by placeId (falls back to the result's
   // own id if a placeId is ever absent). Best-effort cross-link: matched against whatever the
   // platform drawer's OWN query currently has cached (may be empty/stale if that drawer was never
   // opened this session — skip cleanly rather than firing a second fetch just for this).
   const [googleAddedDays, setGoogleAddedDays] = useState<Record<string, number>>({});
+
+  // ── Browse: Viator bookable-activities search (the "Viator" Add-panel pill). Shares
+  // browseQuery/debouncedQuery/cat with the other drawers (one search-box concept). Sources=viator
+  // so the server hits only the Viator arm — no Google or platform results mix in. ──
+  const viatorSearchEnabled = rightTab === "add" && addSource === "viator" && !!(debouncedQuery || destination);
+  const { data: viatorSearchData, isFetching: viatorSearchFetching } = useQuery<{ results: any[]; count: number }>({
+    queryKey: ["/api/search/experiences", "viator", debouncedQuery, destination, cat],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (destination) params.set("destination", destination);
+      if (cat && cat !== "all") params.set("category", cat);
+      params.set("sources", "viator");
+      return fetch(`/api/search/experiences?${params}`, { credentials: "include" }).then(r => r.json());
+    },
+    enabled: viatorSearchEnabled,
+    staleTime: 5 * 60 * 1000,
+  });
+  const viatorSearchResults = viatorSearchData?.results || [];
 
   // ── Browse: add result to itinerary (day-aware — targets a chosen day, defaulting to the
   // focused day). GOOGLE-PLACES-SOURCE-PILL: generalized from a hardcoded `focusDay` write to an
@@ -3393,13 +3634,17 @@ export default function ExpertWorkspace() {
       const res = await apiRequest("PATCH", `/api/trips/${tripId}/expert-notes`, { expertNotes: notes });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
+      noteFlushFailedRef.current = false;
       setNoteSaveStatus("saved");
-      setLastSavedAt(new Date());
+      setLastSavedAt(data?.expertNotesUpdatedAt ? new Date(data.expertNotesUpdatedAt) : new Date());
       const t = setTimeout(() => setNoteSaveStatus("idle"), 2000);
       return () => clearTimeout(t);
     },
-    onError: () => setNoteSaveStatus("idle"),
+    onError: () => {
+      noteFlushFailedRef.current = true;
+      setNoteSaveStatus("idle");
+    },
   });
 
   const handleNoteChange = (text: string) => {
@@ -3426,13 +3671,17 @@ export default function ExpertWorkspace() {
       return res.json();
     },
     onSuccess: () => {
+      travelerNoteFlushFailedRef.current = false;
       setTravelerNoteSaveStatus("saved");
       setTravelerNoteLastSavedAt(new Date());
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       const t = setTimeout(() => setTravelerNoteSaveStatus("idle"), 2000);
       return () => clearTimeout(t);
     },
-    onError: () => setTravelerNoteSaveStatus("idle"),
+    onError: () => {
+      travelerNoteFlushFailedRef.current = true;
+      setTravelerNoteSaveStatus("idle");
+    },
   });
 
   const handleTravelerNoteChange = (text: string) => {
@@ -3480,12 +3729,50 @@ export default function ExpertWorkspace() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [noteSaveStatus, travelerNoteSaveStatus]);
 
-  // ── safeNavigate: intercept in-app navigation while save is pending ──
-  const safeNavigate = (path: string) => {
-    if (noteSaveStatus === "saving" || travelerNoteSaveStatus === "saving") {
-      const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
-      if (!confirmed) return;
+  // ── safeNavigate: flush pending note saves before navigating ──
+  // Cancels the debounce timer, fires each pending mutation immediately, and awaits all of
+  // them. If every flush succeeds, a confirmation toast appears and navigation proceeds.
+  // If any flush fails, an error toast appears and navigation is BLOCKED — the expert
+  // remains on the page with their unsaved work intact so they can retry or copy it out.
+  const safeNavigate = async (path: string) => {
+    type FlushResult = { label: string; promise: Promise<unknown> };
+    const flushes: FlushResult[] = [];
+
+    // Flush if a save is actively debounced (status === "saving") OR if a previous flush
+    // attempt failed (ref === true). The ref persists across renders and navigation clicks,
+    // so every subsequent attempt retries until the save succeeds or the expert discards.
+    if (noteSaveStatus === "saving" || noteFlushFailedRef.current) {
+      if (notesDebounceRef.current) {
+        clearTimeout(notesDebounceRef.current);
+        notesDebounceRef.current = null;
+      }
+      flushes.push({ label: "private notes", promise: autoSaveNotesMutation.mutateAsync(noteText) });
     }
+
+    if (travelerNoteSaveStatus === "saving" || travelerNoteFlushFailedRef.current) {
+      if (travelerNotesDebounceRef.current) {
+        clearTimeout(travelerNotesDebounceRef.current);
+        travelerNotesDebounceRef.current = null;
+      }
+      flushes.push({ label: "traveler notes", promise: autoSaveTravelerNoteMutation.mutateAsync(travelerNoteText) });
+    }
+
+    if (flushes.length > 0) {
+      const results = await Promise.allSettled(flushes.map((f) => f.promise));
+      const failed = flushes.filter((_, i) => results[i].status === "rejected");
+      if (failed.length > 0) {
+        // refs already set to true in each mutation's onError — next navigation click retries
+        toast({
+          title: "Could not save notes",
+          description: `${failed.map((f) => f.label).join(" and ")} could not be saved. Stay on this page to try again or copy your notes before leaving.`,
+          variant: "destructive",
+        });
+        return; // block navigation — unsaved work must not be silently lost
+      }
+      // refs cleared to false in each mutation's onSuccess
+      toast({ title: "Notes saved", description: "Your notes were saved before leaving." });
+    }
+
     setLocation(path);
   };
 
@@ -3520,7 +3807,7 @@ export default function ExpertWorkspace() {
   const advisorLegDays = Object.keys(advisorLegMetersByDay).map(Number).sort((a, b) => a - b);
   const advisorLegTotalMeters = advisorTripLegs.reduce((sum, l) => sum + (l.distanceMeters || 0), 0);
 
-  const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
+  const isLoading = ctxLoading || (!isAuthoring && !isBookingRequest && (tripsLoading || assignmentLoading));
 
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {
@@ -3743,6 +4030,51 @@ export default function ExpertWorkspace() {
     </ExpertLayout>
   );
 
+  // Booking-request mode: the provider has an active booking on this trip but is not yet an
+  // assigned advisor. Show a scoped landing view — no itinerary/notes/plancard data is fetched
+  // (those queries are disabled above); all information here comes solely from workspace-context.
+  if (isBookingRequest && trip) {
+    const brTitle = trip.trip_title || trip.destination || `Trip ${tripId}`;
+    const brDest  = trip.destination || "";
+    return (
+      <ExpertLayout title="Booking Request">
+        <div style={{ maxWidth: 520, margin: "40px auto", padding: "0 16px" }}>
+          <div style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 16, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Briefcase style={{ width: 22, height: 22, color: BRAND }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: INK }}>{brTitle}</div>
+                {brDest && <div style={{ fontSize: 13, color: MID, marginTop: 2 }}>{brDest}</div>}
+              </div>
+            </div>
+            <div style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: MID, lineHeight: 1.6 }}>
+              A traveler has sent you a booking request for this trip. Review and respond in your bookings dashboard.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                data-testid="button-booking-request-go-to-bookings"
+                onClick={() => safeNavigate("/expert/bookings")}
+                style={{ ...btnPrimaryStyle, flex: 1, padding: "9px 16px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+              >
+                <Briefcase style={{ width: 15, height: 15 }} />
+                Review Booking Request
+              </button>
+              <button
+                data-testid="button-booking-request-back"
+                onClick={() => safeNavigate("/expert/workspace")}
+                style={{ ...btnQuietStyle, padding: "9px 16px", fontSize: 14 }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </ExpertLayout>
+    );
+  }
+
   const tripTitle = trip?.trip_title || trip?.destination || `Trip ${tripId}`;
   const travelerCode = trip?.trip_id?.slice(-6)?.toUpperCase() || "??????";
   const travelerName = trip?.traveler_name || "Client";
@@ -3814,7 +4146,21 @@ export default function ExpertWorkspace() {
         (internal panes scroll; the shell's <main> never double-scrolls). */}
     <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", height: "calc(100vh - 52px)", display: "flex", flexDirection: "column", background: GROUND, overflow: "hidden" }}>
       {bookingBrief && tripId && (
-        <BookingBriefModal provider={bookingBrief.provider} bookingUrl={bookingBrief.bookingUrl} tripId={tripId} onClose={() => setBookingBrief(null)} />
+        <BookingBriefModal
+          provider={bookingBrief.provider}
+          bookingUrl={bookingBrief.bookingUrl}
+          tripId={tripId}
+          onClose={() => setBookingBrief(null)}
+          onConfirmed={(provider) => {
+            const key = normalizeProvider(provider);
+            setConfirmedProviders(prev => {
+              const s = new Set(prev);
+              s.add(key);
+              if (tripId) writeConfirmedToSession(tripId, s);
+              return s;
+            });
+          }}
+        />
       )}
       {servicePickerOpen && tripId && (
         <ServicePickerModal tripId={tripId} dayNumber={focusDay} destination={trip?.destination || ""} onClose={() => setServicePickerOpen(false)} onAdded={triggerEnergyRecalc} />
@@ -4032,7 +4378,18 @@ export default function ExpertWorkspace() {
                   maxDay={maxDay}
                   destination={destination}
                   onDayMoved={triggerEnergyRecalc}
-                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  onOpenBookingBrief={(network) => handleOpenBookingBrief(network, resolvePartnerBookingUrl(network))}
+                  confirmedProviders={confirmedProviders}
+                  onConfirmedProvider={(provider) => {
+                    const key = normalizeProvider(provider);
+                    setConfirmedProviders(prev => {
+                      const s = new Set(prev);
+                      s.add(key);
+                      if (tripId) writeConfirmedToSession(tripId, s);
+                      return s;
+                    });
+                  }}
+                  resolveBookingUrl={resolvePartnerBookingUrl}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
                   onSelectItem={(itemId) => setMapFocusItemId(itemId)}
@@ -4329,6 +4686,16 @@ export default function ExpertWorkspace() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     {[1, 2, 3].map(i => <div key={i} style={{ height: 72, borderRadius: 8, background: GROUND }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
                   </div>
+                ) : googlePlacesUnavailable ? (
+                  <div data-testid="notice-places-unavailable" style={{ textAlign: "center", padding: "24px 16px", color: MID }}>
+                    <MapPin style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, color: INK }}>
+                      External results unavailable
+                    </div>
+                    <div style={{ fontSize: 11, color: FAINT, lineHeight: 1.5 }}>
+                      Google Places couldn't be reached right now. Platform and Viator results are still available on the other tabs.
+                    </div>
+                  </div>
                 ) : googleSearchResults.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
                     <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
@@ -4436,6 +4803,121 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
+          {/* Add · Viator — live bookable-activities search. Writes through addFromSearchMutation
+              (same POST /api/trips/:tripId/itinerary-items rail as every other source). Results
+              carry source="viator" + productCode so the item description carries an honest
+              attribution note; no affiliate URL is ever embedded (§16). */}
+          {rightTab === "add" && addSource === "viator" && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Discovery-layer candidates for the canvas plan map (same contract as other
+                  drawers; Viator products carry no coordinates so this publisher emits an
+                  empty list — the map simply shows nothing, which is honest: §13). */}
+              <MapCandidatesPublisher
+                source="viator"
+                sourceLabel="Viator"
+                items={[]}
+                onAdd={() => {}}
+              />
+
+              {/* Search bar + category chips */}
+              <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${LINE}`, background: CARD, flexShrink: 0 }}>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: FAINT, pointerEvents: "none" }} />
+                  <input
+                    value={browseQuery}
+                    onChange={e => setBrowseQuery(e.target.value)}
+                    placeholder={`Search Viator in ${destination || "destination"}…`}
+                    data-testid="input-browse-search-viator"
+                    style={{ width: "100%", paddingLeft: 30, paddingRight: viatorSearchFetching ? 30 : 10, paddingTop: 7, paddingBottom: 7, borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box", background: GROUND, color: INK }}
+                  />
+                  {viatorSearchFetching && <Loader2 style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: FAINT }} className="animate-spin" />}
+                </div>
+                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+                  {[{ k: "all", l: "All" }, { k: "activities", l: "Activities" }, { k: "dining", l: "Dining" }, { k: "hotels", l: "Hotels" }, { k: "transport", l: "Transport" }].map(c => (
+                    <Chip key={c.k} active={cat === c.k} onClick={() => setCat(c.k)}>{c.l}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              {/* Results list */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                {viatorSearchFetching && viatorSearchResults.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[1, 2, 3].map(i => <div key={i} style={{ height: 72, borderRadius: 8, background: GROUND }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
+                  </div>
+                ) : !viatorSearchEnabled ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
+                    <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                      {destination ? `Search activities in ${destination}` : "Enter a destination to browse Viator"}
+                    </div>
+                    <div style={{ fontSize: 11, color: FAINT }}>Try "food tour", "day trip", "snorkelling"</div>
+                  </div>
+                ) : viatorSearchResults.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
+                    <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>No Viator results</div>
+                    <div style={{ fontSize: 11, color: FAINT }}>
+                      {cat !== "all" ? 'Try the "All" category or a different search term.' : "Try a different search or check the destination."}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, paddingLeft: 2 }}>
+                      {viatorSearchResults.length} result{viatorSearchResults.length !== 1 ? "s" : ""}
+                    </div>
+                    {viatorSearchResults.map((result: any) => (
+                      <div
+                        key={result.id}
+                        data-testid={`card-viator-result-${result.id}`}
+                        style={{ display: "flex", flexDirection: "column", gap: 6, padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, background: CARD, marginBottom: 7 }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 7, background: result.photoUrl ? "transparent" : GROUND, border: result.photoUrl ? "none" : `1px solid ${LINE}`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {result.photoUrl
+                              ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              : <MapPin style={{ width: 16, height: 16, color: FAINT }} />}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{result.name}</span>
+                              <StateChip tone="brand">Viator</StateChip>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 10.5, color: MID, flexWrap: "wrap" }}>
+                              {result.rating != null && (
+                                <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                  <Star style={{ width: 9, height: 9, color: WARN }} />
+                                  {result.rating.toFixed(1)}{result.reviewCount != null && ` (${result.reviewCount.toLocaleString()})`}
+                                </span>
+                              )}
+                              {result.rating != null && result.priceLabel && <span style={{ color: FAINT }}>·</span>}
+                              {result.priceLabel && <span style={{ fontWeight: 600, color: OK }}>{result.priceLabel}</span>}
+                              {(result.rating != null || result.priceLabel) && <span style={{ color: FAINT }}>·</span>}
+                              <span style={{ textTransform: "capitalize" }}>{result.category}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => addFromSearchMutation.mutate({ result, day: focusDay })}
+                            disabled={addFromSearchMutation.isPending}
+                            data-testid={`button-add-viator-${result.id}`}
+                            style={{ padding: "4px 10px", borderRadius: 8, background: BRAND_SOFT, color: BRAND, border: `1px solid ${BRAND}`, fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
+                          >
+                            + Day {focusDay}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              <div style={{ borderTop: `1px solid ${LINE}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: FAINT }}>Activity results from Viator · bookable tours and experiences</span>
+              </div>
+            </div>
+          )}
+
           {/* Add · Partner inventory — a browsable catalog (W3-A, default) plus the existing
               affiliate-networks list as a sub-tab (booking-brief rail, §16). */}
           {rightTab === "add" && addSource === "partner" && (
@@ -4519,7 +5001,7 @@ export default function ExpertWorkspace() {
                         <div style={{ fontSize: 11, color: FAINT }}>{aff.category || "—"}</div>
                       </div>
                       <button
-                        onClick={() => setBookingBrief({ provider: aff.name, bookingUrl: aff.websiteUrl })}
+                        onClick={() => handleOpenBookingBrief(aff.name, aff.websiteUrl)}
                         data-testid={`button-affiliate-${aff.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
                         style={{ ...btnPrimaryStyle, flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11 }}
                       >

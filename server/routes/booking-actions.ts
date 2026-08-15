@@ -550,7 +550,7 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
         funnelStage: "T7",
         refToken: shareToken,
       });
-    } catch (_) {}
+    } catch (_) { /* fire-and-forget funnel event — never blocks the share response */ }
 
     res.json({ success: true, shareToken: canonical });
   } catch (error: any) {
@@ -1541,8 +1541,8 @@ router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
     if (!assignment && !(await isTripAuthor(tripId, userId))) {
       return res.status(403).json({ message: "Not authorized to view notes for this trip" });
     }
-    const expertNotes = await storage.getTripExpertNotes(tripId);
-    res.json({ expertNotes });
+    const { expertNotes, expertModifiedAt } = await storage.getTripExpertNotes(tripId);
+    res.json({ expertNotes, expertNotesUpdatedAt: expertModifiedAt?.toISOString() ?? null });
   } catch (err) {
     console.error("[Expert] getExpertNotes error:", err);
     res.status(500).json({ message: "Failed to get expert notes" });
@@ -1558,8 +1558,9 @@ router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) =>
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
-    await storage.updateTrip(tripId, { expertNotes });
-    res.json({ ok: true });
+    const savedAt = new Date();
+    await storage.updateTrip(tripId, { expertNotes, expertModifiedAt: savedAt });
+    res.json({ ok: true, expertNotesUpdatedAt: savedAt.toISOString() });
   } catch (err) {
     console.error("[Expert] saveExpertNotes error:", err);
     res.status(500).json({ message: "Failed to save expert notes" });

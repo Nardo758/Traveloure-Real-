@@ -105,6 +105,7 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+import { travelpayoutsCache } from "@shared/schema";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -3139,11 +3140,11 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const period = (req.query.period as string) || "this_month";
+      const period = (req.query.period as string) || "last_35_days";
       const partner = (req.query.partner as string) || undefined;
-      const validPeriods = ["this_month", "last_month", "last_90_days"];
+      const validPeriods = ["this_month", "last_35_days", "last_month", "last_90_days"];
       if (!validPeriods.includes(period)) {
-        return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
+        return res.status(400).json({ message: "Invalid period. Use: this_month, last_35_days, last_month, last_90_days" });
       }
 
       const { affiliateReconciliationService } = await import("../services/affiliate-reconciliation.service");
@@ -5401,6 +5402,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       try {
         await pingDb();
       } catch {
+        // DB ping failure is represented as degraded status — never abort the health response.
         dbStatus = "degraded";
       }
       const dbLatency = Date.now() - dbStart;
@@ -5420,14 +5422,18 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         const { aiUsageService: aiSvc } = await import('../services/ai-usage.service');
         const summary = await aiSvc.getSummary();
         aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCostDollars || 0).toFixed(2)}` };
-      } catch {}
+      } catch (aiErr) {
+        console.warn("[admin/system-health] Could not load AI usage summary — returning defaults:", aiErr);
+      }
 
       try {
         const allBookings = await storage.getServiceBookings({});
         const completedBookings = allBookings.filter(b => b.status === "completed");
         const volume = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
         apiUsage = { transactions: allBookings.length, volume: `$${volume.toLocaleString()}` };
-      } catch {}
+      } catch (bookingErr) {
+        console.warn("[admin/system-health] Could not load booking usage stats — returning defaults:", bookingErr);
+      }
 
       res.json({
         services,
@@ -7659,6 +7665,35 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
+  }
+});
+
+// ─── Travelpayouts cache status ────────────────────────────────────────────────
+// Rides the blanket /api/admin adminApiGuard (§2). Aggregates all cache rows by
+// brand so operators can see whether displayed eSIM, transport, and activity
+// cards are fresh or stale. refreshedAt (migration 221, stamped on every upsert
+// by shared-cache.service.ts) is the accurate last-refresh time — createdAt is
+// immutable after first insert and is not surfaced here. Pre-migration rows with
+// null refreshedAt are represented as lastRefreshedAt: null ("unknown").
+router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req, res) => {
+  try {
+    const now = new Date();
+    const rows = await db
+      .select({
+        brand: travelpayoutsCache.brand,
+        cacheKey: travelpayoutsCache.cacheKey,
+        expiresAt: travelpayoutsCache.expiresAt,
+        refreshedAt: travelpayoutsCache.refreshedAt,
+      })
+      .from(travelpayoutsCache)
+      .orderBy(travelpayoutsCache.brand, travelpayoutsCache.cacheKey);
+
+    const { aggregateBrandStatus } = await import("../services/travelpayouts/travelpayouts-cache-status");
+    const brands = aggregateBrandStatus(rows, now);
+    res.json({ brands, retrievedAt: now });
+  } catch (error: any) {
+    console.error("[admin/travelpayouts-cache/status] error:", error);
+    res.status(500).json({ message: "Failed to retrieve cache status", error: error.message });
   }
 });
 

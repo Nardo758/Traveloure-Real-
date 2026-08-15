@@ -47,6 +47,9 @@ const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
+
+const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
+const ExpertContractCategories = lazy(() => import("@/pages/expert/contract-categories"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
 const EAClients = lazy(() => import("@/pages/ea/clients"));
@@ -109,6 +112,7 @@ const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
 const ExpertsPage = lazy(() => import("@/pages/experts"));
 const DiscoverPage = lazy(() => import("@/pages/discover"));
+const ExperienceDiscoveryPage = lazy(() => import("@/pages/experience-discovery"));
 const DiscoverLocationPage = lazy(() => import("@/pages/discover-location"));
 const ContactPage = lazy(() => import("@/pages/contact"));
 const FAQPage = lazy(() => import("@/pages/faq"));
@@ -506,7 +510,7 @@ function Router() {
         <ExperienceTemplatePage />
       </Route>
       <Route path="/discover-experiences">
-        <Redirect to="/discover" />
+        <ExperienceDiscoveryPage />
       </Route>
       {/* /deals kept: unique content (flash sales, seasonal, last-minute, bundle listings)
           with countdown timers and discount data not surfaced inside /discover. */}
@@ -746,7 +750,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients/:id">
-        {() => <Redirect to="/expert/customers" />}
+        {() => <ProtectedRoute component={ExpertClientDetail} requiredRole="expert" />}
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
@@ -791,6 +795,9 @@ function Router() {
           page itself is gone — share-tools.tsx carries the primitives for both consoles. */}
       <Route path="/expert/share-promote">
         <Redirect to="/expert/catalog" />
+      </Route>
+      <Route path="/expert/contract-categories">
+        {() => <ProtectedRoute component={ExpertContractCategories} requiredRole="expert" />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}

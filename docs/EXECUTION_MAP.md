@@ -432,9 +432,29 @@ canonical schema and quietly ratify keeping it forever. But the drop is one-way 
 must be declared before the next publish; otherwise the deploy tool makes the retirement decision by default.**
 Recommendation: let it go, and retire migration 080 to a no-op with a note.
 
+### Automated drift guard — `scripts/check-undeclared-tables.cjs`
+
+**Registered as a CI validation workflow** (`check-undeclared-tables` in `.replit`). Run it any time before a publish:
+
+```
+node scripts/check-undeclared-tables.cjs              # uses DATABASE_URL
+node scripts/check-undeclared-tables.cjs "<url>"      # explicit connection string
+node scripts/check-undeclared-tables.cjs --self-test  # no DB needed
+```
+
+The script scans **all `.ts` files under `shared/`** for `pgTable("name")` declarations (covering `schema.ts`, `models/auth.ts`, `models/chat.ts`, `guest-invites-schema.ts`, and any future split-outs), then queries `information_schema.tables` for every `public` BASE TABLE in the dev DB, and exits non-zero on any table present in the DB but absent from the declarations — those are the objects drizzle-kit push would silently DROP.
+
+**Known-excluded lists in the script:**
+- `RETIRED_TABLES` — tables physically removed by a recorded guarded migration (013, 158, 167, 168, 176). Add here only *after* the DROP migration is written and applied.
+- `SYSTEM_TABLES` — `schema_migrations` (migration ledger) and `sessions` (connect-pg-simple self-creates).
+
+**Maintaining the lists:** when you retire a table via a guarded migration, add it to `RETIRED_TABLES`. When you declare a new table in `shared/schema.ts` (or any file under `shared/`), the script picks it up automatically — no list update needed.
+
+**Status (Aug 2026):** dev and prod both clean — `node scripts/check-undeclared-tables.cjs` exits 0. The only finding from the initial run (`_deprecated_expert_city_queues`) was retired by migration 226 (archive-then-guarded-drop, following the migration-158 pattern; all 10 rows were empty seed records archived to `legacy_archives`). The unregistered `server/migrations/scheduled_drop_deprecated_city_queues.sql` is now superseded by migration 226 and can be ignored.
+
 ### Housekeeping
 - ~31 tables exist with zero code references (INFERRED, not hand-verified per table): `board_items` (migration 133's
-  ready-made "boards" feature has no reader/writer at all), `activity_bookings`, `affiliate_platforms`,
+  ready-made "boards" feature has no reader/writer at all), `affiliate_platforms`,
   `expert_handoffs`, `platform_fees`, `trip_selected_*`, etc.
 - `sessions` being schema-only is **correct, not a gap** — deliberately excluded from the baseline dump because
   `connect-pg-simple` self-creates it.

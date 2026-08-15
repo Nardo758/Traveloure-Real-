@@ -156,6 +156,8 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
+import { handleExchangeRates } from "./exchange-rate.handler";
+import { makeGeocodePostHandler } from "./geocode-post.handler";
 import instagramRoutes from "./instagram";
 import bookingsRoutes from "./bookings";
 import bookingActionsRoutes from "./booking-actions";
@@ -3875,46 +3877,13 @@ router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
     }
   });
 
-  // Google Maps Geocoding API - Convert place name to coordinates
-  const geocodeSchema = z.object({
-    address: z.string().min(1),
-  });
-
   // Geocoding endpoint - public access since it's just a geographic lookup.
-  // Routes through the single server geocode path (server/utils/geocode.ts) — same one
-  // GET /api/geocode uses — instead of hand-rolling its own fetch. No fabricated fallback:
-  // a substring-matched hardcoded city-centre dictionary (FALLBACK_COORDINATES) used to stand
-  // in here on a Google miss, which contradicted the §13 / migration-129 no-fabrication
-  // posture (docs/briefs/PROVIDER_LOGISTICS_DISTRIBUTION_SPEC.md D4). A miss now returns an
-  // honest 404 — never a guessed coordinate. Both known callers already treat a non-ok
-  // response as "no location", not a crash (client/src/components/provider/catalog-map-view.tsx,
-  // client/src/pages/experience-template.tsx).
-
-router.post("/api/geocode", async (req, res) => {
-    try {
-      const parsed = geocodeSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const { address } = parsed.data;
-      const result = await geocodeAddress(address);
-      if (result) {
-        return res.json(result);
-      }
-      // DB-backed fallback (migration 217): admin-curated city-centre coordinates in
-      // geocode_fallbacks — curated data, not fabrication, so the §13 posture holds.
-      // A miss there too stays an honest 404, never a guessed coordinate.
-      const dbFallback = await storage.getGeocodeFallback(address);
-      if (dbFallback) {
-        return res.json({ ...dbFallback, fallback: true });
-      }
-      return res.status(404).json({ message: "Location not found" });
-    } catch (error: any) {
-      console.error('Geocoding API error:', error);
-      res.status(500).json({ message: error.message || "Geocoding failed" });
-    }
-  });
+  // Handler extracted to server/routes/geocode-post.handler.ts for testability.
+  // Three-tier path: Google geocode → geocode_fallbacks DB row (fallback:true) → 404.
+  // No fabricated coordinate ever — §13 / migration-129 no-fabrication posture.
+  // Both known callers already treat a non-ok response as "no location", not a crash
+  // (client/src/components/provider/catalog-map-view.tsx, client/src/pages/experience-template.tsx).
+router.post("/api/geocode", makeGeocodePostHandler());
 
   // === GROK AI INTEGRATION ROUTES ===
 
@@ -5947,15 +5916,28 @@ router.get("/api/search/experiences", async (req, res) => {
 
       // Sources filter (default "all" — today's exact behavior, every existing caller untouched).
       // "platform" skips the Google Places arm entirely (no API spend); "google" skips the
-      // platform arm. Response shape is unchanged in every case.
-      const sourcesFilter = sources === "platform" || sources === "google" ? sources : "all";
-      const includePlatform = sourcesFilter !== "google";
-      const includeGoogle = sourcesFilter !== "platform";
+      // platform arm; "viator" returns only Viator bookable-activity results.
+      // Response shape is unchanged in every case.
+      const sourcesFilter = sources === "platform" || sources === "google" || sources === "viator" ? sources : "all";
+      const includePlatform = sourcesFilter !== "google" && sourcesFilter !== "viator";
+      const includeGoogle = sourcesFilter !== "platform" && sourcesFilter !== "viator";
+      // Viator is a paid third-party API and is NEVER included in the default "all" set —
+      // only when the caller explicitly requests sources=viator. Additionally, Viator results
+      // are gated on an authenticated session to prevent unauthenticated quota exhaustion.
+      const includeViator = sourcesFilter === "viator";
 
       // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
       // platform arm has nothing for this destination+category and fell through to Google Places
       // — a real occurrence of unmet platform-catalog demand. Fire-and-forget, minimal context
       // (no free-text query — §13 no-PII posture).
+      if (sourcesFilter === "viator") {
+        logDemandSignal({
+          kind: "places_fallthrough",
+          market: destination || null,
+          category: category || null,
+          context: { hasQuery: !!q, source: "viator" },
+        });
+      }
       if (sourcesFilter === "google") {
         logDemandSignal({
           kind: "places_fallthrough",
@@ -6010,7 +5992,14 @@ router.get("/api/search/experiences", async (req, res) => {
           const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
           const descMatch = p.description?.toLowerCase().includes(qLower);
           const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
-          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
+          // Task 962: normalize both sides to the city token (first comma-separated
+          // segment, lower-cased) so "Kyoto, Japan", "Kyoto", and "kyoto" all
+          // match a service whose location column stores any of those variants.
+          const destCity = dest.split(",")[0].trim();
+          const locCity = (p.location || "").toLowerCase().split(",")[0].trim();
+          // Guard: if locCity is empty the service has no location and must not
+          // match any destination query (destCity.includes("") is always true).
+          const destMatch = !dest || !destCity || (!!locCity && (locCity.includes(destCity) || destCity.includes(locCity)));
           const textMatch = !qLower || nameMatch || descMatch;
           if (textMatch && destMatch && catMatch) {
             results.push({
@@ -6039,6 +6028,15 @@ router.get("/api/search/experiences", async (req, res) => {
       }
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
+      // placesUnavailable is set to true when the Places API call fails (non-OK HTTP,
+      // request-denied, billing error, or quota exhaustion) — distinct from ZERO_RESULTS
+      // which is a legitimate "nothing here" answer and leaves the flag false. The flag
+      // travels to the client so it can show an honest "external results unavailable"
+      // notice instead of a silently empty list.
+      let placesUnavailable = false;
+      if (includeGoogle && !apiKey) {
+        placesUnavailable = true;
+      }
       if (includeGoogle && apiKey) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
@@ -6047,47 +6045,125 @@ router.get("/api/search/experiences", async (req, res) => {
           all: "",
         };
         const typeFilter = catToType[category || "all"] || "";
-        const searchQuery = [q, destination].filter(Boolean).join(" in ");
+        // When no free-text query is provided, Places Text Search with just a city name
+        // returns the city itself (1 result) or 0 results when a type filter is also set.
+        // Build a category-appropriate default so results are places *in* the destination.
+        const catDefaultQuery: Record<string, string> = {
+          dining: "restaurants",
+          hotels: "hotels",
+          activities: "things to do",
+          all: "things to do",
+        };
+        const effectiveQ = q || catDefaultQuery[category || "all"] || "things to do";
+        const searchQuery = destination ? `${effectiveQ} in ${destination}` : effectiveQ;
         const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
         placesUrl.searchParams.set("query", searchQuery);
         placesUrl.searchParams.set("key", apiKey);
-        if (typeFilter) placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
+        // type= filter is a strict AND on top of the text query — only apply it when the
+        // caller explicitly requested a non-"all" category, to avoid over-filtering.
+        if (typeFilter && (category || "") !== "all") placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
 
-        const resp = await fetch(placesUrl.toString());
-        if (resp.ok) {
-          const data: any = await resp.json();
-          const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-          const catFromTypes = (types: string[]): string => {
-            if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
-            if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
-            if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
-            if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
-            return "activity";
-          };
-          for (const place of (data.results || []).slice(0, 15)) {
-            const photoRef = place.photos?.[0]?.photo_reference;
-            results.push({
-              id: `gp_${place.place_id}`,
-              source: "google_places",
-              placeId: place.place_id,
-              name: place.name,
-              address: place.formatted_address,
-              category: catFromTypes(place.types || []),
-              rating: place.rating ?? null,
-              reviewCount: place.user_ratings_total ?? null,
-              priceLevel: place.price_level ?? null,
-              priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
-              location: place.geometry?.location ?? null,
-              photoUrl: photoRef
-                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
-                : null,
-              mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-            });
+        try {
+          const resp = await fetch(placesUrl.toString());
+          if (!resp.ok) {
+            console.error(`[places] HTTP ${resp.status} from Places Text Search`);
+            placesUnavailable = true;
+          } else {
+            const data: any = await resp.json();
+            // Google Places always returns HTTP 200; check the API-level status field.
+            // OK and ZERO_RESULTS are both success cases — ZERO_RESULTS just means no
+            // matches for this query, which is honest. Any other status is an API-level
+            // error (REQUEST_DENIED, OVER_QUERY_LIMIT, INVALID_REQUEST, UNKNOWN_ERROR).
+            const placesStatus: string = data.status || "";
+            if (placesStatus !== "OK" && placesStatus !== "ZERO_RESULTS") {
+              console.error(`[places] API error status="${placesStatus}" error_message="${data.error_message || ""}"`);
+              placesUnavailable = true;
+            } else {
+              const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+              const catFromTypes = (types: string[]): string => {
+                if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
+                if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
+                if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
+                if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
+                return "activity";
+              };
+              for (const place of (data.results || []).slice(0, 15)) {
+                const photoRef = place.photos?.[0]?.photo_reference;
+                results.push({
+                  id: `gp_${place.place_id}`,
+                  source: "google_places",
+                  placeId: place.place_id,
+                  name: place.name,
+                  address: place.formatted_address,
+                  category: catFromTypes(place.types || []),
+                  rating: place.rating ?? null,
+                  reviewCount: place.user_ratings_total ?? null,
+                  priceLevel: place.price_level ?? null,
+                  priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
+                  location: place.geometry?.location ?? null,
+                  photoUrl: photoRef
+                    ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
+                    : null,
+                  mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
+                });
+              }
+            }
           }
+        } catch (placesErr) {
+          console.error("[places] fetch threw:", placesErr);
+          placesUnavailable = true;
         }
       }
 
-      res.json({ results, count: results.length });
+      // ── Viator bookable activities (tours & experiences) ──
+      // Auth gate: Viator is a paid API — only authenticated workspace users may trigger it.
+      if (includeViator) {
+        if (!(req as any).isAuthenticated?.()) {
+          return res.status(401).json({ message: "Authentication required for Viator search" });
+        }
+      }
+      if (includeViator) try {
+        // Combine free-text query with destination so results are scoped to the right city.
+        // Pattern mirrors the Google Places arm: [q, destination].filter(Boolean).join(" in ").
+        // If only destination is provided (no search text), destination alone is the search term.
+        const searchTerm = q && destination
+          ? `${q} in ${destination}`
+          : q || destination || "";
+        if (searchTerm) {
+          const catLower = (category || "").toLowerCase();
+          // Viator products are activities/experiences. Skip if the caller has filtered
+          // to a category that Viator never covers (dining=restaurant, hotels=lodging).
+          const viatorCatMatch = !catLower || catLower === "all" || catLower === "activities" || catLower === "transport";
+          if (viatorCatMatch) {
+            const viatorResult = await viatorService.searchByFreetext(searchTerm, "USD", 15);
+            const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+            for (const product of (viatorResult.products || [])) {
+              const coverImage = product.images?.find((img: any) => img.isCover) ?? product.images?.[0];
+              const photoVariant = coverImage?.variants?.find((v: any) => v.width >= 200) ?? coverImage?.variants?.[0];
+              const fromPrice = product.pricing?.summary?.fromPrice;
+              results.push({
+                id: `vtr_${product.productCode}`,
+                source: "viator",
+                productCode: product.productCode,
+                name: product.title,
+                address: null,
+                category: "activity",
+                rating: product.reviews?.combinedAverageRating ?? null,
+                reviewCount: product.reviews?.totalReviews ?? null,
+                priceLabel: fromPrice != null ? `From $${fromPrice}` : null,
+                location: null,
+                photoUrl: photoVariant?.url ?? null,
+                mapsUrl: null,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[viator] searchByFreetext failed in /api/search/experiences:", err);
+        // Non-fatal — Viator unavailable should never fail the whole search response
+      }
+
+      res.json({ results, count: results.length, placesUnavailable: includeGoogle ? placesUnavailable : undefined });
     } catch (error: any) {
       console.error("Error in /api/search/experiences:", error);
       res.status(500).json({ message: "Search failed", error: error.message });
@@ -7608,6 +7684,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
       const user = await storage.getUser(uid);
       return user?.role === "admin";
     } catch {
+      // Fail closed: if the admin-role lookup fails, deny access rather than accidentally granting it.
       return false;
     }
   };
@@ -8574,40 +8651,7 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
 } // end registerDiscoveryRoutes
 
 // === Exchange Rate Endpoint (top-level, always registered) ===
-let _exchangeRateCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
-const EXCHANGE_RATE_TTL_MS = 60 * 60 * 1000;
-
-router.get("/api/exchange-rates", async (_req, res) => {
-  try {
-    const now = Date.now();
-    if (_exchangeRateCache && now - _exchangeRateCache.fetchedAt < EXCHANGE_RATE_TTL_MS) {
-      return res.json({ base: "USD", rates: _exchangeRateCache.rates, cachedAt: _exchangeRateCache.fetchedAt });
-    }
-    const resp = await fetch("https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY,AUD,SGD");
-    if (!resp.ok) throw new Error(`Frankfurter API error: ${resp.status}`);
-    const data = await resp.json() as { rates: Record<string, number> };
-    _exchangeRateCache = { rates: data.rates, fetchedAt: now };
-    res.json({ base: "USD", rates: data.rates, cachedAt: now });
-  } catch (err) {
-    console.error("Exchange rate fetch error:", err);
-    // DB-backed fallback (migration 217): fx_rates is seeded at migration time and
-    // refreshed daily by fx-rate-refresh.service.ts — never a hardcoded literal that
-    // goes stale between deploys. If the DB has no rows either, say so honestly.
-    try {
-      const dbRates = await storage.getLatestFxRates();
-      if (dbRates) {
-        return res.json({
-          base: "USD",
-          rates: dbRates.rates,
-          cachedAt: dbRates.updatedAt ? new Date(dbRates.updatedAt).getTime() : Date.now(),
-          fallback: true,
-        });
-      }
-    } catch (dbErr) {
-      console.error("Exchange rate DB fallback error:", dbErr);
-    }
-    res.status(503).json({ base: "USD", rates: null, error: "Exchange rates unavailable" });
-  }
-});
+// Handler extracted to server/routes/exchange-rate.handler.ts for testability.
+router.get("/api/exchange-rates", handleExchangeRates);
 
 export default router;

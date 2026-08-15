@@ -19,6 +19,7 @@ import {
   Star,
   AlertCircle,
   Loader2,
+  Plus,
 } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
@@ -58,10 +59,22 @@ function FeverTicketsButton({ event }: { event: EventItem }) {
   );
 }
 
+interface AddToCartPayload {
+  id: string;
+  type: string;
+  name: string;
+  price: number;
+  quantity: number;
+  provider?: string;
+  details?: string;
+  isExternal: boolean;
+  metadata?: Record<string, unknown>;
+}
 interface FeverEventsSectionProps {
   destination?: string;
   startDate?: string;
   endDate?: string;
+  onAddToCart?: (item: AddToCartPayload) => void;
 }
 
 type SortOption = "popular" | "price_low" | "price_high" | "rating" | "date";
@@ -97,7 +110,7 @@ function formatEventDate(dates: { start: string | Date | null; end: string | Dat
   return start.toLocaleDateString("en-US", options);
 }
 
-export function FeverEventsSection({ destination, startDate, endDate }: FeverEventsSectionProps) {
+export function FeverEventsSection({ destination, startDate, endDate, onAddToCart }: FeverEventsSectionProps) {
   const [sortBy, setSortBy] = useState<SortOption>("popular");
 
   const params = useMemo(() => {
@@ -189,7 +202,7 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
           <Ticket className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
           <h3 className="font-semibold text-lg mb-2">No Events Found</h3>
           <p className="text-muted-foreground">
-            No events are currently cached for {destination}. Check back soon as our catalog updates daily.
+            No events were found for {destination}. Try a different destination or check back soon.
           </p>
         </CardContent>
       </Card>
@@ -307,14 +320,75 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
                     )}
                   </div>
 
-                  {event.bookingToken && !event.isSoldOut && (
-                    <FeverTicketsButton event={event} />
-                  )}
-                  {event.isSoldOut && (
-                    <Badge variant="destructive" className="text-xs">
-                      Sold Out
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {onAddToCart && !event.isSoldOut && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => {
+                          // Only include a numeric price in the cart total when the
+                          // currency is USD (or unknown — assume USD). Non-USD prices
+                          // are logged in `details` so users see the real value, but
+                          // they contribute $0 to the running USD total to avoid
+                          // corrupting the budget with unconverted foreign amounts.
+                          const isUsd =
+                            !event.currency ||
+                            event.currency.toUpperCase() === "USD";
+                          const cartPrice = isUsd ? event.price || 0 : 0;
+
+                          const dateStr = event.dates?.start
+                            ? formatEventDate(event.dates as any)
+                            : null;
+                          const priceStr =
+                            !isUsd && event.price
+                              ? `${event.currency} ${event.price}`
+                              : null;
+                          const detailParts = [
+                            event.venueName,
+                            dateStr,
+                            priceStr ? `Price: ${priceStr}` : null,
+                          ].filter(Boolean);
+
+                          onAddToCart({
+                            id: `event-${event.id}`,
+                            type: "event",
+                            name: event.title,
+                            price: cartPrice,
+                            quantity: 1,
+                            provider: event.provider || "Fever",
+                            details:
+                              detailParts.join(" · ") || undefined,
+                            isExternal: true,
+                            metadata: {
+                              affiliateUrl:
+                                (event as any).affiliateUrl ?? undefined,
+                              currency: event.currency ?? "USD",
+                              originalPrice: event.price ?? undefined,
+                              startDate: event.dates?.start
+                                ? String(event.dates.start)
+                                : undefined,
+                              endDate: event.dates?.end
+                                ? String(event.dates.end)
+                                : undefined,
+                            },
+                          });
+                        }}
+                        data-testid={`button-add-event-${event.id}`}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add to trip
+                      </Button>
+                    )}
+                    {event.bookingToken && !event.isSoldOut && (
+                      <FeverTicketsButton event={event} />
+                    )}
+                    {event.isSoldOut && (
+                      <Badge variant="destructive" className="text-xs">
+                        Sold Out
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </div>

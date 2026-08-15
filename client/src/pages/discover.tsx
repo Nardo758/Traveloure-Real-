@@ -71,6 +71,8 @@ import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { CatalogItem } from "@/types/catalog";
 
 type ServiceCategory = {
   id: string;
@@ -528,6 +530,37 @@ export default function DiscoverPage() {
     setActiveTab(urlTab);
   }, [urlTab]);
 
+  // Pre-fetch adjacent tabs' data so switching feels instant.
+  // Each tab's data has a 5-10 min staleTime, so these are no-ops on revisit.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      // Always warm the packages-tab data
+      if (activeTab !== "packages") {
+        queryClient.prefetchQuery({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
+        queryClient.prefetchQuery({ queryKey: ["/api/travelpulse/cities"], staleTime: 10 * 60_000 });
+        queryClient.prefetchQuery({ queryKey: ["/api/expert-templates"], staleTime: 10 * 60_000 });
+      }
+      // Warm the services tab with current filters (page 0) when on any other tab
+      if (activeTab !== "services") {
+        const params = buildDiscoverParams({
+          q: debouncedQuery, categoryId: selectedCategory, location: locationFilter,
+          minPrice, maxPrice, minRating, sortBy, limit, offset: 0,
+        });
+        queryClient.prefetchQuery({
+          queryKey: ["/api/discover", debouncedQuery, selectedCategory, locationFilter, minPrice, maxPrice, minRating, sortBy, 0],
+          queryFn: async () => {
+            const res = await fetch(`/api/discover?${params.toString()}`);
+            if (!res.ok) throw new Error("Failed to fetch");
+            return res.json();
+          },
+          staleTime: 5 * 60_000,
+        });
+      }
+    }, 800);
+    return () => clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -564,6 +597,24 @@ export default function DiscoverPage() {
     }
   }, [upsellCategoryKey, categories]);
 
+  const buildDiscoverParams = (opts: {
+    q?: string; categoryId?: string; location?: string;
+    minPrice?: number; maxPrice?: number; minRating?: number;
+    sortBy?: string; limit?: number; offset?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts.q) params.set("q", opts.q);
+    if (opts.categoryId && opts.categoryId !== "all") params.set("categoryId", opts.categoryId);
+    if (opts.location) params.set("location", opts.location);
+    if (opts.minPrice && opts.minPrice > 0) params.set("minPrice", String(opts.minPrice));
+    if (opts.maxPrice && opts.maxPrice > 0) params.set("maxPrice", String(opts.maxPrice));
+    if (opts.minRating && opts.minRating > 0) params.set("minRating", String(opts.minRating));
+    if (opts.sortBy) params.set("sortBy", opts.sortBy);
+    params.set("limit", String(opts.limit ?? 12));
+    params.set("offset", String(opts.offset ?? 0));
+    return params;
+  };
+
   const { data: result, isLoading: servicesLoading } = useQuery<DiscoverResult>({
     queryKey: [
       "/api/discover",
@@ -577,21 +628,15 @@ export default function DiscoverPage() {
       page,
     ],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (debouncedQuery) params.set("q", debouncedQuery);
-      if (selectedCategory && selectedCategory !== "all") params.set("categoryId", selectedCategory);
-      if (locationFilter) params.set("location", locationFilter);
-      if (minPrice > 0) params.set("minPrice", String(minPrice));
-      if (maxPrice > 0) params.set("maxPrice", String(maxPrice));
-      if (minRating > 0) params.set("minRating", String(minRating));
-      if (sortBy) params.set("sortBy", sortBy);
-      params.set("limit", String(limit));
-      params.set("offset", String(page * limit));
-      
+      const params = buildDiscoverParams({
+        q: debouncedQuery, categoryId: selectedCategory, location: locationFilter,
+        minPrice, maxPrice, minRating, sortBy, limit, offset: page * limit,
+      });
       const res = await fetch(`/api/discover?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
+    staleTime: 5 * 60_000,
   });
 
   const { data: cart } = useQuery<CartData>({
@@ -610,11 +655,13 @@ export default function DiscoverPage() {
 
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
+    staleTime: 10 * 60_000,
   });
 
   // Trending destinations from TravelPulse (replaces hardcoded trip packages)
   const { data: trendingCitiesData, isLoading: trendingLoading } = useQuery<{ cities: any[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
+    staleTime: 10 * 60_000,
   });
 
   // Map trending cities to trip package format for the Trip Packages tab
@@ -652,6 +699,22 @@ export default function DiscoverPage() {
     queryKey: [expertsApiUrl],
     enabled: showExperts,
   });
+
+  // Partner catalog activities — fetched when the user has narrowed to a location.
+  // Results are shown below the native service grid so real prices (e.g. "$89") are
+  // visible instead of tier symbols; uses catalogItemToUnifiedResult + UnifiedResultGrid.
+  const { data: catalogActivityData, isLoading: catalogActivitiesLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/activities-gyg", locationFilter],
+    enabled: !!locationFilter && activeTab === "services",
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination: locationFilter, limit: "8" });
+      const res = await fetch(`/api/catalog/activities-gyg?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Catalog fetch failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const catalogActivities = (catalogActivityData?.items ?? []).map(catalogItemToUnifiedResult);
   
   // Auto-scroll to experts section when coming from quick-start
   useEffect(() => {
@@ -1366,6 +1429,28 @@ export default function DiscoverPage() {
                         </Button>
                       </div>
                     )}
+
+                  {/* Partner catalog activities — only shown when a location is filtered.
+                      Uses UnifiedResultGrid + catalogItemToUnifiedResult so real numeric
+                      prices (e.g. "$89") are displayed instead of tier symbols. */}
+                  {locationFilter && (catalogActivitiesLoading || catalogActivities.length > 0) && (
+                    <div className="mt-10" data-testid="section-partner-activities">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Ticket className="h-4 w-4 text-primary" />
+                        <h2 className="text-lg font-semibold">
+                          Activities in {locationFilter}
+                        </h2>
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                          via Partners
+                        </Badge>
+                      </div>
+                      <UnifiedResultGrid
+                        results={catalogActivities}
+                        destination={locationFilter}
+                        isLoading={catalogActivitiesLoading}
+                      />
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 

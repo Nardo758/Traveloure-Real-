@@ -18,34 +18,100 @@ import {
   Send,
   Loader2,
   Calendar,
+  ShoppingCart,
 } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { CatalogItem } from "@/types/catalog";
 
 export interface UnifiedResult {
   id: string;
+
   name: string;
+
   title?: string;
+
   rating?: number | null;
+
   reviewCount?: number | null;
+
   priceLevel?: string | null;
+  /** Numeric price in the provider's currency. Shown as "$89" when present; overrides priceLevel display. */
+
+  price?: number | null;
+  /** ISO-4217 currency code for the numeric price (e.g. "USD"). Defaults to "USD" when omitted. */
+
+  currency?: string | null;
+  /** Suffix appended after the price (e.g. "night" → "$89/night"). */
+
+  priceSuffix?: string | null;
+
   address?: string | null;
+
   description?: string | null;
+
   imageUrl?: string | null;
+
   thumbnail?: string | null;
+
   websiteUrl?: string | null;
+
   website?: string | null;
+
   phone?: string | null;
+
   source: "native" | "serp" | "viator" | "amadeus" | "booking_com" | "opentable" | "fever" | "poi" | "transfer" | "safety" | "restaurant";
+
   isPartner?: boolean;
+
   category?: string | null;
+  /** Cuisine type — populated for restaurant / opentable results. */
+  cuisine?: string | null;
   /**
    * §16: partner feeds never ship a booking URL — the server strips it and ships this opaque
    * vault token instead; the agent-booking rail resolves it back to the URL server-side.
    */
+
   bookingToken?: string | null;
+
+  priceDisplay?: string | null;
+}
+
+/**
+ * Convert a CatalogItem (from /api/catalog/* endpoints) to a UnifiedResult
+ * that can be rendered by UnifiedResultCard. Passes the numeric price and
+ * currency directly so the card shows "$89" instead of tier symbols.
+ */
+export function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
+  const source: UnifiedResult["source"] =
+    item.provider === "viator" || item.provider === "viator-feed" ? "viator"
+    : item.provider === "fever" ? "fever"
+    : item.type === "hotel" ? "booking_com"
+    : item.type === "restaurant" ? "restaurant"
+    : item.type === "transfer" ? "transfer"
+    : item.type === "poi" ? "poi"
+    : "native";
+
+  return {
+    id: item.id,
+    name: item.title,
+    description: item.description ?? null,
+    imageUrl: item.imageUrl ?? null,
+    rating: item.rating ?? null,
+    reviewCount: item.reviewCount ?? null,
+    price: item.price ?? null,
+    currency: item.currency ?? "USD",
+    priceSuffix: item.type === "hotel" ? "night" : null,
+    priceLevel: item.priceLevel ?? null,
+    address: item.destination ?? null,
+    source,
+    isPartner: true,
+    category: item.categories[0] ?? item.type,
+    bookingToken: item.bookingToken ?? null,
+    cuisine: item.type === "restaurant" ? ((item as any).cuisine ?? item.categories[0] ?? null) : null,
+  };
 }
 
 interface UnifiedResultCardProps {
@@ -54,6 +120,7 @@ interface UnifiedResultCardProps {
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
   showInquiryButton?: boolean;
+  onAddToCart?: (result: UnifiedResult) => void;
 }
 
 export function UnifiedResultCard({ 
@@ -61,7 +128,8 @@ export function UnifiedResultCard({
   template = "", 
   destination = "",
   onInquiry,
-  showInquiryButton = true
+  showInquiryButton = true,
+  onAddToCart,
 }: UnifiedResultCardProps) {
   const [clicked, setClicked] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
@@ -76,6 +144,8 @@ export function UnifiedResultCard({
   const displayName = result.name || result.title || "Unknown";
   const imageUrl = result.imageUrl || result.thumbnail;
   const websiteUrl = result.websiteUrl || result.website;
+
+  const isRestaurant = result.source === "opentable" || result.source === "restaurant";
 
   const partnerName = result.source === "viator" ? "Viator"
     : result.source === "booking_com" ? "Booking.com"
@@ -170,6 +240,23 @@ export function UnifiedResultCard({
   };
 
   const renderPrice = () => {
+    // Prefer the numeric price (e.g. "$89" or "$89/night") over tier symbols.
+    if (result.price != null && result.price > 0) {
+      const currency = result.currency ?? "USD";
+      const formatted = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(result.price);
+      const label = result.priceSuffix ? `${formatted}/${result.priceSuffix}` : formatted;
+      return (
+        <span className="text-sm font-semibold text-green-700 dark:text-green-400" data-testid={`text-price-${result.id}`}>
+          {label}
+        </span>
+      );
+    }
+
     if (!result.priceLevel) {
       return (
         <span className="text-sm text-muted-foreground">Request Quote</span>
@@ -225,6 +312,12 @@ export function UnifiedResultCard({
             {renderRating()}
           </div>
 
+          {result.cuisine && (
+            <p className="text-xs font-medium text-orange-600 dark:text-orange-400 mb-1">
+              {result.cuisine}
+            </p>
+          )}
+
           {result.description && (
             <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
               {result.description}
@@ -251,6 +344,21 @@ export function UnifiedResultCard({
             {renderPrice()}
             
             <div className="flex gap-2">
+              {onAddToCart && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToCart(result);
+                  }}
+                  data-testid={`button-add-to-cart-${result.id}`}
+                >
+                  <ShoppingCart className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
+              )}
+
               {showInquiryButton && !isPartner && onInquiry && (
                 <Button
                   size="sm"
@@ -278,7 +386,13 @@ export function UnifiedResultCard({
                   data-testid={`button-view-${result.id}`}
                 >
                   {hasPartnerBookingUrl ? (
-                    <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
+                    isRestaurant ? (
+                      <><ExternalLink className="h-3.5 w-3.5 mr-1" />Reserve on OpenTable</>
+                    ) : result.source === "booking_com" ? (
+                      <><UserCheck className="h-3.5 w-3.5 mr-1" />Book on Booking.com</>
+                    ) : (
+                      <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
+                    )
                   ) : (
                     <><ExternalLink className="h-3.5 w-3.5 mr-1" />{isPartner ? "Book" : "View"}</>
                   )}
@@ -340,13 +454,17 @@ export function UnifiedResultGrid({
   template, 
   destination,
   onInquiry,
-  isLoading = false
+  onAddToCart,
+  isLoading = false,
+  showInquiryButton = true,
 }: { 
   results: UnifiedResult[];
   template?: string;
   destination?: string;
   onInquiry?: (result: UnifiedResult) => void;
+  onAddToCart?: (result: UnifiedResult) => void;
   isLoading?: boolean;
+  showInquiryButton?: boolean;
 }) {
   if (isLoading) {
     return (
@@ -388,6 +506,8 @@ export function UnifiedResultGrid({
           template={template}
           destination={destination}
           onInquiry={onInquiry}
+          onAddToCart={onAddToCart}
+          showInquiryButton={showInquiryButton}
         />
       ))}
     </div>

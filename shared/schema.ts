@@ -2731,7 +2731,7 @@ export const locationCache = pgTable("location_cache", {
 
 export const feverEventCache = pgTable("fever_event_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  eventId: varchar("event_id", { length: 100 }).notNull(),
+  eventId: varchar("event_id", { length: 100 }).notNull().unique(),
   title: varchar("title", { length: 500 }).notNull(),
   slug: varchar("slug", { length: 500 }),
   description: text("description"),
@@ -7058,6 +7058,10 @@ export const travelpayoutsCache = pgTable("travelpayouts_cache", {
   cacheKey: varchar("cache_key", { length: 500 }).notNull().unique(),
   data: jsonb("data").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+  // refreshedAt is stamped on every upsert (onConflictDoUpdate) by shared-cache.service.ts.
+  // It reflects the true last-refresh time, unlike createdAt which is immutable after first insert.
+  // No default: pre-migration rows carry NULL, surfaced as "unknown" by the status endpoint.
+  refreshedAt: timestamp("refreshed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
