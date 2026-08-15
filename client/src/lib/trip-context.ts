@@ -339,6 +339,25 @@ export function cancelPendingPush(): void {
   }
 }
 
+/**
+ * Synchronously cancels pending pushes and wipes all local trip-context state:
+ * the stored context, owner stamp, and guest-provenance flag.
+ *
+ * Call at logout **before** navigation (e.g. from the logout function in
+ * use-auth.ts) so that a pending debounced PUT cannot fire against the
+ * next session's credentials and the prior user's context cannot leak to
+ * whoever opens the tab next.
+ *
+ * Also call defensively on confirmed-unauthenticated bootstrap when a stale
+ * authenticated owner stamp is found.
+ */
+export function wipeLocalTripSession(): void {
+  endGuestSession(); // stop writes from marking provenance
+  cancelPendingPush(); // cancel debounced timer (also done inside clearTripContext)
+  clearTripContext(); // removes storage key, provenance flag, and fires change event
+  setContextOwner(null); // clearTripContext intentionally leaves the owner stamp; remove it here
+}
+
 function schedulePush(context: TripContext): void {
   if (typeof fetch !== "function") return;
   if (pushTimer) clearTimeout(pushTimer);
@@ -369,22 +388,27 @@ function schedulePush(context: TripContext): void {
  * debounced push. Uses keepalive:true so the request survives a tab close or
  * navigation immediately after sign-in.
  *
+ * @param options.userScoped - When true, omits the `?tripId=` query parameter
+ *   so the PUT targets the user's default context row instead of a trip-scoped
+ *   row. Use this for the sign-in push: `useClaimGuestTrips` may not have
+ *   finished claiming the guest trip yet, so a trip-scoped PUT would be
+ *   rejected (the tripId doesn't belong to the user until claim succeeds).
+ *   The default row is always accessible once the user is authenticated.
+ *
  * Returns a Promise that resolves to true when the server acknowledged the PUT
  * (2xx response), or false when the context was empty / the network call failed.
- * Callers that need to take action after confirmed delivery (e.g. stamping
- * ownership) should await this promise.
  */
-export async function pushTripContextNow(): Promise<boolean> {
+export async function pushTripContextNow(options?: {
+  userScoped?: boolean;
+}): Promise<boolean> {
   if (typeof fetch !== "function") return false;
   const context = getTripContext();
   if (Object.keys(context).length === 0) return false;
   // Cancel any pending debounced push — this immediate call supersedes it.
-  if (pushTimer) {
-    clearTimeout(pushTimer);
-    pushTimer = undefined;
-  }
+  cancelPendingPush();
+  const query = options?.userScoped ? "" : tripScopedQuery(context);
   try {
-    const res = await fetch(`/api/trip-context${tripScopedQuery(context)}`, {
+    const res = await fetch(`/api/trip-context${query}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",

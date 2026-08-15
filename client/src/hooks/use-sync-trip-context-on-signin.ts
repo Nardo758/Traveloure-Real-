@@ -1,26 +1,26 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "./use-auth";
 import {
-  cancelPendingPush,
   clearGuestProvenance,
-  clearTripContext,
   confirmGuestSession,
   endGuestSession,
   getContextOwner,
   hasGuestProvenance,
   pushTripContextNow,
   setContextOwner,
+  wipeLocalTripSession,
 } from "@/lib/trip-context";
 
 /**
  * Manages trip context ownership across sign-in and sign-out transitions.
  *
- * ## Pending-push cancellation
- * `updateTripContext` schedules a debounced 1.5 s PUT. Every ownership
- * transition (login, logout, cross-account switch) calls `cancelPendingPush()`
- * first so a PUT scheduled by a previous user cannot fire against the new
- * session's credentials and upload their planning to the wrong account.
- * `clearTripContext()` also calls `cancelPendingPush()` for the same reason.
+ * ## Logout cleanup (synchronous + defensive)
+ * The main cleanup path is in `use-auth.ts` logout() which calls
+ * `wipeLocalTripSession()` synchronously before `window.location.href`.
+ * This hook's logout branch provides a second line of defense for cases
+ * where auth resolves to null without an explicit client-side logout (e.g.
+ * server-side session expiry, token invalidation) — scenarios where the
+ * pre-navigation synchronous call does not apply.
  *
  * ## Guest provenance
  * `trip-context.ts` maintains two pieces of state:
@@ -29,27 +29,30 @@ import {
  *    called here when auth resolves to confirmed unauthenticated (isLoading=false,
  *    user=null). Only when this flag is true do `updateTripContext` /
  *    `switchTripContext` mark writes with GUEST_PROVENANCE_KEY. This prevents
- *    auth-loading-time effects (e.g. template pages mounting before
- *    `/api/auth/user` resolves) from marking legacy authenticated contexts as
+ *    auth-loading-time effects from marking legacy authenticated contexts as
  *    guest-authored.
  *
  * 2. `GUEST_PROVENANCE_KEY` (sessionStorage) — persists within the tab session
  *    so write-then-reload-then-sign-in flows still deliver the context.
  *    Cleared on sign-in and by `clearTripContext()` on logout.
  *
+ * ## Defensive initial-guest bootstrap
+ * On the first confirmed-unauthenticated render (prevUserId===null, userId===null),
+ * if a stale owner stamp is already present (user navigated away from a prior
+ * authenticated session without a clean logout), the stale context is wiped so
+ * it cannot be pushed to the next account that signs in on this tab.
+ *
  * ## Sign-in transition (isLoading=false, null → userId)
  *   - Cancels any pending debounced push (stale data from previous session).
  *   - Calls `endGuestSession()` so subsequent writes are not marked as guest.
- *   - Stamps ownership immediately (before push) so post-sign-in writes are
- *     attributed even if the context is empty or the push fails.
- *   - Pushes context only when GUEST_PROVENANCE_KEY is set.
- *   - Clears cross-account remnants without pushing.
- *   - Skips push for same-user returning (already in sync).
- *
- * ## Sign-out transition (isLoading=false, userId → null)
- *   - Cancels any pending debounced push.
- *   - Clears context + owner stamp. `clearTripContext()` also cancels push.
- *   - Calls `confirmGuestSession()` so subsequent writes mark provenance.
+ *   - Reads owner and provenance BEFORE overwriting the stamp.
+ *   - Stamps ownership immediately so post-sign-in writes are always attributed.
+ *   - Pushes context user-scoped (no ?tripId= param) to avoid racing with
+ *     `useClaimGuestTrips`: the guest trip may not be claimed yet, so a
+ *     trip-scoped PUT would be rejected; the user's default row is always
+ *     accessible once authenticated.
+ *   - Skips push for same-user returning, cross-account remnants, or contexts
+ *     without explicit guest provenance (legacy markerless contexts).
  *
  * ## Auth-loading gate
  *   All transitions require isLoading=false.
@@ -72,13 +75,16 @@ export function useSyncTripContextOnSignIn(): void {
 
     if (!userId) {
       if (prevUserId !== null) {
-        // Explicit logout. Cancel any pending debounced push so the previous
-        // user's scheduled PUT cannot fire against the now-different session.
-        cancelPendingPush();
-        // Clear context and stamp — clearTripContext also cancels pending push
-        // and clears GUEST_PROVENANCE_KEY so fresh writes can re-establish it.
-        clearTripContext();
-        setContextOwner(null);
+        // Auth resolved to null after being authenticated: server-side session
+        // expiry or token invalidation (explicit logout is handled synchronously
+        // in use-auth.ts before navigation, but this branch covers other paths).
+        wipeLocalTripSession();
+      } else if (getContextOwner() !== null) {
+        // Initial confirmed-guest bootstrap with a stale owner stamp: the tab
+        // was previously used by an authenticated user who navigated away without
+        // a clean logout. Wipe the stale context so it cannot be pushed to
+        // whoever signs in next.
+        wipeLocalTripSession();
       }
       // Auth confirmed unauthenticated — enable provenance marking on writes.
       confirmGuestSession();
@@ -88,16 +94,10 @@ export function useSyncTripContextOnSignIn(): void {
     // userId is non-null. Only act on a sign-in transition.
     if (userId === prevUserId) return;
 
-    // Cancel any pending debounced push before making ownership decisions.
-    // A timer armed during the guest session captures the guest's context; it
-    // must not fire after sign-in (the immediate push below supersedes it, and
-    // the cross-account or same-user branches may not push at all).
-    cancelPendingPush();
-
-    // Stop marking new writes as guest-authored.
+    // End the guest session immediately so subsequent writes are not marked.
     endGuestSession();
 
-    // Read owner and provenance BEFORE overwriting the stamp.
+    // Read owner and provenance BEFORE overwriting the stamp below.
     const owner = getContextOwner();
     const guestWroteContext = hasGuestProvenance();
 
@@ -115,18 +115,23 @@ export function useSyncTripContextOnSignIn(): void {
 
     if (owner !== null) {
       // Cross-account remnant: a different user's stamped context is present.
-      // Clear it (stamp already updated). Do not push.
-      clearTripContext();
+      // Clear it (stamp already updated above). Do not push.
+      wipeLocalTripSession();
+      // Re-stamp after wipe — wipeLocalTripSession clears the owner.
+      setContextOwner(userId);
       return;
     }
 
     // owner is null. Only push when the context was explicitly written during a
-    // confirmed guest session. Markerless legacy contexts are skipped to avoid
+    // confirmed guest session. Legacy markerless contexts are skipped to avoid
     // leaking prior authenticated planning to a different account.
     if (!guestWroteContext) return;
 
-    // Genuine guest context — deliver to server. keepalive survives tab close.
-    pushTripContextNow().catch(() => {
+    // Push user-scoped (no ?tripId= param) so the PUT lands in the user's
+    // default context row regardless of guest-trip claim status.
+    // useClaimGuestTrips runs concurrently and may not have finished claiming
+    // the guest tripId; a trip-scoped PUT would be rejected until claim succeeds.
+    pushTripContextNow({ userScoped: true }).catch(() => {
       /* offline — best-effort; stamp already protects post-sign-in writes */
     });
   }, [user?.id, isLoading]);
