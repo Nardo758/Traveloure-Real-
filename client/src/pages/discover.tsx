@@ -556,6 +556,18 @@ export default function DiscoverPage() {
     setActiveTab(urlTab);
   }, [urlTab]);
 
+  // Sync filter state FROM the URL so back/forward navigation restores the
+  // correct filters even when the component is already mounted.
+  // Each setter only fires when the URL-derived value actually changes, so
+  // there is no cascade: the state-to-URL effect below sees that the URL
+  // already matches and skips the navigate call.
+  useEffect(() => { setLocationFilter(urlLocationFilter); }, [urlLocationFilter]);
+  useEffect(() => { setSelectedCategory(urlCategory); }, [urlCategory]);
+  useEffect(() => { setSortBy(urlSortBy); }, [urlSortBy]);
+  useEffect(() => { setMinPrice(urlMinPrice); }, [urlMinPrice]);
+  useEffect(() => { setMaxPrice(urlMaxPrice); }, [urlMaxPrice]);
+  useEffect(() => { setMinRating(urlMinRating); }, [urlMinRating]);
+
   // Keep filter selections in the URL so they survive tab switches and
   // back-navigation.  Use replace (not push) to avoid bloating history.
   // Non-filter params (showExperts, destination, etc.) are preserved as-is.
@@ -582,7 +594,7 @@ export default function DiscoverPage() {
     const newSearch = next.toString();
     // Only navigate when the search string actually changes to avoid loops
     if (newSearch !== searchString) {
-      setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true } as any);
+      setLocation(`/discover${newSearch ? `?${newSearch}` : ""}`, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, activeTab]);
