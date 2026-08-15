@@ -334,13 +334,31 @@ test('full booking checkout with Stripe test card 4242', { timeout: 120_000 }, a
   // Smoke level: do NOT submit — mounting + input is the regression signal.
 });
 
-test('admin panel loads (desktop only)', async ({ page }) => {
+test('admin panel loads (desktop only)', async ({ page, browser }) => {
   // Use the seeded test-admin account (always present in dev DB).
   // E2E_ADMIN_EMAIL / E2E_TEST_PASSWORD are the standard e2e env vars;
   // fall back to the known seeded address so the test is self-contained.
   const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'test-admin@traveloure.test';
   const PASSWORD    = process.env.E2E_TEST_PASSWORD ?? 'TestPass123!';
 
+  // ── Part A: unauthenticated /admin must deny access ──────────────────────
+  // A separate context with no cookies simulates an anonymous visitor.
+  const anonCtx  = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const anonPage = await anonCtx.newPage();
+  await anonPage.goto('/admin', { waitUntil: 'domcontentloaded' });
+  await anonPage.waitForTimeout(2000);
+
+  // The page must not expose admin chrome to unauthenticated users.
+  const anonHasAdminLogo   = await anonPage.locator('[data-testid="link-admin-logo"]').isVisible().catch(() => false);
+  const anonHasAdminLogout = await anonPage.locator('[data-testid="button-admin-logout"]').isVisible().catch(() => false);
+  await anonCtx.close();
+
+  expect(
+    anonHasAdminLogo || anonHasAdminLogout,
+    'Admin chrome visible to unauthenticated visitor — /admin is not protected',
+  ).toBe(false);
+
+  // ── Part B: authenticated admin sees the dashboard ────────────────────────
   // Log in via API so the browser context carries a valid admin session.
   // page.request shares the cookie jar with the page.
   const loginRes = await page.request.post('/api/auth/login', {
