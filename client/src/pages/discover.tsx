@@ -72,7 +72,14 @@ import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
+import type { UnifiedResult } from "@/components/unified-result-card";
 import type { CatalogItem } from "@/types/catalog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 type ServiceCategory = {
   id: string;
@@ -519,6 +526,11 @@ export default function DiscoverPage() {
   });
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
+
+  // Browse cart — holds partner catalog items (Viator/Fever/etc.) the user wants
+  // an expert to book. Separate from the native service cart.
+  const [browseCartItems, setBrowseCartItems] = useState<UnifiedResult[]>([]);
+  const [browseCartSheetOpen, setBrowseCartSheetOpen] = useState(false);
   
   // Write browse cart through to sessionStorage whenever it changes.
   useEffect(() => {
@@ -859,6 +871,40 @@ export default function DiscoverPage() {
     } finally {
       setCreatingComparison(false);
     }
+  };
+
+  // Add a partner catalog item to the browse cart and open the sheet
+  const handleBrowseAddToCart = (result: UnifiedResult) => {
+    setBrowseCartItems((prev) => {
+      if (prev.some((item) => item.id === result.id)) return prev;
+      return [...prev, result];
+    });
+    setBrowseCartSheetOpen(true);
+  };
+
+  const removeBrowseCartItem = (id: string) => {
+    setBrowseCartItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Store browse cart in sessionStorage and navigate to /experts
+  const handleGetExpertHelp = () => {
+    const BROWSE_CART_KEY = "traveloure_browse_cart";
+    const payload = browseCartItems.map((item) => ({
+      id: item.id,
+      name: item.name || item.title || "Activity",
+      price: item.price ?? null,
+      currency: item.currency ?? "USD",
+      provider: item.source,
+      category: item.category ?? null,
+    }));
+    try {
+      sessionStorage.setItem(BROWSE_CART_KEY, JSON.stringify(payload));
+    } catch { /* ignore quota errors */ }
+
+    const params = new URLSearchParams();
+    params.set("browseCart", "1");
+    if (locationFilter) params.set("destination", locationFilter);
+    setLocation(`/experts?${params.toString()}`);
   };
 
   const clearFilters = () => {
@@ -1464,6 +1510,7 @@ export default function DiscoverPage() {
                         results={catalogActivities}
                         destination={locationFilter}
                         isLoading={catalogActivitiesLoading}
+                        onAddToCart={handleBrowseAddToCart}
                       />
                     </div>
                   )}
@@ -1891,6 +1938,100 @@ export default function DiscoverPage() {
           </div>
         </section>
       </div>
+
+      {/* Browse Cart Sheet — partner catalog items queued for expert booking */}
+      {browseCartItems.length > 0 && (
+        <button
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-primary text-white px-4 py-3 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+          onClick={() => setBrowseCartSheetOpen(true)}
+          data-testid="button-browse-cart-fab"
+          aria-label={`Browse cart — ${browseCartItems.length} item${browseCartItems.length === 1 ? "" : "s"}`}
+        >
+          <ShoppingCart className="w-5 h-5" />
+          <span className="font-semibold text-sm">
+            {browseCartItems.length} item{browseCartItems.length === 1 ? "" : "s"}
+          </span>
+          <span className="text-white/80 text-sm hidden sm:inline">· Get Expert Help</span>
+        </button>
+      )}
+
+      <Sheet open={browseCartSheetOpen} onOpenChange={setBrowseCartSheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md flex flex-col" data-testid="browse-cart-sheet">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-primary" />
+              Activities for Expert Booking
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto py-4 space-y-3">
+            {browseCartItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Add activities from the catalog using the "Add" button on each card.
+              </p>
+            ) : (
+              browseCartItems.map((item) => {
+                const priceDisplay =
+                  item.price != null
+                    ? `${item.currency === "USD" || !item.currency ? "$" : item.currency + " "}${item.price.toFixed(0)}`
+                    : item.priceDisplay ?? item.priceLevel ?? null;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 rounded-lg border border-border p-3"
+                    data-testid={`browse-cart-item-${item.id}`}
+                  >
+                    {item.imageUrl && (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name || item.title || "Activity"}
+                        className="w-14 h-14 rounded-md object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium line-clamp-2">
+                        {item.name || item.title || "Activity"}
+                      </p>
+                      {priceDisplay && (
+                        <p className="text-xs text-emerald-600 font-semibold mt-0.5">{priceDisplay}</p>
+                      )}
+                      {item.source && (
+                        <p className="text-xs text-muted-foreground capitalize mt-0.5">{item.source}</p>
+                      )}
+                    </div>
+                    <button
+                      className="p-1 text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                      onClick={() => removeBrowseCartItem(item.id)}
+                      aria-label={`Remove ${item.name || item.title || "item"}`}
+                      data-testid={`button-remove-browse-${item.id}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {browseCartItems.length > 0 && (
+            <div className="pt-4 border-t border-border space-y-2">
+              <p className="text-xs text-muted-foreground">
+                An expert will review your selections and handle the bookings for you.
+              </p>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleGetExpertHelp}
+                data-testid="button-get-expert-help"
+              >
+                <ArrowRight className="w-4 h-4 mr-2" />
+                Get Expert Help ({browseCartItems.length} item{browseCartItems.length === 1 ? "" : "s"})
+              </Button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
       <TripQueueIndicator />
     </>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,7 @@ import {
   Target,
   Home,
   X,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -142,6 +143,29 @@ export default function ExpertsPage() {
   // ?tripId= — carry it into each expert's detail page so the request the
   // traveler makes there shares their trip plan with that expert.
   const handoffTripId = new URLSearchParams(searchString).get("tripId");
+
+  // Browse cart handoff: when the user clicks "Get Expert Help" from the discover
+  // page's catalog cart, items are stored in sessionStorage so experts can see what
+  // the traveler wants booked.
+  const BROWSE_CART_KEY = "traveloure_browse_cart";
+  type BrowseCartItem = { id: string; name: string; price: number | null; currency: string; provider: string; category: string | null };
+  const [browseCartItems, setBrowseCartItems] = useState<BrowseCartItem[]>([]);
+  const [browseCartDismissed, setBrowseCartDismissed] = useState(false);
+
+  useEffect(() => {
+    const hasBrowseCart = new URLSearchParams(searchString).get("browseCart") === "1";
+    if (!hasBrowseCart) return;
+    try {
+      const raw = sessionStorage.getItem(BROWSE_CART_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as BrowseCartItem[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBrowseCartItems(parsed);
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(searchString);
@@ -296,6 +320,39 @@ export default function ExpertsPage() {
         keywords={seo.keywords}
         url={selectedRole ? `/experts?role=${selectedRole}` : "/experts"}
       />
+      {/* Browse cart handoff banner — shown when the user arrived via "Get Expert Help"
+          from the discover page's catalog cart. */}
+      {browseCartItems.length > 0 && !browseCartDismissed && (
+        <div
+          className="bg-primary/10 border-b border-primary/20 py-3"
+          data-testid="browse-cart-banner"
+        >
+          <div className="container mx-auto px-4 max-w-6xl flex flex-wrap items-center gap-3">
+            <ShoppingCart className="w-4 h-4 text-primary flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-semibold text-primary">
+                {browseCartItems.length} activit{browseCartItems.length === 1 ? "y" : "ies"} ready to book
+              </span>
+              <span className="text-sm text-muted-foreground ml-2 hidden sm:inline">
+                — {browseCartItems.map((i) => i.name).slice(0, 3).join(", ")}
+                {browseCartItems.length > 3 && ` + ${browseCartItems.length - 3} more`}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground w-full sm:w-auto">
+              Choose an expert below and they'll book these for you.
+            </p>
+            <button
+              className="p-1 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+              onClick={() => setBrowseCartDismissed(true)}
+              aria-label="Dismiss"
+              data-testid="button-dismiss-browse-cart-banner"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hero — UNIFIED header band, shared pattern with /discover: centered navy
           title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
           row beneath (here: the role switcher). py-9 = the ratified middle size.
