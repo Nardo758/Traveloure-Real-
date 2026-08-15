@@ -28,6 +28,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { serviceReviews, providerServices, users } from "@shared/schema";
 import { getUserId } from "../utils/auth";
+import { sanitizeInput } from "../utils/sanitize";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { parsePagination } from "../utils/pagination";
 
@@ -136,9 +137,12 @@ router.patch("/api/me/reviews/:id/reply", isAuthenticated, async (req: any, res)
     if (ownedServiceIds.length === 0) return res.status(404).json({ message: "Review not found" });
 
     const repliedAt = new Date();
+    // Defense-in-depth (stored XSS): sanitize provider-authored reply before persisting so
+    // future non-React rendering paths (emails, PDFs, exports) are safe too.
+    const safeReply = sanitizeInput(parsed.data.reply);
     const updated = await db
       .update(serviceReviews)
-      .set({ providerReply: parsed.data.reply, providerRepliedAt: repliedAt })
+      .set({ providerReply: safeReply, providerRepliedAt: repliedAt })
       .where(and(eq(serviceReviews.id, req.params.id), inArray(serviceReviews.serviceId, ownedServiceIds)))
       .returning({ id: serviceReviews.id });
 
@@ -146,7 +150,7 @@ router.patch("/api/me/reviews/:id/reply", isAuthenticated, async (req: any, res)
 
     res.json({
       id: req.params.id,
-      providerReply: parsed.data.reply,
+      providerReply: safeReply,
       providerRepliedAt: repliedAt.toISOString(),
     });
   } catch (err) {
