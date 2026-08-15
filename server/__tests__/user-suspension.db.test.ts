@@ -190,6 +190,9 @@ const post = (server: http.Server, path: string, body: object, cookie?: string) 
 const get = (server: http.Server, path: string, cookie?: string) =>
   httpRequest(server, "GET", path, { cookie });
 
+const patch = (server: http.Server, path: string, body: object, cookie?: string) =>
+  httpRequest(server, "PATCH", path, { body, cookie });
+
 // ── Suite 1: email login blocked for suspended user ───────────────────────────
 
 describe("email login — suspended account", () => {
@@ -389,13 +392,221 @@ describe("account reactivation — full login succeeds after unsuspend", () => {
   });
 });
 
+// ── Suite 4: admin suspend guard — target is an admin account ────────────────
+//
+// PATCH /api/admin/users/:id/suspend must return 400 when the target user holds
+// the "admin" role, even when the caller is a fully authenticated admin.
+// This confirms the guard on line ~7785 of admin.routes.ts is exercised.
+
+let adminGuardServer: http.Server | null = null;
+
+async function getAdminGuardServer(): Promise<http.Server> {
+  if (adminGuardServer) return adminGuardServer;
+
+  const app = express();
+  app.use(express.json());
+  app.use(getSession());
+  app.use(passport.initialize());
+  app.use(passport.session());
+  setupEmailAuth(app);
+
+  // Mount the real admin router — this exercises the production guard logic
+  // on the suspend and unsuspend endpoints.
+  const adminRouter = (await import("../routes/admin.routes")).default;
+  app.use(adminRouter);
+
+  adminGuardServer = http.createServer(app);
+  await new Promise<void>((resolve) =>
+    adminGuardServer!.listen(0, "127.0.0.1", resolve)
+  );
+  return adminGuardServer;
+}
+
+describe("admin suspend guard — cannot suspend another admin account", () => {
+  let callerAdminId: string;
+  let targetAdminId: string;
+  let callerAdminEmail: string;
+  let server: http.Server;
+  let callerCookie: string;
+
+  before(async () => {
+    server = await getAdminGuardServer();
+
+    // Create two admin-role users: one caller, one target.
+    callerAdminId = await createTestUser({ role: "admin" });
+    targetAdminId = await createTestUser({ role: "admin" });
+    callerAdminEmail = (await getUserRow(callerAdminId)).email;
+
+    // Log in as the calling admin to get a real session cookie.
+    const loginRes = await post(server, "/api/auth/login", {
+      email: callerAdminEmail,
+      password: TEST_PASSWORD,
+    });
+    assert.equal(
+      loginRes.status,
+      200,
+      `Caller admin login must succeed; got ${loginRes.status}: ${JSON.stringify(loginRes.data)}`
+    );
+    assert.ok(loginRes.setCookie, "Login must issue a session cookie");
+    callerCookie = loginRes.setCookie!;
+  });
+
+  after(async () => {
+    await deleteTestUser(callerAdminId);
+    await deleteTestUser(targetAdminId);
+  });
+
+  it("returns 400 when attempting to suspend another admin account", async () => {
+    const { status, data } = await patch(
+      server,
+      `/api/admin/users/${targetAdminId}/suspend`,
+      { reason: "Self-service suspension attempt — should be blocked" },
+      callerCookie
+    );
+    assert.equal(
+      status,
+      400,
+      `Expected 400 when suspending an admin target, got ${status}. Body: ${JSON.stringify(data)}`
+    );
+  });
+
+  it("400 response message mentions 'admin'", async () => {
+    const { data } = await patch(
+      server,
+      `/api/admin/users/${targetAdminId}/suspend`,
+      { reason: "Repeated attempt — still blocked" },
+      callerCookie
+    );
+    assert.ok(
+      typeof data?.message === "string" && data.message.toLowerCase().includes("admin"),
+      `Expected message to reference 'admin'; got: ${JSON.stringify(data)}`
+    );
+  });
+
+  it("target admin account remains unsuspended after the blocked attempt", async () => {
+    await patch(
+      server,
+      `/api/admin/users/${targetAdminId}/suspend`,
+      { reason: "Third attempt — still blocked" },
+      callerCookie
+    );
+    const row = await getUserRow(targetAdminId);
+    assert.equal(
+      row.isSuspended,
+      false,
+      `Target admin's isSuspended must remain false after a blocked suspend attempt`
+    );
+  });
+});
+
+// ── Suite 5: unsuspend endpoint — rejects non-admin callers ──────────────────
+//
+// PATCH /api/admin/users/:id/unsuspend must return 403 for any caller who is not
+// an admin. This confirms that a regular user (or a suspended user who somehow
+// holds a valid session) cannot lift a suspension by calling the endpoint
+// directly.
+
+describe("unsuspend endpoint — rejects non-admin callers", () => {
+  let regularUserId: string;
+  let suspendedTargetId: string;
+  let regularUserEmail: string;
+  let server: http.Server;
+  let regularCookie: string;
+
+  before(async () => {
+    server = await getAdminGuardServer();
+
+    // A regular (role='user') caller — not an admin.
+    regularUserId = await createTestUser({ role: "user" });
+    regularUserEmail = (await getUserRow(regularUserId)).email;
+
+    // A suspended target user that the non-admin would try to unsuspend.
+    suspendedTargetId = await createTestUser({
+      isSuspended: true,
+      suspendedAt: new Date(),
+      suspensionReason: "Test target suspension",
+    });
+
+    // Log in as the regular user to get a real session cookie.
+    const loginRes = await post(server, "/api/auth/login", {
+      email: regularUserEmail,
+      password: TEST_PASSWORD,
+    });
+    assert.equal(
+      loginRes.status,
+      200,
+      `Regular user login must succeed; got ${loginRes.status}: ${JSON.stringify(loginRes.data)}`
+    );
+    assert.ok(loginRes.setCookie, "Login must issue a session cookie");
+    regularCookie = loginRes.setCookie!;
+  });
+
+  after(async () => {
+    await deleteTestUser(regularUserId);
+    await deleteTestUser(suspendedTargetId);
+  });
+
+  it("returns 403 when a non-admin caller calls the unsuspend endpoint", async () => {
+    const { status, data } = await patch(
+      server,
+      `/api/admin/users/${suspendedTargetId}/unsuspend`,
+      {},
+      regularCookie
+    );
+    assert.equal(
+      status,
+      403,
+      `Expected 403 for non-admin unsuspend attempt, got ${status}. Body: ${JSON.stringify(data)}`
+    );
+  });
+
+  it("suspended target account remains suspended after the rejected unsuspend attempt", async () => {
+    await patch(
+      server,
+      `/api/admin/users/${suspendedTargetId}/unsuspend`,
+      {},
+      regularCookie
+    );
+    const row = await getUserRow(suspendedTargetId);
+    assert.equal(
+      row.isSuspended,
+      true,
+      `Target account must remain suspended after a non-admin unsuspend attempt`
+    );
+  });
+
+  it("returns 403 when the suspended target tries to unsuspend themselves", async () => {
+    // Simulate the 'suspended admin session' scenario: suspend the regular user's
+    // own account while they hold a valid session, then have them call unsuspend
+    // on themselves.  isAuthenticated checks isSuspended on every request, so
+    // the session is rejected with 403 before the admin-role check even runs.
+    await suspendUser(regularUserId, "Suspended mid-session — self-unsuspend attempt");
+
+    const { status, data } = await patch(
+      server,
+      `/api/admin/users/${regularUserId}/unsuspend`,
+      {},
+      regularCookie
+    );
+    assert.equal(
+      status,
+      403,
+      `Expected 403 when a suspended user tries to unsuspend themselves, got ${status}. Body: ${JSON.stringify(data)}`
+    );
+
+    // Undo the self-suspension so the after() cleanup can delete the user.
+    await unsuspendUser(regularUserId);
+  });
+});
+
 // ── Teardown ──────────────────────────────────────────────────────────────────
 
 after(async () => {
-  if (sharedServer) {
-    await new Promise<void>((resolve, reject) =>
-      sharedServer!.close((err) => (err ? reject(err) : resolve()))
-    );
-  }
+  const servers = [sharedServer, adminGuardServer].filter(Boolean) as http.Server[];
+  await Promise.all(
+    servers.map(
+      (s) => new Promise<void>((resolve, reject) => s.close((err) => (err ? reject(err) : resolve())))
+    )
+  );
   await pool.end().catch(() => {});
 });
