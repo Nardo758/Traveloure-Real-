@@ -5992,7 +5992,12 @@ router.get("/api/search/experiences", async (req, res) => {
           const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
           const descMatch = p.description?.toLowerCase().includes(qLower);
           const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
-          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
+          // Task 962: normalize both sides to the city token (first comma-separated
+          // segment, lower-cased) so "Kyoto, Japan", "Kyoto", and "kyoto" all
+          // match a service whose location column stores any of those variants.
+          const destCity = dest.split(",")[0].trim();
+          const locCity = (p.location || "").toLowerCase().split(",")[0].trim();
+          const destMatch = !dest || !destCity || locCity.includes(destCity) || destCity.includes(locCity);
           const textMatch = !qLower || nameMatch || descMatch;
           if (textMatch && destMatch && catMatch) {
             results.push({
