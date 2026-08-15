@@ -100,7 +100,7 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
         return; // `pending` is discarded here, unread — never processed.
       }
 
-      handleAuthenticatedConnection(ws, userId);
+      handleAuthenticatedConnection(ws, userId, peerIp);
       for (const data of pending) {
         ws.emit("message", data);
       }
@@ -111,7 +111,7 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
   return wss;
 }
 
-function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
+function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: string | null) {
   clients.set(userId, {
     ws,
     userId,
