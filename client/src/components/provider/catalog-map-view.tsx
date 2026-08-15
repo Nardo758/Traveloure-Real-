@@ -18,10 +18,14 @@
  * "fix this" affordance below is a LINK into the flow's Logistics step, which is the same door
  * the draft checklist uses.
  *
- * The honesty rules C4 shipped are kept verbatim: the "X of Y services located" summary is a real
- * partition of the owner's own rows, an unlocated listing is listed in the unpinned rail and stays
- * OFF the map (never dropped on a city centre), unlocated stops are counted but never drawn, and
- * ODbL attribution rides the shared `ServiceLocationMap` wherever it renders (§20/§22c).
+ * The honesty rules C4 shipped are kept, sharpened by Lane M (mock conformance, Aug 15): the
+ * located summary is a real partition of the owner's own rows and counts PLACE-ANCHORED listings
+ * only (a remote/artifact listing happens nowhere — a real answer, not a missing pin, D-3/D-4);
+ * an unlocated listing is named in the "Not located" list with its true reason and stays OFF the
+ * map (never dropped on a city centre); unlocated stops are counted but never drawn; and ODbL
+ * attribution rides the shared `ServiceLocationMap` wherever it renders (§20/§22c). D-5: the
+ * canvas draws the whole located footprint (sibling pins, labeled); D-1/D-6: every fix/open
+ * affordance is a REAL link into the listing's own Logistics step.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -31,9 +35,10 @@ import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MapPin, MapPinOff, Pencil, Plus, TrendingUp, AlertTriangle } from "lucide-react";
+import { Loader2, MapPin, MapPinOff, Pencil, TrendingUp, AlertTriangle } from "lucide-react";
 import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/service-location-map";
 import { parseStoredPoint, type LocationPoint } from "@/components/backoffice/location-point-picker";
+import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
 
 export interface CatalogMapService {
   id: string;
@@ -45,6 +50,34 @@ export interface CatalogMapService {
   serviceRadius?: string | number | null;
   location?: string;
   productShape?: string | null;
+  // Lane M (D-3/D-4): classifies rows that HAPPEN NOWHERE (remote/artifact) so they are never
+  // counted as "missing" a pin — shared predicate, same vocabulary as the wizard and storefront.
+  deliveryMethod?: string | null;
+}
+
+// Lane M (D-4): the honest per-row reason for a listing that happens nowhere — same wording
+// family as the mock ("PDF guide — it happens nowhere"). Keyed by the canonical 7 minus the
+// two place-anchored methods.
+const HAPPENS_NOWHERE_LABEL: Record<string, string> = {
+  pdf: "PDF guide",
+  video: "Video call",
+  call: "Phone call",
+  voice_notes: "Voice notes",
+  async_messaging: "Messaging",
+};
+
+// D-7: a row with a blank name still needs a readable identity on every list and label.
+function displayName(s: { serviceName?: string | null }): string {
+  return s.serviceName?.trim() ? s.serviceName : "Untitled service";
+}
+
+// D-8: humanize a raw category key (tour_guide → "Tour guide") — presentation only.
+function humanizeKey(key: string): string {
+  const words = key.split(/[_-]+/).filter(Boolean);
+  if (words.length === 0) return key;
+  return words
+    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
 }
 
 interface RoutePointRow {
@@ -222,7 +255,7 @@ function MarketInsightsView() {
                         <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", fontSize: 13 }}>
                           <div style={{ fontWeight: 700, color: "#1A1A18" }}>{g.name}</div>
                           <div style={{ color: "#7A7A72", fontSize: 12 }}>
-                            {g.categoryKey}: {g.have} of {g.target} — {g.gap} more needed
+                            {humanizeKey(g.categoryKey)}: {g.have} of {g.target} — {g.gap} more needed
                           </div>
                         </div>
                       </Popup>
@@ -312,10 +345,11 @@ function MarketInsightsView() {
                       >
                         <span>
                           <span className="font-medium" style={{ color: "#1A1A18" }}>{g.name}</span>
-                          <span className="text-[11px] block text-muted-foreground">{g.categoryKey}</span>
+                          {/* D-8: human words, not raw keys — presentation only, the key stays the id. */}
+                          <span className="text-[11px] block text-muted-foreground">{humanizeKey(g.categoryKey)}</span>
                         </span>
                         <Badge variant="outline" className="border-amber-400 text-amber-700">
-                          {g.have}/{g.target} · +{g.gap}
+                          {g.have} of {g.target} · needs {g.gap} more
                         </Badge>
                       </li>
                     ))}
@@ -352,12 +386,27 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
 
   // C4 (ruling 74): honest provider-wide coverage. A service is "located" iff its OWN row
   // carries confirmed coordinates (the same `parseStoredPoint` the left rail and the single-
-  // service canvas use) — never inferred from a delivery method or a city string. The count is
-  // this partition's real size; the unpinned rail lists exactly the services with no coordinates,
-  // which stay OFF the map (§13 — a remote/PDF listing with no pin belongs in the rail, never
-  // dropped on the city centre).
+  // service canvas use) — never inferred from a delivery method or a city string.
+  // Lane M (D-3, mock conformance Aug 15): the count is over PLACE-ANCHORED listings only. A
+  // remote/artifact listing happens nowhere — that is a real answer, not a missing pin — so it
+  // is neither counted as missing nor asked to "add a pin" (§13 vocabulary fix). A row that
+  // can't be classified (no deliveryMethod, no property shape) stays in the place-anchored
+  // bucket rather than being silently excused (the fundamentals module's own posture).
   const locatedServices = mappable.filter((s) => parseStoredPoint(s.latitude, s.longitude) !== null);
-  const unpinnedServices = mappable.filter((s) => parseStoredPoint(s.latitude, s.longitude) === null);
+  const placeAnchored = mappable.filter(
+    (s) =>
+      !isClassifiable({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) ||
+      isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }),
+  );
+  const placeAnchoredLocated = placeAnchored.filter((s) => parseStoredPoint(s.latitude, s.longitude) !== null);
+  // D-4: two DIFFERENT kinds of "not on the map", each named with its true reason.
+  const pinMissing = placeAnchored.filter((s) => parseStoredPoint(s.latitude, s.longitude) === null);
+  const happensNowhere = mappable.filter(
+    (s) =>
+      isClassifiable({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) &&
+      !isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) &&
+      parseStoredPoint(s.latitude, s.longitude) === null,
+  );
 
   // Owner single-service read (ruling 22: routePoints ride this response). READ ONLY — the stops
   // below are rendered from this response and edited nowhere on this surface.
@@ -367,6 +416,16 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   });
 
   const pin: LocationPoint | null = selected ? parseStoredPoint(selected.latitude, selected.longitude) : null;
+
+  // Lane M (D-5): the footprint — every OTHER located listing rides the same canvas as a
+  // labeled sibling pin, so the preview shows where the whole catalog happens, not one listing
+  // at a time. Clicking a sibling selects it (same as the left rail).
+  const siblingPinData = locatedServices
+    .filter((s) => s.id !== selectedId)
+    .map((s) => {
+      const p = parseStoredPoint(s.latitude, s.longitude)!;
+      return { id: s.id, lat: p.lat, lng: p.lng, label: displayName(s) };
+    });
 
   const stops: ServiceRouteStopView[] = useMemo(
     () =>
@@ -438,55 +497,106 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
   return (
     <div className="space-y-4">
       {toggleBar}
-      {/* C4: provider-wide coverage summary — the REAL count of services with a confirmed
-          location, never a guess. This is a coverage indicator across the whole catalog and is
-          distinct from the single-service canvas below (which maps only the selected listing). */}
+
+      {/* Lane M (D-2/D-6): the read-only posture stated UP FRONT, with the "open it" door
+          landing on the SELECTED listing's own Logistics step — never a generic page. */}
+      <div
+        className="rounded-lg border border-[#E8E8E2] bg-[#FAFAF8] px-3 py-2 text-[12px]"
+        style={{ color: "#7A7A72" }}
+        data-testid="catalog-map-readonly-notice"
+      >
+        <span className="font-semibold" style={{ color: "#1A1A18" }}>
+          Traveler preview — read-only.
+        </span>{" "}
+        This is what a traveler sees. Pins, radius, zones and route stops are authored in the create
+        flow's step 4, "Logistics"
+        {selected ? (
+          <>
+            {" — "}
+            <a
+              href={logisticsHref(selected.id)}
+              className="text-[#35605A] underline underline-offset-2"
+              data-testid="link-open-logistics"
+            >
+              open it →
+            </a>
+          </>
+        ) : (
+          "."
+        )}
+      </div>
+
+      {/* C4 + Lane M (D-3): provider-wide coverage summary over PLACE-ANCHORED listings only —
+          a remote/artifact listing happens nowhere and is not "missing" from the map. */}
       <div
         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E8E2] bg-[#FAFAF8] px-3 py-2"
         data-testid="catalog-map-located-summary"
       >
         <span className="text-[13px] font-medium" style={{ color: "#1A1A18" }} data-testid="text-located-count">
-          {locatedServices.length} of {mappable.length} service{mappable.length === 1 ? "" : "s"} located on the map
+          {placeAnchoredLocated.length} of {placeAnchored.length} place-anchored listing
+          {placeAnchored.length === 1 ? "" : "s"} located
         </span>
         <span className="text-[11px]" style={{ color: "#7A7A72" }}>
-          Services without a confirmed location stay off the map — nothing is dropped on the city centre.
+          Remote and artifact listings are not counted as missing — they happen nowhere, and that is
+          a real answer. Nothing is dropped on the city centre.
         </span>
       </div>
 
-      {/* C4: the unpinned rail — services with NO coordinates, listed off-map (§13). Each is an
-          "add a pin" affordance that selects the listing so its Meeting pin card (right) opens;
-          the pin itself still writes through the one confirm-gated LocationPointPicker rail. */}
-      {unpinnedServices.length > 0 && (
+      {/* Lane M (D-1/D-4): the NOT LOCATED list — every off-map listing named with its TRUE
+          reason. A place-anchored listing without a pin gets "Fix it in step 4 →" (a real link
+          into the flow's Logistics step, the one authoring door); a listing that happens nowhere
+          gets its reason and NO fix chip — there is nothing to fix. */}
+      {(pinMissing.length > 0 || happensNowhere.length > 0) && (
         <div
-          className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2.5"
-          data-testid="catalog-map-unpinned-rail"
+          className="rounded-lg border border-[#E8E8E2] bg-white px-3 py-2.5"
+          data-testid="catalog-map-not-located"
         >
-          <p className="text-[12px] font-medium text-amber-800 mb-2 flex items-center gap-1">
-            <MapPinOff className="w-3.5 h-3.5" /> Not on the map yet ({unpinnedServices.length}) — pin these to show
-            travelers where they happen
+          <p className="text-[11px] font-semibold uppercase tracking-wide mb-2 flex items-center gap-1" style={{ color: "#7A7A72" }}>
+            <MapPinOff className="w-3.5 h-3.5" /> Not located
           </p>
-          <ul className="flex flex-wrap gap-1.5">
-            {unpinnedServices.map((s) => (
-              <li key={s.id} data-testid={`unpinned-service-${s.id}`}>
-                <button
-                  onClick={() => setSelectedId(s.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
-                    s.id === selectedId
-                      ? "border-[#E85D55] bg-[rgba(232,85,85,0.06)]"
-                      : "border-amber-300 bg-white hover:bg-amber-50"
-                  }`}
-                  data-testid={`button-add-pin-${s.id}`}
-                >
-                  <span className="truncate max-w-[180px]" style={{ color: "#1A1A18" }}>
-                    {s.serviceName}
-                  </span>
-                  <span className="inline-flex items-center gap-0.5 text-amber-700 font-medium">
-                    <Plus className="w-3 h-3" /> Add a pin
-                  </span>
-                </button>
+          <ul className="space-y-1.5">
+            {pinMissing.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center justify-between gap-3 text-[13px]"
+                data-testid={`not-located-${s.id}`}
+              >
+                <span className="truncate" style={{ color: "#1A1A18" }}>
+                  {displayName(s)}
+                </span>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700">
+                    no confirmed pin — not drawn
+                  </Badge>
+                  <a
+                    href={logisticsHref(s.id)}
+                    className="text-[12px] font-medium text-[#35605A] underline underline-offset-2"
+                    data-testid={`link-fix-step4-${s.id}`}
+                  >
+                    Fix it in step 4 →
+                  </a>
+                </span>
+              </li>
+            ))}
+            {happensNowhere.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center justify-between gap-3 text-[13px]"
+                data-testid={`not-located-${s.id}`}
+              >
+                <span className="truncate" style={{ color: "#1A1A18" }}>
+                  {displayName(s)}
+                </span>
+                <span className="text-[12px] flex-shrink-0" style={{ color: "#7A7A72" }} data-testid={`nowhere-reason-${s.id}`}>
+                  {(s.deliveryMethod && HAPPENS_NOWHERE_LABEL[s.deliveryMethod]) || "Remote"} — it happens nowhere
+                </span>
               </li>
             ))}
           </ul>
+          <p className="text-[11px] mt-2" style={{ color: "#7A7A72" }}>
+            A listing with no coordinates is named here and left off the canvas. Never a city-center
+            fallback, never another listing's shapes standing in for this one.
+          </p>
         </div>
       )}
 
@@ -507,7 +617,7 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
               }`}
             >
               <span className="font-medium block truncate" style={{ color: "#1A1A18" }}>
-                {s.serviceName}
+                {displayName(s)}
               </span>
               <span className="text-[11px]" style={{ color: exact ? "#3D7A46" : hasPin ? "#9A6B1F" : "#A54242" }}>
                 {exact ? "Exact pin" : hasPin ? "Approximate area" : "No location yet"}
@@ -523,14 +633,17 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
       <div className="space-y-2 min-w-0">
         <ServiceLocationMap
           pin={pin}
-          pinLabel={selected?.meetingPoint || selected?.serviceName || null}
+          pinLabel={selected ? displayName(selected) : null}
           radiusKm={toNum(selected?.serviceRadius)}
           surchargeZones={(zoneTierState?.surchargeTiers ?? []).map((t) => ({ radiusKm: Number(t.radiusKm), fee: t.fee }))}
           stops={stops}
           height={480}
           testIdPrefix="catalog-map-canvas"
+          siblingPins={siblingPinData}
+          onSiblingPinClick={setSelectedId}
+          labelPins
         />
-        {!pin && locatedCount === 0 && (
+        {!pin && locatedCount === 0 && siblingPinData.length === 0 && (
           <Card>
             <CardContent className="py-16 text-center text-sm text-muted-foreground" data-testid="catalog-map-empty">
               <MapPin className="w-6 h-6 mx-auto mb-2 opacity-40" />
@@ -545,6 +658,11 @@ export function CatalogMapView({ services }: { services: CatalogMapService[] }) 
             {locatedCount < stops.length ? " — unlocated stops stay listed but are never drawn." : "."}
           </p>
         )}
+        {/* Lane M (D-2): the mock's closing caption, verbatim posture. */}
+        <p className="text-[11px]" style={{ color: "#7A7A72" }} data-testid="catalog-map-readonly-caption">
+          Nothing here can be dragged, armed or placed — to change a location you go back to the
+          flow's Logistics step.
+        </p>
       </div>
 
       {/* Right rail: READ-ONLY. Nothing here can be dragged, armed or placed — to change a
