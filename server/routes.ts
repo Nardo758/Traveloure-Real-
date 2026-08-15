@@ -6357,18 +6357,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               });
               advisorLinked = true;
             } else if (existing.status === "pending") {
-              await storage.acceptTripAssignment(existing.id, userId);
-              advisorLinked = true;
+              // Gate on the actual row returned — returns undefined if the atomic
+              // WHERE status='pending' clause lost a concurrent race.
+              const accepted = await storage.acceptTripAssignment(existing.id, userId);
+              advisorLinked = !!accepted;
             }
             // Any other existing status (already accepted, rejected) is left as-is.
 
             // Notify the traveler that an expert has joined their trip.
-            // Non-fatal: wrap separately so a notification failure never blocks the accept.
+            // Awaited inside the non-fatal try/catch so failures are logged but
+            // never bubble up to break the booking accept response.
             if (advisorLinked) {
               const { createTravelerAdvisorJoinedNotification } = await import("./services/booking-actions.service");
-              createTravelerAdvisorJoinedNotification(booking.tripId, userId).catch((notifErr) => {
-                console.error("Failed to notify traveler of advisor join via booking bridge:", notifErr);
-              });
+              await createTravelerAdvisorJoinedNotification(booking.tripId, userId);
             }
           }
         } catch (bridgeErr) {

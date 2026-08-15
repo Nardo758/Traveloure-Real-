@@ -690,15 +690,20 @@ export async function createTravelerAdvisorJoinedNotification(
   const expertName: string =
     [expertRow.first_name, expertRow.last_name].filter(Boolean).join(" ") || "An expert";
 
+  // Deterministic dedupe_key: one "expert joined" notification per trip+expert pair.
+  // ON CONFLICT DO NOTHING means concurrent booking-accepts for the same trip/expert
+  // produce exactly one notification row rather than duplicates.
+  const dedupeKey = `trip-advisor-joined:${tripId}:${expertUserId}`;
   await db.execute(sql`
-    INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
+    INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at, dedupe_key)
     VALUES (
       ${crypto.randomUUID()}, ${travelerId}, 'booking_request',
       'Expert joined your trip',
       ${`${expertName} is now advising on ${tripLabel}.`},
       ${JSON.stringify({ tripId, workspacePath: `/trip/${tripId}` })}::jsonb,
-      false, NOW()
+      false, NOW(), ${dedupeKey}
     )
+    ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
   `);
 }
 export async function getTripLabel(tripId: string): Promise<string> {
