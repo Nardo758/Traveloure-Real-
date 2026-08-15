@@ -325,6 +325,11 @@ export async function hydrateTripContextFromServer(): Promise<void> {
   }
 }
 
+/** @internal For unit tests only — resets the per-page-load hydration guard. */
+export function resetHydrationForTesting(): void {
+  hydrated = false;
+}
+
 /** Mount once (traveler layout): hydrates the context from the server on load. */
 export function useTripContextSync(): void {
   useEffect(() => {
