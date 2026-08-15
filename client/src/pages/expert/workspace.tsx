@@ -882,6 +882,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   }
 }
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 /** A-2 / C-1 (Workstation audit): the canvas item editor. Collapsible, day-grouped list of
  *  every item on the build with a "Move to day" select (A-2) and an "Expert note" textarea
  *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
@@ -1372,7 +1373,6 @@ function ItemsEditorPanel({
     </div>
   );
 }
-
 // ── L4b: the between-stops transport-leg editor (docs/briefs/L4-transport-legs.md) ──────────────
 // Server contracts (L4a, migration 154 — final, do not adjust to fit the client):
 //   POST   /api/trips/:tripId/transport-legs/generate           → born 'proposed', replaces the
@@ -2803,6 +2803,7 @@ function writeConfirmedToSession(tripId: string, providers: Set<string>): void {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
@@ -4314,6 +4315,7 @@ export default function ExpertWorkspace() {
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => handleOpenBookingBrief(network, resolvePartnerBookingUrl(network))}
                   confirmedProviders={confirmedProviders}
+                  resolveBookingUrl={resolvePartnerBookingUrl}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
                   onSelectItem={(itemId) => setMapFocusItemId(itemId)}
