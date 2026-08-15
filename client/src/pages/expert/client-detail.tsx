@@ -312,18 +312,29 @@ export default function ExpertClientDetail() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
+  // Guard: the Customers list aggregates anonymous bookings under a Guest row
+  // with userId=null. Navigating to /expert/clients/null produces the literal
+  // string "null" as the URL param. Guest rows have no stable identity so the
+  // detail page cannot be rendered — treat this as not-found immediately and
+  // skip all data fetches (the server would also return 404, but avoiding the
+  // request keeps the UI clean and prevents a bogus conversationId being built).
+  const isGuestOrInvalid =
+    !clientUserId || clientUserId === "null" || clientUserId === "undefined";
+
   const {
     data: clientData,
     isLoading: clientLoading,
     error: clientError,
   } = useQuery<{ customer: CustomerRow }>({
     queryKey: [`/api/me/customers/${clientUserId}`],
-    enabled: !!clientUserId,
+    enabled: !isGuestOrInvalid,
   });
 
   const myUserId = (user as any)?.id ?? (user as any)?.claims?.sub ?? "";
   const conversationId =
-    myUserId && clientUserId ? buildConversationId(myUserId, clientUserId) : null;
+    myUserId && clientUserId && !isGuestOrInvalid
+      ? buildConversationId(myUserId, clientUserId)
+      : null;
 
   const { data: messagesData, isLoading: messagesLoading } = useQuery<ChatMessage[]>({
     queryKey: [`/api/messages/conversation/${conversationId}`],
@@ -357,12 +368,14 @@ export default function ExpertClientDetail() {
             <Skeleton className="h-8 w-48" />
             <Skeleton className="h-4 w-64" />
           </div>
-        ) : clientError ? (
+        ) : isGuestOrInvalid || clientError ? (
           <div
             className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
             data-testid="error-client-not-found"
           >
-            Client not found or you have no interactions with this person.
+            {isGuestOrInvalid
+              ? "Guest bookings are anonymous and have no individual client page."
+              : "Client not found or you have no interactions with this person."}
           </div>
         ) : customer ? (
           <PageHeader
