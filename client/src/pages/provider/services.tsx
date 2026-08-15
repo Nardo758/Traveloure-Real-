@@ -998,19 +998,15 @@ function ListingRow({
           {listingMetaLine(service)}
         </p>
 
-        {/* Per-service booking stats — always shown (zero-booking services show "0 bookings"). */}
+        {/* Per-service booking stats — always shown; zero-booking services show "0 bookings · $0 revenue". */}
         <p className="text-[11.5px] text-[#7A7A72] mt-[3px]" data-testid={`text-service-stats-${service.id}`}>
           <span data-testid={`text-service-bookings-${service.id}`}>
             {(service.bookingsCount ?? 0).toLocaleString()} booking{(service.bookingsCount ?? 0) === 1 ? "" : "s"}
           </span>
-          {service.totalRevenue != null && Number(service.totalRevenue) > 0 && (
-            <>
-              {" · "}
-              <span data-testid={`text-service-revenue-${service.id}`}>
-                ${Number(service.totalRevenue).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} revenue
-              </span>
-            </>
-          )}
+          {" · "}
+          <span data-testid={`text-service-revenue-${service.id}`}>
+            ${Number(service.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} revenue
+          </span>
         </p>
 
         <div className="flex items-center gap-3.5 mt-2.5 flex-wrap">
