@@ -9689,33 +9689,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     })),
   });
 
-  // Google Maps Geocoding API - Convert place name to coordinates
-  const geocodeSchema = z.object({
-    address: z.string().min(1),
-  });
-
-  const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number; formattedAddress: string }> = {
-    "rome": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
-    "paris": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
-    "london": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
-    "tokyo": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
-    "new york": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
-    "barcelona": { lat: 41.3874, lng: 2.1686, formattedAddress: "Barcelona, Spain" },
-    "bangkok": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
-    "sydney": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
-    "dubai": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
-    "marrakech": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
-    "bali": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
-    "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
-    "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
-    "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
-    "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
-    "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
-    "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
-    "berlin": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
-    "hong kong": { lat: 22.3193, lng: 114.1694, formattedAddress: "Hong Kong" },
-    "goa": { lat: 15.2993, lng: 74.1240, formattedAddress: "Goa, India" },
-  };
+  // NOTE: the hardcoded FALLBACK_COORDINATES map that used to live here (and its unused
+  // geocodeSchema twin) is gone — city-coordinate fallbacks are now admin-curated rows in
+  // the geocode_fallbacks table (migration 217), consulted by POST /api/geocode in
+  // server/routes/content.routes.ts via storage.getGeocodeFallback().
 
   // === GROK AI INTEGRATION ROUTES ===
 
