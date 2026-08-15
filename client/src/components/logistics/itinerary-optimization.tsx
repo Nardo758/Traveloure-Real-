@@ -166,7 +166,7 @@ export function ItineraryOptimization({
         </Button>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Card data-testid="card-total-issues">
             <CardContent className="pt-4">
               <div className={`text-2xl font-bold ${totalIssues > 0 ? 'text-amber-600' : 'text-green-600'}`}>
@@ -399,7 +399,7 @@ export function ItineraryOptimization({
           </TabsContent>
 
           <TabsContent value="weather" className="space-y-4 mt-4">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {weather.map((w, index) => (
                 <Card key={index} data-testid={`card-weather-day-${index}`}>
                   <CardContent className="pt-4 text-center">

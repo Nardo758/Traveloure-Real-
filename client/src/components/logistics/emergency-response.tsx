@@ -183,7 +183,7 @@ export function EmergencyResponse({
           </Card>
         )}
 
-        <div className="grid grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Card data-testid="card-24h-contacts">
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-green-600">{available24hContacts.length}</div>
@@ -242,7 +242,7 @@ export function EmergencyResponse({
                 <CardTitle className="text-base">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Card 
                     className="cursor-pointer hover-elevate bg-destructive text-destructive-foreground"
                     data-testid="button-emergency-call"

@@ -305,7 +305,7 @@ export function TravelPulseCard({ data, compact = false, onClick }: TravelPulseC
             <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
               <Clock className="h-3 w-3" /> Crowd Forecast
             </p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
               {data.bestTimeToVisit && (
                 <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded text-green-800 dark:text-green-400">
                   <span className="text-xs block text-green-600 dark:text-green-500">Best time</span>
