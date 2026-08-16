@@ -1613,13 +1613,21 @@ Return JSON:
 
   // Get cities that need AI refresh
   async getCitiesNeedingRefresh(): Promise<TravelPulseCity[]> {
+    // Phase 2.3: scope limited to the 8 configured operating markets.
+    // No longer returns every stale city; prevents Grok from being implicitly
+    // triggered for cities outside the operating set.
+    const { OPERATING_MARKETS } = await import("./trend-engine/operating-markets");
+    const marketNames = OPERATING_MARKETS.map(m => m.cityName);
     const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
+
     return db
       .select()
       .from(travelPulseCities)
       .where(
-        sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`
+        and(
+          sql`${travelPulseCities.cityName} = ANY(${sql.raw(`ARRAY[${marketNames.map(n => `'${n.replace(/'/g, "''")}'`).join(',')}]`)})`,
+          sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`,
+        ),
       );
   }
 

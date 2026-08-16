@@ -1171,4 +1171,10 @@ export const MIGRATION_FILES = [
   //   porto autumn (10-01 → 10-31, 1.00) October fully unassigned.
   // Closes the 366-day leap-year coverage scan to 0 gap_days for all 8 markets.
   "234_trend_engine_phase1_season_gaps2.sql",
+  // 235: Trend Engine Phase 2 infrastructure —
+  //   (1) health_status / halted_at / halted_reason columns on trend_source_config (Phase 2.1)
+  //   (2) UNIQUE idempotency index on trend_signals (entity, source, metric, observed_at)
+  //   (3) pre_launch boolean column on trend_signals (R8 calibration exclusion)
+  //   (4) trend_entities seed rows for 8 operating markets (pre-confirmed Wikidata QIDs)
+  "235_trend_engine_phase2_infra.sql",
 ] as const;
