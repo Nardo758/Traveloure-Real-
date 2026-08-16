@@ -241,3 +241,38 @@ Adapter rebuilt using native X API v2 (no xAI dependency):
 - R2 still applies: counts only, no LLM scoring of X content
 - 30-day ToS retention limit: purge job still needed before activation
 - `X_BEARER_TOKEN` secret stored; adapter ready to enable in trend_source_config
+
+### PredictHQ adapter — fully built (Aug 2026)
+
+`/v1/accounts/self/` returns 403 (no account:read scope) — irrelevant, not needed.
+Core endpoints confirmed working:
+- `GET /v1/events/count/` → 200 (23 events around Kyoto on Aug 15)
+- `GET /v1/events/` → 200 (Summer Sonic: rank 94, attendance 150k)
+
+Adapter rebuilt: two parallel calls per market (count + top-10 by rank).
+Metrics: phq_event_count, phq_top_rank, phq_attendance_forecast.
+Location: within=50km@{lat},{lng}. Demand categories only (no weather/delays).
+Full historical backfill supported. Ready to enable in trend_source_config.
+
+### R9 — X data retention architecture (Aug 2026)
+
+Derived-aggregates-only architecture adopted (Brandwatch/Sprinklr class).
+The X developer agreement's 30-day cap applies to X Content (post text, IDs, user
+objects). Our stored rows are non-reconstructable aggregate counts — our own analytics.
+No purge job on trend_signals for any source.
+
+Belt-and-suspenders enforcement:
+  (a) x_api adapter: raw_ref = null on all insert paths
+  (b) DB CHECK constraint chk_x_api_raw_ref_null rejects non-null raw_ref on x_api rows
+  (c) x_handle_or_query on trend_entities = our query config, not X Content
+
+Counsel verification parked with data-resale ToS + 10DLC queue.
+
+### Phase 2 first ingestion complete (Aug 2026)
+
+All 8 adapters enabled and ingested successfully:
+  wikimedia_pageviews: 8 rows (D-3 lag fix), gdelt: 8 rows (intermittent 429 expected),
+  nager_date: 8 rows (India gracefully skipped), open_meteo: 16 rows,
+  internal_trips: 16 rows, besttime: 22 rows, predicthq: 21 rows, x_api: 16 rows.
+
+All dispatch evidence gates passed (G1–G6). Phase 2.4 backfill is next.
