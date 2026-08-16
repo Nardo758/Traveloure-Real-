@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { api } from "@shared/routes";
+
+// NOTE: deliberately NOT importing `api` from "@shared/routes" here — that module
+// statically imports the entire shared DB schema (~257KB chunk), and this hook is in
+// the EAGER bundle graph (dashboard-sidebar → App), so the import dragged the schema
+// chunk into every first paint including the homepage. The literal below must match
+// api.chats.list.path ("/api/chats") so query-key invalidation stays in sync with
+// useConversationThreads/use-chat.ts.
+const CHATS_LIST_PATH = "/api/chats";
 
 /**
  * W5-E (mark-read wiring): client-side mirror of the server's
@@ -42,7 +49,7 @@ export function useMarkConversationRead() {
       apiRequest("PATCH", `/api/messages/conversation/${conversationId}/read-all`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/messages/unread/count"] });
-      queryClient.invalidateQueries({ queryKey: [api.chats.list.path] });
+      queryClient.invalidateQueries({ queryKey: [CHATS_LIST_PATH] });
     },
   });
 }
