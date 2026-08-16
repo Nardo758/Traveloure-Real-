@@ -1150,4 +1150,10 @@ export const MIGRATION_FILES = [
   // row 101's collected-and-never-read class). Both additive-nullable, NO DB CHECK — the
   // 181/195 posture, so no publish-time CHECK trap. Declared in shared/schema.ts.
   "228_service_bring_access_notes.sql",
+  // 230: deduplicate travel_pulse_cities rows — two seed paths (seedTrendingCities +
+  // seedTravelPulseData) could both insert Tokyo/Japan and Sydney/Australia with different
+  // UUIDs. Keeps the best row per (lower(city_name), lower(country)) pair (highest
+  // pulse_score; tie-break newest created_at) then adds a unique index so the DB rejects
+  // any future duplicate insert.
+  "230_dedupe_travel_pulse_cities.sql",
 ] as const;
