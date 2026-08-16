@@ -2798,3 +2798,34 @@ then certified nine specs on exactly such a bench. The rule, now enforced in the
 > A bench with accumulated seed data will green specs that CI cannot. "Verified" means verified
 > against a database built from empty, or it means nothing.
 
+
+### FIXED — non-deterministic optimization-fee resolution (Aug 16, 2026)
+
+The product finding filed above is closed on the **resolution** side. `resolveOptimizationFee`'s
+two queries were `LIMIT 1` with no `ORDER BY`; both now order
+`is_disabled DESC, updated_at DESC, id` and fetch `LIMIT 2` so a duplicate is **detected and
+`logger.warn`ed** rather than silently absorbed.
+
+**Why disabled-wins is the right tiebreak.** When the config is ambiguous the two readings are "an
+admin turned this off" and "an admin set a price". Honouring the *off* is the safe failure mode: the
+worst case is a paid path unavailable until an admin removes the duplicate, versus charging for an
+offering that was explicitly disabled. `updated_at DESC` then decides among equally-enabled rows,
+with `id` as a stable final tiebreak.
+
+**Deliberately NOT done: the partial UNIQUE index.** Making "one active row per event_type"
+structural is the better fix, but the deploy push enforces declared constraints at publish time, so
+a prod table that already holds duplicates would **fail the publish and offer the destructive "copy
+dev over production" option**. That needs `node scripts/preflight-prod-constraints.cjs "<PROD_URL>"`
+against production first. Filed as follow-up; the resolver fix carries no such risk because it
+changes no schema.
+
+**Proven by `server/__tests__/optimization-fee-determinism.db.test.ts` (D1–D4), and
+MUTATION-PROVED.** Reverting the ordering turns D1, D2 and D4 red while D3 (the single-row
+no-change control) stays green.
+
+> A note worth keeping, because it nearly shipped a useless test: **D1 originally passed against
+> the unfixed resolver.** An unordered `LIMIT 1` returns rows in physical order, and the fixture
+> happened to insert the disabled row first — so the assertion got the right answer for the wrong
+> reason. Only the mutation run exposed it. Insert order is now load-bearing and commented as such.
+> A test written against a nondeterministic bug can pass by luck; mutation is the only way to know.
+
