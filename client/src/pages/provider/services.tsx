@@ -1058,7 +1058,7 @@ function ListingRow({
             <button
               type="button"
               onClick={onOpenAvailability}
-              className="text-[12.5px] text-[#1A1A18] underline underline-offset-2 hover:text-[#35605A]"
+              className="text-[12.5px] text-[#35605A] underline underline-offset-2 font-medium hover:opacity-80"
               data-testid={`button-availability-${service.id}`}
             >
               Availability →
@@ -1095,7 +1095,7 @@ function ListingRow({
         <Link href={editHref}>
           <button
             type="button"
-            className="text-[12.5px] text-[#7A7A72] hover:text-[#1A1A18] hover:underline underline-offset-2"
+            className="text-[12.5px] font-medium text-[#1A1A18] border border-[#E8E8E2] bg-transparent rounded-[6px] px-[11px] py-[6px] whitespace-nowrap hover:bg-[#FAFAF8] transition-colors"
             data-testid={`button-edit-${service.id}`}
           >
             {t("card.edit", { defaultValue: "Edit" })}
