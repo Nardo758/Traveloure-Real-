@@ -3311,7 +3311,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!ownedService) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
-      // Extract neighborhoods before schema parse (not a DB column)
+      // Extract neighborhoods before schema parse (not a DB column).
+      // Also capture approvalStatus before schema parse — the generic updater strips it
+      // for security (prevents self-approval), but "submitted" is a legitimate provider
+      // action handled via the dedicated submitProviderServiceListing path below.
+      const requestedApprovalStatus: string | undefined = req.body.approvalStatus;
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       // L27-P3: same server-derived location handling as create. A PATCH that carries
       // no `locationPoint` leaves latitude/longitude/location_precision untouched — so a
@@ -3534,19 +3538,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // ── Submit-for-review transition ────────────────────────────────────────────────────────
+      // The client sends { approvalStatus: "submitted" } from the listing-home "Submit for
+      // review" button. The generic updateProviderService call above strips this field (D1a
+      // security barrier prevents self-approval). Handle it here via the dedicated storage
+      // method, which is the same writer the admin queue uses on the submit side.
+      // Only allow the transition from draft/rejected → submitted; ignore it for listings that
+      // are already submitted, in_review, or approved (idempotency / no regression).
+      // Re-fetch via getProviderServiceById so the response is the raw ProviderService shape
+      // the client's ServiceDetail interface expects (serviceName, approvalStatus, etc.), not
+      // the mapped ProviderServiceListing shape (title, status/isActive) submitProviderServiceListing returns.
+      let finalRow: typeof updated = updated;
+      if (
+        requestedApprovalStatus === "submitted" &&
+        ownedService.approvalStatus !== "submitted" &&
+        ownedService.approvalStatus !== "in_review" &&
+        ownedService.approvalStatus !== "approved"
+      ) {
+        await storage.submitProviderServiceListing(req.params.id);
+        finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
+      }
+
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
       // commission split (§18) and must never round-trip to the client, on create OR update.
       // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
       // the text this write actually produces: the field from the body when it was edited, else
       // the stored value, so an untouched offending description keeps warning on every save.
       const titleWarningUpd = detectProtectedTitleClaims({
-        serviceName: (input as any).serviceName ?? updated?.serviceName ?? ownedService.serviceName,
-        description: (input as any).description ?? updated?.description ?? ownedService.description,
+        serviceName: (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName,
+        description: (input as any).description ?? finalRow?.description ?? ownedService.description,
       });
       res.json(
-        updated
+        finalRow
           ? {
-              ...omitFields(updated, ["revenueShareRate"] as const),
+              ...omitFields(finalRow, ["revenueShareRate"] as const),
               ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
               // Ruling 112 Q8: tell the owner which fields went to re-review — the live listing
               // is unchanged for those, and nothing was taken down.
@@ -3554,7 +3579,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                 ? { editReview: { status: "pending", stagedKeys: stagedEditKeys } }
                 : {}),
             }
-          : updated,
+          : finalRow,
       );
     } catch (err) {
       if (err instanceof z.ZodError) {
