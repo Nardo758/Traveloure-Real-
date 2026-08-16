@@ -888,7 +888,7 @@ function Router() {
         {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
       </Route>
       <Route path="/provider/services/new">
-        {() => <ProtectedRoute component={CreateServiceWizard} requiredRole="provider" />}
+        {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
       {/* Listing Home — the post-save landing page for a service draft.
           Must be BEFORE /:id/edit so the bare :id path matches first.
