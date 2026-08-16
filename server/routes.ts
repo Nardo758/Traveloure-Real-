@@ -5955,6 +5955,141 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     },
   );
 
+  // Cover photo upload for provider services.
+  //
+  // PRIVACY POSTURE (mirrors deliverable rail, D3): the object-storage bucket is private
+  // (empirically verified Aug 2026 — unauthenticated GCS GETs return 403). Cover photos are
+  // public marketing images, but they are served through a server-side proxy endpoint (below)
+  // rather than by exposing the GCS URL. We persist a `covers:${key}` opaque reference to
+  // `serviceImage`, and the GET /api/services/:id/cover-image endpoint streams the bytes.
+  // This is the same `prefix:key` pattern the deliverable rail uses for `objstore:${key}`.
+  //
+  // Owner-gated write. Accepts JPEG/PNG only, validated by magic bytes. No multipart —
+  // `express.raw()` scoped to this route only (same as deliverable-file above).
+  const COVER_OBJSTORE_PREFIX = "covers:";
+  const COVER_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+  const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+  const PNG_MAGIC  = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // \x89PNG
+
+  app.post(
+    "/api/provider/services/:id/cover-photo",
+    isAuthenticated,
+    express.raw({ type: ["image/jpeg", "image/png", "application/octet-stream"], limit: "5mb" }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        // Raw read — we need the opaque `covers:${key}` reference for old-file cleanup;
+        // the normalized read returns the proxy URL which cannot be parsed back to a key.
+        const service = await storage.getProviderServiceByIdRaw(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({
+            message: "Send the image as a raw request body with Content-Type: image/jpeg or image/png",
+            code: "COVER_PHOTO_REQUIRED",
+          });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > COVER_MAX_BYTES) {
+          return res.status(400).json({
+            message: "Image exceeds the 5 MB size limit",
+            code: "COVER_PHOTO_TOO_LARGE",
+          });
+        }
+        // Detect format from magic bytes — never trust client Content-Type alone.
+        let ext: string;
+        let contentType: string;
+        if (buffer.subarray(0, 3).equals(JPEG_MAGIC)) {
+          ext = "jpg"; contentType = "image/jpeg";
+        } else if (buffer.subarray(0, 4).equals(PNG_MAGIC)) {
+          ext = "png"; contentType = "image/png";
+        } else {
+          return res.status(400).json({
+            message: "Only JPEG and PNG images are accepted",
+            code: "COVER_PHOTO_INVALID_FORMAT",
+          });
+        }
+
+        const key = `covers/${service.id}/${randomBytes(16).toString("hex")}.${ext}`;
+        const { uploadBuffer, deleteObject } = await import("./infrastructure/object-storage");
+        try {
+          await uploadBuffer(key, buffer);
+        } catch (storageErr) {
+          console.error("Cover photo upload failed:", storageErr);
+          return res.status(503).json({
+            message: "Object storage is not available right now. Try again shortly.",
+            code: "OBJECT_STORAGE_UNAVAILABLE",
+          });
+        }
+
+        // Persist the opaque `covers:${key}` reference first. On persistence failure, delete the
+        // newly uploaded object best-effort so it does not orphan in storage.
+        const storedValue = `${COVER_OBJSTORE_PREFIX}${key}`;
+        try {
+          await storage.updateProviderService(service.id, { serviceImage: storedValue });
+        } catch (dbErr) {
+          console.error("Cover photo DB persist failed:", dbErr);
+          deleteObject(key).catch(() => {});
+          return res.status(500).json({ message: "Failed to save cover photo" });
+        }
+
+        // Best-effort cleanup of the previous managed cover object (now that the DB is updated).
+        const prevStored = (service.serviceImage ?? "").trim();
+        if (prevStored.startsWith(COVER_OBJSTORE_PREFIX)) {
+          deleteObject(prevStored.slice(COVER_OBJSTORE_PREFIX.length)).catch(() => {});
+        }
+
+        // Return the proxy URL — the GCS URL is never disclosed (bucket is private).
+        res.json({
+          message: "Cover photo uploaded",
+          imageUrl: `/api/services/${service.id}/cover-image`,
+          contentType,
+        });
+      } catch (err) {
+        console.error("Cover photo upload error:", err);
+        res.status(500).json({ message: "Failed to upload cover photo" });
+      }
+    },
+  );
+
+  // Public cover-image proxy: streams a managed cover photo stored as `covers:${key}`.
+  // No auth required — cover photos are public marketing images. Falls back to a redirect
+  // for legacy external `serviceImage` URLs (Unsplash etc.) that predate the managed rail.
+  // Raw read — the normalized value is the proxy URL itself, which breaks the key extraction.
+  app.get("/api/services/:id/cover-image", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceByIdRaw(req.params.id);
+      if (!service) return res.status(404).json({ message: "Service not found" });
+
+      const stored = (service.serviceImage ?? "").trim();
+      if (stored.startsWith(COVER_OBJSTORE_PREFIX)) {
+        const key = stored.slice(COVER_OBJSTORE_PREFIX.length);
+        const { downloadBytes } = await import("./infrastructure/object-storage");
+        let bytes: Buffer;
+        try {
+          bytes = await downloadBytes(key);
+        } catch {
+          return res.status(404).json({ message: "Cover image not found" });
+        }
+        const ct = key.endsWith(".png") ? "image/png" : "image/jpeg";
+        res.setHeader("Content-Type", ct);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        return res.send(bytes);
+      }
+
+      // Legacy external URL — redirect so existing images keep working.
+      if (stored.startsWith("http")) {
+        return res.redirect(302, stored);
+      }
+
+      return res.status(404).json({ message: "No cover image on file" });
+    } catch (err) {
+      console.error("Cover image serve error:", err);
+      res.status(500).json({ message: "Failed to serve cover image" });
+    }
+  });
+
   // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
   // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
   // state (§14 posture, extended to this non-money reveal because the asset itself is the

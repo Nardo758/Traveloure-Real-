@@ -113,6 +113,8 @@ interface DraftState {
   fulfillmentSpeed: string;
   samplePages: string;
   fileUploaded: boolean;
+  // Cover photo — stored URL from object storage after upload
+  coverPhotoUrl: string;
   // Step 3 — Capacity
   partySizeMin: string;
   partySizeMax: string;
@@ -145,6 +147,7 @@ const BLANK: DraftState = {
   responseWindowHours: "24", scopeStatement: "",
   artifactDescription: "", fulfillmentSpeed: "Instantly — it is already written",
   samplePages: "First 3 pages, free", fileUploaded: false,
+  coverPhotoUrl: "",
   partySizeMin: "1", partySizeMax: "4", seatingType: "private",
   meetingPoint: "", meetingLat: null, meetingLng: null,
   collectsAndDrops: false,
@@ -1340,12 +1343,77 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 }
 
 // ─── step 5: review ───────────────────────────────────────────────────────────
-function StepReview({ draft, serviceId, onSubmit, submitting, onBack, onSaveLater, savingLater }: {
-  draft: DraftState; serviceId: string;
+// hint: Logic changed on both sides. Requires understanding intent of each change.
+function StepReview({ draft, set, serviceId, onSubmit, submitting, onBack, onSaveLater, savingLater }: {
+  draft: DraftState; set: (patch: Partial<DraftState>) => void;
+  serviceId: string;
   onSubmit: () => void; submitting: boolean;
   onBack: () => void;
   onSaveLater: () => void; savingLater: boolean;
 }) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+
+  // Revoke stale blob URL on cleanup (only blob: URLs — proxy URLs must not be revoked)
+  useEffect(() => {
+    return () => { if (photoPreview.startsWith("blob:")) URL.revokeObjectURL(photoPreview); };
+  }, [photoPreview]);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      toast({ title: "Unsupported format", description: "Please choose a JPG or PNG image.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Too large", description: "Image must be 5 MB or smaller.", variant: "destructive" });
+      return;
+    }
+    // Revoke previous blob URL, then show instant preview
+    if (photoPreview.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+
+    if (!serviceId) {
+      toast({ title: "Save draft first", description: "Continue past step 1 to get a service ID before uploading.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const res = await fetch(`/api/provider/services/${serviceId}/cover-photo`, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: arrayBuffer,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).message ?? "Upload failed");
+      }
+      const data = await res.json();
+      // Switch from the local blob URL to the persistent proxy URL so the image
+      // survives a page reload without a re-upload.
+      const proxyUrl: string = data.imageUrl ?? "";
+      if (photoPreview.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+      setPhotoPreview(proxyUrl);
+      set({ coverPhotoUrl: proxyUrl });
+      toast({ title: "Cover photo saved" });
+    } catch (err: any) {
+      // Clear the preview so the UI never shows a misleadingly "uploaded" photo.
+      if (photoPreview.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+      setPhotoPreview("");
+      setPhotoFile(null);
+      toast({ title: "Upload failed", description: err.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const steps = getStepList(draft.deliveryMethod);
   const isLong = steps.length === 5;
 
@@ -1428,8 +1496,96 @@ function StepReview({ draft, serviceId, onSubmit, submitting, onBack, onSaveLate
     </>
   ) : null;
 
+  // Cover photo summary value — three states:
+  // 1. just uploaded this session: show blob-URL thumbnail + file name
+  // 2. photo on file from a previous session: show a "Photo on file" chip
+  // 3. nothing: amber "Not added yet"
+  const coverPhotoValue = photoPreview ? (
+    <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <img
+        src={photoPreview}
+        alt="Cover preview"
+        style={{ width: 48, height: 34, objectFit: "cover", borderRadius: 4, border: `1px solid ${HAIR}`, flexShrink: 0 }}
+      />
+      <span style={{ fontSize: 12.5, color: INK }}>{photoFile?.name ?? "Image"}</span>
+      {uploading && <span style={{ fontSize: 12, color: MUT }}>Uploading…</span>}
+    </span>
+  ) : draft.coverPhotoUrl ? (
+    <span style={{
+      fontSize: 12, fontWeight: 500, color: ACC,
+      background: ACCS, border: `1px solid #CBDAD7`,
+      borderRadius: 100, padding: "2px 10px",
+    }}>
+      ✓ Photo on file
+    </span>
+  ) : (
+    <span style={{ color: "#B07400" }}>Not added yet</span>
+  );
+
   return (
     <div style={{ padding: "20px 22px" }}>
+
+      {/* ── Cover photo upload ───────────────────────────────────────────────── */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+      <div style={{
+        border: `1.5px dashed ${photoPreview || draft.coverPhotoUrl ? ACC : HAIR}`,
+        borderRadius: 7, background: photoPreview || draft.coverPhotoUrl ? ACCS : GRD,
+        padding: "16px 18px", marginBottom: 18,
+        display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+      }}>
+        {photoPreview ? (
+          <img
+            src={photoPreview}
+            alt="Cover preview"
+            style={{
+              height: 64, maxWidth: 120, objectFit: "cover",
+              borderRadius: 5, border: `1px solid ${HAIR}`, flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div style={{
+            width: 64, height: 64, borderRadius: 5, background: HAIR,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 22, color: MUT, flexShrink: 0,
+          }}>
+            🖼
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, marginBottom: 3 }}>
+            {photoPreview ? photoFile?.name : draft.coverPhotoUrl ? "Cover photo on file" : "Add a cover photo"}
+          </div>
+          <div style={{ fontSize: 12, color: MUT, lineHeight: 1.5, marginBottom: 10 }}>
+            {photoPreview
+              ? "Uploaded. You can replace it before submitting."
+              : draft.coverPhotoUrl
+                ? "A cover photo was previously uploaded. You can replace it."
+                : "JPG or PNG · up to 5 MB · Listings without a cover photo are less likely to be approved."}
+          </div>
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              background: photoPreview || draft.coverPhotoUrl ? "transparent" : ACC,
+              color: photoPreview || draft.coverPhotoUrl ? INK : "#fff",
+              border: `1px solid ${photoPreview || draft.coverPhotoUrl ? HAIR : ACC}`,
+              borderRadius: 5, padding: "7px 14px", cursor: uploading ? "not-allowed" : "pointer",
+              fontSize: 13, fontWeight: 550, font: "inherit",
+              opacity: uploading ? 0.7 : 1,
+            }}
+          >
+            {uploading ? "Uploading…" : photoPreview || draft.coverPhotoUrl ? "Replace photo" : "Choose photo"}
+          </button>
+        </div>
+      </div>
+
       {/* Summary table */}
       <div style={{
         background: PAP, border: `1px solid ${HAIR}`, borderRadius: 7,
@@ -1449,7 +1605,7 @@ function StepReview({ draft, serviceId, onSubmit, submitting, onBack, onSaveLate
             <SumRow label="Route stops" value={stopsValue} />
           )}
         </>}
-        <SumRow label="Cover photo" value={<span style={{ color: "#B07400" }}>Not added yet</span>} last />
+        <SumRow label="Cover photo" value={coverPhotoValue} last />
       </div>
 
       {/* What happens banner */}
@@ -1531,7 +1687,6 @@ function StepReview({ draft, serviceId, onSubmit, submitting, onBack, onSaveLate
   );
 }
 
-// ─── main wizard ──────────────────────────────────────────────────────────────
 export default function CreateServiceWizard() {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
@@ -1583,6 +1738,10 @@ export default function CreateServiceWizard() {
       joinLink: svc.joinLink ?? prev.joinLink,
       responseWindowHours: svc.responseWindowHours ? String(svc.responseWindowHours) : prev.responseWindowHours,
       scopeStatement: svc.scopeStatement ?? prev.scopeStatement,
+      // The storage layer normalizes `covers:${key}` → `/api/services/:id/cover-image`
+      // before the row reaches the client, so svc.serviceImage is already a renderable URL
+      // (the proxy path or a legacy external HTTP URL). Use it directly; treat null/empty as absent.
+      coverPhotoUrl: svc.serviceImage || prev.coverPhotoUrl,
     }));
   }, [existingService]);
 
@@ -1783,6 +1942,7 @@ export default function CreateServiceWizard() {
       return (
         <StepReview
           draft={draft}
+          set={set}
           serviceId={serviceId}
           onSubmit={() => submitMutation.mutate()}
           submitting={submitMutation.isPending}
