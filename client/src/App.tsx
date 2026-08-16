@@ -77,6 +77,7 @@ const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
 const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
 const ProviderWorkstation = lazy(() => import("@/pages/provider/workstation"));
+const ProviderPropertyCreate = lazy(() => import("@/pages/provider/property-create"));
 const ProviderDistribute = lazy(() => import("@/pages/provider/distribute"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
@@ -887,6 +888,11 @@ function Router() {
       </Route>
       <Route path="/provider/services/:id/edit">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
+      </Route>
+      {/* Property builder — the 3-step create flow, graduated from canvas mockup.
+          Must come before /provider/workstation so the more-specific path matches first. */}
+      <Route path="/provider/properties/new">
+        {() => <ProtectedRoute component={ProviderPropertyCreate} requiredRole="provider" />}
       </Route>
       {/* PB (§17 Product Builder): the provider Workstation — the creation ladder
           (single service → bundle → property). Bundle rung live (migration 151 +
