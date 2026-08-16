@@ -2545,3 +2545,81 @@ migrations and full seed set. What actually ran:
    was **wrong**; recorded so the next person does not repeat it.
 2. OSM tiles are now aborted in-spec — every assertion is DOM, so the tiles were pure external
    dependency.
+
+
+## Folded in Aug 16, 2026 — console conformance sweep, the surfaces nobody had audited
+
+**Method:** for each mock view with no audit on record, diff the ratified mock
+(`docs/design/provider-console-mockup/mockup.html`) against the shipped surface — mock phrase
+extraction first to find candidates, then read the code to confirm or discard each one. Discovery
+only; nothing fixed in this pass.
+
+**Why it was run:** every surface anyone had actually looked at came back with double digits —
+Distribute 11, Logistics/step-4 17, and Catalog map **13 more after a conformance lane had already
+run on it**. Workstation, listing home, property builder, bundle builder and Calendar had never
+been checked at all.
+
+**Result: 1 P1, 2 P2, 2 P3, and one surface clean.** Materially better than the base rate — the
+prediction going in was that these would look like the others, and they mostly do not.
+
+### S-1 (P1) — the edit-split is enforced but never stated, so a provider cannot predict it
+
+§23 / ruling 112 Q8 shipped the safe-vs-identity edit split **server-side**: safe edits apply to
+the live row immediately; identity edits land in `pending_changes` and wait for review while the
+approved version stays live. The provider-facing surface of that rule today is **one pill on the
+Catalog row, after the fact** (`pill-edit-review-*`, "Edit in review"). Nothing anywhere tells them
+**before** they edit which changes are which.
+
+The mock draws it as a two-column panel on the listing home ("Editing a live listing"):
+**Goes live immediately** — price and pricing settings · photos and gallery order · availability,
+slots and blackouts · description wording · what to bring, access notes · meeting-point pin
+position. **Re-enters review** — listing name · category and offering · delivery method · safety
+attestations · adding a route where there was none.
+
+**The constraint any fix must respect:** §23 says the field split is decided **ONLY server-side in
+the PATCH handler**. A UI panel that re-declares the list in the client is the exact
+derivation-drift class lane M3 just removed from the Catalog preview (§18 rule 1 — *delegates,
+never re-implements*). Whatever renders this must READ the server's own list, not restate it —
+which means the split needs to be exported/served before it can be honestly displayed.
+
+### S-2 (P2) — the property builder has no Review step
+
+Mock: **1. The property · 2. Rooms · 3. Review**. Ship (`workstation.tsx`,
+`PropertyEditorStep`): `basics · details · rooms` — an extra Details step and **no Review**. The
+service lane ends in "Review & submit"; the property lane submits without one.
+
+### S-3 (P2) — gap #2: the semantics are BUILT; the month grid is not
+
+This is the finding that corrects the going-in assumption. The mock calls the availability editor
+*"the largest hole in the redesign"*, and the expectation was a hole. It is not one.
+`provider-availability-manager.tsx` (839 lines) already implements the mock's actual ruling — ONE
+editor whose semantics come from the delivery method: scheduled listings get weekly patterns +
+blackouts, property/property_room gets date ranges, and an artifact/async listing gets an honest
+"No scheduling needed" panel rather than an empty grid that invents a question the listing does not
+have. That is gap #2's architecture, shipped.
+
+What is **not** built is the mock's presentation: a shared **month grid** with the legend
+*Bookable / Blacked out / Nothing published / Today*, opening on the month where the availability
+actually is. The ship is form rows (Weekly schedule · Open date ranges · Blackouts). The mock's
+claim is that all three semantics "share the same month grid, the same blackout rail and the same
+published/not-published vocabulary" — the ship has the shared editor and the shared blackout rail,
+but not the shared grid.
+
+### S-4 (P3) — availability vocabulary drift
+
+Ship "Weekly schedule" vs mock "Repeats weekly"; ship "Open date ranges" vs mock "Published date
+ranges"; ship "No scheduling needed" vs mock "No calendar — this sells without slots". Copy only —
+the behaviour underneath is the ratified one.
+
+### S-5 (P3) — Workstation "Preview as unlocked": deliberately not carried
+
+The mock's button reveals the locked bundle tile in its unlocked state. It is a **demo affordance
+for reading the mock**, not a provider feature — the ship has a real locked state with real
+progress toward unlocking. Recorded so the absence is a decision, not an oversight.
+
+### S-6 — Calendar: CLEAN
+
+Read-only month grid, prev/next nav, event chips as deep links, a legend, and ruling 112 Q5's
+standing "Edit availability →" access point. Nothing to report — the first audited surface with no
+findings.
+
