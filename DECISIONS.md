@@ -91,13 +91,15 @@ Kyoto (Japan), Goa (India), Mumbai (India), Jaipur (India), Edinburgh (United Ki
 | kyoto | spring_shoulder | 04-21 | 06-06 | 1.100 | Leon-approved estimate — Golden Week (late Apr–early May) sits inside the window |
 | edinburgh | autumn_shoulder | 09-01 | 10-31 | 0.900 | Leon-approved estimate — post-Festival cooldown above winter floor |
 
-Three residual calendar gaps resolved via migration 234 (Leon-approved 2026-08-16):
-- **Bogotá** `02-29` — `dry_primary` end extended `02-28` → `02-29` (leap-year day, still dry season; multiplier 1.100 unchanged)
-- **Kyoto** `09-07`–`10-19` — new row `early_autumn` inserted, multiplier 1.000 (neutral shoulder; typhoon tail softens late-Sep, Oct pre-foliage rising)
-- **Porto** `10-01`–`10-31` — new row `autumn_shoulder` inserted, multiplier 1.100 (harvest-season city-break shoulder, post-summer warm month)
+Three residual calendar gaps closed via migration 234 (Leon-approved 2026-08-16):
 
-Post-migration coverage check: all 8 markets returned 0 gap_days, 0 overlap_days on 366-day leap-year scan (confirmed dev DB 2026-08-16).
+| market_key | season_key | start_month_day | end_month_day | multiplier | basis |
+|---|---|---|---|---|---|
+| bogota | dry_primary | 12-01 | **02-29** | 1.100 | UPDATE — extends existing row's end by 1 leap-year day; same season, same multiplier |
+| kyoto | autumn_shoulder | 09-07 | 10-19 | 0.900 | Pre-foliage shoulder — above summer floor (0.80), well below momiji peak (1.80); conservative estimate pending BestTime.app calibration |
+| porto | autumn | 10-01 | 10-31 | 1.000 | October shoulder — pleasant but below summer peak (1.65); neutral index pending BestTime.app calibration |
 
+366-day leap-year coverage scan returns **0 gap_days** for all 8 operating markets after migration 234.
 ### L-CLS-2 — #1496 executed in-lane, expanded scope
 
 6 render sites suppressed (not the audited 4; `discover-location.tsx:385` and `discover.tsx:652` found during grep-gate execution). The `discover.tsx` instance aliased `activeTravelers` into a displayed "review count" — noted as an instance of the fabrication class. `crowdLevel` band-string retained at all sites per option (b). Adjacent copy audit complete: "Real-time" / "Live Updates" language removed from all neighbouring sites (CityGrid header sub-text + badge text).
