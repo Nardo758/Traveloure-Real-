@@ -38,6 +38,7 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { getStripeSecretKey } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
@@ -189,12 +190,12 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
   };
 
-  const stripePresent = Boolean(process.env.STRIPE_SECRET_KEY);
+  const stripePresent = Boolean(getStripeSecretKey());
   checks.stripe = {
     status: stripePresent ? "ok" : "fail",
     message: stripePresent
-      ? "STRIPE_SECRET_KEY present"
-      : "STRIPE_SECRET_KEY missing — payments will fail",
+      ? "Stripe key present"
+      : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
   };
 
   const resendPresent = Boolean(process.env.RESEND_API_KEY);
@@ -663,11 +664,21 @@ if (process.env.NODE_ENV === "production") {
       }, msUntilFirst);
     })();
 
-    import("./db").then(({ pool }) => {
-      pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
-        .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
-        .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-    }).catch(() => {});
+    // Bootstrap an admin account from the ADMIN_EMAIL environment variable.
+    // This replaces the former hard-coded email promotion. Set ADMIN_EMAIL in
+    // the environment (it already exists as a secret) to designate an account
+    // as admin on first boot. The promotion is idempotent and only fires when
+    // the env var is present.
+    const bootstrapAdminEmail = process.env.ADMIN_EMAIL?.trim();
+    if (bootstrapAdminEmail) {
+      import("./db").then(({ pool }) => {
+        pool.query("UPDATE users SET role = 'admin' WHERE email = $1 AND role != 'admin'", [bootstrapAdminEmail])
+          .then((res: any) => {
+            if (res.rowCount > 0) logger.info({ email: bootstrapAdminEmail }, "Bootstrapped admin from ADMIN_EMAIL env var");
+          })
+          .catch((err: any) => logger.error({ err }, "Admin bootstrap query failed"));
+      }).catch(() => {});
+    }
 
     runDatabaseSeeding()
       .then(() => {

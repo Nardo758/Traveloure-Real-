@@ -31,8 +31,9 @@ import { logger } from '../infrastructure/logger';
 // slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
 import { deriveClaimedSlotIds } from './checkout-claim.service';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
@@ -114,7 +115,7 @@ class StripePaymentService {
   // Replaces the fragile per-request customers.list({email}) lookup optimization.routes.ts had.
 
   isReady(): boolean {
-    return !!process.env.STRIPE_SECRET_KEY;
+    return !!getStripeSecretKey();
   }
 
   /**

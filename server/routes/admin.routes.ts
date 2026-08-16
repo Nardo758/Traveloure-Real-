@@ -167,6 +167,7 @@ import {
   getGeographicInsightsReport, getConversionFunnelReport,
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
   getUsersBasicByIds, getProviderServiceById, deleteProviderService,
+  getRoleChangeAuditLogs,
 } from "../services/admin-query.service";
 
 const router = Router();
@@ -1986,7 +1987,11 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       const role = (expertTypeEnum as readonly string[]).includes(formExpertType)
         ? formExpertType
         : "expert";
-      await updateUserRole(updated.userId, role);
+      await updateUserRole(updated.userId, role, {
+        actorId: user.id,
+        actorRole: user.role,
+        reason: "admin_expert_application_approved",
+      });
 
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
@@ -2250,7 +2255,11 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     
     // If approved, update user role to service_provider
     if (status === "approved") {
-      await updateUserRole(updated.userId, "service_provider");
+      await updateUserRole(updated.userId, "service_provider", {
+        actorId: user.id,
+        actorRole: user.role,
+        reason: "admin_provider_application_approved",
+      });
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
         userId: updated.userId,
@@ -5396,6 +5405,29 @@ router.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => 
       res.status(500).json({ message: "Failed to fetch tourism analytics" });
     }
   });
+
+  // === Audit Logs ===
+
+/**
+ * GET /api/admin/audit-logs/role-changes
+ * Returns paginated role-change events from access_audit_logs.
+ * Query params: limit, offset, targetUserId, dateFrom, dateTo
+ */
+router.get("/api/admin/audit-logs/role-changes", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const limit  = Math.min(parseInt(String(req.query.limit  ?? "25"), 10) || 25, 100);
+    const offset = parseInt(String(req.query.offset ?? "0"),  10) || 0;
+    const targetUserId = req.query.targetUserId ? String(req.query.targetUserId) : undefined;
+    const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : undefined;
+    const dateTo   = req.query.dateTo   ? new Date(String(req.query.dateTo) + "T23:59:59Z") : undefined;
+
+    const result = await getRoleChangeAuditLogs({ targetUserId, dateFrom, dateTo, limit, offset });
+    res.json({ ...result, limit, offset });
+  } catch (err) {
+    console.error("Audit-log role-changes error:", err);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
 
   // === Admin System Health ===
 

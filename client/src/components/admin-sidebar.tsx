@@ -48,6 +48,7 @@ import {
   Sparkles,
   Wrench,
   RefreshCw,
+  ClipboardCheck,
 } from "lucide-react";
 
 // D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
@@ -121,6 +122,7 @@ const menuGroups = [
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Neighborhood Backfill", href: "/admin/neighborhood-backfill", icon: MapPin },
       { title: "Gem Photo Backfill", href: "/admin/gem-photo-backfill", icon: ImageIcon },
+      { title: "Audit Log", href: "/admin/audit-log", icon: ClipboardCheck },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
     ],

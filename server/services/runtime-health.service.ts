@@ -26,6 +26,7 @@
  */
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "../utils/stripe-key-policy";
+import { getStripeSecretKey } from "../utils/stripe-key";
 import type { QAResults } from "./qa-verify.service";
 
 function baseUrl(): string {
@@ -201,10 +202,15 @@ export function evaluateMoneySecretPresence(env: NodeJS.ProcessEnv): SecretPrese
   const present: Record<string, boolean> = {};
   for (const key of MONEY_CRITICAL_VARS) present[key] = !!env[key];
   for (const key of INFORMATIONAL_VARS) present[key] = !!env[key];
+  // Track the test key and the effective key using the central resolver so H2's
+  // reported webhook-gap result always matches what the Stripe clients actually use.
+  const effectiveStripeKey = getStripeSecretKey(env);
+  present["STRIPE_SECRET_KEY_TEST"] = !!env.STRIPE_SECRET_KEY_TEST;
+  present["_effective_stripe_key"] = !!effectiveStripeKey;
 
   const webhookVars = ["STRIPE_WEBHOOK_SECRET", "STRIPE_CONNECT_WEBHOOK_SECRET", "STRIPE_IDENTITY_WEBHOOK_SECRET"];
   const missingWebhookSecrets = webhookVars.filter((v) => !env[v]);
-  const hasUnverifiableWebhookGap = !!env.STRIPE_SECRET_KEY && missingWebhookSecrets.length > 0;
+  const hasUnverifiableWebhookGap = !!effectiveStripeKey && missingWebhookSecrets.length > 0;
 
   return { present, hasUnverifiableWebhookGap, missingWebhookSecrets };
 }
@@ -214,12 +220,17 @@ export function runH2MoneySecretPresence(): QAResults {
 
   const moneyLine = MONEY_CRITICAL_VARS.map((v) => `${v}=${report.present[v] ? "set" : "MISSING"}`).join(", ");
   const infoLine = INFORMATIONAL_VARS.map((v) => `${v}=${report.present[v] ? "set" : "absent"}`).join(", ");
+  // Show whether the effective key (STRIPE_SECRET_KEY_TEST ?? STRIPE_SECRET_KEY) is present, since
+  // a dev deployment with only STRIPE_SECRET_KEY_TEST set would show STRIPE_SECRET_KEY=MISSING in
+  // moneyLine even though Stripe is fully operational.
+  const effectiveLine = `effective_stripe_key=${report.present["_effective_stripe_key"] ? "set" : "MISSING"}` +
+    (report.present["STRIPE_SECRET_KEY_TEST"] ? " (resolved from STRIPE_SECRET_KEY_TEST)" : "");
 
   const detail = report.hasUnverifiableWebhookGap
-    ? `FAIL: STRIPE_SECRET_KEY is set but missing webhook secret(s): ${report.missingWebhookSecrets.join(", ")} ` +
-      `— webhooks for these cannot be signature-verified (a forgeable money signal). Money-critical: ${moneyLine}. ` +
-      `Informational (never fails): ${infoLine}.`
-    : `OK. Money-critical: ${moneyLine}. Informational (never fails): ${infoLine}.`;
+    ? `FAIL: Stripe key is set but missing webhook secret(s): ${report.missingWebhookSecrets.join(", ")} ` +
+      `— webhooks for these cannot be signature-verified (a forgeable money signal). ${effectiveLine}. ` +
+      `Money-critical raw vars: ${moneyLine}. Informational (never fails): ${infoLine}.`
+    : `OK. ${effectiveLine}. Money-critical raw vars: ${moneyLine}. Informational (never fails): ${infoLine}.`;
 
   return {
     H2: { pass: !report.hasUnverifiableWebhookGap, detail },
@@ -235,7 +246,7 @@ export function runH2MoneySecretPresence(): QAResults {
 // for why this is a reuse, not a re-derivation, of the rule.
 
 export function runH3LiveKeySanity(): QAResults {
-  const key = process.env.STRIPE_SECRET_KEY;
+  const key = getStripeSecretKey();
   const prodStrict = isProdStrictEnv();
   const envLabel = `NODE_ENV=${process.env.NODE_ENV || "undefined"}, ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}`;
 
