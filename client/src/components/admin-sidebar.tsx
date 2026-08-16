@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +14,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   LayoutDashboard,
   Users,
@@ -49,7 +49,6 @@ import {
   Sparkles,
   Wrench,
   RefreshCw,
-  ClipboardCheck,
 } from "lucide-react";
 
 // D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
@@ -123,7 +122,6 @@ const menuGroups = [
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Neighborhood Backfill", href: "/admin/neighborhood-backfill", icon: MapPin },
       { title: "Gem Photo Backfill", href: "/admin/gem-photo-backfill", icon: ImageIcon },
-      { title: "Audit Log", href: "/admin/audit-log", icon: ClipboardCheck },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
     ],
@@ -178,9 +176,7 @@ export function AdminSidebar() {
         style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
       >
         <Link href="/" className="flex items-center" data-testid="link-admin-logo">
-          <div className="group-data-[collapsible=icon]:hidden">
-            <TraveloureLogo />
-          </div>
+          <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
 

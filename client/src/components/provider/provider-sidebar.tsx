@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { initialsFromUser } from "@/lib/initials";
 import {
   Sidebar,
@@ -16,6 +15,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Home,
   CalendarDays,
@@ -152,9 +152,7 @@ export function ProviderSidebar() {
         style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
       >
         <Link href="/" className="flex items-center" data-testid="link-provider-logo">
-          <div className="group-data-[collapsible=icon]:hidden">
-            <TraveloureLogo />
-          </div>
+          <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
 
