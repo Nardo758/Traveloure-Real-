@@ -1343,6 +1343,7 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 }
 
 // ─── step 5: review ───────────────────────────────────────────────────────────
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 function StepReview({ draft, set, serviceId, onSubmit, submitting, onBack, onSaveLater, savingLater }: {
   draft: DraftState; set: (patch: Partial<DraftState>) => void;
   serviceId: string;
@@ -1737,7 +1738,14 @@ export default function CreateServiceWizard() {
       joinLink: svc.joinLink ?? prev.joinLink,
       responseWindowHours: svc.responseWindowHours ? String(svc.responseWindowHours) : prev.responseWindowHours,
       scopeStatement: svc.scopeStatement ?? prev.scopeStatement,
-      coverPhotoUrl: svc.serviceImage ?? prev.coverPhotoUrl,
+      // Convert a managed `covers:${key}` reference to the public proxy URL so that
+      // the "Photo on file" chip (and any <img> using draft.coverPhotoUrl) resolves.
+      // Legacy external HTTP URLs are kept as-is; anything else is treated as absent.
+      coverPhotoUrl: svc.serviceImage?.startsWith("covers:")
+        ? `/api/services/${svc.id}/cover-image`
+        : svc.serviceImage?.startsWith("http")
+          ? svc.serviceImage
+          : prev.coverPhotoUrl,
     }));
   }, [existingService]);
 
