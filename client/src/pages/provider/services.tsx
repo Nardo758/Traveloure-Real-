@@ -67,7 +67,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,7 +83,6 @@ import { EmptyState } from "@/components/backoffice/primitives";
 // still composes them, it is just no longer MOUNTED on this page (moved to Distribute).
 import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
-import { ProviderAvailabilityManager } from "@/components/logistics/provider-availability-manager";
 import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -1181,9 +1179,7 @@ export default function ProviderServices() {
   const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
   // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate.
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
-  // Availability drawer — houses the REAL S7 editor (ProviderAvailabilityManager), preselected.
-  const [availabilityDrawerOpen, setAvailabilityDrawerOpen] = useState(false);
-  const [availabilityDrawerServiceId, setAvailabilityDrawerServiceId] = useState<string | null>(null);
+  // Availability editor is now a standalone page (/provider/availability).
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -1216,13 +1212,11 @@ export default function ProviderServices() {
     if (deepLinkApplied.current || isLoading) return;
     const requested = new URLSearchParams(window.location.search).get("availability");
     if (requested && (services ?? []).some((s) => s.id === requested)) {
-      setAvailabilityDrawerServiceId(requested);
-      setAvailabilityDrawerOpen(true);
+      navigate(`/provider/availability?serviceId=${requested}`);
     } else if (requested) {
-      // Ruling 112 Q5: Calendar's standing "Edit availability →" access point arrives with
-      // `?availability=1` (no listing chosen) — open the editor unpreselected rather than
-      // silently dropping the intent. A stale listing id degrades the same honest way.
-      setAvailabilityDrawerOpen(true);
+      // Ruling 112 Q5: Calendar's "Edit availability →" with no specific listing — open
+      // the page unpreselected rather than silently dropping the intent.
+      navigate("/provider/availability");
     }
     deepLinkApplied.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1351,8 +1345,7 @@ export default function ProviderServices() {
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
 
   function openAvailabilityEditor(serviceId: string) {
-    setAvailabilityDrawerServiceId(serviceId);
-    setAvailabilityDrawerOpen(true);
+    navigate(`/provider/availability?serviceId=${serviceId}`);
   }
 
   return (
@@ -1563,8 +1556,7 @@ export default function ProviderServices() {
                   duplicateDisabled={duplicateMutation.isPending}
                   onRequestDelete={() => setDeleteTarget(service)}
                   onOpenAvailability={() => {
-                    setAvailabilityDrawerServiceId(service.id);
-                    setAvailabilityDrawerOpen(true);
+                    navigate(`/provider/availability?serviceId=${service.id}`);
                   }}
                 />
               ))}
@@ -1589,7 +1581,7 @@ export default function ProviderServices() {
               services={allServices}
               servicesLoading={isLoading}
               onOpenEditor={openAvailabilityEditor}
-              initialServiceId={availabilityDrawerServiceId}
+              initialServiceId={null}
             />
           </>
         )}
@@ -1598,18 +1590,6 @@ export default function ProviderServices() {
             share-kit dialog and the Promote (posting-opportunities) block all live on
             /provider/distribute — this page's own outward-facing pointer is now exactly the
             per-row "Promote this →" button above, nothing more. */}
-
-        {/* ── Availability drawer — the REAL S7 editor, preselected ───────────────────────── */}
-        <Sheet open={availabilityDrawerOpen} onOpenChange={setAvailabilityDrawerOpen}>
-          <SheetContent side="right" className="w-[min(560px,94vw)] sm:max-w-none overflow-y-auto" data-testid="drawer-availability-editor">
-            <SheetHeader>
-              <SheetTitle>Edit availability</SheetTitle>
-            </SheetHeader>
-            <div className="mt-4">
-              <ProviderAvailabilityManager initialServiceId={availabilityDrawerServiceId ?? undefined} />
-            </div>
-          </SheetContent>
-        </Sheet>
 
         {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────── */}
         <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

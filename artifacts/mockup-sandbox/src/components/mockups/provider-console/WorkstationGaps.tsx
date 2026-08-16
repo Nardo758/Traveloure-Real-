@@ -80,6 +80,42 @@ export function WorkstationGaps() {
 
         <Divider />
 
+        {/* ── Saved drafts — Your services ── */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <GroupLabel tight>Your services</GroupLabel>
+            <span style={{ fontSize: 12, color: MUT }}>2 items</span>
+          </div>
+          <div style={{ background: PAPER, border: `1px solid ${HAIR}`, borderRadius: 7 }}>
+            {/* Row 1 — submitted, under review */}
+            <div style={{ padding: "13px 18px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" as const }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, marginBottom: 2 }}>Gion Evening Food Walk</div>
+                <div style={{ fontSize: 12, color: MUT }}>In person · Guided tour · ¥8,000</div>
+              </div>
+              <span style={{ display: "inline-block", fontSize: 11.5, padding: "2px 9px", borderRadius: 100, border: `1px solid #CBDAD7`, background: "#EDF2F1", color: "#35605A" }}>
+                Under review
+              </span>
+            </div>
+            {/* Row 2 — saved draft, not yet submitted */}
+            <div style={{ padding: "13px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" as const }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, marginBottom: 2 }}>Untitled service</div>
+                <div style={{ fontSize: 12, color: MUT }}>Draft · last edited 1 hour ago</div>
+              </div>
+              <span style={{ display: "inline-block", fontSize: 11.5, padding: "2px 9px", borderRadius: 100, border: "1px solid #D9CDB2", background: "#FBF6EC", color: "#6B551F" }}>
+                Draft
+              </span>
+              <button style={{ fontSize: 12.5, color: ACC, background: "none", border: "none", cursor: "pointer", fontWeight: 550, fontFamily: "inherit" }}>
+                Resume →
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: MUT, marginTop: 8, lineHeight: 1.55 }}>
+            Submitted services go into the approval queue. Drafts are only visible to you — finish and submit when ready.
+          </div>
+        </div>
+
         {/* ── GAP 2: No bundles yet ── */}
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
