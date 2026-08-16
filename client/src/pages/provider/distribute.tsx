@@ -27,12 +27,14 @@ import {
   InstagramPublishButton,
   type OfferingShareOption,
   type PostingOpportunity,
+  StorefrontShareTools,
 } from "@/components/backoffice/share-tools";
 import { qrCodeSvgDataUrl } from "@/lib/qrcode";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { initialsFromUser } from "@/lib/initials";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { ArrowRight, Download, ExternalLink, Copy, MessageCircle, QrCode } from "lucide-react";
 
@@ -1239,7 +1241,7 @@ export default function ProviderDistribute() {
             Distribute
           </h1>
           <p style={{ fontSize: 13, color: MUT, margin: 0, lineHeight: 1.55 }}>
-            Where your listings meet an audience.
+            One hub for getting what you sell seen — your storefront, the marketplace, direct links, share kits and posting nudges.
           </p>
         </div>
 
