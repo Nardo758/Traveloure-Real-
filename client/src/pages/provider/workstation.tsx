@@ -328,16 +328,6 @@ export default function ProviderWorkstation() {
   const [droppedOnPrefill, setDroppedOnPrefill] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Bundle | null>(null);
 
-  function openCreate() {
-    setEditingBundle(null);
-    setBundleName("");
-    setBundleDescription("");
-    setBundlePrice("");
-    setSelectedIds([]);
-    setDroppedOnPrefill([]);
-    setBuilderOpen(true);
-  }
-
   function openEdit(bundle: Bundle) {
     setEditingBundle(bundle);
     setBundleName(bundle.serviceName ?? "");
@@ -368,34 +358,6 @@ export default function ProviderWorkstation() {
     // A bundle IS a provider_services row — it also appears in the Catalog list.
     queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
   };
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/provider/bundles", {
-        serviceName: bundleName.trim(),
-        description: bundleDescription.trim() || undefined,
-        price: bundlePrice,
-        componentServiceIds: selectedIds,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidateBundleQueries();
-      setBuilderOpen(false);
-      // D1a honesty: born `submitted`, not live.
-      toast({
-        title: "Bundle submitted for review",
-        description: "It appears in your Catalog and goes live once approved.",
-      });
-    },
-    onError: (err) => {
-      toast({
-        title: "Could not create bundle",
-        description: parseApiErrorMessage(err, "Please check the fields and try again."),
-        variant: "destructive",
-      });
-    },
-  });
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -468,7 +430,7 @@ export default function ProviderWorkstation() {
     },
   });
 
-  const mutationBusy = createMutation.isPending || updateMutation.isPending;
+  const mutationBusy = updateMutation.isPending;
   const bundleList = Array.isArray(bundles) ? bundles : [];
 
   // ── §17 Product Builder — PROPERTY rung ──────────────────────────────────────
@@ -2068,11 +2030,9 @@ export default function ProviderWorkstation() {
             data-testid="dialog-bundle-builder"
           >
             <DialogHeader>
-              <DialogTitle>{editingBundle ? "Edit bundle" : "New bundle"}</DialogTitle>
+              <DialogTitle>Edit bundle</DialogTitle>
               <DialogDescription>
-                {editingBundle
-                  ? "Price or component changes to an approved bundle send it back for review."
-                  : "Pick at least 2 of your approved services and set one price. New bundles are reviewed before they sell."}
+                Price or component changes to an approved bundle send it back for review.
               </DialogDescription>
             </DialogHeader>
 
@@ -2081,8 +2041,7 @@ export default function ProviderWorkstation() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!formValid || mutationBusy) return;
-                if (editingBundle) updateMutation.mutate();
-                else createMutation.mutate();
+                updateMutation.mutate();
               }}
             >
               <div>
@@ -2199,11 +2158,7 @@ export default function ProviderWorkstation() {
                   disabled={!formValid || mutationBusy}
                   data-testid="button-bundle-submit"
                 >
-                  {mutationBusy
-                    ? "Saving…"
-                    : editingBundle
-                      ? "Save changes"
-                      : "Submit for review"}
+                  {mutationBusy ? "Saving…" : "Save changes"}
                 </Button>
               </div>
             </form>
