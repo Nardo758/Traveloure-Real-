@@ -158,7 +158,9 @@ export interface StripeReader {
 }
 
 function defaultStripeReader(): StripeReader | null {
-  const key = process.env.STRIPE_SECRET_KEY;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getStripeSecretKey } = require("../utils/stripe-key") as typeof import("../utils/stripe-key");
+  const key = getStripeSecretKey();
   if (!key) return null;
   const stripe = new Stripe(key, { apiVersion: "2024-12-18.acacia" as any });
   return {

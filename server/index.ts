@@ -189,12 +189,13 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
   };
 
-  const stripePresent = Boolean(process.env.STRIPE_SECRET_KEY);
+  const { getStripeSecretKey: _getStripeKey } = await import("./utils/stripe-key");
+  const stripePresent = Boolean(_getStripeKey());
   checks.stripe = {
     status: stripePresent ? "ok" : "fail",
     message: stripePresent
-      ? "STRIPE_SECRET_KEY present"
-      : "STRIPE_SECRET_KEY missing — payments will fail",
+      ? "Stripe key present"
+      : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
   };
 
   const resendPresent = Boolean(process.env.RESEND_API_KEY);
