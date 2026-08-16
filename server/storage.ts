@@ -406,6 +406,8 @@ export interface IStorage {
   // Enhanced Provider Services (for Expert Services Menu)
 
   getProviderServiceById(id: string): Promise<ProviderService | undefined>;
+  // Raw read — serviceImage is NOT normalized; use ONLY inside upload/proxy routes that need the opaque `covers:` key.
+  getProviderServiceByIdRaw(id: string): Promise<ProviderService | undefined>;
 
   getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]>;
 
@@ -2585,6 +2587,14 @@ export class DatabaseStorage implements IStorage {
   async getProviderServiceById(id: string): Promise<ProviderService | undefined> {
     const [service] = await db.select().from(providerServices).where(eq(providerServices.id, id));
     return service ? DatabaseStorage.normalizeServiceImage(service) : undefined;
+  }
+
+  // Internal raw read — skips cover-image normalization so the upload handler and
+  // proxy endpoint can see the opaque `covers:${key}` reference directly. Never use
+  // this outside those two routes; all other callers should go through getProviderServiceById.
+  async getProviderServiceByIdRaw(id: string): Promise<ProviderService | undefined> {
+    const [service] = await db.select().from(providerServices).where(eq(providerServices.id, id));
+    return service;
   }
 
   async getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]> {

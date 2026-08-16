@@ -5978,7 +5978,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     async (req, res) => {
       try {
         const userId = getUserId(req)!;
-        const service = await storage.getProviderServiceById(req.params.id);
+        // Raw read — we need the opaque `covers:${key}` reference for old-file cleanup;
+        // the normalized read returns the proxy URL which cannot be parsed back to a key.
+        const service = await storage.getProviderServiceByIdRaw(req.params.id);
         if (!service || service.userId !== userId) {
           return res.status(404).json({ message: "Service not found or not owned by you" });
         }
@@ -6054,9 +6056,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Public cover-image proxy: streams a managed cover photo stored as `covers:${key}`.
   // No auth required — cover photos are public marketing images. Falls back to a redirect
   // for legacy external `serviceImage` URLs (Unsplash etc.) that predate the managed rail.
+  // Raw read — the normalized value is the proxy URL itself, which breaks the key extraction.
   app.get("/api/services/:id/cover-image", async (req, res) => {
     try {
-      const service = await storage.getProviderServiceById(req.params.id);
+      const service = await storage.getProviderServiceByIdRaw(req.params.id);
       if (!service) return res.status(404).json({ message: "Service not found" });
 
       const stored = (service.serviceImage ?? "").trim();

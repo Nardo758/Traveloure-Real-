@@ -1738,14 +1738,10 @@ export default function CreateServiceWizard() {
       joinLink: svc.joinLink ?? prev.joinLink,
       responseWindowHours: svc.responseWindowHours ? String(svc.responseWindowHours) : prev.responseWindowHours,
       scopeStatement: svc.scopeStatement ?? prev.scopeStatement,
-      // Convert a managed `covers:${key}` reference to the public proxy URL so that
-      // the "Photo on file" chip (and any <img> using draft.coverPhotoUrl) resolves.
-      // Legacy external HTTP URLs are kept as-is; anything else is treated as absent.
-      coverPhotoUrl: svc.serviceImage?.startsWith("covers:")
-        ? `/api/services/${svc.id}/cover-image`
-        : svc.serviceImage?.startsWith("http")
-          ? svc.serviceImage
-          : prev.coverPhotoUrl,
+      // The storage layer normalizes `covers:${key}` → `/api/services/:id/cover-image`
+      // before the row reaches the client, so svc.serviceImage is already a renderable URL
+      // (the proxy path or a legacy external HTTP URL). Use it directly; treat null/empty as absent.
+      coverPhotoUrl: svc.serviceImage || prev.coverPhotoUrl,
     }));
   }, [existingService]);
 
