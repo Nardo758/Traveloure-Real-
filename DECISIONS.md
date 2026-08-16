@@ -145,3 +145,69 @@ Absolute crowd counts may return per-entity as *calibrated range estimates* only
 **Dead-code mismatches removed:**
 
 `discover.tsx` contained a `trendingTrips` useMemo (lines 642–661 pre-fix) that mapped TravelPulse fields into a trip-package shape: `pulseScore/20` → `rating` (implied star rating), `trendingScore > 70` → `expertPick` (implied human curation), `avgHotelPrice × 5` → `price` (inflated per-night price presented as trip price). The downstream `filteredTrips` const was never rendered in JSX — these mismatches were in dead code. Removed the entire block (plus the associated `trendingCitiesData` query, `tripSearchQuery` state, and `selectedTripCategory` state) to eliminate the aliasing risk. `CityGrid` on the travelpulse tab already consumes TravelPulse data correctly without any remapping.
+
+---
+
+## Phase 2 dispatch — 2026-08-16
+
+### Phase 2.0 — Credential verification findings
+
+| Secret | Length | Status | Action required |
+|---|---|---|---|
+| `XAI_API_KEY` | — | ⚠️ Tier 1 — `live_search` endpoint HTTP 410 deprecated | Upgrade to Tier 2+ or add X API v2 Bearer Token |
+| `BESTTIME_API_KEY` | 36 chars | ❌ Likely public key (api_key_public) not private key | Paste `api_key_private` from besttime.app dashboard (64+ chars) |
+| `PREDICTHQ_API_KEY` | 40 chars | ❌ 403 on /v1/accounts/self/ — missing account:read scope | Confirm correct token type and scope |
+
+### Phase 2.1 — Cost enforcement
+
+Migration 235 adds `health_status`, `halted_at`, `halted_reason` to `trend_source_config`.
+`server/services/trend-engine/cost-enforcement.ts` implements `TrendEngineCostEnforcer`:
+- `recordAndCheck()` logs every call to `api_usage_logs` and halts source (not run) at ceiling.
+- Halt writes `health_status = 'halted_ceiling'` and `halted_at` / `halted_reason` to DB.
+- Other sources unaffected when one halts.
+
+### Phase 2.2a — Entity resolution + open-license adapters
+
+Migration 235 also:
+- Adds `pre_launch` boolean to `trend_signals` (R8).
+- Adds UNIQUE idempotency index `(trend_entity_id, source, metric, observed_at)`.
+- Seeds 8 market `trend_entities` rows with pre-confirmed Wikidata QIDs.
+
+`server/services/trend-engine/entity-resolver.ts` resolves:
+- 8 operating markets (pre-seeded with known QIDs; enriches Wikipedia title via Wikipedia API).
+- Kyoto neighborhoods (FK → city_neighborhoods; Wikidata name+geo search, null when unconfident).
+- Kyoto gems (FK → travel_pulse_hidden_gems; Wikidata name search).
+
+Adapters built (`server/services/trend-engine/adapters/`):
+| Adapter | Source key | resale_class | Cost | Status |
+|---|---|---|---|---|
+| wikimedia-pageviews | wikimedia_pageviews | open_license | $0 | ✅ ready |
+| gdelt | gdelt | open_license | $0 | ✅ ready |
+| nager-date | nager_date | open_license | $0 | ✅ ready |
+| open-meteo | open_meteo | open_license | $0 | ✅ ready |
+| internal-trips | internal_trips | first_party | $0 | ✅ ready |
+| besttime | besttime | licensed_no_resale | $500/mo ceiling | ❌ DISABLED — key issue |
+| predicthq | predicthq | licensed_no_resale | $300/mo ceiling | ❌ DISABLED — 403 |
+| x-api | x_api | licensed_no_resale | $200/mo ceiling | ❌ DISABLED — 410 |
+
+`server/services/trend-engine/ingestion-runner.ts` orchestrates per-source isolation.
+
+### Phase 2.2b — BLOCKED
+
+All three licensed adapters are stubs. Enable only after:
+- BestTime: private key (64+ chars) confirmed in `BESTTIME_API_KEY`.
+- PredictHQ: token with `account:read` scope confirmed.
+- X: credential path resolved (xAI Tier 2 or X v2 Bearer Token).
+
+### Phase 2.3 — Grok scoring removal (**REQUIRES HUMAN READ BEFORE MERGE**)
+
+`server/services/travelpulse-scheduler.service.ts`:
+- `updateCityWithAI()` call removed from daily scheduler loop.
+- Scope changed from "all stale cities" to `OPERATING_MARKETS` (8 configured markets only).
+- Demand-signal refresh retained; destination trends computation retained.
+- `triggerManualRefresh()` AI branch removed; now demand-signal only.
+- `getCitiesNeedingRefresh()` in travelpulse.service.ts scoped to 8 operating markets.
+
+Grep gate: `updateCityWithAI` / `grokService` appear in scheduler only as comments (2 occurrences, both comments).
+
+tsc: 171 (no new errors vs post-rebase baseline).
