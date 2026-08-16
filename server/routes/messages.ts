@@ -19,7 +19,6 @@ import {
   blockUser,
   unblockUser,
   getBlockedByUser,
-  isBlockedBetween,
   reportMessage,
   reportUser,
   BlockedUserError,
@@ -293,9 +292,11 @@ router.get("/block/status/:targetUserId", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { targetUserId } = req.params;
+    // Only reveal the caller's OWN block state. Never expose whether the target has
+    // blocked the caller — being blocked must stay invisible to the blocked party
+    // (anti-escalation design goal; the send path already fails soft on block).
     const blockedByMe = (await getBlockedByUser(userId)).includes(targetUserId);
-    const blockedByThem = await isBlockedBetween(userId, targetUserId);
-    res.json({ blockedByMe, blocked: blockedByThem });
+    res.json({ blockedByMe, blocked: blockedByMe });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to get block status" });
