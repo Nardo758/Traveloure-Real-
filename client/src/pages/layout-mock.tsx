@@ -21,7 +21,7 @@ export default function LayoutMock() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b bg-white shrink-0">
         <div className="flex items-center gap-2">
-          <TraveloureLogo className="h-7" />
+          <TraveloureLogo />
         </div>
         {/* Credits and Generate buttons moved to hero overlay */}
       </header>

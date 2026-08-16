@@ -32,7 +32,7 @@ export function TraveloureLogo({ collapsed, className, "data-testid": testId }: 
     <img
       src="/traveloure-logo.png"
       alt="Traveloure"
-      className={`h-7 w-auto object-contain ${className ?? ""}`}
+      className={`h-[34px] w-auto object-contain ${className ?? ""}`}
       data-testid={testId}
     />
   );

@@ -110,7 +110,7 @@ export default function SharedTripPage() {
 
         {/* Branding */}
         <div className="absolute top-4 left-4">
-          <TraveloureLogo className="h-7 brightness-0 invert" />
+          <TraveloureLogo className="h-[34px] brightness-0 invert" />
         </div>
         {/* Ruling 116 (distribution-language audit P3): the shared-trip link is a distribution
             surface — the recipient can switch the UI language (chrome only). White trigger over

@@ -739,7 +739,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Brand Column */}
             <div className="lg:col-span-2">
               <div className="mb-4">
-                <TraveloureLogo />
+                <a href="/" aria-label="Traveloure home">
+                  <TraveloureLogo />
+                </a>
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
                 {t("footer.tagline")}
