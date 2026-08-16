@@ -133,6 +133,7 @@ const AdminMarkets = lazy(() => import("@/pages/admin/markets"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
 const AdminPlatformProviders = lazy(() => import("@/pages/admin/platform-providers"));
 const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
+const AdminMessageModeration = lazy(() => import("@/pages/admin/message-moderation"));
 const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-requests"));
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
@@ -1068,6 +1069,9 @@ function Router() {
       </Route>
       <Route path="/admin/review-moderation">
         {() => <ProtectedRoute component={AdminReviewModeration} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/message-moderation">
+        {() => <ProtectedRoute component={AdminMessageModeration} requiredRole="admin" />}
       </Route>
       <Route path="/admin/destination-events">
         {() => <ProtectedRoute component={AdminDestinationEvents} requiredRole="admin" />}
