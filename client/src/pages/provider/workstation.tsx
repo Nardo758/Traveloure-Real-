@@ -1012,15 +1012,17 @@ export default function ProviderWorkstation() {
                 <Skeleton className="h-4 w-32 mt-3" />
               </div>
             ) : bundleUnlocked ? (
-              <button type="button" onClick={openCreate} className="ws-doortile ws-doortile-btn" data-testid="card-ladder-bundle">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
-                  <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
-                  <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
-                </svg>
-                <h4>Bundle</h4>
-                <p>Two or more of your approved services sold together at one price.</p>
-                <span className="ws-cta" data-testid="button-ladder-new-bundle">New bundle →</span>
-              </button>
+              <Link href="/provider/bundles/new">
+                <div className="ws-doortile" data-testid="card-ladder-bundle">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                    <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                    <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                  </svg>
+                  <h4>Bundle</h4>
+                  <p>Two or more of your approved services sold together at one price.</p>
+                  <span className="ws-cta" data-testid="button-ladder-new-bundle">New bundle →</span>
+                </div>
+              </Link>
             ) : (
               <div className="ws-doortile ws-locked" data-testid="card-ladder-bundle">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
@@ -1154,9 +1156,11 @@ export default function ProviderWorkstation() {
               }
               cta={
                 bundleUnlocked ? (
-                  <Button size="sm" onClick={openCreate} data-testid="button-empty-new-bundle">
-                    <Plus className="w-4 h-4 mr-1.5" /> New bundle
-                  </Button>
+                  <Link href="/provider/bundles/new">
+                    <Button size="sm" data-testid="button-empty-new-bundle">
+                      <Plus className="w-4 h-4 mr-1.5" /> New bundle
+                    </Button>
+                  </Link>
                 ) : undefined
               }
               testId="empty-workstation-bundles"

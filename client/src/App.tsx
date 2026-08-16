@@ -78,6 +78,8 @@ const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
 const ProviderWorkstation = lazy(() => import("@/pages/provider/workstation"));
 const ProviderPropertyCreate = lazy(() => import("@/pages/provider/property-create"));
+const ProviderListingHome = lazy(() => import("@/pages/provider/listing-home"));
+const ProviderBundleBuilder = lazy(() => import("@/pages/provider/bundle-builder"));
 const ProviderDistribute = lazy(() => import("@/pages/provider/distribute"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
@@ -886,13 +888,23 @@ function Router() {
       <Route path="/provider/services/new">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
+      {/* Listing Home — the post-save landing page for a service draft.
+          Must be BEFORE /:id/edit so the bare :id path matches first.
+          /provider/services/new above guards against "new" being treated as an id. */}
+      <Route path="/provider/services/:id">
+        {() => <ProtectedRoute component={ProviderListingHome} requiredRole="provider" />}
+      </Route>
       <Route path="/provider/services/:id/edit">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
-      {/* Property builder — the 3-step create flow, graduated from canvas mockup.
-          Must come before /provider/workstation so the more-specific path matches first. */}
+      {/* Property builder — the 3-step create flow, graduated from canvas mockup. */}
       <Route path="/provider/properties/new">
         {() => <ProtectedRoute component={ProviderPropertyCreate} requiredRole="provider" />}
+      </Route>
+      {/* Bundle builder — full-page graduated from canvas mockup.
+          Workstation's Bundle rung tile links here; replaces the old dialog. */}
+      <Route path="/provider/bundles/new">
+        {() => <ProtectedRoute component={ProviderBundleBuilder} requiredRole="provider" />}
       </Route>
       {/* PB (§17 Product Builder): the provider Workstation — the creation ladder
           (single service → bundle → property). Bundle rung live (migration 151 +
