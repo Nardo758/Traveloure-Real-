@@ -2050,6 +2050,20 @@ router.get("/api/services/:id", async (req, res) => {
     // traveler map renders LOCATED stops only; unlocated stops still list by name and the
     // client states "X of Y stops located" rather than guessing a pin (§13).
     const routePoints = await storage.getServiceRoutePoints(service.id);
+    // Lane M3 (gap #13's "Starts" row): the weekly repeat rule. `service_availability_patterns`
+    // (ledger row 102) had an owner-gated PUT and an owner-gated GET and NO public read — so a
+    // provider could author "every Tuesday and Thursday at 18:00" and no traveler could ever see
+    // it. That is the exact shape gap #13 forbids; T-REP (row 101) deferred availability to lane
+    // S7, so the rule was never applied here. Threaded through every product-shape branch like
+    // `routePoints` above, behind the SAME F2 read-gate already applied at the top of this handler
+    // (an unapproved listing leaks no schedule — the /availability endpoint's own posture).
+    // DELIBERATELY NOT `capacity`: how many seats remain is inventory and belongs to the
+    // availability calendar; this is only the rhythm the listing runs on.
+    const availabilityPatterns = (await storage.getServiceAvailabilityPatterns(service.id)).map((p) => ({
+      dayOfWeek: p.dayOfWeek,
+      startTime: p.startTime,
+      endTime: p.endTime,
+    }));
     // B1 (ruling 81): the zones-mode surcharge rings ride the public detail so the traveler map can
     // render the surcharge ring(s) — DISPLAY-ONLY (the charge is derived at checkout, §14). Only
     // loaded for a zones listing; the surcharge CONFIG columns (surchargeMode/flat/per-km/max) already
@@ -2205,6 +2219,7 @@ router.get("/api/services/:id", async (req, res) => {
         bundleComponents: bundleComponentsOut,
         away,
         routePoints,
+        availabilityPatterns,
         surchargeTiers,
         neighborhoods,
       }));
@@ -2236,7 +2251,7 @@ router.get("/api/services/:id", async (req, res) => {
       // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
       // confirmed booking's row exact (mirroring the /deliverable gate's status check).
       const jitteredProperty = applyPropertyLocationPrivacy(service);
-      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, surchargeTiers, neighborhoods }));
+      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2265,9 +2280,9 @@ router.get("/api/services/:id", async (req, res) => {
         fallbackLat: property?.latitude ?? null,
         fallbackLon: property?.longitude ?? null,
       });
-      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, surchargeTiers, neighborhoods }));
+      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
     }
-    res.json(withTranslation({ ...service, away, routePoints, surchargeTiers, neighborhoods }));
+    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods }));
   });
 
   // C2: public read-only availability calendar for a service's detail page.

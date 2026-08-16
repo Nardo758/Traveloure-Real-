@@ -74,6 +74,7 @@ import {
   resolveDepositPreview,
   hasDepositTerms,
   formatResponseWindow,
+  formatWeeklyPattern,
 } from "@/lib/service-good-to-know";
 // Ledger 90 (FP-5, I3): the SAME rail the storefront's Message CTA uses. "Contact Provider" used
 // to link to `/chat?provider=<userId>` — a param chat.tsx has never read — landing the traveler on
@@ -214,6 +215,9 @@ interface Service {
   // vs. absent-field ambiguity (§13): always an array, so "no neighborhoods" and "not asked yet"
   // read the same way here (there being no per-listing capture to distinguish them from).
   neighborhoods?: { slug: string; name: string }[];
+  // Lane M3 (gap #13): the weekly repeat rule, newly carried by GET /api/services/:id. Absent
+  // or empty ⇒ the listing declares no weekly rhythm and the row is omitted (§13).
+  availabilityPatterns?: { dayOfWeek: number; startTime: string; endTime?: string | null }[];
   // S8 property builder (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102).
   // check-in/out and house rules are property-level ONLY (absolute inheritance — a room's own
   // detail read carries its property's values via the `property` field below, not its own).
@@ -699,6 +703,9 @@ export default function ServiceDetailPage() {
   const hasLeadTime = typeof service.leadTimeHours === "number" && service.leadTimeHours > 0;
   const hasChangeCutoff = typeof service.changeCutoffHours === "number" && service.changeCutoffHours > 0;
   const startWindowText = formatStartWindow(service.earliestStartTime, service.latestStartTime, service.serviceTimezone);
+  // Lane M3: the weekly rhythm a provider authored on the availability grid — until this lane it
+  // was owner-gated on both read and write, so no traveler could see it (gap #13).
+  const weeklyPatternText = formatWeeklyPattern(service.availabilityPatterns, service.serviceTimezone);
   const hasBuffer = typeof service.bufferMinutes === "number" && service.bufferMinutes > 0;
   const hasDurationMinutes = typeof service.durationMinutes === "number" && service.durationMinutes > 0;
   const hasNeighborhoods = Array.isArray(service.neighborhoods) && service.neighborhoods.length > 0;
@@ -723,7 +730,7 @@ export default function ServiceDetailPage() {
   const responseWindowText = formatResponseWindow(service.responseWindowHours);
   const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
-    !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || hasBuffer ||
+    !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
     hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
     !!checkInOutText || hasHouseRules || showAmenities ||
     !!responseWindowText || !!scopeStatementText;
@@ -956,6 +963,12 @@ export default function ServiceDetailPage() {
                       <li className="flex items-start gap-2" data-testid="text-party-size">
                         <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                         <span>Party size: {partySizeText}</span>
+                      </li>
+                    )}
+                    {weeklyPatternText && (
+                      <li className="flex items-start gap-2" data-testid="text-weekly-pattern">
+                        <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Runs {weeklyPatternText}</span>
                       </li>
                     )}
                     {startWindowText && (
