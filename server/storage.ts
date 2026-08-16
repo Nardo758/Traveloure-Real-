@@ -1780,6 +1780,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Provider Services
+  // ── Cover-image normalization ────────────────────────────────────────────────
+  // Managed cover photos are stored as `covers:${key}` in serviceImage (same
+  // opaque-reference pattern as `objstore:${key}` for deliverables; the bucket
+  // is private — unauthenticated GCS GETs return 403). Every read that surfaces
+  // a ProviderService to any caller must run this helper so every consumer
+  // automatically receives a usable /api/services/:id/cover-image URL rather
+  // than the raw opaque reference. Legacy external HTTP URLs pass through unchanged.
+  // This is the single normalization point — never convert in individual routes.
+  static normalizeServiceImage<T extends { id: string; serviceImage?: string | null }>(svc: T): T {
+    if (svc.serviceImage?.startsWith("covers:")) {
+      return { ...svc, serviceImage: `/api/services/${svc.id}/cover-image` };
+    }
+    return svc;
+  }
+
   async getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]> {
     const conditions = [eq(providerServices.userId, userId)];
     if (filters?.activeOnly) {
@@ -1791,13 +1806,15 @@ export class DatabaseStorage implements IStorage {
     if (filters?.destination) {
       conditions.push(ilike(providerServices.location, `%${filters.destination}%`));
     }
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(and(...conditions))
       .orderBy(desc(providerServices.createdAt));
+    return rows.map(DatabaseStorage.normalizeServiceImage);
   }
 
   async getAllProviderServices(): Promise<ProviderService[]> {
-    return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
+    const rows = await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
+    return rows.map(DatabaseStorage.normalizeServiceImage);
   }
 
   // Ruling 22: ordered route stops for a service, always position-ascending — the one read
@@ -2567,18 +2584,20 @@ export class DatabaseStorage implements IStorage {
   // Enhanced Provider Services
   async getProviderServiceById(id: string): Promise<ProviderService | undefined> {
     const [service] = await db.select().from(providerServices).where(eq(providerServices.id, id));
-    return service;
+    return service ? DatabaseStorage.normalizeServiceImage(service) : undefined;
   }
 
   async getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]> {
     if (status) {
-      return await db.select().from(providerServices)
+      const rows = await db.select().from(providerServices)
         .where(and(eq(providerServices.userId, userId), eq(providerServices.status, status)))
         .orderBy(desc(providerServices.createdAt));
+      return rows.map(DatabaseStorage.normalizeServiceImage);
     }
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(eq(providerServices.userId, userId))
       .orderBy(desc(providerServices.createdAt));
+    return rows.map(DatabaseStorage.normalizeServiceImage);
   }
 
   async getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]> {
@@ -2604,7 +2623,7 @@ export class DatabaseStorage implements IStorage {
     // S9 (ledger row 102): joinLink joins the same never-expose list — it is the provider's
     // OWN meeting link, revealed only to a CONFIRMED traveler + the owning provider (see
     // GET /api/service-bookings), never on a public pre-purchase browse.
-    return rows.map((r) => ({
+    return rows.map((r) => DatabaseStorage.normalizeServiceImage({
       ...r,
       serviceFile: null,
       revenueShareRate: null,
