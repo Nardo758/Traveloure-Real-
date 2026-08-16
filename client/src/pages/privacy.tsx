@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 
 export default function PrivacyPolicyPage() {
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function PrivacyPolicyPage() {
                 Back to Home
               </Button>
             </Link>
-            <span className="font-semibold text-lg">Traveloure</span>
+            <TraveloureLogo />
             <div className="w-24" />
           </div>
         </div>
