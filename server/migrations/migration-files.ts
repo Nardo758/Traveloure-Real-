@@ -1187,4 +1187,7 @@ export const MIGRATION_FILES = [
   //   consecutive_failures — enable runner-driven degraded detection.
   //   A source failing ≥2 consecutive runs → health_status = 'degraded'.
   "237_trend_source_config_last_run_health.sql",
+  // 238: provider_services.collects_and_drops — pickup intent toggle from the Logistics
+  //   step of the service wizard. Boolean default false; additive-nullable posture.
+  "238_provider_services_collects_and_drops.sql",
 ] as const;

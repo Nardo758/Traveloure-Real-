@@ -56,21 +56,6 @@ function fromDbDelivery(raw: string): DeliveryMethod {
 
 interface ServiceCategory { id: string; name: string; slug?: string; }
 
-// ─── delivery method mapping ───────────────────────────────────────────────────
-// Wizard uses video_call/phone_call/pdf_guide; DB enum stores video/call/pdf.
-function toDbDelivery(m: DeliveryMethod): string {
-  if (m === "video_call")  return "video";
-  if (m === "phone_call")  return "call";
-  if (m === "pdf_guide")   return "pdf";
-  return m;
-}
-function fromDbDelivery(raw: string): DeliveryMethod {
-  if (raw === "video") return "video_call";
-  if (raw === "call")  return "phone_call";
-  if (raw === "pdf")   return "pdf_guide";
-  return raw as DeliveryMethod;
-}
-
 interface DraftState {
   // Step 1 — Basics
   categoryId: string;
@@ -1604,6 +1589,9 @@ function StepReview({ draft, set, serviceId, onSubmit, submitting, onBack, onSav
           {totalStops > 0 && (
             <SumRow label="Route stops" value={stopsValue} />
           )}
+          {draft.collectsAndDrops && (
+            <SumRow label="Pickup" value="Provider collects and drops travelers" />
+          )}
         </>}
         <SumRow label="Cover photo" value={coverPhotoValue} last />
       </div>
@@ -1742,6 +1730,7 @@ export default function CreateServiceWizard() {
       // before the row reaches the client, so svc.serviceImage is already a renderable URL
       // (the proxy path or a legacy external HTTP URL). Use it directly; treat null/empty as absent.
       coverPhotoUrl: svc.serviceImage || prev.coverPhotoUrl,
+      collectsAndDrops: svc.collectsAndDrops ?? prev.collectsAndDrops,
     }));
   }, [existingService]);
 

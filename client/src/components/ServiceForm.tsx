@@ -189,6 +189,9 @@ interface ServiceFormData {
   locationPoint: LocationPoint | null;
   locationPrecision: string | null;
   pickupAvailable: boolean;
+  // Migration 238: pickup intent — mirrors pickupAvailable, persisted to its own column so the
+  // wizard and ServiceForm share a single authoritative source in provider_services.
+  collectsAndDrops: boolean;
   pickupAddress: string;
   // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
   // provider_services had no home for. Sibling of pickupAddress/meetingPoint (arrival); this is
@@ -353,6 +356,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     locationPoint: null,
     locationPrecision: null,
     pickupAvailable: false,
+    collectsAndDrops: false,
     pickupAddress: "",
     dropOffPoint: "",
     serviceRadius: 0,
@@ -464,6 +468,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     locationPoint: parseStoredPoint(s.latitude, s.longitude),
     locationPrecision: s.locationPrecision ?? null,
     pickupAvailable: Boolean(s.pickupAvailable),
+    collectsAndDrops: Boolean((s as any).collectsAndDrops),
     pickupAddress: s.pickupAddress || "",
     dropOffPoint: s.dropOffPoint || "",
     serviceRadius: Number(s.serviceRadius || 0),
@@ -1363,6 +1368,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         whatToBring: formData.whatToBring.trim() || null,
         accessNotes: formData.accessNotes.trim() || null,
         pickupAvailable: formData.pickupAvailable,
+        collectsAndDrops: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
         // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — mirrors
         // pickupAddress's own pickupAvailable gate; drop-off only means something alongside pickup.
