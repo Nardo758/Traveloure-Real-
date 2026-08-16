@@ -1139,18 +1139,15 @@ export const MIGRATION_FILES = [
   // rows). The extractor now filters them at source (CHOME_BLOCK_PATTERN); this cleans
   // up what's already on disk. Data-only, idempotent, no schema change — no publish trap.
   "227_purge_chome_neighborhood_rows.sql",
-<<<<<<< HEAD
   // 228: message safety — user_blocks and message_reports tables. user_blocks fences
   // blocked pairs from messaging each other (enforced on all write paths). message_reports
   // is an append-only moderation queue for admins to action. All idempotent DDL; no
   // column/enum changes; no publish-trap risk (plain varchar status/reason fields, not PG
   // enums). Schema declared in shared/schema.ts same commit.
-  "228_message_blocks_reports.sql",
-=======
+  "229_message_blocks_reports.sql",
   // Gap #13's last two unbacked rows: the ratified mock draws a "Bring" and an "Access" row and
   // NEITHER had a column, so the flow never asked and nothing could render them (the inverse of
   // row 101's collected-and-never-read class). Both additive-nullable, NO DB CHECK — the
   // 181/195 posture, so no publish-time CHECK trap. Declared in shared/schema.ts.
   "228_service_bring_access_notes.sql",
->>>>>>> 8091180ae56349b6b9cb14e77ec64faa1ce93dab
 ] as const;
