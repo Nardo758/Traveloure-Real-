@@ -119,6 +119,43 @@ punch-list pointer.
 
 ---
 
+
+## Results — console conformance CONFIRMED (run Aug 16, 2026)
+
+Run against the current checkout (branch `claude/ui-mockup-workspace-catalog-distribute-ywd2kh`,
+code under test `83d1fee`) as provider `kyoto-interpreter@traveloure.test` (terms accepted;
+3 approved+active listings incl. one async, plus a property created live during A5). Viewport
+1440×1000; screenshots under `docs/testing/assets/console-conformance-aug16/`; capture script:
+`scripts/console-conformance-capture.ts`. **All 18 rows PASS — no punch-list entries filed.**
+
+| Row | Verdict | Screenshot | Notes |
+|---|---|---|---|
+| A1 | PASS | `A1-header.png` | "What are you building?" + one-door subtitle ("One door for building what you sell — start with a service, grow into bundles."). |
+| A2 | PASS | `A2-door-tiles.png` | Three tiles: Single service · Bundle · Property. Bundle renders UNLOCKED ("New bundle →") because this provider has 3 approved services — the ≥2 real-count condition, so no progress bar is the correct state. No "Preview as unlocked" button (authority note 4). |
+| A3 | PASS | `A3-category-grid.png` | "Or start from what you do" with the live category grid. |
+| A4 | PASS | `A4-bundles-properties.png`, `A4b-properties.png` | Your bundles / Your properties orientation cards render; empty property card's "+ New property" deep-links to the builder. |
+| A5 | PASS | `A5-property-builder-step1.png`, `A5b-…step2-rooms.png`, `A5c-…review.png` | Ladder reads **1. The property · 2. Rooms · 3. Review**. Next gates on validity (step 2's Next stayed disabled until a named+priced room existed). "Submit for review" exists ONLY on Review, which reads back name / location / "Not placed — optional" pin / description / "Rooms (1) The Tatami Room · $180 / night". |
+| A6 | PASS | `A6-property-edit-dialog.png` | Edit dialog is the unchanged The property · Details · Rooms shape with per-step saves ("Save room", "Save capacity") and no Review step. |
+| B1 | PASS | `B1-toolbar.png` | Search + All(5)/Live(3)/In review(2)/Draft(0) chips + Manage\|Preview and List\|Map toggles. |
+| B2 | PASS | `B2-listing-rows.png` | Rows carry thumb · name · meta · status pill · storefront toggle · "Availability →" · health bar with honest labels ("no photo", "Ready", "no exact pin") · Edit · "Promote this →". |
+| B3 | PASS | `B3-map-preview.png` | Read-only "Traveler preview" notice; located-only canvas; "2 of 4 place-anchored listings located"; unlocated rows named off-canvas with true reasons + "Fix it in the Workstation →" links; OpenStreetMap/Leaflet attribution visible. Gap-#13 / market-insight chips present per authority note 7. |
+| B4 | PASS | `B4-month-grid.png`, `B4b-month-grid-drawer.png` | Month grid above the rails with legend Bookable / Blacked out / Nothing published / Today; opens on the next bookable month with a "Next available: Tue, Aug 18 · 18:00" chip; scheduled cells show real slot time + seats ("18:00 · 8 left"); the Aug 24–26 blackout renders shaded ("Closed for Obon") and **wins over the Thursday pattern on Aug 26**. Editor opened beside the listing via `?availability=<id>` (authority note 8). |
+| B5 | PASS | `B5-no-calendar.png` | "Repeats weekly" / "Published date ranges" vocabulary confirmed on the scheduled listing; the async listing shows "**No calendar — this sells without slots**" with NO empty grid, plus one-off dated slots. |
+| B6 | PASS | `B6-edit-split-panel.png`, `B6b-no-panel-on-draft.png` | Approved listing home renders "Editing a live listing" with the two ruled columns (Goes live immediately: price, photos+order, availability/slots/blackouts, description wording, what-to-bring/access notes, pin position · Re-enters review: listing name, category+offering, delivery method, product shape), closing on "Nothing is taken down for an edit." A draft listing shows NO panel (verified live, count 0). |
+| B7 | PASS | `B7-edit-in-review-row.png` | **Behavioral truth test, run with real PATCHes** on approved listing `9f08a627` (Conference & Event Interpretation): safe PATCH `{price: 2450.00}` → applied immediately, response had NO `editReview`, listing stayed approved+active. Identity PATCH `{serviceName: "… (Kansai)"}` → response returned `editReview: {status:"pending", stagedKeys:["serviceName"]}`, live row kept the old name, Catalog row showed **Live + "Edit in review"**. Panel columns agree with observed behavior (both read `shared/edit-split.ts`). Side effects reverted after capture (price restored to 2400.00, staged pending_changes cleared). |
+| C1 | PASS | `C1-storefront-card.png` | Avatar + business name; `/p/kansai-bizlang` URL (authority note 1); "Live · showing 3 of 5 listings"; Edit handle & bio, Preview, Copy link + caption share tools. |
+| C2 | PASS | `C2-share-kit.png` | On the approved listing: Feed (1080×1350 portrait per authority note 2) and Story frames with download + Instagram publish; Route frame honestly withheld with "This service has no route stops yet" (the listing has no route stops — honest state, not a missing frame). On a not-yet-approved listing the kit shows the honest unlock message ("Social images unlock once this listing is approved and active"). |
+| C3 | PASS | `C3-promote.png` | Real posting opportunity (open-slots promo "…has 126 open spots aug 16 — promote it" with frame image + inline actions); closing note "**Measurement stays on Performance.**" present (`text-promote-measurement-note`); no analytics numbers anywhere on the page — the strip's "View link performance" deep-links out. |
+| C4 | PASS | `C4-arrival-flow.png`, `C4b-forged-listing-ignored.png` | "Promote this →" from Catalog lands with crumb line Catalog › Distribute › «name», "Promoting «…»" banner and "← Back to Catalog". A forged `?listing=00000000-…` id is silently ignored: no arrival banner, page falls back to the default listing selection with no error. |
+| C5 | PASS | `C5-ratified-extras.png` | All three ratified extras present (authority note 3): Marketplace channel with honest blocked state + per-blocker Fix → links (and honest live state on the approved listing, see `C2-share-kit.png`), Direct-link channel (mint-on-first-action: Copy link / WhatsApp / Show QR, no URL pre-mint), and the channel-state strip (Storefront · Marketplace · Direct · Social). |
+
+**Close condition met** — every row PASS; the only mock deltas observed are the ruled ones in the
+Authority scope (checked and not filed). The "UI does not match the mockup" report can be closed.
+
+Bench note for reruns: author availability through
+`PUT /api/provider/services/:id/availability-patterns` (it materializes
+`vendor_availability_slots`); rows inserted directly into `service_availability_patterns` never
+reach the month grid, which reads materialized slots.
 ## Results — console conformance CONFIRMED (runtime walk-through, Aug 16 2026)
 
 Run on branch `claude/ui-mockup-workspace-catalog-distribute-ywd2kh` (HEAD `ef64c598`, includes
