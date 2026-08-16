@@ -91,33 +91,7 @@ import {
   Play,
   X,
   CalendarRange,
-  Share2,
   AlertCircle,
-  Camera,
-  Car,
-  ChefHat,
-  Map,
-  Heart,
-  Sparkles,
-  CalendarHeart,
-  UserCheck,
-  Languages,
-  Baby,
-  Music,
-  Mic2,
-  Flower2,
-  Palette,
-  Package,
-  BookOpen,
-  Scissors,
-  Shield,
-  Zap,
-  Briefcase,
-  UtensilsCrossed,
-  MapPin,
-  Users,
-  PartyPopper,
-  Award,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -236,41 +210,22 @@ function formatPrice(price: string | number | null | undefined): string {
   return Number.isFinite(n) ? `$${n.toFixed(2).replace(/\.00$/, "")}` : String(price);
 }
 
-// S5 (ruling 74 disp. 1): the category inspiration tiles, MOVED here from Catalog's empty
-// state (services.tsx) — this screen is now the one door, so the "start from what you do"
-// shortcut lives on it, not on Catalog. Same 30 live service categories, same slugs, same
-// ?category= query param the create flow already reads at step 1.
-const inspirationCards = [
-  { label: "Photography & Video", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
-  { label: "Transportation", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
-  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
-  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
-  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
-  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
-  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
-  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
-  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
-  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
-  { label: "Lodging", slug: "Lodging & Accommodation", icon: BedDouble, color: "bg-cyan-50 text-cyan-600" },
-  { label: "Music & Performance", slug: "Music & Performance", icon: Music, color: "bg-violet-50 text-violet-500" },
-  { label: "Entertainment", slug: "Entertainment", icon: Mic2, color: "bg-fuchsia-50 text-fuchsia-500" },
-  { label: "Floral & Decor", slug: "Floral & Decoration", icon: Flower2, color: "bg-pink-50 text-pink-400" },
-  { label: "Arts & Crafts", slug: "Arts & Crafts Instruction", icon: Palette, color: "bg-lime-50 text-lime-600" },
-  { label: "Rentals", slug: "Rental Services", icon: Package, color: "bg-stone-50 text-stone-500" },
-  { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
-  { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
-  { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
-  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
-  { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
-  { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
-  { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
-  { label: "Companionship", slug: "Companionship & Assistance", icon: Users, color: "bg-blue-50 text-blue-400" },
-  { label: "Stationery & Print", slug: "Stationery & Paper Goods", icon: Languages, color: "bg-indigo-50 text-indigo-400" },
-  { label: "Special Effects", slug: "Specialty Effects & Activities", icon: Zap, color: "bg-yellow-50 text-yellow-500" },
-  { label: "Send-Off & Post-Event", slug: "Send-Off & Post-Event", icon: PartyPopper, color: "bg-pink-50 text-pink-500" },
-  { label: "Unique Specialists", slug: "Unique Specialty Services", icon: Award, color: "bg-violet-50 text-violet-500" },
-  { label: "Spiritual & Wellness", slug: "Spiritual & Wellness", icon: Sparkles, color: "bg-teal-50 text-teal-400" },
-  { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
+// S5 (ruling 74 disp. 1): the category inspiration tiles — the 12 live service categories
+// shown on the Workstation page, matching the ratified provider console design. Each tile
+// pre-selects the category and jumps into the Basics screen via ?category=.
+const inspirationCards: { label: string; slug: string; desc: string }[] = [
+  { label: "Tours & Experiences",       slug: "Tours & Experiences",       desc: "Walks, museum tours, cultural sessions" },
+  { label: "Food & Culinary",           slug: "Food & Culinary",           desc: "Private chefs, cooking lessons, food tours" },
+  { label: "Photography & Videography", slug: "Photography & Videography", desc: "Portrait, event, travel video" },
+  { label: "Transportation & Logistics",slug: "Transportation & Logistics", desc: "Transfers, day trips, specialty transport" },
+  { label: "Arts & Crafts Instruction", slug: "Arts & Crafts Instruction", desc: "Pottery, calligraphy, ikebana, dance" },
+  { label: "Personal Assistance",       slug: "Personal Assistance",       desc: "Trip planning, errands, concierge" },
+  { label: "Events & Celebrations",     slug: "Events & Celebrations",     desc: "Proposals, birthdays, small weddings" },
+  { label: "Beauty & Styling",          slug: "Beauty & Styling",          desc: "Hair, make-up, kimono dressing" },
+  { label: "Restaurants & Dining",      slug: "Restaurants & Dining",      desc: "Private dining, tastings, venue seats" },
+  { label: "Lodging & Accommodation",   slug: "Lodging & Accommodation",   desc: "Rooms, homestays, glamping" },
+  { label: "Entertainment",             slug: "Entertainment",             desc: "Musicians, performers, hosts" },
+  { label: "Rental Services",           slug: "Rental Services",           desc: "Bikes, gear, cameras, kimono" },
 ];
 
 /**
@@ -1088,95 +1043,72 @@ export default function ProviderWorkstation() {
   return (
     <ProviderLayout title="Workstation">
       <div className="p-6 space-y-6">
-        <PageHeader
-          icon={Wrench}
-          title="Workstation"
-          subtitle="One door for building what you sell — start with a service, grow into bundles."
-          testId="text-workstation-title"
-          actions={
-            // Catalog+Distribute (ruling 74, lane D1): the on-ramp into the distribution hub.
-            <Link href="/provider/distribute">
-              <Button size="sm" variant="outline" data-testid="button-goto-distribute">
-                <Share2 className="w-4 h-4 mr-1.5" /> Distribute
-              </Button>
-            </Link>
-          }
-        />
-
-        {/* S5 (ruling 74 disp. 1, executed) — WORKSTATION REBUILD: the one-door launcher,
-            transcribed from the ratified mock's "One door" view (docs/design/service-creation-
-            mock.html, panel-door). Every "Add New Service" affordance in the provider console
-            lands HERE first — this is the only place a new listing is born. Scoped under
-            .ws-mock (teal accent, mock tokens) — page-local only, no global theme change. */}
+        {/* ── One-door launcher — transcribed from the ratified provider console design.
+            Every "Add New Service" affordance routes here first; this is the only place
+            a new listing is born. Page-local teal tokens via .ws-mock. */}
         <div className="ws-mock" data-testid="text-launcher-headline-block">
           <style>{WORKSTATION_MOCK_CSS}</style>
 
-          <h2 className="ws-screen" data-testid="text-launcher-headline">
-            What are you building?
-          </h2>
-          <p className="ws-screen-sub">
-            Workstation · the single entry point for anything you sell. Pick a shape to start —
-            you can change most of it later.
-          </p>
+          {/* Heading row — no mock-only callout dots or "Preview as unlocked" button */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <h2 className="ws-screen" data-testid="text-launcher-headline">
+                What are you building?
+              </h2>
+              <p className="ws-screen-sub" style={{ marginBottom: 0 }}>
+                Workstation · the single entry point for anything you sell. Pick a shape to
+                start; you can change most of it later.
+              </p>
+            </div>
+          </div>
 
-          {/* ── The creation ladder (§17): single service → bundle → property, transcribed
-              as the mock's .doortiles grid ──────────────────────────────────────────── */}
+          {/* ── Creation ladder (§17): single service → bundle → property ── */}
           <div className="ws-doortiles" data-testid="grid-product-ladder">
-            {/* Rung 1 — single service: always available, the existing ServiceForm. The
-                literal <Link href="/provider/services/new"> stays the ONE permitted direct
-                deep link into ServiceForm step 1 (pinned by service-creation-launcher.test.ts). */}
+            {/* Rung 1 — single service */}
             <Link href="/provider/services/new">
               <div className="ws-doortile" data-testid="card-ladder-service">
-                <Plus className="ws-doortile-icon" aria-hidden="true" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M7 9h10M7 13h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
                 <h4>Single service</h4>
-                <p>
-                  One offering with its own price and availability. Every new service is
-                  reviewed before it goes live.
-                </p>
-                <span className="ws-cta" data-testid="button-ladder-new-service">
-                  Start a service →
-                </span>
+                <p>One thing you offer — a session, a walk, a guide, a transfer. Five fields to a saved draft.</p>
+                <span className="ws-cta" data-testid="button-ladder-new-service">Start a service →</span>
               </div>
             </Link>
 
-            {/* Rung 2 — bundle: unlocks at 2+ approved+active services (real count, §13) —
-                the mock's dashed locked tile + real progressbar renders whenever it isn't. */}
+            {/* Rung 2 — bundle: locked until 2+ approved active services */}
             {servicesLoading ? (
               <div className="ws-doortile" data-testid="card-ladder-bundle">
-                <Boxes className="ws-doortile-icon" aria-hidden="true" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                </svg>
                 <h4>Bundle</h4>
-                <p>
-                  Compose two or more of your approved services under one price. Bundles are
-                  reviewed before they sell, like any listing.
-                </p>
+                <p>Two or more of your approved services sold together at one price.</p>
                 <Skeleton className="h-4 w-32 mt-3" />
               </div>
             ) : bundleUnlocked ? (
-              <button
-                type="button"
-                onClick={openCreate}
-                className="ws-doortile ws-doortile-btn"
-                data-testid="card-ladder-bundle"
-              >
-                <Boxes className="ws-doortile-icon" aria-hidden="true" />
+              <button type="button" onClick={openCreate} className="ws-doortile ws-doortile-btn" data-testid="card-ladder-bundle">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                </svg>
                 <h4>Bundle</h4>
-                <p>
-                  Compose two or more of your approved services under one price. Bundles are
-                  reviewed before they sell, like any listing.
-                </p>
-                <span className="ws-cta" data-testid="button-ladder-new-bundle">
-                  New bundle →
-                </span>
+                <p>Two or more of your approved services sold together at one price.</p>
+                <span className="ws-cta" data-testid="button-ladder-new-bundle">New bundle →</span>
               </button>
             ) : (
               <div className="ws-doortile ws-locked" data-testid="card-ladder-bundle">
-                <Lock className="ws-doortile-icon" aria-hidden="true" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                </svg>
                 <h4>Bundle</h4>
                 <p>Two or more of your approved services sold together at one price.</p>
                 <p className="ws-warnbox" data-testid="text-bundle-locked">
-                  Locked. Unlocks when you have 2 approved active services — you have{" "}
-                  {eligibleComponents.length}.{" "}
-                  <Link href="/provider/services">Go to Catalog →</Link>
+                  Locked. Unlocks when you have 2 approved services — you have{" "}
+                  {eligibleComponents.length} approved, {Math.max(0, serviceList.filter(s => s.approvalStatus === "submitted" || s.approvalStatus === "in_review").length)} in review.
                 </p>
                 <div className="ws-progressbar">
                   <i style={{ width: `${Math.min(100, (eligibleComponents.length / 2) * 100)}%` }} />
@@ -1187,34 +1119,21 @@ export default function ProviderWorkstation() {
               </div>
             )}
 
-            {/* Rung 3 — property (§17 Product Builder, PROPERTY rung): live and buildable in
-                this codebase — unlike the mock's placeholder "builder not yet specified" state,
-                which described a spec gap S8/FP-3 have since closed (§13: the tile must not
-                claim a gap that no longer exists), so this renders as an unlocked tile like
-                Single service, not the mock's dashed/locked Property variant. */}
-            <button
-              type="button"
-              onClick={openPropertyCreate}
-              className="ws-doortile ws-doortile-btn"
-              data-testid="card-ladder-property"
-            >
-              <BedDouble className="ws-doortile-icon" aria-hidden="true" />
+            {/* Rung 3 — property: fully live (S8/FP-3 closed the spec gap) */}
+            <button type="button" onClick={openPropertyCreate} className="ws-doortile ws-doortile-btn" data-testid="card-ladder-property">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                <path d="M10 21v-6h4v6" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+              </svg>
               <h4>Property</h4>
-              <p>
-                A room, apartment or house with per-night pricing and room availability.
-                Properties and rooms are reviewed before they sell, like any listing.
-              </p>
-              <span className="ws-cta" data-testid="button-ladder-new-property">
-                Start a property →
-              </span>
+              <p>A room, apartment or house with per-night pricing and room availability.</p>
+              <span className="ws-cta" data-testid="button-ladder-new-property">Start a property →</span>
             </button>
           </div>
 
           <div className="ws-divider" />
 
-          {/* S5: the category inspiration tiles — transcribed as the mock's .cats grid, kept
-              at the real 30 live service categories (§13: the mock's own CATS array is a
-              12-item illustration, not the full catalog to reproduce — no invented copy). */}
+          {/* Category tiles — 12 live service categories, each pre-selects and jumps to Basics */}
           <h5 className="ws-grouplabel">Or start from what you do</h5>
           <p className="ws-screen-sub" style={{ marginBottom: 14 }}>
             These are the live service categories. Picking one pre-selects the category and
@@ -1229,6 +1148,9 @@ export default function ProviderWorkstation() {
                 data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
               >
                 <b>{card.label}</b>
+                <span style={{ fontSize: 11.5, color: "var(--ws-muted)", lineHeight: 1.35, display: "block", marginTop: 2 }}>
+                  {card.desc}
+                </span>
               </Link>
             ))}
           </div>
