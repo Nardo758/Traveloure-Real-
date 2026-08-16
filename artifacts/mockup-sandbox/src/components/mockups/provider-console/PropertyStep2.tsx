@@ -34,7 +34,7 @@ export function PropertyStep2() {
         price="¥180 / night"
         issues={[
           { sev: "error", msg: "No photos — travelers can't see what they're booking. Add at least 3 room photos.", cta: "Upload photos →" },
-          { sev: "warn",  msg: "No amenities tagged. Amenities appear in search filters; untagged rooms are less discoverable.", cta: "Add amenities →" },
+          { sev: "warn",  msg: "No description — rooms with a description convert better and answer questions before they're asked.", cta: "Add description →" },
         ]}
         fields={[
           { label: "Name",     value: "The Tatami Room",      ok: true  },
@@ -42,7 +42,6 @@ export function PropertyStep2() {
           { label: "Capacity", value: "2 guests",             ok: true  },
           { label: "Base price",value:"¥180 / night",        ok: true  },
           { label: "Photos",   value: "0 uploaded",          ok: false },
-          { label: "Amenities",value: "None selected",       ok: false },
           { label: "Description", value: "—",               ok: false },
         ]}
       />
@@ -61,7 +60,6 @@ export function PropertyStep2() {
           { label: "Capacity",  value: "2 guests",       ok: true  },
           { label: "Base price",value: "Not set",        ok: false },
           { label: "Photos",    value: "4 uploaded",     ok: true  },
-          { label: "Amenities", value: "8 selected",     ok: true  },
           { label: "Description", value: "Present",     ok: true  },
         ]}
       />
@@ -79,7 +77,6 @@ export function PropertyStep2() {
           { label: "Capacity",  value: "1 guest",        ok: true },
           { label: "Base price",value: "¥135 / night",  ok: true },
           { label: "Photos",    value: "6 uploaded",     ok: true },
-          { label: "Amenities", value: "11 selected",    ok: true },
           { label: "Description", value: "Present",     ok: true },
         ]}
       />
@@ -131,7 +128,7 @@ function RoomCard({ name, type, price, issues, complete, fields }: {
       </div>
 
       {/* Field status grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 0, borderBottom: issues.length > 0 ? `1px solid ${HAIR}` : "none" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 0, borderBottom: issues.length > 0 ? `1px solid ${HAIR}` : "none" }}>
         {fields.map((f, i) => (
           <div key={f.label} style={{ padding: "9px 12px", borderRight: i < fields.length - 1 ? `1px solid ${HAIR}` : "none", display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: MUT, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>{f.label}</span>
