@@ -148,7 +148,6 @@ export function ExpertSidebar() {
       >
         <Link href="/" className="flex items-center" data-testid="link-expert-logo">
           <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
-          <TraveloureLogo collapsed className="hidden group-data-[collapsible=icon]:flex" />
         </Link>
       </SidebarHeader>
 

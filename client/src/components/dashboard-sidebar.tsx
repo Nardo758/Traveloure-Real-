@@ -99,7 +99,6 @@ export function DashboardSidebar() {
       <SidebarHeader className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3" style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}>
         <Link href="/" className="flex items-center" data-testid="link-sidebar-logo">
           <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
-          <TraveloureLogo collapsed className="hidden group-data-[collapsible=icon]:flex" />
         </Link>
       </SidebarHeader>
 
