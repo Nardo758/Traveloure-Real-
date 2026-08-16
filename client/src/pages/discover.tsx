@@ -520,8 +520,6 @@ export default function DiscoverPage() {
   const limit = 12;
 
   // Trip packages state
-  const [tripSearchQuery, setTripSearchQuery] = useState("");
-  const [selectedTripCategory, setSelectedTripCategory] = useState("all");
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showAllPackages, setShowAllPackages] = useState(false);
 
@@ -633,32 +631,8 @@ export default function DiscoverPage() {
     queryKey: ["/api/expert-templates"],
   });
 
-  // Trending destinations from TravelPulse (replaces hardcoded trip packages)
-  const { data: trendingCitiesData, isLoading: trendingLoading } = useQuery<{ cities: any[]; count: number }>({
-    queryKey: ["/api/travelpulse/cities"],
-  });
-
-  // Map trending cities to trip package format for the Trip Packages tab
-  const trendingTrips = useMemo(() => {
-    if (!trendingCitiesData?.cities?.length) return [];
-    return trendingCitiesData.cities.map((city: any, idx: number) => ({
-      id: idx + 1,
-      title: `Discover ${city.cityName}`,
-      destination: `${city.cityName}, ${city.country}`,
-      duration: city.aiOptimalDuration || "5 days",
-      travelers: "2-4",
-      category: city.vibeTags?.[0] || "adventure",
-      rating: city.pulseScore ? (city.pulseScore / 20).toFixed(1) : "4.5",
-      reviews: 0, // activeTravelers suppressed per R3 — no absolute visitor count on traveler surfaces
-      price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999, // fee-literal-ok: hotel price display fallback, not optimize fee
-      originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
-      highlights: (city.aiMustSeeAttractions || []).slice(0, 3),
-      expertPick: city.trendingScore > 70,
-      imageUrl: city.imageUrl || `https://picsum.photos/seed/city-${city.cityName?.toLowerCase() || 'travel'}/600/400`,
-      vibeTags: city.vibeTags?.slice(0, 3) || [],
-      citySlug: city.cityName?.toLowerCase().replace(/\s+/g, "-"),
-    }));
-  }, [trendingCitiesData]);
+  // TravelPulse city data is consumed directly by the <CityGrid> component in the
+  // travelpulse tab — no mapping needed here.
   
   // Experts query for handoff - fetch experts filtered by destination/experience type
   const expertsApiUrl = useMemo(() => {
@@ -836,17 +810,6 @@ export default function DiscoverPage() {
     locationFilter !== "";
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
-
-  // Trip filtering (uses API-driven trending data with hardcoded fallback)
-  const filteredTrips = trendingTrips.filter((trip: any) => {
-    const matchesSearch =
-      tripSearchQuery === "" ||
-      trip.title.toLowerCase().includes(tripSearchQuery.toLowerCase()) ||
-      trip.destination.toLowerCase().includes(tripSearchQuery.toLowerCase());
-    const matchesCategory =
-      selectedTripCategory === "all" || trip.category === selectedTripCategory;
-    return matchesSearch && matchesCategory;
-  });
 
   const toggleFavorite = (id: number) => {
     setFavorites((prev) =>
