@@ -605,6 +605,25 @@ if (process.env.NODE_ENV === "production") {
     runDailyAdminDigest();
     setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
 
+    // TravelPulse AI refresh scheduler — previously the ONLY refresh paths were the admin
+    // manual endpoints, so trending/city intelligence (and the happening-now surface derived
+    // from it) went permanently stale once seeded. Daily pass, first run delayed 2h to clear
+    // startup and stay behind the reconciliation job. refreshStaleAICities() only touches
+    // cities whose expiresAt has lapsed and increments ai_refresh_error_count on failure, so
+    // running it while the xAI account is out of credits is safe (errors are counted, not thrown).
+    setTimeout(() => {
+      void (async () => {
+        const { travelPulseService } = await import("./services/travelpulse.service");
+        const run = () =>
+          travelPulseService
+            .refreshStaleAICities()
+            .then((r) => logger.info(r, "[travelpulse] daily AI refresh pass"))
+            .catch((err) => logger.error({ err }, "[travelpulse] daily AI refresh failed"));
+        await run();
+        setInterval(run, 24 * 60 * 60 * 1000);
+      })();
+    }, 2 * 60 * 60 * 1000);
+
     setTimeout(() => {
       runStripeReconciliation();
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
