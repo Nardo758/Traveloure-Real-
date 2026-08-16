@@ -11,6 +11,7 @@ import {
   travelPulseLiveActivity,
   travelPulseCityAlerts,
   travelPulseHappeningNow,
+  trips,
   destinationSeasons,
   destinationEvents,
   destinationMetricsHistory,
@@ -27,7 +28,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc, asc, sql, isNull, lt } from "drizzle-orm";
 import crypto from "crypto";
-import { grokService, CityIntelligenceResult } from "./grok.service";
+import { grokService, CityIntelligenceResult, CityProxySignals } from "./grok.service";
 
 const GROK_MODEL = "grok-3";
 
@@ -1206,12 +1207,133 @@ Return JSON:
   // ============================================
 
   // Update a city with AI-generated intelligence from Grok
+  /**
+   * Gather real "proxy" measurements for a city so Grok's daily estimates are grounded
+   * in observed data instead of pure model knowledge. Every signal is best-effort and
+   * optional — a failure in any single source just omits that signal.
+   * Sources: our own trips table (travelers now / upcoming), destination metric history
+   * (trend-score continuity), the city's previous activeTravelers value (smoothing),
+   * and Google Trends search interest via SerpAPI when SERP_API_KEY is configured.
+   */
+  async gatherProxySignals(cityName: string, country: string): Promise<CityProxySignals> {
+    const signals: CityProxySignals = {};
+
+    // "Today" in the city's own timezone (falls back to UTC when the city row has no
+    // timezone) — trips columns are DATE, so an off-by-one around midnight miscounts.
+    let cityTz: string | undefined;
+    try {
+      const [tzRow] = await db
+        .select({ tz: travelPulseCities.timezone })
+        .from(travelPulseCities)
+        .where(and(eq(travelPulseCities.cityName, cityName), eq(travelPulseCities.country, country)))
+        .limit(1);
+      cityTz = tzRow?.tz ?? undefined;
+    } catch { /* fall back to UTC */ }
+    const localDate = (offsetDays = 0) => {
+      const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+      try {
+        return new Intl.DateTimeFormat("en-CA", { timeZone: cityTz || "UTC" }).format(d); // YYYY-MM-DD
+      } catch {
+        return d.toISOString().slice(0, 10);
+      }
+    };
+    const today = localDate(0);
+    const in30d = localDate(30);
+
+    // Platform trips: destination is free text, so use a case-insensitive whole-word
+    // regex match on the city name (regex-escaped) — plain substring matching would
+    // count "London, Ontario" for London UK or "New York" for York.
+    const cityPattern = "\\m" + cityName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\M";
+    const destMatch = sql`${trips.destination} ~* ${cityPattern}`;
+    try {
+      const [nowRow] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(trips)
+        .where(and(
+          destMatch,
+          lte(trips.startDate, today),
+          gte(trips.endDate, today),
+        ));
+      const [upcomingRow] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(trips)
+        .where(and(
+          destMatch,
+          gte(trips.startDate, today),
+          lte(trips.startDate, in30d),
+        ));
+      signals.platformTravelersNow = nowRow?.n ?? 0;
+      signals.platformUpcomingTrips30d = upcomingRow?.n ?? 0;
+    } catch (err: any) {
+      console.warn(`[TravelPulse] trips signal failed for ${cityName}: ${err?.message}`);
+    }
+
+    // Trend-score history (our own recorded metric series, oldest→newest).
+    try {
+      const rows = await db
+        .select({ v: destinationMetricsHistory.metricValue })
+        .from(destinationMetricsHistory)
+        .where(and(
+          eq(destinationMetricsHistory.city, cityName),
+          eq(destinationMetricsHistory.metricType, "trend_score"),
+        ))
+        .orderBy(desc(destinationMetricsHistory.recordedAt))
+        .limit(7);
+      if (rows.length) signals.recentTrendScores = rows.map((r) => Number(r.v)).reverse();
+    } catch (err: any) {
+      console.warn(`[TravelPulse] metric-history signal failed for ${cityName}: ${err?.message}`);
+    }
+
+    // Previous activeTravelers for continuity.
+    try {
+      const [row] = await db
+        .select({ at: travelPulseCities.activeTravelers })
+        .from(travelPulseCities)
+        .where(and(eq(travelPulseCities.cityName, cityName), eq(travelPulseCities.country, country)))
+        .limit(1);
+      if (row?.at != null && row.at > 0) signals.previousActiveTravelers = row.at;
+    } catch (err: any) {
+      console.warn(`[TravelPulse] previous-value signal failed for ${cityName}: ${err?.message}`);
+    }
+
+    // Google Trends search interest via SerpAPI (skipped when key missing or call fails).
+    if (process.env.SERP_API_KEY) {
+      try {
+        const url = new URL("https://serpapi.com/search.json");
+        url.searchParams.set("engine", "google_trends");
+        url.searchParams.set("q", `${cityName} travel`);
+        url.searchParams.set("date", "today 1-m");
+        url.searchParams.set("api_key", process.env.SERP_API_KEY);
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          const data: any = await res.json();
+          const series = data?.interest_over_time?.timeline_data;
+          const latest = Array.isArray(series) && series.length
+            ? Number(series[series.length - 1]?.values?.[0]?.extracted_value)
+            : NaN;
+          if (Number.isFinite(latest)) signals.searchInterest = latest;
+        }
+      } catch (err: any) {
+        console.warn(`[TravelPulse] search-interest signal failed for ${cityName}: ${err?.message}`);
+      }
+    }
+
+    return signals;
+  }
+
   async updateCityWithAI(cityName: string, country: string): Promise<{ success: boolean; city?: TravelPulseCity; error?: string }> {
     try {
       console.log(`[TravelPulse] Generating AI intelligence for ${cityName}, ${country}...`);
-      
+
+      // Gather observed proxy signals so Grok grounds its estimates in real measurements.
+      // Best-effort: any gathering failure degrades to a plain (signal-free) generation.
+      const signals = await this.gatherProxySignals(cityName, country).catch((err) => {
+        console.warn(`[TravelPulse] Proxy-signal gathering failed for ${cityName}: ${err?.message}`);
+        return undefined;
+      });
+
       // Get AI intelligence from Grok
-      const { result, usage } = await grokService.generateCityIntelligence(cityName, country);
+      const { result, usage } = await grokService.generateCityIntelligence(cityName, country, signals);
       
       console.log(`[TravelPulse] AI intelligence generated. Tokens used: ${usage.totalTokens}`);
 
@@ -1235,6 +1357,17 @@ Return JSON:
         trendingScore: result.pulseMetrics.trendingScore,
         crowdLevel: result.pulseMetrics.crowdLevel,
         weatherScore: result.pulseMetrics.weatherScore,
+        // Grok's seasonal estimate of tourists currently visiting. Only overwrite when the
+        // model returned a sane bounded integer — otherwise keep the existing value rather
+        // than zeroing the card or failing the row update (column is PG integer). Capped at
+        // 5M: no city hosts more concurrent tourists; a larger value is a model hallucination.
+        ...((() => {
+          const raw = result.pulseMetrics.estimatedActiveTravelers;
+          const v = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : NaN;
+          return Number.isSafeInteger(v) && v > 0 && v <= 5_000_000
+            ? { activeTravelers: v }
+            : {};
+        })()),
         
         // Vibe from AI
         vibeTags: result.currentVibe.vibeTags,
