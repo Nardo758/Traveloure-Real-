@@ -3575,7 +3575,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
-      if (service.status !== "draft" && service.status !== "rejected") {
+      // Eligibility is based on the review lifecycle (approvalStatus), not the
+      // availability toggle (status). A provider may submit from approvalStatus
+      // "draft" (never submitted) or "rejected" (resubmitting after admin rejection).
+      const currentApproval = service.approvalStatus ?? "draft";
+      if (currentApproval !== "draft" && currentApproval !== "rejected") {
         return res.status(400).json({ message: "Only draft or rejected services can be submitted for review" });
       }
       const submitted = await storage.submitProviderServiceListing(req.params.id);
