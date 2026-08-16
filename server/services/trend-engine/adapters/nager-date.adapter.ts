@@ -45,7 +45,15 @@ async function fetchHolidays(year: number, countryCode: string): Promise<Holiday
     return empty;
   }
   if (!res.ok) throw new Error(`Nager.Date API ${res.status}`);
-  const data = await res.json() as any[];
+  // Some countries (e.g. IN — India) are not in Nager.Date's database.
+  // They return HTTP 200 with an empty body. Treat as "no holiday data".
+  const text = await res.text();
+  if (!text.trim()) {
+    const empty = new Map<string, number>();
+    holidayCache.set(cacheKey, empty);
+    return empty;
+  }
+  const data = JSON.parse(text) as any[];
   const map = new Map<string, number>();
   for (const h of data) {
     const key: string = h.date;

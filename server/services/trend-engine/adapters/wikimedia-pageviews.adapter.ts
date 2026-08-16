@@ -100,7 +100,11 @@ export class WikimediaPageviewsAdapter implements TrendEngineAdapter {
 
   async daily(): Promise<AdapterRunResult> {
     const result = emptyResult(SOURCE);
-    const d = yesterday();
+    // Wikimedia pageviews data has a ~3-day publication lag (confirmed empirically:
+    // D-1 and D-2 return 404; D-3 reliably returns 200). Use D-3.
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 3);
+    d.setUTCHours(0, 0, 0, 0);
     return this._run(result, d, d);
   }
 
