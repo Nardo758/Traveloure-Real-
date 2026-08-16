@@ -86,6 +86,79 @@ export function formatStartWindow(
   return `No later than ${latest}${zoneSuffix}`;
 }
 
+/**
+ * ── The weekly repeat rule, in traveler words (lane M3 — gap #13's "Starts" row) ──────────────
+ *
+ * `service_availability_patterns` (ledger row 102's weekly grid: `day_of_week` 0=Sun..6=Sat +
+ * `start_time`/`end_time`) had an owner-gated PUT and an owner-gated GET and NO public read at
+ * all — so a provider authored "every Tuesday and Thursday at 18:00" and no traveler could ever
+ * see it. That is exactly what gap #13 forbids: an authored answer with no traveler-side home.
+ * T-REP (row 101) deferred availability to lane S7, so the rule was never applied to it; this
+ * closes the one line of it the ratified mock actually draws ("18:00, Tuesdays & Thursdays").
+ *
+ * §13: only REAL rows speak. No rows ⇒ null (the listing does not repeat weekly — it may sell
+ * through dated slots instead, and claiming a weekly rhythm it never declared would be a
+ * fabrication). Rows are grouped by start time so two different times on different days read
+ * honestly as two clauses rather than being flattened into one wrong sentence.
+ *
+ * The timezone suffix follows `formatStartWindow`'s convention exactly — a declared IANA zone, or
+ * an explicit "provider's local time" when the listing never declared one. Never a silent assumption.
+ */
+const DAY_PLURALS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"] as const;
+
+export interface WeeklyPatternLike {
+  dayOfWeek: number;
+  startTime: string;
+}
+
+/** "Tuesdays", "Tuesdays & Thursdays", "Mondays, Wednesdays & Fridays" — never a trailing comma. */
+function joinDayNames(days: number[]): string {
+  const names = days.map((d) => DAY_PLURALS[d]);
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
+export function formatWeeklyPattern(
+  patterns: readonly WeeklyPatternLike[] | null | undefined,
+  timezone: string | null | undefined,
+): string | null {
+  if (!Array.isArray(patterns) || patterns.length === 0) return null;
+
+  // One bucket per start time; a day listed twice at the same time collapses to one mention.
+  const byTime = new Map<string, Set<number>>();
+  for (const p of patterns) {
+    const day = asFiniteNumber(p?.dayOfWeek);
+    const time = typeof p?.startTime === "string" ? p.startTime.trim() : "";
+    // A day outside 0..6 is not a day — the column is app-enforced with no DB CHECK, so a bad
+    // row is possible and is dropped rather than rendered as `undefined`.
+    if (day === null || !Number.isInteger(day) || day < 0 || day > 6 || !time) continue;
+    if (!byTime.has(time)) byTime.set(time, new Set());
+    byTime.get(time)!.add(day);
+  }
+  if (byTime.size === 0) return null;
+
+  // Plain arrays, not spread Map/Set iterators — this repo's tsconfig target predates
+  // downlevelIteration, so `[...map.entries()]` does not compile here.
+  const entries: Array<[string, number[]]> = [];
+  byTime.forEach((daySet, time) => {
+    const days: number[] = [];
+    daySet.forEach((d) => days.push(d));
+    entries.push([time, days]);
+  });
+  const clauses = entries
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([time, dayList]) => {
+      const days = dayList.slice().sort((a, b) => a - b);
+      // All seven is a rhythm with a shorter name; saying it the long way reads as a list of
+      // exceptions when there are none.
+      const when = days.length === 7 ? "Every day" : joinDayNames(days);
+      return `${when} at ${time}`;
+    });
+
+  const zoneSuffix = timezone ? ` (${timezone})` : " (provider's local time)";
+  return `${clauses.join(" · ")}${zoneSuffix}`;
+}
+
 export const TRANSPORT_PROVISION_LABELS: Record<string, string> = {
   pickup_included: "Pickup included — the provider collects you",
   pickup_available: "Pickup available — can be arranged",

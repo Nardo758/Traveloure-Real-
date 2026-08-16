@@ -36,6 +36,36 @@ const E2E_ACCOUNTS = [
   { email: "test-admin@traveloure.test", firstName: "Admin", lastName: "User", role: "admin" as const },
 ];
 
+/**
+ * FIXTURE-OWNER LOGIN BACKFILL (added Aug 15 2026 with the provider-console gate).
+ *
+ * Some specs must authenticate as an account that a DIFFERENT seed creates, because they assert
+ * against that seed's specific listings. `kyoto-interpreter@traveloure.test` is created by
+ * server/seeds/phase-d-kyoto-vendors.seed.ts, which sets NO password — so the four committed
+ * provider-console specs that log in as it (catalog-map-located, catalog-preview-toggle,
+ * distribute-channels, service-logistics-step) could not authenticate in ANY environment. They
+ * were in no workflow, so nothing surfaced it; they were presumably written against a hand-set
+ * password in a local session.
+ *
+ * Repointing those specs at `kyoto-photography` (which does get a password above) was the other
+ * option and was rejected: the interpreter's three seeded listings are exactly what make the
+ * D-3/D-4 both-branch proof possible (one `async_messaging` "happens nowhere" row + two
+ * `in_person` place-anchored rows). The fixture is the point, so the fixture gets a login.
+ *
+ * The same accounts also need a STOREFRONT HANDLE. `ProviderStorefrontHeader` renders its live
+ * badge, share caption and share tools only when the account has one, so distribute-shell's
+ * "storefront live + neutral caption" assertions were unreachable for a handle-less fixture —
+ * the second half of why that spec never passed. The handle mirrors the vendor seed's own
+ * business identity (Kansai Business Language / kansai-bizlang.traveloure.test).
+ *
+ * IDEMPOTENT AND NON-DESTRUCTIVE: only ever fills a NULL password / NULL handle. An account that
+ * already has either — a real user in any environment that shares this address — is left
+ * untouched. The production refusal at the top of seedE2EAccounts() gates this block too.
+ */
+const FIXTURE_LOGIN_BACKFILL: Array<{ email: string; handle: string }> = [
+  { email: "kyoto-interpreter@traveloure.test", handle: "kansai-bizlang" },
+];
+
 async function seedE2EAccounts() {
   // FAIL-SAFE refusal (dispatch P0, Jul 28 2026): the function refuses on its
   // own, independent of the caller's gate. A production runtime may seed ONLY
@@ -96,6 +126,49 @@ async function seedE2EAccounts() {
       privacyAcceptedAt: termsStamp,
     });
     console.log(`  + Created ${account.email} (${account.role})`);
+  }
+
+  // ── Fixture-owner login backfill (see FIXTURE_LOGIN_BACKFILL above) ──────────────────────────
+  for (const fixture of FIXTURE_LOGIN_BACKFILL) {
+    const row = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, fixture.email.toLowerCase()))
+      .then((r) => r[0]);
+
+    if (!row) {
+      // Its owning seed has not run (or was renamed). Say so — a silent skip here reappears
+      // later as an opaque 401 inside a browser spec.
+      console.log(
+        `  ! ${fixture.email} not found — its owning seed has not run; console specs that log in as it will 401`,
+      );
+      continue;
+    }
+
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (!row.password) patch.password = hash;
+    if (!row.termsAcceptedAt) patch.termsAcceptedAt = new Date();
+    if (!row.privacyAcceptedAt) patch.privacyAcceptedAt = new Date();
+    // Only claim the handle if it is genuinely free — never take one from another account.
+    if (!row.handle) {
+      const taken = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.handle, fixture.handle))
+        .then((r) => r[0]);
+      if (taken) {
+        console.log(`  ! handle @${fixture.handle} already belongs to another account — left as-is`);
+      } else {
+        patch.handle = fixture.handle;
+      }
+    }
+
+    if (Object.keys(patch).length === 1) {
+      console.log(`  ✓ ${fixture.email} already has a login + handle`);
+      continue;
+    }
+    await db.update(users).set(patch).where(eq(users.id, row.id));
+    console.log(`  + Backfilled fixture owner ${fixture.email} (${Object.keys(patch).filter((k) => k !== "updatedAt").join(", ")})`);
   }
 
   // Seed one upcoming Kyoto trip for the traveler so /my-trips shows a card
