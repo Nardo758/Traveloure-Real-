@@ -174,6 +174,9 @@ interface ServiceFormData {
   // Logistics
   neighborhood: string;
   meetingPoint: string;
+  // Gap #13 (migration 228): host's own words. "" = never answered — sent as null, omitted everywhere.
+  whatToBring: string;
+  accessNotes: string;
   // L27-P3: the CONFIRMED map point for this listing (migration-129 latitude/longitude).
   // Null = no pin. `locationPrecision` is the row's server-derived precision, carried
   // read-only so the picker can label a migration-129 centroid honestly as approximate —
@@ -341,6 +344,8 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     maxConcurrentClients: 1,
     neighborhood: "",
     meetingPoint: "",
+    whatToBring: "",
+    accessNotes: "",
     locationPoint: null,
     locationPrecision: null,
     pickupAvailable: false,
@@ -449,6 +454,8 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     maxConcurrentClients: s.maxConcurrentBookings || 1,
     neighborhood: s.neighborhood || "",
     meetingPoint: s.meetingPoint || "",
+    whatToBring: (s as any).whatToBring || "",
+    accessNotes: (s as any).accessNotes || "",
     // Existing coordinates + their precision, exactly as stored (decimal → string).
     locationPoint: parseStoredPoint(s.latitude, s.longitude),
     locationPrecision: s.locationPrecision ?? null,
@@ -1349,6 +1356,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         })(),
         neighborhood: formData.neighborhood || null,
         meetingPoint: formData.meetingPoint || null,
+        whatToBring: formData.whatToBring.trim() || null,
+        accessNotes: formData.accessNotes.trim() || null,
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
         // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — mirrors
@@ -3645,6 +3654,47 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 rows={2}
                 className="mt-2"
               />
+            </div>
+
+            {/* ── Gap #13 (ledger 2026-08-16-bring-access) ──────────────────────────────────
+                The ratified mock drew these two rows in the traveler read-out and NEITHER had a
+                field, so the flow never asked and nothing could render them. They live on
+                Logistics because both are about attending in person — which is also why they
+                never appear on the pdf/async branches: that step does not exist there, and a
+                downloadable guide has nothing to bring. Both optional; blank is sent as NULL and
+                omitted from every traveler surface rather than becoming a claim (§13). */}
+            <div>
+              <Label htmlFor="whatToBring">What should travelers bring?</Label>
+              <Textarea
+                id="whatToBring"
+                value={formData.whatToBring}
+                onChange={(e) => set("whatToBring", e.target.value)}
+                placeholder="e.g. Socks without holes — you will be on tatami"
+                rows={2}
+                className="mt-2"
+                data-testid="input-what-to-bring"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional. Leave blank and travelers are told nothing — we never invent a
+                &ldquo;nothing needed&rdquo; on your behalf.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="accessNotes">Access notes</Label>
+              <Textarea
+                id="accessNotes"
+                value={formData.accessNotes}
+                onChange={(e) => set("accessNotes", e.target.value)}
+                placeholder="e.g. One step at the entrance, low seating. A low stool can be provided — say so when you book."
+                rows={2}
+                className="mt-2"
+                data-testid="input-access-notes"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional, and shown to travelers in your own words. We do not claim an
+                accessibility standard on your behalf &mdash; describe the space honestly.
+              </p>
             </div>
 
             {/* L27-P3: place/confirm the precise point behind the free-text meeting point.
