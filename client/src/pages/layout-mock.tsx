@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { Calendar, Users, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ export default function LayoutMock() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b bg-white shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-xl font-bold text-primary">TRAVELOURE</span>
+          <TraveloureLogo className="h-7" />
           <span className="text-xs bg-primary text-white px-2 py-0.5 rounded">BETA</span>
         </div>
         {/* Credits and Generate buttons moved to hero overlay */}

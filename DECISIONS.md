@@ -77,3 +77,29 @@ Fully binding; not reproduced here — source of truth is the brief. Key additio
 Kyoto (Japan), Goa (India), Mumbai (India), Jaipur (India), Edinburgh (United Kingdom), Porto (Portugal), Bogotá (Colombia), Cartagena (Colombia).
 
 8 cities. Season calendar seed must be Leon-reviewed before insert (per Phase 1 gate).
+
+---
+
+## Phase 1 close-out ledger entries — 2026-08-16
+
+### L-CLS-1 — Season seed approved with two additions
+
+26 agent-seeded rows approved as-inserted by Leon with multiplier bases labeled (see corrective dispatch evidence). Two gap rows added per Leon approval (close-out dispatch 2026-08-16):
+
+| market_key | season_key | start_month_day | end_month_day | multiplier | basis |
+|---|---|---|---|---|---|
+| kyoto | spring_shoulder | 04-21 | 06-06 | 1.100 | Leon-approved estimate — Golden Week (late Apr–early May) sits inside the window |
+| edinburgh | autumn_shoulder | 09-01 | 10-31 | 0.900 | Leon-approved estimate — post-Festival cooldown above winter floor |
+
+Three residual calendar gaps found during close-out coverage check (reported; no unauthorized rows inserted — pending Leon ruling):
+- **Bogotá** `02-29` — 1 day, leap year only; `dry_primary` ends `02-28`
+- **Kyoto** `09-07`–`10-19` — 43 days; between `summer` (ends `09-06`) and `momiji` (starts `10-20`)
+- **Porto** `10-01`–`10-31` — 31 days; October has no season row
+
+### L-CLS-2 — #1496 executed in-lane, expanded scope
+
+6 render sites suppressed (not the audited 4; `discover-location.tsx:385` and `discover.tsx:652` found during grep-gate execution). The `discover.tsx` instance aliased `activeTravelers` into a displayed "review count" — noted as an instance of the fabrication class. `crowdLevel` band-string retained at all sites per option (b). Adjacent copy audit complete: "Real-time" / "Live Updates" language removed from all neighbouring sites (CityGrid header sub-text + badge text).
+
+### L-CLS-3 — R3 amendment path recorded (not yet active)
+
+Absolute crowd counts may return per-entity as *calibrated range estimates* only — fitted against external ground truth, rendered as ranges with "estimated" label, permitted only where fit quality passes a config threshold. Amendment activates when the Calibration Lane ships, not before. R3 stands as-is until then.
