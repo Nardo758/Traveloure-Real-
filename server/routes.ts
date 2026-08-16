@@ -27,6 +27,7 @@ import { api } from "@shared/routes";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
 import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
+import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
@@ -3477,11 +3478,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // queue applies them); everything else applies immediately. The split compares against
       // the STORED row — the wizard PATCHes full payloads, so an unchanged serviceName must
       // pass through as a no-op, not trigger a review.
-      const IDENTITY_EDIT_FIELDS = [
-        "serviceName", "categoryId", "subcategoryId",
-        "serviceOfferingTypeId", "expertOfferingTypeId", "offeringTypeKey",
-        "deliveryMethod", "productShape",
-      ] as const;
+      // S-1 (ledger 2026-08-16-console-sweep): the field list lives in @shared/edit-split so
+      // the listing home's "Editing a live listing" panel reads THIS handler's own predicate
+      // rather than restating it (§18 rule 1). The split is still decided only here.
       let stagedEditKeys: string[] = [];
       if (ownedService.approvalStatus === "approved") {
         const identityPatch: Record<string, unknown> = {};

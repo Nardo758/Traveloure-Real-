@@ -418,6 +418,17 @@ function PromoteSection({ onSelectService }: { onSelectService: (serviceId: stri
         <Share2 className="w-3.5 h-3.5" /> Promote
       </h2>
       <PostingOpportunitiesCard onSelectService={onSelectService} />
+      {/* Mock conformance (the ratified mock's Promote card closes on this line; ruling 74
+          disp. 8 / 22(d) is the rule it states): the page makes the asset, Performance answers
+          how it did. The D4 deep-link on the channel strip is the door; this says why. */}
+      <p
+        className="rounded-md border border-dashed border-console-light bg-console-bg/40 px-3.5 py-2.5 text-xs text-console-mid"
+        data-testid="text-promote-measurement-note"
+      >
+        <span className="font-semibold text-console-darkest">Measurement stays on Performance.</span>{" "}
+        This page makes the asset and hands you the link; how it did is a question the analytics
+        module answers. The share rail never grows its own analytics.
+      </p>
     </section>
   );
 }

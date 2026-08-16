@@ -529,6 +529,12 @@ export default function ProviderWorkstation() {
   };
 
   const [propertyBuilderOpen, setPropertyBuilderOpen] = useState(false);
+  // S-2 (ledger 2026-08-16-console-sweep): the mock's property builder is a step ladder that
+  // ENDS in Review — "1. The property · 2. Rooms · 3. Review" — where the service lane already
+  // ends in "Review & submit". Same fields, same one POST; the steps only sequence them and put
+  // a read-back between the provider and Submit.
+  type PropertyBuilderStep = "property" | "rooms" | "review";
+  const [propertyBuilderStep, setPropertyBuilderStep] = useState<PropertyBuilderStep>("property");
   const [propName, setPropName] = useState("");
   const [propDescription, setPropDescription] = useState("");
   const [propLocation, setPropLocation] = useState("");
@@ -547,6 +553,7 @@ export default function ProviderWorkstation() {
     setPropLocation("");
     setPropPoint(null);
     setRoomDrafts([{ key: `r${Date.now()}`, roomName: "", price: "", units: "" }]);
+    setPropertyBuilderStep("property");
     setPropertyBuilderOpen(true);
   }
   function addRoomDraft() {
@@ -1657,14 +1664,45 @@ export default function ProviderWorkstation() {
               </DialogDescription>
             </DialogHeader>
 
+            {/* S-2: the mock's step ladder — 1. The property · 2. Rooms · 3. Review. Forward
+                tabs gate on the same validity the footer buttons use; every field keeps its
+                testid (the steps sequence the form, they don't change it). */}
+            <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
+              {(
+                [
+                  { key: "property", label: "1. The property", enabled: true },
+                  { key: "rooms", label: "2. Rooms", enabled: propName.trim().length > 0 },
+                  { key: "review", label: "3. Review", enabled: propertyFormValid },
+                ] as const
+              ).map((step) => (
+                <button
+                  key={step.key}
+                  type="button"
+                  disabled={!step.enabled}
+                  onClick={() => setPropertyBuilderStep(step.key)}
+                  aria-pressed={propertyBuilderStep === step.key}
+                  className={
+                    "px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
+                    (propertyBuilderStep === step.key
+                      ? "bg-console-dark text-white"
+                      : "bg-white text-console-mid hover:bg-console-light/40")
+                  }
+                  data-testid={`tab-property-builder-${step.key}`}
+                >
+                  {step.label}
+                </button>
+              ))}
+            </div>
+
             <form
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!propertyFormValid || createPropertyMutation.isPending) return;
+                if (propertyBuilderStep !== "review" || !propertyFormValid || createPropertyMutation.isPending) return;
                 createPropertyMutation.mutate();
               }}
             >
+              <div className="space-y-4" hidden={propertyBuilderStep !== "property"}>
               <div>
                 <Label htmlFor="property-name" className="text-sm">
                   Property name
@@ -1721,8 +1759,9 @@ export default function ProviderWorkstation() {
                   data-testid="input-property-description"
                 />
               </div>
+              </div>
 
-              <div>
+              <div hidden={propertyBuilderStep !== "rooms"}>
                 <Label className="text-sm">Room types (at least 1)</Label>
                 <div className="mt-2 space-y-3">
                   {roomDrafts.map((draft, idx) => (
@@ -1792,6 +1831,53 @@ export default function ProviderWorkstation() {
                 </p>
               </div>
 
+              {/* S-2: the Review step — a read-back of exactly what one Submit will send,
+                  before it is sent. Derived from the same draft state, nothing re-asked. */}
+              {propertyBuilderStep === "review" && (
+                <div className="space-y-3" data-testid="property-builder-review">
+                  <div className="rounded-lg border border-console-light divide-y divide-console-light text-sm">
+                    <div className="flex gap-3 px-3 py-2">
+                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Property</span>
+                      <span className="font-medium" data-testid="text-review-property-name">{propName.trim() || "—"}</span>
+                    </div>
+                    <div className="flex gap-3 px-3 py-2">
+                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Location</span>
+                      <span data-testid="text-review-property-location">{propLocation.trim() || "Not set"}</span>
+                    </div>
+                    <div className="flex gap-3 px-3 py-2">
+                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Map pin</span>
+                      <span data-testid="text-review-property-pin">
+                        {propPoint ? "Pin placed" : "Not placed — optional"}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 px-3 py-2">
+                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Description</span>
+                      <span className="min-w-0 break-words" data-testid="text-review-property-description">
+                        {propDescription.trim() || "Not set"}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 px-3 py-2">
+                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">
+                        Rooms ({roomDrafts.length})
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        {roomDrafts.map((r, idx) => (
+                          <span key={r.key} className="block" data-testid={`text-review-room-${idx}`}>
+                            {r.roomName.trim() || `Room ${idx + 1}`} · ${r.price || "?"} / night
+                            {r.units.trim() ? ` · ${r.units} unit${r.units.trim() === "1" ? "" : "s"}` : ""}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-console-mid">
+                    The property and each room are reviewed before they sell (born submitted, never
+                    live on save). Night availability is published afterwards on Catalog →
+                    Availability — nothing is bookable until it exists.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   type="button"
@@ -1801,13 +1887,47 @@ export default function ProviderWorkstation() {
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  disabled={!propertyFormValid || createPropertyMutation.isPending}
-                  data-testid="button-property-submit"
-                >
-                  {createPropertyMutation.isPending ? "Saving…" : "Submit for review"}
-                </Button>
+                {propertyBuilderStep !== "property" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setPropertyBuilderStep(propertyBuilderStep === "review" ? "rooms" : "property")
+                    }
+                    data-testid="button-property-back"
+                  >
+                    ← Back
+                  </Button>
+                )}
+                {propertyBuilderStep === "property" && (
+                  <Button
+                    type="button"
+                    disabled={propName.trim().length === 0}
+                    onClick={() => setPropertyBuilderStep("rooms")}
+                    data-testid="button-property-next"
+                  >
+                    Next: Rooms →
+                  </Button>
+                )}
+                {propertyBuilderStep === "rooms" && (
+                  <Button
+                    type="button"
+                    disabled={!propertyFormValid}
+                    onClick={() => setPropertyBuilderStep("review")}
+                    data-testid="button-property-next"
+                  >
+                    Next: Review →
+                  </Button>
+                )}
+                {propertyBuilderStep === "review" && (
+                  <Button
+                    type="submit"
+                    disabled={!propertyFormValid || createPropertyMutation.isPending}
+                    data-testid="button-property-submit"
+                  >
+                    {createPropertyMutation.isPending ? "Saving…" : "Submit for review"}
+                  </Button>
+                )}
               </div>
             </form>
           </DialogContent>

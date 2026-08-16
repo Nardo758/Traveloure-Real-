@@ -2562,7 +2562,12 @@ been checked at all.
 **Result: 1 P1, 2 P2, 2 P3, and one surface clean.** Materially better than the base rate — the
 prediction going in was that these would look like the others, and they mostly do not.
 
-### S-1 (P1) — the edit-split is enforced but never stated, so a provider cannot predict it
+### S-1 (P1, FIXED — ledger 2026-08-16-console-conformance-fixes) — the edit-split is enforced but never stated, so a provider cannot predict it
+
+**FIXED:** `IDENTITY_EDIT_FIELDS` moved to `shared/edit-split.ts` and the PATCH handler imports it —
+the listing home's "Editing a live listing" panel (`card-edit-split`, approved listings only)
+renders both lanes from that same export, so the constraint below is satisfied by construction
+(the server's own list is read, never restated).
 
 §23 / ruling 112 Q8 shipped the safe-vs-identity edit split **server-side**: safe edits apply to
 the live row immediately; identity edits land in `pending_changes` and wait for review while the
@@ -2582,13 +2587,22 @@ derivation-drift class lane M3 just removed from the Catalog preview (§18 rule 
 never re-implements*). Whatever renders this must READ the server's own list, not restate it —
 which means the split needs to be exported/served before it can be honestly displayed.
 
-### S-2 (P2) — the property builder has no Review step
+### S-2 (P2, FIXED — ledger 2026-08-16-console-conformance-fixes) — the property builder has no Review step
+
+**FIXED:** the CREATE dialog is now the mock's ladder — 1. The property · 2. Rooms · 3. Review —
+with Submit only on the Review read-back. The EDIT dialog keeps its per-step saves (a Review over
+incremental saves would review nothing).
 
 Mock: **1. The property · 2. Rooms · 3. Review**. Ship (`workstation.tsx`,
 `PropertyEditorStep`): `basics · details · rooms` — an extra Details step and **no Review**. The
 service lane ends in "Review & submit"; the property lane submits without one.
 
-### S-3 (P2) — gap #2: the semantics are BUILT; the month grid is not
+### S-3 (P2, FIXED — ledger 2026-08-16-console-conformance-fixes) — gap #2: the semantics are BUILT; the month grid is not
+
+**FIXED:** `AvailabilityMonthGrid` renders for both calendar-bearing semantics with the mock's
+legend (Bookable / Blacked out / Nothing published / Today), opening on the month of the next
+bookable day. Scheduled days come from the REAL materialized slots (the grid is the outcome of
+the pattern, not a re-derivation); nightly days from the published ranges; blackouts win.
 
 This is the finding that corrects the going-in assumption. The mock calls the availability editor
 *"the largest hole in the redesign"*, and the expectation was a hole. It is not one.
@@ -2605,7 +2619,9 @@ claim is that all three semantics "share the same month grid, the same blackout 
 published/not-published vocabulary" — the ship has the shared editor and the shared blackout rail,
 but not the shared grid.
 
-### S-4 (P3) — availability vocabulary drift
+### S-4 (P3, FIXED — ledger 2026-08-16-console-conformance-fixes) — availability vocabulary drift
+
+**FIXED:** "Repeats weekly" · "Published date ranges" · "No calendar — this sells without slots".
 
 Ship "Weekly schedule" vs mock "Repeats weekly"; ship "Open date ranges" vs mock "Published date
 ranges"; ship "No scheduling needed" vs mock "No calendar — this sells without slots". Copy only —
