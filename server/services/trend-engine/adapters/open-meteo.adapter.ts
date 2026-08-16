@@ -121,7 +121,7 @@ export class OpenMeteoAdapter implements TrendEngineAdapter {
 
           // temperature_celsius
           try {
-            await db.insert(trendSignals).values({
+            const ins1 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "temperature_celsius",
@@ -129,21 +129,21 @@ export class OpenMeteoAdapter implements TrendEngineAdapter {
               observedAt,
               resaleClass: RESALE_CLASS,
               rawRef: { date: day.date, temp_c: day.tempC, precip_mm: day.precipMm },
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins1.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
 
           // precipitation_mm
           try {
-            await db.insert(trendSignals).values({
+            const ins2 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "precipitation_mm",
               value: String(Math.round(day.precipMm * 10) / 10),
               observedAt,
               resaleClass: RESALE_CLASS,
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins2.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
         }
       } catch (err: any) {

@@ -8831,12 +8831,19 @@ export const trendSourceConfig = pgTable("trend_source_config", {
   monthlyCostCeiling:   decimal("monthly_cost_ceiling", { precision: 10, scale: 2 }),
   resaleClass:          varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — each row explicit
   notes:                text("notes"),
-  // Phase 2.1 — health status written by cost-enforcement.ts
-  healthStatus:         varchar("health_status", { length: 30 }).notNull().default("healthy"),
-  haltedAt:             timestamp("halted_at"),
-  haltedReason:         text("halted_reason"),
-  createdAt:            timestamp("created_at").defaultNow().notNull(),
-  updatedAt:            timestamp("updated_at").defaultNow().notNull(),
+  // Phase 2.1 — health status written by cost-enforcement.ts (ceiling halt)
+  // Phase 2 corrective 2 — last-run tracking written by ingestion-runner.ts
+  healthStatus:           varchar("health_status", { length: 30 }).notNull().default("healthy"),
+  haltedAt:               timestamp("halted_at"),
+  haltedReason:           text("halted_reason"),
+  // Last-run tracking (Item C, corrective dispatch 2)
+  lastRunAt:              timestamp("last_run_at"),
+  lastRunStatus:          varchar("last_run_status", { length: 20 }),   // 'success' | 'failure'
+  lastRunError:           text("last_run_error"),
+  lastRunInsertedRows:    integer("last_run_inserted_rows"),
+  consecutiveFailures:    integer("consecutive_failures").notNull().default(0),
+  createdAt:              timestamp("created_at").defaultNow().notNull(),
+  updatedAt:              timestamp("updated_at").defaultNow().notNull(),
 });
 export type TrendSourceConfig = typeof trendSourceConfig.$inferSelect;
 export type InsertTrendSourceConfig = typeof trendSourceConfig.$inferInsert;

@@ -138,7 +138,7 @@ export class NagerDateAdapter implements TrendEngineAdapter {
           observedAt.setUTCHours(12, 0, 0, 0);
 
           try {
-            await db.insert(trendSignals).values({
+            const ins = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "public_holiday",
@@ -146,8 +146,8 @@ export class NagerDateAdapter implements TrendEngineAdapter {
               observedAt,
               resaleClass: RESALE_CLASS,
               rawRef: count > 0 ? { holiday_count: count, date: key } : null,
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
         }
       } catch (err: any) {

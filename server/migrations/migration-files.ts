@@ -1182,4 +1182,9 @@ export const MIGRATION_FILES = [
   //       rejects any INSERT/UPDATE setting raw_ref non-null on an x_api row
   //   (2) UPDATE trend_source_config SET enabled = true for all 8 adapters
   "236_x_api_raw_ref_constraint_and_enable_adapters.sql",
+  // 237: Trend Source Config — last-run health columns (Item C, corrective dispatch 2)
+  //   last_run_at, last_run_status, last_run_error, last_run_inserted_rows,
+  //   consecutive_failures — enable runner-driven degraded detection.
+  //   A source failing ≥2 consecutive runs → health_status = 'degraded'.
+  "237_trend_source_config_last_run_health.sql",
 ] as const;

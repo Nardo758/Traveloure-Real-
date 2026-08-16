@@ -608,18 +608,21 @@ function HealthIndicator({ health }: { health: ServiceHealth | undefined }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
+        {/* In the right (.lright) column — bar is full-width of the column, label below */}
         <button
           type="button"
-          className="flex items-center gap-1.5 text-[12px] text-[#7A7A72] hover:text-[#1A1A18]"
+          className="flex flex-col items-end gap-[3px] text-[11.5px] text-[#7A7A72] hover:text-[#1A1A18] w-full"
           data-testid={`health-row-${health.serviceId}`}
         >
-          <span className="w-[56px] h-[5px] rounded-full bg-[#E8E8E2] overflow-hidden inline-block">
+          <span className="w-full h-[4px] rounded-full bg-[#E8E8E2] overflow-hidden inline-block">
             <span
-              className={cn("block h-full", allPassing ? "bg-[#35605A]" : "bg-[#C79A3C]")}
+              className={cn("block h-full rounded-full", allPassing ? "bg-[#35605A]" : "bg-[#C79A3C]")}
               style={{ width: `${Math.round((passed / total) * 100)}%` }}
             />
           </span>
-          {shortLabel}
+          <span className={cn("text-right leading-none", allPassing ? "text-[#35605A]" : "text-[#8A6620]")}>
+            {shortLabel}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-[13px]" align="end">
@@ -1061,7 +1064,6 @@ function ListingRow({
               Availability →
             </button>
           )}
-          <HealthIndicator health={health} />
         </div>
 
         {/* C3: per-listing "Card shows" control (Show price + Booking mode). */}
@@ -1086,8 +1088,10 @@ function ListingRow({
         )}
       </div>
 
-      {/* mock `.lright` — quiet actions: Edit + "Promote this →"; Duplicate/Delete in overflow */}
-      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto">
+      {/* mock `.lright` — health bar (top) + quiet actions: Edit + "Promote this →"; Duplicate/Delete in overflow */}
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto min-w-[120px]">
+        {/* Health bar at the top of the right column — mock anatomy: bar + status label, top-right of each row */}
+        <HealthIndicator health={health} />
         <Link href={editHref}>
           <button
             type="button"

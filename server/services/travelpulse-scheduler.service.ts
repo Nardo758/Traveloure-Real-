@@ -2,6 +2,8 @@ import { travelPulseService } from "./travelpulse.service";
 import { serviceRecommendationEngine } from "./recommendation.service";
 import { refreshDestinationTrends } from "./destination-trends.service";
 import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
+import { trendEngineIngestionRunner } from "./trend-engine/ingestion-runner";
+import { trendScoreService } from "./trend-engine/trend-score.service";
 
 // Phase 2.3 — GROK SCORING REMOVED.
 // updateCityWithAI is no longer called from the daily scheduler.
@@ -145,6 +147,26 @@ export class TravelPulseScheduler {
         console.log(`[TravelPulse Scheduler] Destination trends refreshed: ${trendsComputed} countries`);
       } catch (err: any) {
         console.error("[TravelPulse Scheduler] Trend computation failed:", err?.message ?? err);
+      }
+
+      // Phase 2 — Trend Engine: daily signal ingestion then market scoring.
+      // Ingestion runs first; scoring reads whatever signals are in the DB (idempotent).
+      try {
+        const ingestionResult = await trendEngineIngestionRunner.runDaily();
+        console.log(
+          `[TravelPulse Scheduler] Trend-engine ingestion: inserted=${ingestionResult.totalInserted} skipped=${ingestionResult.totalSkipped} halted=${ingestionResult.haltedSources.length}`,
+        );
+      } catch (err: any) {
+        console.error("[TravelPulse Scheduler] Trend-engine ingestion error:", err?.message ?? err);
+      }
+
+      try {
+        const scoreResult = await trendScoreService.runMarkets();
+        console.log(
+          `[TravelPulse Scheduler] Trend-score resolver: scored=${scoreResult.scored} unranked=${scoreResult.unranked} errors=${scoreResult.errors.length} run=${scoreResult.scoringRunId}`,
+        );
+      } catch (err: any) {
+        console.error("[TravelPulse Scheduler] Trend-score resolver error:", err?.message ?? err);
       }
 
       // Feedback loop stats

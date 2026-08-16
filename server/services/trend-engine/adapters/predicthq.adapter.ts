@@ -147,7 +147,7 @@ async function collectForDate(
 
   for (const row of rows) {
     try {
-      await db.insert(trendSignals).values({
+      const ins = await db.insert(trendSignals).values({
         trendEntityId: entity.id,
         source: SOURCE,
         metric: row.metric,
@@ -155,8 +155,8 @@ async function collectForDate(
         observedAt,
         resaleClass: RESALE_CLASS,
         rawRef,
-      }).onConflictDoNothing();
-      result.rowsInserted++;
+      }).onConflictDoNothing().returning({ id: trendSignals.id });
+      if (ins.length > 0) result.rowsInserted++; else result.rowsSkipped++;
     } catch {
       result.rowsSkipped++;
     }
