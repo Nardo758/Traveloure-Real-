@@ -830,7 +830,7 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
   }
 
   // TravelPulse City Intelligence - Unified data for Trending, Calendar, and AI Optimization
-  async generateCityIntelligence(cityName: string, country: string): Promise<{ result: CityIntelligenceResult; usage: GrokUsageStats }> {
+  async generateCityIntelligence(cityName: string, country: string, signals?: CityProxySignals): Promise<{ result: CityIntelligenceResult; usage: GrokUsageStats }> {
     const systemPrompt = `You are TravelPulse, an AI travel intelligence system for Traveloure. Generate comprehensive city intelligence that powers trending displays, travel calendars, and trip optimization.
 
 Analyze the destination and provide real-time intelligence based on current knowledge. Be specific, actionable, and traveler-focused.
@@ -844,7 +844,8 @@ Return JSON with this exact structure:
     "pulseScore": <0-100 overall travel appeal right now>,
     "trendingScore": <0-100 how viral/trending based on past 7 days>,
     "crowdLevel": "<quiet|moderate|busy|packed>",
-    "weatherScore": <0-100 how good for travel>
+    "weatherScore": <0-100 how good for travel>,
+    "estimatedActiveTravelers": <integer — rough estimate of international/domestic tourists currently visiting this city today, based on the city's typical tourism volume and the current season. Scale realistically: a major hub in peak season may be tens of thousands; a small city off-season may be a few hundred>
   },
   
   "currentVibe": {
@@ -892,7 +893,7 @@ Return JSON with this exact structure:
 City: ${cityName}
 Country: ${country}
 
-Provide current, real-world data based on your knowledge. Include seasonal patterns, current events, pricing trends, and local insights that help travelers plan better trips.`;
+Provide current, real-world data based on your knowledge. Include seasonal patterns, current events, pricing trends, and local insights that help travelers plan better trips.${formatProxySignals(signals)}`;
 
     try {
       const response = await getGrokClient().chat.completions.create({
@@ -925,6 +926,43 @@ Provide current, real-world data based on your knowledge. Include seasonal patte
   }
 }
 
+// Observed proxy signals fed into city-intelligence generation so estimates are
+// grounded in real measurements instead of pure model knowledge. All fields are
+// optional — callers pass whatever they could gather; missing signals are omitted
+// from the prompt entirely.
+export interface CityProxySignals {
+  /** Trips on our platform whose dates cover today and whose destination matches this city. */
+  platformTravelersNow?: number;
+  /** Trips on our platform starting within the next 30 days for this city. */
+  platformUpcomingTrips30d?: number;
+  /** Most recent metric history rows (oldest→newest), e.g. trend_score over past passes. */
+  recentTrendScores?: number[];
+  /** Google Trends interest-over-time (0-100), most recent value, for "<city> travel". */
+  searchInterest?: number;
+  /** Previous activeTravelers value stored for this city (for continuity/smoothing). */
+  previousActiveTravelers?: number;
+}
+
+function formatProxySignals(signals?: CityProxySignals): string {
+  if (!signals) return "";
+  const lines: string[] = [];
+  if (signals.platformTravelersNow !== undefined)
+    lines.push(`- Traveloure platform: ${signals.platformTravelersNow} traveler trip(s) with dates covering today in this city (real bookings/plans on our platform — a small sample of total tourism, use as a directional signal only)`);
+  if (signals.platformUpcomingTrips30d !== undefined)
+    lines.push(`- Traveloure platform: ${signals.platformUpcomingTrips30d} trip(s) starting here within the next 30 days`);
+  if (signals.recentTrendScores?.length)
+    lines.push(`- Our recent trending-score history (oldest→newest): ${signals.recentTrendScores.join(", ")}`);
+  if (signals.searchInterest !== undefined)
+    lines.push(`- Google Trends search interest for travel to this city (0-100, latest): ${signals.searchInterest}`);
+  if (signals.previousActiveTravelers !== undefined)
+    lines.push(`- Our previous estimatedActiveTravelers value: ${signals.previousActiveTravelers} (avoid implausible jumps unless the season/events justify it)`);
+  if (!lines.length) return "";
+  return `
+
+OBSERVED PROXY SIGNALS (real measurements — weigh these when computing pulseScore, trendingScore, crowdLevel and estimatedActiveTravelers; they are partial proxies, so combine them with your seasonal/tourism knowledge rather than extrapolating any single one literally):
+${lines.join("\n")}`;
+}
+
 // City Intelligence Result Interface
 export interface CityIntelligenceResult {
   cityName: string;
@@ -935,6 +973,8 @@ export interface CityIntelligenceResult {
     trendingScore: number;
     crowdLevel: "quiet" | "moderate" | "busy" | "packed";
     weatherScore: number;
+    /** Grok's seasonal estimate of tourists currently in the city. Optional: older cached responses may lack it. */
+    estimatedActiveTravelers?: number;
   };
   
   currentVibe: {
