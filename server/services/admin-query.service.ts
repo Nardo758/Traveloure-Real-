@@ -25,6 +25,57 @@ export async function getFullAdminUser(userId: string) {
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 
+export async function getRoleChangeAuditLogs(opts: {
+  targetUserId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  const { targetUserId, dateFrom, dateTo, limit = 50, offset = 0 } = opts;
+
+  // Fetch role-change events joined with actor and target user details.
+  const rows = await db.execute(sql`
+    SELECT
+      aal.id,
+      aal.created_at,
+      aal.actor_id,
+      aal.actor_role,
+      aal.target_user_id,
+      aal.metadata,
+      aal.ip_address,
+      actor.first_name  AS actor_first_name,
+      actor.last_name   AS actor_last_name,
+      actor.email       AS actor_email,
+      target.first_name AS target_first_name,
+      target.last_name  AS target_last_name,
+      target.email      AS target_email
+    FROM access_audit_logs aal
+    LEFT JOIN users actor  ON actor.id  = aal.actor_id
+    LEFT JOIN users target ON target.id = aal.target_user_id
+    WHERE aal.action = 'role_change'
+      ${targetUserId ? sql`AND aal.target_user_id = ${targetUserId}` : sql``}
+      ${dateFrom ? sql`AND aal.created_at >= ${dateFrom}` : sql``}
+      ${dateTo   ? sql`AND aal.created_at <= ${dateTo}`   : sql``}
+    ORDER BY aal.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const [countResult] = await db.execute(sql`
+    SELECT count(*)::int AS total
+    FROM access_audit_logs aal
+    WHERE aal.action = 'role_change'
+      ${targetUserId ? sql`AND aal.target_user_id = ${targetUserId}` : sql``}
+      ${dateFrom ? sql`AND aal.created_at >= ${dateFrom}` : sql``}
+      ${dateTo   ? sql`AND aal.created_at <= ${dateTo}`   : sql``}
+  `);
+
+  return {
+    logs: rows.rows as any[],
+    total: (countResult.rows[0] as any)?.total ?? 0,
+  };
+}
+
 export async function insertAccessAuditLog(values: {
   actorId: string;
   actorRole: string;
