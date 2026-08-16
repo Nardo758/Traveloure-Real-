@@ -151,8 +151,19 @@ test.describe('/provider/services Map — read-only traveler preview (lanes C4 +
       const renderIt = page.getByTestId('render-it-section');
       await expect(renderIt).toBeVisible();
       await expect(renderIt).toContainText('Render it, or stop collecting it');
-      // gap #13's open half is NAMED, never faked into a row.
-      await expect(page.getByTestId('traveler-facts-unbacked')).toContainText('no field behind them yet');
+      // Gap #13's read-out is §13-honest: an unanswered question is OMITTED AND COUNTED, never
+      // defaulted into a claim the host did not make.
+      //
+      // This assertion replaces one that asserted `traveler-facts-unbacked` ("Bring and Access
+      // have no field behind them yet"). That element was CORRECT until migration 228 gave both
+      // rows a column; the same commit deleted it and left this line behind — spec rot authored
+      // in the same session that audited spec rot. The replacement is stronger, not weaker: it
+      // proves the two formerly-unbacked rows are now REAL QUESTIONS in the read-out's set, which
+      // is only observable because the seeded listing leaves them unanswered.
+      const omitted = page.getByTestId('traveler-facts-omitted');
+      await expect(omitted).toContainText('unanswered');
+      await expect(omitted).toContainText('Bring');
+      await expect(omitted).toContainText('Access');
     } finally {
       if (origLat && origLng) {
         await page.request.patch(`${BASE_URL}/api/provider/services/${remoteId}`, {

@@ -1139,4 +1139,9 @@ export const MIGRATION_FILES = [
   // rows). The extractor now filters them at source (CHOME_BLOCK_PATTERN); this cleans
   // up what's already on disk. Data-only, idempotent, no schema change — no publish trap.
   "227_purge_chome_neighborhood_rows.sql",
+  // Gap #13's last two unbacked rows: the ratified mock draws a "Bring" and an "Access" row and
+  // NEITHER had a column, so the flow never asked and nothing could render them (the inverse of
+  // row 101's collected-and-never-read class). Both additive-nullable, NO DB CHECK — the
+  // 181/195 posture, so no publish-time CHECK trap. Declared in shared/schema.ts.
+  "228_service_bring_access_notes.sql",
 ] as const;
