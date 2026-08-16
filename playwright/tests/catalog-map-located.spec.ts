@@ -38,6 +38,24 @@ const PROVIDER_PASSWORD = 'TestPass123!';
 const REMOTE_SERVICE = 'Business Document Translation'; // async/remote — the one we unpin
 const LOCATED_SERVICE = 'Business Meeting Interpretation (Full Day)'; // stays pinned
 
+/**
+ * The map surfaces mount Leaflet, which fetches OSM tiles from an external host. Every assertion
+ * here is DOM — markers, counts, copy — so the tiles buy the test nothing and cost it a live
+ * third-party dependency that simply hangs on a sandboxed or offline runner. Aborted.
+ *
+ * PRECONDITION — now satisfied by the seeder, but worth knowing when this spec misbehaves. The
+ * provider needs a password AND both `users.terms_accepted_at` / `privacy_accepted_at`;
+ * `FIXTURE_LOGIN_BACKFILL` in `server/seeds/e2e-test-accounts.seed.ts` fills all three
+ * idempotently. Before that existed, a bench run without them bounced every authenticated console
+ * route to `/accept-terms`, so `button-view-map` never rendered and the auto-waiting click
+ * consumed the WHOLE test timeout — which Playwright then reported against the cleanup PATCH in
+ * the `finally`, the last place anyone would look. If this spec ever times out with no assertion
+ * error, check those three columns before suspecting the map.
+ */
+async function blockMapTiles(page: Page) {
+  await page.route(/tile\.openstreetmap\.org/, (route) => route.abort());
+}
+
 async function loginProvider(page: Page) {
   const resp = await page.request.post(`${BASE_URL}/api/auth/login`, {
     headers: { 'Content-Type': 'application/json' },
@@ -60,6 +78,7 @@ function nameOf(s: Svc): string {
 
 test.describe('/provider/services Map — read-only traveler preview (lanes C4 + M + M2)', () => {
   test('unlocated listing is named off-canvas with its true reason; located listing draws its pin', async ({ page }) => {
+    await blockMapTiles(page);
     await loginProvider(page);
 
     const services = await loadServices(page);
