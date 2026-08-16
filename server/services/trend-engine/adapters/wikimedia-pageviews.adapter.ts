@@ -75,7 +75,7 @@ async function insertSignals(
     const observedAt = new Date(Date.UTC(yr, mo, dy, 12, 0, 0));
 
     try {
-      await db
+      const ins = await db
         .insert(trendSignals)
         .values({
           trendEntityId: entityId,
@@ -86,8 +86,9 @@ async function insertSignals(
           resaleClass: RESALE_CLASS,
           rawRef: { wikimedia_date: row.date, views: row.views },
         })
-        .onConflictDoNothing();
-      inserted++;
+        .onConflictDoNothing()
+        .returning({ id: trendSignals.id });
+      if (ins.length > 0) inserted++; else skipped++;
     } catch {
       skipped++;
     }

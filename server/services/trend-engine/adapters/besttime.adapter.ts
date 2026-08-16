@@ -177,7 +177,7 @@ export class BestTimeAdapter implements TrendEngineAdapter {
         const forecastPeak = dayPeaks[ydDayBT] ?? 0;
 
         try {
-          await db.insert(trendSignals).values({
+          const insM = await db.insert(trendSignals).values({
             trendEntityId: entity.id,
             source: SOURCE,
             metric: "foot_traffic_forecast_mean",
@@ -185,12 +185,12 @@ export class BestTimeAdapter implements TrendEngineAdapter {
             observedAt: yd,
             resaleClass: RESALE_CLASS,
             rawRef: { venue_id: venueId, day_bt: ydDayBT, pattern: "weekly" },
-          }).onConflictDoNothing();
-          result.rowsInserted++;
+          }).onConflictDoNothing().returning({ id: trendSignals.id });
+          if (insM.length > 0) result.rowsInserted++; else result.rowsSkipped++;
         } catch { result.rowsSkipped++; }
 
         try {
-          await db.insert(trendSignals).values({
+          const insP = await db.insert(trendSignals).values({
             trendEntityId: entity.id,
             source: SOURCE,
             metric: "foot_traffic_forecast_peak",
@@ -198,8 +198,8 @@ export class BestTimeAdapter implements TrendEngineAdapter {
             observedAt: yd,
             resaleClass: RESALE_CLASS,
             rawRef: { venue_id: venueId, day_bt: ydDayBT, pattern: "weekly" },
-          }).onConflictDoNothing();
-          result.rowsInserted++;
+          }).onConflictDoNothing().returning({ id: trendSignals.id });
+          if (insP.length > 0) result.rowsInserted++; else result.rowsSkipped++;
         } catch { result.rowsSkipped++; }
 
         // 3. Live busyness (free call)
@@ -215,7 +215,7 @@ export class BestTimeAdapter implements TrendEngineAdapter {
           now.setUTCMinutes(0, 0, 0); // round to hour
 
           try {
-            await db.insert(trendSignals).values({
+            const insL = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "foot_traffic_live",
@@ -223,8 +223,8 @@ export class BestTimeAdapter implements TrendEngineAdapter {
               observedAt: now,
               resaleClass: RESALE_CLASS,
               rawRef: { venue_id: venueId, live_available: liveAvailable, raw_live: live, raw_forecast: forecasted },
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (insL.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
         }
 

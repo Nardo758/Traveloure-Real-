@@ -145,7 +145,7 @@ export class InternalTripsAdapter implements TrendEngineAdapter {
 
           // platform_travelers_active
           try {
-            await db.insert(trendSignals).values({
+            const ins1 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "platform_travelers_active",
@@ -154,13 +154,13 @@ export class InternalTripsAdapter implements TrendEngineAdapter {
               resaleClass: RESALE_CLASS,
               preLaunch,
               rawRef: { rail: "trips", city: market.cityName },
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins1.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
 
           // platform_upcoming_trips_30d
           try {
-            await db.insert(trendSignals).values({
+            const ins2 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "platform_upcoming_trips_30d",
@@ -169,8 +169,8 @@ export class InternalTripsAdapter implements TrendEngineAdapter {
               resaleClass: RESALE_CLASS,
               preLaunch,
               rawRef: { rail: "trips", city: market.cityName },
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins2.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
         }
       } catch (err: any) {
