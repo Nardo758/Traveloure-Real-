@@ -3,6 +3,7 @@ import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -29,8 +30,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 style={{ border: "1px solid #E8E8E2" }}
                 data-testid="button-dashboard-sidebar-toggle"
               />
-              <Link href="/" data-testid="link-logo" className="flex items-center gap-1.5 text-sm font-semibold text-[#1A1A18] hover:opacity-80 transition-opacity">
-                Traveloure
+              <Link href="/" data-testid="link-logo" className="flex items-center hover:opacity-80 transition-opacity">
+                <TraveloureLogo className="h-6" />
               </Link>
             </div>
             <div className="flex items-center gap-2">
