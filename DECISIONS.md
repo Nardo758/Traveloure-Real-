@@ -105,3 +105,29 @@ Post-migration coverage check: all 8 markets returned 0 gap_days, 0 overlap_days
 ### L-CLS-3 — R3 amendment path recorded (not yet active)
 
 Absolute crowd counts may return per-entity as *calibrated range estimates* only — fitted against external ground truth, rendered as ranges with "estimated" label, permitted only where fit quality passes a config threshold. Amendment activates when the Calibration Lane ships, not before. R3 stands as-is until then.
+
+---
+
+
+## TravelPulse field aliasing audit — 2026-08-16
+
+
+### L-CLS-4 — Full field-to-display-slot audit; no active fabrication-class instances found
+
+**Scope:** all components and pages consuming the `travelPulseCities` shape: `CityCard.tsx`, `CityGrid.tsx`, `CityDetailView.tsx`, `TrendingCities.tsx`, `TravelPulseCard.tsx`, `discover.tsx`, `discover-location.tsx`. Ground truth: `shared/schema.ts` `travelPulseCities` table.
+
+**Active render site verdicts:**
+
+| Field | Schema definition | Active render sites | Verdict |
+|---|---|---|---|
+| `pulseScore` | integer 0–100, "overall activity score" | CityCard stat footer "Pulse {n}"; discover-location hero badge labeled "pulse"; CityDetailView hero badge | ✅ label accurate |
+| `activeTravelers` | integer, "Currently active travelers" | Suppressed at all sites per R3/L-CLS-2 | ✅ no render |
+| `trendingScore` | integer 0–100, "how hot is it trending" | Drives "Hot" / "Trending" badge (`> 70` threshold) | ✅ semantically honest |
+| `avgHotelPrice` | decimal, avg hotel price per night | CityCard body "${n}/night"; CityDetailView stat card "Avg Hotel/Night" | ✅ label accurate |
+| `aiOptimalDuration` | varchar, e.g. "3–5 days" | CityDetailView "Recommended Duration" card | ✅ label accurate |
+| `totalTrendingSpots` | integer | CityCard "{n} trending"; CityDetailView "Trending Spots" | ✅ label accurate |
+| `totalHiddenGems` | integer | CityCard "{n} gems"; CityDetailView "Hidden Gems" | ✅ label accurate |
+
+**Dead-code mismatches removed:**
+
+`discover.tsx` contained a `trendingTrips` useMemo (lines 642–661 pre-fix) that mapped TravelPulse fields into a trip-package shape: `pulseScore/20` → `rating` (implied star rating), `trendingScore > 70` → `expertPick` (implied human curation), `avgHotelPrice × 5` → `price` (inflated per-night price presented as trip price). The downstream `filteredTrips` const was never rendered in JSX — these mismatches were in dead code. Removed the entire block (plus the associated `trendingCitiesData` query, `tripSearchQuery` state, and `selectedTripCategory` state) to eliminate the aliasing risk. `CityGrid` on the travelpulse tab already consumes TravelPulse data correctly without any remapping.
