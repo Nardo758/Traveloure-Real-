@@ -1311,37 +1311,18 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 
       <div style={{ marginBottom: 16 }}>
         <Label>Upload the file</Label>
-        {draft.fileUploaded ? (
-          <div style={{ border: `1px solid ${HAIR}`, borderRadius: 6, padding: 18,
-            textAlign: "center", background: PAP }}>
-            <div style={{ fontSize: 13, fontWeight: 550 }}>guide-v1.pdf</div>
-            <div style={{ fontSize: 12, color: ACC, marginTop: 3 }}>
-              Uploaded ·{" "}
-              <button type="button" onClick={() => set({ fileUploaded: false })}
-                style={{ background: "none", border: "none", color: ACC, padding: 0,
-                  textDecoration: "underline", textUnderlineOffset: 2, cursor: "pointer",
-                  fontSize: 12, font: "inherit" }}>
-                Remove
-              </button>
-            </div>
+        <div style={{ border: `1px dashed ${HAIR}`, borderRadius: 6, padding: 18,
+          textAlign: "center", background: GRD }}>
+          <div style={{ fontSize: 13, color: MUT, marginBottom: 4 }}>
+            No file yet — travelers cannot receive anything until there is one.
           </div>
-        ) : (
-          <div style={{ border: `1px dashed ${HAIR}`, borderRadius: 6, padding: 22,
-            textAlign: "center", background: GRD }}>
-            <div style={{ fontSize: 13, color: MUT, marginBottom: 9 }}>
-              No file yet — travelers cannot receive anything until there is one.
-            </div>
-            <button type="button" onClick={() => set({ fileUploaded: true })}
-              style={{ background: PAP, color: INK, border: `1px solid ${HAIR}`,
-                padding: "6px 11px", borderRadius: 6, cursor: "pointer",
-                fontSize: 12.5, fontWeight: 550, font: "inherit" }}>
-              Upload the guide
-            </button>
+          <div style={{ fontSize: 12, color: MUT, lineHeight: 1.5 }}>
+            Save this draft first, then upload the guide from your{" "}
+            <b style={{ color: INK }}>Listing</b> page (Listing → Edit → What they get).
           </div>
-        )}
+        </div>
         <Help>
           Travelers get the current file at the moment they buy. Updating it later does not re-send.
-          This is the item the draft checklist watches — it ticks when a file is here, not when you tick it.
         </Help>
       </div>
 
