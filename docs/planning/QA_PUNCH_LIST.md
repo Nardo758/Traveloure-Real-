@@ -2641,3 +2641,31 @@ Bench-verified on a local scratch Postgres: `runMigrations()` applied 228 itself
 returns NULL before and real text after a write through the owner PATCH rail, and both rows render
 (`docs/design/catalog-rebuild/traveler-bring-access.png`). **All nine mock rows are now backed**, so
 lane M2's `GAP13_UNBACKED_ROWS` caveat is deleted rather than left stale.
+
+## Folded in Aug 16, 2026 — row 101's "authored but unrendered" remainder: the decision pass
+
+T-REP (ledger row 101) filed seven fields as *collected and never read*, pending a render-or-rule
+pass. This is that pass. **Headline: five of the seven were already resolved or misfiled — the debt
+list was stale.** The real remainder is two dead columns and one ambiguous name.
+
+| Field | Disposition | Evidence |
+|---|---|---|
+| `city` | **ALREADY RENDERED** — filed entry is stale | `provider/services.tsx:688` puts it in the listing meta line, and `:686` uses it to infer "In person" |
+| `categoryAttributes` | **ALREADY RENDERED** (property path) | read by `service-detail.tsx` (traveler), `service-form-required.ts`, `workstation.tsx`. The non-property path is the only open question |
+| `maxConcurrentBookings` | **ALREADY STOPPED COLLECTING** — filed entry is stale | FP-2 / Package A item 8 **removed the input** deliberately (it was the second capacity number, one vocabulary away from party size — the pair the server actually enforces). Column untouched, values round-trip, the Catalog "Up to N" chip still renders for legacy rows |
+| `contentAffinityTags` | **PROVIDER-ONLY by decision** | a MATCHING input, not display: real consumers are `content-matching.service.ts` and `location-view.service.ts`. The provider sets it, the server matches on it, travelers never see it — which is correct, not a gap |
+| `faqs` (on `provider_services`) | **DEAD — file the drop** | no writer and no reader anywhere. Every `faqs` hit in the codebase is the separate site-FAQ **table** or the hardcoded array in `pages/faq.tsx` |
+| `deliverables` | **DEAD — already slated** | `server/index.ts` names it a deprecated **ESO workflow column** with a Phase-5 drop already planned; only seeds write it |
+| `experienceTypes` | **NEEDS A NARROW CHECK** — no disposition claimed | the name exists on TWO tables. `grok.service.ts` reads `expertProfile.experienceTypes` — a different object. Whether the `provider_services` copy has any consumer is genuinely unresolved, and guessing would be the §13 error this pass exists to avoid |
+
+**Why this pass produced no code.** The render column came out empty: nothing here needs a new
+traveler-side home. Two columns want dropping — and a column drop is irreversible, so under
+CLAUDE.md's publish-trap rules it gets FILED with its evidence rather than executed in the same
+breath as the decision that identified it. Inventing a render for a field that does not need one
+would be worse than leaving it.
+
+**Filed out of this pass:** (a) drop `provider_services.faqs` (dead); (b) confirm `deliverables`
+lands in the existing Phase-5 ESO drop rather than being forgotten; (c) settle
+`experienceTypes` on `provider_services` with a targeted consumer check; (d) decide the
+non-property `categoryAttributes` path. None is urgent; all four are now evidenced rather than
+just listed.
