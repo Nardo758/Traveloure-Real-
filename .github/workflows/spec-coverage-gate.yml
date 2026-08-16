@@ -11,10 +11,18 @@ name: Spec Coverage Gate
 # THE SPECS HERE ARE PROVEN, NOT ASSUMED. Every one was run to completion on a verification bench
 # and passed in full: auth-form-validation 23/23, booking-payment-isolation 1/1,
 # concierge-phase-a 6/6, executive-card-expand 2/2, expert-booking-decline-dialog 3/3,
-# experts-flow 10/10, navbar-responsive 16/16, rbac-security 28/28,
+# navbar-responsive 16/16, rbac-security 28/28,
 # stripe-connect-reminder-notification 2/2.
 # Specs from the same sweep with genuine failures are deliberately EXCLUDED and filed in the
 # punch list — a gate that lands red on day one teaches people to ignore it.
+#
+# AND "VERIFIED" MEANS ON A FRESH DATABASE. The first version of this gate also claimed
+# experts-flow, which passed 10/10 on a long-lived dev bench and failed in CI: its destination and
+# language filter tests (T03–T07) need seeded expert profiles that a clean install does not
+# produce (14 experts on a fresh DB vs 19 on the bench). rbac-security failed the same way, on a
+# fixture no CI seeder creates. Every spec named below has since been run against a database built
+# from empty by nothing but ci-db-setup's three steps. A bench with a week of accumulated seed data
+# will green specs that CI cannot — verify on a fresh DB or the claim is worthless.
 #
 # THE FOUR THINGS A RUNNER MUST GIVE THESE SPECS. Each of these faked a failure during the sweep
 # before it was found, so none of them is incidental:
@@ -83,7 +91,6 @@ jobs:
             playwright/tests/concierge-phase-a.spec.ts \
             playwright/tests/executive-card-expand.spec.ts \
             playwright/tests/expert-booking-decline-dialog.spec.ts \
-            playwright/tests/experts-flow.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
             playwright/tests/rbac-security.spec.ts \
             playwright/tests/stripe-connect-reminder-notification.spec.ts; do
@@ -169,7 +176,6 @@ jobs:
             playwright/tests/concierge-phase-a.spec.ts \
             playwright/tests/executive-card-expand.spec.ts \
             playwright/tests/expert-booking-decline-dialog.spec.ts \
-            playwright/tests/experts-flow.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
             playwright/tests/rbac-security.spec.ts \
             playwright/tests/stripe-connect-reminder-notification.spec.ts
@@ -212,7 +218,7 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Claims 9 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, EA card expansion, the expert decline dialog, the experts flow, navbar responsiveness, the 28-assertion RBAC matrix, and the Stripe Connect reminder.',
+              '> Claims 8 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, EA card expansion, the expert decline dialog, navbar responsiveness, the 28-assertion RBAC matrix, and the Stripe Connect reminder.',
               '> Each was verified green end-to-end before being gated, so a red here is a real regression, not inherited rot.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
