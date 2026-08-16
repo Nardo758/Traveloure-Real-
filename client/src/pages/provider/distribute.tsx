@@ -309,7 +309,6 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
     </>
   );
 }
-
 // ── 2. Channel-state strip (per-listing, 4 chips) ─────────────────────────────────────────────
 //
 // Honest status derived from REAL state only (§13). Chips: 🏪 Storefront · 🛍️ Marketplace ·
@@ -379,7 +378,6 @@ function ChannelStateStrip({ services, selectedId }: { services: OwnerService[];
     </div>
   );
 }
-
 // ── 3. Share-kit card (per-listing; S6 — moves here from Catalog) ─────────────────────────────
 //
 // Tap-to-select frame gallery (Story · Feed · Route) → shared editable caption → unified action
@@ -621,7 +619,6 @@ function ShareKitCard({ service, serviceId }: { service: OwnerService | null; se
     </div>
   );
 }
-
 // ── QR PNG download helper ────────────────────────────────────────────────────
 // Converts the SVG data-URL from qrCodeSvgDataUrl() into a PNG via an offscreen
 // canvas, then triggers a download. No external library needed.
@@ -863,14 +860,11 @@ function DirectLinkCard({ serviceId, serviceName }: { serviceId: string | null; 
     </div>
   );
 }
-// hint: Renamed and reformatted. Prefer the structural change, verify formatting.
-
 // ── 5. Marketplace card (per-listing) ────────────────────────────────────────────────────────
 //
 // Honest live/blocked state from GET /api/provider/services/:id/publish-readiness. Blocked
 // listings show the real blocker(s) + deep-link to fix (§13), never an optimistic "ready".
 // Blocker severity: VERIFICATION_GATE → error (red ✕); everything else → warn (amber ⚠).
-// hint: Structural and logic conflict. Both design and behavior differ.
 function MarketplaceCard({ serviceId }: { serviceId: string | null }) {
   const readiness = useQuery<PublishReadiness>({
     queryKey: [`/api/provider/services/${serviceId}/publish-readiness`],
@@ -965,7 +959,6 @@ function MarketplaceCard({ serviceId }: { serviceId: string | null }) {
     </div>
   );
 }
-
 // ── Promote helpers ───────────────────────────────────────────────────────────
 
 // Tag chip colors — Open slot = amber, Review = teal, fallback = neutral
@@ -1186,7 +1179,6 @@ function PromoteCard({ onSelectService: _onSelectService }: { onSelectService: (
     </div>
   );
 }
-
 // ── Main page ─────────────────────────────────────────────────────────────────────────────────
 // hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function ProviderDistribute() {
