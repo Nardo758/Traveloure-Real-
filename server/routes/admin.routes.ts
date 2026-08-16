@@ -1987,11 +1987,21 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       const role = (expertTypeEnum as readonly string[]).includes(formExpertType)
         ? formExpertType
         : "expert";
-      await updateUserRole(updated.userId, role, {
-        actorId: user.id,
-        actorRole: user.role,
-        reason: "admin_expert_application_approved",
-      });
+      try {
+        await updateUserRole(updated.userId, role, {
+          actorId: user.id,
+          actorRole: user.role,
+          reason: "admin_expert_application_approved",
+        });
+      } catch (err) {
+        // Role+audit transaction rolled back — revert the form status too so an
+        // approved-but-unprivileged applicant is impossible, and fail loudly.
+        console.error("[admin] Expert approval role update failed; reverting form status:", err);
+        await storage.updateLocalExpertFormStatus(req.params.id, priorStatus ?? "pending", rejectionMessage).catch((revertErr) => {
+          console.error("[admin] CRITICAL: failed to revert form status after role-update failure:", revertErr);
+        });
+        return res.status(500).json({ message: "Role update failed; application status was reverted" });
+      }
 
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
@@ -2248,6 +2258,11 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
       return res.status(403).json({ message: "Admin access required" });
     }
     const { status, rejectionMessage } = req.body;
+    const [existingProviderForm] = await db
+      .select({ status: serviceProviderForms.status })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.id, req.params.id));
+    const priorProviderStatus = existingProviderForm?.status;
     const updated = await storage.updateServiceProviderFormStatus(req.params.id, status, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
@@ -2255,11 +2270,21 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     
     // If approved, update user role to service_provider
     if (status === "approved") {
-      await updateUserRole(updated.userId, "service_provider", {
-        actorId: user.id,
-        actorRole: user.role,
-        reason: "admin_provider_application_approved",
-      });
+      try {
+        await updateUserRole(updated.userId, "service_provider", {
+          actorId: user.id,
+          actorRole: user.role,
+          reason: "admin_provider_application_approved",
+        });
+      } catch (err) {
+        // Role+audit transaction rolled back — revert the form status too so an
+        // approved-but-unprivileged provider is impossible, and fail loudly.
+        console.error("[admin] Provider approval role update failed; reverting form status:", err);
+        await storage.updateServiceProviderFormStatus(req.params.id, priorProviderStatus ?? "pending", rejectionMessage).catch((revertErr) => {
+          console.error("[admin] CRITICAL: failed to revert provider form status after role-update failure:", revertErr);
+        });
+        return res.status(500).json({ message: "Role update failed; application status was reverted" });
+      }
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
         userId: updated.userId,

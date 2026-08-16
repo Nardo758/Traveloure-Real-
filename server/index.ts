@@ -671,13 +671,39 @@ if (process.env.NODE_ENV === "production") {
     // the env var is present.
     const bootstrapAdminEmail = process.env.ADMIN_EMAIL?.trim();
     if (bootstrapAdminEmail) {
-      import("./db").then(({ pool }) => {
-        pool.query("UPDATE users SET role = 'admin' WHERE email = $1 AND role != 'admin'", [bootstrapAdminEmail])
-          .then((res: any) => {
-            if (res.rowCount > 0) logger.info({ email: bootstrapAdminEmail }, "Bootstrapped admin from ADMIN_EMAIL env var");
-          })
-          .catch((err: any) => logger.error({ err }, "Admin bootstrap query failed"));
-      }).catch(() => {});
+      // Promotion + audit record are written in ONE transaction so bootstrap
+      // promotions appear in the role-change audit trail like every other
+      // role change (actor = the promoted account itself, reason marks it).
+      import("./db").then(async ({ pool }) => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const { rows } = await client.query(
+            "SELECT id, role FROM users WHERE email = $1 AND role != 'admin' FOR UPDATE",
+            [bootstrapAdminEmail],
+          );
+          if (rows.length > 0) {
+            const { id, role: oldRole } = rows[0];
+            await client.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
+            // id has no DB-side default (schema uses a client-side $defaultFn),
+            // so it must be supplied explicitly in raw SQL.
+            await client.query(
+              `INSERT INTO access_audit_logs (id, actor_id, actor_role, action, resource_type, resource_id, target_user_id, metadata)
+               VALUES ($1, $2, $3, 'role_change', 'user', $2, $2, $4)`,
+              [crypto.randomUUID(), id, "system", JSON.stringify({ oldRole, newRole: "admin", reason: "admin_email_bootstrap" })],
+            );
+            await client.query("COMMIT");
+            logger.info({ email: bootstrapAdminEmail, oldRole }, "Admin bootstrap promotion from ADMIN_EMAIL (audited)");
+          } else {
+            await client.query("ROLLBACK");
+          }
+        } catch (err) {
+          await client.query("ROLLBACK").catch(() => {});
+          logger.error({ err }, "Admin bootstrap failed (promotion rolled back)");
+        } finally {
+          client.release();
+        }
+      }).catch((err) => logger.error({ err }, "Admin bootstrap import failed"));
     }
 
     runDatabaseSeeding()
