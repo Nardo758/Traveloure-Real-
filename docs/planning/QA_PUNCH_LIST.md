@@ -2514,3 +2514,26 @@ product decision — most-specific-tier-wins, disabled-wins, or an explicit prio
 something a test-repair lane should pick. Filed for the decision-maker. The spec meanwhile parks
 the competing rows so it tests the intended behaviour without asserting whichever row happens to
 win.
+
+### `rbac-security`: 28/28 — and the last assertion was defending a superseded ruling
+
+With the fixtures repointed, its 28 tests ran for the first time: **27 passed immediately.** The
+single failure was the most interesting result of the whole sweep, because **the product was right
+and the spec was wrong**:
+
+> `EA can access expert pages — executive_assistant is in EXPERT_ROLES (by design)`
+
+That was true when written. The **role-vocabulary audit of Jul 27 2026 deliberately ended it** —
+`server/middleware/role-rbac.ts` had been carrying its own `EXPERT_ROLES` list that *included*
+`executive_assistant`, diverging from the client and from the ratified EA-console model (§9: EA is
+its own `/ea` namespace gated by `isEA`, consuming `/api/ea/*` only). Removing EA from the expert
+family was the entire point of that audit, and `shared/roles.ts` has excluded it ever since.
+
+Because the spec's fixtures did not exist, `beforeAll` 401'd and **all 28 tests were skipped**, so
+it went on asserting the *superseded* access model in silence — and would have kept "passing" by
+never running. Inverted to assert the ratified model (EA denied at expert pages) and now green.
+
+**The general lesson, which is the real deliverable of this sweep:** a dark spec does not merely
+*stop* protecting you — it silently preserves the *old* rules, so the day someone revives it, it
+argues for a decision that was already reversed. That is worse than no spec, and it is the
+strongest argument for gating everything that survives an audit.

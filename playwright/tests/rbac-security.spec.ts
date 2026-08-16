@@ -409,16 +409,29 @@ test.describe(
       }
     });
 
-    test("EA can access expert pages — executive_assistant is in EXPERT_ROLES (by design)", async ({
+    test("EA is blocked from expert pages — EA is its own namespace, NOT expert-family", async ({
       page,
     }) => {
       await restoreSession(page.context(), "ea");
-      // userHasRequiredRole("executive_assistant", "expert") → true
+      // INVERTED Aug 16, 2026 — this test asserted the OPPOSITE and the product was right.
+      //
+      // It claimed "executive_assistant is in EXPERT_ROLES (by design)" and required
+      // /expert/dashboard to be ALLOWED. That was true when it was written, and the
+      // role-vocabulary audit (Jul 27 2026) deliberately ended it: `server/middleware/role-rbac.ts`
+      // used to carry its own EXPERT_ROLES list that INCLUDED executive_assistant, diverging from
+      // the client and from the ratified EA-console model (§9 — EA is its own /ea namespace gated
+      // by isEA, consuming /api/ea/* only). Dropping EA from the expert family was the point of
+      // that audit, and `shared/roles.ts` EXPERT_ROLES is now
+      // ["expert","local_expert","travel_expert","event_planner"] — no EA.
+      //
+      // The spec never ran after that ruling (its fixtures did not exist, so beforeAll 401'd and
+      // all 28 tests were skipped), so it went on asserting the superseded model in silence. It
+      // now asserts the ratified one: EA denied at expert pages.
       const denied = await isAccessDenied(page, "/expert/dashboard");
       expect(
         denied,
-        "EA should be ALLOWED at /expert/dashboard (EXPERT_ROLES includes executive_assistant)"
-      ).toBe(false);
+        "EA must be denied at /expert/dashboard (EXPERT_ROLES excludes executive_assistant since the Jul 27 2026 role-vocabulary audit)"
+      ).toBe(true);
     });
   }
 );

@@ -11,7 +11,8 @@ name: Spec Coverage Gate
 # THE SPECS HERE ARE PROVEN, NOT ASSUMED. Every one was run to completion on a verification bench
 # and passed in full: auth-form-validation 23/23, booking-payment-isolation 1/1,
 # concierge-phase-a 6/6, executive-card-expand 2/2, expert-booking-decline-dialog 3/3,
-# experts-flow 10/10, navbar-responsive 16/16, stripe-connect-reminder-notification 2/2.
+# experts-flow 10/10, navbar-responsive 16/16, rbac-security 28/28,
+# stripe-connect-reminder-notification 2/2.
 # Specs from the same sweep with genuine failures are deliberately EXCLUDED and filed in the
 # punch list — a gate that lands red on day one teaches people to ignore it.
 #
@@ -47,7 +48,7 @@ jobs:
   e2e-spec-coverage:
     name: e2e-spec-coverage (DOM gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     services:
       postgres:
         image: public.ecr.aws/docker/library/postgres:15
@@ -84,6 +85,7 @@ jobs:
             playwright/tests/expert-booking-decline-dialog.spec.ts \
             playwright/tests/experts-flow.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
+            playwright/tests/rbac-security.spec.ts \
             playwright/tests/stripe-connect-reminder-notification.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/spec-coverage-gate.yml::Spec file not found: $f"
@@ -169,6 +171,7 @@ jobs:
             playwright/tests/expert-booking-decline-dialog.spec.ts \
             playwright/tests/experts-flow.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
+            playwright/tests/rbac-security.spec.ts \
             playwright/tests/stripe-connect-reminder-notification.spec.ts
         env:
           BASE_URL: http://localhost:5000
@@ -209,7 +212,7 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Claims 8 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, EA card expansion, the expert decline dialog, the experts flow, navbar responsiveness, and the Stripe Connect reminder.',
+              '> Claims 9 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, EA card expansion, the expert decline dialog, the experts flow, navbar responsiveness, the 28-assertion RBAC matrix, and the Stripe Connect reminder.',
               '> Each was verified green end-to-end before being gated, so a red here is a real regression, not inherited rot.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
