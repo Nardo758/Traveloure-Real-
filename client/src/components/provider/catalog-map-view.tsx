@@ -311,6 +311,19 @@ function PropChip({ children }: { children: ReactNode }) {
   );
 }
 
+/** The mock's `RatChip` — teal/ratified treatment for decisions that have been approved. */
+function RatChip({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[11.5px] font-medium rounded-full border px-2.5 py-0.5 whitespace-nowrap"
+      style={{ background: "#EDF2F1", borderColor: "#CBDAD7", color: ACCENT }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full flex-none" style={{ background: ACCENT }} />
+      {children}
+    </span>
+  );
+}
+
 
 function toNum(v: string | number | null | undefined): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -1057,7 +1070,7 @@ export function CatalogMapView({
                 onClick={() => setSelectedId(s.id)}
                 data-testid={`map-view-select-${s.id}`}
                 className={`rounded-full border px-3 py-1.5 text-[12.5px] transition-colors max-w-full ${
-                  active ? "border-[#E85D55] bg-[rgba(232,85,85,0.06)]" : "border-[#E8E8E2] hover:bg-[#F3F3EE]"
+                  active ? "border-[#CBDAD7] bg-[#EDF2F1]" : "border-[#E8E8E2] hover:bg-[#F3F3EE]"
                 }`}
               >
                 <span className="font-medium" style={{ color: INK }}>
@@ -1269,7 +1282,7 @@ export function CatalogMapView({
         <section data-testid="render-it-section">
           <h3 className="text-[18px] font-semibold tracking-[-0.01em] flex items-center gap-2.5 flex-wrap" style={{ color: INK }}>
             Render it, or stop collecting it
-            <PropChip>Ratified — gap #13 · rendered, T-REP (ledger 101)</PropChip>
+            <RatChip>Ratified — gap #13 · rendered, T-REP (ledger 101)</RatChip>
           </h3>
           <p className="text-[13px] mt-1 mb-3.5 max-w-[74ch]" style={{ color: MUTED }}>
             The rule: every answer the create flow collects either has a traveler-side
