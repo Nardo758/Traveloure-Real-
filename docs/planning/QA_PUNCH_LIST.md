@@ -2774,3 +2774,27 @@ never running. Inverted to assert the ratified model (EA denied at expert pages)
 *stop* protecting you — it silently preserves the *old* rules, so the day someone revives it, it
 argues for a decision that was already reversed. That is worse than no spec, and it is the
 strongest argument for gating everything that survives an audit.
+
+### CORRECTION — "verified green" was verified on the wrong database (Aug 16, 2026)
+
+The gate's first two CI runs failed, and both failures were mine, in the same way. The 9 specs were
+verified on this session's **long-lived bench**, whose database carries a week of accumulated seeds
+and session mutations. CI builds from empty with nothing but ci-db-setup's three steps
+(`migrate-entry` + `create-sessions-table` + `seed-ci-test-users`).
+
+- **`rbac-security`** — the expert role was repointed onto `kyoto-temples@traveloure.test`, which
+  **does not exist on a fresh database at all** (no seeder CI runs creates it). Now points at
+  `kyoto-food@traveloure.test`, confirmed present with a password on a from-empty install.
+- **`experts-flow`** — **REMOVED from the gate.** Its destination/language filter tests (T03–T07)
+  need seeded expert profiles a clean install does not produce: **14 experts on a fresh DB vs 19 on
+  the bench**, so the filters have nothing to narrow. Filed rather than fixed — inventing seed data
+  to prop up a spec this lane was only auditing is scope creep into the seeders, and the right fix
+  is for whoever owns that fixture to decide what `/experts` should contain in CI.
+
+**This is the same mistake the previous lane wrote down and I made anyway.** PR #489's gate header
+states that `catalog-preview-toggle` "could not be settled from a session-mutated bench" — and I
+then certified nine specs on exactly such a bench. The rule, now enforced in the gate's own header:
+
+> A bench with accumulated seed data will green specs that CI cannot. "Verified" means verified
+> against a database built from empty, or it means nothing.
+
