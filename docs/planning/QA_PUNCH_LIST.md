@@ -2458,15 +2458,59 @@ actively misdirects. Do not let a spec's self-authored failure message stand in 
 
 | Verdict | Count | Detail |
 | --- | --- | --- |
-| **Fully green** | 8 | `auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`, `experts-flow` 10/10, `navbar-responsive` 16/16, `stripe-connect-reminder-notification` 2/2, `expert-booking-decline-dialog` 3/3 (after the BASE_URL fix), `search-bar` 14/1→ see below |
-| **Mostly green, isolated real failures** | 11 | `security-regression` 39/3, `deprecated-route-redirects` 44/4, `breakpoint-hamburger` 21/1, `content-system` 17/2, `user-menu` 13/3, `lane1-phase1d-routing` 4/1, `lb-p1-password-reset` 3/1, `concierge-phase-a` 5/1, `tripstrip-count-accuracy` 1/3, `paris-surfacing` 1/3, `phase-4-7-advanced-flows` 3/3 |
+| **Fully green** | 8 | `auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`, `experts-flow` 10/10, `navbar-responsive` 16/16, `stripe-connect-reminder-notification` 2/2, `expert-booking-decline-dialog` 3/3 (after the BASE_URL fix), `concierge-phase-a` 6/6 (after the two repairs below) |
+| **Mostly green, isolated real failures** | 11 | `security-regression` 39/3, `deprecated-route-redirects` 44/4, `breakpoint-hamburger` 21/1, `content-system` 17/2, `user-menu` 13/3, `lane1-phase1d-routing` 4/1, `lb-p1-password-reset` 3/1, `search-bar` 14/1, `tripstrip-count-accuracy` 1/3, `paris-surfacing` 1/3, `phase-4-7-advanced-flows` 3/3 |
 | **Badly broken** | 10 | `phase-2-provider-setup` 1/23, `phase-1-expert-setup` (exceeds even a 25-min cap), `phase-3-traveler-flows` 1/5, `nyc-market` 1/11, `seam-cross-console` 0/5, `optimization-payment-gate` 0/2, `offering-card` 0/1, `service-display-options` 0/1, `travel-surcharge-step` 0/1, `optimize-apply-banner` 0/1, `stripe-init-deferral` 1/1 |
 | **Dead on arrival** | 1 | `rbac-security` — 27 assertions never run |
 
-(`search-bar` is 14 passed / 1 failed — counted with the isolated-failure group in spirit; listed
-above only because its single failure is a 120 s `locator.click` hang worth its own look.)
+`search-bar`'s single failure is a 120 s `locator.click` hang — real, not the slow bench, since
+the 120 s budget already absorbs that.
 
 **The shape of the answer:** roughly a quarter of the ungated set is genuinely fine and should just
 be gated; about a third is mostly fine with real but small breaks; and the journey specs
 (`phase-1`…`phase-4-7`, `nyc-market`) are broken deeply enough that repairing them is a project,
 not a chore — they should be quarantined with a stated reason rather than left to read as coverage.
+
+### Follow-through landed (Aug 16, 2026)
+
+- **`concierge-phase-a` → 6/6, first pass in its life.** Two independent spec-side defects: the
+  psql helper kept psql's command tag on an `INSERT … RETURNING id` (so its own next assertion
+  rejected the id the query returned), and — once that was unblocked — the `$0=off` test was a
+  coin flip (below). Also removed a leaked `optimization_fees` row: every pre-fix run's cleanup
+  `DELETE` used the malformed id and silently failed, so the broken spec had been quietly
+  littering the shared database.
+- **`rbac-security` → its 27 assertions execute for the first time.** It authenticated as
+  `<role>@traveloure-test.com`, which **no seeder anywhere creates**. Fixed by repointing, *not*
+  by seeding that domain: `traveloure-test.com` is a registerable `.com`, while the production
+  purge neutralizes `LIKE '%@traveloure.test'` (the RFC-2606 reserved TLD), so seeding an
+  admin-role credential there would have placed it outside the ruling 27/33 safety net. Recorded
+  in the spec header so nobody "fixes" it back.
+- **Two specs hardcoded `http://localhost:5000`** and ignored `BASE_URL`, unlike every other spec
+  (`user-menu`, `expert-booking-decline-dialog`). This is what made them look catastrophic — 16/16
+  and 3/3 failing. After the one-line fix: 3/3 green and 13/3.
+- **`.github/workflows/spec-coverage-gate.yml`** claims the 8 verified-green specs. Specs with
+  genuine failures are excluded deliberately — a gate that lands red on day one teaches people to
+  ignore it.
+
+### NEW PRODUCT FINDING — non-deterministic optimization-fee resolution (for the decision-maker)
+
+`resolveOptimizationFee` (`server/services/optimization-fee.service.ts`) resolves the event-type
+branch with:
+
+```
+WHERE event_type = ? AND is_active = true   LIMIT 1     -- no ORDER BY, no complexity_tier filter
+```
+
+The seed ships **two** active `birthday` rows (`simple/599/enabled` and, historically,
+`standard/999`), so **which fee applies is whatever Postgres returns first** — arbitrary, and free
+to change with a vacuum, a plan change or an unrelated insert. This is a *money* value chosen
+non-deterministically, and the `is_disabled` flag inherits the same coin flip: the quote can offer
+a paid AI path that an admin has explicitly disabled, purely because the other row sorted first.
+That is exactly the failure the `$0=off` test was written to catch, and it could not catch it
+because the spec had never run.
+
+**Not fixed here on purpose.** A fee row is money (§8) and the correct resolution order is a
+product decision — most-specific-tier-wins, disabled-wins, or an explicit priority column — not
+something a test-repair lane should pick. Filed for the decision-maker. The spec meanwhile parks
+the competing rows so it tests the intended behaviour without asserting whichever row happens to
+win.
