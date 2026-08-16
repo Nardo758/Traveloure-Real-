@@ -27,7 +27,7 @@
  *
  * ── Test accounts (REPOINTED Aug 16, 2026 — see the security note below) ──────
  *   test-traveler-kyoto@traveloure.test  → role: user
- *   kyoto-temples@traveloure.test        → role: local_expert
+ *   kyoto-food@traveloure.test           → role: travel_expert
  *   kyoto-photography@traveloure.test    → role: service_provider
  *   test-admin@traveloure.test           → role: admin
  *   test-ea@traveloure.test              → role: executive_assistant
@@ -42,6 +42,12 @@
  *   credential there puts it outside the ruling 27/33 safety net. So the spec is
  *   repointed onto the purge-covered fixtures that already exist with passwords.
  *   Any future role fixture must live under `.test` for the same reason.
+ *
+ *   AND IT MUST SURVIVE A FRESH DATABASE. The first repoint used `kyoto-temples@traveloure.test`,
+ *   which exists on a long-lived dev bench but is created by NO seeder that CI runs — so this
+ *   spec passed locally and failed in CI with "Could not log in roles: expert". The five above are
+ *   all present, with passwords, on a database built by nothing but
+ *   `migrate-entry` + `create-sessions-table` + `seed-ci-test-users` (what ci-db-setup does).
  *
  * ── Session strategy ─────────────────────────────────────────────────────────
  *   Each role is logged in ONCE in test.beforeAll (5 total POST /api/auth/login
@@ -64,9 +70,9 @@ const ACCOUNTS = {
     role: "user",
   },
   expert: {
-    email: "kyoto-temples@traveloure.test",
+    email: "kyoto-food@traveloure.test",
     password: PW,
-    role: "local_expert",
+    role: "travel_expert",
   },
   provider: {
     email: "kyoto-photography@traveloure.test",
