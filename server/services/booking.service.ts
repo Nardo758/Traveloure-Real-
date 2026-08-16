@@ -12,8 +12,9 @@ import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
 import { sendBookingConfirmationEmail, sendBookingAlertEmail } from './email.service';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
