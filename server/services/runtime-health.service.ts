@@ -26,6 +26,7 @@
  */
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "../utils/stripe-key-policy";
+import { getStripeSecretKey } from "../utils/stripe-key";
 import type { QAResults } from "./qa-verify.service";
 
 function baseUrl(): string {
@@ -204,7 +205,8 @@ export function evaluateMoneySecretPresence(env: NodeJS.ProcessEnv): SecretPrese
 
   const webhookVars = ["STRIPE_WEBHOOK_SECRET", "STRIPE_CONNECT_WEBHOOK_SECRET", "STRIPE_IDENTITY_WEBHOOK_SECRET"];
   const missingWebhookSecrets = webhookVars.filter((v) => !env[v]);
-  const hasUnverifiableWebhookGap = !!env.STRIPE_SECRET_KEY && missingWebhookSecrets.length > 0;
+  const effectiveStripeKey = env.STRIPE_SECRET_KEY_TEST ?? env.STRIPE_SECRET_KEY;
+  const hasUnverifiableWebhookGap = !!effectiveStripeKey && missingWebhookSecrets.length > 0;
 
   return { present, hasUnverifiableWebhookGap, missingWebhookSecrets };
 }
@@ -235,7 +237,7 @@ export function runH2MoneySecretPresence(): QAResults {
 // for why this is a reuse, not a re-derivation, of the rule.
 
 export function runH3LiveKeySanity(): QAResults {
-  const key = process.env.STRIPE_SECRET_KEY;
+  const key = getStripeSecretKey();
   const prodStrict = isProdStrictEnv();
   const envLabel = `NODE_ENV=${process.env.NODE_ENV || "undefined"}, ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}`;
 
