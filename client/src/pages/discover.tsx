@@ -649,7 +649,7 @@ export default function DiscoverPage() {
       travelers: "2-4",
       category: city.vibeTags?.[0] || "adventure",
       rating: city.pulseScore ? (city.pulseScore / 20).toFixed(1) : "4.5",
-      reviews: city.activeTravelers || 0,
+      reviews: 0, // activeTravelers suppressed per R3 — no absolute visitor count on traveler surfaces
       price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999, // fee-literal-ok: hotel price display fallback, not optimize fee
       originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
       highlights: (city.aiMustSeeAttractions || []).slice(0, 3),

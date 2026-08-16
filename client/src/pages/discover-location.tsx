@@ -382,15 +382,7 @@ function StatsRow({
 
   return (
     <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
-      {cityIntel.activeTravelers !== undefined && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
-          👥{" "}
-          <b className="text-foreground font-semibold">
-            {Number(cityIntel.activeTravelers).toLocaleString()}
-          </b>{" "}
-          travellers here now
-        </div>
-      )}
+      {/* activeTravelers absolute count suppressed per R3 — no absolute visitor count on traveler surfaces */}
       {cityIntel.crowdLevel && (
         <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
           {crowdEmoji(cityIntel.crowdLevel)}{" "}
