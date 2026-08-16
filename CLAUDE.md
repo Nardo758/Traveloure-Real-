@@ -120,6 +120,36 @@ This document captures architectural decisions to maintain consistency across co
     live as-approved). The field split is decided ONLY server-side in the PATCH handler;
     `pending_changes`/`edit_review_status` are never client-writable (§19 posture — allowlist-stripped on
     every rail). Born-submitted (migration 111) is unchanged: this governs edits AFTER first approval only.
+    **⚠️ current code (found by the Aug 16 console sweep, S-1):** this rule is enforced but **never
+    stated to the provider**. Their only signal is an "Edit in review" pill on the Catalog row AFTER
+    the edit lands — nothing tells them beforehand which changes go live and which re-enter review.
+    The ratified mock draws that as a two-column panel on the listing home. Tracked as a defect, not
+    the design. **Constraint on the fix:** since the split is decided ONLY in the PATCH handler, any UI
+    must READ the server's own list, never restate it client-side — restating it is the
+    derivation-drift class §18 rule 1 names, and it would drift the moment a field moves lanes.
+
+24. **Gap #13 is closed on the field side; every question the flow asks has a traveler-side home
+    (ledger `2026-08-16-bring-access`, migration 228).** The ratified mock's traveler read-out draws
+    nine rows. Seven landed with lane M3; the last two — **Bring** and **Access** — had no column
+    anywhere and no wizard field, so the flow never asked and nothing could render them (the inverse
+    of T-REP's collected-and-never-read class). `provider_services.what_to_bring` and `access_notes`
+    are additive-nullable TEXT, **declared in `shared/schema.ts`** (publish-trap rule), no DB CHECK
+    (migration-181/195 posture), asked on **Logistics** — which is why they never appear on the
+    pdf/async branches. **NULL = never answered ⇒ the row is OMITTED everywhere (§13)**, never
+    rendered as "nothing to bring" or "no access notes", which are claims only a host can make; the
+    traveler surface says out loud that **no accessibility standard is claimed on the host's behalf**,
+    which is why these are free-text notes and not a checklist of certified attributes. They are
+    deliberately NOT `trip_participants.accessibility_needs`/`mobility_level` — that is a TRAVELER's
+    stated needs, a different person's answer. Both are ordinary owner-authored content (no amount,
+    identity, rate or grant), so §19's strip does not apply and none was added.
+
+25. **New ledger rulings are keyed by DATE-SLUG, not by number (ledger `2026-08-16-ledger-ids`).**
+    `docs/DECISIONS.md` ids 1–122 are **FROZEN** — cited throughout this file and the briefs, never
+    renumbered, never reused — and every NEW row is keyed `YYYY-MM-DD-<kebab-slug>`. Ruling 35's
+    "claim the next free number" made collisions structural: three lanes collided on rows 120/121/122
+    in one night while touching no common code. `check-decision-guards.cjs` now fails on a duplicate
+    id of ANY shape, so a collision is a CI failure rather than a manual renumber. Cite old rulings by
+    number and new ones by slug; both are permanent.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

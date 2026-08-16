@@ -42,6 +42,7 @@ import {
   Handshake,
   Package,
   BedDouble,
+  Info,
 } from "lucide-react";
 import {
   Dialog,
@@ -218,6 +219,9 @@ interface Service {
   // Lane M3 (gap #13): the weekly repeat rule, newly carried by GET /api/services/:id. Absent
   // or empty ⇒ the listing declares no weekly rhythm and the row is omitted (§13).
   availabilityPatterns?: { dayOfWeek: number; startTime: string; endTime?: string | null }[];
+  // Gap #13 (migration 228): the host's own words. Absent/blank ⇒ the row is omitted (§13).
+  whatToBring?: string | null;
+  accessNotes?: string | null;
   // S8 property builder (Gate G2, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102).
   // check-in/out and house rules are property-level ONLY (absolute inheritance — a room's own
   // detail read carries its property's values via the `property` field below, not its own).
@@ -706,6 +710,10 @@ export default function ServiceDetailPage() {
   // Lane M3: the weekly rhythm a provider authored on the availability grid — until this lane it
   // was owner-gated on both read and write, so no traveler could see it (gap #13).
   const weeklyPatternText = formatWeeklyPattern(service.availabilityPatterns, service.serviceTimezone);
+  // Gap #13's last two rows. Blank is "never answered", not "nothing needed" — omitted, never
+  // rendered as a claim the host did not make.
+  const whatToBringText = (service.whatToBring ?? "").trim() || null;
+  const accessNotesText = (service.accessNotes ?? "").trim() || null;
   const hasBuffer = typeof service.bufferMinutes === "number" && service.bufferMinutes > 0;
   const hasDurationMinutes = typeof service.durationMinutes === "number" && service.durationMinutes > 0;
   const hasNeighborhoods = Array.isArray(service.neighborhoods) && service.neighborhoods.length > 0;
@@ -731,6 +739,7 @@ export default function ServiceDetailPage() {
   const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
     !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
+    !!whatToBringText || !!accessNotesText ||
     hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
     !!checkInOutText || hasHouseRules || showAmenities ||
     !!responseWindowText || !!scopeStatementText;
@@ -999,6 +1008,24 @@ export default function ServiceDetailPage() {
                       <li className="flex items-start gap-2" data-testid="text-buffer-minutes">
                         <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                         <span>{formatMinutes(service.bufferMinutes!)} kept free around each booking</span>
+                      </li>
+                    )}
+                    {whatToBringText && (
+                      <li className="flex items-start gap-2" data-testid="text-what-to-bring">
+                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Bring: {whatToBringText}</span>
+                      </li>
+                    )}
+                    {accessNotesText && (
+                      <li className="flex items-start gap-2" data-testid="text-access-notes">
+                        <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>
+                          Access: {accessNotesText}
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            Shown in the host&apos;s own words. No accessibility standard is claimed
+                            on their behalf.
+                          </span>
+                        </span>
                       </li>
                     )}
                     {transportProvisionText && (
