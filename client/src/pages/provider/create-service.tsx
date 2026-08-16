@@ -40,6 +40,21 @@ type DeliveryMethod =
 
 interface ServiceCategory { id: string; name: string; slug?: string; }
 
+// ─── delivery method mapping ───────────────────────────────────────────────────
+// Wizard uses video_call/phone_call/pdf_guide; DB enum stores video/call/pdf.
+function toDbDelivery(m: DeliveryMethod): string {
+  if (m === "video_call")  return "video";
+  if (m === "phone_call")  return "call";
+  if (m === "pdf_guide")   return "pdf";
+  return m;
+}
+function fromDbDelivery(raw: string): DeliveryMethod {
+  if (raw === "video") return "video_call";
+  if (raw === "call")  return "phone_call";
+  if (raw === "pdf")   return "pdf_guide";
+  return raw as DeliveryMethod;
+}
+
 interface DraftState {
   // Step 1 — Basics
   categoryId: string;
@@ -1328,10 +1343,11 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 }
 
 // ─── step 5: review ───────────────────────────────────────────────────────────
-function StepReview({ draft, serviceId, onSubmit, submitting, onBack }: {
+function StepReview({ draft, serviceId, onSubmit, submitting, onBack, onSaveLater, savingLater }: {
   draft: DraftState; serviceId: string;
   onSubmit: () => void; submitting: boolean;
   onBack: () => void;
+  onSaveLater: () => void; savingLater: boolean;
 }) {
   const steps = getStepList(draft.deliveryMethod);
   const isLong = steps.length === 5;
@@ -1476,13 +1492,17 @@ function StepReview({ draft, serviceId, onSubmit, submitting, onBack }: {
         </button>
         <button
           type="button"
+          onClick={onSaveLater}
+          disabled={savingLater}
           style={{
             background: "transparent", color: INK,
             border: `1px solid ${HAIR}`, padding: "10px 18px", borderRadius: 6,
-            cursor: "pointer", fontSize: 13.5, fontWeight: 550, font: "inherit",
+            cursor: savingLater ? "not-allowed" : "pointer",
+            fontSize: 13.5, fontWeight: 550, font: "inherit",
+            opacity: savingLater ? 0.7 : 1,
           }}
         >
-          Save and finish later
+          {savingLater ? "Saving…" : "Save and finish later"}
         </button>
       </div>
 
@@ -1552,7 +1572,7 @@ export default function CreateServiceWizard() {
     setDraftFull(prev => ({
       ...prev,
       serviceName: svc.serviceName ?? prev.serviceName,
-      deliveryMethod: (svc.deliveryMethod ?? prev.deliveryMethod) as DeliveryMethod,
+      deliveryMethod: fromDbDelivery(svc.deliveryMethod ?? "in_person"),
       price: svc.price ?? prev.price,
       priceBasedOn: svc.priceBasedOn ?? prev.priceBasedOn,
       shortDescription: svc.shortDescription ?? prev.shortDescription,
@@ -1583,11 +1603,13 @@ export default function CreateServiceWizard() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/provider/services", {
         serviceName: draft.serviceName || "Untitled service",
-        deliveryMethod: draft.deliveryMethod,
+        deliveryMethod: toDbDelivery(draft.deliveryMethod),
         price: draft.price || "0",
         priceBasedOn: draft.priceBasedOn,
         shortDescription: draft.shortDescription,
         categoryId: draft.categoryId || undefined,
+        status: "draft",
+        approvalStatus: "draft",
       });
       return res.json();
     },
@@ -1614,12 +1636,26 @@ export default function CreateServiceWizard() {
     },
   });
 
-  // PATCH — submit for review
+  // PATCH — save draft and return to catalog
+  const saveLaterMutation = useMutation({
+    mutationFn: async () => {
+      if (!serviceId) return;
+      await apiRequest("PATCH", `/api/provider/services/${serviceId}`, { status: "draft" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      toast({ title: "Draft saved — find it in your Catalog when you're ready." });
+      navigate("/provider/workstation");
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not save", description: err.message ?? "Please try again.", variant: "destructive" });
+    },
+  });
+
+  // POST — submit for review
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/provider/services/${serviceId}`, {
-        formStatus: "submitted",
-      });
+      const res = await apiRequest("POST", `/api/provider/services/${serviceId}/submit`, {});
       return res.json();
     },
     onSuccess: () => {
@@ -1705,7 +1741,7 @@ export default function CreateServiceWizard() {
         // update basics then advance
         await updateMutation.mutateAsync({
           serviceName: draft.serviceName,
-          deliveryMethod: draft.deliveryMethod,
+          deliveryMethod: toDbDelivery(draft.deliveryMethod),
           price: draft.price,
           priceBasedOn: draft.priceBasedOn,
           shortDescription: draft.shortDescription,
@@ -1754,6 +1790,8 @@ export default function CreateServiceWizard() {
           onSubmit={() => submitMutation.mutate()}
           submitting={submitMutation.isPending}
           onBack={() => goTo(stepIndex - 1, serviceId)}
+          onSaveLater={() => saveLaterMutation.mutate()}
+          savingLater={saveLaterMutation.isPending}
         />
       );
     return null;
