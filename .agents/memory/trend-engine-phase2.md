@@ -19,11 +19,18 @@ All trend-engine server code lives under `server/services/trend-engine/`:
 3. `resaleClass` declared explicitly per row — never inferred.
 4. `preLaunch = true` for internal-reconstruction signals before `PRE_LAUNCH_CUTOFF` (internal_trips only currently).
 
-## Credential issues (Aug 2026)
+## Credential status (Aug 2026)
 
-- **BestTime `BESTTIME_API_KEY`**: 36 chars — likely `api_key_public`. Private key (`api_key_private`) is 64+ chars from besttime.app dashboard. Adapter is a disabled stub until confirmed.
+- **BestTime `BESTTIME_API_KEY`**: 36-char `pri_` key IS the valid private key (assumption of 64+ chars was wrong). Both APIs confirmed working: `POST /api/v1/forecasts` (200) and `POST /api/v1/forecasts/live` (200). Adapter is fully built. Enable in trend_source_config when ceiling confirmed.
 - **PredictHQ `PREDICTHQ_API_KEY`**: 403 on `/v1/accounts/self/` — missing `account:read` scope or wrong token type. Adapter disabled stub.
 - **xAI `XAI_API_KEY`**: `live_search` endpoint HTTP 410 on Tier 1. Options: upgrade to Tier 2+ or add X API v2 Bearer Token. X adapter disabled stub.
+
+## BestTime API quirks
+
+- `POST /api/v1/forecasts` with `venue_name` + `venue_address` — idempotent create/update, returns `analysis[0..6]` (days, 0=Monday) each with `day_raw` (24-hr array, 0-100), `day_mean`, `day_max`.
+- `POST /api/v1/forecasts/live` with `venue_id` — returns `venue_live_busyness` + `venue_forecasted_busyness` for current hour.
+- `GET /api/v1/forecasts/day/raw` and `week/raw` return 400 "Missing api_key_private" even when it's passed — may require a different auth format; not needed since create endpoint returns all data.
+- No historical time-series; backfill not supported (rolling weekly pattern only).
 
 ## Phase 2.3 — Grok removal
 
