@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Wrench, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   MAINTENANCE_EVENT,
   getMaintenanceMessage,
@@ -55,7 +56,9 @@ export function MaintenanceGate({ children }: { children: React.ReactNode }) {
       >
         We'll check automatically and bring you back as soon as we're ready.
       </p>
-      <p className="mt-10 text-sm font-medium text-muted-foreground/70">Traveloure</p>
+      <div className="mt-10 opacity-50">
+        <TraveloureLogo className="h-5" />
+      </div>
     </div>
   );
 }
