@@ -1074,9 +1074,9 @@ function PromoOppRow({ o, onDismiss }: { o: PostingOpportunity; onDismiss: () =>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, flexWrap: "wrap" as const }}>
             <PromoTagChip tag={promoTag(o)} />
             <span style={{ fontSize: 11.5, color: MUT }}>{promoUrgency(o)}</span>
-            <span style={{ fontSize: 11, color: HAIR }}>·</span>
+            <span style={{ fontSize: 11, color: MUT }}>·</span>
             <span style={{ fontSize: 11, color: MUT, fontStyle: "italic" }}>
-              {o.kind === "new_review" ? o.serviceName : o.serviceName}
+              {o.serviceName}
             </span>
           </div>
           <p style={{ fontSize: 13.5, fontWeight: 600, color: INK, margin: 0 }}>{promoTitle(o)}</p>
@@ -1148,6 +1148,13 @@ function PromoteCard({ onSelectService: _onSelectService }: { onSelectService: (
 
   return (
     <div data-testid="section-channel-promote">
+      {/* Section header — matches the card-header style of Marketplace / Direct / Share kit */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" as const }}>
+        <span style={{ fontSize: 16 }}>📣</span>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: INK, margin: 0 }}>Promote</h3>
+        <span style={T.pill}>moves here from Catalog</span>
+      </div>
+
       {oppsQuery.isLoading ? (
         <div style={{ ...T.card, padding: "18px 22px" }}>
           <p style={{ fontSize: 13, color: MUT }}>Checking for reasons to post…</p>
