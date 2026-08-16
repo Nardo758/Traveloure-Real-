@@ -23,7 +23,8 @@ All trend-engine server code lives under `server/services/trend-engine/`:
 
 - **BestTime `BESTTIME_API_KEY`**: 36-char `pri_` key IS the valid private key (assumption of 64+ chars was wrong). Both APIs confirmed working: `POST /api/v1/forecasts` (200) and `POST /api/v1/forecasts/live` (200). Adapter is fully built. Enable in trend_source_config when ceiling confirmed.
 - **PredictHQ `PREDICTHQ_API_KEY`**: 403 on `/v1/accounts/self/` — missing `account:read` scope or wrong token type. Adapter disabled stub.
-- **xAI `XAI_API_KEY`**: `live_search` endpoint HTTP 410 on Tier 1. Options: upgrade to Tier 2+ or add X API v2 Bearer Token. X adapter disabled stub.
+- **X API `X_BEARER_TOKEN`**: 116-char Bearer Token, Basic plan confirmed working. `GET /2/tweets/counts/recent` → 200, 300 req/15min limit. Adapter fully built. Enable in trend_source_config when 30-day ToS purge job is also in place.
+- **xAI `XAI_API_KEY`**: No longer needed for X signals — native X API v2 used directly. xAI key still present for other potential uses.
 
 ## BestTime API quirks
 
