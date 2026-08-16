@@ -228,3 +228,16 @@ does not include search/counts. Requires X API Basic plan ($100/mo) or higher.
 
 Decision: X adapter stub remains disabled until Leon upgrades the X API plan.
 `X_BEARER_TOKEN` secret is stored and ready — no code changes needed when plan is upgraded.
+
+### X API adapter — fully built (Aug 2026)
+
+X API Bearer Token confirmed working on upgraded plan (Basic+).
+`GET /2/tweets/counts/recent` returns 200 with 300 req/15min rate limit.
+
+Adapter rebuilt using native X API v2 (no xAI dependency):
+- One hourly-granularity call per market aggregates to daily total + peak hourly velocity
+- Metrics: `x_mention_count` (daily total) + `x_post_velocity` (peak single-hour count)
+- Backfill: works within 7-day window; full archive requires Academic Research access
+- R2 still applies: counts only, no LLM scoring of X content
+- 30-day ToS retention limit: purge job still needed before activation
+- `X_BEARER_TOKEN` secret stored; adapter ready to enable in trend_source_config
