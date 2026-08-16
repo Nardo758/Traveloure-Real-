@@ -331,19 +331,18 @@ function ChannelStateStrip({ services, selectedId }: { services: OwnerService[];
   const approvedActiveCount = services.filter(
     (s) => s.approvalStatus === "approved" && s.status === "active",
   ).length;
-  const storefrontReady  = !!handle && approvedActiveCount > 0;
-  const noListing        = !selectedId;
+  const storefrontReady = !!handle && approvedActiveCount > 0;
   const marketplaceLive  = readiness.data?.isLive ?? false;
   const directReady      = !!findDirectLink(analytics.data?.links, selectedId);
   const socialReady      = readiness.data?.isLive ?? false;
   const resolving        = !!selectedId && (readiness.isLoading || analytics.isLoading);
 
-  function Chip({ icon, label, ok, warn, text, resolving: res, dim }: { icon: string; label: string; ok: boolean; warn?: boolean; text: string; resolving?: boolean; dim?: boolean }) {
+  function Chip({ icon, label, ok, warn, text, resolving: res }: { icon: string; label: string; ok: boolean; warn?: boolean; text: string; resolving?: boolean }) {
     const border = !ok && warn ? WLN  : HAIR;
     const bg     = !ok && warn ? WBG  : PGE;
     const subClr = ok ? "#166534" : warn ? WINK : MUT;
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 7, padding: "8px 10px", border: `1px solid ${border}`, background: bg, opacity: dim ? 0.45 : 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 7, padding: "8px 10px", border: `1px solid ${border}`, background: bg }}>
         <span style={{ fontSize: 15 }}>{icon}</span>
         <div>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: INK, lineHeight: 1.2 }}>{label}</div>
@@ -366,9 +365,9 @@ function ChannelStateStrip({ services, selectedId }: { services: OwnerService[];
     >
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, flex: 1, minWidth: 0 }}>
         <Chip icon="🏪" label="Storefront" ok={storefrontReady} text={handle ? "live" : "no handle yet"} />
-        <Chip icon="🛍️" label="Marketplace" ok={marketplaceLive} warn={!noListing && !marketplaceLive && !resolving} text={noListing ? "select a listing" : marketplaceLive ? "live" : "not live yet"} resolving={resolving} dim={noListing} />
-        <Chip icon="🔗" label="Direct" ok={directReady} text={noListing ? "select a listing" : directReady ? "link ready" : "no link yet"} resolving={resolving} dim={noListing} />
-        <Chip icon="🖼️" label="Social" ok={socialReady} warn={!noListing && !socialReady && !resolving} text={noListing ? "select a listing" : socialReady ? "images ready" : "needs approval"} resolving={resolving} dim={noListing} />
+        <Chip icon="🛍️" label="Marketplace" ok={marketplaceLive} warn={!marketplaceLive && !resolving} text={marketplaceLive ? "live" : "not live yet"} resolving={resolving} />
+        <Chip icon="🔗" label="Direct" ok={directReady} text={directReady ? "link ready" : "no link yet"} resolving={resolving} />
+        <Chip icon="🖼️" label="Social" ok={socialReady} warn={!socialReady && !resolving} text={socialReady ? "images ready" : "needs approval"} resolving={resolving} />
       </div>
       <Link href={ANALYTICS_HOME_HREF}>
         <button style={T.btn} data-testid="button-view-link-performance">
@@ -1276,8 +1275,8 @@ export default function ProviderDistribute() {
           )}
         </div>
 
-        {/* Channel-state strip — Storefront chip is always shown; per-listing chips activate once a listing is selected */}
-        {listings.length > 0 && <ChannelStateStrip services={listings} selectedId={selectedId} />}
+        {/* Channel-state strip (shown when a listing is selected) */}
+        {selectedId && <ChannelStateStrip services={listings} selectedId={selectedId} />}
 
         {/* 2. Marketplace (per-listing) — resolve first: it gates the other two */}
         <MarketplaceCard serviceId={selectedId} />
