@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -455,7 +456,7 @@ export default function ItineraryViewPage() {
       <div className="max-w-2xl mx-auto p-4 pb-12">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-primary" data-testid="text-brand-logo">Traveloure</span>
+            <div data-testid="text-brand-logo"><TraveloureLogo className="h-6" /></div>
             <Badge variant="secondary" className="text-xs" data-testid="badge-view-mode">
               {isExpertView ? "Expert Review" : "Shared Itinerary"}
             </Badge>
