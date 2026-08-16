@@ -935,12 +935,9 @@ export interface CityProxySignals {
   platformTravelersNow?: number;
   /** Trips on our platform starting within the next 30 days for this city. */
   platformUpcomingTrips30d?: number;
-  /** Most recent metric history rows (oldest→newest), e.g. trend_score over past passes. */
-  recentTrendScores?: number[];
-  /** Google Trends interest-over-time (0-100), most recent value, for "<city> travel". */
-  searchInterest?: number;
-  /** Previous activeTravelers value stored for this city (for continuity/smoothing). */
-  previousActiveTravelers?: number;
+  // R4 HOTFIX: recentTrendScores, searchInterest, previousActiveTravelers removed.
+  // Score history and self-anchored estimates must never feed back into scoring (L8/R4).
+  // R5 RULING: SerpAPI/Google Trends dropped; Wikimedia Pageviews replaces it in Phase 2.
 }
 
 function formatProxySignals(signals?: CityProxySignals): string {
@@ -950,16 +947,10 @@ function formatProxySignals(signals?: CityProxySignals): string {
     lines.push(`- Traveloure platform: ${signals.platformTravelersNow} traveler trip(s) with dates covering today in this city (real bookings/plans on our platform — a small sample of total tourism, use as a directional signal only)`);
   if (signals.platformUpcomingTrips30d !== undefined)
     lines.push(`- Traveloure platform: ${signals.platformUpcomingTrips30d} trip(s) starting here within the next 30 days`);
-  if (signals.recentTrendScores?.length)
-    lines.push(`- Our recent trending-score history (oldest→newest): ${signals.recentTrendScores.join(", ")}`);
-  if (signals.searchInterest !== undefined)
-    lines.push(`- Google Trends search interest for travel to this city (0-100, latest): ${signals.searchInterest}`);
-  if (signals.previousActiveTravelers !== undefined)
-    lines.push(`- Our previous estimatedActiveTravelers value: ${signals.previousActiveTravelers} (avoid implausible jumps unless the season/events justify it)`);
   if (!lines.length) return "";
   return `
 
-OBSERVED PROXY SIGNALS (real measurements — weigh these when computing pulseScore, trendingScore, crowdLevel and estimatedActiveTravelers; they are partial proxies, so combine them with your seasonal/tourism knowledge rather than extrapolating any single one literally):
+OBSERVED PROXY SIGNALS (real measurements from the Traveloure platform — weigh these when assessing pulseScore, trendingScore, and crowdLevel; they are partial proxies, so combine with your seasonal/tourism knowledge rather than extrapolating literally):
 ${lines.join("\n")}`;
 }
 

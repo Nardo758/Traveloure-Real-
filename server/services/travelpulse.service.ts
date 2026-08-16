@@ -1239,9 +1239,10 @@ Return JSON:
    * Gather real "proxy" measurements for a city so Grok's daily estimates are grounded
    * in observed data instead of pure model knowledge. Every signal is best-effort and
    * optional — a failure in any single source just omits that signal.
-   * Sources: our own trips table (travelers now / upcoming), destination metric history
-   * (trend-score continuity), the city's previous activeTravelers value (smoothing),
-   * and Google Trends search interest via SerpAPI when SERP_API_KEY is configured.
+   * Sources: our own trips table (travelers now / upcoming).
+   * R4 hotfix: trend-score history and previous traveler-count are NOT passed to Grok —
+   * a score's own history must never be a scoring input.
+   * R5 ruling: SerpAPI/Google Trends dropped; Wikimedia Pageviews is the Phase 2 replacement.
    */
   async gatherProxySignals(cityName: string, country: string): Promise<CityProxySignals> {
     const signals: CityProxySignals = {};
@@ -1296,55 +1297,10 @@ Return JSON:
       console.warn(`[TravelPulse] trips signal failed for ${cityName}: ${err?.message}`);
     }
 
-    // Trend-score history (our own recorded metric series, oldest→newest).
-    try {
-      const rows = await db
-        .select({ v: destinationMetricsHistory.metricValue })
-        .from(destinationMetricsHistory)
-        .where(and(
-          eq(destinationMetricsHistory.city, cityName),
-          eq(destinationMetricsHistory.metricType, "trend_score"),
-        ))
-        .orderBy(desc(destinationMetricsHistory.recordedAt))
-        .limit(7);
-      if (rows.length) signals.recentTrendScores = rows.map((r) => Number(r.v)).reverse();
-    } catch (err: any) {
-      console.warn(`[TravelPulse] metric-history signal failed for ${cityName}: ${err?.message}`);
-    }
-
-    // Previous activeTravelers for continuity.
-    try {
-      const [row] = await db
-        .select({ at: travelPulseCities.activeTravelers })
-        .from(travelPulseCities)
-        .where(and(eq(travelPulseCities.cityName, cityName), eq(travelPulseCities.country, country)))
-        .limit(1);
-      if (row?.at != null && row.at > 0) signals.previousActiveTravelers = row.at;
-    } catch (err: any) {
-      console.warn(`[TravelPulse] previous-value signal failed for ${cityName}: ${err?.message}`);
-    }
-
-    // Google Trends search interest via SerpAPI (skipped when key missing or call fails).
-    if (process.env.SERP_API_KEY) {
-      try {
-        const url = new URL("https://serpapi.com/search.json");
-        url.searchParams.set("engine", "google_trends");
-        url.searchParams.set("q", `${cityName} travel`);
-        url.searchParams.set("date", "today 1-m");
-        url.searchParams.set("api_key", process.env.SERP_API_KEY);
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (res.ok) {
-          const data: any = await res.json();
-          const series = data?.interest_over_time?.timeline_data;
-          const latest = Array.isArray(series) && series.length
-            ? Number(series[series.length - 1]?.values?.[0]?.extracted_value)
-            : NaN;
-          if (Number.isFinite(latest)) signals.searchInterest = latest;
-        }
-      } catch (err: any) {
-        console.warn(`[TravelPulse] search-interest signal failed for ${cityName}: ${err?.message}`);
-      }
-    }
+    // R4 HOTFIX: recentTrendScores and previousActiveTravelers removed — score history
+    // must never feed back into scoring (L8). Phase 2.3 will repoint the trip-count
+    // gatherers to write trend_signals rows instead.
+    // R5 RULING: SerpAPI/Google Trends dropped. Wikimedia Pageviews replaces it in Phase 2.
 
     return signals;
   }

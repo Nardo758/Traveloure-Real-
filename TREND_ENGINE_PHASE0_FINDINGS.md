@@ -81,4 +81,25 @@ Checked `information_schema.columns` for all spine + gems tables (this lane's to
 7. **Overlap to reconcile:** since Aug 16 the TravelPulse card refresh feeds SerpAPI Google Trends + platform-trip counts directly into Grok prompts (`gatherProxySignals`). Different surface than this lane's scorer, but it is un-cost-tracked external spend (L5 spirit) and stores nothing (ToS-safe). Recommend: when this lane lands, migrate that call into a trend-source adapter or register it with `logApiCall`.
 8. Kyoto dark-run preconditions are otherwise green: neighborhoods seeded (10/10 with centroids+radii), gem resolution 94%, durable Kyoto expert fixture exists in dev.
 
-**HARD STOP per brief — no Phase 1 writes until findings approved.**
+---
+
+## Phase 0 → Phase 1 gate answers (2026-08-16)
+
+**Leon's conditional approval received. Three outstanding items answered below. Phase 1 writes may begin.**
+
+### R4 hotfix — SHIPPED (pre-approved, pre-lane)
+The feedback loop was live: `gatherProxySignals` read the last 7 `trend_score` rows from `destinationMetricsHistory` (`travelpulse.service.ts:1299–1313`) and passed them as `recentTrendScores` to Grok, and read the previous `activeTravelers` (`travelpulse.service.ts:1315–1325`) for self-anchored smoothing. Both violate R4/L8. Also removed SerpAPI block (R5 ruling: dropped). Applied in commit at HEAD:
+- `server/services/travelpulse.service.ts` — removed all three blocks from `gatherProxySignals`; updated JSDoc comment
+- `server/services/grok.service.ts` — removed `recentTrendScores`, `previousActiveTravelers`, `searchInterest` from `CityProxySignals` interface + `formatProxySignals`
+First-party trip counts (`platformTravelersNow`, `platformUpcomingTrips30d`) kept per R1.
+
+### Republish render map
+`activeTravelers` absolute count reaches **four traveler-facing surfaces** — republish is blocked by R3 until all four are suppressed:
+1. `client/src/components/travelpulse/CityCard.tsx:142` — count on every city card
+2. `client/src/components/travelpulse/CityGrid.tsx:377` — summed worldwide total in section header ("Real-time intelligence from X travelers worldwide")
+3. `client/src/components/travelpulse/CityDetailView.tsx:880` — count in city detail (`data-testid="value-active-travelers"`)
+4. `client/src/components/TrendingCities.tsx:74` — summed count in trending panel header
+`crowdLevel` as a band label (string, e.g. "moderate") renders at additional components but is not an absolute count; per Leon's ruling it is not R3-blocked. Traveler exposure of `crowdLevel` is Leon's call per L4 — suppression of the four count surfaces above is the republish lever.
+
+### 25-vs-8 city scope
+**Confirmed: the 17 extra rows are non-operating markets.** The 8 operating markets matching the Phase 1 season calendar seed are: Kyoto, Goa, Mumbai, Jaipur, Edinburgh, Porto, Bogotá, Cartagena. The remaining 17 dev rows (Paris, Tokyo, Singapore, Prague, Dubai, New York, Bali, Cape Town, Lisbon, Barcelona, Bangkok, London, Rome, Marrakech, Los Angeles, Sydney, San Jose, Costa Rica) are not in the operating set. Scope drop to 8 is a Phase 2.3 config item in the same PR that removes the Grok scoring call — no separate lane.
