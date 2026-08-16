@@ -107,6 +107,13 @@ capacity story).
   #13 traveler representation of everything authored — party size, lead time, cutoff, timezone,
   start window, buffer, neighborhoods, transport, gallery (dedicated lane **T-REP**: render or
   stop collecting — no third option under §13);
+  <!-- superseded@3a06c80 — #13's field list above is no longer the whole story. T-REP (ledger 101)
+       rendered it and FILED a remainder; the render-or-rule pass over that remainder
+       (2026-08-16-render-or-rule) found five of its seven entries already resolved or misfiled,
+       and the two rows the ratified mock drew with NO column behind them — "Bring" and "Access" —
+       were closed by migration 228 (2026-08-16-bring-access). The weekly repeat rule, which had
+       an owner-gated read and no public one, was closed by lane M3. Annotation, not a rewrite:
+       the line above records what was ratified; the ledger rows record what happened to it. -->
   #15 hybrid-with-artifact branch (defer unless a real provider asks);
   #16 photos/media — upload vs pasted URLs (extend the ruling-58 objstore rail to images);
   #17 edit-path for a live listing (edits go back through review only for identity fields —
