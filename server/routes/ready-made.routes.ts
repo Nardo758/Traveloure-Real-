@@ -30,6 +30,7 @@ import { parsePagination } from "../utils/pagination";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
@@ -1178,9 +1179,8 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
       return res.status(409).json({ message: "You already own this trip", purchase: existing });
     }
 
-    const { getStripeSecretKey: _gsk1 } = await import("../utils/stripe-key");
     const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(_gsk1() || "", {
+    const stripeClient = new Stripe(getStripeSecretKey() || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
     const paymentIntent = await stripeClient.paymentIntents.create(
@@ -1227,9 +1227,8 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
     if (!paymentIntentId) return res.status(400).json({ message: "paymentIntentId is required" });
 
     // Never trust client-reported payment state — retrieve from Stripe.
-    const { getStripeSecretKey: _gsk2 } = await import("../utils/stripe-key");
     const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(_gsk2() || "", {
+    const stripeClient = new Stripe(getStripeSecretKey() || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
     const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
@@ -1302,9 +1301,8 @@ router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req,
     const ledger = await refundReadyMadePurchaseLedger(req.params.id, userId);
     if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
 
-    const { getStripeSecretKey: _gsk3 } = await import("../utils/stripe-key");
     const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(_gsk3() || "", {
+    const stripeClient = new Stripe(getStripeSecretKey() || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
     try {

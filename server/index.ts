@@ -38,6 +38,7 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { getStripeSecretKey } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
@@ -189,8 +190,7 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
   };
 
-  const { getStripeSecretKey: _getStripeKey } = await import("./utils/stripe-key");
-  const stripePresent = Boolean(_getStripeKey());
+  const stripePresent = Boolean(getStripeSecretKey());
   checks.stripe = {
     status: stripePresent ? "ok" : "fail",
     message: stripePresent
