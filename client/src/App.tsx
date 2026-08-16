@@ -138,7 +138,6 @@ const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-reques
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const AdminContentOps = lazy(() => import("@/pages/admin/content-ops"));
-const AdminAuditLog = lazy(() => import("@/pages/admin/audit-log"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
@@ -1085,9 +1084,6 @@ function Router() {
       </Route>
       <Route path="/admin/content-ops">
         {() => <ProtectedRoute component={AdminContentOps} requiredRole="admin" />}
-      </Route>
-      <Route path="/admin/audit-log">
-        {() => <ProtectedRoute component={AdminAuditLog} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

@@ -12,7 +12,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -243,8 +242,11 @@ export default function StorefrontPage() {
           Layout header (ruling 60 entry point (b)). */}
       <div className="border-b bg-card">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
-          <Link href="/" className="flex items-center no-underline" data-testid="link-storefront-logo">
-            <TraveloureLogo />
+          <Link href="/" className="flex items-center gap-2 no-underline text-inherit" data-testid="link-storefront-logo">
+            <div className="w-7 h-7 rounded-[8px] flex items-center justify-center" style={{ background: "#E85D55" }}>
+              <span className="text-white text-sm font-bold">T</span>
+            </div>
+            <span className="font-semibold text-foreground">Traveloure</span>
           </Link>
           <LanguageMenu />
         </div>

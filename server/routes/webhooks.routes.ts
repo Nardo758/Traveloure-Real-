@@ -16,11 +16,10 @@ import { activateVerificationHeldListings } from "../services/publish-verificati
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
-const stripe = new Stripe(getStripeSecretKey()!, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 

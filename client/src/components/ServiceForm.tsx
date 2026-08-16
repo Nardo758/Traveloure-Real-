@@ -34,6 +34,10 @@ import {
 // D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
 // the server scorers and console chips use, never a second local copy.
 import { isPlaceAnchored, needsScheduling, SESSION_END_METHODS } from "@shared/service-fundamentals";
+// S-1 (ledger 2026-08-16-console-sweep): the edit-split panel below renders the SERVER's own
+// lane list — this module is the one the PATCH handler itself imports (§18 rule 1: delegates,
+// never re-implements). Do not restate these lists inline.
+import { IDENTITY_EDIT_LANE, SAFE_EDIT_LANE_LABELS } from "@shared/edit-split";
 // D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
 // server re-runs on the write, so what this wizard renders and what the API will accept cannot
 // drift. The client calls it only to draw the card — it never decides what it may affirm.
@@ -2153,6 +2157,63 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             meetingPoint: existingService?.meetingPoint ?? null,
           }}
         />
+
+        {/* ── S-1 (ledger 2026-08-16-console-sweep, P1) — the §23 edit-split, STATED before the
+            provider edits, not discovered afterwards via the "Edit in review" pill. The mock's
+            "Editing a live listing" two-column panel, rendered ONLY for an approved listing
+            (§23 governs edits after first approval; a draft has no live row to protect). Both
+            lanes come from @shared/edit-split — the module the PATCH handler itself imports —
+            so this panel can never drift from the split the server actually applies. */}
+        {existingService.approvalStatus === "approved" && (
+          <Card data-testid="card-edit-split">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Editing a live listing</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Edits that cannot mislead a traveler about what they are buying go straight live;
+                edits that change the thing itself re-enter review — and the previously approved
+                version stays live and bookable while they do.
+              </p>
+              <div className="grid sm:grid-cols-2 rounded-md border overflow-hidden">
+                <div className="p-4 border-b sm:border-b-0 sm:border-r bg-[#EDF2F1]">
+                  <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#35605A] mb-2">
+                    Goes live immediately
+                  </p>
+                  <ul className="space-y-1" data-testid="list-edit-split-safe">
+                    {SAFE_EDIT_LANE_LABELS.map((label) => (
+                      <li key={label} className="text-xs text-gray-700">
+                        <span className="text-muted-foreground">— </span>
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="p-4">
+                  <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#6B551F] mb-2">
+                    Re-enters review
+                  </p>
+                  <ul className="space-y-1" data-testid="list-edit-split-identity">
+                    {IDENTITY_EDIT_LANE.map((row) => (
+                      <li key={row.label} className="text-xs text-gray-700">
+                        <span className="text-muted-foreground">— </span>
+                        {row.label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground" data-testid="text-edit-split-note">
+                While a re-review is pending, the listing shows{" "}
+                <Badge variant="default" className="align-middle text-[10px] px-1.5 py-0">Live</Badge>{" "}
+                +{" "}
+                <Badge variant="secondary" className="align-middle text-[10px] px-1.5 py-0">Edit in review</Badge>{" "}
+                on Catalog — travelers keep booking the approved version, and the edit lands only
+                when it passes. <span className="font-medium text-gray-900">Nothing is taken down for an edit.</span>
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="p-5 space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">

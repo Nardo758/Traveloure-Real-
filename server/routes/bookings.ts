@@ -18,7 +18,6 @@ import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
-import { getStripeSecretKey } from '../utils/stripe-key';
 
 const router = Router();
 
@@ -215,7 +214,7 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
           message: 'That payment does not belong to this booking.',
         });
       }
-      const stripeClient = new Stripe(getStripeSecretKey() || '', {
+      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
         apiVersion: '2024-12-18.acacia' as any,
       });
       let intent: Stripe.PaymentIntent;
@@ -481,7 +480,7 @@ router.post('/webhooks/stripe', async (req: any, res) => {
   }
 
   try {
-    const stripe = new Stripe(getStripeSecretKey() || '', {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
       apiVersion: '2024-12-18.acacia' as any,
     });
 

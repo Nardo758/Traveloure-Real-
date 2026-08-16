@@ -92,7 +92,6 @@ import { serviceBookings, providerServices, users } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
 import { logger } from "../infrastructure/logger";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
 /** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
  *  PaymentElement, short enough that held inventory comes back the same session. */
@@ -334,8 +333,8 @@ export type StripeIntentLookup = (
 /** Default lookup: bounded `paymentIntents.list` around the claim's creation time, matched on the
  *  `bookingIds` metadata `createPaymentIntent` writes. Immediately consistent (unlike Search). */
 export const defaultStripeIntentLookup: StripeIntentLookup = async (bookingId, createdAt) => {
-  const key = getStripeSecretKey();
-  if (!key) throw new Error("STRIPE_SECRET_KEY (or STRIPE_SECRET_KEY_TEST) unset — cannot consult Stripe");
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY unset — cannot consult Stripe");
   const stripe = new Stripe(key, { apiVersion: "2024-12-18.acacia" as any });
   const from = Math.floor(createdAt.getTime() / 1000) - 300; // 5 min of clock skew tolerance
   const to = Math.floor(createdAt.getTime() / 1000) + 3600; // the attempt cannot be an hour late

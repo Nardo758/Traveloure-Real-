@@ -27,6 +27,7 @@ import { api } from "@shared/routes";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
 import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
+import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
@@ -113,7 +114,6 @@ import { isExpertRole, isProviderRole } from "@shared/roles";
 import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
 import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
-import { getStripeSecretKey } from "./utils/stripe-key";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
@@ -483,7 +483,7 @@ async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<
 // §14: every input to the decision is server-derived — the event type comes from the trip/experience
 // row, the required amount from `getFee` (config), and the acting user from the session. The client
 // supplies only the PaymentIntent id, which is then verified against Stripe.
-const stripeForOptimization = new Stripe(getStripeSecretKey() || "", {
+const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
@@ -3478,11 +3478,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // queue applies them); everything else applies immediately. The split compares against
       // the STORED row — the wizard PATCHes full payloads, so an unchanged serviceName must
       // pass through as a no-op, not trigger a review.
-      const IDENTITY_EDIT_FIELDS = [
-        "serviceName", "categoryId", "subcategoryId",
-        "serviceOfferingTypeId", "expertOfferingTypeId", "offeringTypeKey",
-        "deliveryMethod", "productShape",
-      ] as const;
+      // S-1 (ledger 2026-08-16-console-sweep): the field list lives in @shared/edit-split so
+      // the listing home's "Editing a live listing" panel reads THIS handler's own predicate
+      // rather than restating it (§18 rule 1). The split is still decided only here.
       let stagedEditKeys: string[] = [];
       if (ownedService.approvalStatus === "approved") {
         const identityPatch: Record<string, unknown> = {};
@@ -4947,7 +4945,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Create Stripe PaymentIntent; embed purchaseId in metadata so /confirm
       // can verify it without an extra DB column.
-      const stripeClient = new Stripe(getStripeSecretKey() || '', {
+      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
         apiVersion: '2024-12-18.acacia' as any,
       });
       const currency = (template.currency || 'USD').toLowerCase();
@@ -5005,7 +5003,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       // Retrieve intent from Stripe — never trust client-reported status
-      const stripeClient = new Stripe(getStripeSecretKey() || '', {
+      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
         apiVersion: '2024-12-18.acacia' as any,
       });
       const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
@@ -9149,7 +9147,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (fresh?.feePaymentStatus === "paid") return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
         if (fresh?.feePaymentStatus === "refunded") return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
         if (fresh?.feePaymentIntentId) {
-          const stripeR = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
+          const stripeR = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
           const existingPi = await stripeR.paymentIntents.retrieve(fresh.feePaymentIntentId);
           return res.json({
             clientSecret: existingPi.client_secret,
@@ -9248,7 +9246,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           }
         }
 
-        const stripe = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
         // FP-1/FP-2 parity: attach the durable customer so this sheet ALSO offers saved cards
         // and can vault a new one (the optimize + cart sheets already do) — the asymmetry FP-2's
         // ground-truth flagged.
@@ -9343,7 +9341,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const paymentIntentId = state.feePaymentIntentId;
       if (!paymentIntentId) return res.status(400).json({ error: "no_payment", message: "No coordination payment has been started." });
 
-      const stripe = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
       const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
       if (pi.status !== "succeeded") return res.status(400).json({ error: "payment_not_confirmed", message: "Payment not yet confirmed." });
       if (pi.metadata?.type !== "coordination_fee") return res.status(400).json({ error: "invalid_payment_type" });
@@ -9432,7 +9430,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Step 1 — Stripe refund. Idempotency-keyed so retries are safe.
       // A Stripe failure leaves the DB untouched (satisfies the atomicity contract).
-      const stripe = new Stripe(getStripeSecretKey() || "", { apiVersion: "2024-12-18.acacia" as any });
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
       let stripeRefundId: string | null = null;
       if (feeCents > 0) {
         const stripeRefund = await stripe.refunds.create(

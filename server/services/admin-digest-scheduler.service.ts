@@ -17,7 +17,6 @@ import { db } from "../db";
 import { adminNotifications, users, webhookEvents } from "@shared/schema";
 import { eq, and, sql, gte, inArray } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
@@ -74,10 +73,9 @@ class AdminDigestSchedulerService {
       // locally is a potential missed delivery that needs ops attention.
       const missedWebhooks: { stripeEventId: string; eventType: string; stripeCreatedAt: number }[] = [];
 
-      const stripeKey = getStripeSecretKey();
-      if (stripeKey) {
+      if (process.env.STRIPE_SECRET_KEY) {
         try {
-          const stripe = new Stripe(stripeKey, {
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
             apiVersion: "2024-12-18.acacia" as any,
           });
 

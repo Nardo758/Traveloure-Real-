@@ -22,12 +22,9 @@ import { db } from "../db";
 import { transportBookingOptions, serviceBookings } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
-const key = getStripeSecretKey();
-
-if (!key) {
-  throw new Error("STRIPE_SECRET_KEY (or STRIPE_SECRET_KEY_TEST) is not set");
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY is not set");
 }
 
 // Primary enforcement lives in server/validate-env.ts (imported first in
@@ -35,6 +32,7 @@ if (!key) {
 // This is a defense-in-depth duplicate using the same canonical variable —
 // ENVIRONMENT === "PROD" — not NODE_ENV, which is unset on this deployment.
 const isProd = process.env.ENVIRONMENT === "PROD";
+const key = process.env.STRIPE_SECRET_KEY;
 
 if (isProd) {
   if (!key.startsWith("sk_live_")) {
@@ -49,12 +47,12 @@ if (isProd) {
       "STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production (ENVIRONMENT=" +
         (process.env.ENVIRONMENT || "undefined") +
         "). A live key (sk_live_...) or publishable key (pk_...) was found instead. " +
-        "Live keys are never allowed in dev/E2E — update the STRIPE_SECRET_KEY_TEST secret with a sk_test_ key."
+        "Live keys are never allowed in dev/E2E — update the STRIPE_SECRET_KEY secret with a sk_test_ key."
     );
   }
 }
 
-const stripe = new Stripe(key, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 

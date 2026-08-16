@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Calendar, CalendarOff, CalendarClock, Info } from "lucide-react";
+import { Plus, Trash2, Calendar, CalendarOff, CalendarClock, Info, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ProviderService } from "@shared/schema";
 import { needsScheduling } from "@shared/service-fundamentals";
 
@@ -355,11 +355,17 @@ export function ProviderAvailabilityManager({
  * Per-method routing (G1 REC): property/room shapes get date-ranges; a scheduled delivery method
  * gets weekly patterns + blackouts; everything else (artifact/async delivery, or a listing with no
  * method classified yet) gets an honest no-scheduling state. No third option (§13).
+ *
+ * S-3 (ledger 2026-08-16-console-sweep): both calendar-bearing semantics now share the mock's
+ * ONE month grid (Bookable / Blacked out / Nothing published / Today), mounted above the rails —
+ * "the grid is the outcome, not a second thing to keep in sync". The no-calendar branch keeps
+ * its sentence instead of an empty grid, in the mock's own words (S-4).
  */
 function ServiceAvailabilityEditor({ service }: { service: ProviderService }) {
   if (isPropertyShaped(service)) {
     return (
       <div className="space-y-4">
+        <AvailabilityMonthGrid serviceId={service.id} semantics="nightly" />
         <DateRangesEditor serviceId={service.id} />
         <BlackoutsEditor serviceId={service.id} />
       </div>
@@ -368,6 +374,7 @@ function ServiceAvailabilityEditor({ service }: { service: ProviderService }) {
   if (needsScheduling({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
     return (
       <div className="space-y-4">
+        <AvailabilityMonthGrid serviceId={service.id} semantics="scheduled" />
         <WeeklyPatternsEditor serviceId={service.id} />
         <BlackoutsEditor serviceId={service.id} />
       </div>
@@ -378,12 +385,285 @@ function ServiceAvailabilityEditor({ service }: { service: ProviderService }) {
       <CardContent className="p-6 flex items-start gap-3">
         <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
         <div>
-          <p className="text-sm font-medium text-console-darkest">No scheduling needed</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            This listing's delivery method doesn't use a calendar — it's delivered as a file or
-            asynchronously. Availability applies to phone/video calls, in-person or hybrid
-            services, and property listings.
+          {/* S-4: the mock's words. An empty month grid here would invent a question this
+              listing does not have — so the editor says so instead. */}
+          <p className="text-sm font-medium text-console-darkest">
+            No calendar — this sells without slots
           </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            This listing is delivered as a file or asynchronously the moment it is bought. There
+            is nothing to publish, nothing to black out, and no &ldquo;next available&rdquo;.
+            Calendars apply to phone/video calls, in-person or hybrid services, and property
+            listings.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── S-3: the shared month grid ────────────────────────────────────────────────────────────────
+//
+// ONE grid for both calendar-bearing semantics (the mock's core claim about gap #2: weekly
+// patterns and date ranges are "three semantics, not three products — they share the same month
+// grid, the same blackout rail and the same published/not-published vocabulary"). Derived from
+// REAL rows only (§13):
+//   · scheduled — the materialized vendor_availability_slots the traveler can actually book
+//     (the same read the "Next available" chip uses), so the grid is the OUTCOME of the weekly
+//     pattern + one-off slots, never a re-derivation of the pattern itself (§18 rule 1).
+//   · nightly  — the published service_date_ranges.
+// Blackouts overlay either shape (a blackout subtracts; it never edits the pattern or range).
+// A day with nothing behind it renders as nothing published — never guessed bookable.
+// The grid OPENS on the month of the next bookable day (the mock: "the grid opens where the
+// availability is"); prev/next then hand control to the provider.
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function isoOf(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function AvailabilityMonthGrid({
+  serviceId,
+  semantics,
+}: {
+  serviceId: string;
+  semantics: "scheduled" | "nightly";
+}) {
+  // Same query keys as the sibling editors/parent — shared cache, no second fetch shape.
+  const { data: slotsData } = useQuery<VendorAvailabilitySlot[]>({
+    queryKey: ["/api/provider/availability"],
+    enabled: semantics === "scheduled",
+  });
+  const { data: rangesData } = useQuery<{ dateRanges: DateRange[] }>({
+    queryKey: ["/api/provider/services", serviceId, "date-ranges"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/provider/services/${serviceId}/date-ranges`);
+      return res.json();
+    },
+    enabled: semantics === "nightly",
+  });
+  const { data: blackoutsData } = useQuery<{ blackouts: AvailabilityBlackout[] }>({
+    queryKey: ["/api/provider/services", serviceId, "blackouts"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/provider/services/${serviceId}/blackouts`);
+      return res.json();
+    },
+  });
+
+  const now = new Date();
+  const todayIso = isoOf(now.getFullYear(), now.getMonth(), now.getDate());
+  const [month, setMonth] = useState<{ y: number; m: number }>({
+    y: now.getFullYear(),
+    m: now.getMonth(),
+  });
+
+  const serviceSlots = (slotsData ?? []).filter(
+    (s) => s.serviceId === serviceId && s.status !== "withdrawn",
+  );
+  const ranges = rangesData?.dateRanges ?? [];
+  const blackouts = blackoutsData?.blackouts ?? [];
+
+  type DayState =
+    | { kind: "block"; label: string | null }
+    | { kind: "open"; label: string | null }
+    | { kind: "none" };
+
+  function dayState(d: string): DayState {
+    const blackout = blackouts.find((b) => d >= b.startDate && d <= b.endDate);
+    if (blackout) return { kind: "block", label: blackout.reason };
+    if (semantics === "scheduled") {
+      const daySlots = serviceSlots.filter((s) => s.date === d);
+      if (daySlots.length > 0) {
+        const first = [...daySlots].sort((a, b) =>
+          (a.startTime ?? "").localeCompare(b.startTime ?? ""),
+        )[0];
+        const left = Math.max(0, (first.capacity ?? 1) - (first.bookedCount ?? 0));
+        const label =
+          (first.startTime ? first.startTime : "") +
+          (first.startTime ? " · " : "") +
+          `${left} left` +
+          (daySlots.length > 1 ? ` +${daySlots.length - 1}` : "");
+        return { kind: "open", label };
+      }
+      return { kind: "none" };
+    }
+    const range = ranges.find((r) => d >= r.startDate && d <= r.endDate);
+    if (range) {
+      return {
+        kind: "open",
+        // §13: a range without its own nightly price uses the listing's base price — say
+        // "Bookable" rather than inventing a number here.
+        label: range.nightlyPrice != null && range.nightlyPrice !== "" ? `$${range.nightlyPrice} / night` : "Bookable",
+      };
+    }
+    return { kind: "none" };
+  }
+
+  // First bookable day from today forward — the month the grid should open on.
+  const nextBookable = (() => {
+    if (semantics === "scheduled") {
+      const upcoming = serviceSlots
+        .filter((s) => s.date >= todayIso && (s.bookedCount ?? 0) < (s.capacity ?? 1))
+        .map((s) => s.date)
+        .sort();
+      return upcoming.find((d) => dayState(d).kind === "open") ?? null;
+    }
+    const candidates = ranges
+      .filter((r) => r.endDate >= todayIso)
+      .map((r) => (r.startDate >= todayIso ? r.startDate : todayIso))
+      .sort();
+    return candidates.find((d) => dayState(d).kind === "open") ?? null;
+  })();
+
+  // Open where the availability is — once per listing, then prev/next belong to the provider.
+  const [openedFor, setOpenedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (openedFor === serviceId) return;
+    if (slotsData === undefined && semantics === "scheduled") return;
+    if (rangesData === undefined && semantics === "nightly") return;
+    if (nextBookable) {
+      const [y, m] = nextBookable.split("-").map(Number);
+      setMonth({ y, m: m - 1 });
+    } else {
+      setMonth({ y: now.getFullYear(), m: now.getMonth() });
+    }
+    setOpenedFor(serviceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceId, slotsData, rangesData, nextBookable, openedFor]);
+
+  const firstDow = new Date(month.y, month.m, 1).getDay();
+  const daysInMonth = new Date(month.y, month.m + 1, 0).getDate();
+  const trailing = (7 - ((firstDow + daysInMonth) % 7)) % 7;
+
+  const blockStripes =
+    "repeating-linear-gradient(135deg,#FBF6EC,#FBF6EC 6px,#F5EDDC 6px,#F5EDDC 12px)";
+
+  return (
+    <Card className="overflow-hidden" data-testid="card-availability-month-grid">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <CardTitle className="text-base flex-1 min-w-[8rem]" data-testid="text-month-grid-title">
+            {MONTH_NAMES[month.m]} {month.y}
+          </CardTitle>
+          {nextBookable ? (
+            <button
+              type="button"
+              onClick={() => {
+                const [y, m] = nextBookable.split("-").map(Number);
+                setMonth({ y, m: m - 1 });
+              }}
+              className="rounded-full border border-[#CBDAD7] bg-[#EDF2F1] px-3 py-1 text-xs font-medium text-[#35605A]"
+              data-testid="button-month-grid-next-available"
+            >
+              Next available: {nextBookable}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground" data-testid="text-month-grid-nothing">
+              Nothing published yet
+            </span>
+          )}
+          <div className="inline-flex rounded-md border overflow-hidden">
+            <button
+              type="button"
+              aria-label="Previous month"
+              className="px-2 py-1 hover:bg-muted/40 border-r"
+              onClick={() => setMonth(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))}
+              data-testid="button-month-grid-prev"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next month"
+              className="px-2 py-1 hover:bg-muted/40"
+              onClick={() => setMonth(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))}
+              data-testid="button-month-grid-next"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-7 border-t border-b">
+          {DAY_LABELS.map((d) => (
+            <span
+              key={d}
+              className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              {d}
+            </span>
+          ))}
+        </div>
+        <div className="grid grid-cols-7" data-testid="month-grid-body">
+          {Array.from({ length: firstDow }).map((_, i) => (
+            <div key={`pad-${i}`} className="min-h-[3.5rem] border-r border-b bg-muted/30 [&:nth-child(7n)]:border-r-0" />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const dayNum = i + 1;
+            const d = isoOf(month.y, month.m, dayNum);
+            const state = dayState(d);
+            const isToday = d === todayIso;
+            return (
+              <div
+                key={d}
+                className={
+                  "min-h-[3.5rem] border-r border-b px-1.5 py-1 text-[11px] " +
+                  (state.kind === "open" ? "bg-[#EDF2F1] " : "") +
+                  (isToday ? "shadow-[inset_0_0_0_2px_#1A1A18] " : "")
+                }
+                style={state.kind === "block" ? { background: blockStripes } : undefined}
+                data-testid={`month-grid-day-${d}`}
+                data-day-state={state.kind}
+              >
+                <span
+                  className={
+                    "block " +
+                    (state.kind === "open"
+                      ? "font-semibold text-[#35605A]"
+                      : state.kind === "block"
+                        ? "font-semibold text-[#6B551F]"
+                        : "text-muted-foreground")
+                  }
+                >
+                  {dayNum}
+                </span>
+                {state.kind === "open" && state.label && (
+                  <span className="block leading-tight font-medium text-[#35605A]">{state.label}</span>
+                )}
+                {state.kind === "block" && (
+                  <span className="block leading-tight text-[10.5px] text-[#6B551F]">
+                    {state.label || "Blacked out"}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {Array.from({ length: trailing }).map((_, i) => (
+            <div key={`trail-${i}`} className="min-h-[3.5rem] border-r border-b bg-muted/30 [&:nth-child(7n)]:border-r-0" />
+          ))}
+        </div>
+        <div className="flex gap-4 flex-wrap px-4 py-2.5 text-[11px] text-muted-foreground" data-testid="month-grid-legend">
+          <span className="inline-flex items-center gap-1.5">
+            <i className="inline-block w-2.5 h-2.5 rounded-[2px] border border-[#CBDAD7] bg-[#EDF2F1]" />
+            Bookable
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className="inline-block w-2.5 h-2.5 rounded-[2px] border border-[#D9C79A] bg-[#F5EDDC]" />
+            Blacked out
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className="inline-block w-2.5 h-2.5 rounded-[2px] border bg-white" />
+            Nothing published
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className="inline-block w-2.5 h-2.5 rounded-[2px] border border-[#1A1A18] bg-white" />
+            Today
+          </span>
         </div>
       </CardContent>
     </Card>
@@ -464,10 +744,12 @@ function WeeklyPatternsEditor({ serviceId }: { serviceId: string }) {
   return (
     <Card data-testid="card-availability-patterns">
       <CardHeader>
-        <CardTitle className="text-base">Weekly schedule</CardTitle>
+        {/* S-4: the mock's section vocabulary. */}
+        <CardTitle className="text-base">Repeats weekly</CardTitle>
         <CardDescription>
           Repeating windows travelers can book, expanded automatically into a rolling 60-day
-          calendar. Editing and saving refreshes that calendar immediately.
+          calendar. One pattern, written once — the month grid above is the outcome, not a second
+          thing to keep in sync.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -629,10 +911,12 @@ function DateRangesEditor({ serviceId }: { serviceId: string }) {
   return (
     <Card data-testid="card-availability-date-ranges">
       <CardHeader>
-        <CardTitle className="text-base">Open date ranges</CardTitle>
+        {/* S-4: the mock's section vocabulary. */}
+        <CardTitle className="text-base">Published date ranges</CardTitle>
         <CardDescription>
           Check-in/check-out windows this property or room is bookable, with an optional nightly
-          price override. Leave the price blank to use the listing's base price.
+          price override. Leave the price blank to use the listing's base price. A room is
+          bookable by the night across a range, not by slot.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">

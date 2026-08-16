@@ -7,11 +7,10 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { 
   Map, 
   Award,
-  Compass,
+  Compass, 
   MessageSquare, 
   LogOut, 
   Menu, 
@@ -486,7 +485,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 aria-label={t("homeAria")}
                 data-testid="link-logo"
               >
-                <TraveloureLogo />
+                <div className="flex items-center gap-1.5">
+                  <Compass className="h-6 w-6 text-primary" aria-hidden="true" />
+                  <span className="font-bold text-xl tracking-tight text-foreground uppercase">
+                    Traveloure
+                  </span>
+                </div>
                 <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20" aria-hidden="true">
                   BETA
                 </span>
@@ -738,10 +742,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
             <div className="lg:col-span-2">
-              <div className="mb-4">
-                <Link href="/" aria-label="Traveloure home">
-                  <TraveloureLogo />
-                </Link>
+              <div className="flex items-center gap-2 mb-4" aria-hidden="true">
+                <div className="bg-gradient-to-br from-[#FF385C] to-[#FF8E53] p-2.5 rounded-xl shadow-lg">
+                  <Compass className="h-5 w-5 text-white" />
+                </div>
+                <span className="font-display font-bold text-xl text-foreground">Traveloure</span>
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
                 {t("footer.tagline")}

@@ -6,11 +6,10 @@ import { localExpertForms, serviceProviderForms } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getBaseUrl } from "../services/stripe.service";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
-const stripe = new Stripe(getStripeSecretKey()!, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 

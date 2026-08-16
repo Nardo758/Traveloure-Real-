@@ -140,7 +140,6 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
@@ -1948,7 +1947,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       // Honest degrade (§13): without a live Stripe key every call below throws a raw
       // Stripe SDK auth error, which the catch below would otherwise surface as a
       // generic 500. Never fake a connected/ready status — tell the earner plainly.
-      if (!getStripeSecretKey()) {
+      if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
       const userId = getUserId(req)!;
@@ -2004,7 +2003,7 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
       // Honest degrade (§13): an account was previously connected but the key is now
       // absent (e.g. this environment) — report the last-known DB status rather than
       // calling Stripe and surfacing a raw SDK error, or worse, faking "active".
-      if (!getStripeSecretKey()) {
+      if (!process.env.STRIPE_SECRET_KEY) {
         return res.json({ connected: true, accountId: account.stripeAccountId, status: account.stripeAccountStatus ?? 'unknown', degraded: true });
       }
 
@@ -2030,7 +2029,7 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
 router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
     try {
       // Honest degrade (§13): same reasoning as onboard/status above.
-      if (!getStripeSecretKey()) {
+      if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
       const userId = getUserId(req)!;

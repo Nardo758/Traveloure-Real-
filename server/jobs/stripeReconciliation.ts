@@ -56,7 +56,6 @@
 
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
-import { getStripeSecretKey } from "../utils/stripe-key";
 import { gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, adminNotifications } from "@shared/schema";
@@ -159,7 +158,7 @@ export interface StripeReader {
 }
 
 function defaultStripeReader(): StripeReader | null {
-  const key = getStripeSecretKey();
+  const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
   const stripe = new Stripe(key, { apiVersion: "2024-12-18.acacia" as any });
   return {

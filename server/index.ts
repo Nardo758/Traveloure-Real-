@@ -38,7 +38,6 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
-import { getStripeSecretKey } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
@@ -190,12 +189,12 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
   };
 
-  const stripePresent = Boolean(getStripeSecretKey());
+  const stripePresent = Boolean(process.env.STRIPE_SECRET_KEY);
   checks.stripe = {
     status: stripePresent ? "ok" : "fail",
     message: stripePresent
-      ? "Stripe key present"
-      : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
+      ? "STRIPE_SECRET_KEY present"
+      : "STRIPE_SECRET_KEY missing — payments will fail",
   };
 
   const resendPresent = Boolean(process.env.RESEND_API_KEY);
@@ -605,25 +604,6 @@ if (process.env.NODE_ENV === "production") {
     runDailyAdminDigest();
     setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
 
-    // TravelPulse AI refresh scheduler — previously the ONLY refresh paths were the admin
-    // manual endpoints, so trending/city intelligence (and the happening-now surface derived
-    // from it) went permanently stale once seeded. Daily pass, first run delayed 2h to clear
-    // startup and stay behind the reconciliation job. refreshStaleAICities() only touches
-    // cities whose expiresAt has lapsed and increments ai_refresh_error_count on failure, so
-    // running it while the xAI account is out of credits is safe (errors are counted, not thrown).
-    setTimeout(() => {
-      void (async () => {
-        const { travelPulseService } = await import("./services/travelpulse.service");
-        const run = () =>
-          travelPulseService
-            .refreshStaleAICities()
-            .then((r) => logger.info(r, "[travelpulse] daily AI refresh pass"))
-            .catch((err) => logger.error({ err }, "[travelpulse] daily AI refresh failed"));
-        await run();
-        setInterval(run, 24 * 60 * 60 * 1000);
-      })();
-    }, 2 * 60 * 60 * 1000);
-
     setTimeout(() => {
       runStripeReconciliation();
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
@@ -683,47 +663,11 @@ if (process.env.NODE_ENV === "production") {
       }, msUntilFirst);
     })();
 
-    // Bootstrap an admin account from the ADMIN_EMAIL environment variable.
-    // This replaces the former hard-coded email promotion. Set ADMIN_EMAIL in
-    // the environment (it already exists as a secret) to designate an account
-    // as admin on first boot. The promotion is idempotent and only fires when
-    // the env var is present.
-    const bootstrapAdminEmail = process.env.ADMIN_EMAIL?.trim();
-    if (bootstrapAdminEmail) {
-      // Promotion + audit record are written in ONE transaction so bootstrap
-      // promotions appear in the role-change audit trail like every other
-      // role change (actor = the promoted account itself, reason marks it).
-      import("./db").then(async ({ pool }) => {
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-          const { rows } = await client.query(
-            "SELECT id, role FROM users WHERE email = $1 AND role != 'admin' FOR UPDATE",
-            [bootstrapAdminEmail],
-          );
-          if (rows.length > 0) {
-            const { id, role: oldRole } = rows[0];
-            await client.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
-            // id has no DB-side default (schema uses a client-side $defaultFn),
-            // so it must be supplied explicitly in raw SQL.
-            await client.query(
-              `INSERT INTO access_audit_logs (id, actor_id, actor_role, action, resource_type, resource_id, target_user_id, metadata)
-               VALUES ($1, $2, $3, 'role_change', 'user', $2, $2, $4)`,
-              [crypto.randomUUID(), id, "system", JSON.stringify({ oldRole, newRole: "admin", reason: "admin_email_bootstrap" })],
-            );
-            await client.query("COMMIT");
-            logger.info({ email: bootstrapAdminEmail, oldRole }, "Admin bootstrap promotion from ADMIN_EMAIL (audited)");
-          } else {
-            await client.query("ROLLBACK");
-          }
-        } catch (err) {
-          await client.query("ROLLBACK").catch(() => {});
-          logger.error({ err }, "Admin bootstrap failed (promotion rolled back)");
-        } finally {
-          client.release();
-        }
-      }).catch((err) => logger.error({ err }, "Admin bootstrap import failed"));
-    }
+    import("./db").then(({ pool }) => {
+      pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
+        .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
+        .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
+    }).catch(() => {});
 
     runDatabaseSeeding()
       .then(() => {

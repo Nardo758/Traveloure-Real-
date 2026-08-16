@@ -1,3 +1,5 @@
+Pushed as 5820998 on claude/ui-mockup-workspace-catalog-distribute-ywd2kh. Everything the Replit agents need is now in the repo:
+
 The three page files — docs/design/provider-console-mockup/:
 
 page-workstation.html, page-catalog.html, page-distribute.html
@@ -10,3 +12,4 @@ An authority-scope section listing the eight ruled deliberate deltas (e.g. /p/:h
 Environment lessons already paid for: the accept-terms bounce, needing an approved listing to see the edit-split panel, and that an empty grid saying "Nothing published yet" is correct §13 behavior, not a failure.
 Report format and close condition: PASS/DIVERGES/BLOCKED per row with screenshots into docs/testing/assets/console-conformance-aug16/, results appended to the dispatch itself, divergences filed to the punch list (verify, don't repair) — and the explicit criterion under which "console conformance CONFIRMED" closes your report.
 The code under test is the previous commit 83d1fee (the S-1..S-4 fixes). Once the agents run the dispatch and every row passes or resolves to a cited ruling, this can be closed.
+

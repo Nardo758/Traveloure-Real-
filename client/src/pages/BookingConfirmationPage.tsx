@@ -20,14 +20,10 @@ import { loadStripe } from '@stripe/stripe-js';
 import { CheckCircle, AlertCircle, Clock, ArrowRight, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Key selection mirrors the server resolver: in dev, prefer the TEST publishable key.
-const _confirmPagePublishableKey = import.meta.env.DEV
-  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
-  : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 const getStripe = () => {
   if (!_stripePromise) {
-    _stripePromise = loadStripe(_confirmPagePublishableKey);
+    _stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
   }
   return _stripePromise;
 };

@@ -30,7 +30,6 @@ import { parsePagination } from "../utils/pagination";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
-import { getStripeSecretKey } from "../utils/stripe-key";
 
 const router = Router();
 
@@ -1180,7 +1179,7 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
     }
 
     const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(getStripeSecretKey() || "", {
+    const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
     const paymentIntent = await stripeClient.paymentIntents.create(
@@ -1228,7 +1227,7 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
 
     // Never trust client-reported payment state — retrieve from Stripe.
     const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(getStripeSecretKey() || "", {
+    const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
     const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
@@ -1302,7 +1301,7 @@ router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req,
     if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
 
     const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(getStripeSecretKey() || "", {
+    const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
     try {

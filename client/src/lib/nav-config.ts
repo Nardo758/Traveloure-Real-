@@ -160,7 +160,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
       },
     ],
   },
-  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", href: "/earn" },
+  { name: "Ways to earn", i18nKey: "groups.waysToEarn", href: "/earn" },
 ];
 
 export const authNavConfig: AuthNavConfig[] = [
@@ -217,7 +217,7 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
     i18nKey: 'footer.sections.company',
     links: [
       { label: 'About Us', i18nKey: 'footer.links.aboutUs',       href: '/about' },
-      { label: 'Ways to Earn', i18nKey: 'footer.links.waysToEarn',   href: '/earn' },
+      { label: 'Ways to earn', i18nKey: 'footer.links.waysToEarn',   href: '/earn' },
       { label: 'Careers', i18nKey: 'footer.links.careers',        href: '/careers' },
       { label: 'Blog', i18nKey: 'footer.links.blog',           href: '/blog' },
       { label: 'Press', i18nKey: 'footer.links.press',          href: '/press' },

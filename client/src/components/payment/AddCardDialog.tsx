@@ -31,14 +31,10 @@ import { Loader2, Plus, AlertCircle, Lock } from "lucide-react";
 
 // Own module-scoped promise cache — deliberately not shared with StripeCheckout's, so this
 // dialog has no dependency on that (PaymentIntent-shaped) component.
-// Key selection mirrors the server resolver: in dev, prefer the TEST publishable key.
-const _addCardPublishableKey = import.meta.env.DEV
-  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "")
-  : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 function getStripePromise() {
   if (!_stripePromise) {
-    _stripePromise = loadStripe(_addCardPublishableKey);
+    _stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
   }
   return _stripePromise;
 }
