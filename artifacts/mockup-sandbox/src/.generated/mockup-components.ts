@@ -6,6 +6,7 @@ export const modules: ModuleMap = {
   "./components/mockups/discover-date/Gap7.tsx": () => import("../components/mockups/discover-date/Gap7.tsx"),
   "./components/mockups/discover-date/Reference.tsx": () => import("../components/mockups/discover-date/Reference.tsx"),
   "./components/mockups/expert-workspace/Workspace.tsx": () => import("../components/mockups/expert-workspace/Workspace.tsx"),
+  "./components/mockups/provider-console/AvailabilityCalendar.tsx": () => import("../components/mockups/provider-console/AvailabilityCalendar.tsx"),
   "./components/mockups/provider-console/Distribute.tsx": () => import("../components/mockups/provider-console/Distribute.tsx"),
   "./components/mockups/provider-console/DistributeDirectLink.tsx": () => import("../components/mockups/provider-console/DistributeDirectLink.tsx"),
   "./components/mockups/provider-console/DistributeGaps.tsx": () => import("../components/mockups/provider-console/DistributeGaps.tsx"),
