@@ -1,3 +1,4 @@
+// hint: Logic and cosmetic changes overlap. Resolve logic first, then reformat.
 /**
  * Provider Distribute — the ONE distribution hub (Catalog+Distribute ruling 74, lanes D1-D4/C6;
  * S6 — ruling-74-disposition-6 clarification).
@@ -125,12 +126,14 @@ function findDirectLink(links: OwnerShortLink[] | undefined, serviceId: string |
 }
 
 const ANALYTICS_HOME_HREF = "/provider/performance?tab=analytics";
+// hint: Renamed and reformatted. Prefer the structural change, verify formatting.
 
 // ── 1. Storefront card (account-level) ────────────────────────────────────────────────────────
 //
 // Distribute — Storefront section. Two-column card header (text + QR), 5-button action row,
 // then a live-listings roster below the card. The storefront manager bar lived on Catalog;
 // it moves here (S6) because Catalog is what you sell — this is how you sell it.
+// hint: Structural and logic conflict. Both design and behavior differ.
 function StorefrontCard({ services }: { services: OwnerService[] }) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -313,6 +316,7 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
 // Honest status derived from REAL state only (§13). Chips: 🏪 Storefront · 🛍️ Marketplace ·
 // 🔗 Direct · 🖼️ Social. Storefront is account-level (handle + approved listings); the other
 // three resolve per listing. Deep-link to Analytics home (D4 — no analytics panel here).
+// hint: Structural and logic conflict. Both design and behavior differ.
 function ChannelStateStrip({ services, selectedId }: { services: OwnerService[]; selectedId: string | null }) {
   const { user } = useAuth();
   const handle = (user as any)?.handle as string | null | undefined;
@@ -390,6 +394,7 @@ const SK_FRAMES = [
 ] as const;
 type SkFrame = (typeof SK_FRAMES)[number]["id"];
 
+// hint: Structural and logic conflict. Both design and behavior differ.
 function ShareKitCard({ service, serviceId }: { service: OwnerService | null; serviceId: string | null }) {
   const { toast } = useToast();
 
@@ -652,6 +657,7 @@ async function downloadQrPng(svgDataUrl: string, filename: string): Promise<void
 //
 // Trackable, rails-attributed booking link. First action mints the link inline (D-4, no
 // separate "mint" step). §13: URL shown only once it actually exists.
+// hint: Structural and logic conflict. Both design and behavior differ.
 function DirectLinkCard({ serviceId, serviceName }: { serviceId: string | null; serviceName: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -857,12 +863,14 @@ function DirectLinkCard({ serviceId, serviceName }: { serviceId: string | null; 
     </div>
   );
 }
+// hint: Renamed and reformatted. Prefer the structural change, verify formatting.
 
 // ── 5. Marketplace card (per-listing) ────────────────────────────────────────────────────────
 //
 // Honest live/blocked state from GET /api/provider/services/:id/publish-readiness. Blocked
 // listings show the real blocker(s) + deep-link to fix (§13), never an optimistic "ready".
 // Blocker severity: VERIFICATION_GATE → error (red ✕); everything else → warn (amber ⚠).
+// hint: Structural and logic conflict. Both design and behavior differ.
 function MarketplaceCard({ serviceId }: { serviceId: string | null }) {
   const readiness = useQuery<PublishReadiness>({
     queryKey: [`/api/provider/services/${serviceId}/publish-readiness`],
@@ -1131,6 +1139,7 @@ function PromoOppRow({ o, onDismiss }: { o: PostingOpportunity; onDismiss: () =>
 // Real posting nudges tied to reviews and open slots (§13 — no invented opportunities).
 // Each card: TagChip · urgency · listing · Dismiss | title | body | ready-to-post caption |
 // Copy + WhatsApp + X + Instagram. Measurement stays on Performance (ruling 74 disposition 8).
+// hint: Structural and logic conflict. Both design and behavior differ.
 function PromoteCard({ onSelectService: _onSelectService }: { onSelectService: (serviceId: string) => void }) {
   const oppsQuery = useQuery<{ opportunities: PostingOpportunity[] }>({
     queryKey: ["/api/me/posting-opportunities"],
@@ -1179,6 +1188,7 @@ function PromoteCard({ onSelectService: _onSelectService }: { onSelectService: (
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────────────────────
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function ProviderDistribute() {
   const { data: services, isLoading: servicesLoading } = useQuery<OwnerService[]>({
     queryKey: ["/api/provider/services"],

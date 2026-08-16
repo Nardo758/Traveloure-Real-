@@ -5955,6 +5955,84 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     },
   );
 
+  // Cover photo upload for provider services.
+  // Owner-gated (same ownership check as POST/PATCH /api/provider/services). Accepts JPEG/PNG
+  // only, validated by magic bytes (client Content-Type is NOT trusted). Stores in object storage
+  // under covers/<serviceId>/<random>.{jpg|png}, writes the URL back to provider_services.imageUrl,
+  // and returns the URL to the client for immediate preview in the wizard. Previous managed cover
+  // is deleted best-effort. No multipart — `express.raw()` scoped to this route only, identical
+  // to the deliverable-file pattern above.
+  const COVER_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+  const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+  const PNG_MAGIC  = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // \x89PNG
+
+  app.post(
+    "/api/provider/services/:id/cover-photo",
+    isAuthenticated,
+    express.raw({ type: ["image/jpeg", "image/png", "application/octet-stream"], limit: "5mb" }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        const service = await storage.getProviderServiceById(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({
+            message: "Send the image as a raw request body with Content-Type: image/jpeg or image/png",
+            code: "COVER_PHOTO_REQUIRED",
+          });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > COVER_MAX_BYTES) {
+          return res.status(400).json({
+            message: "Image exceeds the 5 MB size limit",
+            code: "COVER_PHOTO_TOO_LARGE",
+          });
+        }
+        // Detect format from magic bytes — never trust client Content-Type alone.
+        let ext: string;
+        if (buffer.subarray(0, 3).equals(JPEG_MAGIC)) {
+          ext = "jpg";
+        } else if (buffer.subarray(0, 4).equals(PNG_MAGIC)) {
+          ext = "png";
+        } else {
+          return res.status(400).json({
+            message: "Only JPEG and PNG images are accepted",
+            code: "COVER_PHOTO_INVALID_FORMAT",
+          });
+        }
+
+        const key = `covers/${service.id}/${randomBytes(16).toString("hex")}.${ext}`;
+        const { uploadBuffer, deleteObject } = await import("./infrastructure/object-storage");
+        let imageUrl: string;
+        try {
+          imageUrl = await uploadBuffer(key, buffer);
+        } catch (storageErr) {
+          console.error("Cover photo upload failed:", storageErr);
+          return res.status(503).json({
+            message: "Object storage is not available right now. Try again shortly.",
+            code: "OBJECT_STORAGE_UNAVAILABLE",
+          });
+        }
+
+        // Best-effort cleanup of the previous cover object, if any.
+        const GCS_PREFIX = "https://storage.googleapis.com/";
+        const prevUrl = (service.imageUrl ?? "").trim();
+        if (prevUrl.startsWith(GCS_PREFIX) && prevUrl.includes("/covers/")) {
+          const prevKey = decodeURIComponent(prevUrl.slice(GCS_PREFIX.length).split("/").slice(1).join("/"));
+          deleteObject(prevKey).catch(() => {});
+        }
+
+        await storage.updateProviderService(service.id, { imageUrl });
+        res.json({ message: "Cover photo uploaded", imageUrl });
+      } catch (err) {
+        console.error("Cover photo upload error:", err);
+        res.status(500).json({ message: "Failed to upload cover photo" });
+      }
+    },
+  );
+
   // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
   // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
   // state (§14 posture, extended to this non-money reveal because the asset itself is the
