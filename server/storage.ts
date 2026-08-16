@@ -3166,11 +3166,12 @@ export class DatabaseStorage implements IStorage {
       const where = matchCondition ? and(...baseConditions, matchCondition) : and(...baseConditions);
       const [{ value: cnt }] = await db.select({ value: count() }).from(providerServices).where(where);
       if (cnt === 0) return 0;
-      pageServices = await db.select().from(providerServices)
+      const rawPage = await db.select().from(providerServices)
         .where(where)
         .orderBy(...sortOrder(relevance))
         .limit(limit)
         .offset(offset);
+      pageServices = rawPage.map(DatabaseStorage.normalizeServiceImage);
       return cnt;
     };
 
@@ -7280,17 +7281,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCartItemsWithServices(userId: string): Promise<Array<{ cartItem: any; service: any | null }>> {
-    return await db.select({ cartItem: cartItems, service: providerServices })
+    const rows = await db.select({ cartItem: cartItems, service: providerServices })
       .from(cartItems)
       .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
       .where(eq(cartItems.userId, userId));
+    return rows.map(r => ({
+      ...r,
+      service: r.service ? DatabaseStorage.normalizeServiceImage(r.service) : null,
+    }));
   }
 
   async getActiveProviderServices(limit = 100): Promise<any[]> {
     // F2 public read-gate: these listings are offered to users (trip-builder / discover feed) — approved only.
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(and(eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")))
       .limit(limit);
+    return rows.map(DatabaseStorage.normalizeServiceImage);
   }
 
   async getComparisonsByUserId(userId: string): Promise<any[]> {
