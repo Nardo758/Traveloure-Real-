@@ -120,15 +120,17 @@ export async function updateUserRole(
   role: string,
   actor: { actorId: string; actorRole: string; reason?: string },
 ) {
-  // Capture the old role before overwriting so the audit record is complete.
-  const [current] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-  const oldRole = current?.role ?? null;
+  // ATOMIC: role update and audit insert commit or roll back together.
+  // A role change without an audit record must never be possible — if the
+  // audit insert fails, the transaction aborts and the role stays unchanged.
+  await db.transaction(async (tx) => {
+    // Capture the old role before overwriting so the audit record is complete.
+    const [current] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    const oldRole = current?.role ?? null;
 
-  await db.update(users).set({ role }).where(eq(users.id, userId));
+    await tx.update(users).set({ role }).where(eq(users.id, userId));
 
-  // Write audit record — swallow errors so the caller is never blocked.
-  try {
-    await db.insert(accessAuditLogs).values({
+    await tx.insert(accessAuditLogs).values({
       actorId: actor.actorId,
       actorRole: actor.actorRole,
       action: "role_change",
@@ -141,9 +143,7 @@ export async function updateUserRole(
         reason: actor.reason ?? null,
       },
     } as any);
-  } catch (err) {
-    console.error("[audit] Failed to write role-change audit log:", err);
-  }
+  });
 }
 
 export async function getUserVerificationStatus(userId: string) {

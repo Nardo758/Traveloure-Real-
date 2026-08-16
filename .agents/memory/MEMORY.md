@@ -30,4 +30,5 @@
 - [Provider console verification quirks](provider-console-verification.md) — zone fee popups are click-only; catalog pill reads status not approval_status; edit-split injection guard confirmed.
 - [Message write-path convergence](message-write-paths.md) — user↔user messages have 3 write paths (POST /api/messages, POST /api/chats, /ws chat); guards must go in shared code (storage.createChat / insertUserAndExpertChatSchema) or paths diverge silently.
 - [Realtime message delivery](realtime-message-delivery.md) — only ws-path sends live-push to open recipients; HTTP sends are invisible until reload; thread renders from refetched chats, not realtimeMessages.
+- [Role-change audit atomicity](role-change-audit-atomicity.md) — role flips + audit insert share one transaction and throw on failure; audit table id has no DB default; actor_id FK is the rollback-test vector.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
