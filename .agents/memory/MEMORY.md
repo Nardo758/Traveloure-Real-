@@ -33,3 +33,4 @@
 - [Role-change audit atomicity](role-change-audit-atomicity.md) — role flips + audit insert share one transaction and throw on failure; audit table id has no DB default; actor_id FK is the rollback-test vector.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
 - [Conformance walk-through evidence](conformance-walkthrough-evidence.md) — first-pass DIVERGES are usually data gaps (materializer, ruling-gated features); review rejects duplicate screenshots and unordered API evidence.
+- [Trend Engine Phase 0 decisions](trend-engine-phase0.md) — R4 hotfix shipped; 8 operating markets; activeTravelers blocks republish at 4 surfaces; SerpAPI dropped per R5; DECISIONS.md is the ruling ledger.
