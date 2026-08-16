@@ -202,9 +202,9 @@ export function evaluateMoneySecretPresence(env: NodeJS.ProcessEnv): SecretPrese
   const present: Record<string, boolean> = {};
   for (const key of MONEY_CRITICAL_VARS) present[key] = !!env[key];
   for (const key of INFORMATIONAL_VARS) present[key] = !!env[key];
-  // Track the test key and the effective key separately so the diagnostic
-  // accurately reflects whether Stripe is configured when only the test key is set.
-  const effectiveStripeKey = env.STRIPE_SECRET_KEY_TEST ?? env.STRIPE_SECRET_KEY;
+  // Track the test key and the effective key using the central resolver so H2's
+  // reported webhook-gap result always matches what the Stripe clients actually use.
+  const effectiveStripeKey = getStripeSecretKey(env);
   present["STRIPE_SECRET_KEY_TEST"] = !!env.STRIPE_SECRET_KEY_TEST;
   present["_effective_stripe_key"] = !!effectiveStripeKey;
 

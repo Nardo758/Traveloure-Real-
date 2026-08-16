@@ -15,10 +15,15 @@ import {
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
 
 // Phase 5: memoized getter — defers loadStripe until first render of a checkout surface.
+// Key selection mirrors the server resolver: in dev, prefer the TEST publishable key so the
+// client key always matches the server's effective secret key (STRIPE_SECRET_KEY_TEST).
+const _stripePublishableKey = import.meta.env.DEV
+  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
+  : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 const getStripePromise = () => {
   if (!_stripePromise) {
-    _stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+    _stripePromise = loadStripe(_stripePublishableKey);
   }
   return _stripePromise;
 };
