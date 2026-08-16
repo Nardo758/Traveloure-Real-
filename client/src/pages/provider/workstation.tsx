@@ -483,86 +483,9 @@ export default function ProviderWorkstation() {
     queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
   };
 
-  const [propertyBuilderOpen, setPropertyBuilderOpen] = useState(false);
-  // S-2 (ledger 2026-08-16-console-sweep): the mock's property builder is a step ladder that
-  // ENDS in Review — "1. The property · 2. Rooms · 3. Review" — where the service lane already
-  // ends in "Review & submit". Same fields, same one POST; the steps only sequence them and put
-  // a read-back between the provider and Submit.
-  type PropertyBuilderStep = "property" | "rooms" | "review";
-  const [propertyBuilderStep, setPropertyBuilderStep] = useState<PropertyBuilderStep>("property");
-  const [propName, setPropName] = useState("");
-  const [propDescription, setPropDescription] = useState("");
-  const [propLocation, setPropLocation] = useState("");
-  // L27-P3: the confirmed map point for the property (null = no pin placed). Sent only
-  // when set; the server derives `location_precision='exact'` from a confirmed point and
-  // never from a typed address (§13).
-  const [propPoint, setPropPoint] = useState<LocationPoint | null>(null);
-  const [roomDrafts, setRoomDrafts] = useState<RoomDraft[]>([
-    { key: "r0", roomName: "", price: "", units: "" },
-  ]);
+  // Property create flow lives at /provider/properties/new (PropertyCreate page).
+  // This workstation retains only the editor dialog for existing properties.
   const [propertyDeleteTarget, setPropertyDeleteTarget] = useState<Property | null>(null);
-
-  function openPropertyCreate() {
-    setPropName("");
-    setPropDescription("");
-    setPropLocation("");
-    setPropPoint(null);
-    setRoomDrafts([{ key: `r${Date.now()}`, roomName: "", price: "", units: "" }]);
-    setPropertyBuilderStep("property");
-    setPropertyBuilderOpen(true);
-  }
-  function addRoomDraft() {
-    setRoomDrafts((prev) => [...prev, { key: `r${Date.now()}-${prev.length}`, roomName: "", price: "", units: "" }]);
-  }
-  function removeRoomDraft(key: string) {
-    setRoomDrafts((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
-  }
-  function updateRoomDraft(key: string, patch: Partial<RoomDraft>) {
-    setRoomDrafts((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  }
-
-  const roomDraftsValid =
-    roomDrafts.length > 0 &&
-    roomDrafts.every((r) => {
-      const p = parseFloat(r.price);
-      return r.roomName.trim().length > 0 && Number.isFinite(p) && p > 0;
-    });
-  const propertyFormValid = propName.trim().length > 0 && roomDraftsValid;
-
-  const createPropertyMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/provider/properties", {
-        serviceName: propName.trim(),
-        description: propDescription.trim() || undefined,
-        location: propLocation.trim() || undefined,
-        // Only a confirmed pin travels; omitted otherwise (no coordinates written).
-        ...(propPoint ? { locationPoint: propPoint } : {}),
-        rooms: roomDrafts.map((r) => ({
-          roomName: r.roomName.trim(),
-          price: r.price,
-          ...(r.units.trim() ? { units: parseInt(r.units, 10) } : {}),
-        })),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidatePropertyQueries();
-      setPropertyBuilderOpen(false);
-      // D1a honesty: born `submitted`, not live.
-      toast({
-        title: "Property submitted for review",
-        description:
-          "It appears in your Catalog and goes live once approved. Publish night availability on each room next.",
-      });
-    },
-    onError: (err) => {
-      toast({
-        title: "Could not create property",
-        description: parseApiErrorMessage(err, "Please check the fields and try again."),
-        variant: "destructive",
-      });
-    },
-  });
 
   const propertyStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: "active" | "paused" }) => {
@@ -1119,16 +1042,18 @@ export default function ProviderWorkstation() {
               </div>
             )}
 
-            {/* Rung 3 — property: fully live (S8/FP-3 closed the spec gap) */}
-            <button type="button" onClick={openPropertyCreate} className="ws-doortile ws-doortile-btn" data-testid="card-ladder-property">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
-                <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
-                <path d="M10 21v-6h4v6" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
-              </svg>
-              <h4>Property</h4>
-              <p>A room, apartment or house with per-night pricing and room availability.</p>
-              <span className="ws-cta" data-testid="button-ladder-new-property">Start a property →</span>
-            </button>
+            {/* Rung 3 — property: full stepped page at /provider/properties/new */}
+            <Link href="/provider/properties/new">
+              <div className="ws-doortile" data-testid="card-ladder-property">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                  <path d="M10 21v-6h4v6" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                </svg>
+                <h4>Property</h4>
+                <p>A room, apartment or house with per-night pricing and room availability.</p>
+                <span className="ws-cta" data-testid="button-ladder-new-property">Start a property →</span>
+              </div>
+            </Link>
           </div>
 
           <div className="ws-divider" />
@@ -1377,9 +1302,11 @@ export default function ProviderWorkstation() {
               title="No properties yet"
               body="Add an accommodation with one or more room types, each priced per night — it goes through review before it sells."
               cta={
-                <Button size="sm" onClick={openPropertyCreate} data-testid="button-empty-new-property">
-                  <Plus className="w-4 h-4 mr-1.5" /> New property
-                </Button>
+                <Link href="/provider/properties/new">
+                  <Button size="sm" data-testid="button-empty-new-property">
+                    <Plus className="w-4 h-4 mr-1.5" /> New property
+                  </Button>
+                </Link>
               }
               testId="empty-workstation-properties"
             />
@@ -1575,285 +1502,7 @@ export default function ProviderWorkstation() {
           )}
         </section>
 
-        {/* ── Property builder dialog (create) ──────────────────────────────────── */}
-        <Dialog open={propertyBuilderOpen} onOpenChange={(open) => !open && setPropertyBuilderOpen(false)}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-property-builder">
-            <DialogHeader>
-              <DialogTitle>New property</DialogTitle>
-              <DialogDescription>
-                Add the property and at least one room type. Both are reviewed before they sell;
-                night availability is set up separately once the property is created.
-              </DialogDescription>
-            </DialogHeader>
-
-            {/* S-2: the mock's step ladder — 1. The property · 2. Rooms · 3. Review. Forward
-                tabs gate on the same validity the footer buttons use; every field keeps its
-                testid (the steps sequence the form, they don't change it). */}
-            <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
-              {(
-                [
-                  { key: "property", label: "1. The property", enabled: true },
-                  { key: "rooms", label: "2. Rooms", enabled: propName.trim().length > 0 },
-                  { key: "review", label: "3. Review", enabled: propertyFormValid },
-                ] as const
-              ).map((step) => (
-                <button
-                  key={step.key}
-                  type="button"
-                  disabled={!step.enabled}
-                  onClick={() => setPropertyBuilderStep(step.key)}
-                  aria-pressed={propertyBuilderStep === step.key}
-                  className={
-                    "px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
-                    (propertyBuilderStep === step.key
-                      ? "bg-console-dark text-white"
-                      : "bg-white text-console-mid hover:bg-console-light/40")
-                  }
-                  data-testid={`tab-property-builder-${step.key}`}
-                >
-                  {step.label}
-                </button>
-              ))}
-            </div>
-
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (propertyBuilderStep !== "review" || !propertyFormValid || createPropertyMutation.isPending) return;
-                createPropertyMutation.mutate();
-              }}
-            >
-              <div className="space-y-4" hidden={propertyBuilderStep !== "property"}>
-              <div>
-                <Label htmlFor="property-name" className="text-sm">
-                  Property name
-                </Label>
-                <Input
-                  id="property-name"
-                  value={propName}
-                  onChange={(e) => setPropName(e.target.value)}
-                  maxLength={255}
-                  required
-                  placeholder="e.g. Machiya Guesthouse Kyoto"
-                  data-testid="input-property-name"
-                />
-              </div>
-              <div>
-                <Label htmlFor="property-location" className="text-sm">
-                  Location (optional)
-                </Label>
-                <Input
-                  id="property-location"
-                  value={propLocation}
-                  onChange={(e) => setPropLocation(e.target.value)}
-                  maxLength={255}
-                  placeholder="e.g. Higashiyama, Kyoto"
-                  data-testid="input-property-location"
-                />
-              </div>
-
-              {/* L27-P3: optional precise pin for the property. Rooms inherit it (they sit
-                  at the same address). Renders nothing when no Maps key is configured. */}
-              <LocationPointPicker
-                value={propPoint}
-                // Create dialog: nothing is stored yet, so there is no row precision to
-                // report — the picker labels a fresh confirm as "Pin placed", not
-                // "confirmed on the listing" (§13: don't claim saved state before saving).
-                precision={null}
-                addressHint={propLocation}
-                onChange={setPropPoint}
-                label="Pin the property on the map (optional)"
-                helpText="Confirming a pin places this property — and its rooms — accurately on planning maps."
-                idPrefix="property-location"
-              />
-
-              <div>
-                <Label htmlFor="property-description" className="text-sm">
-                  Description (optional)
-                </Label>
-                <Textarea
-                  id="property-description"
-                  value={propDescription}
-                  onChange={(e) => setPropDescription(e.target.value)}
-                  rows={3}
-                  placeholder="What makes this property worth staying at."
-                  data-testid="input-property-description"
-                />
-              </div>
-              </div>
-
-              <div hidden={propertyBuilderStep !== "rooms"}>
-                <Label className="text-sm">Room types (at least 1)</Label>
-                <div className="mt-2 space-y-3">
-                  {roomDrafts.map((draft, idx) => (
-                    <div
-                      key={draft.key}
-                      className="rounded-lg border border-console-light p-3 space-y-2"
-                      data-testid={`row-room-draft-${idx}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-console-mid">Room {idx + 1}</span>
-                        {roomDrafts.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={() => removeRoomDraft(draft.key)}
-                            data-testid={`button-remove-room-draft-${idx}`}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                      <Input
-                        value={draft.roomName}
-                        onChange={(e) => updateRoomDraft(draft.key, { roomName: e.target.value })}
-                        maxLength={255}
-                        placeholder="Room name, e.g. Garden View Double"
-                        data-testid={`input-room-draft-name-${idx}`}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={draft.price}
-                          onChange={(e) => updateRoomDraft(draft.key, { price: e.target.value })}
-                          placeholder="Price / night"
-                          data-testid={`input-room-draft-price-${idx}`}
-                        />
-                        <Input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={draft.units}
-                          onChange={(e) => updateRoomDraft(draft.key, { units: e.target.value })}
-                          placeholder="Units (optional)"
-                          data-testid={`input-room-draft-units-${idx}`}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={addRoomDraft}
-                  data-testid="button-add-room-draft"
-                >
-                  <Plus className="w-4 h-4 mr-1.5" /> Add another room type
-                </Button>
-                <p className="text-xs text-console-mid mt-1">
-                  Units is descriptive only — the real per-night capacity is set when you
-                  publish night availability after creating the property.
-                </p>
-              </div>
-
-              {/* S-2: the Review step — a read-back of exactly what one Submit will send,
-                  before it is sent. Derived from the same draft state, nothing re-asked. */}
-              {propertyBuilderStep === "review" && (
-                <div className="space-y-3" data-testid="property-builder-review">
-                  <div className="rounded-lg border border-console-light divide-y divide-console-light text-sm">
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Property</span>
-                      <span className="font-medium" data-testid="text-review-property-name">{propName.trim() || "—"}</span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Location</span>
-                      <span data-testid="text-review-property-location">{propLocation.trim() || "Not set"}</span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Map pin</span>
-                      <span data-testid="text-review-property-pin">
-                        {propPoint ? "Pin placed" : "Not placed — optional"}
-                      </span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Description</span>
-                      <span className="min-w-0 break-words" data-testid="text-review-property-description">
-                        {propDescription.trim() || "Not set"}
-                      </span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">
-                        Rooms ({roomDrafts.length})
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        {roomDrafts.map((r, idx) => (
-                          <span key={r.key} className="block" data-testid={`text-review-room-${idx}`}>
-                            {r.roomName.trim() || `Room ${idx + 1}`} · ${r.price || "?"} / night
-                            {r.units.trim() ? ` · ${r.units} unit${r.units.trim() === "1" ? "" : "s"}` : ""}
-                          </span>
-                        ))}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-console-mid">
-                    The property and each room are reviewed before they sell (born submitted, never
-                    live on save). Night availability is published afterwards on Catalog →
-                    Availability — nothing is bookable until it exists.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPropertyBuilderOpen(false)}
-                  data-testid="button-property-cancel"
-                >
-                  Cancel
-                </Button>
-                {propertyBuilderStep !== "property" && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      setPropertyBuilderStep(propertyBuilderStep === "review" ? "rooms" : "property")
-                    }
-                    data-testid="button-property-back"
-                  >
-                    ← Back
-                  </Button>
-                )}
-                {propertyBuilderStep === "property" && (
-                  <Button
-                    type="button"
-                    disabled={propName.trim().length === 0}
-                    onClick={() => setPropertyBuilderStep("rooms")}
-                    data-testid="button-property-next"
-                  >
-                    Next: Rooms →
-                  </Button>
-                )}
-                {propertyBuilderStep === "rooms" && (
-                  <Button
-                    type="button"
-                    disabled={!propertyFormValid}
-                    onClick={() => setPropertyBuilderStep("review")}
-                    data-testid="button-property-next"
-                  >
-                    Next: Review →
-                  </Button>
-                )}
-                {propertyBuilderStep === "review" && (
-                  <Button
-                    type="submit"
-                    disabled={!propertyFormValid || createPropertyMutation.isPending}
-                    data-testid="button-property-submit"
-                  >
-                    {createPropertyMutation.isPending ? "Saving…" : "Submit for review"}
-                  </Button>
-                )}
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Property create → /provider/properties/new (PropertyCreate page). */}
 
         {/* ── FP-3: property editor (Basics + Rooms) ────────────────────────────── */}
         <Dialog
