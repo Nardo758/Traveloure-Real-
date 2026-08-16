@@ -567,13 +567,26 @@ Return JSON:
   // ============================================
 
   async getTrendingCities(limit: number = 20): Promise<TravelPulseCity[]> {
-    const cities = await db
+    // Fetch more rows than needed so deduplication doesn't shrink below the
+    // requested limit if duplicates are present.
+    const rows = await db
       .select()
       .from(travelPulseCities)
-      .orderBy(desc(travelPulseCities.pulseScore))
-      .limit(limit);
+      .orderBy(desc(travelPulseCities.pulseScore));
 
-    return cities;
+    // Deduplicate by (lower city_name, lower country), keeping the first
+    // occurrence which has the highest pulse_score after the ORDER BY above.
+    const seen = new Set<string>();
+    const deduped: TravelPulseCity[] = [];
+    for (const city of rows) {
+      const key = `${city.cityName.toLowerCase()}|${city.country.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(city);
+        if (deduped.length >= limit) break;
+      }
+    }
+    return deduped;
   }
 
   async getCityByName(cityName: string): Promise<TravelPulseCity | null> {
@@ -992,7 +1005,22 @@ Return JSON:
     ];
 
     for (const city of cities) {
-      await db.insert(travelPulseCities).values(city);
+      // Guard: only insert if no row already exists for this (city_name, country) pair.
+      // This prevents duplicate rows when seedTrendingCities() runs alongside the
+      // JSON-based seedTravelPulseData() path.
+      const [existing] = await db
+        .select({ id: travelPulseCities.id })
+        .from(travelPulseCities)
+        .where(
+          and(
+            eq(travelPulseCities.cityName, city.cityName),
+            eq(travelPulseCities.country, city.country)
+          )
+        )
+        .limit(1);
+      if (!existing) {
+        await db.insert(travelPulseCities).values(city);
+      }
     }
 
     console.log(`Seeded ${cities.length} trending cities`);
