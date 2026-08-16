@@ -211,3 +211,11 @@ All three licensed adapters are stubs. Enable only after:
 Grep gate: `updateCityWithAI` / `grokService` appear in scheduler only as comments (2 occurrences, both comments).
 
 tsc: 171 (no new errors vs post-rebase baseline).
+
+### Phase 2.0 amendment — BestTime credential confirmed
+
+`BESTTIME_API_KEY` 36-char `pri_` key IS the valid api_key_private. Initial assumption of 64+ chars was wrong. Both BestTime APIs confirmed working in live tests:
+- `POST /api/v1/forecasts` → 200 (Fushimi Inari Taisha, Kyoto)
+- `POST /api/v1/forecasts/live` → 200 (live_busyness: 5, forecasted: 10)
+
+BestTime adapter rebuilt as fully functional (committed). Enable in trend_source_config when monthly_cost_ceiling is confirmed.
