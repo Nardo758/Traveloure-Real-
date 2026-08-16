@@ -8766,3 +8766,126 @@ export const messageReports = pgTable("message_reports", {
 ]);
 export type MessageReport = typeof messageReports.$inferSelect;
 export type InsertMessageReport = typeof messageReports.$inferInsert;
+
+// =============================================================================
+// TREND + CROWD ENGINE — Phase 1 (schema + config, no ingestion yet)
+// =============================================================================
+
+// trend_entities — resolution layer mapping internal PKs to external source IDs.
+// internal_id is a polymorphic reference to the PK of the entity's own table
+// (city_neighborhoods.id for entity_type='neighborhood', etc.); no DB FK by design.
+// UNIQUE(entity_type, internal_id) is the dedup guard.
+export const trendEntities = pgTable("trend_entities", {
+  id:               varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  entityType:       varchar("entity_type", { length: 30 }).notNull(), // market|neighborhood|gem|place_type|offering_type
+  internalId:       text("internal_id").notNull(),
+  wikidataQid:      text("wikidata_qid"),
+  googlePlaceId:    text("google_place_id"),
+  wikipediaTitle:   text("wikipedia_title"),
+  besttimeVenueId:  text("besttime_venue_id"),       // v1.1: crowd anchor mapping per L12
+  xHandleOrQuery:   text("x_handle_or_query"),       // X/Twitter resolution key (Phase 2 adapter)
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  unique("trend_entities_type_internal_unique").on(table.entityType, table.internalId),
+  index("trend_entities_entity_type_idx").on(table.entityType),
+  index("trend_entities_internal_id_idx").on(table.internalId),
+]);
+export type TrendEntity = typeof trendEntities.$inferSelect;
+export type InsertTrendEntity = typeof trendEntities.$inferInsert;
+
+// trend_signals — append-only event log.
+// NEVER UPDATE. NEVER DELETE. Adapters insert; resolver reads.
+// resale_class: first_party | licensed_no_resale | open_license — NOT NULL, NO DEFAULT.
+// Each adapter must declare its class explicitly from trend_source_config.
+// surface_origin: set when signal originates from a trend/crowd surface (excluded from scoring per L8).
+export const trendSignals = pgTable("trend_signals", {
+  id:             varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trendEntityId:  text("trend_entity_id").notNull().references(() => trendEntities.id, { onDelete: "cascade" }),
+  source:         text("source").notNull(),           // references trend_source_config.source
+  metric:         varchar("metric", { length: 60 }).notNull(),
+  value:          decimal("value").notNull(),
+  observedAt:     timestamp("observed_at").notNull(),
+  ingestedAt:     timestamp("ingested_at").defaultNow().notNull(),
+  resaleClass:    varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — adapter declares explicitly
+  surfaceOrigin:  text("surface_origin"),             // non-null → excluded from scoring (L8)
+  rawRef:         jsonb("raw_ref"),
+}, (table) => [
+  index("trend_signals_entity_idx").on(table.trendEntityId),
+  index("trend_signals_source_idx").on(table.source),
+  index("trend_signals_observed_at_idx").on(table.observedAt),
+  index("trend_signals_entity_metric_idx").on(table.trendEntityId, table.metric, table.observedAt),
+]);
+export type TrendSignal = typeof trendSignals.$inferSelect;
+export type InsertTrendSignal = typeof trendSignals.$inferInsert;
+
+// trend_source_config — admin-editable, one row per source, no deploy needed.
+// monthly_cost_ceiling: ingestion halts and alerts when cumulative cost hits ceiling (L5).
+// resale_class NOT NULL, NO DEFAULT — each source row must declare explicitly.
+export const trendSourceConfig = pgTable("trend_source_config", {
+  source:               text("source").primaryKey(),
+  enabled:              boolean("enabled").notNull().default(false),
+  decayHalfLifeDays:    decimal("decay_half_life_days", { precision: 6, scale: 2 }),
+  weight:               decimal("weight", { precision: 6, scale: 4 }),
+  monthlyCostCeiling:   decimal("monthly_cost_ceiling", { precision: 10, scale: 2 }),
+  resaleClass:          varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — each row explicit
+  notes:                text("notes"),
+  createdAt:            timestamp("created_at").defaultNow().notNull(),
+  updatedAt:            timestamp("updated_at").defaultNow().notNull(),
+});
+export type TrendSourceConfig = typeof trendSourceConfig.$inferSelect;
+export type InsertTrendSourceConfig = typeof trendSourceConfig.$inferInsert;
+
+// market_season_calendars — static seed per L3.
+// start_month_day / end_month_day = 'MM-DD'; wraps year-end when end < start.
+// weather_anomaly_adjust: STUB column — no logic reads it in v1 (L3 deferred).
+export const marketSeasonCalendars = pgTable("market_season_calendars", {
+  id:                       varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  marketKey:                varchar("market_key", { length: 40 }).notNull(),
+  seasonKey:                varchar("season_key", { length: 40 }).notNull(),
+  displayName:              varchar("display_name", { length: 100 }).notNull(),
+  startMonthDay:            varchar("start_month_day", { length: 5 }).notNull(),  // 'MM-DD'
+  endMonthDay:              varchar("end_month_day", { length: 5 }).notNull(),    // 'MM-DD'
+  expectedDemandMultiplier: decimal("expected_demand_multiplier", { precision: 5, scale: 3 }).notNull(),
+  weatherAnomalyAdjust:     decimal("weather_anomaly_adjust", { precision: 5, scale: 3 }), // STUB — v1 scorer never reads this
+}, (table) => [
+  unique("market_season_calendars_market_season_unique").on(table.marketKey, table.seasonKey),
+  index("market_season_calendars_market_idx").on(table.marketKey),
+]);
+export type MarketSeasonCalendar = typeof marketSeasonCalendars.$inferSelect;
+export type InsertMarketSeasonCalendar = typeof marketSeasonCalendars.$inferInsert;
+
+// crowd_band_config — per-entity-type band cutoffs, admin-editable (v1.1).
+// lower_bound_vs_baseline: entity's own-baseline multiple at which this band begins.
+// Four bands: low | moderate | high | peak.
+// Cutoffs are relative to each entity's own 90-day trailing baseline (L2/L9).
+export const crowdBandConfig = pgTable("crowd_band_config", {
+  entityType:             varchar("entity_type", { length: 30 }).notNull(),
+  band:                   varchar("band", { length: 10 }).notNull(), // low|moderate|high|peak
+  lowerBoundVsBaseline:   decimal("lower_bound_vs_baseline", { precision: 6, scale: 3 }).notNull(),
+}, (table) => [
+  unique("crowd_band_config_type_band_unique").on(table.entityType, table.band),
+]);
+export type CrowdBandConfig = typeof crowdBandConfig.$inferSelect;
+export type InsertCrowdBandConfig = typeof crowdBandConfig.$inferInsert;
+
+// trend_scores — materialized resolver output. One row per entity. Rewritten each scoring run.
+// crowd_band null = entity is below confidence floor (L9) — must not appear on any surface.
+// contributing_sources: jsonb array of source keys that fed this score.
+// scoring_run_id: for reproducibility; identical inputs must reproduce identical outputs (Phase 4 gate).
+export const trendScores = pgTable("trend_scores", {
+  trendEntityId:        text("trend_entity_id").primaryKey().references(() => trendEntities.id, { onDelete: "cascade" }),
+  trendScore:           decimal("trend_score", { precision: 6, scale: 3 }),
+  trendConfidence:      decimal("trend_confidence", { precision: 5, scale: 4 }),
+  crowdBand:            text("crowd_band"),           // low|moderate|high|peak — null = below floor
+  crowdConfidence:      decimal("crowd_confidence", { precision: 5, scale: 4 }),
+  contributingSources:  jsonb("contributing_sources").notNull().default(sql`'[]'::jsonb`),
+  whyText:              text("why_text"),
+  crowdWhy:             text("crowd_why"),
+  seasonalExpected:     decimal("seasonal_expected", { precision: 6, scale: 3 }),
+  computedAt:           timestamp("computed_at").defaultNow().notNull(),
+  scoringRunId:         text("scoring_run_id").notNull(),
+}, (table) => [
+  index("trend_scores_computed_at_idx").on(table.computedAt),
+  index("trend_scores_run_idx").on(table.scoringRunId),
+]);
