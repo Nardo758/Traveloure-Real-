@@ -6018,13 +6018,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         // Best-effort cleanup of the previous cover object, if any.
         const GCS_PREFIX = "https://storage.googleapis.com/";
-        const prevUrl = (service.imageUrl ?? "").trim();
+        const prevUrl = (service.serviceImage ?? "").trim();
         if (prevUrl.startsWith(GCS_PREFIX) && prevUrl.includes("/covers/")) {
           const prevKey = decodeURIComponent(prevUrl.slice(GCS_PREFIX.length).split("/").slice(1).join("/"));
           deleteObject(prevKey).catch(() => {});
         }
 
-        await storage.updateProviderService(service.id, { imageUrl });
+        await storage.updateProviderService(service.id, { serviceImage: imageUrl });
         res.json({ message: "Cover photo uploaded", imageUrl });
       } catch (err) {
         console.error("Cover photo upload error:", err);
