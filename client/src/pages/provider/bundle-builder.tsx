@@ -95,6 +95,7 @@ const inp: React.CSSProperties = {
 };
 
 // ── page ──────────────────────────────────────────────────────────────────────
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export default function ProviderBundleBuilder() {
   const [, navigate] = useLocation();
   const { toast } = useToast();

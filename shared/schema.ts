@@ -937,6 +937,12 @@ export const providerServices = pgTable("provider_services", {
   pendingChanges: jsonb("pending_changes").$type<Record<string, unknown>>(),
   editReviewStatus: varchar("edit_review_status"),
 
+  // Logistics — pickup intent (migration 238). Provider's declared intent to collect travelers
+  // and return them at the end. Additive boolean, default false. NULL-safe: false = not offered,
+  // true = offered. No DB CHECK — additive-nullable posture (migration-195 convention).
+  // Captured only; no transport resolver reads it yet.
+  collectsAndDrops: boolean("collects_and_drops").default(false),
+
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
   // NULL when unresolvable (NULL is the honest state — no city-center fallback). NOT read by the

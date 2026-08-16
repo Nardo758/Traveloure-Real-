@@ -367,9 +367,7 @@ export default function ProviderListingHome() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/provider/services/${serviceId}`, {
-        approvalStatus: "submitted",
-      });
+      const res = await apiRequest("POST", `/api/provider/services/${serviceId}/submit`);
       return res.json();
     },
     onSuccess: () => {
