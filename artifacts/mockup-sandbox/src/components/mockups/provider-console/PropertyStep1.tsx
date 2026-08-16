@@ -192,6 +192,33 @@ export function PropertyStep1() {
         </div>
       </div>
 
+      {/* ── Amenities (property-level) ── */}
+      <div style={{ background: PAPER, border: `1px solid ${HAIR}`, borderRadius: 8, padding: "18px 20px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: MUT, textTransform: "uppercase" as const, letterSpacing: "0.07em", margin: 0 }}>Amenities</p>
+          <span style={{ fontSize: 11.5, color: MUT }}>6 selected</span>
+        </div>
+        <p style={{ fontSize: 11.5, color: MUT, margin: "0 0 12px", lineHeight: 1.5 }}>
+          Amenities belong to the property — every room inherits them. They appear in search filters, so untagged properties are less discoverable.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+          {[
+            ["📶", "Wi-Fi", true], ["❄️", "Air conditioning", true], ["🛁", "Private bath", true], ["🧺", "Washer", false],
+            ["🍳", "Kitchen", true], ["🌸", "Garden", true], ["🚭", "Non-smoking", true], ["🅿️", "Parking", false],
+            ["🔥", "Heating", false], ["🧴", "Toiletries", false], ["🛗", "Elevator", false], ["♿", "Step-free access", false],
+          ].map(([icon, label, on]) => (
+            <div key={label as string} style={{
+              display: "flex", alignItems: "center", gap: 7, borderRadius: 6, padding: "8px 10px", cursor: "pointer",
+              border: on ? `1.5px solid ${ACC}` : `1px solid ${HAIR}`,
+              background: on ? "#EDF2F1" : PAPER,
+            }}>
+              <span style={{ fontSize: 13 }}>{icon}</span>
+              <span style={{ fontSize: 11.5, fontWeight: on ? 600 : 400, color: on ? ACC : INK, lineHeight: 1.25 }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ── House rules ── */}
       <FormSection title="House rules">
         <textarea
