@@ -2431,10 +2431,42 @@ spec you already know passes. Budget for the harness, not just the sweep.
   Fix is one line in the helper (take the first line / strip the command tag), and the same
   helper shape is copied into several other specs — worth fixing at the pattern, not the instance.
 
-### Verdicts
+### Two more spec-side defects, both found by disbelieving a total failure
 
-Being finalised by the re-run at realistic timeouts (`audit-pass3`); the table lands in the next
-commit rather than being guessed at here. What is already settled: **5 specs are fully green**
-(`auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`,
-`experts-flow` 10/10, `navbar-responsive` 16/16) — these are real, unclaimed coverage that should
-simply be gated.
+- **`user-menu` and `expert-booking-decline-dialog` hardcode `const BASE = "http://localhost:5000"`**
+  and ignore `BASE_URL` — the only two specs in the repo that do. Every test in both failed here
+  purely because this bench runs on :5001. Fixed to the repo's own convention
+  (`process.env.BASE_URL ?? …`), after which **`expert-booking-decline-dialog` is 3/3 GREEN** and
+  `user-menu` goes from 16 failures to **13 passed / 3 failed**. A 100%-failure rate is almost
+  never spec rot; check the runner first.
+- **`rbac-security` is DEAD ON ARRIVAL — the same disease the last lane fixed.** It authenticates
+  as `traveler@traveloure-test.com` + 3 siblings on that domain; **nothing creates them.** They
+  appear only as *credentials* in the spec, `scripts/rbac-audit.ts` and `qa-verify.service.ts` —
+  no migration, no seed, no script. Setup 401s and **27 RBAC assertions have never executed
+  once**, which is the largest block of dark security coverage in the repo, dark for a one-line
+  reason.
+
+### A trap for the next auditor: a spec that libels the product
+
+`seam-cross-console` fails with its own hardcoded label **`[API BROKEN] POST /api/trips → 400`**,
+which reads as a product defect and was initially recorded as one here. It is not. `trips.budget`
+is a `decimal` column, so the insert schema wants a **string**, and the spec sends `budget: 3000`
+as a **number** — the API is correctly rejecting bad input. The spec is wrong and its error text
+actively misdirects. Do not let a spec's self-authored failure message stand in for a diagnosis.
+
+### Verdicts (33 specs, after backing out four layers of harness noise)
+
+| Verdict | Count | Detail |
+| --- | --- | --- |
+| **Fully green** | 8 | `auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`, `experts-flow` 10/10, `navbar-responsive` 16/16, `stripe-connect-reminder-notification` 2/2, `expert-booking-decline-dialog` 3/3 (after the BASE_URL fix), `search-bar` 14/1→ see below |
+| **Mostly green, isolated real failures** | 11 | `security-regression` 39/3, `deprecated-route-redirects` 44/4, `breakpoint-hamburger` 21/1, `content-system` 17/2, `user-menu` 13/3, `lane1-phase1d-routing` 4/1, `lb-p1-password-reset` 3/1, `concierge-phase-a` 5/1, `tripstrip-count-accuracy` 1/3, `paris-surfacing` 1/3, `phase-4-7-advanced-flows` 3/3 |
+| **Badly broken** | 10 | `phase-2-provider-setup` 1/23, `phase-1-expert-setup` (exceeds even a 25-min cap), `phase-3-traveler-flows` 1/5, `nyc-market` 1/11, `seam-cross-console` 0/5, `optimization-payment-gate` 0/2, `offering-card` 0/1, `service-display-options` 0/1, `travel-surcharge-step` 0/1, `optimize-apply-banner` 0/1, `stripe-init-deferral` 1/1 |
+| **Dead on arrival** | 1 | `rbac-security` — 27 assertions never run |
+
+(`search-bar` is 14 passed / 1 failed — counted with the isolated-failure group in spirit; listed
+above only because its single failure is a 120 s `locator.click` hang worth its own look.)
+
+**The shape of the answer:** roughly a quarter of the ungated set is genuinely fine and should just
+be gated; about a third is mostly fine with real but small breaks; and the journey specs
+(`phase-1`…`phase-4-7`, `nyc-market`) are broken deeply enough that repairing them is a project,
+not a chore — they should be quarantined with a stated reason rather than left to read as coverage.
