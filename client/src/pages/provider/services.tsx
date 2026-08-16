@@ -1521,23 +1521,29 @@ export default function ProviderServices() {
             </CardContent>
           </Card>
         ) : catalogMode === "preview" ? (
-          previewServices.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center" data-testid="preview-empty">
-                <p className="text-console-mid font-medium">Nothing is live to preview yet</p>
-                <p className="text-console-mid text-sm mt-1">
-                  Preview shows your listings exactly as travelers see them on your storefront — only
-                  approved, active ones appear. Get a listing approved and switched on to see it here.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="catalog-preview-grid">
-              {previewServices.map((service) => (
-                <CatalogPreviewCard key={service.id} service={service} />
-              ))}
-            </div>
-          )
+          <>
+            {/* Storefront header — gives providers the identity / URL / live-count context
+                that travelers see at the top of /p/:handle before the listing grid */}
+            <ProviderStorefrontHeader />
+
+            {previewServices.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center" data-testid="preview-empty">
+                  <p className="text-console-mid font-medium">Nothing is live to preview yet</p>
+                  <p className="text-console-mid text-sm mt-1">
+                    Preview shows your listings exactly as travelers see them on your storefront — only
+                    approved, active ones appear. Get a listing approved and switched on to see it here.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="catalog-preview-grid">
+                {previewServices.map((service) => (
+                  <CatalogPreviewCard key={service.id} service={service} />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <>
             {/* mock: single `.card` housing the `.listing` rows */}
