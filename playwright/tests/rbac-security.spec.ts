@@ -25,12 +25,23 @@
  *   /api/ea/*       → isEA guard     (DB-verified: executive_assistant or admin)
  *   All guards query the DB — they never trust client-supplied role values.
  *
- * ── Test accounts ─────────────────────────────────────────────────────────────
- *   traveler@traveloure-test.com  / TestPass@1234  → role: user
- *   expert@traveloure-test.com    / TestPass@1234  → role: local_expert
- *   provider@traveloure-test.com  / TestPass@1234  → role: service_provider
- *   admin@traveloure-test.com     / TestPass@1234  → role: admin
- *   ea@traveloure-test.com        / TestPass@1234  → role: executive_assistant
+ * ── Test accounts (REPOINTED Aug 16, 2026 — see the security note below) ──────
+ *   test-traveler-kyoto@traveloure.test  → role: user
+ *   kyoto-temples@traveloure.test        → role: local_expert
+ *   kyoto-photography@traveloure.test    → role: service_provider
+ *   test-admin@traveloure.test           → role: admin
+ *   test-ea@traveloure.test              → role: executive_assistant
+ *
+ *   WHY THESE AND NOT THE ORIGINAL FIVE. This spec was written against
+ *   `<role>@traveloure-test.com` — accounts NO seeder has ever created, so its
+ *   beforeAll 401'd and all 27 assertions have never executed once (spec-coverage
+ *   sweep, Aug 16 2026). The fix is NOT to seed that domain. `traveloure-test.com`
+ *   is a REGISTERABLE .com; the production purge in
+ *   `server/seeds/e2e-test-accounts.seed.ts` neutralizes `LIKE '%@traveloure.test'`
+ *   — the RFC-2606 reserved TLD — and would NOT match it. Seeding an admin-role
+ *   credential there puts it outside the ruling 27/33 safety net. So the spec is
+ *   repointed onto the purge-covered fixtures that already exist with passwords.
+ *   Any future role fixture must live under `.test` for the same reason.
  *
  * ── Session strategy ─────────────────────────────────────────────────────────
  *   Each role is logged in ONCE in test.beforeAll (5 total POST /api/auth/login
@@ -44,31 +55,31 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
-const PW = "TestPass@1234";
+const PW = process.env.E2E_TEST_PASSWORD || "TestPass123!";  // the e2e seeder's password
 
 const ACCOUNTS = {
   traveler: {
-    email: "traveler@traveloure-test.com",
+    email: "test-traveler-kyoto@traveloure.test",
     password: PW,
     role: "user",
   },
   expert: {
-    email: "expert@traveloure-test.com",
+    email: "kyoto-temples@traveloure.test",
     password: PW,
     role: "local_expert",
   },
   provider: {
-    email: "provider@traveloure-test.com",
+    email: "kyoto-photography@traveloure.test",
     password: PW,
     role: "service_provider",
   },
   admin: {
-    email: "admin@traveloure-test.com",
+    email: "test-admin@traveloure.test",
     password: PW,
     role: "admin",
   },
   ea: {
-    email: "ea@traveloure-test.com",
+    email: "test-ea@traveloure.test",
     password: PW,
     role: "executive_assistant",
   },
