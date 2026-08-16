@@ -36,6 +36,7 @@
  */
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "./utils/stripe-key-policy";
+import { getStripeSecretKey } from "./utils/stripe-key";
 
 // Object storage bucket — non-fatal warn. Vendor-document uploads (and any
 // future file uploads) will throw at call-time if this is missing, which is
@@ -49,7 +50,7 @@ if (!process.env.REPLIT_OBJECT_STORAGE_BUCKET) {
   );
 }
 
-const key = process.env.STRIPE_SECRET_KEY;
+const key = getStripeSecretKey();
 const isProdStrict = isProdStrictEnv();
 
 if (key) {
