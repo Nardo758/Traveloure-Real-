@@ -2431,7 +2431,7 @@ spec you already know passes. Budget for the harness, not just the sweep.
   Fix is one line in the helper (take the first line / strip the command tag), and the same
   helper shape is copied into several other specs — worth fixing at the pattern, not the instance.
 
-### Verdicts
+### Two more spec-side defects, both found by disbelieving a total failure
 
 Being finalised by the re-run at realistic timeouts (`audit-pass3`); the table lands in the next
 commit rather than being guessed at here. What is already settled: **5 specs are fully green**
@@ -2669,3 +2669,132 @@ lands in the existing Phase-5 ESO drop rather than being forgotten; (c) settle
 `experienceTypes` on `provider_services` with a targeted consumer check; (d) decide the
 non-property `categoryAttributes` path. None is urgent; all four are now evidenced rather than
 just listed.
+
+- **`user-menu` and `expert-booking-decline-dialog` hardcode `const BASE = "http://localhost:5000"`**
+  and ignore `BASE_URL` — the only two specs in the repo that do. Every test in both failed here
+  purely because this bench runs on :5001. Fixed to the repo's own convention
+  (`process.env.BASE_URL ?? …`), after which **`expert-booking-decline-dialog` is 3/3 GREEN** and
+  `user-menu` goes from 16 failures to **13 passed / 3 failed**. A 100%-failure rate is almost
+  never spec rot; check the runner first.
+- **`rbac-security` is DEAD ON ARRIVAL — the same disease the last lane fixed.** It authenticates
+  as `traveler@traveloure-test.com` + 3 siblings on that domain; **nothing creates them.** They
+  appear only as *credentials* in the spec, `scripts/rbac-audit.ts` and `qa-verify.service.ts` —
+  no migration, no seed, no script. Setup 401s and **27 RBAC assertions have never executed
+  once**, which is the largest block of dark security coverage in the repo, dark for a one-line
+  reason.
+
+### A trap for the next auditor: a spec that libels the product
+
+`seam-cross-console` fails with its own hardcoded label **`[API BROKEN] POST /api/trips → 400`**,
+which reads as a product defect and was initially recorded as one here. It is not. `trips.budget`
+is a `decimal` column, so the insert schema wants a **string**, and the spec sends `budget: 3000`
+as a **number** — the API is correctly rejecting bad input. The spec is wrong and its error text
+actively misdirects. Do not let a spec's self-authored failure message stand in for a diagnosis.
+
+### Verdicts (33 specs, after backing out four layers of harness noise)
+
+| Verdict | Count | Detail |
+| --- | --- | --- |
+| **Fully green** | 8 | `auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`, `experts-flow` 10/10, `navbar-responsive` 16/16, `stripe-connect-reminder-notification` 2/2, `expert-booking-decline-dialog` 3/3 (after the BASE_URL fix), `concierge-phase-a` 6/6 (after the two repairs below) |
+| **Mostly green, isolated real failures** | 11 | `security-regression` 39/3, `deprecated-route-redirects` 44/4, `breakpoint-hamburger` 21/1, `content-system` 17/2, `user-menu` 13/3, `lane1-phase1d-routing` 4/1, `lb-p1-password-reset` 3/1, `search-bar` 14/1, `tripstrip-count-accuracy` 1/3, `paris-surfacing` 1/3, `phase-4-7-advanced-flows` 3/3 |
+| **Badly broken** | 10 | `phase-2-provider-setup` 1/23, `phase-1-expert-setup` (exceeds even a 25-min cap), `phase-3-traveler-flows` 1/5, `nyc-market` 1/11, `seam-cross-console` 0/5, `optimization-payment-gate` 0/2, `offering-card` 0/1, `service-display-options` 0/1, `travel-surcharge-step` 0/1, `optimize-apply-banner` 0/1, `stripe-init-deferral` 1/1 |
+| **Dead on arrival** | 1 | `rbac-security` — 27 assertions never run |
+
+`search-bar`'s single failure is a 120 s `locator.click` hang — real, not the slow bench, since
+the 120 s budget already absorbs that.
+
+**The shape of the answer:** roughly a quarter of the ungated set is genuinely fine and should just
+be gated; about a third is mostly fine with real but small breaks; and the journey specs
+(`phase-1`…`phase-4-7`, `nyc-market`) are broken deeply enough that repairing them is a project,
+not a chore — they should be quarantined with a stated reason rather than left to read as coverage.
+
+### Follow-through landed (Aug 16, 2026)
+
+- **`concierge-phase-a` → 6/6, first pass in its life.** Two independent spec-side defects: the
+  psql helper kept psql's command tag on an `INSERT … RETURNING id` (so its own next assertion
+  rejected the id the query returned), and — once that was unblocked — the `$0=off` test was a
+  coin flip (below). Also removed a leaked `optimization_fees` row: every pre-fix run's cleanup
+  `DELETE` used the malformed id and silently failed, so the broken spec had been quietly
+  littering the shared database.
+- **`rbac-security` → its 27 assertions execute for the first time.** It authenticated as
+  `<role>@traveloure-test.com`, which **no seeder anywhere creates**. Fixed by repointing, *not*
+  by seeding that domain: `traveloure-test.com` is a registerable `.com`, while the production
+  purge neutralizes `LIKE '%@traveloure.test'` (the RFC-2606 reserved TLD), so seeding an
+  admin-role credential there would have placed it outside the ruling 27/33 safety net. Recorded
+  in the spec header so nobody "fixes" it back.
+- **Two specs hardcoded `http://localhost:5000`** and ignored `BASE_URL`, unlike every other spec
+  (`user-menu`, `expert-booking-decline-dialog`). This is what made them look catastrophic — 16/16
+  and 3/3 failing. After the one-line fix: 3/3 green and 13/3.
+- **`.github/workflows/spec-coverage-gate.yml`** claims the 8 verified-green specs. Specs with
+  genuine failures are excluded deliberately — a gate that lands red on day one teaches people to
+  ignore it.
+
+### NEW PRODUCT FINDING — non-deterministic optimization-fee resolution (for the decision-maker)
+
+`resolveOptimizationFee` (`server/services/optimization-fee.service.ts`) resolves the event-type
+branch with:
+
+```
+WHERE event_type = ? AND is_active = true   LIMIT 1     -- no ORDER BY, no complexity_tier filter
+```
+
+The seed ships **two** active `birthday` rows (`simple/599/enabled` and, historically,
+`standard/999`), so **which fee applies is whatever Postgres returns first** — arbitrary, and free
+to change with a vacuum, a plan change or an unrelated insert. This is a *money* value chosen
+non-deterministically, and the `is_disabled` flag inherits the same coin flip: the quote can offer
+a paid AI path that an admin has explicitly disabled, purely because the other row sorted first.
+That is exactly the failure the `$0=off` test was written to catch, and it could not catch it
+because the spec had never run.
+
+**Not fixed here on purpose.** A fee row is money (§8) and the correct resolution order is a
+product decision — most-specific-tier-wins, disabled-wins, or an explicit priority column — not
+something a test-repair lane should pick. Filed for the decision-maker. The spec meanwhile parks
+the competing rows so it tests the intended behaviour without asserting whichever row happens to
+win.
+
+### `rbac-security`: 28/28 — and the last assertion was defending a superseded ruling
+
+With the fixtures repointed, its 28 tests ran for the first time: **27 passed immediately.** The
+single failure was the most interesting result of the whole sweep, because **the product was right
+and the spec was wrong**:
+
+> `EA can access expert pages — executive_assistant is in EXPERT_ROLES (by design)`
+
+That was true when written. The **role-vocabulary audit of Jul 27 2026 deliberately ended it** —
+`server/middleware/role-rbac.ts` had been carrying its own `EXPERT_ROLES` list that *included*
+`executive_assistant`, diverging from the client and from the ratified EA-console model (§9: EA is
+its own `/ea` namespace gated by `isEA`, consuming `/api/ea/*` only). Removing EA from the expert
+family was the entire point of that audit, and `shared/roles.ts` has excluded it ever since.
+
+Because the spec's fixtures did not exist, `beforeAll` 401'd and **all 28 tests were skipped**, so
+it went on asserting the *superseded* access model in silence — and would have kept "passing" by
+never running. Inverted to assert the ratified model (EA denied at expert pages) and now green.
+
+**The general lesson, which is the real deliverable of this sweep:** a dark spec does not merely
+*stop* protecting you — it silently preserves the *old* rules, so the day someone revives it, it
+argues for a decision that was already reversed. That is worse than no spec, and it is the
+strongest argument for gating everything that survives an audit.
+
+### CORRECTION — "verified green" was verified on the wrong database (Aug 16, 2026)
+
+The gate's first two CI runs failed, and both failures were mine, in the same way. The 9 specs were
+verified on this session's **long-lived bench**, whose database carries a week of accumulated seeds
+and session mutations. CI builds from empty with nothing but ci-db-setup's three steps
+(`migrate-entry` + `create-sessions-table` + `seed-ci-test-users`).
+
+- **`rbac-security`** — the expert role was repointed onto `kyoto-temples@traveloure.test`, which
+  **does not exist on a fresh database at all** (no seeder CI runs creates it). Now points at
+  `kyoto-food@traveloure.test`, confirmed present with a password on a from-empty install.
+- **`experts-flow`** — **REMOVED from the gate.** Its destination/language filter tests (T03–T07)
+  need seeded expert profiles a clean install does not produce: **14 experts on a fresh DB vs 19 on
+  the bench**, so the filters have nothing to narrow. Filed rather than fixed — inventing seed data
+  to prop up a spec this lane was only auditing is scope creep into the seeders, and the right fix
+  is for whoever owns that fixture to decide what `/experts` should contain in CI.
+
+**This is the same mistake the previous lane wrote down and I made anyway.** PR #489's gate header
+states that `catalog-preview-toggle` "could not be settled from a session-mutated bench" — and I
+then certified nine specs on exactly such a bench. The rule, now enforced in the gate's own header:
+
+> A bench with accumulated seed data will green specs that CI cannot. "Verified" means verified
+> against a database built from empty, or it means nothing.
+

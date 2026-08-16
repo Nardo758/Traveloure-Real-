@@ -23,7 +23,7 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const BASE = "http://localhost:5000";
+const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const BOOKING_ID = "test-booking-abc123";
 
 const EXPERT_USER = {
