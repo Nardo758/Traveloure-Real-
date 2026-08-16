@@ -1,4 +1,3 @@
-// hint: Logic and cosmetic changes overlap. Resolve logic first, then reformat.
 /**
  * Provider Distribute — the ONE distribution hub (Catalog+Distribute ruling 74, lanes D1-D4/C6;
  * S6 — ruling-74-disposition-6 clarification).

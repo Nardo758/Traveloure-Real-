@@ -6016,7 +6016,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           });
         }
 
-        // Best-effort cleanup of the previous cover object, if any.
+        // Persist first, clean up second — never delete the old object before the DB write
+        // succeeds, or a failed write leaves the service with a URL to a deleted photo.
+        // On persistence failure, delete the newly uploaded object best-effort so it does
+        // not orphan in object storage.
+        try {
+          await storage.updateProviderService(service.id, { serviceImage: imageUrl });
+        } catch (dbErr) {
+          console.error("Cover photo DB persist failed:", dbErr);
+          deleteObject(key).catch(() => {});
+          return res.status(500).json({ message: "Failed to save cover photo URL" });
+        }
+
+        // Best-effort cleanup of the previous managed cover object, now that the DB is updated.
         const GCS_PREFIX = "https://storage.googleapis.com/";
         const prevUrl = (service.serviceImage ?? "").trim();
         if (prevUrl.startsWith(GCS_PREFIX) && prevUrl.includes("/covers/")) {
@@ -6024,7 +6036,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           deleteObject(prevKey).catch(() => {});
         }
 
-        await storage.updateProviderService(service.id, { serviceImage: imageUrl });
         res.json({ message: "Cover photo uploaded", imageUrl });
       } catch (err) {
         console.error("Cover photo upload error:", err);
