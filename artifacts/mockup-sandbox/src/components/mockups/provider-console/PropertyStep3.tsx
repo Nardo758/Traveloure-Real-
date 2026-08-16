@@ -27,6 +27,7 @@ const PROPERTY_CHECKS = [
   { ok: false, req: false, label: "Cover photos",        detail: "0 of 5 minimum. Add photos before launch.", fix: "Upload photos →" },
   { ok: false, req: false, label: "Full description",    detail: "47 words — aim for 100+ to convert better.",fix: "Expand description →" },
   { ok: true,  req: false, label: "House rules",         detail: "Present",                                    fix: "" },
+  { ok: true,  req: false, label: "Amenities",           detail: "6 selected — inherited by every room.",      fix: "" },
 ];
 
 const ROOM_CHECKS = [
@@ -36,7 +37,6 @@ const ROOM_CHECKS = [
       { ok: true,  req: true,  label: "Name",        detail: "The Tatami Room",  fix: "" },
       { ok: true,  req: true,  label: "Base price",  detail: "¥180 / night",     fix: "" },
       { ok: false, req: true,  label: "Photos",      detail: "0 uploaded — required before listing can be reviewed.", fix: "Upload photos →" },
-      { ok: false, req: false, label: "Amenities",   detail: "None — affects search discoverability.",               fix: "Add amenities →" },
       { ok: false, req: false, label: "Description", detail: "Empty.",                                               fix: "Add description →" },
     ],
   },
@@ -46,7 +46,6 @@ const ROOM_CHECKS = [
       { ok: true,  req: true,  label: "Name",        detail: "Engawa Suite",     fix: "" },
       { ok: false, req: true,  label: "Base price",  detail: "Not set — required to enable booking.",              fix: "Set price →" },
       { ok: true,  req: true,  label: "Photos",      detail: "4 uploaded",        fix: "" },
-      { ok: true,  req: false, label: "Amenities",   detail: "8 selected",        fix: "" },
       { ok: true,  req: false, label: "Description", detail: "Present",           fix: "" },
     ],
   },
@@ -56,7 +55,6 @@ const ROOM_CHECKS = [
       { ok: true, req: true,  label: "Name",        detail: "Kura Studio",      fix: "" },
       { ok: true, req: true,  label: "Base price",  detail: "¥135 / night",     fix: "" },
       { ok: true, req: true,  label: "Photos",      detail: "6 uploaded",       fix: "" },
-      { ok: true, req: false, label: "Amenities",   detail: "11 selected",      fix: "" },
       { ok: true, req: false, label: "Description", detail: "Present",          fix: "" },
     ],
   },
