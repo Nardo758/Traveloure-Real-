@@ -246,7 +246,7 @@ export interface IStorage {
 
   updateLocalExpertFormProfileFields(userId: string, fields: Partial<Pick<InsertLocalExpertForm, "displayName" | "headline" | "city" | "country" | "languages" | "bio" | "firstName" | "lastName">>): Promise<void>;
 
-  updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
+  updateLocalExpertFormType(userId: string, expertType: string, audit?: { actorId: string; actorRole: string; oldRole: string | null; reason: string }): Promise<void>;
 
   // Provider Verification (publish-gate Step 1)
 
@@ -1681,13 +1681,36 @@ export class DatabaseStorage implements IStorage {
       .where(eq(localExpertForms.userId, userId));
   }
 
-  async updateLocalExpertFormType(userId: string, expertType: string): Promise<void> {
-    await db.update(localExpertForms)
-      .set({ expertType })
-      .where(eq(localExpertForms.userId, userId));
-    await db.update(users)
-      .set({ role: expertType })
-      .where(eq(users.id, userId));
+  async updateLocalExpertFormType(
+    userId: string,
+    expertType: string,
+    audit?: { actorId: string; actorRole: string; oldRole: string | null; reason: string },
+  ): Promise<void> {
+    // ATOMIC: form-type update, role update, and audit insert commit or roll
+    // back together — a role change without an audit record must never be possible.
+    await db.transaction(async (tx) => {
+      await tx.update(localExpertForms)
+        .set({ expertType })
+        .where(eq(localExpertForms.userId, userId));
+      await tx.update(users)
+        .set({ role: expertType })
+        .where(eq(users.id, userId));
+      if (audit) {
+        await tx.insert(accessAuditLogs).values({
+          actorId: audit.actorId,
+          actorRole: audit.actorRole,
+          action: "role_change",
+          resourceType: "user",
+          resourceId: userId,
+          targetUserId: userId,
+          metadata: {
+            oldRole: audit.oldRole,
+            newRole: expertType,
+            reason: audit.reason,
+          },
+        } as any);
+      }
+    });
   }
 
   async updateProviderVerification(userId: string, updates: { providerVerificationStatus?: string; backgroundCheckConfirmed?: boolean }): Promise<void> {
