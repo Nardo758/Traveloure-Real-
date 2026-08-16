@@ -91,10 +91,12 @@ Kyoto (Japan), Goa (India), Mumbai (India), Jaipur (India), Edinburgh (United Ki
 | kyoto | spring_shoulder | 04-21 | 06-06 | 1.100 | Leon-approved estimate — Golden Week (late Apr–early May) sits inside the window |
 | edinburgh | autumn_shoulder | 09-01 | 10-31 | 0.900 | Leon-approved estimate — post-Festival cooldown above winter floor |
 
-Three residual calendar gaps found during close-out coverage check (reported; no unauthorized rows inserted — pending Leon ruling):
-- **Bogotá** `02-29` — 1 day, leap year only; `dry_primary` ends `02-28`
-- **Kyoto** `09-07`–`10-19` — 43 days; between `summer` (ends `09-06`) and `momiji` (starts `10-20`)
-- **Porto** `10-01`–`10-31` — 31 days; October has no season row
+Three residual calendar gaps resolved via migration 234 (Leon-approved 2026-08-16):
+- **Bogotá** `02-29` — `dry_primary` end extended `02-28` → `02-29` (leap-year day, still dry season; multiplier 1.100 unchanged)
+- **Kyoto** `09-07`–`10-19` — new row `early_autumn` inserted, multiplier 1.000 (neutral shoulder; typhoon tail softens late-Sep, Oct pre-foliage rising)
+- **Porto** `10-01`–`10-31` — new row `autumn_shoulder` inserted, multiplier 1.100 (harvest-season city-break shoulder, post-summer warm month)
+
+Post-migration coverage check: all 8 markets returned 0 gap_days, 0 overlap_days on 366-day leap-year scan (confirmed dev DB 2026-08-16).
 
 ### L-CLS-2 — #1496 executed in-lane, expanded scope
 
@@ -103,3 +105,29 @@ Three residual calendar gaps found during close-out coverage check (reported; no
 ### L-CLS-3 — R3 amendment path recorded (not yet active)
 
 Absolute crowd counts may return per-entity as *calibrated range estimates* only — fitted against external ground truth, rendered as ranges with "estimated" label, permitted only where fit quality passes a config threshold. Amendment activates when the Calibration Lane ships, not before. R3 stands as-is until then.
+
+---
+
+
+## TravelPulse field aliasing audit — 2026-08-16
+
+
+### L-CLS-4 — Full field-to-display-slot audit; no active fabrication-class instances found
+
+**Scope:** all components and pages consuming the `travelPulseCities` shape: `CityCard.tsx`, `CityGrid.tsx`, `CityDetailView.tsx`, `TrendingCities.tsx`, `TravelPulseCard.tsx`, `discover.tsx`, `discover-location.tsx`. Ground truth: `shared/schema.ts` `travelPulseCities` table.
+
+**Active render site verdicts:**
+
+| Field | Schema definition | Active render sites | Verdict |
+|---|---|---|---|
+| `pulseScore` | integer 0–100, "overall activity score" | CityCard stat footer "Pulse {n}"; discover-location hero badge labeled "pulse"; CityDetailView hero badge | ✅ label accurate |
+| `activeTravelers` | integer, "Currently active travelers" | Suppressed at all sites per R3/L-CLS-2 | ✅ no render |
+| `trendingScore` | integer 0–100, "how hot is it trending" | Drives "Hot" / "Trending" badge (`> 70` threshold) | ✅ semantically honest |
+| `avgHotelPrice` | decimal, avg hotel price per night | CityCard body "${n}/night"; CityDetailView stat card "Avg Hotel/Night" | ✅ label accurate |
+| `aiOptimalDuration` | varchar, e.g. "3–5 days" | CityDetailView "Recommended Duration" card | ✅ label accurate |
+| `totalTrendingSpots` | integer | CityCard "{n} trending"; CityDetailView "Trending Spots" | ✅ label accurate |
+| `totalHiddenGems` | integer | CityCard "{n} gems"; CityDetailView "Hidden Gems" | ✅ label accurate |
+
+**Dead-code mismatches removed:**
+
+`discover.tsx` contained a `trendingTrips` useMemo (lines 642–661 pre-fix) that mapped TravelPulse fields into a trip-package shape: `pulseScore/20` → `rating` (implied star rating), `trendingScore > 70` → `expertPick` (implied human curation), `avgHotelPrice × 5` → `price` (inflated per-night price presented as trip price). The downstream `filteredTrips` const was never rendered in JSX — these mismatches were in dead code. Removed the entire block (plus the associated `trendingCitiesData` query, `tripSearchQuery` state, and `selectedTripCategory` state) to eliminate the aliasing risk. `CityGrid` on the travelpulse tab already consumes TravelPulse data correctly without any remapping.
