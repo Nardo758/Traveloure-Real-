@@ -76,6 +76,8 @@ export interface CatalogMapService {
   // us": an absent answer is omitted from the read-out with a count, never defaulted into a claim
   // the provider did not make (§13). Nothing on this surface writes any of them.
   price?: string | number | null;
+  whatToBring?: string | null;
+  accessNotes?: string | null;
   partySizeMin?: number | null;
   partySizeMax?: number | null;
   leadTimeHours?: number | null;
@@ -613,13 +615,10 @@ function MarketInsightsView() {
 // §13 THROUGHOUT: a field the provider never answered is OMITTED and counted, never defaulted into
 // a claim ("no travel fee", "English", "up to 8 people" are all things a provider must have said).
 //
-// STILL UNBACKED: the mock draws a "Bring" and an "Access" row, and NEITHER has a column anywhere
-// on `provider_services` — the flow never asks, so there is nothing to render. (The
-// `accessibilityNeeds`/`mobilityLevel` columns in the schema belong to `trip_participants` — a
-// TRAVELER's stated needs, not a host's access notes.) They are the inverse of the case T-REP
-// audited: drawn and never collected, rather than collected and never read. Named here rather than
-// faked; closing them needs two additive columns + wizard fields, which is a schema decision.
-const GAP13_UNBACKED_ROWS = ["Bring", "Access"] as const;
+// ALL NINE MOCK ROWS ARE NOW BACKED. Lane M2 named "Bring" and "Access" as the open half of the
+// gap because neither had a column anywhere; migration 228 gave them one, the flow asks for them
+// on Logistics, and they render here and on the traveler page like every other answer — omitted
+// when unanswered (§13), never defaulted into "nothing needed".
 
 interface TravelerFact {
   key: string;
@@ -684,6 +683,10 @@ function travelerFacts(
   );
   add("dropoff", "Getting back", s.dropOffPoint ? s.dropOffPoint : null);
   add("transport", "Transport", formatTransportProvision(s.transportProvision));
+  // Gap #13's last two rows — backed by columns as of migration 228, so they are ordinary facts
+  // here now, not the named-and-unfaked hole they were in lane M2.
+  add("bring", "Bring", (s.whatToBring ?? "").trim() || null);
+  add("access", "Access", (s.accessNotes ?? "").trim() || null);
 
   // Deposit: the SAME display-only preview the traveler reads, with the page's own fallback for a
   // percentage deposit on a listing with no price yet. Never a second source of truth — checkout
@@ -1295,21 +1298,14 @@ export function CatalogMapView({
                   facts.map((f) => <SumRow key={f.key} k={f.label} v={f.value} testId={`traveler-fact-${f.key}`} />)
                 )}
               </CardContent>
-              {(omitted.length > 0 || GAP13_UNBACKED_ROWS.length > 0) && (
+              {omitted.length > 0 && (
                 <CardContent className="px-5 pb-4 pt-0">
-                  {omitted.length > 0 && (
-                    <p className="text-[11.5px] leading-[1.55]" style={{ color: MUTED }} data-testid="traveler-facts-omitted">
-                      <b style={{ color: INK }}>
-                        {omitted.length} question{omitted.length === 1 ? "" : "s"} unanswered
-                      </b>{" "}
-                      — {omitted.join(", ")}. Omitted rather than defaulted: a traveler is never shown
-                      a claim the host did not make.
-                    </p>
-                  )}
-                  <p className="text-[11.5px] leading-[1.55] mt-1.5" style={{ color: MUTED }} data-testid="traveler-facts-unbacked">
-                    <b style={{ color: INK }}>{GAP13_UNBACKED_ROWS.join(" and ")}</b> appear in the
-                    ratified mock but have no field behind them yet — named here as the open half of
-                    gap #13, not faked.
+                  <p className="text-[11.5px] leading-[1.55]" style={{ color: MUTED }} data-testid="traveler-facts-omitted">
+                    <b style={{ color: INK }}>
+                      {omitted.length} question{omitted.length === 1 ? "" : "s"} unanswered
+                    </b>{" "}
+                    — {omitted.join(", ")}. Omitted rather than defaulted: a traveler is never shown
+                    a claim the host did not make.
                   </p>
                 </CardContent>
               )}

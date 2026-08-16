@@ -2623,3 +2623,21 @@ Read-only month grid, prev/next nav, event chips as deep links, a legend, and ru
 standing "Edit availability →" access point. Nothing to report — the first audited surface with no
 findings.
 
+
+### Follow-on, same day — gap #13's last two rows are backed (ledger 2026-08-16-bring-access)
+
+Migration 228 adds `what_to_bring` and `access_notes` (additive-nullable TEXT, declared in
+`shared/schema.ts`, no CHECK). The flow asks for both on **Logistics** — which is also why they
+never appear on the pdf/async branches: that step does not exist there, and a downloadable guide
+has nothing to bring. Both render on the traveler page's Good-to-know and in the Catalog preview's
+read-out, omitted when unanswered (§13) rather than defaulted into "nothing needed".
+
+**Deliberately NOT a reuse** of `trip_participants.accessibility_needs`/`mobility_level` — those
+are a TRAVELER's stated needs; this is a HOST describing their own venue. Different person, different
+answer. The traveler surface says out loud that **no accessibility standard is claimed on the host's
+behalf**, which is why this is a free-text note and not a checklist of certified attributes.
+
+Bench-verified on a local scratch Postgres: `runMigrations()` applied 228 itself, the public read
+returns NULL before and real text after a write through the owner PATCH rail, and both rows render
+(`docs/design/catalog-rebuild/traveler-bring-access.png`). **All nine mock rows are now backed**, so
+lane M2's `GAP13_UNBACKED_ROWS` caveat is deleted rather than left stale.
