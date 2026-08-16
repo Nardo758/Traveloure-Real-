@@ -70,7 +70,7 @@ import {
   insertContentImpression, getDemandCountsForCity,
   filterOutAwayOwners,
 } from "../services/content-query.service";
-import { hasExistingConversation } from "../services/messages.service";
+import { hasExistingConversation, isBlockedBetween } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
@@ -430,6 +430,13 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
       if (!rate.allowed) {
         res.setHeader("Retry-After", String(rate.retryAfterSec ?? 60));
         return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
+      }
+
+      // Block enforcement: reject before any insert or notification if a block exists
+      // in either direction so a blocked sender cannot bypass the guard by using this
+      // endpoint instead of POST /api/messages or the WebSocket path.
+      if (await isBlockedBetween(userId, expertId)) {
+        return res.status(403).json({ message: "You cannot send messages to this user." });
       }
 
       // Create initial chat message

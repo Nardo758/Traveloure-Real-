@@ -19,7 +19,7 @@
  * chat pane. Accept/decline booking requests is an earner action that already lives on the
  * expert/provider Inbox Queue tabs (never duplicated here — this is a traveler surface).
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
@@ -31,6 +31,30 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -40,6 +64,10 @@ import {
   Check,
   CheckCheck,
   Trash2,
+  MoreVertical,
+  ShieldOff,
+  ShieldCheck,
+  Flag,
 } from "lucide-react";
 import {
   getNotificationIcon,
@@ -51,6 +79,28 @@ import {
 
 function MessagesTab() {
   const { threads, isLoading } = useConversationThreads();
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportTargetId, setReportTargetId] = useState<string | null>(null);
+  const [reportTargetName, setReportTargetName] = useState<string>("");
+  const [reportReason, setReportReason] = useState("spam");
+  const [reportDetails, setReportDetails] = useState("");
+
+  const reportMutation = useMutation({
+    mutationFn: ({ targetId, reason, details }: { targetId: string; reason: string; details: string }) =>
+      apiRequest("POST", `/api/messages/report/user/${targetId}`, { reason, details: details || undefined }),
+    onSuccess: () => {
+      setReportDialogOpen(false);
+      setReportTargetId(null);
+      setReportDetails("");
+    },
+  });
+
+  const blockMutation = useMutation({
+    mutationFn: (targetId: string) => apiRequest("POST", `/api/messages/block/${targetId}`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -80,50 +130,149 @@ function MessagesTab() {
   }
 
   return (
-    <div className="space-y-2">
-      {threads.map((thread) => (
-        // The existing deep-link chat.tsx already resolves: ?expertId= selects the thread
-        // directly (effectiveLinkedExpert), matching how a traveler reaches a conversation.
-        <Link key={thread.counterpartId} href={`/chat?expertId=${thread.counterpartId}`}>
-          <Card
-            className="cursor-pointer hover:shadow-md transition-shadow"
-            data-testid={`inbox-thread-${thread.counterpartId}`}
-          >
-            <CardContent className="p-4 flex items-center gap-3">
-              <Avatar className="w-10 h-10 flex-shrink-0">
-                <AvatarImage src={thread.avatarUrl ?? undefined} alt={thread.displayName ?? "Expert"} />
-                <AvatarFallback>{(thread.displayName || "E")[0]}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className={`text-foreground truncate ${thread.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
-                  {thread.displayName || "Expert"}
-                </p>
-                {thread.lastMessage && (
-                  <p className="text-sm text-muted-foreground truncate">{thread.lastMessage}</p>
-                )}
-              </div>
-              <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                {thread.lastMessageAt && (
-                  <span className="text-xs text-muted-foreground">
-                    {formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}
-                  </span>
-                )}
-                {/* W5-E: real per-thread unread count (readAt-derived, use-conversation-threads).
-                    Clears once /chat marks the thread read. */}
-                {thread.unreadCount > 0 && (
-                  <span
-                    className="min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-semibold flex items-center justify-center"
-                    data-testid={`inbox-thread-unread-${thread.counterpartId}`}
-                  >
-                    {thread.unreadCount > 9 ? "9+" : thread.unreadCount}
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
-    </div>
+    <>
+      <div className="space-y-2">
+        {threads.map((thread) => (
+          <div key={thread.counterpartId} className="flex items-center gap-2">
+            {/* The existing deep-link: ?expertId= selects the thread directly in chat.tsx */}
+            <Link href={`/chat?expertId=${thread.counterpartId}`} className="flex-1 min-w-0">
+              <Card
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                data-testid={`inbox-thread-${thread.counterpartId}`}
+              >
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Avatar className="w-10 h-10 flex-shrink-0">
+                    <AvatarImage src={thread.avatarUrl ?? undefined} alt={thread.displayName ?? "Expert"} />
+                    <AvatarFallback>{(thread.displayName || "E")[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-foreground truncate ${thread.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
+                      {thread.displayName || "Expert"}
+                    </p>
+                    {thread.lastMessage && (
+                      <p className="text-sm text-muted-foreground truncate">{thread.lastMessage}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {thread.lastMessageAt && (
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}
+                      </span>
+                    )}
+                    {/* W5-E: real per-thread unread count (readAt-derived, use-conversation-threads).
+                        Clears once /chat marks the thread read. */}
+                    {thread.unreadCount > 0 && (
+                      <span
+                        className="min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-semibold flex items-center justify-center"
+                        data-testid={`inbox-thread-unread-${thread.counterpartId}`}
+                      >
+                        {thread.unreadCount > 9 ? "9+" : thread.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            {/* Per-thread block/report actions */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0 text-muted-foreground"
+                  data-testid={`button-thread-actions-${thread.counterpartId}`}
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setReportTargetId(thread.counterpartId);
+                    setReportTargetName(thread.displayName || "this user");
+                    setReportReason("spam");
+                    setReportDetails("");
+                    setReportDialogOpen(true);
+                  }}
+                  data-testid={`button-report-thread-${thread.counterpartId}`}
+                >
+                  <Flag className="w-3.5 h-3.5 mr-2 text-orange-500" />
+                  Report {thread.displayName || "user"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => blockMutation.mutate(thread.counterpartId)}
+                  disabled={blockMutation.isPending}
+                  data-testid={`button-block-thread-${thread.counterpartId}`}
+                >
+                  <ShieldOff className="w-3.5 h-3.5 mr-2" />
+                  Block {thread.displayName || "user"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ))}
+      </div>
+
+      {/* Report dialog */}
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent data-testid="dialog-inbox-report">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="w-4 h-4 text-orange-500" />
+              Report {reportTargetName}
+            </DialogTitle>
+            <DialogDescription>
+              Our moderation team will review this report. Reports are confidential.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reason</label>
+              <Select value={reportReason} onValueChange={setReportReason}>
+                <SelectTrigger data-testid="select-inbox-report-reason">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="spam">Spam</SelectItem>
+                  <SelectItem value="harassment">Harassment or threats</SelectItem>
+                  <SelectItem value="inappropriate">Inappropriate content</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Additional details (optional)</label>
+              <Textarea
+                placeholder="Tell us more about what happened…"
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                className="min-h-[80px] text-sm"
+                maxLength={1000}
+                data-testid="textarea-inbox-report-details"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                reportTargetId &&
+                reportMutation.mutate({ targetId: reportTargetId, reason: reportReason, details: reportDetails })
+              }
+              disabled={reportMutation.isPending || !reportTargetId}
+              data-testid="button-submit-inbox-report"
+            >
+              {reportMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Submit report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

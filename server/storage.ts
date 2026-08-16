@@ -1406,6 +1406,21 @@ export class DatabaseStorage implements IStorage {
       typeof chat?.message === "string"
         ? { ...chat, message: sanitizeText(chat.message) ?? chat.message }
         : chat;
+
+    // Block enforcement on the /api/chats + WebSocket write path (mirrors messages.service.ts
+    // sendMessage). When a block row exists in either direction, silently drop the message
+    // server-side (the WebSocket caller has no clean error-return channel; the REST caller
+    // gets a 403 from the route that checks this flag). The check is a single indexed SELECT
+    // so it's cheap even on hot paths.
+    if (sanitizedChat.senderId && sanitizedChat.receiverId) {
+      const { isBlockedBetween } = await import("./services/messages.service");
+      const blocked = await isBlockedBetween(sanitizedChat.senderId, sanitizedChat.receiverId);
+      if (blocked) {
+        // Return a sentinel that callers can detect — do NOT insert a message row.
+        throw Object.assign(new Error("blocked"), { code: "BLOCKED_USER" });
+      }
+    }
+
     const [newChat] = await db.insert(userAndExpertChats).values({ ...sanitizedChat, trackingNumber }).returning();
 
     // Auto-register chat in content tracking system

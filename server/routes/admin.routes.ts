@@ -79,6 +79,7 @@ import { classifyDmoShape } from "../services/dmo-place-extraction.service";
 import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dmo-extracted-places.service";
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
+import { messageReports, userBlocks } from "@shared/schema";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -6083,6 +6084,91 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
   }
 
   // === Review Moderation Routes (REV-MOD) ===
+
+// ─── Message-abuse moderation queue (migration 228) ──────────────────────────
+// GET  /api/admin/message-reports   — list reports filterable by status
+// PATCH /api/admin/message-reports/:id — update status + optional admin note
+
+router.get("/api/admin/message-reports", isAuthenticated, async (req, res) => {
+  try {
+    const actorId = getUserId(req)!;
+    const adminCheck = await getAdminRole(actorId);
+    if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+    const statusParam = (req.query.status as string) || "pending";
+    const rows = await db
+      .select({
+        id: messageReports.id,
+        reporterId: messageReports.reporterId,
+        reportedUserId: messageReports.reportedUserId,
+        messageId: messageReports.messageId,
+        reportType: messageReports.reportType,
+        reason: messageReports.reason,
+        details: messageReports.details,
+        status: messageReports.status,
+        adminNote: messageReports.adminNote,
+        createdAt: messageReports.createdAt,
+      })
+      .from(messageReports)
+      .where(eq(messageReports.status, statusParam))
+      .orderBy(desc(messageReports.createdAt))
+      .limit(100);
+
+    const enriched = await Promise.all(
+      rows.map(async (row) => {
+        const reporter = await storage.getUser(row.reporterId);
+        const reported = await storage.getUser(row.reportedUserId);
+        let messageText: string | null = null;
+        if (row.messageId) {
+          const [msg] = await db
+            .select({ message: userAndExpertChats.message })
+            .from(userAndExpertChats)
+            .where(eq(userAndExpertChats.id, row.messageId));
+          messageText = msg?.message ?? null;
+        }
+        return {
+          ...row,
+          reporterName: reporter
+            ? [reporter.firstName, reporter.lastName].filter(Boolean).join(" ") || reporter.email || "Unknown"
+            : "Unknown",
+          reportedUserName: reported
+            ? [reported.firstName, reported.lastName].filter(Boolean).join(" ") || reported.email || "Unknown"
+            : "Unknown",
+          messageText,
+        };
+      }),
+    );
+    res.json(enriched);
+  } catch (err) {
+    console.error("Admin message-reports list error:", err);
+    res.status(500).json({ message: "Failed to fetch reports" });
+  }
+});
+
+router.patch("/api/admin/message-reports/:id", isAuthenticated, async (req, res) => {
+  try {
+    const actorId = getUserId(req)!;
+    const adminCheck = await getAdminRole(actorId);
+    if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    const { status, adminNote } = req.body;
+    const VALID_STATUSES = ["reviewed", "actioned", "dismissed"];
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ message: `status must be one of: ${VALID_STATUSES.join(", ")}` });
+    }
+    const [updated] = await db
+      .update(messageReports)
+      .set({ status, adminNote: adminNote ?? null, reviewedBy: actorId, reviewedAt: new Date() })
+      .where(eq(messageReports.id, req.params.id))
+      .returning({ id: messageReports.id, status: messageReports.status });
+    if (!updated) return res.status(404).json({ message: "Report not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("Admin message-report update error:", err);
+    res.status(500).json({ message: "Failed to update report" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
     try {
