@@ -4,6 +4,18 @@ Running record of bindings, rulings, and confirmed answers. Append-only; date-st
 
 ---
 
+## Phase 2 new rulings — 2026-08-16
+
+**R7 — Backfill ruling.** The fabrication ban covers *manufacturing* history, not *retrieving* it. A historical observation fetched from a source's archive, or deterministically reconstructed from existing platform rows, is legitimate: `observed_at` = the real historical date, `ingested_at` = now. What remains banned: manufacturing rows for periods a source has no record of, and — explicitly — **ingesting Grok's historical pulse/trending/crowd/traveler-estimate outputs as signals.** Those are outputs of the fabrication this lane replaces. They never enter `trend_signals`, ever.
+
+**R8 — Calibration window starts at real traffic.** Reconstructed internal signals from before public launch measure the dev team, not demand. The backfill still ingests them (they're real observations), but a `pre_launch` flag or config cutoff date excludes them from any future calibration fit. Config, not literal.
+
+**FU-12 amendment.** Blocking condition changes from "≥1 full season of collected signals" to "backfill ingestion complete + entity resolution complete + docomo MSS quote answered." Market-level Kyoto calibration is expected to be viable weeks after Phase 2 ships.
+
+**Process ruling — full-domain coverage queries required for seeded calendar/range tables.** Boundary spot-checks are insufficient. The 366-day leap-year scan used in Phase 1 close-out is the standard gate for any seeded calendar or range table going forward. Record it here; apply it to any future phase that inserts rows of this type.
+
+---
+
 ## Phase 0 → Phase 1 conditional approval — 2026-08-16
 
 **Source:** Leon's stop-resolution message, Phase 0 findings review.
