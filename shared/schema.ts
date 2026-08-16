@@ -8809,6 +8809,7 @@ export const trendSignals = pgTable("trend_signals", {
   ingestedAt:     timestamp("ingested_at").defaultNow().notNull(),
   resaleClass:    varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — adapter declares explicitly
   surfaceOrigin:  text("surface_origin"),             // non-null → excluded from scoring (L8)
+  preLaunch:      boolean("pre_launch").notNull().default(false), // R8: true = before public launch, excluded from calibration fits
   rawRef:         jsonb("raw_ref"),
 }, (table) => [
   index("trend_signals_entity_idx").on(table.trendEntityId),
@@ -8830,6 +8831,10 @@ export const trendSourceConfig = pgTable("trend_source_config", {
   monthlyCostCeiling:   decimal("monthly_cost_ceiling", { precision: 10, scale: 2 }),
   resaleClass:          varchar("resale_class", { length: 30 }).notNull(), // NO DEFAULT — each row explicit
   notes:                text("notes"),
+  // Phase 2.1 — health status written by cost-enforcement.ts
+  healthStatus:         varchar("health_status", { length: 30 }).notNull().default("healthy"),
+  haltedAt:             timestamp("halted_at"),
+  haltedReason:         text("halted_reason"),
   createdAt:            timestamp("created_at").defaultNow().notNull(),
   updatedAt:            timestamp("updated_at").defaultNow().notNull(),
 });

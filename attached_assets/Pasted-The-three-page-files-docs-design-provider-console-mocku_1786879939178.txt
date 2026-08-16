@@ -1,0 +1,12 @@
+The three page files — docs/design/provider-console-mockup/:
+
+page-workstation.html, page-catalog.html, page-distribute.html
+Each is a one-page extraction of the ratified mockup.html — identical CSS, markup, and interactivity, with the boot pinned so the file opens directly on its own view. I verified all three in headless Chromium (each reports the correct active view and renders correctly). They stay regenerable from mockup.html, so the canonical mock remains the single source.
+
+The dispatch — docs/testing/CONSOLE_CONFORMANCE_DISPATCH_AUG16.md, following the repo's exercise-doc conventions:
+
+Side-by-side checklists per page: Workstation A1–A6 (door tiles, category grid, and the new 3-step property builder ending in Review), Catalog B1–B7 (toolbar, rows, read-only map preview, the new month grid with the Bookable/Blacked-out/Nothing-published/Today legend, the mock vocabulary, and the new edit-split panel — including a behavioral truth test that the panel's two columns agree with what a real safe-vs-identity PATCH actually does), Distribute C1–C5 (storefront, share kit with the Route frame, Promote with the new measurement note, arrival flow).
+An authority-scope section listing the eight ruled deliberate deltas (e.g. /p/:handle URLs, the 1080×1350 feed frame, the ratified Marketplace/Direct channels, no "Preview as unlocked") so agents don't file matches-to-the-mock that would actually be regressions.
+Environment lessons already paid for: the accept-terms bounce, needing an approved listing to see the edit-split panel, and that an empty grid saying "Nothing published yet" is correct §13 behavior, not a failure.
+Report format and close condition: PASS/DIVERGES/BLOCKED per row with screenshots into docs/testing/assets/console-conformance-aug16/, results appended to the dispatch itself, divergences filed to the punch list (verify, don't repair) — and the explicit criterion under which "console conformance CONFIRMED" closes your report.
+The code under test is the previous commit 83d1fee (the S-1..S-4 fixes). Once the agents run the dispatch and every row passes or resolves to a cited ruling, this can be closed.

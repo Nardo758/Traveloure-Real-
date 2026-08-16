@@ -7386,7 +7386,7 @@ export async function registerDiscoveryRoutes() {
 
   // Trigger discovery for a destination
 
-router.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
+router.post("/api/discovery/scan", isAuthenticated, requireAdmin, async (req, res) => {
     try {
       const { destination, categories } = req.body;
 

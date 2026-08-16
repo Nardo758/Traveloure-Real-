@@ -99,7 +99,20 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
       });
     }
 
-    await storage.updateLocalExpertFormType(userId, expertType);
+    // Capture current role before the update so the audit record is complete.
+    const [currentUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    const oldRole = currentUser?.role ?? null;
+
+    // ATOMIC: the storage method wraps form-type update, role update, and
+    // audit insert in one transaction — if the audit insert fails, the role
+    // switch rolls back too (a role change without a record must never happen).
+    await storage.updateLocalExpertFormType(userId, expertType, {
+      actorId: userId,
+      actorRole: oldRole ?? "expert",
+      oldRole,
+      reason: "expert_self_switch",
+    });
+
     res.json({ success: true, expertType });
   } catch (err) {
     console.error("Error updating expert role:", err);

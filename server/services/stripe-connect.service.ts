@@ -22,8 +22,9 @@
  */
 
 import Stripe from 'stripe';
+import { getStripeSecretKey } from '../utils/stripe-key';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 

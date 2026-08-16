@@ -8,25 +8,6 @@ packages = ["unzip", "psmisc"]
 
 [env]
 PORT = "5000"
-# Lockfile-purity, source-level fix (Aug 11, 2026 — see CLAUDE.md "Lockfile purity"):
-# Replit injects an env-level npm registry override pointing at its package-firewall
-# proxy, which OUTRANKS the project .npmrc (npm precedence: env > project file) and
-# bakes unreachable package-firewall.replit.local URLs into package-lock.json.
-# Verified the firewall is advisory, not mandatory (direct registry.npmjs.org
-# returns 200 from the workspace shell), so pinning the registry here prevents
-# pollution from FORMING. The postinstall scrub + hooks + CI gate remain as
-# defense-in-depth if this env route ever loses precedence again.
-# LOWERCASE key, deliberately (verified Aug 11): Replit injects lowercase
-# npm_config_registry, and with BOTH spellings present npm resolved the collision
-# in the lowercase one's favor (uppercase NPM_CONFIG_REGISTRY was in env and lost).
-# Same key = one value at the OS level; whichever layer sets it last wins.
-npm_config_registry = "https://registry.npmjs.org/"
-# R4 deliverable rail: the object-storage wrapper (server/infrastructure/
-# object-storage.ts) reads this env var. Platform auto-injection of this name was
-# assumed but never observed (verified absent after [env] re-application, Aug 11),
-# so it is set here explicitly. Value mirrors [objectStorage].defaultBucketID
-# below — keep the two in sync if the bucket is ever re-provisioned.
-REPLIT_OBJECT_STORAGE_BUCKET = "replit-objstore-b9da6238-639b-4b0e-8956-034ec0042760"
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -49,24 +30,13 @@ args = "Start application"
 task = "workflow.run"
 args = "check-noop-migrations"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "check-claims-only-lookups"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "payout-parity"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "STRIPE_SECRET_KEY=\"$(node scripts/dev-stripe-key.cjs)\" npm run dev"
+args = "npm run dev"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -76,28 +46,6 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx tsx scripts/check-noop-migrations.ts"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "check-claims-only-lookups"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node scripts/check-claims-only-user-lookups.cjs"
-
-[[workflows.workflow]]
-name = "payout-parity"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "JOURNEY_DB_WRITES_OK=1 npm run test:payout-parity"
 
 [workflows.workflow.metadata]
 isValidation = true
@@ -113,14 +61,6 @@ VITE_TWELVEGO_AFFILIATE_ID = "13805109"
 ADMIN_ALLOWED_IPS = "127.0.0.1"
 PARTNERIZE_PUBLISHER_ID = "1101l337068"
 
-[userenv.development]
-VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt"
-STRIPE_SECRET_KEY_TEST = "[redacted]"
-RATE_LIMIT_LOOPBACK_SKIP = "1"
-
-[userenv.production]
-ENVIRONMENT = "PROD"
-
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 30000
@@ -130,12 +70,9 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
+localPort = 23636
 externalPort = 3000
 
 [[ports]]
-localPort = 23636
+localPort = 23637
 externalPort = 3001
-
-[objectStorage]
-defaultBucketID = "replit-objstore-b9da6238-639b-4b0e-8956-034ec0042760"

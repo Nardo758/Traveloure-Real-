@@ -1156,4 +1156,25 @@ export const MIGRATION_FILES = [
   // pulse_score; tie-break newest created_at) then adds a unique index so the DB rejects
   // any future duplicate insert.
   "230_dedupe_travel_pulse_cities.sql",
+  // 232: Trend + Crowd Engine Phase 1 — schema + config tables (trend_entities,
+  // trend_source_configs, trend_signals, trend_scores, market_season_calendars,
+  // crowd_index_snapshots, crowd_band_configs). Append-only rule for trend_signals
+  // enforced by application convention. All IF NOT EXISTS DDL; no publish-trap risk.
+  "232_trend_engine_phase1.sql",
+  // 233: Trend Engine Phase 1 close-out — two Leon-approved season gap rows:
+  //   kyoto spring_shoulder (04-21 → 06-06, 1.10) covering Golden Week shoulder;
+  //   edinburgh autumn_shoulder (09-01 → 10-31, 0.90) post-Festival cooldown.
+  "233_trend_engine_phase1_season_gaps.sql",
+  // 234: Trend Engine Phase 1 — three residual season gap rows (Leon-approved):
+  //   bogota dry_primary end extended 02-28 → 02-29 (leap-year day, same 1.10);
+  //   kyoto autumn_shoulder (09-07 → 10-19, 0.90) pre-foliage shoulder;
+  //   porto autumn (10-01 → 10-31, 1.00) October fully unassigned.
+  // Closes the 366-day leap-year coverage scan to 0 gap_days for all 8 markets.
+  "234_trend_engine_phase1_season_gaps2.sql",
+  // 235: Trend Engine Phase 2 infrastructure —
+  //   (1) health_status / halted_at / halted_reason columns on trend_source_config (Phase 2.1)
+  //   (2) UNIQUE idempotency index on trend_signals (entity, source, metric, observed_at)
+  //   (3) pre_launch boolean column on trend_signals (R8 calibration exclusion)
+  //   (4) trend_entities seed rows for 8 operating markets (pre-confirmed Wikidata QIDs)
+  "235_trend_engine_phase2_infra.sql",
 ] as const;

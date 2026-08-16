@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db";
 import { logger } from "./logger";
 import { getCircuitBreakerStatus } from "./circuit-breaker";
+import { getStripeSecretKey } from "../utils/stripe-key";
 
 interface HealthCheck {
   status: "healthy" | "unhealthy" | "degraded";
@@ -151,8 +152,8 @@ export function createHealthRouter(): Router {
           message: process.env.ANTHROPIC_API_KEY ? "ANTHROPIC_API_KEY present" : "ANTHROPIC_API_KEY missing",
         },
         stripe: {
-          status: process.env.STRIPE_SECRET_KEY ? "healthy" : "degraded",
-          message: process.env.STRIPE_SECRET_KEY ? "STRIPE_SECRET_KEY present" : "STRIPE_SECRET_KEY missing",
+          status: getStripeSecretKey() ? "healthy" : "degraded",
+          message: getStripeSecretKey() ? "Stripe key present" : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset)",
         },
       };
 
