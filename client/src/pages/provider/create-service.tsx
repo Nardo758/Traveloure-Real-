@@ -38,7 +38,38 @@ type DeliveryMethod =
   | "in_person" | "video_call" | "phone_call"
   | "async_messaging" | "voice_notes" | "pdf_guide" | "hybrid";
 
+// Map wizard UI values → DB canonical enum (deliveryMethodEnum in shared/schema.ts)
+function toDbDelivery(m: DeliveryMethod): string {
+  if (m === "video_call")  return "video";
+  if (m === "phone_call")  return "call";
+  if (m === "pdf_guide")   return "pdf";
+  return m;
+}
+
+// Map DB canonical values → wizard UI values (for hydration from existingService)
+function fromDbDelivery(raw: string): DeliveryMethod {
+  if (raw === "video") return "video_call";
+  if (raw === "call")  return "phone_call";
+  if (raw === "pdf")   return "pdf_guide";
+  return raw as DeliveryMethod;
+}
+
 interface ServiceCategory { id: string; name: string; slug?: string; }
+
+// ─── delivery method mapping ───────────────────────────────────────────────────
+// Wizard uses video_call/phone_call/pdf_guide; DB enum stores video/call/pdf.
+function toDbDelivery(m: DeliveryMethod): string {
+  if (m === "video_call")  return "video";
+  if (m === "phone_call")  return "call";
+  if (m === "pdf_guide")   return "pdf";
+  return m;
+}
+function fromDbDelivery(raw: string): DeliveryMethod {
+  if (raw === "video") return "video_call";
+  if (raw === "call")  return "phone_call";
+  if (raw === "pdf")   return "pdf_guide";
+  return raw as DeliveryMethod;
+}
 
 interface DraftState {
   // Step 1 — Basics
@@ -1280,37 +1311,18 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 
       <div style={{ marginBottom: 16 }}>
         <Label>Upload the file</Label>
-        {draft.fileUploaded ? (
-          <div style={{ border: `1px solid ${HAIR}`, borderRadius: 6, padding: 18,
-            textAlign: "center", background: PAP }}>
-            <div style={{ fontSize: 13, fontWeight: 550 }}>guide-v1.pdf</div>
-            <div style={{ fontSize: 12, color: ACC, marginTop: 3 }}>
-              Uploaded ·{" "}
-              <button type="button" onClick={() => set({ fileUploaded: false })}
-                style={{ background: "none", border: "none", color: ACC, padding: 0,
-                  textDecoration: "underline", textUnderlineOffset: 2, cursor: "pointer",
-                  fontSize: 12, font: "inherit" }}>
-                Remove
-              </button>
-            </div>
+        <div style={{ border: `1px dashed ${HAIR}`, borderRadius: 6, padding: 18,
+          textAlign: "center", background: GRD }}>
+          <div style={{ fontSize: 13, color: MUT, marginBottom: 4 }}>
+            No file yet — travelers cannot receive anything until there is one.
           </div>
-        ) : (
-          <div style={{ border: `1px dashed ${HAIR}`, borderRadius: 6, padding: 22,
-            textAlign: "center", background: GRD }}>
-            <div style={{ fontSize: 13, color: MUT, marginBottom: 9 }}>
-              No file yet — travelers cannot receive anything until there is one.
-            </div>
-            <button type="button" onClick={() => set({ fileUploaded: true })}
-              style={{ background: PAP, color: INK, border: `1px solid ${HAIR}`,
-                padding: "6px 11px", borderRadius: 6, cursor: "pointer",
-                fontSize: 12.5, fontWeight: 550, font: "inherit" }}>
-              Upload the guide
-            </button>
+          <div style={{ fontSize: 12, color: MUT, lineHeight: 1.5 }}>
+            Save this draft first, then upload the guide from your{" "}
+            <b style={{ color: INK }}>Listing</b> page (Listing → Edit → What they get).
           </div>
-        )}
+        </div>
         <Help>
           Travelers get the current file at the moment they buy. Updating it later does not re-send.
-          This is the item the draft checklist watches — it ticks when a file is here, not when you tick it.
         </Help>
       </div>
 
@@ -1328,10 +1340,11 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 }
 
 // ─── step 5: review ───────────────────────────────────────────────────────────
-function StepReview({ draft, serviceId, onSubmit, submitting, onBack }: {
+function StepReview({ draft, serviceId, onSubmit, submitting, onBack, onSaveLater, savingLater }: {
   draft: DraftState; serviceId: string;
   onSubmit: () => void; submitting: boolean;
   onBack: () => void;
+  onSaveLater: () => void; savingLater: boolean;
 }) {
   const steps = getStepList(draft.deliveryMethod);
   const isLong = steps.length === 5;
@@ -1476,13 +1489,17 @@ function StepReview({ draft, serviceId, onSubmit, submitting, onBack }: {
         </button>
         <button
           type="button"
+          onClick={onSaveLater}
+          disabled={savingLater}
           style={{
             background: "transparent", color: INK,
             border: `1px solid ${HAIR}`, padding: "10px 18px", borderRadius: 6,
-            cursor: "pointer", fontSize: 13.5, fontWeight: 550, font: "inherit",
+            cursor: savingLater ? "not-allowed" : "pointer",
+            fontSize: 13.5, fontWeight: 550, font: "inherit",
+            opacity: savingLater ? 0.7 : 1,
           }}
         >
-          Save and finish later
+          {savingLater ? "Saving…" : "Save and finish later"}
         </button>
       </div>
 
@@ -1552,7 +1569,7 @@ export default function CreateServiceWizard() {
     setDraftFull(prev => ({
       ...prev,
       serviceName: svc.serviceName ?? prev.serviceName,
-      deliveryMethod: (svc.deliveryMethod ?? prev.deliveryMethod) as DeliveryMethod,
+      deliveryMethod: fromDbDelivery(svc.deliveryMethod ?? "in_person"),
       price: svc.price ?? prev.price,
       priceBasedOn: svc.priceBasedOn ?? prev.priceBasedOn,
       shortDescription: svc.shortDescription ?? prev.shortDescription,
@@ -1583,11 +1600,13 @@ export default function CreateServiceWizard() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/provider/services", {
         serviceName: draft.serviceName || "Untitled service",
-        deliveryMethod: draft.deliveryMethod,
+        deliveryMethod: toDbDelivery(draft.deliveryMethod),
         price: draft.price || "0",
         priceBasedOn: draft.priceBasedOn,
         shortDescription: draft.shortDescription,
         categoryId: draft.categoryId || undefined,
+        status: "draft",
+        approvalStatus: "draft",
       });
       return res.json();
     },
@@ -1614,12 +1633,26 @@ export default function CreateServiceWizard() {
     },
   });
 
-  // PATCH — submit for review
+  // PATCH — save draft and return to catalog
+  const saveLaterMutation = useMutation({
+    mutationFn: async () => {
+      if (!serviceId) return;
+      await apiRequest("PATCH", `/api/provider/services/${serviceId}`, { status: "draft" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      toast({ title: "Draft saved — find it in your Catalog when you're ready." });
+      navigate("/provider/workstation");
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not save", description: err.message ?? "Please try again.", variant: "destructive" });
+    },
+  });
+
+  // POST — submit for review
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/provider/services/${serviceId}`, {
-        formStatus: "submitted",
-      });
+      const res = await apiRequest("POST", `/api/provider/services/${serviceId}/submit`, {});
       return res.json();
     },
     onSuccess: () => {
@@ -1705,7 +1738,7 @@ export default function CreateServiceWizard() {
         // update basics then advance
         await updateMutation.mutateAsync({
           serviceName: draft.serviceName,
-          deliveryMethod: draft.deliveryMethod,
+          deliveryMethod: toDbDelivery(draft.deliveryMethod),
           price: draft.price,
           priceBasedOn: draft.priceBasedOn,
           shortDescription: draft.shortDescription,
@@ -1754,6 +1787,8 @@ export default function CreateServiceWizard() {
           onSubmit={() => submitMutation.mutate()}
           submitting={submitMutation.isPending}
           onBack={() => goTo(stepIndex - 1, serviceId)}
+          onSaveLater={() => saveLaterMutation.mutate()}
+          savingLater={saveLaterMutation.isPending}
         />
       );
     return null;
