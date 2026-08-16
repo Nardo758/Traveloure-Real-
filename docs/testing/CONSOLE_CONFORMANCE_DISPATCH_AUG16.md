@@ -125,8 +125,21 @@ punch-list pointer.
 Run against the current checkout (branch `claude/ui-mockup-workspace-catalog-distribute-ywd2kh`,
 code under test `83d1fee`) as provider `kyoto-interpreter@traveloure.test` (terms accepted;
 3 approved+active listings incl. one async, plus a property created live during A5). Viewport
-1440×1000; screenshots under `docs/testing/assets/console-conformance-aug16/`; capture script:
-`scripts/console-conformance-capture.ts`. **All 18 rows PASS — no punch-list entries filed.**
+1440×1000; screenshots under `docs/testing/assets/console-conformance-aug16/`.
+
+Evidence is produced by an **executable asserting dispatch**, `scripts/console-conformance-capture.ts`
+(`npx tsx scripts/console-conformance-capture.ts`): it logs in, seeds availability through the real
+PUT write path, hard-asserts every row's load-bearing expectations (exiting non-zero on any miss),
+performs the B7 PATCHes itself and captures the post-patch Catalog row, creates/deletes the B6 draft
+probe and the A5 property fixture via the API, exercises both C2 eligibility states via `?listing=`
+deep links (approved → frames unlocked; draft → honest unlock message, zero share images), and
+reverts its side effects (price revert asserted; the staged identity edit has no owner cancel API —
+the script prints the one-line SQL, which was run and verified after this run). Final run:
+**ALL CHECKS PASSED, exit 0. All 18 rows PASS — no punch-list entries filed.**
+
+Rerun note: the dev server must have `RATE_LIMIT_LOOPBACK_SKIP=1` (the documented CI escape hatch
+in `server/infrastructure/rate-limiter.ts`) — without it the run's request volume trips per-IP
+limiters mid-checklist and the SPA bounces to sign-in (a 429 artifact, not a conformance failure).
 
 | Row | Verdict | Screenshot | Notes |
 |---|---|---|---|
