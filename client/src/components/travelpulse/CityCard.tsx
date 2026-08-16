@@ -138,9 +138,7 @@ export function CityCard(props: CityCardProps) {
           ) : (
             trendLabel && <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold">☀️ {trendLabel}</span>
           )}
-          {typeof activeTravelers === "number" && activeTravelers > 0 && (
-            <span className="px-2 py-0.5 rounded-md bg-white/90 text-gray-700 text-[11px] font-medium flex items-center gap-1 tabular-nums"><Users className="w-3 h-3" />{activeTravelers.toLocaleString()}</span>
-          )}
+          {/* activeTravelers count suppressed per R3 — no absolute visitor count on traveler surfaces */}
           {typeof alertCount === "number" && alertCount > 0 && (
             <span className="px-2 py-0.5 rounded-md bg-[var(--earn-coral-ink)] text-white text-[11px] font-medium flex items-center gap-1 tabular-nums"><Bell className="w-3 h-3" />{alertCount}</span>
           )}
