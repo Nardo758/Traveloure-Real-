@@ -26,6 +26,15 @@ All trend-engine server code lives under `server/services/trend-engine/`:
 - **X API `X_BEARER_TOKEN`**: 116-char Bearer Token, Basic plan confirmed working. `GET /2/tweets/counts/recent` → 200, 300 req/15min limit. Adapter fully built. Enable in trend_source_config when 30-day ToS purge job is also in place.
 - **xAI `XAI_API_KEY`**: No longer needed for X signals — native X API v2 used directly. xAI key still present for other potential uses.
 
+## Adapter quirks found during first ingestion
+
+- **Wikimedia pageviews**: data publication lag is D-3 (D-1 and D-2 return 404). Fixed daily() to use D-3. Backfill uses explicit date range so unaffected.
+- **Nager.Date India (IN)**: not in Nager.Date's available countries. API returns HTTP 200 with empty body (not 404) for unsupported countries — causes "Unexpected end of JSON input". Fixed: check `text.trim()` before JSON.parse, treat empty as "no holidays".
+- **BestTime anchor venues**: original venue names for Goa (Baga Beach), Mumbai (Gateway of India), Porto (Ribeira Square) return 404. Working replacements confirmed: Goa=Goa Airport, Mumbai=Chhatrapati Shivaji Maharaj International Airport, Porto=Mercado do Bolhão. Jaipur/Porto live data returns "No live data available" — live endpoint fails but forecast data still writes.
+- **GDELT API**: intermittently returns 429 and fetch-failed. Not a code issue — data from successful runs persists via idempotency. First run got 284 rows; subsequent runs get 0 on bad days.
+- **Runner rowsInserted counter**: Drizzle `onConflictDoNothing()` resolves successfully even on conflicts, so the counter increments regardless of whether a row was actually written. DB has 0 duplicates confirmed; counter is misleadingly optimistic. True idempotency check must be done via DB query, not runner output.
+- **R9 enforcement**: chk_x_api_raw_ref_null DB CHECK constraint on trend_signals + raw_ref=null in all x_api adapter inserts. Constraint test confirmed working (INSERT with non-null raw_ref rejected). No purge job — derived aggregates persist indefinitely per R9.
+
 ## BestTime API quirks
 
 - `POST /api/v1/forecasts` with `venue_name` + `venue_address` — idempotent create/update, returns `analysis[0..6]` (days, 0=Monday) each with `day_raw` (24-hr array, 0-100), `day_mean`, `day_max`.
