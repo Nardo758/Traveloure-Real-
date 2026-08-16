@@ -17,9 +17,18 @@
  *
  * Rules:
  *   R2: NO LLM summarization or sentiment scoring of X content — counts only.
- *   ToS: X API data must not be stored beyond 30 days (standard dev agreement).
- *        A data-expiry job should purge trend_signals rows where
- *        source = 'x_api' AND observed_at < NOW() - INTERVAL '30 days'.
+ *   R9: X Content (post text, IDs, user objects, media) is NEVER stored.
+ *       Only our own derived, non-reconstructable aggregates persist indefinitely
+ *       (count + peak velocity per entity per day). This is the standard
+ *       social-listening architecture (Brandwatch/Sprinklr class).
+ *       raw_ref MUST be null on every x_api row — enforced here AND by DB CHECK
+ *       constraint chk_x_api_raw_ref_null. Counsel verification pending (R9).
+ *   x_handle_or_query on trend_entities is our query configuration, NOT X Content
+ *       — it is not subject to the X developer agreement retention limits.
+ *
+ * In-flight guarantee: API responses are processed in memory within the run.
+ *   No post text, tweet IDs, user handles, or response payloads are written to
+ *   any table, log file, or cache. Only integer counts reach the DB.
  *
  * Backfill: counts/recent supports up to 7 days via start_time/end_time.
  *   counts/all (full archive) requires Academic Research access — not used.
@@ -171,7 +180,7 @@ export class XApiAdapter implements TrendEngineAdapter {
             value: String(yd.total),
             observedAt: ydDate,
             resaleClass: RESALE_CLASS,
-            rawRef: { query, date: ydStr, peak_hour: yd.peak },
+            rawRef: null, // R9: X Content never stored — derived aggregates only
           }).onConflictDoNothing();
           result.rowsInserted++;
         } catch { result.rowsSkipped++; }
@@ -185,7 +194,7 @@ export class XApiAdapter implements TrendEngineAdapter {
             value: String(yd.peak),
             observedAt: ydDate,
             resaleClass: RESALE_CLASS,
-            rawRef: { query, date: ydStr, daily_total: yd.total },
+            rawRef: null, // R9: X Content never stored — derived aggregates only
           }).onConflictDoNothing();
           result.rowsInserted++;
         } catch { result.rowsSkipped++; }
@@ -255,7 +264,7 @@ export class XApiAdapter implements TrendEngineAdapter {
               value: String(counts.total),
               observedAt,
               resaleClass: RESALE_CLASS,
-              rawRef: { query, date: dateStr, peak_hour: counts.peak, backfill: true },
+              rawRef: null, // R9: X Content never stored — derived aggregates only
             }).onConflictDoNothing();
             result.rowsInserted++;
           } catch { result.rowsSkipped++; }
@@ -268,7 +277,7 @@ export class XApiAdapter implements TrendEngineAdapter {
               value: String(counts.peak),
               observedAt,
               resaleClass: RESALE_CLASS,
-              rawRef: { query, date: dateStr, daily_total: counts.total, backfill: true },
+              rawRef: null, // R9: X Content never stored — derived aggregates only
             }).onConflictDoNothing();
             result.rowsInserted++;
           } catch { result.rowsSkipped++; }

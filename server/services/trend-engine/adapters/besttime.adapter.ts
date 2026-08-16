@@ -48,14 +48,15 @@ const LIVE_COST_CENTS = 0;     // live calls are free
 
 /** One recognizable high-footfall landmark per market for BestTime anchor. */
 const MARKET_ANCHORS: Record<string, { name: string; address: string }> = {
-  kyoto:     { name: "Fushimi Inari Taisha",        address: "Kyoto, Japan" },
-  goa:       { name: "Baga Beach",                  address: "Goa, India" },
-  mumbai:    { name: "Gateway of India",             address: "Mumbai, India" },
-  jaipur:    { name: "Amber Fort",                  address: "Jaipur, India" },
-  edinburgh: { name: "Edinburgh Castle",             address: "Edinburgh, Scotland" },
-  porto:     { name: "Ribeira Square",               address: "Porto, Portugal" },
-  bogota:    { name: "Plaza de Bolivar",             address: "Bogota, Colombia" },
-  cartagena: { name: "Plaza de los Coches",          address: "Cartagena, Colombia" },
+  kyoto:     { name: "Fushimi Inari Taisha",                               address: "Kyoto, Japan" },
+  // Airports confirmed to return valid forecasts for cities BestTime covers indirectly
+  goa:       { name: "Goa Airport",                                        address: "Dabolim, Goa, India" },
+  mumbai:    { name: "Chhatrapati Shivaji Maharaj International Airport",  address: "Mumbai, India" },
+  jaipur:    { name: "Amber Fort",                                         address: "Jaipur, India" },
+  edinburgh: { name: "Edinburgh Castle",                                   address: "Edinburgh, Scotland" },
+  porto:     { name: "Mercado do Bolhão",                                  address: "Porto, Portugal" },
+  bogota:    { name: "Plaza de Bolivar",                                   address: "Bogota, Colombia" },
+  cartagena: { name: "Plaza de los Coches",                                address: "Cartagena, Colombia" },
 };
 
 /** JS day-of-week (0=Sunday) → BestTime day index (0=Monday). */

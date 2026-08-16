@@ -1177,4 +1177,9 @@ export const MIGRATION_FILES = [
   //   (3) pre_launch boolean column on trend_signals (R8 calibration exclusion)
   //   (4) trend_entities seed rows for 8 operating markets (pre-confirmed Wikidata QIDs)
   "235_trend_engine_phase2_infra.sql",
+  // 236: X API raw_ref null constraint + enable all 8 Phase 2 adapters
+  //   (1) DB CHECK constraint chk_x_api_raw_ref_null — second enforcement layer for R9;
+  //       rejects any INSERT/UPDATE setting raw_ref non-null on an x_api row
+  //   (2) UPDATE trend_source_config SET enabled = true for all 8 adapters
+  "236_x_api_raw_ref_constraint_and_enable_adapters.sql",
 ] as const;
