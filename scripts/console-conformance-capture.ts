@@ -19,6 +19,7 @@
  * is clean at START and prints the cleanup SQL to run afterwards.
  */
 import { chromium, Page, APIRequestContext } from "@playwright/test";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 
 const BASE = "http://127.0.0.1:5000";
 const OUT = "docs/testing/assets/console-conformance-aug16";
@@ -44,7 +45,19 @@ async function getService(req: APIRequestContext, id: string) {
   return list.find((s: any) => s.id === id);
 }
 
+/** Clear a B7-staged identity edit directly (there is deliberately no owner-facing
+ * cancel API — see edit-split ruling — so the harness resets the fixture itself). */
+async function clearStagedEdit(serviceId: string) {
+  const { db } = await import("../server/db");
+  const { sql } = await import("drizzle-orm");
+  await db.execute(sql`UPDATE provider_services
+    SET pending_changes = NULL, edit_review_status = NULL WHERE id = ${serviceId}`);
+}
+
 async function main() {
+  // one coherent evidence set per run: start from an empty output dir
+  mkdirSync(OUT, { recursive: true });
+  for (const f of readdirSync(OUT)) rmSync(`${OUT}/${f}`);
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await ctx.newPage();
@@ -78,9 +91,14 @@ async function main() {
   }
 
   // Fixture preconditions (B7 must start clean)
-  const subject0 = await getService(req, APPROVED_ID);
+  let subject0 = await getService(req, APPROVED_ID);
   check("pre", !!subject0 && subject0.approvalStatus === "approved" && subject0.status === "active",
     "B7 subject listing is approved+active");
+  if (subject0?.editReviewStatus) {
+    console.log("  pre-cleanup: clearing staged edit left by a previous run");
+    await clearStagedEdit(APPROVED_ID);
+    subject0 = await getService(req, APPROVED_ID);
+  }
   check("pre", !subject0?.editReviewStatus, "B7 subject has no staged edit at start (clean fixture)");
   const ORIGINAL_PRICE = subject0?.price; // e.g. "2400.00"
   const ORIGINAL_NAME = subject0?.serviceName;
@@ -105,7 +123,9 @@ async function main() {
   check("A2", (await page.getByRole("button", { name: /preview as unlocked/i }).count()) === 0,
     "no 'Preview as unlocked' button (authority note 4)");
   await page.getByTestId("grid-product-ladder").scrollIntoViewIfNeeded();
-  await shot(page, "A2-door-tiles");
+  await page.waitForTimeout(400);
+  await page.getByTestId("grid-product-ladder").screenshot({ path: `${OUT}/A2-door-tiles.png` });
+  console.log("  shot A2-door-tiles.png (element)");
   check("A3", (await page.getByText(/start from what you do/i).count()) > 0, "'Or start from what you do' category grid");
   check("A3", (await page.getByTestId("grid-workstation-categories").count()) > 0, "category grid renders");
   await page.getByTestId("grid-workstation-categories").scrollIntoViewIfNeeded();
@@ -300,13 +320,12 @@ async function main() {
     const d = await req.delete(`${BASE}/api/provider/services/${s.id}`);
     check("cleanup", d.ok(), `A5 fixture '${s.serviceName}' deleted`);
   }
+  await clearStagedEdit(APPROVED_ID); // deterministic B7 residue cleanup (no owner cancel API exists)
   const finalSubject = await getService(req, APPROVED_ID);
   check("cleanup", finalSubject.price === ORIGINAL_PRICE && finalSubject.serviceName === ORIGINAL_NAME,
     "B7 subject live row back to original price/name");
-  if (finalSubject.editReviewStatus) {
-    console.log("\nNOTE: B7's staged identity edit has no owner cancel API; clear it with:");
-    console.log(`  UPDATE provider_services SET pending_changes=NULL, edit_review_status=NULL WHERE id='${APPROVED_ID}';`);
-  }
+  check("cleanup", !finalSubject.editReviewStatus && !finalSubject.pendingChanges,
+    "B7 staged edit cleared — fixture left clean");
 
   await browser.close();
   console.log(`\n==== ${failures.length === 0 ? "ALL CHECKS PASSED" : failures.length + " FAILURES"} ====`);

@@ -133,9 +133,11 @@ PUT write path, hard-asserts every row's load-bearing expectations (exiting non-
 performs the B7 PATCHes itself and captures the post-patch Catalog row, creates/deletes the B6 draft
 probe and the A5 property fixture via the API, exercises both C2 eligibility states via `?listing=`
 deep links (approved → frames unlocked; draft → honest unlock message, zero share images), and
-reverts its side effects (price revert asserted; the staged identity edit has no owner cancel API —
-the script prints the one-line SQL, which was run and verified after this run). Final run:
-**ALL CHECKS PASSED, exit 0. All 18 rows PASS — no punch-list entries filed.**
+reverts ALL side effects itself — price revert, fixture deletion, and clearing the staged identity
+edit directly in the DB (no owner cancel API exists), asserting the fixture is left clean. Run:
+**ALL CHECKS PASSED, exit 0. All 18 rows PASS — no punch-list entries filed.** This section is the
+single results record for the dispatch; an earlier walk-through's section and its differently
+named screenshots were superseded by this script-generated evidence set and removed.
 
 Rerun note: the dev server must have `RATE_LIMIT_LOOPBACK_SKIP=1` (the documented CI escape hatch
 in `server/infrastructure/rate-limiter.ts`) — without it the run's request volume trips per-IP
@@ -169,39 +171,3 @@ Bench note for reruns: author availability through
 `PUT /api/provider/services/:id/availability-patterns` (it materializes
 `vendor_availability_slots`); rows inserted directly into `service_availability_patterns` never
 reach the month grid, which reads materialized slots.
-## Results — console conformance CONFIRMED (runtime walk-through, Aug 16 2026)
-
-Run on branch `claude/ui-mockup-workspace-catalog-distribute-ywd2kh` (HEAD `ef64c598`, includes
-`5820998`); boot clean with all migrations recorded (0 newly applied, 230 recorded, 243/230 ledger
-— includes 214/215/216). Provider identity: `test-provider@traveloure.test` (terms accepted;
-9 approved+active listings incl. a pdf listing, a seeded property "Kamo River Guesthouse" with a
-Sep 2026 date range + Sep 15–16 blackout, a seeded bundle "Kyoto Classics Bundle", weekly patterns
-and 3 route stops on "Gion Walking Tour with Photographer"). Evidence: 20 PNG screenshots plus
-`B7-patch-evidence.json` (ordered raw API request/response log) under
-`docs/testing/assets/console-conformance-aug16/`.
-
-| Row | Verdict | Evidence / notes | Screenshot |
-|---|---|---|---|
-| A1 | PASS | "What are you building?" + one-door subtitle | `A1-header.png` |
-| A2 | PASS | Three door tiles; Bundle unlocked (provider has ≥2 approved — real count drives state) | `A2-door-tiles.png` |
-| A3 | PASS | Category click opens create flow with category pre-selected (`?category=Photography%20%26%20Videography`) | `A3-category-grid.png` |
-| A4 | PASS | Both orientation cards render real rows (bundle + property); property deep-links to builder. First pass showed an empty bundles card — data gap, resolved by seeding a real bundle, not a UI divergence | `A4-orientation-cards.png` |
-| A5 | PASS | Ladder "1. The property · 2. Rooms · 3. Review"; Next gated on validity; Submit ONLY on Review; Review reads back name/location/pin ("Not placed — optional")/description/rooms | `A5-property-builder.png` |
-| A6 | PASS | Edit dialog: The property · Details · Rooms, per-step saves, no Review (deliberate) | `A6-property-edit-dialog.png` |
-| B1 | PASS | Search + All/Live/In review/Draft chips + List\|Map; filter obeyed in both views (ruling 120b) | `B1-toolbar.png` |
-| B2 | PASS | Rows show thumb · name · meta · pill · storefront toggle · Availability → · health bar+label · Edit · Promote this → | `B2-listing-rows.png` |
-| B3 | PASS | Read-only traveler-preview notice; located-only canvas; coverage line; unlocated named off-canvas with true reasons + shape-aware fix links; ODbL visible (authority note 6: read-only is correct) | `B3-map-preview.png` |
-| B4 | PASS | Month grid above rails, legend Bookable/Blacked out/Nothing published/Today; opens on next bookable month, "Next available" jumps back; scheduled cells "09:00 · 6 left"; property cells "$180.00 / night"; Sep 15–16 striped blackout wins. First pass showed "Nothing published yet" — a seeding artifact (authoring rows weren't materialized into `vendor_availability_slots`); correct §13 honest-empty behavior, not a divergence | `B4-month-grid.png`, `B4-month-grid-property.png` |
-| B5 | PASS | "Repeats weekly" / "Published date ranges" titles; pdf listing shows "No calendar — this sells without slots", no empty grid | `B5-vocabulary.png` |
-| B6 | PASS | "Editing a live listing" two-column panel (Goes live immediately vs Re-enters review) closing on "Nothing is taken down for an edit."; renders on approved listing only | `B6-edit-split-panel.png` |
-| B7 | PASS | Clean ordered run on approved+active "Temple Meditation Session" (`4697d863-…`), documented order preserved with method/URL/body/status per step in `B7-patch-evidence.json`: (0) GET baseline — price 60.00, no editReview; (1) PATCH `{price:"96.00"}` → 200, applied immediately in the response, `editReview` null, listing stays Live; (2) PATCH `{serviceName:"Temple Meditation Session (rev B7)"}` → 200 with `editReview:{status:'pending',stagedKeys:['serviceName']}`, live name unchanged; (3) GET final — name unchanged, price 96.00, `pendingChanges.serviceName` staged, `editReviewStatus:'pending'`. Catalog row screenshot shows Live + "Edit in review", name without "(rev B7)", price $96.00. Panel columns agree with observed behavior — no P1. (Staged name edits deliberately left pending as B7 residue; no discard control exists — follow-up filed.) | `B7-edit-split-behavior.png`, `B7-patch-evidence.json` |
-| C1 | PASS | Avatar + business name; `/p/test-provider-qa` URL (authority note 1); "Live · showing 10 of 10 listings"; Edit handle & bio + share tools | `C1-storefront-card.png` |
-| C2 | PASS | Feed · Story · Route frames with purpose-first sublabels; Route honesty line "Shows your stops in order — not a travel route, and no distances or times."; copy-link + QR; frames unlocked on approved+active listing. First pass showed Route locked with the honest "This service has no route stops yet" — correct ruling 22(d) behavior for a stop-less listing (data gap, resolved by seeding stops), not a divergence | `C2-share-kit.png` |
-| C3 | PASS | Real posting opportunities with inline actions; `text-promote-measurement-note` "Measurement stays on Performance."; no analytics numbers on page; "View link performance" deep-links to `/provider/performance?tab=analytics` | `C3-promote.png` |
-| C4 | PASS | Crumb "Catalog › Distribute › «name»", "Promoting «name»" banner, ← Back to Catalog; foreign `?listing=not-a-real-id-12345` silently ignored | `C4-arrival-flow.png`, `C4-foreign-id.png` |
-| C5 | PASS | Marketplace channel, Direct-link channel (mint-inline), channel-state strip all present (authority note 3: absence would be the divergence) | `C5-ratified-extras.png` |
-
-**Close condition met:** every row PASS; no genuine divergence found, so no
-`QA_PUNCH_LIST.md` entry was filed. The "UI does not match the mockup" report is closed on
-evidence. (Incidental, non-blocking observations: dev-only Vite HMR websocket errors and a
-controlled/uncontrolled select console warning — cosmetic dev noise, not conformance items.)
