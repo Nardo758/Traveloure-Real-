@@ -765,6 +765,19 @@ export const providerServices = pgTable("provider_services", {
   // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
   // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
   transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
+  // ══ Gap #13's last two rows (ledger 2026-08-16-bring-access, migration 228) ═══════════════════
+  // The ratified mock's traveler read-out draws nine rows; seven had columns and render (lane M3).
+  // These two did not exist anywhere, so the flow never asked and nothing could render them — the
+  // INVERSE of the class T-REP audited (collected-and-never-read became drawn-and-never-collected).
+  // Free text in the HOST'S OWN WORDS. `accessNotes` is deliberately NOT a checklist of certified
+  // attributes and NOT the traveler-side `trip_participants.accessibility_needs`/`mobility_level`
+  // (a different person's answer): no accessibility STANDARD is claimed on the host's behalf, which
+  // the traveler surface states out loud. Additive-nullable, NO DB CHECK (migration-181/195
+  // posture — publish-trap avoidance). NULL = never answered ⇒ the row is OMITTED everywhere (§13),
+  // never rendered as "nothing to bring" or "no access notes", which are claims only a host can make.
+  whatToBring: text("what_to_bring"),
+  accessNotes: text("access_notes"),
+
   // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
   // with no prior home: meetingPoint/pickupAddress cover arrival, nothing structurally captured
   // departure. Additive nullable, no DB CHECK. NULL = never captured (§13, not "no drop-off").

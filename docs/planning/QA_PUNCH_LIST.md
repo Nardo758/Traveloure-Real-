@@ -2169,3 +2169,632 @@ account had no live listing and no saved stops (D-13 unverified with data), mobi
   Lesson folded forward: any new "fix this listing" affordance must route through
   `propertyEditorHref` first — the guard page existing is proof the ServiceForm door is wrong
   for these shapes.
+
+## Lane M2 — Catalog map preview, mock conformance round 2 (Aug 15, 2026)
+
+**Why a second round.** Decision-maker report: *"the Provider Console Catalog Map still does not
+look like the mock-up."* Lane M (D-1..D-8) fixed the surface's **honesty** — what it counts, what
+it names, where its links go — and every one of those fixes holds. It did not touch the surface's
+**shape**, and three whole blocks of the ratified mock
+(`docs/design/provider-console-mockup/mockup.html`, `#cat-map-mode`) had never been built at all.
+That is what this lane closes. Audit method: the mock's map-mode markup read block by block against
+the shipped `CatalogMapView`; 13 divergences, no contradiction of a locked decision.
+
+### Structure — the difference you see first
+
+- **M-1 (P1, FIXED).** **Layout.** The mock is ONE full-width canvas in ONE card. The ship was a
+  `240px | canvas | 320px` grid: a tall listing rail on the left and a Meeting-pin / Route-stops
+  rail on the right, squeezing the map into the middle third. The rails are gone. The listing
+  selector is now a compact wrapping chip row under the canvas (same `map-view-select-*` doors);
+  the pin card's *content* moved into the ⑪ strip and its *door* into the ⑬ block, so nothing the
+  rails carried was dropped — only the columns.
+- **M-4 (P2, FIXED).** The coverage caption was **above** the map as its own bordered card, with
+  the "nothing can be dragged" sentence stranded in a third place below. The mock has all three
+  sentences as one `.capline` **under** the canvas. It does now.
+- **M-5 (P2, FIXED).** The "Not located" list was a separate card above the map built from bare
+  `<li>`s. It is now inside the same card as the canvas, as the mock's `.stop` rows (position
+  chip · name · warn flag · action).
+- **M-6 (P3, FIXED).** When nothing was unlocated the whole block **disappeared**. The mock prints
+  "Every place-anchored listing has a confirmed pin." — an answer worth reading, not an absence
+  worth hiding.
+
+### Copy and treatment
+
+- **M-2 (P2, FIXED).** The notice dropped the mock's second sentence — the one recording that this
+  placement **amends** ruling 22(b)'s "Catalog is the map's authoring home" rather than silently
+  contradicting it. Restored verbatim.
+- **M-3 (P2, FIXED).** The notice rendered in the console's neutral grey (`#FAFAF8`/`#E8E8E2`);
+  the mock uses its amber `.notice` family (`#FBF6EC`/`#D9C79A`/`#6B551F`). The read-only posture
+  did not read as a callout. The mock's tokens are now literals at the top of the component.
+
+### Blocks that were never built
+
+- **M-7 (P1, FIXED).** **"What the traveler sees" (⑪)** — absent. The mock's three-card strip
+  teaching the three rendering rules: confirmed pin + radius; route partly located ("X of Y stops
+  located"); no coordinates → no map ("Location shared after booking"). Built. **Departure from
+  the mock, deliberately:** the mock draws three illustrations; these render the *selected
+  listing's real state*, so the rule is demonstrated on the provider's own data and cannot drift
+  from it. Where the listing is not in a given state the card says so (§13) instead of drawing a
+  specimen — the third card keeps the mock's static panel because it is a rule, not a datum, and
+  names how many of the owner's listings render that way today.
+- **M-8 (P2, FIXED).** **The ⑫ market-insight placement note** — absent, while the
+  Map preview ⇄ Market insights toggle it is *about* shipped at the top of the surface (ruling 84).
+  The mock flags that placement as analytics-not-authoring, proposes moving it to Performance, and
+  says in as many words that the move **is not part of this approval** — "flagged here so it is not
+  decided by accident". An undecided question nobody can see is exactly how it gets decided by
+  accident, so the note is now on the page, beside the toggle. **Nothing was moved.**
+- **M-9 (P2, FIXED).** **"Render it, or stop collecting it" (⑬)** — absent. Built against the
+  selected listing's REAL stored answers (party size, lead time, cancellation policy, start +
+  duration, languages, getting there/back, travel fee), plus the mock's "The rule this
+  demonstrates" and "Deliberately provider-only" pills. The mock's `propchip`
+  ("Proposed — gap #13 · ratify or amend") is preserved: this renders a proposal, it does not
+  ratify one. Two §13 rules hold inside it: an unanswered question is **omitted and counted**,
+  never defaulted into a claim the host did not make; and the two mock rows with **no column
+  behind them at all** — *Bring* and *Access* — are named as gap #13's open half rather than
+  faked. Reads only; nothing on this surface writes.
+
+### Chrome
+
+- **M-10 (P3, FIXED).** No breadcrumb. The mock switches its crumb bar to
+  `Catalog › Map · Traveler preview` on entering map mode. Added as a text crumb line on the
+  Distribute arrival-crumb precedent (the console has no global crumb bar).
+- **M-11 (P3, FIXED).** Canvas height 480 → 300, the mock's `.travelmap`.
+- **M-13 (P2, FIXED).** The toolbar's **search box and status chips vanished in map mode**
+  (`viewMode === "list" &&`), so half the mock's toolbar was missing from the screen it is drawn
+  on. They render in both modes now and **filter the map's listing set too** — with the coverage
+  caption naming the active filter ("showing draft only"), because a filtered count read as the
+  whole catalog would be the same §13 error this surface exists to avoid. Selection falls back to
+  a still-visible listing when a filter removes the selected one.
+
+### Deliberately NOT carried over
+
+- **M-12.** The mock's "Map preview — illustrative" corner label. The mock's canvas is a hand-drawn
+  SVG and needs the disclaimer; the ship renders real Leaflet/OSM tiles at real coordinates, so
+  copying that label would be the *dishonest* move. ODbL attribution rides the shared
+  `ServiceLocationMap` wherever it renders (§20/§22c) — unchanged.
+
+### The two judgment calls — AUDITED, then RATIFIED (decision-maker, Aug 15: "lets go with your
+### recommendation"; ledger row 120)
+
+Both were flagged as calls, audited against the code before either was decided, and ratified on
+that evidence. No code changed at ratification — M2 already shipped both this way.
+
+**(a) The right rail stays removed (M-1).** The audit's finding: it was **never a preview
+affordance**. `git show 9a412b9` (lane A1) deletes the `LocationPointPicker`, the per-stop
+`Remove` and the `Save route` button *out of those two cards* — what M2 removed was the
+**authoring** rail ruling 22(b) had put on Catalog, with its verbs stripped and the husk left
+standing. Three further facts, all from the code:
+- Ruling 93 §5 enumerates what the Aug 12 amendment preserves — the located partition, the
+  off-canvas list, "X of Y stops located", the located-only canvas, ODbL attribution. **The rail
+  is not on that list.** All five survive M2.
+- The sibling lane already shipped this layout: **D-15, "full-width canvas, rail as aside"**, is
+  what `service-map-authoring.tsx` (step 4) does today. The two map surfaces now agree.
+- Nothing is orphaned. Pin state also lives on the Catalog list row's Listing Health `exact_pin`
+  check and the listing-home checklist; the pin card itself survives inside the ⑬ block
+  (`map-view-pin-card` / `text-pin-state` / `button-edit-location`), and `meetingPoint` moved to
+  the ⑪ pin card's footer.
+
+**KNOWN AND ACCEPTED — the one real loss.** The ordered **named** list of every route stop
+(`map-view-route-card`) is gone. A **located** stop's name is now a click-to-open Leaflet popup
+(`service-location-map.tsx`), not always-visible text. That is what the mock specifies — its route
+card names only the *unlocated* stops under "3 of 5 stops located" — and the full ordered list
+keeps its home in step 4's rail (`route-stop-row-*`). Restoring it on Catalog would duplicate a
+readout the authoring step already owns.
+
+**(b) The map obeys the toolbar filter (M-13).** The audit's finding: **the mock cannot settle
+this** — its search input and status chips carry no listeners anywhere in `mockup.html` (only
+`cat-mode-seg` is wired), so they are decoration there. The repo settles it instead:
+`previewServices` is derived from `filteredServices`, so search + status chips have **always**
+governed Catalog **Preview** — a second, non-list rendering of the same set. Map ignoring them
+would have made it the only view that does not. And `searchQuery`/`statusFilter` are page-level
+state untouched by `viewMode`, so pre-M2 the combination was a *live filter with hidden controls*;
+the incoherent option was the one that was shipping.
+
+**THE CONSEQUENCE, NAMED.** `catalogStatusBucket` buckets on `approvalStatus`/`status`, so
+selecting **Live** hides the draft rows most likely to be missing a pin — which is the map's main
+job — and the "Previewing" chip row follows the filter too, so a filtered-out listing cannot be
+inspected. Default is `"all"`, and the coverage caption names the active filter ("showing live
+only") so a narrowed count is never read as the whole catalog (§13). Watch for this if a provider
+reports "my unpinned listing isn't in the Not-located list".
+
+**Bench evidence.** `docs/design/catalog-rebuild/after-map-m2.png` — the rebuilt surface rendered
+from fixture rows (no DB in the session container, so a throwaway Vite harness mounted the
+component directly; the harness was deleted, it is not in the tree). Tiles render grey because the
+sandbox blocks the OSM tile host — the layout, copy and every block are the real component.
+
+**Proof.** `playwright/tests/catalog-map-located.spec.ts` — rewritten. It had been left behind by
+Lane M and was asserting removed copy ("X of Y services located on the map") and removed testids
+(`catalog-map-unpinned-rail`, `button-add-pin-*`), i.e. it could not have passed. It now covers the
+crumb, the notice + amends sentence, the place-anchored caption, the "happens nowhere" row with no
+fix chip, the §13 no-pin negative, and the presence of the ⑫ and ⑬ blocks.
+
+## Folded in Aug 15, 2026 — the spec-rot audit (regression-spec lane, ledger row 121)
+
+Acting on the test strategy's #1 P0 ("commit the regression specs") surfaced a bigger problem than
+the one being fixed: **only ~14 of the repo's ~53 Playwright specs are referenced by any
+workflow.** The other ~39 are committed, were correct the day they were written, and have not run
+since. Four of them assert against provider-console surfaces that PRs #484–#487 renamed — and all
+four PRs merged with 54/54 green, because nothing ran them.
+
+### Fixed here
+
+- **Four rotted specs repaired.** `catalog-map-located` (unpinned rail → not-located list, count
+  copy, add-a-pin chip → real fix link), `service-logistics-step` (segmented transport provision →
+  the D-9 one-toggle), `distribute-channels` (the D-4 "Get link" button auto-mint removed),
+  `distribute-shell` (D-11 badge copy). Each now also asserts the NEW ruling, so the repair is
+  coverage rather than an assertion downgrade.
+- **They were DEAD ON ARRIVAL, not merely stale — two independent reasons.** (1) All four log in
+  as `kyoto-interpreter@traveloure.test`, which `phase-d-kyoto-vendors.seed.ts` creates with **no
+  password** and no other seeder touches — every run 401'd at the door, in every environment.
+  (2) Two of them asserted a seeded fact that never existed: they claim
+  `Business Document Translation` is approved+**draft**, but that seed inserts every vendor
+  service `approvalStatus:'approved', status:'active'` in one shared insert. Fixed at the source:
+  `e2e-test-accounts.seed.ts` grew an idempotent FIXTURE_LOGIN_BACKFILL (fills a NULL password and
+  a NULL storefront handle only, never overwrites, never steals a claimed handle), and
+  `distribute-shell` now CREATES its not-live listing instead of assuming one.
+- **A one-way door found while fixing it:** an un-verified provider can PATCH a listing to
+  `draft` but cannot PATCH it back to `active` (403 VERIFICATION_GATE), so "pause a seeded row and
+  restore it" silently corrodes the shared fixture on every run. Specs needing a not-live listing
+  must create a throwaway (born `submitted` per migration 111) and DELETE it. Recorded because the
+  next spec author will reach for the pause.
+- **New coverage** for the biggest untested change of the week: step-4 map authoring — D-16 step
+  header, D-10 Layers card (incl. the Pricing & fees href the dynamic-links gate caught), D-13
+  located pill, and D-12's autosave proven by ROUND-TRIP (reorder in the UI → read the row back →
+  new order persisted **with both stops' coordinates intact**, which a lossy replace-list would
+  fail while looking identical on screen).
+- **i18n key parity** (`playwright/tests/i18n-key-parity.spec.ts`): diffs en ⇄ ja key sets across
+  all 6 namespaces, both directions, plus namespace-file parity and a SUPPORTED_LOCALES cross-check.
+  **286 keys, zero gaps today.** Mutation-proved it can actually go red (delete a key → red; add an
+  orphan → red; stale allowlist entry → red). The allowlist ships empty by design.
+- **`.github/workflows/provider-console-gate.yml`** — the structural fix. Runs the four repaired
+  specs + i18n parity on every PR, with the repo's spec-file-existence guard (a renamed spec must
+  fail loudly, never reduce the gate to zero assertions) and `--workers=1` because these specs
+  mutate and restore one shared fixture.
+
+### Still open
+
+- **`catalog-preview-toggle.spec.ts` is NOT gated** — it shares the false "one listing is draft"
+  premise and needs the same create-a-throwaway treatment; deferred rather than half-fixed. Its
+  count assertion fails on a live bench today.
+- **~34 other ungated specs.** This lane gated the console surfaces that the redesign rulings churn
+  most; the rest are unaudited and may be rotted or dead in the same two ways. Worth one sweep:
+  for each, does it run, and does it pass? (Cheap to answer, and the answer is load-bearing —
+  every one of them currently reads as coverage while providing none.)
+
+---
+
+## Folded in Aug 15, 2026 — the spec-coverage sweep (answers the "~34 ungated specs" item above)
+
+The sweep the previous section asked for: for every spec in no workflow, **does it run, and does
+it pass?** Method matters here more than the tally, because the first two passes produced numbers
+that were wrong in *my* favour and in the specs' — both are recorded below so the next person does
+not repeat them.
+
+### The coverage number, computed rather than eyeballed
+
+**53 specs on disk; 20 reachable from a workflow; 33 run nowhere.** The 20 is not a count of
+literal filenames: most gates invoke `npx playwright test <substring>`, so coverage has to be
+resolved by matching each workflow's positional patterns against real filenames. Counting
+`playwright/tests/*.spec.ts` mentions alone gives a different (wrong) answer.
+
+The 33 split by age into two very different groups, and the second is the alarming one:
+**25 were last touched in a single Aug-5 sweep**, but **8 are from this week's lanes**
+(Aug 11–15: `offering-card`, `seam-cross-console`, `security-regression`, `travel-surcharge-step`,
+`service-display-options`, `booking-payment-isolation`, `ea-console-pages`,
+`expert-application-mobile`, `expert-booking-decline-dialog`). Specs are still being written
+ungated *today* — the rot mechanism the last lane fixed is still running.
+
+### Three harness facts a runner MUST satisfy — each one faked a failure before it was found
+
+These are the reason a naive `npx playwright test <file>` sweep produces a damning and false
+report. All three were discovered by disbelieving a red result:
+
+1. **`DATABASE_URL`** — 7 specs shell out to `psql`; without it their helper throws on the first
+   call. `booking-payment-isolation` "failed" this way and passes cleanly once set.
+2. **`PW_AUTH_SETUP=1`** — `playwright.config.ts` gates `globalSetup` on it, so without it the
+   saved auth states are never written and the specs that load them die on `ENOENT`
+   (`ea-console-pages`, `expert-application-mobile`, `rbac-security`, `auth-form-validation`).
+   Only 4 of the repo's workflows set it.
+3. **A timeout that fits the bench, not the default.** This sandbox's Vite dev server takes
+   **~25 s** to serve a heavy authenticated route's module graph — measured, and identical warm
+   and cold — while the APIs those pages call answer in **under 60 ms**. It is the dev module
+   waterfall, not the product and not the database. Playwright's 30 s default therefore indicts
+   slow pages instead of broken ones: every `page.goto` timeout in a default-timeout sweep is
+   **unproven, not condemned**. Re-run at `--timeout=120000` before believing any of them.
+
+4. **`/api/ready` must return HTTP 200 — and it does not merely because the server works.** With
+   `PW_AUTH_SETUP=1`, `global-setup` probes readiness and, in CI mode, **throws** on anything less,
+   which fails *every spec in the run* before a single test executes — a total-wipeout signature
+   (24/24 `NO-SUMMARY`) that looks nothing like spec rot and must not be read as it. The body said
+   `"ready":true` the whole time; the **HTTP status** was 503 because two health checks are graded
+   `fail` when their env is absent: `XAI_API_KEY` and `STRIPE_WEBHOOK_SECRET`. Stub values for both
+   (plus `E2E_AI_STUB=1`) turn the probe green. Note the asymmetry that makes this easy to
+   misdiagnose: a missing `ANTHROPIC_API_KEY` or `RESEND_API_KEY` is only a `warn` and costs
+   nothing.
+
+Also: `ci-provider@traveloure.test` (used by `travel-surcharge-step`) exists only after
+`scripts/seed-ci-test-users.ts` runs. Absent that, the spec is unrunnable for a reason that has
+nothing to do with the spec.
+
+**The meta-lesson, since it cost four passes:** every one of these produced a confident red result
+that was entirely my harness. A spec that has never run in CI has *no* established baseline, so
+the first red is worth nothing until the runner itself is proven — and the cheapest proof is a
+spec you already know passes. Budget for the harness, not just the sweep.
+
+### Confirmed defects in the specs themselves
+
+- **`concierge-phase-a` — deterministic, has never worked.** Its `sql()` helper runs
+  `INSERT … RETURNING id` through `psql -t -A`, which prints the returned uuid *and* the command
+  tag, so the helper hands back `"<uuid>\nINSERT 0 1"` and the very next
+  `expect(tempId).toMatch(/^[0-9a-f-]{36}$/i)` fails. Nothing environmental about it — it would
+  fail identically in CI on the day it was written. 5 of its 6 tests pass; this one never could.
+  Fix is one line in the helper (take the first line / strip the command tag), and the same
+  helper shape is copied into several other specs — worth fixing at the pattern, not the instance.
+
+### Two more spec-side defects, both found by disbelieving a total failure
+
+Being finalised by the re-run at realistic timeouts (`audit-pass3`); the table lands in the next
+commit rather than being guessed at here. What is already settled: **5 specs are fully green**
+(`auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`,
+`experts-flow` 10/10, `navbar-responsive` 16/16) — these are real, unclaimed coverage that should
+simply be gated.
+
+## Lane M3 — the preview speaks the traveler's words, and "Starts" is finished (Aug 15, 2026)
+
+Two things, both found by asking a question M2 should have asked first: **what IS gap #13?**
+
+### The answer, and the first correction
+
+Gap #13 is the mock's rule (legend ⑬): *"Render it, or stop collecting it — every authored answer
+gets a traveler-side home."* Every question the create flow asks must either have a traveler-side
+representation or an explicit provider-only decision; anything that is neither stops being asked.
+
+**It is NOT an open proposal, and M2 shipped it labelled as one.** It was **ratified by ledger row
+92** (the mock in full, explicitly including "G5's #13 panel") and **executed by lane T-REP, ledger
+row 101** — *"RENDER chosen throughout, zero fields removed"* — which built the traveler detail
+page's "Good to know" card plus the pure `client/src/lib/service-good-to-know.ts` (unit-tested).
+The mock's `propchip` was accurate when the mock was drawn and has been stale since Aug 13. The
+chip now reads **"Ratified — gap #13 · rendered, T-REP (ledger 101)"**.
+
+### M3-1 (P2, FIXED) — the preview was paraphrasing the traveler, not quoting them
+
+M2's `travelerFacts()` **re-implemented** derivations `service-good-to-know.ts` already owned, with
+different wording — on a card whose entire claim is that it shows what the traveler sees:
+
+| fact | M2 (Catalog) | traveler page |
+|---|---|---|
+| party size | `1–8 people · you can book for up to 8` | `1–8 people` |
+| lead time | `24 hours before the start — the host's lead time` | `1 day` (`formatHours` collapses 24h) |
+| starts | `18:00 · runs about 2½ hours` | `No earlier than 18:00 (Asia/Tokyo)` · `2h 30m` |
+
+That is the class **CLAUDE.md §18 rule 1** names — *derivation delegates, never re-implements* —
+and it is worse here than usual because the drift IS the defect: the card asserts identity with a
+surface it was diverging from. Every value now comes from the shared module, in the traveler
+page's order and behind its gates; the local `formatDuration` is deleted. Rows M2 was missing came
+along for free: change cutoff, buffer, transport provision, deposit terms, response window, scope
+statement.
+
+### M3-2 (P2, FIXED) — "Starts" is finished: the weekly rule reaches travelers at all
+
+`service_availability_patterns` (ledger row 102: `day_of_week` 0=Sun..6=Sat + start/end time) had
+an owner-gated PUT, an owner-gated GET and **no public read**. A provider could author "every
+Tuesday and Thursday at 18:00" and **no traveler could ever see it** — a textbook gap-#13
+violation that T-REP never reached, because row 101 deferred availability to lane S7.
+
+- **Server:** `GET /api/services/:id` now carries `availabilityPatterns`, loaded once and threaded
+  through all four product-shape branches like `routePoints`, behind the **same F2 read-gate**
+  already applied at the top of the handler (an unapproved listing leaks no schedule). **Not**
+  `capacity` — seats remaining is inventory and belongs to the availability calendar; this is only
+  the rhythm.
+- **Traveler:** a "Runs …" line in Good to know (`text-weekly-pattern`).
+- **Preview:** a "Runs on" row, from the owner read of the same rows.
+- **Formatter:** `formatWeeklyPattern` — groups by start time so two different times read as two
+  clauses rather than one wrong sentence; collapses all seven days to "Every day"; drops a
+  malformed `day_of_week` (app-enforced, **no DB CHECK**) rather than rendering `undefined`; and
+  follows `formatStartWindow`'s timezone convention exactly — declared IANA zone, or an explicit
+  "provider's local time", never a silent assumption. No rows ⇒ **null**, never a guessed rhythm.
+
+**No schema change.** The table exists and is declared in `shared/schema.ts` (publish-trap rule);
+this lane only gave it a reader.
+
+### What is STILL missing from the mock's nine-row card — and why
+
+**Bring** and **Access** have no column anywhere on `provider_services`, and no wizard field —
+the flow never asks, so there is nothing to render. (The `accessibilityNeeds`/`mobilityLevel`
+columns in the schema belong to `trip_participants` — a **traveler's** stated needs, not a host's
+access notes.) They are the inverse of what T-REP audited: **drawn and never collected**, rather
+than collected and never read. The card names them rather than faking them. Closing them needs two
+additive nullable columns + wizard fields — a schema decision, so it goes through CLAUDE.md's
+Coordination Prevention path (doc first, decision-maker approval) and is **not** in this lane.
+
+Also still filed from row 101, untouched here: `maxConcurrentBookings`, `city`, `faqs`,
+`experienceTypes`, `deliverables`, `contentAffinityTags`, non-property `categoryAttributes` —
+authored but unrendered, awaiting a follow-up render-or-rule pass.
+
+**Proof.** `client/src/lib/__tests__/service-good-to-know.test.ts` **38/38** (was 30) — eight new
+`formatWeeklyPattern` cases incl. the mock's own "Tuesdays & Thursdays", the two-clause case, the
+malformed-row drop and the §13 no-rows-no-claim negative. `tsc --noEmit` **168 = baseline**, zero
+new. Guard battery green (`check-undeclared-tables`'s exit 1 is pre-existing, verified by stash).
+Production build clean. Bench render: `docs/design/catalog-rebuild/after-render-it-m3.png`.
+
+### Bench-verified on a real stack (Aug 15, same session)
+
+The decision-maker offered a database URL; a **local** Postgres 16 was stood up in the container
+instead, so nothing real was touched — the app booted against a scratch DB with the repo's own 229
+migrations and full seed set. What actually ran:
+
+- `GET /api/services/:id` on a seeded approved listing: `availabilityPatterns` **empty before**, and
+  after authoring two rows **through the real owner PUT** (not SQL) it returns
+  `[{dayOfWeek:2,startTime:"18:00",endTime:"20:30"},{dayOfWeek:4,…}]` — **`capacity` absent**, as
+  designed.
+- **F2 read-gate holds:** flipping the row to `submitted` makes the same GET **404** (no schedule
+  leak); restoring returns 200.
+- **Traveler page** renders `Runs Tuesdays & Thursdays at 18:00 (Asia/Tokyo)`
+  (`docs/design/catalog-rebuild/traveler-runs-on-m3.png`).
+- **§13 negative on the real stack:** a listing with no patterns returns `[]` and renders **no**
+  weekly line (count 0).
+- **`catalog-map-located.spec.ts` PASSES — 19.7s**, its first real run since being rewritten.
+- **The live Catalog map**, real data, all M2/M3 blocks present:
+  `docs/design/catalog-rebuild/after-map-m3-live.png` (supersedes the fixture render).
+
+**Two things the bench taught, both folded into the spec's header:**
+1. The spec needs `users.terms_accepted_at` AND `privacy_accepted_at` on its provider, or every
+   console route bounces to `/accept-terms`, `button-view-map` never renders, and the auto-waiting
+   click burns the whole test timeout — surfacing as a timeout attributed to the cleanup PATCH in
+   the `finally`, the last place anyone would look. First diagnosis of that hang (tile starvation)
+   was **wrong**; recorded so the next person does not repeat it.
+2. OSM tiles are now aborted in-spec — every assertion is DOM, so the tiles were pure external
+   dependency.
+
+
+## Folded in Aug 16, 2026 — console conformance sweep, the surfaces nobody had audited
+
+**Method:** for each mock view with no audit on record, diff the ratified mock
+(`docs/design/provider-console-mockup/mockup.html`) against the shipped surface — mock phrase
+extraction first to find candidates, then read the code to confirm or discard each one. Discovery
+only; nothing fixed in this pass.
+
+**Why it was run:** every surface anyone had actually looked at came back with double digits —
+Distribute 11, Logistics/step-4 17, and Catalog map **13 more after a conformance lane had already
+run on it**. Workstation, listing home, property builder, bundle builder and Calendar had never
+been checked at all.
+
+**Result: 1 P1, 2 P2, 2 P3, and one surface clean.** Materially better than the base rate — the
+prediction going in was that these would look like the others, and they mostly do not.
+
+### S-1 (P1) — the edit-split is enforced but never stated, so a provider cannot predict it
+
+§23 / ruling 112 Q8 shipped the safe-vs-identity edit split **server-side**: safe edits apply to
+the live row immediately; identity edits land in `pending_changes` and wait for review while the
+approved version stays live. The provider-facing surface of that rule today is **one pill on the
+Catalog row, after the fact** (`pill-edit-review-*`, "Edit in review"). Nothing anywhere tells them
+**before** they edit which changes are which.
+
+The mock draws it as a two-column panel on the listing home ("Editing a live listing"):
+**Goes live immediately** — price and pricing settings · photos and gallery order · availability,
+slots and blackouts · description wording · what to bring, access notes · meeting-point pin
+position. **Re-enters review** — listing name · category and offering · delivery method · safety
+attestations · adding a route where there was none.
+
+**The constraint any fix must respect:** §23 says the field split is decided **ONLY server-side in
+the PATCH handler**. A UI panel that re-declares the list in the client is the exact
+derivation-drift class lane M3 just removed from the Catalog preview (§18 rule 1 — *delegates,
+never re-implements*). Whatever renders this must READ the server's own list, not restate it —
+which means the split needs to be exported/served before it can be honestly displayed.
+
+### S-2 (P2) — the property builder has no Review step
+
+Mock: **1. The property · 2. Rooms · 3. Review**. Ship (`workstation.tsx`,
+`PropertyEditorStep`): `basics · details · rooms` — an extra Details step and **no Review**. The
+service lane ends in "Review & submit"; the property lane submits without one.
+
+### S-3 (P2) — gap #2: the semantics are BUILT; the month grid is not
+
+This is the finding that corrects the going-in assumption. The mock calls the availability editor
+*"the largest hole in the redesign"*, and the expectation was a hole. It is not one.
+`provider-availability-manager.tsx` (839 lines) already implements the mock's actual ruling — ONE
+editor whose semantics come from the delivery method: scheduled listings get weekly patterns +
+blackouts, property/property_room gets date ranges, and an artifact/async listing gets an honest
+"No scheduling needed" panel rather than an empty grid that invents a question the listing does not
+have. That is gap #2's architecture, shipped.
+
+What is **not** built is the mock's presentation: a shared **month grid** with the legend
+*Bookable / Blacked out / Nothing published / Today*, opening on the month where the availability
+actually is. The ship is form rows (Weekly schedule · Open date ranges · Blackouts). The mock's
+claim is that all three semantics "share the same month grid, the same blackout rail and the same
+published/not-published vocabulary" — the ship has the shared editor and the shared blackout rail,
+but not the shared grid.
+
+### S-4 (P3) — availability vocabulary drift
+
+Ship "Weekly schedule" vs mock "Repeats weekly"; ship "Open date ranges" vs mock "Published date
+ranges"; ship "No scheduling needed" vs mock "No calendar — this sells without slots". Copy only —
+the behaviour underneath is the ratified one.
+
+### S-5 (P3) — Workstation "Preview as unlocked": deliberately not carried
+
+The mock's button reveals the locked bundle tile in its unlocked state. It is a **demo affordance
+for reading the mock**, not a provider feature — the ship has a real locked state with real
+progress toward unlocking. Recorded so the absence is a decision, not an oversight.
+
+### S-6 — Calendar: CLEAN
+
+Read-only month grid, prev/next nav, event chips as deep links, a legend, and ruling 112 Q5's
+standing "Edit availability →" access point. Nothing to report — the first audited surface with no
+findings.
+
+
+### Follow-on, same day — gap #13's last two rows are backed (ledger 2026-08-16-bring-access)
+
+Migration 228 adds `what_to_bring` and `access_notes` (additive-nullable TEXT, declared in
+`shared/schema.ts`, no CHECK). The flow asks for both on **Logistics** — which is also why they
+never appear on the pdf/async branches: that step does not exist there, and a downloadable guide
+has nothing to bring. Both render on the traveler page's Good-to-know and in the Catalog preview's
+read-out, omitted when unanswered (§13) rather than defaulted into "nothing needed".
+
+**Deliberately NOT a reuse** of `trip_participants.accessibility_needs`/`mobility_level` — those
+are a TRAVELER's stated needs; this is a HOST describing their own venue. Different person, different
+answer. The traveler surface says out loud that **no accessibility standard is claimed on the host's
+behalf**, which is why this is a free-text note and not a checklist of certified attributes.
+
+Bench-verified on a local scratch Postgres: `runMigrations()` applied 228 itself, the public read
+returns NULL before and real text after a write through the owner PATCH rail, and both rows render
+(`docs/design/catalog-rebuild/traveler-bring-access.png`). **All nine mock rows are now backed**, so
+lane M2's `GAP13_UNBACKED_ROWS` caveat is deleted rather than left stale.
+
+## Folded in Aug 16, 2026 — row 101's "authored but unrendered" remainder: the decision pass
+
+T-REP (ledger row 101) filed seven fields as *collected and never read*, pending a render-or-rule
+pass. This is that pass. **Headline: five of the seven were already resolved or misfiled — the debt
+list was stale.** The real remainder is two dead columns and one ambiguous name.
+
+| Field | Disposition | Evidence |
+|---|---|---|
+| `city` | **ALREADY RENDERED** — filed entry is stale | `provider/services.tsx:688` puts it in the listing meta line, and `:686` uses it to infer "In person" |
+| `categoryAttributes` | **ALREADY RENDERED** (property path) | read by `service-detail.tsx` (traveler), `service-form-required.ts`, `workstation.tsx`. The non-property path is the only open question |
+| `maxConcurrentBookings` | **ALREADY STOPPED COLLECTING** — filed entry is stale | FP-2 / Package A item 8 **removed the input** deliberately (it was the second capacity number, one vocabulary away from party size — the pair the server actually enforces). Column untouched, values round-trip, the Catalog "Up to N" chip still renders for legacy rows |
+| `contentAffinityTags` | **PROVIDER-ONLY by decision** | a MATCHING input, not display: real consumers are `content-matching.service.ts` and `location-view.service.ts`. The provider sets it, the server matches on it, travelers never see it — which is correct, not a gap |
+| `faqs` (on `provider_services`) | **DEAD — file the drop** | no writer and no reader anywhere. Every `faqs` hit in the codebase is the separate site-FAQ **table** or the hardcoded array in `pages/faq.tsx` |
+| `deliverables` | **DEAD — already slated** | `server/index.ts` names it a deprecated **ESO workflow column** with a Phase-5 drop already planned; only seeds write it |
+| `experienceTypes` | **NEEDS A NARROW CHECK** — no disposition claimed | the name exists on TWO tables. `grok.service.ts` reads `expertProfile.experienceTypes` — a different object. Whether the `provider_services` copy has any consumer is genuinely unresolved, and guessing would be the §13 error this pass exists to avoid |
+
+**Why this pass produced no code.** The render column came out empty: nothing here needs a new
+traveler-side home. Two columns want dropping — and a column drop is irreversible, so under
+CLAUDE.md's publish-trap rules it gets FILED with its evidence rather than executed in the same
+breath as the decision that identified it. Inventing a render for a field that does not need one
+would be worse than leaving it.
+
+**Filed out of this pass:** (a) drop `provider_services.faqs` (dead); (b) confirm `deliverables`
+lands in the existing Phase-5 ESO drop rather than being forgotten; (c) settle
+`experienceTypes` on `provider_services` with a targeted consumer check; (d) decide the
+non-property `categoryAttributes` path. None is urgent; all four are now evidenced rather than
+just listed.
+
+- **`user-menu` and `expert-booking-decline-dialog` hardcode `const BASE = "http://localhost:5000"`**
+  and ignore `BASE_URL` — the only two specs in the repo that do. Every test in both failed here
+  purely because this bench runs on :5001. Fixed to the repo's own convention
+  (`process.env.BASE_URL ?? …`), after which **`expert-booking-decline-dialog` is 3/3 GREEN** and
+  `user-menu` goes from 16 failures to **13 passed / 3 failed**. A 100%-failure rate is almost
+  never spec rot; check the runner first.
+- **`rbac-security` is DEAD ON ARRIVAL — the same disease the last lane fixed.** It authenticates
+  as `traveler@traveloure-test.com` + 3 siblings on that domain; **nothing creates them.** They
+  appear only as *credentials* in the spec, `scripts/rbac-audit.ts` and `qa-verify.service.ts` —
+  no migration, no seed, no script. Setup 401s and **27 RBAC assertions have never executed
+  once**, which is the largest block of dark security coverage in the repo, dark for a one-line
+  reason.
+
+### A trap for the next auditor: a spec that libels the product
+
+`seam-cross-console` fails with its own hardcoded label **`[API BROKEN] POST /api/trips → 400`**,
+which reads as a product defect and was initially recorded as one here. It is not. `trips.budget`
+is a `decimal` column, so the insert schema wants a **string**, and the spec sends `budget: 3000`
+as a **number** — the API is correctly rejecting bad input. The spec is wrong and its error text
+actively misdirects. Do not let a spec's self-authored failure message stand in for a diagnosis.
+
+### Verdicts (33 specs, after backing out four layers of harness noise)
+
+| Verdict | Count | Detail |
+| --- | --- | --- |
+| **Fully green** | 8 | `auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`, `experts-flow` 10/10, `navbar-responsive` 16/16, `stripe-connect-reminder-notification` 2/2, `expert-booking-decline-dialog` 3/3 (after the BASE_URL fix), `concierge-phase-a` 6/6 (after the two repairs below) |
+| **Mostly green, isolated real failures** | 11 | `security-regression` 39/3, `deprecated-route-redirects` 44/4, `breakpoint-hamburger` 21/1, `content-system` 17/2, `user-menu` 13/3, `lane1-phase1d-routing` 4/1, `lb-p1-password-reset` 3/1, `search-bar` 14/1, `tripstrip-count-accuracy` 1/3, `paris-surfacing` 1/3, `phase-4-7-advanced-flows` 3/3 |
+| **Badly broken** | 10 | `phase-2-provider-setup` 1/23, `phase-1-expert-setup` (exceeds even a 25-min cap), `phase-3-traveler-flows` 1/5, `nyc-market` 1/11, `seam-cross-console` 0/5, `optimization-payment-gate` 0/2, `offering-card` 0/1, `service-display-options` 0/1, `travel-surcharge-step` 0/1, `optimize-apply-banner` 0/1, `stripe-init-deferral` 1/1 |
+| **Dead on arrival** | 1 | `rbac-security` — 27 assertions never run |
+
+`search-bar`'s single failure is a 120 s `locator.click` hang — real, not the slow bench, since
+the 120 s budget already absorbs that.
+
+**The shape of the answer:** roughly a quarter of the ungated set is genuinely fine and should just
+be gated; about a third is mostly fine with real but small breaks; and the journey specs
+(`phase-1`…`phase-4-7`, `nyc-market`) are broken deeply enough that repairing them is a project,
+not a chore — they should be quarantined with a stated reason rather than left to read as coverage.
+
+### Follow-through landed (Aug 16, 2026)
+
+- **`concierge-phase-a` → 6/6, first pass in its life.** Two independent spec-side defects: the
+  psql helper kept psql's command tag on an `INSERT … RETURNING id` (so its own next assertion
+  rejected the id the query returned), and — once that was unblocked — the `$0=off` test was a
+  coin flip (below). Also removed a leaked `optimization_fees` row: every pre-fix run's cleanup
+  `DELETE` used the malformed id and silently failed, so the broken spec had been quietly
+  littering the shared database.
+- **`rbac-security` → its 27 assertions execute for the first time.** It authenticated as
+  `<role>@traveloure-test.com`, which **no seeder anywhere creates**. Fixed by repointing, *not*
+  by seeding that domain: `traveloure-test.com` is a registerable `.com`, while the production
+  purge neutralizes `LIKE '%@traveloure.test'` (the RFC-2606 reserved TLD), so seeding an
+  admin-role credential there would have placed it outside the ruling 27/33 safety net. Recorded
+  in the spec header so nobody "fixes" it back.
+- **Two specs hardcoded `http://localhost:5000`** and ignored `BASE_URL`, unlike every other spec
+  (`user-menu`, `expert-booking-decline-dialog`). This is what made them look catastrophic — 16/16
+  and 3/3 failing. After the one-line fix: 3/3 green and 13/3.
+- **`.github/workflows/spec-coverage-gate.yml`** claims the 8 verified-green specs. Specs with
+  genuine failures are excluded deliberately — a gate that lands red on day one teaches people to
+  ignore it.
+
+### NEW PRODUCT FINDING — non-deterministic optimization-fee resolution (for the decision-maker)
+
+`resolveOptimizationFee` (`server/services/optimization-fee.service.ts`) resolves the event-type
+branch with:
+
+```
+WHERE event_type = ? AND is_active = true   LIMIT 1     -- no ORDER BY, no complexity_tier filter
+```
+
+The seed ships **two** active `birthday` rows (`simple/599/enabled` and, historically,
+`standard/999`), so **which fee applies is whatever Postgres returns first** — arbitrary, and free
+to change with a vacuum, a plan change or an unrelated insert. This is a *money* value chosen
+non-deterministically, and the `is_disabled` flag inherits the same coin flip: the quote can offer
+a paid AI path that an admin has explicitly disabled, purely because the other row sorted first.
+That is exactly the failure the `$0=off` test was written to catch, and it could not catch it
+because the spec had never run.
+
+**Not fixed here on purpose.** A fee row is money (§8) and the correct resolution order is a
+product decision — most-specific-tier-wins, disabled-wins, or an explicit priority column — not
+something a test-repair lane should pick. Filed for the decision-maker. The spec meanwhile parks
+the competing rows so it tests the intended behaviour without asserting whichever row happens to
+win.
+
+### `rbac-security`: 28/28 — and the last assertion was defending a superseded ruling
+
+With the fixtures repointed, its 28 tests ran for the first time: **27 passed immediately.** The
+single failure was the most interesting result of the whole sweep, because **the product was right
+and the spec was wrong**:
+
+> `EA can access expert pages — executive_assistant is in EXPERT_ROLES (by design)`
+
+That was true when written. The **role-vocabulary audit of Jul 27 2026 deliberately ended it** —
+`server/middleware/role-rbac.ts` had been carrying its own `EXPERT_ROLES` list that *included*
+`executive_assistant`, diverging from the client and from the ratified EA-console model (§9: EA is
+its own `/ea` namespace gated by `isEA`, consuming `/api/ea/*` only). Removing EA from the expert
+family was the entire point of that audit, and `shared/roles.ts` has excluded it ever since.
+
+Because the spec's fixtures did not exist, `beforeAll` 401'd and **all 28 tests were skipped**, so
+it went on asserting the *superseded* access model in silence — and would have kept "passing" by
+never running. Inverted to assert the ratified model (EA denied at expert pages) and now green.
+
+**The general lesson, which is the real deliverable of this sweep:** a dark spec does not merely
+*stop* protecting you — it silently preserves the *old* rules, so the day someone revives it, it
+argues for a decision that was already reversed. That is worse than no spec, and it is the
+strongest argument for gating everything that survives an audit.
+
+### CORRECTION — "verified green" was verified on the wrong database (Aug 16, 2026)
+
+The gate's first two CI runs failed, and both failures were mine, in the same way. The 9 specs were
+verified on this session's **long-lived bench**, whose database carries a week of accumulated seeds
+and session mutations. CI builds from empty with nothing but ci-db-setup's three steps
+(`migrate-entry` + `create-sessions-table` + `seed-ci-test-users`).
+
+- **`rbac-security`** — the expert role was repointed onto `kyoto-temples@traveloure.test`, which
+  **does not exist on a fresh database at all** (no seeder CI runs creates it). Now points at
+  `kyoto-food@traveloure.test`, confirmed present with a password on a from-empty install.
+- **`experts-flow`** — **REMOVED from the gate.** Its destination/language filter tests (T03–T07)
+  need seeded expert profiles a clean install does not produce: **14 experts on a fresh DB vs 19 on
+  the bench**, so the filters have nothing to narrow. Filed rather than fixed — inventing seed data
+  to prop up a spec this lane was only auditing is scope creep into the seeders, and the right fix
+  is for whoever owns that fixture to decide what `/experts` should contain in CI.
+
+**This is the same mistake the previous lane wrote down and I made anyway.** PR #489's gate header
+states that `catalog-preview-toggle` "could not be settled from a session-mutated bench" — and I
+then certified nine specs on exactly such a bench. The rule, now enforced in the gate's own header:
+
+> A bench with accumulated seed data will green specs that CI cannot. "Verified" means verified
+> against a database built from empty, or it means nothing.
+
