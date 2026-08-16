@@ -74,11 +74,17 @@ async function fetchGdeltCounts(
     `${GDELT_DOC_API}?query=${encodeURIComponent(query)}` +
     `&mode=timelinevol&format=json&startdatetime=${startStr}&enddatetime=${endStr}&smoothing=0`;
 
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Traveloure-TrendEngine/2.0" },
-  });
-  if (!res.ok) {
-    throw new Error(`GDELT API ${res.status}`);
+  // Exponential backoff on 429 (rate-limited): 1 s → 2 s → 4 s → 8 s, then give up.
+  let res: Response | null = null;
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    res = await fetch(url, { headers: { "User-Agent": "Traveloure-TrendEngine/2.0" } });
+    if (res.status !== 429) break;
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+    }
+  }
+  if (!res || !res.ok) {
+    throw new Error(`GDELT API ${res?.status ?? "unknown"}`);
   }
 
   const text = await res.text();
@@ -144,12 +150,17 @@ export class GdeltAdapter implements TrendEngineAdapter {
           costCents: COST_PER_CALL_CENTS,
         });
 
+        // Backfill pacing: 800 ms between per-city requests so GDELT never 429s
+        // during a full-depth historical pull. Daily mode skips delay (single pass).
+        if (result.rangeStart) {
+          await new Promise(r => setTimeout(r, 800));
+        }
         const counts = await fetchGdeltCounts(market.cityName, from, to);
 
         for (const c of counts) {
           // article_count
           try {
-            await db.insert(trendSignals).values({
+            const ins1 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "article_count",
@@ -157,21 +168,21 @@ export class GdeltAdapter implements TrendEngineAdapter {
               observedAt: c.date,
               resaleClass: RESALE_CLASS,
               rawRef: { gdelt_date: c.date.toISOString().slice(0, 10) },
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins1.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
 
           // mention_count (same value at GDELT vol granularity)
           try {
-            await db.insert(trendSignals).values({
+            const ins2 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "mention_count",
               value: String(c.mentionCount),
               observedAt: c.date,
               resaleClass: RESALE_CLASS,
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (ins2.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
         }
       } catch (err: any) {

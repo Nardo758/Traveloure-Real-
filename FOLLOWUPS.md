@@ -103,3 +103,20 @@ Related literal debt surfaced by the same census and not owned by any lane yet: 
 applied at six write points; `pricing.service.ts:23`'s deposit `0.25`; `commissionCalculator.ts:41-46, :72`;
 `storage.ts:3742`'s referral `'50'`; and a client-side `subtotal * 0.12` in
 `client/src/components/booking/BookingFlowModal.tsx:151, :258` that matches no resolved band.
+
+---
+
+## #13 — India holiday-pressure signals for Mumbai / Jaipur / Goa
+
+**Status:** Open  
+**Trigger:** Corrective Dispatch 2, Item C — Nager.Date does not cover India (IN not in AvailableCountries). Three of eight operating markets (Mumbai, Jaipur, Goa) have no public holiday signal. Diwali-class calendar pressure is exactly what `nager_date` exists for and these three markets currently lack it.
+
+**Why it matters:** The `nager_date` metric (`public_holiday: 0|1`) feeds the §4.1 scorer for seasonal overlay. Indian holidays (Diwali, Holi, Republic Day, Independence Day) drive substantial travel volume spikes — their absence creates a systematic undercount of peak-pressure events for 37.5% of operating markets.
+
+**Options (agent to evaluate in a future dispatch):**
+1. **Static embed** — Hardcode India's national holiday calendar as a JSON file in `server/services/trend-engine/adapters/` updated annually. Fastest to ship; requires manual upkeep.
+2. **Alternate API** — [Calendarific](https://calendarific.com) or [Abstract Holidays API](https://www.abstractapi.com/holidays-api) both support India. Free tier covers the use case. Requires a new API key.
+3. **Google Calendar public feed** — India national calendar is available via the Google Calendar ICS feed (no auth, free). Parsing ICS is straightforward.
+
+**Blocked on:** Leon picks the approach before agent implements.  
+**Agent action:** None until Leon decides. Then create a new adapter or extend `nager-date.adapter.ts`.

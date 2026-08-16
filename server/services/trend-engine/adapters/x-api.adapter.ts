@@ -173,7 +173,7 @@ export class XApiAdapter implements TrendEngineAdapter {
 
         // x_mention_count — daily total
         try {
-          await db.insert(trendSignals).values({
+          const insMC = await db.insert(trendSignals).values({
             trendEntityId: entity.id,
             source: SOURCE,
             metric: "x_mention_count",
@@ -181,13 +181,13 @@ export class XApiAdapter implements TrendEngineAdapter {
             observedAt: ydDate,
             resaleClass: RESALE_CLASS,
             rawRef: null, // R9: X Content never stored — derived aggregates only
-          }).onConflictDoNothing();
-          result.rowsInserted++;
+          }).onConflictDoNothing().returning({ id: trendSignals.id });
+          if (insMC.length > 0) result.rowsInserted++; else result.rowsSkipped++;
         } catch { result.rowsSkipped++; }
 
         // x_post_velocity — peak single-hour count
         try {
-          await db.insert(trendSignals).values({
+          const insV = await db.insert(trendSignals).values({
             trendEntityId: entity.id,
             source: SOURCE,
             metric: "x_post_velocity",
@@ -195,8 +195,8 @@ export class XApiAdapter implements TrendEngineAdapter {
             observedAt: ydDate,
             resaleClass: RESALE_CLASS,
             rawRef: null, // R9: X Content never stored — derived aggregates only
-          }).onConflictDoNothing();
-          result.rowsInserted++;
+          }).onConflictDoNothing().returning({ id: trendSignals.id });
+          if (insV.length > 0) result.rowsInserted++; else result.rowsSkipped++;
         } catch { result.rowsSkipped++; }
 
         console.log(`[X API] ${entity.internalId}: ${ydStr} total=${yd.total} peak_hour=${yd.peak}`);
@@ -257,7 +257,7 @@ export class XApiAdapter implements TrendEngineAdapter {
           const observedAt = new Date(`${dateStr}T12:00:00.000Z`);
 
           try {
-            await db.insert(trendSignals).values({
+            const insMC2 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "x_mention_count",
@@ -265,12 +265,12 @@ export class XApiAdapter implements TrendEngineAdapter {
               observedAt,
               resaleClass: RESALE_CLASS,
               rawRef: null, // R9: X Content never stored — derived aggregates only
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (insMC2.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
 
           try {
-            await db.insert(trendSignals).values({
+            const insV2 = await db.insert(trendSignals).values({
               trendEntityId: entity.id,
               source: SOURCE,
               metric: "x_post_velocity",
@@ -278,8 +278,8 @@ export class XApiAdapter implements TrendEngineAdapter {
               observedAt,
               resaleClass: RESALE_CLASS,
               rawRef: null, // R9: X Content never stored — derived aggregates only
-            }).onConflictDoNothing();
-            result.rowsInserted++;
+            }).onConflictDoNothing().returning({ id: trendSignals.id });
+            if (insV2.length > 0) result.rowsInserted++; else result.rowsSkipped++;
           } catch { result.rowsSkipped++; }
         }
 

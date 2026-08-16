@@ -26,7 +26,10 @@ import {
   DestinationSeason,
   DestinationEvent,
 } from "@shared/schema";
-import { eq, and, gte, lte, desc, asc, sql, isNull, lt } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, sql, isNull, lt, inArray } from "drizzle-orm";
+import { trendEntities, trendScores } from "@shared/schema";
+import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
+import { CONFIDENCE_FLOOR } from "./trend-engine/trend-score.service";
 import crypto from "crypto";
 import { grokService, CityIntelligenceResult, CityProxySignals } from "./grok.service";
 
@@ -568,26 +571,75 @@ Return JSON:
   // ============================================
 
   async getTrendingCities(limit: number = 20): Promise<TravelPulseCity[]> {
-    // Fetch more rows than needed so deduplication doesn't shrink below the
-    // requested limit if duplicates are present.
+    // Phase E rewire: rank by the v0 resolver trend_score (trend_scores table),
+    // restricted to the 8 operating markets. Below-floor markets (trendConfidence <
+    // CONFIDENCE_FLOOR) sort last and receive trendingScore = 0 (no "hot" badge).
+    // Legacy callers that pass limit > 8 still work — they just get ≤8 results.
+
+    const operatingCityNames = OPERATING_MARKETS.map(m => m.cityName);
+
+    // Fetch resolver scores keyed by marketKey
+    const resolverRows = await db
+      .select({
+        internalId: trendEntities.internalId,
+        trendScore: trendScores.trendScore,
+        trendConfidence: trendScores.trendConfidence,
+        whyText: trendScores.whyText,
+        contributingSources: trendScores.contributingSources,
+      })
+      .from(trendEntities)
+      .leftJoin(trendScores, eq(trendScores.trendEntityId, trendEntities.id))
+      .where(eq(trendEntities.entityType, "market"));
+
+    const resolverMap = new Map(
+      resolverRows.map(r => [
+        r.internalId,
+        {
+          score: r.trendScore != null ? parseFloat(r.trendScore) : null,
+          confidence: r.trendConfidence != null ? parseFloat(r.trendConfidence) : 0,
+          whyText: r.whyText,
+        },
+      ]),
+    );
+
+    // Fetch travelPulseCities rows for operating markets
     const rows = await db
       .select()
       .from(travelPulseCities)
-      .orderBy(desc(travelPulseCities.pulseScore));
+      .where(inArray(travelPulseCities.cityName, operatingCityNames));
 
-    // Deduplicate by (lower city_name, lower country), keeping the first
-    // occurrence which has the highest pulse_score after the ORDER BY above.
-    const seen = new Set<string>();
-    const deduped: TravelPulseCity[] = [];
-    for (const city of rows) {
-      const key = `${city.cityName.toLowerCase()}|${city.country.toLowerCase()}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(city);
-        if (deduped.length >= limit) break;
-      }
-    }
-    return deduped;
+    // Merge resolver data and compute mapped trendingScore
+    const withScores = rows.map(city => {
+      const market = OPERATING_MARKETS.find(
+        m => m.cityName.toLowerCase() === city.cityName.toLowerCase(),
+      );
+      const rd = market ? resolverMap.get(market.marketKey) : null;
+      const isRanked =
+        rd != null && rd.score != null && rd.confidence >= CONFIDENCE_FLOOR;
+
+      // Map resolver score to 0–100:  1.0 (at baseline) → 50,  2.0 → 100,  0 → 0
+      // trendingScore = 0 for below-floor (no hot badge).
+      const trendingScore = isRanked
+        ? Math.min(100, Math.max(0, Math.round((rd!.score!) * 50)))
+        : 0;
+
+      return {
+        ...city,
+        trendingScore,
+        _resolverScore: rd?.score ?? null,
+        _isRanked: isRanked,
+      };
+    });
+
+    // Sort: ranked markets by resolverScore DESC, then unranked by pulseScore DESC
+    withScores.sort((a, b) => {
+      if (a._isRanked && b._isRanked) return (b._resolverScore ?? 0) - (a._resolverScore ?? 0);
+      if (a._isRanked) return -1;
+      if (b._isRanked) return 1;
+      return (b.pulseScore ?? 0) - (a.pulseScore ?? 0);
+    });
+
+    return withScores.slice(0, limit) as TravelPulseCity[];
   }
 
   async getCityByName(cityName: string): Promise<TravelPulseCity | null> {

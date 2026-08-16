@@ -11,7 +11,7 @@
 
 import { db } from "../../db";
 import { trendSourceConfig } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { AdapterRunResult } from "./adapters/base.adapter";
 import { wikimediaPageviewsAdapter } from "./adapters/wikimedia-pageviews.adapter";
 import { gdeltAdapter } from "./adapters/gdelt.adapter";
@@ -78,9 +78,37 @@ export class TrendEngineIngestionRunner {
         console.log(
           `[IngestionRunner] ${adapter.source}: inserted=${adapterResult.rowsInserted} skipped=${adapterResult.rowsSkipped} halted=${adapterResult.haltedByCeiling} errors=${adapterResult.errors.length}`,
         );
+        // Health update: success resets consecutive_failures → healthy
+        if (!adapterResult.haltedByCeiling) {
+          await db.update(trendSourceConfig)
+            .set({
+              healthStatus: "healthy",
+              lastRunAt: new Date(),
+              lastRunStatus: "success",
+              lastRunError: null,
+              lastRunInsertedRows: adapterResult.rowsInserted,
+              consecutiveFailures: 0,
+              updatedAt: new Date(),
+            })
+            .where(eq(trendSourceConfig.source, adapter.source));
+        }
       } catch (err: any) {
         result.errors[adapter.source] = [err.message];
         console.error(`[IngestionRunner] ${adapter.source} threw:`, err.message);
+        // Health update: failure increments counter; ≥2 consecutive → degraded
+        await db.execute(sql`
+          UPDATE trend_source_config
+          SET consecutive_failures    = consecutive_failures + 1,
+              last_run_at             = NOW(),
+              last_run_status         = 'failure',
+              last_run_error          = ${err.message.slice(0, 500)},
+              health_status           = CASE WHEN consecutive_failures + 1 >= 2
+                                            THEN 'degraded'
+                                            ELSE health_status
+                                        END,
+              updated_at              = NOW()
+          WHERE source = ${adapter.source}
+        `);
       }
     }
 
