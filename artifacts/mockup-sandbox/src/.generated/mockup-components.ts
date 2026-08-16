@@ -5,8 +5,13 @@ export const modules: ModuleMap = {
   "./components/mockups/discover-date/Gap6.tsx": () => import("../components/mockups/discover-date/Gap6.tsx"),
   "./components/mockups/discover-date/Gap7.tsx": () => import("../components/mockups/discover-date/Gap7.tsx"),
   "./components/mockups/discover-date/Reference.tsx": () => import("../components/mockups/discover-date/Reference.tsx"),
-  "./components/mockups/expert-workspace/Workspace.tsx": () => import("../components/mockups/expert-workspace/Workspace.tsx"),
   "./components/mockups/provider-console/Distribute.tsx": () => import("../components/mockups/provider-console/Distribute.tsx"),
+  "./components/mockups/provider-console/DistributeDirectLink.tsx": () => import("../components/mockups/provider-console/DistributeDirectLink.tsx"),
+  "./components/mockups/provider-console/DistributeGaps.tsx": () => import("../components/mockups/provider-console/DistributeGaps.tsx"),
+  "./components/mockups/provider-console/DistributePromote.tsx": () => import("../components/mockups/provider-console/DistributePromote.tsx"),
+  "./components/mockups/provider-console/DistributeShareKit.tsx": () => import("../components/mockups/provider-console/DistributeShareKit.tsx"),
+  "./components/mockups/provider-console/DistributeStorefront.tsx": () => import("../components/mockups/provider-console/DistributeStorefront.tsx"),
   "./components/mockups/provider-console/ProviderConsole.tsx": () => import("../components/mockups/provider-console/ProviderConsole.tsx"),
-  "./components/mockups/provider-console/Workstation.tsx": () => import("../components/mockups/provider-console/Workstation.tsx")
+  "./components/mockups/provider-console/Workstation.tsx": () => import("../components/mockups/provider-console/Workstation.tsx"),
+  "./components/mockups/expert-workspace/Workspace.tsx": () => import("../components/mockups/expert-workspace/Workspace.tsx")
 };
