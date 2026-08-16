@@ -37,7 +37,7 @@ import { needsScheduling } from "@shared/service-fundamentals";
 // async_messaging) gets an honest "no scheduling needed" state — no third option, no guessed UI
 // (§13). The original concrete-dated-slot CRUD below (against vendor_availability_slots directly)
 // keeps working completely unchanged — it is still useful for a one-off exception date.
-interface VendorAvailabilitySlot {
+export interface VendorAvailabilitySlot {
   id: string;
   serviceId: string;
   providerId: string;
@@ -49,7 +49,7 @@ interface VendorAvailabilitySlot {
   status: string | null;
 }
 
-interface AvailabilityPattern {
+export interface AvailabilityPattern {
   id: string;
   serviceId: string;
   dayOfWeek: number;
@@ -58,7 +58,7 @@ interface AvailabilityPattern {
   capacity: number | null;
 }
 
-interface DateRange {
+export interface DateRange {
   id: string;
   serviceId: string;
   startDate: string;
@@ -67,7 +67,7 @@ interface DateRange {
   capacity: number | null;
 }
 
-interface AvailabilityBlackout {
+export interface AvailabilityBlackout {
   id: string;
   serviceId: string;
   startDate: string;
@@ -426,7 +426,7 @@ function isoOf(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-function AvailabilityMonthGrid({
+export function AvailabilityMonthGrid({
   serviceId,
   semantics,
 }: {
@@ -559,7 +559,12 @@ function AvailabilityMonthGrid({
               className="rounded-full border border-[#CBDAD7] bg-[#EDF2F1] px-3 py-1 text-xs font-medium text-[#35605A]"
               data-testid="button-month-grid-next-available"
             >
-              Next available: {nextBookable}
+              {(() => {
+                const [y, m, d] = nextBookable.split("-").map(Number);
+                return "Next available: " + new Date(y, m - 1, d).toLocaleDateString("en-US", {
+                  weekday: "short", day: "numeric", month: "short",
+                });
+              })()}
             </button>
           ) : (
             <span className="text-xs text-muted-foreground" data-testid="text-month-grid-nothing">
