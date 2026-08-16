@@ -23,6 +23,7 @@
  * untouched, and the author's preview-as-buyer renders the same branch automatically.
  */
 import { useState } from "react";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -240,11 +241,8 @@ export default function ReadyMadeDetailPage() {
     <div className="max-w-3xl mx-auto p-4 sm:p-6">
       {/* ── Branded page header — the quality structure's frame ── */}
       <div className="flex items-center justify-between border-b border-border pb-3 mb-5">
-        <Link href="/" className="flex items-center gap-2" data-testid="link-rm-logo">
-          <div className="w-8 h-8 rounded-[10px] flex items-center justify-center" style={{ background: "#E85D55" }}>
-            <span className="text-white text-[16px] font-bold">T</span>
-          </div>
-          <span className="font-semibold text-foreground">Traveloure</span>
+        <Link href="/" className="flex items-center" data-testid="link-rm-logo">
+          <TraveloureLogo />
         </Link>
         <div className="flex items-center gap-2">
           <span className="text-xs uppercase tracking-widest text-muted-foreground">Ready Made Trips</span>
