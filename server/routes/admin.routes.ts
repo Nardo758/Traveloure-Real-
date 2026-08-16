@@ -1986,7 +1986,11 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       const role = (expertTypeEnum as readonly string[]).includes(formExpertType)
         ? formExpertType
         : "expert";
-      await updateUserRole(updated.userId, role);
+      await updateUserRole(updated.userId, role, {
+        actorId: user.id,
+        actorRole: user.role,
+        reason: "admin_expert_application_approved",
+      });
 
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
@@ -2250,7 +2254,11 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     
     // If approved, update user role to service_provider
     if (status === "approved") {
-      await updateUserRole(updated.userId, "service_provider");
+      await updateUserRole(updated.userId, "service_provider", {
+        actorId: user.id,
+        actorRole: user.role,
+        reason: "admin_provider_application_approved",
+      });
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
         userId: updated.userId,
