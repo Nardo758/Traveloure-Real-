@@ -219,3 +219,12 @@ tsc: 171 (no new errors vs post-rebase baseline).
 - `POST /api/v1/forecasts/live` → 200 (live_busyness: 5, forecasted: 10)
 
 BestTime adapter rebuilt as fully functional (committed). Enable in trend_source_config when monthly_cost_ceiling is confirmed.
+
+### X API adapter — blocked on plan credits (Aug 2026)
+
+Bearer Token confirmed valid (116-char `AAAAA...` format, authenticated correctly).
+`GET /2/tweets/counts/recent` returns HTTP 402 "credits depleted" — X API free tier
+does not include search/counts. Requires X API Basic plan ($100/mo) or higher.
+
+Decision: X adapter stub remains disabled until Leon upgrades the X API plan.
+`X_BEARER_TOKEN` secret is stored and ready — no code changes needed when plan is upgraded.
