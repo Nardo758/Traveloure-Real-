@@ -1857,6 +1857,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      // Block enforcement: storage.createChat throws a sentinel when a block exists in
+      // either direction. Return a deterministic 403 so the client can surface a clear
+      // message rather than leaving the request hanging or treating it as a server error.
+      if ((err as any)?.code === "BLOCKED_USER") {
+        return res.status(403).json({ message: "You cannot send messages to this user." });
+      }
       throw err;
     }
   });

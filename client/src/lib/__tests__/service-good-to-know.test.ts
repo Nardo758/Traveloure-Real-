@@ -17,6 +17,7 @@ import {
   formatCheckInOut,
   hasAmenities,
   formatResponseWindow,
+  formatWeeklyPattern,
 } from "../service-good-to-know";
 
 describe("formatHours", () => {
@@ -184,5 +185,81 @@ describe("formatResponseWindow (S9, docs/DECISIONS.md ledger row 102 — §13 ne
   it("reuses formatHours's day-collapsing on an exact multiple of 24", () => {
     assert.equal(formatResponseWindow(24), "Replies within 1 day");
     assert.equal(formatResponseWindow(48), "Replies within 2 days");
+  });
+});
+
+// ── formatWeeklyPattern (lane M3 — gap #13's "Starts" row) ─────────────────────────────────────
+// The weekly repeat rule had NO public read before this lane, so these are the first proofs that
+// an authored `service_availability_patterns` row can be stated to a traveler at all.
+describe("formatWeeklyPattern", () => {
+  it("renders the mock's own case — two days at one time", () => {
+    assert.equal(
+      formatWeeklyPattern([
+        { dayOfWeek: 2, startTime: "18:00" },
+        { dayOfWeek: 4, startTime: "18:00" },
+      ], "Asia/Tokyo"),
+      "Tuesdays & Thursdays at 18:00 (Asia/Tokyo)",
+    );
+  });
+
+  it("orders days by the week, not by insertion order", () => {
+    assert.equal(
+      formatWeeklyPattern([
+        { dayOfWeek: 5, startTime: "09:00" },
+        { dayOfWeek: 1, startTime: "09:00" },
+        { dayOfWeek: 3, startTime: "09:00" },
+      ], "Asia/Tokyo"),
+      "Mondays, Wednesdays & Fridays at 09:00 (Asia/Tokyo)",
+    );
+  });
+
+  it("keeps two different start times as two clauses — never flattens them into one wrong sentence", () => {
+    assert.equal(
+      formatWeeklyPattern([
+        { dayOfWeek: 6, startTime: "10:00" },
+        { dayOfWeek: 2, startTime: "18:00" },
+      ], null),
+      "Saturdays at 10:00 · Tuesdays at 18:00 (provider's local time)",
+    );
+  });
+
+  it("collapses all seven days to 'Every day'", () => {
+    const all = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ dayOfWeek: d, startTime: "07:00" }));
+    assert.equal(formatWeeklyPattern(all, "Asia/Tokyo"), "Every day at 07:00 (Asia/Tokyo)");
+  });
+
+  it("collapses a duplicate day at the same time to one mention", () => {
+    assert.equal(
+      formatWeeklyPattern([
+        { dayOfWeek: 2, startTime: "18:00" },
+        { dayOfWeek: 2, startTime: "18:00" },
+      ], "Asia/Tokyo"),
+      "Tuesdays at 18:00 (Asia/Tokyo)",
+    );
+  });
+
+  it("§13 — no rows means NO claim, not a guessed rhythm", () => {
+    assert.equal(formatWeeklyPattern([], "Asia/Tokyo"), null);
+    assert.equal(formatWeeklyPattern(null, "Asia/Tokyo"), null);
+    assert.equal(formatWeeklyPattern(undefined, null), null);
+  });
+
+  it("drops a malformed row rather than rendering `undefined` — day_of_week has no DB CHECK", () => {
+    assert.equal(
+      formatWeeklyPattern([
+        { dayOfWeek: 9, startTime: "18:00" },
+        { dayOfWeek: 2, startTime: "18:00" },
+      ], "Asia/Tokyo"),
+      "Tuesdays at 18:00 (Asia/Tokyo)",
+    );
+    // Every row malformed ⇒ nothing to say, not an empty clause.
+    assert.equal(formatWeeklyPattern([{ dayOfWeek: -1, startTime: "" }], null), null);
+  });
+
+  it("falls back to an explicit local-time qualifier, never a silently assumed zone", () => {
+    assert.equal(
+      formatWeeklyPattern([{ dayOfWeek: 0, startTime: "11:00" }], null),
+      "Sundays at 11:00 (provider's local time)",
+    );
   });
 });

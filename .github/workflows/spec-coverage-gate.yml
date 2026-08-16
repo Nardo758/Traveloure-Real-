@@ -1,0 +1,229 @@
+name: Spec Coverage Gate
+
+# WHY THIS GATE EXISTS.
+#
+# The Aug 16 2026 spec-coverage sweep (QA_PUNCH_LIST, "the spec-coverage sweep") measured the
+# repo's real Playwright coverage: 53 specs on disk, 20 reachable from any workflow, 33 running
+# NOWHERE. This gate claims the subset of those 33 that were verified green end-to-end, so they
+# stop being decoration and start being coverage. It is the sibling of provider-console-gate.yml,
+# which did the same job for the console surfaces.
+#
+# THE SPECS HERE ARE PROVEN, NOT ASSUMED. Every one was run to completion on a verification bench
+# and passed in full: auth-form-validation 23/23, booking-payment-isolation 1/1,
+# concierge-phase-a 6/6, executive-card-expand 2/2, expert-booking-decline-dialog 3/3,
+# navbar-responsive 16/16, rbac-security 28/28,
+# stripe-connect-reminder-notification 2/2.
+# Specs from the same sweep with genuine failures are deliberately EXCLUDED and filed in the
+# punch list — a gate that lands red on day one teaches people to ignore it.
+#
+# AND "VERIFIED" MEANS ON A FRESH DATABASE. The first version of this gate also claimed
+# experts-flow, which passed 10/10 on a long-lived dev bench and failed in CI: its destination and
+# language filter tests (T03–T07) need seeded expert profiles that a clean install does not
+# produce (14 experts on a fresh DB vs 19 on the bench). rbac-security failed the same way, on a
+# fixture no CI seeder creates. Every spec named below has since been run against a database built
+# from empty by nothing but ci-db-setup's three steps. A bench with a week of accumulated seed data
+# will green specs that CI cannot — verify on a fresh DB or the claim is worthless.
+#
+# THE FOUR THINGS A RUNNER MUST GIVE THESE SPECS. Each of these faked a failure during the sweep
+# before it was found, so none of them is incidental:
+#   1. DATABASE_URL + psql   — booking-payment-isolation, concierge-phase-a and
+#      stripe-connect-reminder-notification shell out to psql; without it they throw on the first
+#      helper call. PG* vars are exported for the same reason.
+#   2. PW_AUTH_SETUP=1       — playwright.config.ts gates globalSetup on it; without it the saved
+#      auth states are never written and auth-form-validation dies on ENOENT.
+#   3. A readiness probe that can actually reach 200 — with PW_AUTH_SETUP set, global-setup
+#      probes /api/ready and THROWS in CI mode on anything less, which fails every spec in the run
+#      before a single test executes. /api/ready grades a missing XAI_API_KEY or
+#      STRIPE_WEBHOOK_SECRET as `fail` (not `warn`), so both stubs below are load-bearing — the
+#      body says "ready":true the whole time while the HTTP status is 503.
+#   4. Seeded CI users       — ci-db-setup with seed-ci-users, since global-setup logs in as them.
+#
+# ANTI-VACUITY: `npx playwright test <name>` exits 0 when the name matches nothing, so every spec
+# path is asserted to exist before Playwright runs, and specs are passed as explicit paths.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  e2e-spec-coverage:
+    name: e2e-spec-coverage (DOM gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Assert every gated spec exists at its expected path
+        # A missing path must fail LOUDLY here rather than silently reduce this gate to zero
+        # assertions. Fix when this fails: restore the spec, OR update both this list and the
+        # run step below.
+        run: |
+          set -euo pipefail
+          FAIL=0
+          for f in \
+            playwright/tests/auth-form-validation.spec.ts \
+            playwright/tests/booking-payment-isolation.spec.ts \
+            playwright/tests/concierge-phase-a.spec.ts \
+            playwright/tests/executive-card-expand.spec.ts \
+            playwright/tests/expert-booking-decline-dialog.spec.ts \
+            playwright/tests/navbar-responsive.spec.ts \
+            playwright/tests/rbac-security.spec.ts \
+            playwright/tests/stripe-connect-reminder-notification.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error file=.github/workflows/spec-coverage-gate.yml::Spec file not found: $f"
+              FAIL=1
+            else
+              echo "✅  $f"
+            fi
+          done
+          [ "$FAIL" -eq 0 ] || { echo "::error::One or more gated specs are missing."; exit 1; }
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up CI database (migrations, sessions table, test users)
+        # seed-ci-users is REQUIRED: global-setup logs in as the ci-* accounts to write the
+        # auth states that auth-form-validation loads.
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
+      - name: Start dev server (PR artifact — localhost only)
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          # Both of the following are graded `fail` by /api/ready when absent, which returns
+          # HTTP 503 and makes global-setup abort the whole run. See item 3 in the header.
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          E2E_AI_STUB: "1"
+          RATE_LIMIT_LOOPBACK_SKIP: "1"
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server, seeding, and an HTTP-200 readiness verdict
+        # Checks the STATUS CODE, not just the body: "ready":true can be true while the status is
+        # 503 (a `fail`-graded health check), and global-setup rejects anything but 200.
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /tmp/ready.json -w '%{http_code}' http://localhost:5000/api/ready || true)
+            if [ "$code" = "200" ]; then
+              echo "Server ready, seeding complete, readiness 200 ✅"; exit 0
+            fi
+            echo "attempt $i/60: http=$code $(cat /tmp/ready.json 2>/dev/null | head -c 200)"; sleep 5
+          done
+          echo "::error::Server did not reach an HTTP-200 readiness within 5 minutes. If the body says ready:true, a health check is graded 'fail' — check which env var is missing."
+          cat /tmp/ready.json 2>/dev/null || true
+          exit 1
+      - name: Verify build identity (artifact == PR commit)
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA. Tests would run against the wrong artifact."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA ✅"
+      - name: Previously-ungated specs (proven green by the Aug 16 sweep)
+        # workers=1: concierge-phase-a parks and restores rows in `optimization_fees`, and
+        # booking-payment-isolation creates users through the real register rail — these must not
+        # interleave with each other or with themselves.
+        run: |
+          npx playwright test --project=chromium --workers=1 \
+            playwright/tests/auth-form-validation.spec.ts \
+            playwright/tests/booking-payment-isolation.spec.ts \
+            playwright/tests/concierge-phase-a.spec.ts \
+            playwright/tests/executive-card-expand.spec.ts \
+            playwright/tests/expert-booking-decline-dialog.spec.ts \
+            playwright/tests/navbar-responsive.spec.ts \
+            playwright/tests/rbac-security.spec.ts \
+            playwright/tests/stripe-connect-reminder-notification.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          PW_AUTH_SETUP: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec-coverage-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR completion comment)
+    runs-on: ubuntu-latest
+    needs: [e2e-spec-coverage]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Spec Coverage Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> Claims 8 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, EA card expansion, the expert decline dialog, navbar responsiveness, the 28-assertion RBAC matrix, and the Stripe Connect reminder.',
+              '> Each was verified green end-to-end before being gated, so a red here is a real regression, not inherited rot.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

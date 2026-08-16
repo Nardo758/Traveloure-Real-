@@ -16,6 +16,9 @@ test-results/
 e2e/auth/
 # Playwright per-role auth state files (written by globalSetup at runtime)
 playwright/.auth/
+# Screenshots the phase-* specs write at runtime (page.screenshot path: playwright/reports/...).
+# Run output, never a deliverable — the sibling playwright-report/ and test-results/ are already ignored.
+playwright/reports/
 
 # Agent/lane verification scratch (harness scripts written during behavioral proofs).
 # Never commit these — proofs live in commit messages, not in the tree.

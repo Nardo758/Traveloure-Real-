@@ -17,7 +17,7 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const BASE = "http://localhost:5000";
+const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 
 // ─── User fixtures ────────────────────────────────────────────────────────────
 

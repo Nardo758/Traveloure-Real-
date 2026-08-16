@@ -1,13 +1,23 @@
 /**
  * service-logistics-step.spec.ts
  *
- * Catalog+Distribute ruling 74, lane T1 proof — the polished Transport & Logistics step
- * (ServiceForm step 2). Brings the existing D7 capture (ruling 62/64, migration 195) up to the
- * mock (`artifact ea8cefed`): a SEGMENTED transport-provision choice, an explicit radius/route
- * TOGGLE, and the grouped sections (Getting there · Timing · Capacity · Booking rules). The
- * load-bearing assertion is the NEVER-CLOBBER notice: with a radius AND route stops both saved,
- * the step states out loud that the hidden store's data is preserved on a mode switch — proven in
- * BOTH directions here (the server-side data-survival proof is
+ * Catalog+Distribute ruling 74, lane T1 proof — the Transport & Logistics step, AMENDED BY
+ * LANE L's D-9 COLLAPSE (ledger row 119, ratified Aug 15 2026).
+ *
+ * WHAT D-9 CHANGED HERE. T1 originally asserted a four-value SEGMENTED transport-provision
+ * control (`segmented-transport-provision`) beside a separate "do you transport them" dropdown.
+ * The step-4 mock's whole thesis is "one transport question, one vocabulary, one step", and the
+ * build had re-expanded to six questions, so the ratified collapse reduced them to ONE toggle
+ * ("I collect travelers and drop them back") with the spatial detail revealed beneath it. The
+ * two ruling-62 columns are no longer ASKED but are NOT derived either — they hydrate and
+ * round-trip untouched, which is why the coverage block below still opens for this fixture (its
+ * STORED provision says pickup_available) and why the never-clobber assertions still hold.
+ * Because this spec was in no CI workflow it kept asserting the removed control through four
+ * merged PRs; it is now gated by .github/workflows/provider-console-gate.yml.
+ *
+ * The load-bearing assertion is unchanged: the NEVER-CLOBBER notice. With a radius AND route
+ * stops both saved, the step states out loud that the hidden store's data is preserved on a mode
+ * switch — proven in BOTH directions here (the server-side data-survival proof is
  * server/__tests__/service-logistics-never-clobber.http.test.ts).
  *
  * The spec creates a throwaway in-person draft (with a radius + route stops) via the owner API,
@@ -72,7 +82,7 @@ async function createFixtureService(req: APIRequestContext): Promise<string> {
 //   step 4 "Logistics"  — transport + surcharge    (card-getting-there)
 // Same controls, same testids, same write path — only the step that holds each one changed.
 test.describe('ServiceForm — Transport & Logistics across the branched steps (lane T1 / A1)', () => {
-  test('grouped sections render on their steps, provision is segmented, and never-clobber shows both directions', async ({ page }) => {
+  test('grouped sections render on their steps, transport is ONE toggle, and never-clobber shows both directions', async ({ page }) => {
     await loginProvider(page);
     const serviceId = await createFixtureService(page.request);
 
@@ -117,10 +127,15 @@ test.describe('ServiceForm — Transport & Logistics across the branched steps (
       // The map authoring component lives here now (Catalog's map is a traveler preview).
       await expect(page.getByTestId('card-service-map-authoring')).toBeVisible();
 
-      // Transport provision is a SEGMENTED control (not a dropdown), pre-selected to the saved value.
-      const provision = page.getByTestId('segmented-transport-provision');
-      await expect(provision).toBeVisible();
-      await expect(page.getByTestId('toggle-transport-pickup_available')).toHaveAttribute('data-state', 'on');
+      // D-9: transport is ONE toggle. The two questions T1 used to assert are gone from the UI
+      // (their columns still round-trip — see the header), and their absence is the ruling.
+      await expect(page.getByTestId('switch-collect-travelers')).toBeVisible();
+      await expect(page.getByTestId('segmented-transport-provision')).toHaveCount(0);
+      await expect(page.getByTestId('select-transport-provided')).toHaveCount(0);
+      // The step says WHY pickup lives here and duration does not — the mock's own framing.
+      await expect(page.getByTestId('card-getting-there')).toContainText(
+        'One transport question, one vocabulary, one step',
+      );
 
       // Coverage is an explicit radius/route toggle, on 'radius' as saved.
       const coverage = page.getByTestId('segmented-pickup-coverage-mode');
@@ -140,6 +155,108 @@ test.describe('ServiceForm — Transport & Logistics across the branched steps (
       await expect(notice2).toBeVisible();
       await expect(notice2).toContainText(/service radius is saved/i);
       await expect(notice2).toContainText(/Nothing was deleted/i);
+    } finally {
+      await page.request.delete(`${BASE_URL}/api/provider/services/${serviceId}`).catch(() => {});
+    }
+  });
+
+  /**
+   * LANE L (ledger row 119) — the step-4 map-authoring surface itself. None of this had
+   * committed coverage before: D-16 the step header, D-10 the Layers card, D-13 the located
+   * pill, and — the riskiest change of the batch — D-12, which REMOVED the explicit "Save route"
+   * button in favour of a debounced autosave over the unchanged ruling-22a replace-list PUT.
+   * A silent write path needs a test more than a button-driven one did, and the assertion that
+   * matters is the round-trip: reorder in the UI, then read the row back over the API and prove
+   * the new order persisted WITH both stops' coordinates intact (a replace-list that dropped
+   * lat/lng would look identical on screen).
+   */
+  test('map authoring: step header, Layers card, located pill, and stops autosave (lane L)', async ({ page }) => {
+    await loginProvider(page);
+    const serviceId = await createFixtureService(page.request);
+
+    try {
+      await page.goto(`${BASE_URL}/provider/services/${serviceId}/edit?step=logistics`, {
+        waitUntil: 'networkidle',
+        timeout: 30_000,
+      });
+
+      // Land on step 4 DETERMINISTICALLY. The `?step=` deep link raced the row's hydration on the
+      // CI runner (the header was still reading "Basics" 15s in, while the same mechanism with
+      // `?step=scheduling` landed fine in the test above), and this test's subject is the step's
+      // own surface — not the router. Clicking the chip is idempotent when the deep link already
+      // won, and deep-link arrival stays covered by the first test in this file.
+      await expect(page.getByTestId('service-form-steps')).toBeVisible({ timeout: 20_000 });
+      const step4 = page.getByTestId('button-step-4');
+      await expect(step4).toHaveAttribute('data-step-key', 'logistics');
+      await step4.click();
+      await expect(step4).toHaveAttribute('aria-current', 'step');
+
+      // ── D-16: the step names itself and its position in THIS branch's flow. ──
+      await expect(page.getByTestId('text-step-long-title')).toHaveText('Logistics — where it happens', {
+        timeout: 15_000,
+      });
+      await expect(page.getByTestId('text-step-position')).toHaveText('Step 4 of 5');
+
+      const authoring = page.getByTestId('card-service-map-authoring');
+      await expect(authoring).toBeVisible();
+
+      // ── D-11: a bare canvas click does nothing — placing anything needs an armed mode. ──
+      await expect(page.getByTestId('text-arm-state')).toHaveText('Nothing armed. Pick a mode, then click the map.');
+      await expect(page.getByTestId('button-place-pin-mode')).toBeVisible();
+      await expect(page.getByTestId('button-place-stop-mode')).toBeVisible();
+
+      // ── D-10: the Layers card — three display toggles, zones stated display-only with the
+      //    real Pricing & fees door (the listing HOME is the /edit route, not /provider/services/:id
+      //    — that href was a 404 caught by the dynamic-links gate on first push). ──
+      await expect(page.getByTestId('card-map-layers')).toBeVisible();
+      await expect(page.getByTestId('switch-layer-radius')).toBeVisible();
+      await expect(page.getByTestId('switch-layer-stops')).toBeVisible();
+      await expect(page.getByTestId('switch-layer-zones')).toBeVisible();
+      await expect(page.getByTestId('text-layer-zones-note')).toContainText('display only');
+      // The testid sits on the <span> INSIDE wouter's <Link>, so the href lives on the enclosing
+      // anchor — assert that, not the span (which carries no href at all).
+      await expect(page.locator('a', { has: page.getByTestId('link-pricing-fees') })).toHaveAttribute(
+        'href',
+        `/provider/services/${serviceId}/edit`,
+      );
+
+      // ── D-13: the located pill counts the fixture's two located stops. ──
+      await expect(page.getByTestId('badge-stops-located')).toHaveText('2 of 2 located');
+
+      // ── D-10 behaviour: a layer toggle really hides its markers (display state only). ──
+      const stopMarkers = page.locator('[data-testid^="flow-map-canvas-stop-"]');
+      await expect(stopMarkers).toHaveCount(2, { timeout: 15_000 });
+      await page.getByTestId('switch-layer-stops').click();
+      await expect(stopMarkers).toHaveCount(0);
+      await page.getByTestId('switch-layer-stops').click();
+      await expect(stopMarkers).toHaveCount(2);
+
+      // ── D-12: the explicit save button is GONE — its absence is the ruling. ──
+      await expect(page.getByTestId('button-save-route')).toHaveCount(0);
+
+      // Reorder stop 1 → the debounced autosave fires on settle and reports itself.
+      const before = await page.request.get(`${BASE_URL}/api/provider/services/${serviceId}`);
+      const beforeStops = ((await before.json()).routePoints ?? []) as Array<{ position: number; name: string }>;
+      const firstNameBefore = [...beforeStops].sort((a, b) => a.position - b.position)[0]?.name;
+
+      await page.locator('[data-testid="route-stop-row-1"] button[title="Move down"]').click();
+      await expect(page.getByTestId('text-route-autosave-status')).toContainText('autosaved', { timeout: 20_000 });
+
+      // The round-trip proof: the new order PERSISTED and both stops kept their coordinates.
+      const after = await page.request.get(`${BASE_URL}/api/provider/services/${serviceId}`);
+      const afterStops = ((await after.json()).routePoints ?? []) as Array<{
+        position: number;
+        name: string;
+        latitude: string | null;
+        longitude: string | null;
+      }>;
+      const ordered = [...afterStops].sort((a, b) => a.position - b.position);
+      expect(ordered.length, 'both stops survived the replace-list').toBe(2);
+      expect(ordered[0].name, 'the reorder persisted without a save click').not.toBe(firstNameBefore);
+      for (const s of ordered) {
+        expect(s.latitude, `${s.name} kept its latitude through autosave`).not.toBeNull();
+        expect(s.longitude, `${s.name} kept its longitude through autosave`).not.toBeNull();
+      }
     } finally {
       await page.request.delete(`${BASE_URL}/api/provider/services/${serviceId}`).catch(() => {});
     }

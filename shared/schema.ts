@@ -765,6 +765,19 @@ export const providerServices = pgTable("provider_services", {
   // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
   // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
   transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
+  // ══ Gap #13's last two rows (ledger 2026-08-16-bring-access, migration 228) ═══════════════════
+  // The ratified mock's traveler read-out draws nine rows; seven had columns and render (lane M3).
+  // These two did not exist anywhere, so the flow never asked and nothing could render them — the
+  // INVERSE of the class T-REP audited (collected-and-never-read became drawn-and-never-collected).
+  // Free text in the HOST'S OWN WORDS. `accessNotes` is deliberately NOT a checklist of certified
+  // attributes and NOT the traveler-side `trip_participants.accessibility_needs`/`mobility_level`
+  // (a different person's answer): no accessibility STANDARD is claimed on the host's behalf, which
+  // the traveler surface states out loud. Additive-nullable, NO DB CHECK (migration-181/195
+  // posture — publish-trap avoidance). NULL = never answered ⇒ the row is OMITTED everywhere (§13),
+  // never rendered as "nothing to bring" or "no access notes", which are claims only a host can make.
+  whatToBring: text("what_to_bring"),
+  accessNotes: text("access_notes"),
+
   // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
   // with no prior home: meetingPoint/pickupAddress cover arrival, nothing structurally captured
   // departure. Additive nullable, no DB CHECK. NULL = never captured (§13, not "no drop-off").
@@ -8701,3 +8714,55 @@ export const geocodeFallbacks = pgTable("geocode_fallbacks", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type GeocodeFallback = typeof geocodeFallbacks.$inferSelect;
+
+// ─── Message safety: blocking and abuse reporting (migration 228) ─────────────
+//
+// userBlocks: bidirectional block. When a block row exists for (blockerId, blockedId),
+// the message write paths (messages.service.ts sendMessage + storage.ts createChat)
+// refuse to deliver in either direction — both parties are fenced from messaging each
+// other. Unique index on (blocker_id, blocked_id) prevents duplicate rows. ON DELETE
+// CASCADE so account deletion removes orphan rows.
+//
+// messageReports: append-only abuse-report log. One reporter can file more than one
+// report on the same target over time (no unique constraint), but the UI only sends one
+// at a time. `reportType` is either "message" (a specific userAndExpertChats row, with
+// `messageId` populated) or "user" (the sender/profile, messageId null). `reason` is
+// admin-facing category (spam, harassment, inappropriate, other); `details` is optional
+// freetext. `status` starts pending and is set to reviewed/actioned/dismissed by an
+// admin. No DB CHECK on status/reason/reportType — app-enforced vocabulary, same
+// migration-144/195 posture. ON DELETE SET NULL on messageId so a deleted message
+// doesn't cascade-delete its report record from the moderation queue.
+export const userBlocks = pgTable("user_blocks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  blockerId: varchar("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedId: varchar("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("user_blocks_pair_unique").on(table.blockerId, table.blockedId),
+  index("user_blocks_blocker_idx").on(table.blockerId),
+  index("user_blocks_blocked_idx").on(table.blockedId),
+]);
+export type UserBlock = typeof userBlocks.$inferSelect;
+export type InsertUserBlock = typeof userBlocks.$inferInsert;
+
+export const messageReports = pgTable("message_reports", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  reporterId: varchar("reporter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reportedUserId: varchar("reported_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // nullable: a user-level report has no specific message
+  messageId: varchar("message_id").references(() => userAndExpertChats.id, { onDelete: "set null" }),
+  reportType: varchar("report_type", { length: 20 }).notNull().default("message"), // "message" | "user"
+  reason: varchar("reason", { length: 50 }).notNull(), // "spam" | "harassment" | "inappropriate" | "other"
+  details: text("details"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // "pending" | "reviewed" | "actioned" | "dismissed"
+  adminNote: text("admin_note"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("message_reports_reporter_idx").on(table.reporterId),
+  index("message_reports_reported_idx").on(table.reportedUserId),
+  index("message_reports_status_idx").on(table.status),
+]);
+export type MessageReport = typeof messageReports.$inferSelect;
+export type InsertMessageReport = typeof messageReports.$inferInsert;
