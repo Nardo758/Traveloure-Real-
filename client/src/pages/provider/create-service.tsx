@@ -40,18 +40,18 @@ type DeliveryMethod =
 
 // Map wizard UI values → DB canonical enum (deliveryMethodEnum in shared/schema.ts)
 function toDbDelivery(m: DeliveryMethod): string {
-  if (m === "video_call") return "video";
-  if (m === "phone_call") return "call";
-  if (m === "pdf_guide")  return "pdf";
-  return m; // in_person, voice_notes, async_messaging, hybrid are identical
+  if (m === "video_call")  return "video";
+  if (m === "phone_call")  return "call";
+  if (m === "pdf_guide")   return "pdf";
+  return m;
 }
 
 // Map DB canonical values → wizard UI values (for hydration from existingService)
-function fromDbDelivery(db: string): DeliveryMethod {
-  if (db === "video") return "video_call";
-  if (db === "call")  return "phone_call";
-  if (db === "pdf")   return "pdf_guide";
-  return db as DeliveryMethod;
+function fromDbDelivery(raw: string): DeliveryMethod {
+  if (raw === "video") return "video_call";
+  if (raw === "call")  return "phone_call";
+  if (raw === "pdf")   return "pdf_guide";
+  return raw as DeliveryMethod;
 }
 
 interface ServiceCategory { id: string; name: string; slug?: string; }

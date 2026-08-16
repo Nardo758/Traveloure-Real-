@@ -3567,6 +3567,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Submit a draft service for review (provider-owned path)
+  app.post("/api/provider/services/:id/submit", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      if (service.status !== "draft" && service.status !== "rejected") {
+        return res.status(400).json({ message: "Only draft or rejected services can be submitted for review" });
+      }
+      const submitted = await storage.submitProviderServiceListing(req.params.id);
+      res.json(submitted ? omitFields(submitted as any, ["revenueShareRate"] as const) : submitted);
+    } catch (err) {
+      console.error("Error submitting provider service:", err);
+      res.status(500).json({ message: "Failed to submit service for review" });
+    }
+  });
+
   // Delete a service
   app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
