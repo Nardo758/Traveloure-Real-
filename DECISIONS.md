@@ -91,10 +91,12 @@ Kyoto (Japan), Goa (India), Mumbai (India), Jaipur (India), Edinburgh (United Ki
 | kyoto | spring_shoulder | 04-21 | 06-06 | 1.100 | Leon-approved estimate — Golden Week (late Apr–early May) sits inside the window |
 | edinburgh | autumn_shoulder | 09-01 | 10-31 | 0.900 | Leon-approved estimate — post-Festival cooldown above winter floor |
 
-Three residual calendar gaps found during close-out coverage check (reported; no unauthorized rows inserted — pending Leon ruling):
-- **Bogotá** `02-29` — 1 day, leap year only; `dry_primary` ends `02-28`
-- **Kyoto** `09-07`–`10-19` — 43 days; between `summer` (ends `09-06`) and `momiji` (starts `10-20`)
-- **Porto** `10-01`–`10-31` — 31 days; October has no season row
+Three residual calendar gaps resolved via migration 234 (Leon-approved 2026-08-16):
+- **Bogotá** `02-29` — `dry_primary` end extended `02-28` → `02-29` (leap-year day, still dry season; multiplier 1.100 unchanged)
+- **Kyoto** `09-07`–`10-19` — new row `early_autumn` inserted, multiplier 1.000 (neutral shoulder; typhoon tail softens late-Sep, Oct pre-foliage rising)
+- **Porto** `10-01`–`10-31` — new row `autumn_shoulder` inserted, multiplier 1.100 (harvest-season city-break shoulder, post-summer warm month)
+
+Post-migration coverage check: all 8 markets returned 0 gap_days, 0 overlap_days on 366-day leap-year scan (confirmed dev DB 2026-08-16).
 
 ### L-CLS-2 — #1496 executed in-lane, expanded scope
 
