@@ -1,12 +1,26 @@
-// Catalog — Map mode (traveler preview, read-only) + the ⑬ "Render it, or stop
-// collecting it" audit. Faithful to docs/design/provider-console-mockup/mockup.html
-// lines ~682-828 and the renderTravelMap JS (default state: the tea ceremony's pin
-// is unconfirmed, so 2 of 3 place-anchored listings are located).
+// Catalog — Map mode, RATIFIED / LIVE generation (gap #13 rendered, T-REP, ledger 101).
+// Patterns from attached_assets/aftermapm3live_*.png applied to our Kyoto listings and
+// the Aiko Tanaka persona. Distribute is live in this frame's sidebar (no dashed treatment).
 
 import type { CSSProperties, ReactNode } from "react";
-import { ConsoleShell, DotGhost, PropChip, T } from "./_consoleShared";
+import { ConsoleShell, DotGhost, T } from "./_consoleShared";
 
 const card: CSSProperties = { background: T.paper, border: `1px solid ${T.hair}`, borderRadius: 7 };
+
+function RatChip({ children }: { children: ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 550,
+        color: T.accent, background: T.accentSoft, border: "1px solid #CBDAD7",
+        borderRadius: 100, padding: "2px 10px", whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 100, background: T.accent, flex: "0 0 6px" }} />
+      {children}
+    </span>
+  );
+}
 
 function BaseMap({ h, children }: { h: number; children?: ReactNode }) {
   return (
@@ -42,15 +56,9 @@ function Pin({ left, top, cap }: { left: string; top: string; cap?: string }) {
   );
 }
 
-function Ring({ left, top, size }: { left: string; top: string; size: number }) {
+function StopRow({ name, right, last }: { name: string; right: ReactNode; last?: boolean }) {
   return (
-    <span style={{ position: "absolute", left, top, width: size, height: size, transform: "translate(-50%,-50%)", borderRadius: 100, border: `1px dashed ${T.accent}`, background: "rgba(53,96,90,.08)", pointerEvents: "none" }} />
-  );
-}
-
-function StopRow({ name, right }: { name: string; right: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px", borderBottom: `1px solid ${T.hair}`, fontSize: 13, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px", borderBottom: last ? "none" : `1px solid ${T.hair}`, fontSize: 13, flexWrap: "wrap" }}>
       <span style={{ width: 20, height: 20, flex: "0 0 20px", borderRadius: 100, background: T.warnBg, color: T.warnInk, border: `1px solid ${T.warnLine}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>–</span>
       <span style={{ flex: 1, minWidth: 150 }}>{name}</span>
       {right}
@@ -70,9 +78,15 @@ function SumRow({ k, v }: { k: string; v: ReactNode }) {
 const tcardHd: CSSProperties = { padding: "10px 14px", borderBottom: `1px solid ${T.hair}`, fontSize: 12.5, fontWeight: 600 };
 const tcardFoot: CSSProperties = { padding: "0 14px 13px", fontSize: 11.5, color: T.muted, lineHeight: 1.55 };
 
+const UNANSWERED = [
+  "Party size", "Runs on", "Start window", "Changes until", "Duration", "Buffer",
+  "Free cancellation until", "Languages", "Getting there", "Getting back",
+  "Transport", "Deposit", "Response time", "What's covered",
+];
+
 export function CatalogMap() {
   return (
-    <ConsoleShell crumbs={[{ label: "Catalog" }, { label: "Map · Traveler preview", current: true }]}>
+    <ConsoleShell distributeLive crumbs={[{ label: "Catalog" }, { label: "Map · Traveler preview", current: true }]}>
       {/* catalog header */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
         <div style={{ flex: 1, minWidth: 260 }}>
@@ -107,7 +121,7 @@ export function CatalogMap() {
         </div>
       </div>
 
-      {/* amber notice */}
+      {/* amber notice — amended posture */}
       <div style={{ background: T.warnBg, border: `1px solid ${T.warnLine}`, color: T.warnInk, borderRadius: 6, padding: "11px 14px", fontSize: 12.5, lineHeight: 1.5, marginBottom: 14 }}>
         <b style={{ fontWeight: 650 }}>Traveler preview — read-only.</b> This is what a traveler sees. Pins, radius, zones and route
         stops are authored in the create flow's <b style={{ fontWeight: 650 }}>step 4, “Logistics”</b> —{" "}
@@ -119,7 +133,7 @@ export function CatalogMap() {
       </div>
 
       {/* big traveler map */}
-      <div style={{ ...card, marginBottom: 20 }}>
+      <div style={{ ...card, marginBottom: 14 }}>
         <div style={{ padding: "20px 22px" }}>
           <BaseMap h={300}>
             <Pin left="36%" top="38%" cap="Food walk" />
@@ -130,7 +144,7 @@ export function CatalogMap() {
           </BaseMap>
           <div style={{ fontSize: 11.5, color: T.muted, lineHeight: 1.55, marginTop: 8 }}>
             <b style={{ color: T.ink }}>2 of 3 place-anchored listings located.</b> Remote and artifact listings are not counted
-            as missing — they happen nowhere, and that is a real answer. Nothing here can be dragged, armed or placed: to change
+            as missing — they happen nowhere, and that is a real answer. Nothing here can be dragged, armed or placed; to change
             a location you go back to the flow's Logistics step.
           </div>
         </div>
@@ -147,17 +161,30 @@ export function CatalogMap() {
               }
             />
             <StopRow name="Tokyo Like a Local — 3-Day Neighbourhood Guide" right={<span style={{ fontSize: 11.5, color: T.muted }}>PDF guide — it happens nowhere</span>} />
-            <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px", fontSize: 13, flexWrap: "wrap" }}>
-              <span style={{ width: 20, height: 20, flex: "0 0 20px", borderRadius: 100, background: T.warnBg, color: T.warnInk, border: `1px solid ${T.warnLine}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>–</span>
-              <span style={{ flex: 1, minWidth: 150 }}>Kyoto Trip Planning Call — 45 minutes</span>
-              <span style={{ fontSize: 11.5, color: T.muted }}>Video call — it happens nowhere</span>
-            </div>
+            <StopRow last name="Kyoto Trip Planning Call — 45 minutes" right={<span style={{ fontSize: 11.5, color: T.muted }}>Video call — it happens nowhere</span>} />
           </div>
           <div style={{ fontSize: 11.5, color: T.muted, lineHeight: 1.55, marginTop: 8 }}>
             A listing with no coordinates is named here and left off the canvas. Never a city-center
             fallback, never another listing's shapes standing in for this one.
           </div>
         </div>
+      </div>
+
+      {/* PREVIEWING chips */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
+        <span style={{ fontSize: 10.5, letterSpacing: ".07em", textTransform: "uppercase", color: T.muted, fontWeight: 600 }}>Previewing</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, border: "1px solid #CBDAD7", background: T.accentSoft, borderRadius: 100, padding: "3px 12px" }}>
+          <b style={{ fontWeight: 600, color: T.ink }}>Gion Evening Food Walk</b>
+          <span style={{ color: T.accent, fontWeight: 600, fontSize: 11.5 }}>exact pin</span>
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, border: `1px solid ${T.hair}`, background: T.paper, borderRadius: 100, padding: "3px 12px" }}>
+          <b style={{ fontWeight: 600, color: T.ink }}>Kimono Dressing &amp; Gion Photo Walk</b>
+          <span style={{ color: T.muted, fontSize: 11.5 }}>approximate</span>
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, border: `1px dashed ${T.warnLine}`, background: T.warnBg, borderRadius: 100, padding: "3px 12px" }}>
+          <b style={{ fontWeight: 600, color: T.warnInk }}>Morning Tea Ceremony</b>
+          <span style={{ color: T.warnInk, fontSize: 11.5 }}>unlocated — not drawn</span>
+        </span>
       </div>
 
       {/* ⑪ what the traveler sees */}
@@ -172,40 +199,32 @@ export function CatalogMap() {
           <div style={tcardHd}>Confirmed pin + radius</div>
           <div style={{ padding: 13 }}>
             <BaseMap h={132}>
-              <Ring left="50%" top="52%" size={92} />
+              <span style={{ position: "absolute", left: "50%", top: "52%", width: 92, height: 92, transform: "translate(-50%,-50%)", borderRadius: 100, border: `1px dashed ${T.accent}`, background: "rgba(53,96,90,.08)", pointerEvents: "none" }} />
               <Pin left="50%" top="52%" />
             </BaseMap>
           </div>
           <div style={tcardFoot}>
             Meeting point in Gion · host travels free up to 8 km.
-            <span style={{ display: "block", marginTop: 6, color: T.warnInk }}>
-              Whether the traveler sees the exact pin or a fuzzed neighbourhood point is a{" "}
-              <b>spec decision, not a shipped behaviour</b> (spec gap #13). This canvas draws the authored point
-              as-is — no precision rule is implied.
+            <span style={{ display: "block", marginTop: 6 }}>
+              Whether the traveler sees the exact pin or a fuzzed neighbourhood point is{" "}
+              <b style={{ color: T.ink }}>a spec decision, not a shipped behaviour</b> — the canvas draws the
+              authored point as-is. No precision rule is implied.
             </span>
           </div>
         </div>
         <div style={{ ...card, overflow: "hidden" }}>
           <div style={tcardHd}>Route service — partly located</div>
           <div style={{ padding: 13 }}>
-            <BaseMap h={132}>
-              <Pin left="30%" top="42%" />
-              <Pin left="55%" top="66%" />
-              <Pin left="75%" top="38%" />
-            </BaseMap>
-            <div style={{ border: `1px solid ${T.hair}`, borderRadius: 6, overflow: "hidden", marginTop: 10 }}>
-              {["Nishiki market — west end", "Pontocho alley, north entrance"].map((s, i) => (
-                <div key={s} style={{ display: "flex", alignItems: "center", gap: 11, padding: "7px 10px", borderBottom: i === 0 ? `1px solid ${T.hair}` : "none", flexWrap: "wrap" }}>
-                  <span style={{ width: 20, height: 20, flex: "0 0 20px", borderRadius: 100, background: T.warnBg, color: T.warnInk, border: `1px solid ${T.warnLine}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>–</span>
-                  <span style={{ flex: 1, minWidth: 150, fontSize: 12 }}>{s}</span>
-                  <span style={{ fontSize: 11.5, color: "#8A6A22", background: T.warnBg, border: `1px solid ${T.warnLine}`, borderRadius: 100, padding: "1px 8px" }}>not located</span>
-                </div>
-              ))}
+            <div style={{ border: `1px dashed ${T.hair}`, borderRadius: 6, background: T.ground, padding: "20px 16px", height: 132, boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 5 }}>
+              <b style={{ fontSize: 13 }}>No stops saved</b>
+              <span style={{ fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
+                A route is authored on the listing's Logistics step.
+              </span>
             </div>
           </div>
           <div style={tcardFoot}>
-            <b style={{ color: T.ink }}>3 of 5 stops located.</b> Only the three with coordinates are drawn.
-            The other two are named above — not dropped, and not guessed onto the map.
+            Kimono Dressing &amp; Gion Photo Walk names two route stops without coordinates. An unlocated stop is
+            named on its Logistics step and left off the canvas — never guessed onto the map.
           </div>
         </div>
         <div style={{ ...card, overflow: "hidden" }}>
@@ -225,32 +244,30 @@ export function CatalogMap() {
         </div>
       </div>
 
-      {/* ⑫ overlays card */}
-      <div style={{ ...card, borderStyle: "dashed", padding: "20px 22px", marginBottom: 26 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-          <DotGhost style={{ marginTop: 2 }}>⑫</DotGhost>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 5 }}>Separate decision — the market-insight overlays</div>
-            <div style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
-              Demand heat and coverage-gap overlays are <b style={{ color: T.ink }}>analytics, not authoring</b> —
-              they tell you where to sell, not where your listing is. They are proposed to move to Performance,
-              where the rest of the measurement lives. <b style={{ color: T.ink }}>That move is not part of this
-              approval</b> — flagged here so it is not decided by accident.
-            </div>
+      {/* separate-decision band (formerly the ⑫ dashed card) */}
+      <div style={{ ...card, padding: "16px 22px", marginBottom: 26, display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <DotGhost style={{ marginTop: 2 }}>⑫</DotGhost>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 5 }}>Separate decision — the market-insight overlays</div>
+          <div style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
+            Demand heat and coverage-gap overlays are <b style={{ color: T.ink }}>analytics, not authoring</b> —
+            they tell you where to sell, not where your listing is. They are proposed to move to Performance,
+            where the rest of the measurement lives. <b style={{ color: T.ink }}>That move is not part of this
+            approval</b> — flagged here so it is not decided by accident.
           </div>
         </div>
       </div>
 
-      {/* ⑬ render it, or stop collecting it */}
+      {/* ⑬ render it, or stop collecting it — ratified */}
       <section>
         <h2 style={{ fontSize: 20, fontWeight: 650, letterSpacing: "-0.01em", marginBottom: 4, display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
           Render it, or stop collecting it<DotGhost>⑬</DotGhost>
-          <PropChip>Proposed — gap #13 · ratify or amend</PropChip>
+          <RatChip>Ratified — gap #13 · rendered, T-REP (ledger 101)</RatChip>
         </h2>
         <p style={{ color: T.muted, fontSize: 13, marginBottom: 18, maxWidth: "74ch" }}>
-          The create flow asks a provider a lot of questions. The proposed rule: every answer either has a
-          traveler-side representation, or an explicit decision that it is provider-only. Here are the in-person
-          tour's answers actually rendered — the half of the audit that had nowhere to land.
+          The rule: every answer the create flow collects either has a traveler-side representation, or an
+          explicit decision that it is provider-only. These are this listing's real answers, resolved with the
+          same formatters the traveler's own page uses — not a paraphrase of them.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 16, alignItems: "start" }}>
           <div style={card}>
@@ -259,27 +276,16 @@ export function CatalogMap() {
               <span style={{ marginLeft: "auto", fontSize: 12, color: T.muted }}>Gion Evening Food Walk</span>
             </div>
             <div style={{ padding: "6px 22px 20px" }}>
-              <SumRow k="Party size" v="1–8 people · you can book for up to 8" />
               <SumRow k="Book by" v="24 hours before the start — the host's lead time" />
-              <SumRow k="Free cancellation until" v="5 days before · 50% up to 2 days before" />
-              <SumRow k="Starts" v="18:00, Tuesdays & Thursdays · runs about 2½ hours" />
-              <SumRow k="Languages" v="English · Japanese" />
-              <SumRow k="Getting there" v="Make your own way to the meeting point in Gion" />
-              <SumRow k="Bring" v="Socks without holes — you will be on tatami" />
-              <SumRow
-                k="Access"
-                v={
-                  <>
-                    One step at the entrance, low seating. A low stool can be provided — say so when you book.
-                    <span style={{ display: "block", color: T.muted, fontSize: 12, marginTop: 3 }}>
-                      Shown in the host's own words. No accessibility standard is claimed on their behalf.
-                    </span>
-                  </>
-                }
-              />
-              <div style={{ display: "flex", gap: 14, padding: "9px 0", fontSize: 13, flexWrap: "wrap" }}>
-                <div style={{ width: 180, flex: "0 0 180px", color: T.muted }}>Travel fee</div>
-                <div style={{ flex: 1, minWidth: 200 }}>None within 8 km of the meeting point. Beyond that, a fee may apply — the host will confirm.</div>
+              <SumRow k="Travel fee" v="None within 8 km of the meeting point. Beyond that, a fee may apply — the host will confirm." />
+              <div style={{ padding: "11px 0", borderBottom: `1px solid ${T.hair}`, fontSize: 12.5, lineHeight: 1.6 }}>
+                <b style={{ fontWeight: 650 }}>14 questions unanswered</b>
+                <span style={{ color: T.muted }}> — {UNANSWERED.join(", ")}</span>
+              </div>
+              <div style={{ padding: "11px 0 2px", fontSize: 12, color: T.muted, lineHeight: 1.6 }}>
+                <b style={{ color: T.ink, fontWeight: 600 }}>Bring</b> and <b style={{ color: T.ink, fontWeight: 600 }}>Access</b>{" "}
+                appear in the ratified mock but have no field behind them yet — named here as the open half of
+                gap #13, not faked.
               </div>
             </div>
           </div>
@@ -287,21 +293,40 @@ export function CatalogMap() {
             <div style={{ ...card, padding: "20px 22px" }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>The rule this demonstrates</div>
               <div style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
-                Nine questions the flow asks, nine things a traveler can read before paying. Where a field has no
-                traveler-side home, the proposal is to <b style={{ color: T.ink }}>stop asking for it</b> rather than
-                store an answer nobody will ever see — the audit found four such fields collected and never read.
+                Every question the flow asks is something a traveler can read before paying. Where a field has no
+                traveler-side home, the rule is to <b style={{ color: T.ink }}>stop asking for it</b> rather than
+                store an answer nobody will ever see. T-REP chose <b style={{ color: T.ink }}>render</b> for every
+                field it audited — nothing was dropped.
               </div>
             </div>
             <div style={{ ...card, padding: "20px 22px" }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Deliberately provider-only</div>
               <div style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6, marginBottom: 10 }}>
-                Not everything should surface. These are proposed as <b style={{ color: T.ink }}>private by
-                decision</b>, not by accident:
+                Not everything should surface. These stay <b style={{ color: T.ink }}>private by decision</b>,
+                not by accident:
               </div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                 {["Build notes", "Exact street address until booked", "Blackout reasons", "Cost / margin working"].map((p) => (
                   <span key={p} style={{ display: "inline-block", fontSize: 11.5, padding: "2px 9px", borderRadius: 100, border: `1px solid ${T.hair}`, color: T.muted, background: T.ground }}>{p}</span>
                 ))}
+              </div>
+            </div>
+            <div style={{ ...card, padding: "20px 22px" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>Meeting pin</div>
+              <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 12 }}>Exact pin confirmed.</div>
+              <button
+                type="button"
+                style={{
+                  width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  background: "transparent", color: T.ink, border: `1px solid ${T.hair}`, borderRadius: 6,
+                  padding: "9px 14px", fontSize: 13, fontWeight: 550, cursor: "pointer", font: "inherit",
+                }}
+              >
+                ✎ Edit location &amp; route
+              </button>
+              <div style={{ fontSize: 11.5, color: T.muted, lineHeight: 1.55, marginTop: 9 }}>
+                Opens this listing's <b style={{ color: T.ink }}>Logistics</b> step — the one place the pin, the
+                radius and the stops are authored.
               </div>
             </div>
           </div>

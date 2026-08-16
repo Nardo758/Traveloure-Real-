@@ -76,9 +76,11 @@ export function PropChip({ children }: { children: ReactNode }) {
   );
 }
 
-export function ConsoleShell({ crumbs, active = "Catalog", children }: {
+export function ConsoleShell({ crumbs, active = "Catalog", distributeLive = false, children }: {
   crumbs: { label: string; current?: boolean }[];
   active?: string;
+  /** when true, Distribute renders as a solid/live nav entry (no dashed border, no ⑧ dot) — used by ratified/live frames only */
+  distributeLive?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -107,6 +109,7 @@ export function ConsoleShell({ crumbs, active = "Catalog", children }: {
               </div>
               {g.items.map((it) => {
                 const on = it.name === active;
+                const proposed = it.proposed && !distributeLive;
                 return (
                   <button
                     key={it.name}
@@ -117,14 +120,14 @@ export function ConsoleShell({ crumbs, active = "Catalog", children }: {
                       background: on ? T.accentSoft : "none",
                       color: on ? T.accent : T.ink,
                       fontWeight: on ? 600 : 400,
-                      border: it.proposed ? "1px dashed #BFD5D0" : "1px solid transparent",
+                      border: proposed ? "1px dashed #BFD5D0" : "1px solid transparent",
                       boxShadow: on ? "inset 0 0 0 1px #CBDAD7" : "none",
                       font: "inherit",
                     }}
                   >
                     <span style={{ width: 15, textAlign: "center", color: on ? T.accent : T.muted, fontSize: 12, flex: "0 0 15px" }}>{it.gl}</span>
                     {it.name}
-                    {it.proposed && (
+                    {proposed && (
                       <span
                         title="proposed new nav entry"
                         style={{
@@ -143,8 +146,17 @@ export function ConsoleShell({ crumbs, active = "Catalog", children }: {
           ))}
         </nav>
         <div style={{ marginTop: "auto", padding: "14px 8px 4px", borderTop: `1px solid ${T.hair}`, fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
-          Provider console — proposed structure.<br />
-          <b style={{ color: T.ink }}>Distribute</b> is the one new entry.
+          {distributeLive ? (
+            <>
+              Provider console — ratified structure.<br />
+              <b style={{ color: T.ink }}>Distribute</b> is live.
+            </>
+          ) : (
+            <>
+              Provider console — proposed structure.<br />
+              <b style={{ color: T.ink }}>Distribute</b> is the one new entry.
+            </>
+          )}
         </div>
       </aside>
 
