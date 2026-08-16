@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Sidebar,
   SidebarContent,
@@ -176,19 +177,10 @@ export function AdminSidebar() {
         className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3"
         style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
       >
-        <Link href="/" className="flex items-center gap-2.5" data-testid="link-admin-logo">
-          <div
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-            style={{ background: "#E85D55" }}
-          >
-            <span className="text-white text-[16px] font-bold">T</span>
+        <Link href="/" className="flex items-center" data-testid="link-admin-logo">
+          <div className="group-data-[collapsible=icon]:hidden">
+            <TraveloureLogo />
           </div>
-          <span
-            className="text-[16px] font-semibold group-data-[collapsible=icon]:hidden"
-            style={{ color: "#1A1A18", letterSpacing: -0.3 }}
-          >
-            Traveloure
-          </span>
         </Link>
       </SidebarHeader>
 

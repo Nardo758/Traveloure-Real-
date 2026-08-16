@@ -7,10 +7,11 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { 
   Map, 
   Award,
-  Compass, 
+  Compass,
   MessageSquare, 
   LogOut, 
   Menu, 
@@ -485,12 +486,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 aria-label={t("homeAria")}
                 data-testid="link-logo"
               >
-                <div className="flex items-center gap-1.5">
-                  <Compass className="h-6 w-6 text-primary" aria-hidden="true" />
-                  <span className="font-bold text-xl tracking-tight text-foreground uppercase">
-                    Traveloure
-                  </span>
-                </div>
+                <TraveloureLogo />
                 <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20" aria-hidden="true">
                   BETA
                 </span>
