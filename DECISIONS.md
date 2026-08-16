@@ -241,3 +241,15 @@ Adapter rebuilt using native X API v2 (no xAI dependency):
 - R2 still applies: counts only, no LLM scoring of X content
 - 30-day ToS retention limit: purge job still needed before activation
 - `X_BEARER_TOKEN` secret stored; adapter ready to enable in trend_source_config
+
+### PredictHQ adapter — fully built (Aug 2026)
+
+`/v1/accounts/self/` returns 403 (no account:read scope) — irrelevant, not needed.
+Core endpoints confirmed working:
+- `GET /v1/events/count/` → 200 (23 events around Kyoto on Aug 15)
+- `GET /v1/events/` → 200 (Summer Sonic: rank 94, attendance 150k)
+
+Adapter rebuilt: two parallel calls per market (count + top-10 by rank).
+Metrics: phq_event_count, phq_top_rank, phq_attendance_forecast.
+Location: within=50km@{lat},{lng}. Demand categories only (no weather/delays).
+Full historical backfill supported. Ready to enable in trend_source_config.
