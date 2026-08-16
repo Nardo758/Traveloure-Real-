@@ -2438,3 +2438,110 @@ commit rather than being guessed at here. What is already settled: **5 specs are
 (`auth-form-validation` 23/23, `booking-payment-isolation`, `executive-card-expand`,
 `experts-flow` 10/10, `navbar-responsive` 16/16) — these are real, unclaimed coverage that should
 simply be gated.
+
+## Lane M3 — the preview speaks the traveler's words, and "Starts" is finished (Aug 15, 2026)
+
+Two things, both found by asking a question M2 should have asked first: **what IS gap #13?**
+
+### The answer, and the first correction
+
+Gap #13 is the mock's rule (legend ⑬): *"Render it, or stop collecting it — every authored answer
+gets a traveler-side home."* Every question the create flow asks must either have a traveler-side
+representation or an explicit provider-only decision; anything that is neither stops being asked.
+
+**It is NOT an open proposal, and M2 shipped it labelled as one.** It was **ratified by ledger row
+92** (the mock in full, explicitly including "G5's #13 panel") and **executed by lane T-REP, ledger
+row 101** — *"RENDER chosen throughout, zero fields removed"* — which built the traveler detail
+page's "Good to know" card plus the pure `client/src/lib/service-good-to-know.ts` (unit-tested).
+The mock's `propchip` was accurate when the mock was drawn and has been stale since Aug 13. The
+chip now reads **"Ratified — gap #13 · rendered, T-REP (ledger 101)"**.
+
+### M3-1 (P2, FIXED) — the preview was paraphrasing the traveler, not quoting them
+
+M2's `travelerFacts()` **re-implemented** derivations `service-good-to-know.ts` already owned, with
+different wording — on a card whose entire claim is that it shows what the traveler sees:
+
+| fact | M2 (Catalog) | traveler page |
+|---|---|---|
+| party size | `1–8 people · you can book for up to 8` | `1–8 people` |
+| lead time | `24 hours before the start — the host's lead time` | `1 day` (`formatHours` collapses 24h) |
+| starts | `18:00 · runs about 2½ hours` | `No earlier than 18:00 (Asia/Tokyo)` · `2h 30m` |
+
+That is the class **CLAUDE.md §18 rule 1** names — *derivation delegates, never re-implements* —
+and it is worse here than usual because the drift IS the defect: the card asserts identity with a
+surface it was diverging from. Every value now comes from the shared module, in the traveler
+page's order and behind its gates; the local `formatDuration` is deleted. Rows M2 was missing came
+along for free: change cutoff, buffer, transport provision, deposit terms, response window, scope
+statement.
+
+### M3-2 (P2, FIXED) — "Starts" is finished: the weekly rule reaches travelers at all
+
+`service_availability_patterns` (ledger row 102: `day_of_week` 0=Sun..6=Sat + start/end time) had
+an owner-gated PUT, an owner-gated GET and **no public read**. A provider could author "every
+Tuesday and Thursday at 18:00" and **no traveler could ever see it** — a textbook gap-#13
+violation that T-REP never reached, because row 101 deferred availability to lane S7.
+
+- **Server:** `GET /api/services/:id` now carries `availabilityPatterns`, loaded once and threaded
+  through all four product-shape branches like `routePoints`, behind the **same F2 read-gate**
+  already applied at the top of the handler (an unapproved listing leaks no schedule). **Not**
+  `capacity` — seats remaining is inventory and belongs to the availability calendar; this is only
+  the rhythm.
+- **Traveler:** a "Runs …" line in Good to know (`text-weekly-pattern`).
+- **Preview:** a "Runs on" row, from the owner read of the same rows.
+- **Formatter:** `formatWeeklyPattern` — groups by start time so two different times read as two
+  clauses rather than one wrong sentence; collapses all seven days to "Every day"; drops a
+  malformed `day_of_week` (app-enforced, **no DB CHECK**) rather than rendering `undefined`; and
+  follows `formatStartWindow`'s timezone convention exactly — declared IANA zone, or an explicit
+  "provider's local time", never a silent assumption. No rows ⇒ **null**, never a guessed rhythm.
+
+**No schema change.** The table exists and is declared in `shared/schema.ts` (publish-trap rule);
+this lane only gave it a reader.
+
+### What is STILL missing from the mock's nine-row card — and why
+
+**Bring** and **Access** have no column anywhere on `provider_services`, and no wizard field —
+the flow never asks, so there is nothing to render. (The `accessibilityNeeds`/`mobilityLevel`
+columns in the schema belong to `trip_participants` — a **traveler's** stated needs, not a host's
+access notes.) They are the inverse of what T-REP audited: **drawn and never collected**, rather
+than collected and never read. The card names them rather than faking them. Closing them needs two
+additive nullable columns + wizard fields — a schema decision, so it goes through CLAUDE.md's
+Coordination Prevention path (doc first, decision-maker approval) and is **not** in this lane.
+
+Also still filed from row 101, untouched here: `maxConcurrentBookings`, `city`, `faqs`,
+`experienceTypes`, `deliverables`, `contentAffinityTags`, non-property `categoryAttributes` —
+authored but unrendered, awaiting a follow-up render-or-rule pass.
+
+**Proof.** `client/src/lib/__tests__/service-good-to-know.test.ts` **38/38** (was 30) — eight new
+`formatWeeklyPattern` cases incl. the mock's own "Tuesdays & Thursdays", the two-clause case, the
+malformed-row drop and the §13 no-rows-no-claim negative. `tsc --noEmit` **168 = baseline**, zero
+new. Guard battery green (`check-undeclared-tables`'s exit 1 is pre-existing, verified by stash).
+Production build clean. Bench render: `docs/design/catalog-rebuild/after-render-it-m3.png`.
+
+### Bench-verified on a real stack (Aug 15, same session)
+
+The decision-maker offered a database URL; a **local** Postgres 16 was stood up in the container
+instead, so nothing real was touched — the app booted against a scratch DB with the repo's own 229
+migrations and full seed set. What actually ran:
+
+- `GET /api/services/:id` on a seeded approved listing: `availabilityPatterns` **empty before**, and
+  after authoring two rows **through the real owner PUT** (not SQL) it returns
+  `[{dayOfWeek:2,startTime:"18:00",endTime:"20:30"},{dayOfWeek:4,…}]` — **`capacity` absent**, as
+  designed.
+- **F2 read-gate holds:** flipping the row to `submitted` makes the same GET **404** (no schedule
+  leak); restoring returns 200.
+- **Traveler page** renders `Runs Tuesdays & Thursdays at 18:00 (Asia/Tokyo)`
+  (`docs/design/catalog-rebuild/traveler-runs-on-m3.png`).
+- **§13 negative on the real stack:** a listing with no patterns returns `[]` and renders **no**
+  weekly line (count 0).
+- **`catalog-map-located.spec.ts` PASSES — 19.7s**, its first real run since being rewritten.
+- **The live Catalog map**, real data, all M2/M3 blocks present:
+  `docs/design/catalog-rebuild/after-map-m3-live.png` (supersedes the fixture render).
+
+**Two things the bench taught, both folded into the spec's header:**
+1. The spec needs `users.terms_accepted_at` AND `privacy_accepted_at` on its provider, or every
+   console route bounces to `/accept-terms`, `button-view-map` never renders, and the auto-waiting
+   click burns the whole test timeout — surfacing as a timeout attributed to the cleanup PATCH in
+   the `finally`, the last place anyone would look. First diagnosis of that hang (tile starvation)
+   was **wrong**; recorded so the next person does not repeat it.
+2. OSM tiles are now aborted in-spec — every assertion is DOM, so the tiles were pure external
+   dependency.
