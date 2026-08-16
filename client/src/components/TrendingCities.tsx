@@ -69,11 +69,7 @@ export function TrendingCities() {
             </h2>
           </div>
           <p className="text-muted-foreground">
-            Real-time TravelPulse intelligence from{' '}
-            <span className="font-semibold text-foreground">
-              {isLoading ? '…' : (data?.cities.reduce((s, c) => s + (c.activeTravelers || 0), 0) || 0).toLocaleString()}
-            </span>{' '}
-            active travelers worldwide
+            TravelPulse destination intelligence, updated daily
           </p>
         </motion.div>
 
