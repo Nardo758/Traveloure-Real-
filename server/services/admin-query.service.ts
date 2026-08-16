@@ -64,8 +64,35 @@ export async function getUserCommissionOverrides(userIds: string[]) {
     .from(users).where(inArray(users.id, userIds));
 }
 
-export async function updateUserRole(userId: string, role: string) {
-  return db.update(users).set({ role }).where(eq(users.id, userId));
+export async function updateUserRole(
+  userId: string,
+  role: string,
+  actor: { actorId: string; actorRole: string; reason?: string },
+) {
+  // Capture the old role before overwriting so the audit record is complete.
+  const [current] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  const oldRole = current?.role ?? null;
+
+  await db.update(users).set({ role }).where(eq(users.id, userId));
+
+  // Write audit record — swallow errors so the caller is never blocked.
+  try {
+    await db.insert(accessAuditLogs).values({
+      actorId: actor.actorId,
+      actorRole: actor.actorRole,
+      action: "role_change",
+      resourceType: "user",
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: {
+        oldRole,
+        newRole: role,
+        reason: actor.reason ?? null,
+      },
+    } as any);
+  } catch (err) {
+    console.error("[audit] Failed to write role-change audit log:", err);
+  }
 }
 
 export async function getUserVerificationStatus(userId: string) {
