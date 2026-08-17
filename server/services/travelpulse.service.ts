@@ -11,6 +11,7 @@ import {
   travelPulseLiveActivity,
   travelPulseCityAlerts,
   travelPulseHappeningNow,
+  trips,
   destinationSeasons,
   destinationEvents,
   destinationMetricsHistory,
@@ -25,9 +26,12 @@ import {
   DestinationSeason,
   DestinationEvent,
 } from "@shared/schema";
-import { eq, and, gte, lte, desc, asc, sql, isNull, lt } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, sql, isNull, lt, inArray } from "drizzle-orm";
+import { trendEntities, trendScores } from "@shared/schema";
+import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
+import { CONFIDENCE_FLOOR } from "./trend-engine/trend-score.service";
 import crypto from "crypto";
-import { grokService, CityIntelligenceResult } from "./grok.service";
+import { grokService, CityIntelligenceResult, CityProxySignals } from "./grok.service";
 
 const GROK_MODEL = "grok-3";
 
@@ -567,13 +571,75 @@ Return JSON:
   // ============================================
 
   async getTrendingCities(limit: number = 20): Promise<TravelPulseCity[]> {
-    const cities = await db
+    // Phase E rewire: rank by the v0 resolver trend_score (trend_scores table),
+    // restricted to the 8 operating markets. Below-floor markets (trendConfidence <
+    // CONFIDENCE_FLOOR) sort last and receive trendingScore = 0 (no "hot" badge).
+    // Legacy callers that pass limit > 8 still work — they just get ≤8 results.
+
+    const operatingCityNames = OPERATING_MARKETS.map(m => m.cityName);
+
+    // Fetch resolver scores keyed by marketKey
+    const resolverRows = await db
+      .select({
+        internalId: trendEntities.internalId,
+        trendScore: trendScores.trendScore,
+        trendConfidence: trendScores.trendConfidence,
+        whyText: trendScores.whyText,
+        contributingSources: trendScores.contributingSources,
+      })
+      .from(trendEntities)
+      .leftJoin(trendScores, eq(trendScores.trendEntityId, trendEntities.id))
+      .where(eq(trendEntities.entityType, "market"));
+
+    const resolverMap = new Map(
+      resolverRows.map(r => [
+        r.internalId,
+        {
+          score: r.trendScore != null ? parseFloat(r.trendScore) : null,
+          confidence: r.trendConfidence != null ? parseFloat(r.trendConfidence) : 0,
+          whyText: r.whyText,
+        },
+      ]),
+    );
+
+    // Fetch travelPulseCities rows for operating markets
+    const rows = await db
       .select()
       .from(travelPulseCities)
-      .orderBy(desc(travelPulseCities.pulseScore))
-      .limit(limit);
+      .where(inArray(travelPulseCities.cityName, operatingCityNames));
 
-    return cities;
+    // Merge resolver data and compute mapped trendingScore
+    const withScores = rows.map(city => {
+      const market = OPERATING_MARKETS.find(
+        m => m.cityName.toLowerCase() === city.cityName.toLowerCase(),
+      );
+      const rd = market ? resolverMap.get(market.marketKey) : null;
+      const isRanked =
+        rd != null && rd.score != null && rd.confidence >= CONFIDENCE_FLOOR;
+
+      // Map resolver score to 0–100:  1.0 (at baseline) → 50,  2.0 → 100,  0 → 0
+      // trendingScore = 0 for below-floor (no hot badge).
+      const trendingScore = isRanked
+        ? Math.min(100, Math.max(0, Math.round((rd!.score!) * 50)))
+        : 0;
+
+      return {
+        ...city,
+        trendingScore,
+        _resolverScore: rd?.score ?? null,
+        _isRanked: isRanked,
+      };
+    });
+
+    // Sort: ranked markets by resolverScore DESC, then unranked by pulseScore DESC
+    withScores.sort((a, b) => {
+      if (a._isRanked && b._isRanked) return (b._resolverScore ?? 0) - (a._resolverScore ?? 0);
+      if (a._isRanked) return -1;
+      if (b._isRanked) return 1;
+      return (b.pulseScore ?? 0) - (a.pulseScore ?? 0);
+    });
+
+    return withScores.slice(0, limit) as TravelPulseCity[];
   }
 
   async getCityByName(cityName: string): Promise<TravelPulseCity | null> {
@@ -992,7 +1058,22 @@ Return JSON:
     ];
 
     for (const city of cities) {
-      await db.insert(travelPulseCities).values(city);
+      // Guard: only insert if no row already exists for this (city_name, country) pair.
+      // This prevents duplicate rows when seedTrendingCities() runs alongside the
+      // JSON-based seedTravelPulseData() path.
+      const [existing] = await db
+        .select({ id: travelPulseCities.id })
+        .from(travelPulseCities)
+        .where(
+          and(
+            eq(travelPulseCities.cityName, city.cityName),
+            eq(travelPulseCities.country, city.country)
+          )
+        )
+        .limit(1);
+      if (!existing) {
+        await db.insert(travelPulseCities).values(city);
+      }
     }
 
     console.log(`Seeded ${cities.length} trending cities`);
@@ -1206,12 +1287,89 @@ Return JSON:
   // ============================================
 
   // Update a city with AI-generated intelligence from Grok
+  /**
+   * Gather real "proxy" measurements for a city so Grok's daily estimates are grounded
+   * in observed data instead of pure model knowledge. Every signal is best-effort and
+   * optional — a failure in any single source just omits that signal.
+   * Sources: our own trips table (travelers now / upcoming).
+   * R4 hotfix: trend-score history and previous traveler-count are NOT passed to Grok —
+   * a score's own history must never be a scoring input.
+   * R5 ruling: SerpAPI/Google Trends dropped; Wikimedia Pageviews is the Phase 2 replacement.
+   */
+  async gatherProxySignals(cityName: string, country: string): Promise<CityProxySignals> {
+    const signals: CityProxySignals = {};
+
+    // "Today" in the city's own timezone (falls back to UTC when the city row has no
+    // timezone) — trips columns are DATE, so an off-by-one around midnight miscounts.
+    let cityTz: string | undefined;
+    try {
+      const [tzRow] = await db
+        .select({ tz: travelPulseCities.timezone })
+        .from(travelPulseCities)
+        .where(and(eq(travelPulseCities.cityName, cityName), eq(travelPulseCities.country, country)))
+        .limit(1);
+      cityTz = tzRow?.tz ?? undefined;
+    } catch { /* fall back to UTC */ }
+    const localDate = (offsetDays = 0) => {
+      const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+      try {
+        return new Intl.DateTimeFormat("en-CA", { timeZone: cityTz || "UTC" }).format(d); // YYYY-MM-DD
+      } catch {
+        return d.toISOString().slice(0, 10);
+      }
+    };
+    const today = localDate(0);
+    const in30d = localDate(30);
+
+    // Platform trips: destination is free text, so use a case-insensitive whole-word
+    // regex match on the city name (regex-escaped) — plain substring matching would
+    // count "London, Ontario" for London UK or "New York" for York.
+    const cityPattern = "\\m" + cityName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\M";
+    const destMatch = sql`${trips.destination} ~* ${cityPattern}`;
+    try {
+      const [nowRow] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(trips)
+        .where(and(
+          destMatch,
+          lte(trips.startDate, today),
+          gte(trips.endDate, today),
+        ));
+      const [upcomingRow] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(trips)
+        .where(and(
+          destMatch,
+          gte(trips.startDate, today),
+          lte(trips.startDate, in30d),
+        ));
+      signals.platformTravelersNow = nowRow?.n ?? 0;
+      signals.platformUpcomingTrips30d = upcomingRow?.n ?? 0;
+    } catch (err: any) {
+      console.warn(`[TravelPulse] trips signal failed for ${cityName}: ${err?.message}`);
+    }
+
+    // R4 HOTFIX: recentTrendScores and previousActiveTravelers removed — score history
+    // must never feed back into scoring (L8). Phase 2.3 will repoint the trip-count
+    // gatherers to write trend_signals rows instead.
+    // R5 RULING: SerpAPI/Google Trends dropped. Wikimedia Pageviews replaces it in Phase 2.
+
+    return signals;
+  }
+
   async updateCityWithAI(cityName: string, country: string): Promise<{ success: boolean; city?: TravelPulseCity; error?: string }> {
     try {
       console.log(`[TravelPulse] Generating AI intelligence for ${cityName}, ${country}...`);
-      
+
+      // Gather observed proxy signals so Grok grounds its estimates in real measurements.
+      // Best-effort: any gathering failure degrades to a plain (signal-free) generation.
+      const signals = await this.gatherProxySignals(cityName, country).catch((err) => {
+        console.warn(`[TravelPulse] Proxy-signal gathering failed for ${cityName}: ${err?.message}`);
+        return undefined;
+      });
+
       // Get AI intelligence from Grok
-      const { result, usage } = await grokService.generateCityIntelligence(cityName, country);
+      const { result, usage } = await grokService.generateCityIntelligence(cityName, country, signals);
       
       console.log(`[TravelPulse] AI intelligence generated. Tokens used: ${usage.totalTokens}`);
 
@@ -1235,6 +1393,17 @@ Return JSON:
         trendingScore: result.pulseMetrics.trendingScore,
         crowdLevel: result.pulseMetrics.crowdLevel,
         weatherScore: result.pulseMetrics.weatherScore,
+        // Grok's seasonal estimate of tourists currently visiting. Only overwrite when the
+        // model returned a sane bounded integer — otherwise keep the existing value rather
+        // than zeroing the card or failing the row update (column is PG integer). Capped at
+        // 5M: no city hosts more concurrent tourists; a larger value is a model hallucination.
+        ...((() => {
+          const raw = result.pulseMetrics.estimatedActiveTravelers;
+          const v = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : NaN;
+          return Number.isSafeInteger(v) && v > 0 && v <= 5_000_000
+            ? { activeTravelers: v }
+            : {};
+        })()),
         
         // Vibe from AI
         vibeTags: result.currentVibe.vibeTags,
@@ -1496,13 +1665,21 @@ Return JSON:
 
   // Get cities that need AI refresh
   async getCitiesNeedingRefresh(): Promise<TravelPulseCity[]> {
+    // Phase 2.3: scope limited to the 8 configured operating markets.
+    // No longer returns every stale city; prevents Grok from being implicitly
+    // triggered for cities outside the operating set.
+    const { OPERATING_MARKETS } = await import("./trend-engine/operating-markets");
+    const marketNames = OPERATING_MARKETS.map(m => m.cityName);
     const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
+
     return db
       .select()
       .from(travelPulseCities)
       .where(
-        sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`
+        and(
+          sql`${travelPulseCities.cityName} = ANY(${sql.raw(`ARRAY[${marketNames.map(n => `'${n.replace(/'/g, "''")}'`).join(',')}]`)})`,
+          sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`,
+        ),
       );
   }
 

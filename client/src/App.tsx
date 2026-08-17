@@ -77,7 +77,11 @@ const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
 const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
 const ProviderWorkstation = lazy(() => import("@/pages/provider/workstation"));
+const ProviderPropertyCreate = lazy(() => import("@/pages/provider/property-create"));
+const ProviderListingHome = lazy(() => import("@/pages/provider/listing-home"));
+const ProviderBundleBuilder = lazy(() => import("@/pages/provider/bundle-builder"));
 const ProviderDistribute = lazy(() => import("@/pages/provider/distribute"));
+const ProviderAvailability = lazy(() => import("@/pages/provider/availability"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 const AdminUsers = lazy(() => import("@/pages/admin/users"));
@@ -145,6 +149,7 @@ const StorefrontPage = lazy(() => import("@/pages/storefront"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
+const CreateServiceWizard = lazy(() => import("@/pages/provider/create-service"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 // C9: SharePromote lazy import dropped — the page is retired (both console routes redirect
 // into their Catalogs; the sharing primitives live in components/backoffice/share-tools.tsx).
@@ -885,8 +890,23 @@ function Router() {
       <Route path="/provider/services/new">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
+      {/* Listing Home — the post-save landing page for a service draft.
+          Must be BEFORE /:id/edit so the bare :id path matches first.
+          /provider/services/new above guards against "new" being treated as an id. */}
+      <Route path="/provider/services/:id">
+        {() => <ProtectedRoute component={ProviderListingHome} requiredRole="provider" />}
+      </Route>
       <Route path="/provider/services/:id/edit">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
+      </Route>
+      {/* Property builder — the 3-step create flow, graduated from canvas mockup. */}
+      <Route path="/provider/properties/new">
+        {() => <ProtectedRoute component={ProviderPropertyCreate} requiredRole="provider" />}
+      </Route>
+      {/* Bundle builder — full-page graduated from canvas mockup.
+          Workstation's Bundle rung tile links here; replaces the old dialog. */}
+      <Route path="/provider/bundles/new">
+        {() => <ProtectedRoute component={ProviderBundleBuilder} requiredRole="provider" />}
       </Route>
       {/* PB (§17 Product Builder): the provider Workstation — the creation ladder
           (single service → bundle → property). Bundle rung live (migration 151 +
@@ -897,6 +917,9 @@ function Router() {
       {/* Catalog+Distribute (ruling 74, lane D1): the distribution hub — Storefront +
           Marketplace channels now, Direct/Social/state-strip (D2–D4) mount into it later.
           Reached from the Workstation. */}
+      <Route path="/provider/availability">
+        {() => <ProtectedRoute component={ProviderAvailability} requiredRole="provider" />}
+      </Route>
       <Route path="/provider/distribute">
         {() => <ProtectedRoute component={ProviderDistribute} requiredRole="provider" />}
       </Route>

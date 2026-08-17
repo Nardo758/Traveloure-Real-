@@ -1,28 +1,22 @@
-interface TravelloureLogoProps {
+import { cn } from "@/lib/utils";
+
+interface TraveloureLogoProps {
   collapsed?: boolean;
   className?: string;
-  "data-testid"?: string;
 }
 
-export function TraveloureLogo({ collapsed, className, "data-testid": testId }: TravelloureLogoProps) {
+export function TraveloureLogo({ collapsed, className }: TraveloureLogoProps) {
   if (collapsed) {
-    // Show just the paper-plane mark (left ~28% of the image) in a square crop
     return (
       <div
-        className={`w-8 h-8 overflow-hidden flex-shrink-0 ${className ?? ""}`}
-        aria-label="Traveloure"
-        data-testid={testId}
+        className={cn("w-8 h-8 overflow-hidden flex-shrink-0", className)}
+        style={{ borderRadius: 6 }}
       >
         <img
           src="/traveloure-logo.png"
           alt="Traveloure"
-          style={{
-            height: "100%",
-            width: "auto",
-            maxWidth: "none",
-            objectFit: "cover",
-            objectPosition: "left center",
-          }}
+          className="h-8 w-auto max-w-none"
+          style={{ objectFit: "cover", objectPosition: "left center" }}
         />
       </div>
     );
@@ -32,8 +26,7 @@ export function TraveloureLogo({ collapsed, className, "data-testid": testId }: 
     <img
       src="/traveloure-logo.png"
       alt="Traveloure"
-      className={`h-[34px] w-auto object-contain ${className ?? ""}`}
-      data-testid={testId}
+      className={cn("h-7 w-auto object-contain", className)}
     />
   );
 }

@@ -45,6 +45,7 @@ import {
   vendorAvailabilitySlots,
   providerServices,
   serviceBookings,
+  serviceAvailabilityBlackouts,
   affiliateBookingRequests,
   readyMadePurchases,
   readyMadeTrips,
@@ -113,11 +114,12 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
 
     const events: CalendarEvent[] = [];
 
-    // ── availability: my open slots in-window ────────────────────────────────────────────
+    // ── availability: all slots (open and full) in-window ───────────────────────────────
     const slotRows = await db
       .select({
         id: vendorAvailabilitySlots.id,
         date: vendorAvailabilitySlots.date,
+        startTime: vendorAvailabilitySlots.startTime,
         capacity: vendorAvailabilitySlots.capacity,
         bookedCount: vendorAvailabilitySlots.bookedCount,
         serviceName: providerServices.serviceName,
@@ -129,20 +131,66 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
           eq(vendorAvailabilitySlots.providerId, userId),
           gte(vendorAvailabilitySlots.date, from),
           lte(vendorAvailabilitySlots.date, to),
-          sql`(${vendorAvailabilitySlots.capacity} IS NULL OR ${vendorAvailabilitySlots.bookedCount} IS NULL OR ${vendorAvailabilitySlots.bookedCount} < ${vendorAvailabilitySlots.capacity})`,
         ),
       );
     for (const s of slotRows) {
-      const open =
-        s.capacity == null ? null : Math.max(s.capacity - (s.bookedCount ?? 0), 0);
+      const booked = s.bookedCount ?? 0;
+      const cap = s.capacity;
+      const isFull = cap != null && booked >= cap;
+      const timePfx = s.startTime ? `${s.startTime} · ` : "";
+      const name = s.serviceName ?? "Service";
+      let title: string;
+      if (isFull) {
+        title = `${timePfx}${name} · ${cap} of ${cap} — full`;
+      } else if (cap != null) {
+        title = `${timePfx}${name} · ${booked} of ${cap} seats booked`;
+      } else {
+        title = `${timePfx}${name}`;
+      }
       events.push({
         id: `slot-${s.id}`,
         lane: "availability",
-        kind: "open_slot",
+        kind: isFull ? "full_slot" : "open_slot",
         date: s.date,
-        title: `${s.serviceName} · ${open == null ? "open" : `${open} open`}`,
+        title,
         href: hrefs.slots,
       });
+    }
+
+    // ── availability: blackout ranges ────────────────────────────────────────────────────
+    const blackoutRows = await db
+      .select({
+        id: serviceAvailabilityBlackouts.id,
+        startDate: serviceAvailabilityBlackouts.startDate,
+        endDate: serviceAvailabilityBlackouts.endDate,
+        reason: serviceAvailabilityBlackouts.reason,
+        serviceName: providerServices.serviceName,
+      })
+      .from(serviceAvailabilityBlackouts)
+      .innerJoin(providerServices, eq(serviceAvailabilityBlackouts.serviceId, providerServices.id))
+      .where(
+        and(
+          eq(providerServices.userId, userId),
+          lte(serviceAvailabilityBlackouts.startDate, to),
+          gte(serviceAvailabilityBlackouts.endDate, from),
+        ),
+      );
+    for (const b of blackoutRows) {
+      const winStart = new Date(Math.max(Date.parse(`${b.startDate}T00:00:00Z`), Date.parse(`${from}T00:00:00Z`)));
+      const winEnd   = new Date(Math.min(Date.parse(`${b.endDate}T00:00:00Z`),   Date.parse(`${to}T00:00:00Z`)));
+      const reason = b.reason ? b.reason.charAt(0).toUpperCase() + b.reason.slice(1) : "Closed";
+      const name = b.serviceName ?? "Service";
+      for (let d = new Date(winStart); d <= winEnd; d = new Date(d.getTime() + DAY_MS)) {
+        const dateStr = d.toISOString().slice(0, 10);
+        events.push({
+          id: `blackout-${b.id}-${dateStr}`,
+          lane: "availability",
+          kind: "blackout",
+          date: dateStr,
+          title: `${name} · ${reason}`,
+          href: hrefs.slots,
+        });
+      }
     }
 
     // ── inbound: bookings on my services, dated by their REAL schedule ───────────────────

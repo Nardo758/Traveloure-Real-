@@ -885,8 +885,12 @@ router.get("/services/:id", async (req, res, next) => {
       service.description?.substring(0, 160) ??
       `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
+    const resolvedServiceImage = service.serviceImage?.startsWith("covers:")
+      ? `${req.protocol}://${req.get("host")}/api/services/${service.id}/cover-image`
+      : service.serviceImage;
     const ogImage =
-      service.serviceImage ??
+      resolvedServiceImage ??
       `${req.protocol}://${req.get("host")}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");

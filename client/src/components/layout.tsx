@@ -738,10 +738,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
             <div className="lg:col-span-2">
-              <div className="mb-4">
-                <Link href="/" aria-label="Traveloure home">
-                  <TraveloureLogo />
-                </Link>
+              <div className="flex items-center mb-4" aria-hidden="true">
+                <TraveloureLogo className="h-8" />
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
                 {t("footer.tagline")}

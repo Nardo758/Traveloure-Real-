@@ -1,8 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { initialsFromUser } from "@/lib/initials";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +16,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Home,
   CalendarDays,
@@ -140,22 +141,60 @@ export function ProviderSidebar() {
 
   const initials = initialsFromUser(user);
 
-  const displayName =
-    user?.businessName ||
-    `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
+  // Full name for the header identity card (firstName + lastName, §13: show what's real).
+  const fullName =
+    `${(user as any)?.firstName ?? ""} ${(user as any)?.lastName ?? ""}`.trim() ||
+    (user as any)?.businessName ||
     t("sidebar.defaultDisplayName");
+
+  // Secondary line: businessName · "Provider" role indicator.
+  const businessLine = (user as any)?.businessName
+    ? `${(user as any).businessName} · Provider`
+    : user?.email ?? "";
+
+  // Distribute badge: total listing count (same query the Catalog page already makes;
+  // React Query deduplicates the fetch — no extra network call).
+  const { data: servicesData } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/provider/services"],
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const distributeCount = servicesData?.length ?? 0;
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
-      <SidebarHeader
-        className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3"
-        style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
-      >
-        <Link href="/" className="flex items-center" data-testid="link-provider-logo">
-          <div className="group-data-[collapsible=icon]:hidden">
-            <TraveloureLogo />
+      {/* Logo + user identity card — mock: identity lives at the TOP below the logo */}
+      <SidebarHeader className="p-0" style={{ borderBottom: "1px solid #E8E8E2" }}>
+        {/* Logo row */}
+        <div className="px-5 py-4 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3" style={{ minHeight: 56 }}>
+          <Link href="/" className="flex items-center" data-testid="link-provider-logo">
+            <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
+          </Link>
+        </div>
+
+        {/* Identity card — hidden in icon-collapse mode */}
+        {user && (
+          <div
+            className="group-data-[collapsible=icon]:hidden px-4 py-3 flex items-center gap-3"
+            style={{ borderTop: "1px solid #E8E8E2", background: "#FAFAF8" }}
+          >
+            <div
+              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-semibold text-white flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #35605A, #1E3A5F)" }}
+              data-testid="avatar-provider-sidebar"
+            >
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold truncate leading-tight" style={{ color: "#1A1A18" }}>
+                {fullName}
+              </p>
+              <p className="text-[11px] truncate leading-snug mt-0.5" style={{ color: "#7A7A72" }}>
+                {businessLine}
+              </p>
+            </div>
           </div>
-        </Link>
+        )}
       </SidebarHeader>
 
       <SidebarContent className="px-2.5 py-3 group-data-[collapsible=icon]:px-1">
@@ -174,6 +213,8 @@ export function ProviderSidebar() {
                     location === item.href ||
                     (item.href !== "/provider/dashboard" && location.startsWith(item.href));
 
+                  const isDistribute = item.href === "/provider/distribute";
+
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
@@ -182,16 +223,30 @@ export function ProviderSidebar() {
                         tooltip={t(item.i18nKey, item.title)}
                         className={
                           isActive
-                            ? "bg-[rgba(232,85,85,0.08)] text-[#E85D55] font-semibold"
+                            ? "bg-[rgba(53,96,90,0.08)] text-[#35605A] font-semibold"
                             : "text-[#7A7A72] hover:text-[#1A1A18] hover:bg-[#F3F3EE]"
                         }
                       >
                         <Link
                           href={item.href}
                           data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                          className="flex items-center gap-2 w-full"
                         >
-                          <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
-                          <span className="text-[13px]">{t(item.i18nKey, item.title)}</span>
+                          <item.icon className="w-4 h-4 flex-shrink-0" style={{ opacity: isActive ? 1 : 0.7 }} />
+                          <span className="text-[13px] flex-1 truncate">{t(item.i18nKey, item.title)}</span>
+                          {/* Distribute listing count badge — matches mock's "8" indicator */}
+                          {isDistribute && distributeCount > 0 && (
+                            <span
+                              className="group-data-[collapsible=icon]:hidden ml-auto flex-shrink-0 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-semibold"
+                              style={{
+                                background: isActive ? "rgba(53,96,90,0.15)" : "#E8E8E2",
+                                color: isActive ? "#35605A" : "#7A7A72",
+                              }}
+                              data-testid="badge-distribute-count"
+                            >
+                              {distributeCount}
+                            </span>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -207,27 +262,9 @@ export function ProviderSidebar() {
         className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5"
         style={{ borderTop: "1px solid #E8E8E2" }}
       >
-        {user && (
-          <div className="flex items-center gap-2.5 mb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mb-0">
-            <div
-              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-semibold text-white flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #E85D55, #1E3A5F)" }}
-            >
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
-                {displayName}
-              </p>
-              <p className="text-[11px] truncate" style={{ color: "#7A7A72" }}>
-                {user.email}
-              </p>
-            </div>
-          </div>
-        )}
         <Button
           variant="ghost"
-          className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="w-full justify-start text-[#7A7A72] hover:text-[#35605A] hover:bg-[rgba(53,96,90,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           onClick={() => logout()}
           data-testid="button-provider-logout"
         >

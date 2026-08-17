@@ -1,3 +1,4 @@
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 - [Migration chain root cause](migration-chain-root-cause.md) — null-id + missing-column bugs in 033/034/042 blocked all migrations 034-050; fixed with ALTER TABLE SET DEFAULT + VALUES column fixes
 - [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link
 - [Phase 1b neighborhood system](phase-1b-neighborhoods.md) — cityNeighborhoods table + neighborhood columns on gems/services; backfill is Haversine proximity; verify check [B] is a false-negative on empty dev DB.
@@ -31,4 +32,8 @@
 - [Message write-path convergence](message-write-paths.md) — user↔user messages have 3 write paths (POST /api/messages, POST /api/chats, /ws chat); guards must go in shared code (storage.createChat / insertUserAndExpertChatSchema) or paths diverge silently.
 - [Realtime message delivery](realtime-message-delivery.md) — only ws-path sends live-push to open recipients; HTTP sends are invisible until reload; thread renders from refetched chats, not realtimeMessages.
 - [Role-change audit atomicity](role-change-audit-atomicity.md) — role flips + audit insert share one transaction and throw on failure; audit table id has no DB default; actor_id FK is the rollback-test vector.
+- [Availability authoring write path](availability-authoring-write-path.md) — month grid reads materialized vendor_availability_slots; seed patterns via the PUT endpoint, never direct DB inserts.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
+- [Trend Engine Phase 0 decisions](trend-engine-phase0.md) — R4 hotfix shipped; 8 operating markets; activeTravelers blocks republish at 4 surfaces; SerpAPI dropped per R5; DECISIONS.md is the ruling ledger.
+- [Trend Engine Phase 2 dispatch](trend-engine-phase2.md) — cost enforcement + 5 open-license adapters built; 3 licensed stubs disabled (credential issues); Grok removed from scheduler (Phase 2.3, HUMAN READ required); tsc baseline 171.
+- [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.

@@ -13,7 +13,7 @@ interface TravelPulseCity {
   imageUrl?: string | null;
   pulseScore: number;
   activeTravelers: number;
-  trendingScore: number;
+  trendingScore: number;   // 0 = below confidence floor (no resolver data yet)
   crowdLevel: string;
   vibeTags: string[];
   currentHighlight?: string | null;
@@ -69,12 +69,9 @@ export function TrendingCities() {
             </h2>
           </div>
           <p className="text-muted-foreground">
-            Real-time TravelPulse intelligence from{' '}
-            <span className="font-semibold text-foreground">
-              {isLoading ? '…' : (data?.cities.reduce((s, c) => s + (c.activeTravelers || 0), 0) || 0).toLocaleString()}
-            </span>{' '}
-            active travelers worldwide
+            TravelPulse destination intelligence, updated daily
           </p>
+          {/* "updated daily" pattern — no "real-time" language (#1496 copy audit) */}
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -83,6 +80,8 @@ export function TrendingCities() {
             : cities.map((city, index) => {
                 const priceChange = parseFloat(city.priceChange || '0');
                 const vibeTags = Array.isArray(city.vibeTags) ? city.vibeTags : [];
+                // Confidence floor (L9): trendingScore=0 means the resolver has not yet
+                // ranked this market (below floor). No hot badge; card still shows.
                 const isHot = city.trendingScore > 70;
 
                 return (

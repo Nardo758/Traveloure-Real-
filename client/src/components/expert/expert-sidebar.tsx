@@ -1,6 +1,5 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +13,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import {
   Home,
   Bot,
@@ -147,9 +147,7 @@ export function ExpertSidebar() {
         style={{ borderBottom: "1px solid #E8E8E2", minHeight: 56 }}
       >
         <Link href="/" className="flex items-center" data-testid="link-expert-logo">
-          <div className="group-data-[collapsible=icon]:hidden">
-            <TraveloureLogo />
-          </div>
+          <TraveloureLogo className="group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
 
