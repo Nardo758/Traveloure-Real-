@@ -37,7 +37,7 @@ import { needsScheduling } from "@shared/service-fundamentals";
 // async_messaging) gets an honest "no scheduling needed" state — no third option, no guessed UI
 // (§13). The original concrete-dated-slot CRUD below (against vendor_availability_slots directly)
 // keeps working completely unchanged — it is still useful for a one-off exception date.
-interface VendorAvailabilitySlot {
+export interface VendorAvailabilitySlot {
   id: string;
   serviceId: string;
   providerId: string;
@@ -49,7 +49,7 @@ interface VendorAvailabilitySlot {
   status: string | null;
 }
 
-interface AvailabilityPattern {
+export interface AvailabilityPattern {
   id: string;
   serviceId: string;
   dayOfWeek: number;
@@ -58,7 +58,7 @@ interface AvailabilityPattern {
   capacity: number | null;
 }
 
-interface DateRange {
+export interface DateRange {
   id: string;
   serviceId: string;
   startDate: string;
@@ -67,7 +67,7 @@ interface DateRange {
   capacity: number | null;
 }
 
-interface AvailabilityBlackout {
+export interface AvailabilityBlackout {
   id: string;
   serviceId: string;
   startDate: string;
@@ -155,13 +155,31 @@ export function ProviderAvailabilityManager({
   const services_ = services || [];
   const serviceNameById = new Map(services_.map((s) => [s.id, s.serviceName]));
 
+  const selectedService = services_.find((s) => s.id === selectedServiceId);
+
+  // The editor is PER-LISTING (the mock: "Choose a listing, then publish the schedule travelers
+  // can book against") — the one-off card scopes to the drawer's one selection, never a
+  // provider-wide list where another listing's slots render under this one's name.
   const upcomingSlots = [...(slots || [])]
+    .filter((s) => s.serviceId === selectedServiceId)
     .filter((s) => s.date >= new Date().toISOString().slice(0, 10))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const canSubmit = Boolean(selectedServiceId && newDate && newStart && newEnd);
+  // One-off dated slots are SCHEDULED semantics only (the same routing
+  // ServiceAvailabilityEditor uses): a property room's nights come from its published ranges
+  // (the materializer owns those slots), and an artifact/async listing has no calendar at all —
+  // rendering an authoring card under its "No calendar" state would invent a question the
+  // listing does not have (§13 / S-4).
+  const selectedTakesOneOffSlots = Boolean(
+    selectedService &&
+      !isPropertyShaped(selectedService) &&
+      needsScheduling({
+        deliveryMethod: selectedService.deliveryMethod,
+        productShape: selectedService.productShape,
+      }),
+  );
 
-  const selectedService = services_.find((s) => s.id === selectedServiceId);
+  const canSubmit = Boolean(selectedServiceId && newDate && newStart && newEnd);
 
   // Ruling 112 Q5 (mock's "Next available" chip): the earliest upcoming slot with seats left for
   // the selected listing. Derived from real rows only — no slots, no chip (§13).
@@ -239,6 +257,7 @@ export function ProviderAvailabilityManager({
 
       {selectedService && <ServiceAvailabilityEditor service={selectedService} />}
 
+      {selectedTakesOneOffSlots && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -296,22 +315,10 @@ export function ProviderAvailabilityManager({
 
           <Separator />
 
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
-            <div className="sm:col-span-2">
-              <Label className="text-xs">Service</Label>
-              <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Choose a service" />
-                </SelectTrigger>
-                <SelectContent>
-                  {services_.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.serviceName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* ONE listing picker per editor (the drawer's own, above) — the add form authors
+              slots for that selection; a second picker here let a dated slot be authored onto
+              an async listing the no-calendar branch had just refused a calendar for. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
             <div>
               <Label className="text-xs">Date</Label>
               <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="h-9" />
@@ -347,6 +354,7 @@ export function ProviderAvailabilityManager({
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
@@ -426,7 +434,7 @@ function isoOf(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-function AvailabilityMonthGrid({
+export function AvailabilityMonthGrid({
   serviceId,
   semantics,
 }: {
@@ -559,7 +567,12 @@ function AvailabilityMonthGrid({
               className="rounded-full border border-[#CBDAD7] bg-[#EDF2F1] px-3 py-1 text-xs font-medium text-[#35605A]"
               data-testid="button-month-grid-next-available"
             >
-              Next available: {nextBookable}
+              {(() => {
+                const [y, m, d] = nextBookable.split("-").map(Number);
+                return "Next available: " + new Date(y, m - 1, d).toLocaleDateString("en-US", {
+                  weekday: "short", day: "numeric", month: "short",
+                });
+              })()}
             </button>
           ) : (
             <span className="text-xs text-muted-foreground" data-testid="text-month-grid-nothing">

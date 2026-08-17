@@ -877,6 +877,20 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Cart is empty" });
       }
 
+      // ── Gap #18 (Gate G5): an archived listing is unbookable — "nobody can book it again" ──
+      // Public surfaces already hide archived rows (they filter status='active'), but a line
+      // added to a cart BEFORE the archive would still reach here. Refuse it before any slot
+      // claim / booking row / Stripe call (the bundle/room re-verify posture below). Narrowly
+      // scoped to 'archived': paused/unapproved mid-cart behavior is unchanged by this lane.
+      for (const item of cartData) {
+        if (item.service?.status === "archived") {
+          return res.status(409).json({
+            message: "service_unavailable",
+            detail: `"${item.service.serviceName}" is no longer available — the provider has archived it.`,
+          });
+        }
+      }
+
       // ── §17 bundles (migration 151): re-verify + snapshot BEFORE any write ──────────
       // For each bundle in the cart, every component must STILL be approved+active
       // (F2: no unapproved service hides inside a sellable bundle) — 409 before any

@@ -12,3 +12,10 @@ id = "6FLOc_pIkgpvirqf9ObwE"
 uri = "file://Traveloure-Technical-Architecture.md"
 type = "text"
 title = "Traveloure — Full Technical Architecture Document"
+
+[[outputs]]
+id = "JdlxcFuxe9C22BJu8E0jP"
+uri = "file://preview/provider-console-preview.html"
+type = "text"
+title = "Provider Console — Sidebar + Catalog preview"
+description = "Visual verification of the three UI changes: user identity card moved to sidebar header, active nav color changed to teal #35605A, Distribute badge added, and health bar repositioned to top of listing right column."

@@ -12,7 +12,7 @@
 
 // ─── status bucket (drives the mock's All / Live / In review / Draft chips) ────────────
 
-export type CatalogStatusBucket = "live" | "in_review" | "draft" | "other";
+export type CatalogStatusBucket = "live" | "in_review" | "draft" | "archived" | "other";
 
 export interface CatalogStatusLike {
   approvalStatus?: string | null;
@@ -29,6 +29,10 @@ export interface CatalogStatusLike {
  * visible in "All" but not claimed by any status chip.
  */
 export function catalogStatusBucket(service: CatalogStatusLike): CatalogStatusBucket {
+  // Gap #18: archived wins over every other read — an archived listing is out of circulation
+  // regardless of what its approvalStatus still says, and must never be claimed by Live/In
+  // review/Draft chips (it is terminal except deletion).
+  if (service.status === "archived") return "archived";
   if (service.approvalStatus === "approved" && service.status === "active") return "live";
   if (service.approvalStatus === "draft") return "draft";
   if (service.approvalStatus === "submitted" || service.approvalStatus === "rejected") return "in_review";
@@ -45,6 +49,7 @@ export interface CatalogPillDisplay {
 export function catalogPillDisplay(service: CatalogStatusLike): CatalogPillDisplay {
   const bucket = catalogStatusBucket(service);
   if (bucket === "live") return { label: "Live", cls: "live" };
+  if (bucket === "archived") return { label: "Archived", cls: "" };
   if (bucket === "draft") return { label: "Draft", cls: "draft" };
   if (bucket === "in_review") {
     return service.approvalStatus === "rejected"

@@ -1,8 +1,8 @@
 import { useParams, Link } from "wouter";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Calendar, MapPin, Users, Coffee, Camera, Utensils, Bed, Plane, ArrowRight, ShoppingCart, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -110,7 +110,7 @@ export default function SharedTripPage() {
 
         {/* Branding */}
         <div className="absolute top-4 left-4">
-          <TraveloureLogo className="h-[34px] brightness-0 invert" />
+          <TraveloureLogo className="h-7 brightness-0 invert" />
         </div>
         {/* Ruling 116 (distribution-language audit P3): the shared-trip link is a distribution
             surface — the recipient can switch the UI language (chrome only). White trigger over

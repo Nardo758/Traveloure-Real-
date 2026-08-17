@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Provider Console UI Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: #FAFAF8; display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 220px; background: #fff; border-right: 1px solid #E8E8E2; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { border-bottom: 1px solid #E8E8E2; }
+  .logo-row { padding: 16px 20px; min-height: 56px; display: flex; align-items: center; }
+  .logo { font-size: 15px; font-weight: 700; color: #1A1A18; letter-spacing: -0.02em; }
+  .logo span { color: #35605A; }
+  .identity-card { padding: 12px 16px; background: #FAFAF8; border-top: 1px solid #E8E8E2; display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #35605A, #1E3A5F); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .identity-text .name { font-size: 13px; font-weight: 600; color: #1A1A18; line-height: 1.3; }
+  .identity-text .role { font-size: 11px; color: #7A7A72; margin-top: 2px; line-height: 1.3; }
+  .sidebar-content { flex: 1; padding: 12px 10px; }
+  .nav-group { margin-bottom: 12px; }
+  .nav-group-label { font-size: 10px; font-weight: 600; color: #AEAEA6; text-transform: uppercase; letter-spacing: 1.2px; padding: 0 10px; margin-bottom: 4px; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #7A7A72; text-decoration: none; }
+  .nav-item:hover { background: #F3F3EE; color: #1A1A18; }
+  .nav-item.active { background: rgba(53,96,90,0.08); color: #35605A; font-weight: 600; }
+  .nav-icon { width: 16px; height: 16px; opacity: 0.7; flex-shrink: 0; }
+  .nav-item.active .nav-icon { opacity: 1; }
+  .nav-badge { margin-left: auto; background: #E8E8E2; color: #7A7A72; font-size: 10px; font-weight: 600; min-width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+  .sidebar-footer { padding: 12px 14px; border-top: 1px solid #E8E8E2; }
+  .logout-btn { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #7A7A72; cursor: pointer; padding: 6px 10px; border-radius: 6px; width: 100%; border: none; background: none; }
+  .logout-btn:hover { color: #35605A; background: rgba(53,96,90,0.08); }
+
+  /* Main content */
+  .main { flex: 1; padding: 24px; max-width: 900px; }
+  .page-title { font-size: 19px; font-weight: 700; color: #1A1A18; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .page-subtitle { font-size: 13px; color: #7A7A72; margin-bottom: 20px; max-width: 70ch; }
+  .page-subtitle a { color: #35605A; text-decoration: underline; }
+
+  /* Add button */
+  .add-btn { float: right; background: #1A1A18; color: #fff; border: none; border-radius: 6px; padding: 9px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+  /* Toolbar */
+  .toolbar { background: #fff; border: 1px solid #E8E8E2; border-radius: 7px; padding: 14px 18px; display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .search-box { border: 1px solid #E8E8E2; border-radius: 6px; padding: 7px 10px 7px 30px; font-size: 13.5px; width: 210px; color: #1A1A18; background: #fff; }
+  .seg { display: inline-flex; border: 1px solid #E8E8E2; border-radius: 6px; overflow: hidden; }
+  .seg-btn { padding: 7px 13px; font-size: 12.5px; border-right: 1px solid #E8E8E2; cursor: pointer; border: none; background: #fff; color: #7A7A72; white-space: nowrap; }
+  .seg-btn:last-child { border-right: none; }
+  .seg-btn.active { background: #1A1A18; color: #fff; }
+  .seg-right { margin-left: auto; }
+
+  /* Listing rows */
+  .listings { background: #fff; border: 1px solid #E8E8E2; border-radius: 7px; overflow: hidden; }
+  .listing-row { display: flex; gap: 14px; padding: 15px 18px; border-bottom: 1px solid #E8E8E2; align-items: flex-start; }
+  .listing-row:last-child { border-bottom: none; }
+  .thumb { width: 74px; height: 56px; border-radius: 5px; background: #EDEBE3; border: 1px solid #E8E8E2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #B8B6AC; font-size: 11px; }
+  .listing-content { flex: 1; min-width: 0; }
+  .listing-name { font-size: 14px; font-weight: 600; color: #1A1A18; }
+  .listing-meta { font-size: 12.5px; color: #7A7A72; margin-top: 2px; }
+  .listing-pills { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  .pill { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid; }
+  .pill.live { border-color: #BFD5D0; background: #EDF2F1; color: #35605A; }
+  .pill.draft { border-color: #D9CDB2; background: #FBF6EC; color: #6B551F; }
+  .pill.review { border-color: #E8E8E2; background: #FAFAF8; color: #7A7A72; }
+  .toggle-label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #7A7A72; }
+  .toggle { width: 30px; height: 16px; background: #35605A; border-radius: 8px; position: relative; cursor: pointer; }
+  .toggle.off { background: #D1D1CB; }
+  .toggle::after { content: ''; position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%; top: 2px; right: 2px; }
+  .toggle.off::after { left: 2px; right: auto; }
+  .avail-link { font-size: 12.5px; color: #1A1A18; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .avail-link:hover { color: #35605A; }
+
+  /* Right column — health bar at TOP then actions */
+  .listing-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; min-width: 120px; }
+  .health-bar-wrap { width: 100%; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; cursor: pointer; }
+  .health-track { width: 100%; height: 4px; background: #E8E8E2; border-radius: 2px; overflow: hidden; }
+  .health-fill { height: 100%; border-radius: 2px; }
+  .health-fill.complete { background: #35605A; }
+  .health-fill.needs { background: #C79A3C; }
+  .health-fill.error { background: #D97B6E; }
+  .health-label { font-size: 11.5px; color: #35605A; }
+  .health-label.needs { color: #8A6620; }
+  .health-label.error { color: #B84235; }
+  .action-edit { font-size: 12.5px; color: #7A7A72; cursor: pointer; text-decoration: none; }
+  .action-edit:hover { color: #1A1A18; text-decoration: underline; }
+  .action-promote { font-size: 12.5px; color: #35605A; cursor: pointer; }
+  .action-promote:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo-row">
+      <div class="logo">Travel<span>oure</span></div>
+    </div>
+    <div class="identity-card">
+      <div class="avatar">AT</div>
+      <div class="identity-text">
+        <div class="name">Aiko Tanaka</div>
+        <div class="role">Machiya Kikuya · Provider</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-content">
+    <div class="nav-group">
+      <div class="nav-group-label">Work</div>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Dashboard
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Calendar
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+        Inbox
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Workstation
+      </a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Business</div>
+      <a class="nav-item active" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Catalog
+      </a>
+      <a class="nav-item" href="#" style="position:relative">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        Distribute
+        <span class="nav-badge">6</span>
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Customers
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Performance
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Money
+      </a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Account</div>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </a>
+      <a class="nav-item" href="#">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Playbook
+      </a>
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <button class="logout-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign out
+    </button>
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+  <div style="overflow:hidden; margin-bottom: 20px;">
+    <button class="add-btn">+ Add New Service</button>
+    <h1 class="page-title">Catalog</h1>
+    <p class="page-subtitle">What you sell — 6 listings. Storefront, share kit and the promote feed now live on <a href="#">Distribute</a>; new listings are born on <a href="#">Workstation</a>.</p>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div style="position:relative">
+      <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:#7A7A72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="search-box" placeholder="Search your listings" />
+    </div>
+    <div class="seg">
+      <button class="seg-btn active">All (6)</button>
+      <button class="seg-btn">Live (3)</button>
+      <button class="seg-btn">In review (1)</button>
+      <button class="seg-btn">Draft (2)</button>
+    </div>
+    <div class="seg seg-right">
+      <button class="seg-btn active">List</button>
+      <button class="seg-btn">Map</button>
+    </div>
+  </div>
+
+  <!-- Listings -->
+  <div class="listings">
+    <!-- Row 1: Complete / Live -->
+    <div class="listing-row">
+      <div class="thumb" style="background:#C9DDD6">🚶</div>
+      <div class="listing-content">
+        <div class="listing-name">Gion Evening Food Walk</div>
+        <div class="listing-meta">In person · Gion, Kyoto · $52 per person</div>
+        <div class="listing-pills">
+          <span class="pill live">Live</span>
+          <label class="toggle-label"><span class="toggle"></span> Show on my storefront</label>
+          <a class="avail-link">Availability →</a>
+        </div>
+      </div>
+      <div class="listing-right">
+        <div class="health-bar-wrap">
+          <div class="health-track"><div class="health-fill complete" style="width:100%"></div></div>
+          <span class="health-label">Complete</span>
+        </div>
+        <a class="action-edit">Edit</a>
+        <a class="action-promote">Promote this →</a>
+      </div>
+    </div>
+
+    <!-- Row 2: Needs cover photo / Draft -->
+    <div class="listing-row">
+      <div class="thumb">🍵</div>
+      <div class="listing-content">
+        <div class="listing-name">Morning Tea Ceremony in a Machiya Townhouse</div>
+        <div class="listing-meta">In person · Gion, Kyoto · $68 per person</div>
+        <div class="listing-pills">
+          <span class="pill draft">Draft</span>
+          <label class="toggle-label"><span class="toggle off"></span> Show on my storefront</label>
+        </div>
+      </div>
+      <div class="listing-right">
+        <div class="health-bar-wrap">
+          <div class="health-track"><div class="health-fill needs" style="width:60%"></div></div>
+          <span class="health-label needs">Needs a cover photo</span>
+        </div>
+        <a class="action-edit">Edit</a>
+        <a class="action-promote">Promote this →</a>
+      </div>
+    </div>
+
+    <!-- Row 3: Complete / Live (digital) -->
+    <div class="listing-row">
+      <div class="thumb" style="background:#D5E3E0">📄</div>
+      <div class="listing-content">
+        <div class="listing-name">Tokyo Like a Local — 3-Day Neighbourhood Guide</div>
+        <div class="listing-meta">PDF guide · Instant delivery · $24</div>
+        <div class="listing-pills">
+          <span class="pill live">Live</span>
+          <label class="toggle-label"><span class="toggle"></span> Show on my storefront</label>
+          <a class="avail-link">Availability →</a>
+        </div>
+      </div>
+      <div class="listing-right">
+        <div class="health-bar-wrap">
+          <div class="health-track"><div class="health-fill complete" style="width:100%"></div></div>
+          <span class="health-label">Complete</span>
+        </div>
+        <a class="action-edit">Edit</a>
+        <a class="action-promote">Promote this →</a>
+      </div>
+    </div>
+
+    <!-- Row 4: In review -->
+    <div class="listing-row">
+      <div class="thumb">📞</div>
+      <div class="listing-content">
+        <div class="listing-name">Kyoto Trip Planning Call — 45 minutes</div>
+        <div class="listing-meta">Video call · 45 min · $40</div>
+        <div class="listing-pills">
+          <span class="pill review">In review</span>
+          <label class="toggle-label"><span class="toggle off"></span> Show on my storefront</label>
+        </div>
+      </div>
+      <div class="listing-right">
+        <div class="health-bar-wrap">
+          <div class="health-track"><div class="health-fill complete" style="width:100%"></div></div>
+          <span class="health-label">Complete</span>
+        </div>
+        <a class="action-edit">Edit</a>
+        <a class="action-promote">Promote this →</a>
+      </div>
+    </div>
+
+    <!-- Row 5: No dates published -->
+    <div class="listing-row">
+      <div class="thumb">🏠</div>
+      <div class="listing-content">
+        <div class="listing-name">Machiya Kikuya — the Tatami Room</div>
+        <div class="listing-meta">Property room · nightly · $180 per night</div>
+        <div class="listing-pills">
+          <span class="pill draft">Draft</span>
+          <label class="toggle-label"><span class="toggle off"></span> Show on my storefront</label>
+          <a class="avail-link">Availability →</a>
+        </div>
+      </div>
+      <div class="listing-right">
+        <div class="health-bar-wrap">
+          <div class="health-track"><div class="health-fill needs" style="width:40%"></div></div>
+          <span class="health-label needs">No dates published</span>
+        </div>
+        <a class="action-edit">Edit</a>
+        <a class="action-promote">Promote this →</a>
+      </div>
+    </div>
+
+    <!-- Row 6: Route stops unlocated -->
+    <div class="listing-row">
+      <div class="thumb" style="background:#F0DDD9">🎌</div>
+      <div class="listing-content">
+        <div class="listing-name">Kimono Dressing &amp; Gion Photo Walk</div>
+        <div class="listing-meta">In person · Higashiyama · $120 per group</div>
+        <div class="listing-pills">
+          <span class="pill live">Live</span>
+          <label class="toggle-label"><span class="toggle"></span> Show on my storefront</label>
+        </div>
+      </div>
+      <div class="listing-right">
+        <div class="health-bar-wrap">
+          <div class="health-track"><div class="health-fill error" style="width:75%"></div></div>
+          <span class="health-label error">2 route stops unlocated</span>
+        </div>
+        <a class="action-edit">Edit</a>
+        <a class="action-promote">Promote this →</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

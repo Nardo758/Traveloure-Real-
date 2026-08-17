@@ -241,7 +241,9 @@ export function missingRequiredForFinal(input: ServiceFormRequiredInput): Missin
  */
 export type ChecklistNavTarget =
   | { kind: "step"; section: SectionKey; stepKey: StepKey; step: number }
-  | { kind: "availability" };
+  | { kind: "availability" }
+  /** Gap #16: opens the listing home's Photos & media drawer (the cover photo's owning surface). */
+  | { kind: "photos" };
 
 export interface ChecklistRow {
   /** Stable across saves — what a test or a click handler matches on, never an index. */
@@ -261,6 +263,10 @@ export interface ServiceChecklistInput extends ServiceFormRequiredInput {
   attestationsApplicable: boolean;
   /** Real published-slot count for this listing (`GET /api/me/services/:id/slots`). */
   availabilitySlotCount: number;
+  /** Gap #16: whether a cover photo exists on the listing — the SAME expression the Catalog
+   *  thumb renders (`serviceImage || galleryImages[0]`), so the row ticks exactly when a
+   *  traveler-facing card would show a photo, never off a click. */
+  coverPhotoPresent: boolean;
 }
 
 const REQUIRED_HINTS: Readonly<Record<string, string>> = {
@@ -327,6 +333,18 @@ export function deriveServiceChecklist(input: ServiceChecklistInput): ChecklistR
       target: stepTarget("attestations"),
     });
   }
+
+  // Gap #16 (Gate G5, ratified): "Add a cover photo" — like availability, never part of the
+  // publish gate (a listing can be approved without one), but the thing every traveler-facing
+  // card renders first. The row links to the Photos & media drawer (the owning surface) and
+  // ticks when a cover photo exists on the listing — not when the row is clicked.
+  rows.push({
+    id: "coverPhoto",
+    label: "Add a cover photo",
+    hint: "Travelers see this on every card. Ticks when a cover photo exists on the listing — not when you click the row.",
+    done: input.coverPhotoPresent,
+    target: { kind: "photos" },
+  });
 
   // Never part of the publish gate — see the function doc above — so this row's `done` can be
   // false on an otherwise-complete, already-approved listing, and that is an honest state, not a

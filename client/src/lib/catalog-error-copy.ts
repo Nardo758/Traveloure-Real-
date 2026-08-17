@@ -35,7 +35,7 @@ export const EDITOR_FIXABLE_CODES: readonly string[] = [
   "ATTESTATION_GATE",
 ];
 
-export type CatalogAction = "activate" | "pause" | "display" | "delete" | "duplicate";
+export type CatalogAction = "activate" | "pause" | "display" | "delete" | "duplicate" | "archive";
 
 const ACTION_TITLES: Record<CatalogAction, string> = {
   activate: "Couldn't make this listing active",
@@ -43,6 +43,7 @@ const ACTION_TITLES: Record<CatalogAction, string> = {
   display: "Couldn't save that card setting",
   delete: "Couldn't delete this listing",
   duplicate: "Couldn't duplicate this listing",
+  archive: "Couldn't archive this listing",
 };
 
 const ACTION_FALLBACKS: Record<CatalogAction, string> = {
@@ -51,16 +52,27 @@ const ACTION_FALLBACKS: Record<CatalogAction, string> = {
   display: "Something went wrong on our side. Please try again.",
   delete: "Something went wrong on our side — the listing was not deleted. Please try again.",
   duplicate: "Something went wrong on our side — no copy was made. Please try again.",
+  archive: "Something went wrong on our side — the listing was not archived. Please try again.",
 };
 
 /** The server's `code` field, when the thrown error carries a JSON envelope with one. */
 export function refusalCode(err: unknown): string | null {
+  const body = refusalBody(err);
+  return typeof body?.code === "string" ? body.code : null;
+}
+
+/**
+ * The server's whole JSON refusal envelope, when the thrown error carries one — for refusals
+ * that carry structure beyond `code`/`message` (gap #18's delete refusal ships `openCount` /
+ * `transactedCount` so the archive dialog can state real numbers, never invented ones — §13).
+ */
+export function refusalBody(err: unknown): Record<string, unknown> | null {
   if (!(err instanceof Error)) return null;
   const match = err.message.match(/^\d+:\s*([\s\S]*)$/);
   const body = match ? match[1] : err.message;
   try {
     const parsed = JSON.parse(body);
-    return typeof parsed?.code === "string" ? parsed.code : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }

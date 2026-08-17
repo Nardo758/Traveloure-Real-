@@ -119,6 +119,40 @@ export const HISTORY_BOOKING_STATUSES = [
   ...CLOSED_BOOKING_STATUSES,
 ] as const;
 
+/**
+ * OPEN — the listing still owes this row something (gap #18, Gate G5; ratified Aug 13 2026).
+ *
+ * A listing with a row in any of these statuses may not be DELETED: an in-flight §15b claim
+ * (`payment_pending` — the webhook/sweep may still promote or void it, and deleting the listing
+ * would cascade the claim away mid-flight), an unanswered request (`pending`), an undelivered
+ * paid booking (`confirmed` / `deposit_paid` / `in_progress`), or contested money (`disputed`,
+ * which may resolve either way and must have a listing to resolve against). This is a COUNT
+ * predicate for the delete guard (`assessServiceDeletion`), not a transition allow-list —
+ * the SCOPE note above still binds.
+ */
+export const OPEN_BOOKING_STATUSES = [
+  "payment_pending",
+  "pending",
+  "confirmed",
+  "deposit_paid",
+  "in_progress",
+  "disputed",
+] as const;
+
+/**
+ * TRANSACTED HISTORY — real completed money history (gap #18, mirroring the ready-made withdraw
+ * precedent: "sold history is never deleted").
+ *
+ * `completed` and `refunded` rows are the record a traveler's receipt, review and the earner's
+ * payout all point at; `service_bookings.service_id` is ON DELETE CASCADE, so deleting the
+ * listing would silently destroy them. A listing with only this kind of history refuses
+ * deletion and offers Archive instead. DELIBERATELY ABSENT: `cancelled` (an unpaid
+ * cancellation — a charged-then-cancelled row lands in `refunded`, see CLOSED above) and
+ * `failed` (a §15b claim whose Stripe attempt never succeeded — never a real booking), so a
+ * listing whose only rows are those remains genuinely deletable.
+ */
+export const TRANSACTED_BOOKING_STATUSES = ["completed", "refunded"] as const;
+
 export type BookingStatusLike = string | null | undefined;
 
 const has = (set: readonly string[], status: BookingStatusLike): boolean =>

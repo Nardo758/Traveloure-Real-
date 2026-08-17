@@ -242,6 +242,7 @@ function checklistInput(over: Partial<ServiceChecklistInput> = {}): ServiceCheck
     ...completeProvider({ isEditMode: true }),
     attestationsApplicable: false,
     availabilitySlotCount: 0,
+    coverPhotoPresent: true,
     ...over,
   };
 }
@@ -252,7 +253,7 @@ test("C1: a complete, fully-published in-person listing is done everywhere", () 
   const rows = deriveServiceChecklist(
     checklistInput({ attestationsApplicable: true, attestationGateBlocked: false, availabilitySlotCount: 3 }),
   );
-  assert.deepEqual(rowIds(rows), ["name", "category", "price", "meetingPoint", "attestations", "availability"]);
+  assert.deepEqual(rowIds(rows), ["name", "category", "price", "meetingPoint", "attestations", "coverPhoto", "availability"]);
   assert.ok(rows.every((r) => r.done), `expected every row done, got ${JSON.stringify(rows.filter((r) => !r.done))}`);
 });
 
@@ -266,7 +267,7 @@ test("C2: a pdf listing NEVER shows a pin row — and never a session/async row 
       deliverableUploaded: true,
     }),
   );
-  assert.deepEqual(rowIds(rows), ["name", "category", "price", "deliverable", "availability"]);
+  assert.deepEqual(rowIds(rows), ["name", "category", "price", "deliverable", "coverPhoto", "availability"]);
   assert.equal(rows.some((r) => r.id === "meetingPoint"), false);
 });
 
@@ -274,7 +275,7 @@ test("C3: a remote (call) listing shows neither a pin row nor a deliverable row"
   const rows = deriveServiceChecklist(
     checklistInput({ deliveryMethod: "call", needsMeetingPoint: false, meetingPoint: "" }),
   );
-  assert.deepEqual(rowIds(rows), ["name", "category", "price", "availability"]);
+  assert.deepEqual(rowIds(rows), ["name", "category", "price", "coverPhoto", "availability"]);
 });
 
 test("C4: attestations row renders ONLY when applicable — never a hollow tick for a confirmation never asked", () => {
@@ -305,6 +306,17 @@ test("C5: an EXPERT never gets the provider-only price/deliverable rows (mirrors
   assert.equal(rows.some((r) => r.id === "deliverable"), false);
   // Availability is method/role-agnostic — still shown.
   assert.ok(rows.some((r) => r.id === "availability"));
+});
+
+test("C5b (gap #16): the cover-photo row derives from record state and targets the photos drawer", () => {
+  const missing = deriveServiceChecklist(checklistInput({ coverPhotoPresent: false }));
+  const row = missing.find((r) => r.id === "coverPhoto")!;
+  assert.ok(row, "cover-photo row should always render");
+  assert.equal(row.done, false);
+  assert.deepEqual(row.target, { kind: "photos" });
+
+  const present = deriveServiceChecklist(checklistInput({ coverPhotoPresent: true }));
+  assert.equal(present.find((r) => r.id === "coverPhoto")!.done, true);
 });
 
 test("C6: required category fields get their own row, by label; optional fields never appear", () => {
