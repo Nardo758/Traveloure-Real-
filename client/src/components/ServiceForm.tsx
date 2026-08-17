@@ -62,6 +62,7 @@ import {
   missingRequiredForFinal,
   deriveServiceChecklist,
   effectivePriceScalar,
+  DESCRIPTION_CHECKLIST_MIN,
   type ChecklistRow,
 } from "@/lib/service-form-required";
 // WAVE 2 / A1 (S1+S3): the flow's SHAPE, as data. Method-first — the step list is built from the
@@ -1902,6 +1903,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // Gap #16: the same expression the Catalog thumb renders (serviceImage || gallery[0]) —
         // the row ticks exactly when a traveler-facing card would show a photo.
         coverPhotoPresent: Boolean(formData.serviceImage || formData.galleryImages[0]),
+        // The 140+ row reads the same field the Basics counter counts (mock fidelity, Aug 17).
+        description: formData.description,
       })
     : [];
 
@@ -2412,7 +2415,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   };
 
   return (
-    <div className="p-6 max-w-3xl space-y-6">
+    <div className="p-6 max-w-5xl space-y-6">
 
       {/* ── Breadcrumb / Back ── */}
       <div className="flex items-center gap-2 text-sm">
@@ -2445,41 +2448,52 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </span>
       </div>
 
-      {/* ── Step indicator — freely clickable in both modes. A1: the list IS the branch, so it
-          grows and shrinks with the delivery method chosen on Basics. ── */}
-      {/* `flex-wrap` matters now that the list is branch-sized: hybrid's SIX steps overflowed the
-          column and hid "Review & submit" off the right edge behind a scroll nobody looks for. */}
-      <nav aria-label="Form steps" className="overflow-x-auto" data-testid="service-form-steps">
-        <ol className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-2">
+      {/* ── MOCK CONFORMANCE (decision-maker, Aug 17): the mock's LEFT STEP RAIL replaces the
+          horizontal ladder — a sticky card with the vertical step list, the why-these-steps
+          note, and the generated-not-fixed reminder. Same testids, same click targets, same
+          branch behavior (A1: the list IS the branch); only the chrome moved. ── */}
+      <div className="lg:grid lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-6 lg:items-start">
+      <aside className="lg:sticky lg:top-4 mb-6 lg:mb-0">
+      <nav
+        aria-label="Form steps"
+        className="rounded-[7px] border border-[#E8E8E2] bg-white p-3.5"
+        data-testid="service-form-steps"
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[.07em] text-[#7A7A72] mb-3 px-1.5">Steps</p>
+        <ol className="space-y-0.5">
           {flow.map((key, i) => {
             const title = STEP_SHORT_TITLES[key];
             const stepNum = i + 1;
             const isActive = effectiveStep === stepNum;
+            const isDone = effectiveStep > stepNum;
             return (
-              <li key={stepNum} className="flex items-center gap-1 sm:gap-2 shrink-0">
-                {i > 0 && <div className="w-3 sm:w-6 h-px bg-border" aria-hidden="true" />}
+              <li key={stepNum}>
                 <button
                   type="button"
                   onClick={() => goToStep(stepNum)}
                   aria-current={isActive ? "step" : undefined}
-                  className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-sm transition-colors ${
+                  className={`w-full flex items-start gap-2.5 rounded-md px-1.5 py-2 text-[13px] text-left transition-colors ${
                     isActive
-                      ? "text-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-[#EDF2F1] text-[#1A1A18] font-semibold"
+                      : isDone
+                      ? "text-[#1A1A18] hover:bg-[#FAFAF8]"
+                      : "text-[#7A7A72] hover:bg-[#FAFAF8]"
                   }`}
                   data-testid={`button-step-${stepNum}`}
                   data-step-key={key}
                 >
                   <span
-                    className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold border ${
+                    className={`flex items-center justify-center w-5 h-5 shrink-0 rounded-full text-[11px] font-semibold border ${
                       isActive
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background text-muted-foreground border-border"
+                        ? "bg-[#35605A] text-white border-[#35605A]"
+                        : isDone
+                        ? "bg-[#1A1A18] text-white border-[#1A1A18]"
+                        : "bg-white text-[#7A7A72] border-[#E8E8E2]"
                     }`}
                   >
-                    {stepNum}
+                    {isDone ? "✓" : stepNum}
                   </span>
-                  <span className="hidden sm:inline whitespace-nowrap">{title}</span>
+                  <span className="min-w-0">{title}</span>
                 </button>
               </li>
             );
@@ -2487,13 +2501,19 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </ol>
         {/* The mock's step-count line: say WHY this listing has these steps, so a shortened flow
             reads as a deliberate branch rather than as missing questions (§13). */}
-        <p className="text-xs text-muted-foreground mt-2" data-testid="text-step-count">
-          <strong>{TOTAL_STEPS} steps</strong> for this delivery method.{" "}
+        <p className="text-xs text-muted-foreground mt-3 pt-2.5 border-t border-[#E8E8E2] px-1.5" data-testid="text-step-count">
+          <strong>{TOTAL_STEPS} steps</strong> for &ldquo;{deliveryMethodLabel(formData.deliveryMethod)}&rdquo;.{" "}
           {flow.includes("logistics")
             ? "Scheduling, Capacity and Logistics are here because this one happens somewhere."
             : "No location, transport or travel-surcharge questions in this flow — the Logistics step never appears."}
         </p>
       </nav>
+      <p className="mt-3 rounded-md border border-dashed border-[#E8E8E2] bg-[#FAFAF8] px-3 py-2.5 text-xs text-[#7A7A72] leading-relaxed">
+        The step list is generated from the delivery method. Nothing here is a fixed 4-step wizard.
+      </p>
+      </aside>
+
+      <div className="min-w-0 space-y-6">
 
       {/* ── D-16 (ledger 119): the step's own header — its long title, the mock's
           "Draft · autosaved" chip (create mode, once a checkpoint exists), and "Step X of Y". ── */}
@@ -2680,17 +2700,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           legacy row's (unset) linkage is visible, but only REQUIRED on a new create
           (enforced in createMutation + the Publish button, not here). ── */}
       {role === "provider" && (() => {
-        // Ruling 114 (one-card Basics): once a selection exists the picker card disappears
-        // entirely — the offering becomes the Basics card's identity HEADER below (name +
-        // category chip + tagline + one Change button). Nothing-selected always shows the
-        // expanded picker, so a required-on-create pick is never hidden; "Change" in the
-        // header reopens it. The pre-pick state keeps its full inspiration job untouched.
-        const expanded = offeringPickerOpen || !formData.serviceOfferingTypeId;
+        // Mock fidelity (Aug 17): the mock draws the offering as a COMPACT field paired with
+        // "Name it" in the Basics top row, with the full searchable catalog opening on demand —
+        // not as a full-page card that dominates the fresh-create screen. Ruling 114's intent
+        // ("one card; the offering is primary; one place to change it") is preserved: the offering
+        // still sets the category and still has a single Change path — only its PRESENTATION moves
+        // from a card header to the mock's paired dropdown-style field. The full picker below is
+        // now strictly on-demand (opened from that field), never the default surface.
+        const expanded = offeringPickerOpen;
         if (!expanded) return null;
         return (
         <Card data-testid="provider-offering-picker">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
             <CardTitle>What are you offering? *</CardTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setOfferingPickerOpen(false);
+                setOfferingSearchQuery("");
+              }}
+              data-testid="button-close-offering-picker"
+            >
+              Close
+            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {providerOfferingTypesRaw.length === 0 ? (
@@ -2796,58 +2830,88 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── Basic Information — ruling 114: ONE card; the offering IS the header ── */}
+      {/* ── Basics — ONE card (ruling 114). Mock fidelity (Aug 17): the offering is a COMPACT
+          field paired with "Name it" in a two-column top row, not a card-header identity — the
+          mock's own layout. Selection logic, category derivation and the single Change path are
+          unchanged; only the presentation moved. ── */}
       <Card>
         <CardHeader>
-          {role === "provider" && formData.serviceOfferingTypeId && selectedProviderOffering ? (
-            <div className="flex items-start justify-between gap-3 flex-wrap" data-testid="offering-identity-header">
-              <div className="min-w-0">
-                <CardTitle className="truncate">{selectedProviderOffering.display_name}</CardTitle>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  {selectedProviderOfferingLabel && (
-                    <Badge variant="secondary" className="rounded-full" data-testid="chip-offering-category">
-                      {selectedCategory?.name ?? selectedProviderOfferingLabel}
-                    </Badge>
-                  )}
-                  {selectedProviderOffering.tagline && (
-                    <span className="text-xs text-muted-foreground">{selectedProviderOffering.tagline}</span>
-                  )}
-                </div>
-                {requestOfferingConfirmedName && selectedProviderOffering.offering_type_key === "custom_other_offering" && (
+          <CardTitle>{isEditMode ? "Edit service" : "Create new service"}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+
+          {/* ── Mock row1 — What are you offering? | Name it ─────────────────────────────────── */}
+          <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start space-y-6 lg:space-y-0">
+            {/* Offering — compact, provider-only (experts pick a Service Tier below instead). */}
+            {role === "provider" ? (
+              <div>
+                <Label>What are you offering? *</Label>
+                {formData.serviceOfferingTypeId && selectedProviderOffering ? (
+                  <div
+                    className="mt-2 flex items-center justify-between gap-3 rounded-md border bg-secondary/40 px-3 py-2.5"
+                    data-testid="offering-identity-header"
+                  >
+                    <span className="text-sm font-medium truncate">{selectedProviderOffering.display_name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => {
+                        setRequestOfferingConfirmedName(null);
+                        setOfferingPickerOpen(true);
+                      }}
+                      data-testid="button-reopen-offering-picker"
+                    >
+                      Change
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-2 w-full justify-start font-normal text-muted-foreground"
+                    onClick={() => setOfferingPickerOpen(true)}
+                    data-testid="button-choose-offering"
+                  >
+                    Choose an offering — driver, guide, chef…
+                  </Button>
+                )}
+                {/* Category shown as help beneath, exactly as the mock draws it — resolved from
+                    the offering, never asked twice. The unresolved case still gets its honest
+                    failure banner (rendered below, in the Category block). */}
+                {formData.serviceOfferingTypeId && !offeringCategoryUnresolved ? (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-offering-category-help">
+                    Category: {selectedCategory?.name ?? "—"}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sets your category and links this listing to the /earn catalog. Required before
+                    publishing; you can save a draft without one and finish later.
+                  </p>
+                )}
+                {requestOfferingConfirmedName && selectedProviderOffering?.offering_type_key === "custom_other_offering" && (
                   <p className="text-xs text-muted-foreground mt-1" data-testid="text-request-offering-confirmed">
                     Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
                   </p>
                 )}
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setRequestOfferingConfirmedName(null);
-                  setOfferingPickerOpen(true);
-                }}
-                data-testid="button-reopen-offering-picker"
-              >
-                Change
-              </Button>
-            </div>
-          ) : (
-            <CardTitle>{isEditMode ? "Edit Service" : "Create New Service"}</CardTitle>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-6">
+            ) : (
+              <div className="hidden lg:block" aria-hidden="true" />
+            )}
 
-          {/* Service Name */}
-          <div>
-            <Label htmlFor="name">Service Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
-              className="mt-2"
-            />
+            {/* Name it — the mock's short imperative label + one line of help. */}
+            <div>
+              <Label htmlFor="name">Name it *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder={role === "expert" ? "e.g., Custom Itinerary Planning, Cultural Immersion Tour" : "e.g., Private City Walking Tour, Airport Transfer"}
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Travelers see this first.</p>
+            </div>
           </div>
 
           {/* Ruling 115: the DECLARED source language of the listing's own content — asked,
@@ -2874,11 +2938,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </p>
           </div>
 
-          {/* Category — single canonical taxonomy. Ruling 114: when a provider offering is
-              selected and its category RESOLVES, the header chip above states it — no locked
-              pseudo-input, no duplicate Change button. The unresolved case keeps FP-1/A1's
-              honest failure banner; every non-offering path keeps the Select. */}
-          {role === "provider" && formData.serviceOfferingTypeId && !offeringCategoryUnresolved ? null : (
+          {/* Category — single canonical taxonomy. Mock fidelity (Aug 17): a PROVIDER's category
+              is shown only as help beneath the offering field above (never a manual select), so
+              this whole block is hidden for providers EXCEPT the unresolved-offering failure case
+              (FP-1/A1's honest banner). A provider with no offering yet sees nothing here — they
+              pick an offering first and the category derives. Non-provider paths keep the Select. */}
+          {role === "provider" && !offeringCategoryUnresolved ? null : (
           <div>
             <Label htmlFor="category">Category *</Label>
             {role === "provider" && formData.serviceOfferingTypeId ? (
@@ -3101,47 +3166,65 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             );
           })()}
 
-          {/* Pricing */}
+          {/* ── Mock row2 — Price (one row: $ input + unit select) | "One line about it", a
+              two-column pair on large screens. The unit select IS the pricing model (same
+              state, same testid, same six values — only the option labels now read as units,
+              the way the mock draws them). Branch-specific builders (package tiers, per-event
+              guest range) keep rendering below the row inside the price column. ── */}
+          <div className="lg:grid lg:grid-cols-2 lg:gap-5 lg:items-start space-y-6 lg:space-y-0">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="priceType">Pricing Model</Label>
-              <Select
-                value={formData.priceType}
-                onValueChange={(v: any) => set("priceType", v)}
-              >
-                <SelectTrigger id="priceType" className="mt-2" data-testid="select-price-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Fixed">Fixed price</SelectItem>
-                  <SelectItem value="Range">Price range</SelectItem>
-                  <SelectItem value="Per-person">Per person</SelectItem>
-                  <SelectItem value="Hourly">Hourly rate</SelectItem>
-                  <SelectItem value="Package tiers">Package tiers</SelectItem>
-                  <SelectItem value="Per-event">Per event (flat fee)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Hourly — single rate + /hr label */}
-            {formData.priceType === "Hourly" && (
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <Label htmlFor="basePrice">Hourly Rate ($) *</Label>
-                  <Input
-                    id="basePrice"
-                    type="number"
-                    min="0"
-                    value={formData.basePrice || ""}
-                    onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                    className="mt-2"
-                    data-testid="input-hourly-rate"
-                  />
-                </div>
-                <span className="text-sm font-medium text-muted-foreground pb-2.5">/ hr</span>
+              <Label htmlFor={formData.priceType === "Package tiers" ? "priceType" : "basePrice"}>
+                {formData.priceType === "Package tiers"
+                  ? "Price (from your tiers) *"
+                  : formData.priceType === "Range"
+                  ? "Starting price ($) *"
+                  : "Price ($) *"}
+              </Label>
+              <div className="mt-2 flex gap-2">
+                {formData.priceType !== "Package tiers" && (
+                  <div className="relative flex-1 min-w-0">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>
+                    <Input
+                      id="basePrice"
+                      type="number"
+                      min="0"
+                      value={formData.basePrice || ""}
+                      onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
+                      placeholder="0"
+                      className="pl-7"
+                      data-testid={
+                        formData.priceType === "Hourly"
+                          ? "input-hourly-rate"
+                          : formData.priceType === "Per-event"
+                          ? "input-event-rate"
+                          : "input-base-price"
+                      }
+                    />
+                  </div>
+                )}
+                <Select
+                  value={formData.priceType}
+                  onValueChange={(v: any) => set("priceType", v)}
+                >
+                  <SelectTrigger
+                    id="priceType"
+                    className={formData.priceType === "Package tiers" ? "flex-1" : "w-44 shrink-0"}
+                    data-testid="select-price-type"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Fixed">flat price</SelectItem>
+                    <SelectItem value="Range">starting at</SelectItem>
+                    <SelectItem value="Per-person">per person</SelectItem>
+                    <SelectItem value="Hourly">per hour</SelectItem>
+                    <SelectItem value="Package tiers">package tiers</SelectItem>
+                    <SelectItem value="Per-event">per event (flat fee)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+            </div>
 
             {/* Package tiers — dynamic tier builder */}
             {formData.priceType === "Package tiers" && (
@@ -3217,22 +3300,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             )}
 
-            {/* Per-event — flat rate + optional guest range */}
+            {/* Per-event — the flat rate lives in the shared price row above; the optional
+                guest range stays here. */}
             {formData.priceType === "Per-event" && (
               <div className="space-y-3">
-                <div>
-                  <Label htmlFor="basePrice">Flat Event Rate ($) *</Label>
-                  <Input
-                    id="basePrice"
-                    type="number"
-                    min="0"
-                    value={formData.basePrice || ""}
-                    onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                    className="mt-2"
-                    data-testid="input-event-rate"
-                  />
-                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="guestMin">Min guests (optional)</Label>
@@ -3264,27 +3335,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             )}
 
-            {/* Fixed / Range / Per-person — scalar price input */}
-            {(formData.priceType === "Fixed" || formData.priceType === "Range" || formData.priceType === "Per-person") && (
-              <div>
-                <Label htmlFor="basePrice">
-                  {formData.priceType === "Range"
-                    ? "Starting Price ($) *"
-                    : formData.priceType === "Per-person"
-                    ? "Price Per Person ($) *"
-                    : "Base Price ($) *"}
-                </Label>
-                <Input
-                  id="basePrice"
-                  type="number"
-                  min="0"
-                  value={formData.basePrice || ""}
-                  onChange={(e) => set("basePrice", parseFloat(e.target.value) || 0)}
-                  className="mt-2"
-                  data-testid="input-base-price"
-                />
-              </div>
-            )}
             {/* Mock ④ — money in one place: creation asks one price; the tune-later drawer
                 owns the rest. Stated here, where the provider would otherwise go looking. */}
             <p className="text-xs text-muted-foreground">
@@ -3310,12 +3360,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               rows={4}
               className="mt-2"
             />
-            {/* Mock's live counter — an honest count, no invented threshold (the publish gate
-                does not require a description; the health rail scores it). */}
+            {/* Mock's live counter — an honest count naming the checklist's real ask: the 140+
+                row (`description140`, service-form-required.ts) now exists and reads this same
+                field, so the sentence is true, not aspirational. Same constant, never a second
+                literal. */}
             <p className="text-xs text-muted-foreground mt-1" data-testid="text-description-count">
-              {formData.description.length} characters — you can write the long version later.
+              {formData.description.length} characters — the draft checklist asks for{" "}
+              {DESCRIPTION_CHECKLIST_MIN}+ before review, and reads it from this field.
             </p>
           </div>
+          </div>{/* /mock row2 pair */}
 
           {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
               lib/earn-roles.ts defines one (local_expert / travel_expert); otherwise
@@ -4736,26 +4790,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
             <div className="flex-1" />
 
-            {/* D-12 (RATIFIED, ledger 119): in CREATE mode the manual Save Draft button is GONE —
-                the mock's contract is autosave ("Autosaved. Closing this tab keeps everything."),
-                which ruling 112 Q4's localStorage checkpoint already delivers; the footer line
-                below states it. EDIT mode keeps the button: there it is also the UNPUBLISH rail
-                (six-sigma M-4 — it sends status:"draft" and takes a live listing off the
-                marketplace), which autosave neither replaces nor should trigger silently. */}
-            {isEditMode && (
-              <Button
-                variant="outline"
-                onClick={() => createMutation.mutate("draft")}
-                disabled={createMutation.isPending}
-                title={isCurrentlyLive ? "This listing is live. Saving it as a draft removes it from the marketplace until you publish it again." : undefined}
-                data-testid="button-save-draft"
-              >
-                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {isCurrentlyLive
-                  ? "Unpublish & Save Draft"
-                  : role === "expert" ? "Save as Draft" : "Save Draft"}
-              </Button>
-            )}
+            {/* D-12 AMENDED (mock fidelity, Aug 17 — decision-maker ratified the mock as the
+                target): the create-mode Save-draft button is RESTORED. D-12 removed it on the
+                premise that "the mock's contract is autosave, no button" — but the ratified mock
+                (mock-04-create-basics) draws BOTH the "Draft · autosaved" pill AND a "Save draft"
+                CTA whose own copy is "Saving creates the listing. You can leave and come back."
+                That is a durable SERVER draft row, which the localStorage checkpoint (ruling 112
+                Q4) does not deliver — it keeps work in THIS browser only. The button now shows in
+                both modes off the same createMutation("draft") path; the autosave line below stays
+                (the mock keeps the pill too). EDIT mode's UNPUBLISH-rail semantics are unchanged —
+                only there is the listing ever live, so only there does the label switch. */}
+            <Button
+              variant="outline"
+              onClick={() => createMutation.mutate("draft")}
+              disabled={createMutation.isPending}
+              title={isCurrentlyLive ? "This listing is live. Saving it as a draft removes it from the marketplace until you publish it again." : undefined}
+              data-testid="button-save-draft"
+            >
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {isCurrentlyLive
+                ? "Unpublish & Save Draft"
+                : role === "expert" ? "Save as Draft" : "Save draft"}
+            </Button>
 
             {effectiveStep < TOTAL_STEPS ? (
               <Button
@@ -4809,11 +4865,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
           </div>
 
-          {/* D-12: the mock's footer line — the autosave contract stated where Save Draft used
-              to sit, so nobody goes hunting for the button that kept their work. */}
+          {/* D-12 AMENDED: the mock's own Save-draft copy, stated beside the restored button. */}
           {!isEditMode && (
             <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-footer-autosave">
-              Autosaved. Closing this tab keeps everything.
+              Saving creates the listing. You can leave and come back — nothing is lost, and review
+              has not started.
             </p>
           )}
 
@@ -4869,6 +4925,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           )}
         </CardContent>
       </Card>
+
+      </div>
+      </div>
 
     </div>
   );
