@@ -1190,4 +1190,8 @@ export const MIGRATION_FILES = [
   // 238: provider_services.collects_and_drops — pickup intent toggle from the Logistics
   //   step of the service wizard. Boolean default false; additive-nullable posture.
   "238_provider_services_collects_and_drops.sql",
+  // 239: provider_services.seating — Capacity-step "Seating" (private|shared), the mock's
+  //   second Capacity column. Additive-nullable VARCHAR(16), no DB CHECK (migration-181/195/228
+  //   posture); app-enforced shape; NULL = never answered, omitted on the traveler surface (§13).
+  "239_provider_services_seating.sql",
 ] as const;
