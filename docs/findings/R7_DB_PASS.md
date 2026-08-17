@@ -1,3 +1,8 @@
+# R7 DB PASS — Partner Demand Data · read-only dev-DB audit
+
+Run 2026-08-17 on Replit dev DB (`psql $DATABASE_URL -f r7-db-pass.sql`), script pre-validated against schema.ts@8d7b581. Zero errors — no schema drift vs push-canonical. Verbatim output follows.
+
+```
 Pager usage is off.
 Timing is off.
 ================ Q1a — search_analytics population ================
@@ -162,3 +167,4 @@ Timing is off.
 (1 row)
 
 ================ R7 DB PASS COMPLETE ================
+```
