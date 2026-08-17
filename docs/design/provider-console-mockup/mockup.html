@@ -800,55 +800,26 @@
         </div>
       </div>
 
-      <!-- gap #13 — every authored answer gets a traveler-side home, or stops being collected -->
+      <!-- gap #13 — "Render it, or stop collecting it" — DEMO PANEL RETIRED (decision-maker,
+           Aug 17 2026). The rule shipped, so the sample table came out of the mock: a mock
+           panel restating what the product renders is exactly the derivation-drift class §18
+           rule 1 names — it would drift the moment a field moves. The note below is the
+           standing pointer to verify against the PRODUCT, never this file. -->
       <section id="render-it">
-        <h2 class="screen">Render it, or stop collecting it<span class="dot ghost">⑬</span>
-          <span class="builtchip">Ratified · built — T-REP renders everything (ledger 101)</span></h2>
-        <p class="screen-sub">
-          The create flow asks a provider a lot of questions. The proposed rule: every answer either has a
-          traveler-side representation, or an explicit decision that it is provider-only. Here are the in-person
-          tour's answers actually rendered — the half of the audit that had nowhere to land.
-        </p>
-        <div class="row2" style="align-items:start;">
-          <div class="card">
-            <div class="card-hd"><h3>What the traveler sees</h3>
-              <span class="hint">Gion Evening Food Walk</span></div>
-            <div class="card-pad" style="padding-top:6px;">
-              <div class="sumrow"><div class="k">Party size</div><div class="v">1–8 people · you can book for up to 8</div></div>
-              <div class="sumrow"><div class="k">Book by</div><div class="v">24 hours before the start — the host's lead time</div></div>
-              <div class="sumrow"><div class="k">Free cancellation until</div><div class="v">5 days before · 50% up to 2 days before</div></div>
-              <div class="sumrow"><div class="k">Starts</div><div class="v">18:00, Tuesdays &amp; Thursdays · runs about 2½ hours</div></div>
-              <div class="sumrow"><div class="k">Languages</div><div class="v">English · Japanese</div></div>
-              <div class="sumrow"><div class="k">Getting there</div><div class="v">Make your own way to the meeting point in Gion</div></div>
-              <div class="sumrow"><div class="k">Bring</div><div class="v">Socks without holes — you will be on tatami</div></div>
-              <div class="sumrow"><div class="k">Access</div><div class="v">One step at the entrance, low seating. A low stool can be provided — say so when you book.
-                <span style="display:block;color:var(--muted);font-size:12px;margin-top:3px;">Shown in the host's own words. No accessibility standard is claimed on their behalf.</span></div></div>
-              <div class="sumrow"><div class="k">Travel fee</div><div class="v">None within 8 km of the meeting point. Beyond that, a fee may apply — the host will confirm.</div></div>
-            </div>
-          </div>
-          <div class="stack-gap">
-            <div class="card card-pad">
-              <div style="font-size:14px;font-weight:600;margin-bottom:6px;">The rule this demonstrates</div>
-              <div style="font-size:12.5px;color:var(--muted);line-height:1.6;">
-                Nine questions the flow asks, nine things a traveler can read before paying. Where a field has no
-                traveler-side home, the proposal is to <b style="color:var(--ink)">stop asking for it</b> rather than
-                store an answer nobody will ever see — the audit found four such fields collected and never read.
-              </div>
-            </div>
-            <div class="card card-pad">
-              <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Deliberately provider-only</div>
-              <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:10px;">
-                Not everything should surface. These are proposed as <b style="color:var(--ink)">private by
-                decision</b>, not by accident:
-              </div>
-              <div style="display:flex;gap:7px;flex-wrap:wrap;">
-                <span class="pill">Build notes</span>
-                <span class="pill">Exact street address until booked</span>
-                <span class="pill">Blackout reasons</span>
-                <span class="pill">Cost / margin working</span>
-              </div>
-            </div>
-          </div>
+        <div class="note-quiet" style="margin-bottom:26px;">
+          <b style="color:var(--ink)">“Render it, or stop collecting it” (gap #13) — demo panel retired; the rule lives in the code.</b>
+          <span class="builtchip" style="margin-left:8px;">Ratified · built — T-REP (ledger 101) · Bring/Access (migration 228)</span>
+          <span style="display:block;margin-top:7px;">
+            Every question the create flow asks now has a traveler-side home, or is private by
+            decision — build notes, exact street address until booked, blackout reasons, cost/margin
+            working (CLAUDE.md §24). <b style="color:var(--ink)">Double-check against the product,
+            not a mock:</b> open a live listing's traveler page (<code>/services/:id</code>) and
+            confirm the rows render — party size, book-by lead time, cancellation, starts,
+            languages, getting there, Bring, Access, travel fee — and that an unanswered field is
+            <b style="color:var(--ink)">omitted</b>, never shown as “none”. Last verified
+            Aug 17 2026 (<code>client/src/pages/service-detail.tsx</code> reads them from the
+            public payload with trim-or-omit semantics).
+          </span>
         </div>
       </section>
     </div>
