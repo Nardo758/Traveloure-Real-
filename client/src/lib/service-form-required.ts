@@ -255,6 +255,15 @@ export interface ChecklistRow {
   target: ChecklistNavTarget;
 }
 
+/**
+ * The mock's Basics counter and the checklist row below share this ONE number — the counter
+ * says "the draft checklist asks for 140+ before review, and reads it from this field", and
+ * §18 rule 1 says a client surface may never restate a threshold a second author could drift:
+ * both read it from here. NOT a publish gate — the server requires no description at all
+ * (provider_services.description is nullable, no gate checks it); this is the checklist's ask.
+ */
+export const DESCRIPTION_CHECKLIST_MIN = 140;
+
 export interface ServiceChecklistInput extends ServiceFormRequiredInput {
   /** Whether ANY attestation applies to this listing's method + category — the same predicate
    *  `resolveApplicableAttestations` (`shared/service-attestations.ts`) already gives the wizard.
@@ -267,6 +276,10 @@ export interface ServiceChecklistInput extends ServiceFormRequiredInput {
    *  thumb renders (`serviceImage || galleryImages[0]`), so the row ticks exactly when a
    *  traveler-facing card would show a photo, never off a click. */
   coverPhotoPresent: boolean;
+  /** The listing's description text — the field the Basics counter counts and the 140+ row
+   *  below reads. Checklist-only: description is NOT in the required set (FP-2 removed that
+   *  asterisk because nothing enforces it), so it stays off `ServiceFormRequiredInput`. */
+  description: string;
 }
 
 const REQUIRED_HINTS: Readonly<Record<string, string>> = {
@@ -333,6 +346,19 @@ export function deriveServiceChecklist(input: ServiceChecklistInput): ChecklistR
       target: stepTarget("attestations"),
     });
   }
+
+  // The mock's 140+ ask (create-flow fidelity, Aug 17): the Basics counter names this row —
+  // "the draft checklist asks for 140+ before review, and reads it from this field" — and this
+  // row IS that ask, reading the same field. Like coverPhoto/availability it is NOT a publish
+  // gate (`missingRequiredForFinal` never sees it): a shorter description can still be
+  // submitted; the row just stays honestly unticked.
+  rows.push({
+    id: "description140",
+    label: `Describe it in ${DESCRIPTION_CHECKLIST_MIN}+ characters`,
+    hint: `The one-liner from Basics is enough to save. This row reads the same field and ticks at ${DESCRIPTION_CHECKLIST_MIN} characters — review isn't blocked by it.`,
+    done: input.description.trim().length >= DESCRIPTION_CHECKLIST_MIN,
+    target: stepTarget("identity"),
+  });
 
   // Gap #16 (Gate G5, ratified): "Add a cover photo" — like availability, never part of the
   // publish gate (a listing can be approved without one), but the thing every traveler-facing
