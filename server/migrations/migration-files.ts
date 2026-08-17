@@ -1198,4 +1198,9 @@ export const MIGRATION_FILES = [
   //   email-outbox scheduler with exponential backoff (max 5 attempts). Dead rows surfaced on
   //   the admin dashboard. status: pending|sent|failed|dead. See email-outbox.service.ts.
   "240_email_outbox.sql",
+  // 241: trips demand capture (R8, lane 2A.3) — additive-nullable origin_market + market_slug,
+  //   party-size DE-MASKING (drop the 1/2/0 defaults so unspecified stays NULL), best-effort
+  //   market_slug backfill from destination, and idx_trips_market_slug. Additive-nullable + DROP
+  //   DEFAULT only, no CHECK (publish-safe). Both columns declared in shared/schema.ts.
+  "241_trips_demand_capture_r8.sql",
 ] as const;
