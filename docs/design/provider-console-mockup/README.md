@@ -21,3 +21,12 @@ yet specified" note predates the shipped builder. One amendment this mock should
 **Calendar needs an explicit access point into the availability editor** (today its chips deep-link but the
 page offers no standing affordance). Palette: the earthy User-Console set used here (#1A1A18/#FAFAF8/#35605A)
 is the provider console's palette; Navy/Teal/Gold remain traveler-brand tokens.
+
+
+**Re-synced Aug 17, 2026** from the same artifact: the build-status chips folded back from the
+ledger now render here too (every ratified lane shows "Ratified · built — … (ledger N)"; gap #18's
+delete-refusal + archive is built per ledger `2026-08-17-delete-archive`, with its delivered-booking
+bullet carrying the amendment note; gap #16 photos/media is the one remaining "ratified, build
+pending" chip). The three `page-*.html` extractions were regenerated from this `mockup.html` by the
+committed recipe (title + extraction comment + pinned boot call) and re-verified in headless
+Chromium to open on their own views.
