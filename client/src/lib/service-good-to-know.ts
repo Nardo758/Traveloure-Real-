@@ -173,6 +173,18 @@ export function formatTransportProvision(value: string | null | undefined): stri
 }
 
 /**
+ * Capacity-step "Seating" (migration 239) → the traveler-facing sentence the mock promises are
+ * "rendered on the traveler's page in these words". Only the two app-enforced values map; anything
+ * else — including the NULL that means the provider never answered — returns null and the row is
+ * OMITTED (§13), never a guessed "private".
+ */
+export function formatSeating(value: string | null | undefined): string | null {
+  if (value === "private") return "Private — one party at a time";
+  if (value === "shared") return "Shared — several parties may be seated together";
+  return null;
+}
+
+/**
  * S9 (docs/DECISIONS.md ledger row 102) — the async lane's promised response time, in prose
  * ("Replies within 24 hours"). Reuses `formatHours`'s own day/hour collapsing so this line reads
  * the same way the lead-time/change-cutoff lines above do. Returns null when never captured or

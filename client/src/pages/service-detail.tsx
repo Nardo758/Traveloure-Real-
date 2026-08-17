@@ -72,6 +72,7 @@ import {
   formatCheckInOut,
   hasAmenities,
   formatTransportProvision,
+  formatSeating,
   resolveDepositPreview,
   hasDepositTerms,
   formatResponseWindow,
@@ -186,6 +187,7 @@ interface Service {
   // here).
   partySizeMin?: number | null;
   partySizeMax?: number | null;
+  seating?: string | null; // 'private' | 'shared' | null (never answered ⇒ omitted, §13)
   leadTimeHours?: number | null;
   changeCutoffHours?: number | null;
   earliestStartTime?: string | null;
@@ -704,6 +706,7 @@ export default function ServiceDetailPage() {
   // (never defaulted) when absent (§13). The formatting/derivation itself lives in the pure,
   // unit-tested `@/lib/service-good-to-know` module; this page only decides WHETHER to render.
   const partySizeText = formatPartySize(service.partySizeMin, service.partySizeMax);
+  const seatingText = formatSeating(service.seating);
   const hasLeadTime = typeof service.leadTimeHours === "number" && service.leadTimeHours > 0;
   const hasChangeCutoff = typeof service.changeCutoffHours === "number" && service.changeCutoffHours > 0;
   const startWindowText = formatStartWindow(service.earliestStartTime, service.latestStartTime, service.serviceTimezone);
@@ -738,7 +741,7 @@ export default function ServiceDetailPage() {
   const responseWindowText = formatResponseWindow(service.responseWindowHours);
   const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
-    !!partySizeText || hasLeadTime || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
+    !!partySizeText || !!seatingText || hasLeadTime || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
     !!whatToBringText || !!accessNotesText ||
     hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
     !!checkInOutText || hasHouseRules || showAmenities ||
@@ -972,6 +975,12 @@ export default function ServiceDetailPage() {
                       <li className="flex items-start gap-2" data-testid="text-party-size">
                         <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                         <span>Party size: {partySizeText}</span>
+                      </li>
+                    )}
+                    {seatingText && (
+                      <li className="flex items-start gap-2" data-testid="text-seating">
+                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <span>Seating: {seatingText}</span>
                       </li>
                     )}
                     {weeklyPatternText && (

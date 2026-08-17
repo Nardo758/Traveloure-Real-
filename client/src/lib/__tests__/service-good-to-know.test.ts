@@ -12,6 +12,7 @@ import {
   formatPartySize,
   formatStartWindow,
   formatTransportProvision,
+  formatSeating,
   resolveDepositPreview,
   hasDepositTerms,
   formatCheckInOut,
@@ -89,6 +90,21 @@ describe("formatTransportProvision", () => {
   });
   it("falls back to the raw value for an unrecognized enum member rather than dropping it silently", () => {
     assert.equal(formatTransportProvision("teleport"), "teleport");
+  });
+});
+
+describe("formatSeating (§13 — omit, never guess)", () => {
+  it("returns null for unset — a NULL seating is never rendered as a guessed 'private'", () => {
+    assert.equal(formatSeating(null), null);
+    assert.equal(formatSeating(undefined), null);
+    assert.equal(formatSeating(""), null);
+  });
+  it("maps the two app-enforced values to the mock's traveler-facing words", () => {
+    assert.equal(formatSeating("private"), "Private — one party at a time");
+    assert.equal(formatSeating("shared"), "Shared — several parties may be seated together");
+  });
+  it("returns null for an unrecognized value rather than echoing raw junk to a traveler", () => {
+    assert.equal(formatSeating("balcony"), null);
   });
 });
 
