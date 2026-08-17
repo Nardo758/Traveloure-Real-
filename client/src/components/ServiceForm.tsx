@@ -4437,17 +4437,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </p>
               </div>
               {/* Seating (migration 239) — the mock's second Capacity column. App-enforced
-                  private|shared; "" = not answered (omitted on the traveler page, §13). */}
+                  private|shared; "" = not answered (omitted on the traveler page, §13).
+                  "__none__" is a sentinel so Radix Select can round-trip the "Not specified"
+                  state without an empty-string value (which SelectItem disallows). */}
               <div>
                 <Label htmlFor="seating">Seating</Label>
                 <Select
-                  value={formData.seating || undefined}
-                  onValueChange={(v) => set("seating", v)}
+                  value={formData.seating || "__none__"}
+                  onValueChange={(v) => set("seating", v === "__none__" ? "" : v)}
                 >
                   <SelectTrigger id="seating" className="mt-1" data-testid="select-seating">
                     <SelectValue placeholder="Not specified" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__" data-testid="option-seating-none">
+                      Not specified
+                    </SelectItem>
                     <SelectItem value="private" data-testid="option-seating-private">
                       Private — one party at a time
                     </SelectItem>
