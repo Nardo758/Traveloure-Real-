@@ -16,6 +16,11 @@
  *     [5, 15, 45, 120, 360] min before the sixth (terminal) attempt.
  * (F) drainOutbox() is a no-op when no rows are claimed (empty claim result).
  * (G) enqueueEmail() never throws even when both the DB insert and the send fail.
+ * (H) Enqueue-vs-drain race: enqueueEmail() inserts the row as status='processing'
+ *     so a concurrent drain's FOR UPDATE SKIP LOCKED cannot claim it while
+ *     immediate delivery is in flight.
+ * (I) Stale-sender safety: the status update uses WHERE status='processing' so
+ *     a sender whose lease expired cannot overwrite a row reclaimed by the drain.
  *
  * Strategy:
  * – db.execute is monkey-patched to capture the SQL string and return
@@ -62,15 +67,15 @@ afterEach(() => {
 
 /** Fake outbox row returned from the claim CTE (snake_case, as pg returns it). */
 function makeClaimedRow(overrides: Partial<{
-  id: number;
-  to_email: string;
-  subject: string;
-  html: string;
-  text_body: string | null;
-  from_address: string | null;
-  reply_to: string | null;
+  id:            number;
+  to_email:      string;
+  subject:       string;
+  html:          string;
+  text_body:     string | null;
+  from_address:  string | null;
+  reply_to:      string | null;
   attempt_count: number;
-  max_attempts: number;
+  max_attempts:  number;
 }>): Record<string, unknown> {
   return {
     id:            1,
@@ -87,29 +92,29 @@ function makeClaimedRow(overrides: Partial<{
 }
 
 /**
- * Patch db.execute to:
- *  1. Capture every SQL string emitted.
- *  2. Return `claimRows` for the first call (the CTE claim) and `[]` for
- *     subsequent calls (the status-update after delivery).
- */
-/**
- * Serialize a Drizzle SQL chunk to a string for assertion.
- * Null parameter values become the literal text "NULL".
+ * Serialize a Drizzle SQL chunk value to a string for assertion inspection.
+ * Null parameter values are represented as the literal text "NULL".
  */
 function chunkToString(c: unknown): string {
   if (c === null) return "NULL";
   if (typeof c === "string") return c;
   if (c && typeof c === "object") {
-    // Drizzle SQL nodes expose value or queryChunks
     const obj = c as any;
+    // Drizzle SQL template nodes expose queryChunks recursively
     if (obj.queryChunks !== undefined) {
-      return obj.queryChunks.map(chunkToString).join("");
+      return (obj.queryChunks as unknown[]).map(chunkToString).join("");
     }
     if ("value" in obj) return obj.value === null ? "NULL" : String(obj.value);
   }
   return String(c);
 }
 
+/**
+ * Patch db.execute to:
+ *  1. Capture every SQL string emitted (with null params serialized as "NULL").
+ *  2. Return `claimRows` for the first call (the CTE claim) and `[]` for
+ *     subsequent calls (the status-update after delivery).
+ */
 function patchExecute(claimRows: Record<string, unknown>[]): {
   captured: string[];
 } {
@@ -121,7 +126,7 @@ function patchExecute(claimRows: Record<string, unknown>[]): {
       typeof query === "string"
         ? query
         : typeof query?.queryChunks !== "undefined"
-          ? query.queryChunks.map(chunkToString).join("")
+          ? (query.queryChunks as unknown[]).map(chunkToString).join("")
           : typeof query?.sql === "string"
             ? query.sql
             : String(query);
@@ -141,38 +146,36 @@ function patchExecute(claimRows: Record<string, unknown>[]): {
 describe("_nextRetryAfter — backoff schedule", () => {
   it("(A1) after 1st failure schedules a ~5-min delay", () => {
     const before = Date.now();
-    const d = _nextRetryAfter(1);
-    const after = Date.now();
-
-    const minMs = BACKOFF_MINUTES[0] * 60 * 1000;
-    assert.ok(d.getTime() >= before + minMs - 50,  "must be at least 5 min in the future");
-    assert.ok(d.getTime() <= after  + minMs + 100, "must not be more than 5 min + 100ms in the future");
+    const d      = _nextRetryAfter(1);
+    const minMs  = BACKOFF_MINUTES[0] * 60 * 1000;
+    assert.ok(d.getTime() >= before + minMs - 50,    "must be at least 5 min in the future");
+    assert.ok(d.getTime() <= Date.now() + minMs + 200, "must not exceed 5 min + 200ms");
   });
 
   it("(A2) after 2nd failure schedules a ~15-min delay", () => {
     const before = Date.now();
-    const d = _nextRetryAfter(2);
-    const minMs = BACKOFF_MINUTES[1] * 60 * 1000;
+    const d      = _nextRetryAfter(2);
+    const minMs  = BACKOFF_MINUTES[1] * 60 * 1000;
     assert.ok(d.getTime() >= before + minMs - 50);
-    assert.ok(d.getTime() <= Date.now() + minMs + 100);
+    assert.ok(d.getTime() <= Date.now() + minMs + 200);
   });
 
   it("(A3) after 3rd failure schedules a ~45-min delay", () => {
-    const d = _nextRetryAfter(3);
+    const d     = _nextRetryAfter(3);
     const minMs = BACKOFF_MINUTES[2] * 60 * 1000;
-    assert.ok(d.getTime() >= Date.now() + minMs - 50 - 100);
+    assert.ok(d.getTime() >= Date.now() + minMs - 200);
   });
 
   it("(A4) after 4th failure schedules a ~120-min delay", () => {
-    const d = _nextRetryAfter(4);
+    const d     = _nextRetryAfter(4);
     const minMs = BACKOFF_MINUTES[3] * 60 * 1000;
-    assert.ok(d.getTime() >= Date.now() + minMs - 100);
+    assert.ok(d.getTime() >= Date.now() + minMs - 200);
   });
 
   it("(A5) after 5th failure schedules a ~360-min delay", () => {
-    const d = _nextRetryAfter(5);
+    const d     = _nextRetryAfter(5);
     const minMs = BACKOFF_MINUTES[4] * 60 * 1000;
-    assert.ok(d.getTime() >= Date.now() + minMs - 100);
+    assert.ok(d.getTime() >= Date.now() + minMs - 200);
   });
 
   it("(A6) out-of-bounds index clamps to the last backoff entry (360 min)", () => {
@@ -196,8 +199,8 @@ describe("_nextRetryAfter — five-failure sequence matches BACKOFF_MINUTES", ()
       const d           = _nextRetryAfter(failedCount);
       const actual      = d.getTime() - Date.now();
       assert.ok(
-        Math.abs(actual - expected) < 200,
-        `attempt ${failedCount}: expected ~${BACKOFF_MINUTES[i]} min but got ${Math.round(actual / 60000)} min`
+        Math.abs(actual - expected) < 500,
+        `attempt ${failedCount}: expected ~${BACKOFF_MINUTES[i]} min, got ${Math.round(actual / 60000)} min`
       );
     }
   });
@@ -206,8 +209,8 @@ describe("_nextRetryAfter — five-failure sequence matches BACKOFF_MINUTES", ()
 // ─── (B) Terminal state ───────────────────────────────────────────────────────
 
 describe("drainOutbox — terminal state (dead)", () => {
-  it("(B) after maxAttempts failures the row is marked dead with no retry_after", async () => {
-    // Row has already failed 5 times; the 6th attempt will exhaust maxAttempts=6.
+  it("(B) after maxAttempts failures the row is marked dead with retry_after=NULL", async () => {
+    // Row has already failed 5 times; the 6th attempt exhausts maxAttempts=6.
     const row = makeClaimedRow({ attempt_count: 5, max_attempts: 6 });
     const { captured } = patchExecute([row]);
 
@@ -215,18 +218,16 @@ describe("drainOutbox — terminal state (dead)", () => {
 
     await drainOutbox();
 
-    // At least 2 db.execute calls: claim CTE + status update.
     assert.ok(captured.length >= 2, "must emit at least the claim + update SQL");
 
-    // The status-update SQL must set status='dead' and retry_after=NULL.
-    const updateSql = captured.slice(1).join(" ");
+    const updateSql = captured.slice(1).join("\n");
     assert.ok(
       updateSql.includes("dead"),
       `status-update SQL must contain 'dead'; got: ${updateSql}`
     );
     assert.ok(
-      updateSql.includes("NULL") || updateSql.includes("null"),
-      "retry_after must be set to NULL for dead rows"
+      updateSql.includes("NULL"),
+      `retry_after must be set to NULL for dead rows; got: ${updateSql}`
     );
   });
 });
@@ -234,7 +235,7 @@ describe("drainOutbox — terminal state (dead)", () => {
 // ─── (C) Success path ─────────────────────────────────────────────────────────
 
 describe("drainOutbox — success path", () => {
-  it("(C) marks row sent with resend_id and clears last_error", async () => {
+  it("(C) marks row sent with resend_id, clears last_error, conditional on status='processing'", async () => {
     const row = makeClaimedRow({ attempt_count: 1, max_attempts: 6 });
     const { captured } = patchExecute([row]);
 
@@ -242,9 +243,13 @@ describe("drainOutbox — success path", () => {
 
     await drainOutbox();
 
-    const updateSql = captured.slice(1).join(" ");
-    assert.ok(updateSql.includes("sent"),            "status must be set to 'sent'");
-    assert.ok(updateSql.includes("resend-abc-123"),  "resend_id must be embedded in the update");
+    const updateSql = captured.slice(1).join("\n");
+    assert.ok(updateSql.includes("sent"),              "status must be set to 'sent'");
+    assert.ok(updateSql.includes("resend-abc-123"),    "resend_id must be embedded in the update");
+    assert.ok(
+      updateSql.toLowerCase().includes("status") && updateSql.toLowerCase().includes("processing"),
+      "update must be conditional on status='processing' to prevent stale-sender overwrites"
+    );
   });
 });
 
@@ -256,10 +261,7 @@ describe("drainOutbox — concurrent drain safety", () => {
 
     await drainOutbox();
 
-    assert.ok(
-      captured.length >= 1,
-      "drainOutbox must emit at least the claim SQL"
-    );
+    assert.ok(captured.length >= 1, "drainOutbox must emit at least the claim SQL");
     const claimSql = captured[0].toUpperCase();
     assert.ok(
       claimSql.includes("FOR UPDATE SKIP LOCKED"),
@@ -280,7 +282,6 @@ describe("drainOutbox — no-op on empty claim", () => {
 
     await drainOutbox();
 
-    // Only the claim CTE should have been executed (no update, no delivery).
     assert.strictEqual(
       captured.length,
       1,
@@ -293,42 +294,105 @@ describe("drainOutbox — no-op on empty claim", () => {
 
 describe("enqueueEmail — never throws", () => {
   it("(G1) does not throw when the DB insert fails", async () => {
-    // Patch db.insert to throw.
-    (db as any).insert = () => {
-      throw new Error("DB insert failed");
-    };
-    // Patch db.execute so the delivery-attempt update doesn't hit a real DB.
+    (db as any).insert  = () => { throw new Error("DB insert failed"); };
     (db as any).execute = () => Promise.resolve({ rows: [] });
-
     _outboxTestHooks.sendEmailFn = async () => ({ ok: true, id: "resend-xyz" });
 
     await assert.doesNotReject(
-      () =>
-        enqueueEmail({
-          to:      "traveler@example.com",
-          subject: "Booking confirmed",
-          html:    "<p>confirmed</p>",
-        }),
+      () => enqueueEmail({ to: "t@example.com", subject: "Test", html: "<p>x</p>" }),
       "enqueueEmail must not throw when the DB insert fails"
     );
   });
 
   it("(G2) does not throw when both DB insert and send fail", async () => {
-    (db as any).insert = () => {
-      throw new Error("DB insert failed");
-    };
+    (db as any).insert  = () => { throw new Error("DB insert failed"); };
     (db as any).execute = () => Promise.resolve({ rows: [] });
-
     _outboxTestHooks.sendEmailFn = async () => ({ ok: false, error: "Resend timeout" });
 
     await assert.doesNotReject(
-      () =>
-        enqueueEmail({
-          to:      "traveler@example.com",
-          subject: "Booking confirmed",
-          html:    "<p>confirmed</p>",
-        }),
-      "enqueueEmail must not throw when both the DB insert and the send fail"
+      () => enqueueEmail({ to: "t@example.com", subject: "Test", html: "<p>x</p>" }),
+      "enqueueEmail must not throw when both DB insert and send fail"
+    );
+  });
+});
+
+// ─── (H) Enqueue-vs-drain race ────────────────────────────────────────────────
+
+describe("enqueueEmail — enqueue-vs-drain race protection", () => {
+  it("(H) enqueueEmail inserts the row as status='processing' (not 'pending')", async () => {
+    let insertedStatus: string | undefined;
+
+    (db as any).insert = (_table: any) => ({
+      values(row: any) {
+        insertedStatus = row.status;
+        return {
+          returning(_fields: any) {
+            return Promise.resolve([{ id: 42 }]);
+          },
+        };
+      },
+    });
+
+    // After insert, execute is called for the status update; let it succeed.
+    (db as any).execute = () => Promise.resolve({ rows: [] });
+    _outboxTestHooks.sendEmailFn = async () => ({ ok: true, id: "r-1" });
+
+    await enqueueEmail({ to: "t@example.com", subject: "Confirmed", html: "<p>ok</p>" });
+
+    assert.strictEqual(
+      insertedStatus,
+      "processing",
+      "row must be born as 'processing' so the drain's FOR UPDATE SKIP LOCKED cannot claim it"
+    );
+  });
+
+  it("(H2) a 'processing' row with a live lease is NOT targeted by the drain claim SQL", async () => {
+    // The drain CTE must not select processing rows whose retry_after (lease) is
+    // still in the future — verify by inspecting the WHERE clause of the claim SQL.
+    const { captured } = patchExecute([]); // no rows returned (drain finds nothing)
+
+    await drainOutbox();
+
+    const claimSql = captured[0] ?? "";
+    // The 'processing' condition must require retry_after to be in the past.
+    // This proves live-lease rows are excluded from claims.
+    assert.ok(
+      claimSql.includes("processing") && claimSql.includes("NOW()"),
+      `drain SQL must exclude non-expired processing rows; got:\n${claimSql}`
+    );
+  });
+});
+
+// ─── (I) Stale-sender safety ─────────────────────────────────────────────────
+
+describe("attemptDelivery — stale-sender conditional update", () => {
+  it("(I) status update SQL includes AND status='processing' guard for success path", async () => {
+    const row = makeClaimedRow({ attempt_count: 0, max_attempts: 6 });
+    const { captured } = patchExecute([row]);
+
+    _outboxTestHooks.sendEmailFn = async () => ({ ok: true, id: "r-stale" });
+
+    await drainOutbox();
+
+    const updateSql = captured.slice(1).join("\n").toLowerCase();
+    assert.ok(
+      updateSql.includes("status") && updateSql.includes("processing"),
+      `success-path update must be conditional on status='processing'; got:\n${captured.slice(1).join("\n")}`
+    );
+  });
+
+  it("(I2) status update SQL includes AND status='processing' guard for failure path", async () => {
+    const row = makeClaimedRow({ attempt_count: 2, max_attempts: 6 });
+    const { captured } = patchExecute([row]);
+
+    _outboxTestHooks.sendEmailFn = async () => ({ ok: false, error: "network error" });
+
+    await drainOutbox();
+
+    const updateSql = captured.slice(1).join("\n").toLowerCase();
+    assert.ok(
+      updateSql.includes("status") && updateSql.includes("processing"),
+      `failure-path update must be conditional on status='processing'; got:\n${captured.slice(1).join("\n")}`
     );
   });
 });

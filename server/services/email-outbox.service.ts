@@ -2,21 +2,36 @@
  * Email Outbox Service
  *
  * Provides a durable delivery layer for transactional emails. Instead of
- * fire-and-forget calls to Resend, callers enqueue an email row (status=pending)
- * and the outbox scheduler retries failed rows with exponential backoff.
+ * fire-and-forget calls to Resend, callers enqueue an email row and the outbox
+ * scheduler retries failed rows with exponential backoff.
  *
  * Retry schedule (after attempt N fails, wait before attempt N+1):
  *   attempt 1 fails →   5 min delay
  *   attempt 2 fails →  15 min delay
  *   attempt 3 fails →  45 min delay
- *   attempt 4 fails → 120 min delay (2 h)
- *   attempt 5 fails → 360 min delay (6 h)
- *   attempt 6 fails → DEAD — no more retries; row surfaced on admin dashboard
+ *   attempt 4 fails → 120 min delay  (2 h)
+ *   attempt 5 fails → 360 min delay  (6 h)
+ *   attempt 6 fails → DEAD — no more retries; surfaced on admin dashboard
  *
- * Concurrency safety: drainOutbox() atomically claims rows with a
- * `FOR UPDATE SKIP LOCKED` CTE so concurrent scheduler processes never
- * pick up the same row. Claimed rows move to status='processing' with a
- * 10-minute lease; expired leases are recovered on the next drain pass.
+ * ── Concurrency safety ──────────────────────────────────────────────────────
+ *
+ * Rows are born as status='processing' (not 'pending') with a 10-minute lease
+ * stored in retry_after. The drain's FOR UPDATE SKIP LOCKED CTE only targets
+ * 'pending'/'failed' rows or expired 'processing' rows (lease elapsed), so a
+ * concurrent drain cannot claim a row that immediate delivery is still sending.
+ *
+ * After delivery, the status update is conditional (WHERE status='processing')
+ * so a stale sender — one whose lease elapsed and whose row was re-claimed by
+ * the drain — cannot overwrite the new owner's state.
+ *
+ * drain-only flow:
+ *   pending/failed (due) → claim → processing (10-min lease) → sent | failed | dead
+ *
+ * enqueue flow:
+ *   insert as processing (10-min lease) → deliver → sent | failed | dead
+ *
+ * expired lease recovery (next drain pass):
+ *   processing (lease < now-1min) → re-claim → processing (new lease) → …
  *
  * Booking flow contract: enqueueEmail() and drainOutbox() never throw into
  * their callers — all errors are caught, logged, and recorded on the row.
@@ -29,8 +44,9 @@ import { logger } from "../infrastructure/logger";
 import {
   buildBookingConfirmationEmailPayload,
   type BookingConfirmationParams,
+  type SendEmailParams,
+  type SendEmailResult,
 } from "./email.service";
-import type { SendEmailResult } from "./email.service";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -52,6 +68,9 @@ export function _nextRetryAfter(failedAttemptCount: number): Date {
   return new Date(Date.now() + minutes * 60 * 1000);
 }
 
+/** The 10-minute lease window used by both enqueue and drain claim steps. */
+const LEASE_MS = 10 * 60 * 1000;
+
 // ── Test seam ─────────────────────────────────────────────────────────────────
 
 /**
@@ -59,15 +78,11 @@ export function _nextRetryAfter(failedAttemptCount: number): Date {
  * without network calls.
  *
  * @example
- * _outboxTestHooks.sendEmailFn = async (_params) => ({ ok: false, error: "simulated failure" });
+ * _outboxTestHooks.sendEmailFn = async () => ({ ok: false, error: "simulated" });
  */
 export const _outboxTestHooks: {
   sendEmailFn?: (params: SendEmailParams) => Promise<SendEmailResult>;
 } = {};
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-import type { SendEmailParams } from "./email.service";
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -79,13 +94,20 @@ export interface EnqueueEmailParams extends SendEmailParams {
 }
 
 /**
- * Write an email to the outbox with status='pending', then immediately attempt
- * delivery. Returns the outbox row id so callers can correlate logs.
+ * Write an email to the outbox as status='processing' with a 10-minute lease,
+ * then immediately attempt delivery.
  *
+ * The row is born as 'processing' (not 'pending') so the drain's
+ * FOR UPDATE SKIP LOCKED cannot claim it while this send is in flight.
+ * The final status update is conditional (WHERE status='processing') so a stale
+ * sender cannot overwrite a row that a drain has re-claimed after lease expiry.
+ *
+ * Returns the outbox row id so callers can correlate logs.
  * Never throws — all errors are caught and recorded on the outbox row.
  */
 export async function enqueueEmail(params: EnqueueEmailParams): Promise<number | null> {
   const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
+  const lease      = new Date(Date.now() + LEASE_MS);
 
   let outboxId: number | null = null;
 
@@ -99,7 +121,10 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
         html:         params.html,
         textBody:     params.text,
         replyTo:      params.replyTo,
-        status:       "pending",
+        // Born as 'processing' with a lease so the drain cannot concurrently
+        // claim and send this row before immediate delivery completes.
+        status:       "processing",
+        retryAfter:   lease,
         attemptCount: 0,
         maxAttempts:  6,
         metadata:     params.metadata ?? {},
@@ -115,44 +140,41 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
     // Fall through: still attempt delivery so at least this attempt has a chance.
   }
 
-  // Attempt immediate delivery.
   await attemptDelivery(outboxId, params, { attemptCount: 0, maxAttempts: 6 });
 
   return outboxId;
 }
 
 /**
- * Drain loop: atomically claim up to 50 due or lease-expired rows, then
- * attempt delivery on each claimed row.  Called by the outbox scheduler every
- * 5 minutes.
+ * Drain loop: atomically claim up to 50 due or lease-expired rows using a
+ * CTE with FOR UPDATE SKIP LOCKED, then attempt delivery on each claimed row.
+ * Called by the outbox scheduler every 5 minutes.
  *
- * Concurrency safety: the CTE uses `FOR UPDATE SKIP LOCKED` so a concurrent
- * drain process skips any rows already claimed by this one.  Claimed rows
- * move to status='processing' with a 10-minute lease; if this process dies,
- * the next pass recovers rows whose lease has elapsed.
+ * Rows born from enqueueEmail() start as 'processing' with a fresh lease and
+ * are therefore invisible to this CTE until their lease expires — preventing
+ * concurrent delivery.
  *
  * Never throws.
  */
 export async function drainOutbox(): Promise<void> {
   type ClaimedRow = {
-    id: number;
-    to_email: string;
-    subject: string;
-    html: string;
-    text_body: string | null;
-    from_address: string | null;
-    reply_to: string | null;
+    id:            number;
+    to_email:      string;
+    subject:       string;
+    html:          string;
+    text_body:     string | null;
+    from_address:  string | null;
+    reply_to:      string | null;
     attempt_count: number;
-    max_attempts: number;
+    max_attempts:  number;
   };
 
   let claimed: ClaimedRow[];
 
   try {
-    // Single atomic statement: select due rows (FOR UPDATE SKIP LOCKED) and
-    // immediately move them to 'processing' so concurrent drains cannot pick
-    // the same row.  The 10-minute lease (retry_after) means a dead process
-    // leaves rows that the next pass can recover.
+    // Single atomic statement: select due rows (skipping locked ones held by
+    // concurrent drains or live enqueue deliveries) and move them to
+    // 'processing' with a fresh 10-minute lease.
     const result = await db.execute(sql`
       WITH candidates AS (
         SELECT id FROM email_outbox
@@ -205,9 +227,10 @@ export async function drainOutbox(): Promise<void> {
 
 /**
  * Try to send `params` via sendEmail (or the test-seam override) and update
- * the outbox row accordingly.  When `outboxId` is null the send still happens
- * but nothing is written to the DB.
+ * the outbox row conditionally (WHERE status='processing') so a stale sender
+ * cannot overwrite a row that was re-claimed after lease expiry.
  *
+ * When `outboxId` is null the send still happens but nothing is written to the DB.
  * Never throws.
  */
 async function attemptDelivery(
@@ -219,9 +242,8 @@ async function attemptDelivery(
   const maxAttempts  = current.maxAttempts;
   const toStr        = Array.isArray(params.to) ? params.to.join(", ") : params.to;
 
-  // Use the test seam if provided, otherwise import sendEmail at call-time so
-  // tests that override _outboxTestHooks.sendEmailFn take effect without a
-  // circular import at module-load time.
+  // Use the test seam if provided; otherwise import sendEmail dynamically so
+  // there is no circular import at module-load time.
   let result: SendEmailResult;
   try {
     if (_outboxTestHooks.sendEmailFn) {
@@ -249,7 +271,8 @@ async function attemptDelivery(
                last_error    = NULL,
                retry_after   = NULL,
                updated_at    = NOW()
-        WHERE  id = ${outboxId}
+        WHERE  id     = ${outboxId}
+          AND  status = 'processing'
       `);
       logger.info(
         { outboxId, resendId: result.id, to: toStr, subject: params.subject },
@@ -267,7 +290,8 @@ async function attemptDelivery(
                last_error    = ${result.error ?? "unknown error"},
                retry_after   = ${retryAt},
                updated_at    = NOW()
-        WHERE  id = ${outboxId}
+        WHERE  id     = ${outboxId}
+          AND  status = 'processing'
       `);
 
       if (isDead) {
@@ -295,8 +319,7 @@ async function attemptDelivery(
 /**
  * Enqueue a booking confirmation email via the outbox so it is retried
  * automatically if Resend is unreachable. This is the preferred entry-point
- * for all booking-confirmation sends — callers never need to call
- * sendBookingConfirmationEmail directly.
+ * for all booking-confirmation sends.
  *
  * Never throws. The booking flow is unchanged: a Resend failure records the
  * row for retry but does not propagate to the caller.
