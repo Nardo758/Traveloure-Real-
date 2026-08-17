@@ -67,7 +67,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,7 +83,8 @@ import { EmptyState } from "@/components/backoffice/primitives";
 // still composes them, it is just no longer MOUNTED on this page (moved to Distribute).
 import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
-import { ProviderAvailabilityManager } from "@/components/logistics/provider-availability-manager";
+// (No drawer import: availability is the standalone /provider/availability page — workspace
+//  lane; the offer-card Preview renders CatalogPreviewOfferCard defined below, not OfferingCard.)
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
@@ -613,18 +613,21 @@ function HealthIndicator({ health }: { health: ServiceHealth | undefined }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
+        {/* In the right (.lright) column — bar is full-width of the column, label below */}
         <button
           type="button"
-          className="flex items-center gap-1.5 text-[12px] text-[#7A7A72] hover:text-[#1A1A18]"
+          className="flex flex-col items-end gap-[3px] text-[11.5px] text-[#7A7A72] hover:text-[#1A1A18] w-full"
           data-testid={`health-row-${health.serviceId}`}
         >
-          <span className="w-[56px] h-[5px] rounded-full bg-[#E8E8E2] overflow-hidden inline-block">
+          <span className="w-full h-[4px] rounded-full bg-[#E8E8E2] overflow-hidden inline-block">
             <span
-              className={cn("block h-full", allPassing ? "bg-[#35605A]" : "bg-[#C79A3C]")}
+              className={cn("block h-full rounded-full", allPassing ? "bg-[#35605A]" : "bg-[#C79A3C]")}
               style={{ width: `${Math.round((passed / total) * 100)}%` }}
             />
           </span>
-          {shortLabel}
+          <span className={cn("text-right leading-none", allPassing ? "text-[#35605A]" : "text-[#8A6620]")}>
+            {shortLabel}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-[13px]" align="end">
@@ -1151,13 +1154,12 @@ function ListingRow({
             <button
               type="button"
               onClick={onOpenAvailability}
-              className="text-[12.5px] text-[#1A1A18] underline underline-offset-2 hover:text-[#35605A]"
+              className="text-[12.5px] text-[#35605A] underline underline-offset-2 font-medium hover:opacity-80"
               data-testid={`button-availability-${service.id}`}
             >
               Availability →
             </button>
           )}
-          <HealthIndicator health={health} />
         </div>
 
         {/* C3: per-listing "Card shows" control (Show price + Booking mode). */}
@@ -1182,13 +1184,15 @@ function ListingRow({
         )}
       </div>
 
-      {/* mock `.lright` — quiet actions: Edit + "Promote this →"; Duplicate/Delete in overflow */}
-      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto">
+      {/* mock `.lright` — health bar (top) + quiet actions: Edit + "Promote this →"; Duplicate/Delete in overflow */}
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto min-w-[120px]">
+        {/* Health bar at the top of the right column — mock anatomy: bar + status label, top-right of each row */}
+        <HealthIndicator health={health} />
         {!isArchived && (
         <Link href={editHref}>
           <button
             type="button"
-            className="text-[12.5px] text-[#7A7A72] hover:text-[#1A1A18] hover:underline underline-offset-2"
+            className="text-[12.5px] font-medium text-[#1A1A18] border border-[#E8E8E2] bg-transparent rounded-[6px] px-[11px] py-[6px] whitespace-nowrap hover:bg-[#FAFAF8] transition-colors"
             data-testid={`button-edit-${service.id}`}
           >
             {t("card.edit", { defaultValue: "Edit" })}
@@ -1307,9 +1311,7 @@ export default function ProviderServices() {
     openCount: number;
     transactedCount: number;
   } | null>(null);
-  // Availability drawer — houses the REAL S7 editor (ProviderAvailabilityManager), preselected.
-  const [availabilityDrawerOpen, setAvailabilityDrawerOpen] = useState(false);
-  const [availabilityDrawerServiceId, setAvailabilityDrawerServiceId] = useState<string | null>(null);
+  // Availability editor is now a standalone page (/provider/availability).
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -1342,13 +1344,11 @@ export default function ProviderServices() {
     if (deepLinkApplied.current || isLoading) return;
     const requested = new URLSearchParams(window.location.search).get("availability");
     if (requested && (services ?? []).some((s) => s.id === requested)) {
-      setAvailabilityDrawerServiceId(requested);
-      setAvailabilityDrawerOpen(true);
+      navigate(`/provider/availability?serviceId=${requested}`);
     } else if (requested) {
-      // Ruling 112 Q5: Calendar's standing "Edit availability →" access point arrives with
-      // `?availability=1` (no listing chosen) — open the editor unpreselected rather than
-      // silently dropping the intent. A stale listing id degrades the same honest way.
-      setAvailabilityDrawerOpen(true);
+      // Ruling 112 Q5: Calendar's "Edit availability →" with no specific listing — open
+      // the page unpreselected rather than silently dropping the intent.
+      navigate("/provider/availability");
     }
     deepLinkApplied.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1517,8 +1517,7 @@ export default function ProviderServices() {
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
 
   function openAvailabilityEditor(serviceId: string) {
-    setAvailabilityDrawerServiceId(serviceId);
-    setAvailabilityDrawerOpen(true);
+    navigate(`/provider/availability?serviceId=${serviceId}`);
   }
 
   return (
@@ -1725,30 +1724,40 @@ export default function ProviderServices() {
             </CardContent>
           </Card>
         ) : catalogMode === "preview" ? (
-          previewServices.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center" data-testid="preview-empty">
-                <p className="text-console-mid font-medium">Nothing is live to preview yet</p>
-                <p className="text-console-mid text-sm mt-1">
-                  Preview shows your listings exactly as travelers see them on your storefront — only
-                  approved, active ones appear. Get a listing approved and switched on to see it here.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div
-              className="grid grid-cols-3 gap-[18px] max-[820px]:grid-cols-2 max-[540px]:grid-cols-1"
-              data-testid="catalog-preview-grid"
-            >
-              {previewServices.map((service) => (
-                <CatalogPreviewOfferCard
-                  key={service.id}
-                  service={service}
-                  categoryName={service.categoryId ? categoryNameById[service.categoryId] : undefined}
-                />
-              ))}
-            </div>
-          )
+          <>
+            {/* Storefront header (workspace lane) — the identity / URL / live-count context
+                travelers see at the top of /p/:handle before the listing grid */}
+            <ProviderStorefrontHeader />
+
+            {previewServices.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center" data-testid="preview-empty">
+                  <p className="text-console-mid font-medium">Nothing is live to preview yet</p>
+                  <p className="text-console-mid text-sm mt-1">
+                    Preview shows your listings exactly as travelers see them on your storefront — only
+                    approved, active ones appear. Get a listing approved and switched on to see it here.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              /* Ratified Catalog Preview upgrade (ledger 2026-08-17-catalog-preview-upgrade): the
+                 offer-card transcription of catalog-preview-mock.html, under the workspace lane's
+                 storefront header — the two previews reconciled as one surface. */
+              <div
+                className="grid grid-cols-3 gap-[18px] max-[820px]:grid-cols-2 max-[540px]:grid-cols-1"
+                data-testid="catalog-preview-grid"
+              >
+                {previewServices.map((service) => (
+                  <CatalogPreviewOfferCard
+                    key={service.id}
+                    service={service}
+                    categoryName={service.categoryId ? categoryNameById[service.categoryId] : undefined}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+
         ) : (
           <>
             {/* mock: single `.card` housing the `.listing` rows */}
@@ -1767,8 +1776,7 @@ export default function ProviderServices() {
                   duplicateDisabled={duplicateMutation.isPending}
                   onRequestDelete={() => setDeleteTarget(service)}
                   onOpenAvailability={() => {
-                    setAvailabilityDrawerServiceId(service.id);
-                    setAvailabilityDrawerOpen(true);
+                    navigate(`/provider/availability?serviceId=${service.id}`);
                   }}
                 />
               ))}
@@ -1793,7 +1801,7 @@ export default function ProviderServices() {
               services={allServices}
               servicesLoading={isLoading}
               onOpenEditor={openAvailabilityEditor}
-              initialServiceId={availabilityDrawerServiceId}
+              initialServiceId={null}
             />
           </>
         )}
@@ -1802,18 +1810,6 @@ export default function ProviderServices() {
             share-kit dialog and the Promote (posting-opportunities) block all live on
             /provider/distribute — this page's own outward-facing pointer is now exactly the
             per-row "Promote this →" button above, nothing more. */}
-
-        {/* ── Availability drawer — the REAL S7 editor, preselected ───────────────────────── */}
-        <Sheet open={availabilityDrawerOpen} onOpenChange={setAvailabilityDrawerOpen}>
-          <SheetContent side="right" className="w-[min(560px,94vw)] sm:max-w-none overflow-y-auto" data-testid="drawer-availability-editor">
-            <SheetHeader>
-              <SheetTitle>Edit availability</SheetTitle>
-            </SheetHeader>
-            <div className="mt-4">
-              <ProviderAvailabilityManager initialServiceId={availabilityDrawerServiceId ?? undefined} />
-            </div>
-          </SheetContent>
-        </Sheet>
 
         {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────── */}
         <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

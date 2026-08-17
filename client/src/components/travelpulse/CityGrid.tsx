@@ -374,12 +374,12 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
             Trending Cities
           </h2>
           <p className="text-muted-foreground mt-1">
-            Real-time intelligence from {cities.reduce((acc, c) => acc + c.activeTravelers, 0).toLocaleString()} travelers worldwide
+            Destination intelligence across {cities.length} trending cities
           </p>
         </div>
         <Badge variant="outline" className="text-sm">
           <Calendar className="h-3 w-3 mr-1" />
-          Live Updates
+          Daily Updates
         </Badge>
       </div>
 

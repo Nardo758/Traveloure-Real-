@@ -77,8 +77,46 @@ rail · request rail (`routes.ts:1398-1442`, which bypasses `fee_bands` entirely
 literals with `providerTier` pinned to `1`) · ready-made purchase · template purchase · tips · AI concierge /
 coordination · expert review · affiliate margin · payouts.
 
+---
+
+### FU-12 — Crowd Calibration Lane
+
+**Scope:** Fits `calibration_constant × proxy_composite` against external ground truth; constants fitted per season-calendar window.
+
+**Coverage tiers:**
+- Market-level, all 8 operating markets: official visitor statistics as ground truth — Kyoto City Tourism Survey/JNTO, VisitScotland/ALVA, INE/Turismo de Portugal, Migración Colombia/MinCIT + Cartagena cruise counts, India MoT state-level stats.
+- Neighborhood-level, Kyoto only: NTT docomo Mobile Spatial Statistics (500m-mesh), `licensed_no_resale`, cost-ceilinged.
+- Gem-level, ticketed venues only.
+
+**Rendering contract:** Range display with "estimated" label; per-entity earned display (L9 extension); no-calibration fallback → band-only (L11 remains as floor).
+
+**Supporting cross-checks:** Hotel occupancy × inventory; airport passenger stats.
+
+**Blocked on:** ≥1 full season of `trend_signals` proxy history (Phases 2–3 output) + docomo MSS quote.
+
+**Leon-side action (not agent work):** Request docomo MSS pricing for Kyoto 500m-mesh — long lead time expected, start early.
+
+---
+
 Related literal debt surfaced by the same census and not owned by any lane yet: `PROCESSING_FEE_RATE = 0.03`
 (`server/services/commission.ts:57`, `fee-literal-debt:#PS2`) is the **only live rate with no `fee_bands` row**,
 applied at six write points; `pricing.service.ts:23`'s deposit `0.25`; `commissionCalculator.ts:41-46, :72`;
 `storage.ts:3742`'s referral `'50'`; and a client-side `subtotal * 0.12` in
 `client/src/components/booking/BookingFlowModal.tsx:151, :258` that matches no resolved band.
+
+---
+
+## #13 — India holiday-pressure signals for Mumbai / Jaipur / Goa
+
+**Status:** Open  
+**Trigger:** Corrective Dispatch 2, Item C — Nager.Date does not cover India (IN not in AvailableCountries). Three of eight operating markets (Mumbai, Jaipur, Goa) have no public holiday signal. Diwali-class calendar pressure is exactly what `nager_date` exists for and these three markets currently lack it.
+
+**Why it matters:** The `nager_date` metric (`public_holiday: 0|1`) feeds the §4.1 scorer for seasonal overlay. Indian holidays (Diwali, Holi, Republic Day, Independence Day) drive substantial travel volume spikes — their absence creates a systematic undercount of peak-pressure events for 37.5% of operating markets.
+
+**Options (agent to evaluate in a future dispatch):**
+1. **Static embed** — Hardcode India's national holiday calendar as a JSON file in `server/services/trend-engine/adapters/` updated annually. Fastest to ship; requires manual upkeep.
+2. **Alternate API** — [Calendarific](https://calendarific.com) or [Abstract Holidays API](https://www.abstractapi.com/holidays-api) both support India. Free tier covers the use case. Requires a new API key.
+3. **Google Calendar public feed** — India national calendar is available via the Google Calendar ICS feed (no auth, free). Parsing ICS is straightforward.
+
+**Blocked on:** Leon picks the approach before agent implements.  
+**Agent action:** None until Leon decides. Then create a new adapter or extend `nager-date.adapter.ts`.

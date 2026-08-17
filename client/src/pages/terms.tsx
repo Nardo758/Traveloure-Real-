@@ -15,7 +15,7 @@ export default function TermsOfServicePage() {
                 Back to Home
               </Button>
             </Link>
-            <TraveloureLogo />
+            <TraveloureLogo className="h-6" />
             <div className="w-24" />
           </div>
         </div>
