@@ -16,6 +16,7 @@ import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
 import { storage, type BookingStatusNotification } from "./storage";
+import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import {
   materializeServiceAvailability,
   materializeDateRangeAvailability,
@@ -3311,7 +3312,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!ownedService) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
-      // Extract neighborhoods before schema parse (not a DB column)
+      // ── Gap #18 (Gate G5): 'archived' is terminal and has ONE write path ─────────────────────
+      // POST /api/provider/services/:id/archive is the only writer of status='archived' (so the
+      // refusal dialog's semantics can't be bypassed by a raw PATCH), and an archived listing is
+      // never edited back to life — "nobody can book it again" is a promise, not a pause. Delete
+      // (behind its own booking guard) is the only exit.
+      if (req.body?.status === "archived") {
+        return res.status(400).json({
+          message: "Archiving has its own action — use the Archive option on the listing.",
+          code: "ARCHIVE_VIA_ENDPOINT",
+        });
+      }
+      if (ownedService.status === "archived") {
+        return res.status(409).json({
+          message: "This listing is archived. Archived listings can't be edited or reactivated — they exist so past bookings keep a listing to point at.",
+          code: "LISTING_ARCHIVED",
+        });
+      }
+      // Extract neighborhoods before schema parse (not a DB column).
+      // Also capture approvalStatus before schema parse — the generic updater strips it
+      // for security (prevents self-approval), but "submitted" is a legitimate provider
+      // action handled via the dedicated submitProviderServiceListing path below.
+      const requestedApprovalStatus: string | undefined = req.body.approvalStatus;
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       // L27-P3: same server-derived location handling as create. A PATCH that carries
       // no `locationPoint` leaves latitude/longitude/location_precision untouched — so a
@@ -3534,19 +3556,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // ── Submit-for-review transition ────────────────────────────────────────────────────────
+      // The client sends { approvalStatus: "submitted" } from the listing-home "Submit for
+      // review" button. The generic updateProviderService call above strips this field (D1a
+      // security barrier prevents self-approval). Handle it here via the dedicated storage
+      // method, which is the same writer the admin queue uses on the submit side.
+      // Only allow the transition from draft/rejected → submitted; ignore it for listings that
+      // are already submitted, in_review, or approved (idempotency / no regression).
+      // Re-fetch via getProviderServiceById so the response is the raw ProviderService shape
+      // the client's ServiceDetail interface expects (serviceName, approvalStatus, etc.), not
+      // the mapped ProviderServiceListing shape (title, status/isActive) submitProviderServiceListing returns.
+      let finalRow: typeof updated = updated;
+      if (
+        requestedApprovalStatus === "submitted" &&
+        ownedService.approvalStatus !== "submitted" &&
+        ownedService.approvalStatus !== "in_review" &&
+        ownedService.approvalStatus !== "approved"
+      ) {
+        await storage.submitProviderServiceListing(req.params.id);
+        finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
+      }
+
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
       // commission split (§18) and must never round-trip to the client, on create OR update.
       // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
       // the text this write actually produces: the field from the body when it was edited, else
       // the stored value, so an untouched offending description keeps warning on every save.
       const titleWarningUpd = detectProtectedTitleClaims({
-        serviceName: (input as any).serviceName ?? updated?.serviceName ?? ownedService.serviceName,
-        description: (input as any).description ?? updated?.description ?? ownedService.description,
+        serviceName: (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName,
+        description: (input as any).description ?? finalRow?.description ?? ownedService.description,
       });
       res.json(
-        updated
+        finalRow
           ? {
-              ...omitFields(updated, ["revenueShareRate"] as const),
+              ...omitFields(finalRow, ["revenueShareRate"] as const),
               ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
               // Ruling 112 Q8: tell the owner which fields went to re-review — the live listing
               // is unchanged for those, and nothing was taken down.
@@ -3554,7 +3597,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                 ? { editReview: { status: "pending", stagedKeys: stagedEditKeys } }
                 : {}),
             }
-          : updated,
+          : finalRow,
       );
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -3567,6 +3610,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Submit a draft service for review (provider-owned path)
+  app.post("/api/provider/services/:id/submit", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      // Eligibility is based on the review lifecycle (approvalStatus), not the
+      // availability toggle (status). A provider may submit from approvalStatus
+      // "draft" (never submitted) or "rejected" (resubmitting after admin rejection).
+      const currentApproval = service.approvalStatus ?? "draft";
+      if (currentApproval !== "draft" && currentApproval !== "rejected") {
+        return res.status(400).json({ message: "Only draft or rejected services can be submitted for review" });
+      }
+      const submitted = await storage.submitProviderServiceListing(req.params.id);
+      res.json(submitted ? omitFields(submitted as any, ["revenueShareRate"] as const) : submitted);
+    } catch (err) {
+      console.error("Error submitting provider service:", err);
+      res.status(500).json({ message: "Failed to submit service for review" });
+    }
+  });
+
   // Delete a service
   app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
@@ -3575,6 +3641,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!ownedService) {
       return res.status(404).json({ message: "Service not found or not owned by you" });
     }
+    // Gap #18 (Gate G5): a listing with open bookings or transacted history is never deleted —
+    // service_bookings.service_id is ON DELETE CASCADE, so the delete would take the booking
+    // rows (receipts, reviews, payout records) with it. 409 + the archive offer instead.
+    const refusal = await assessServiceDeletion([req.params.id], ownedService.serviceName);
+    if (refusal) return res.status(409).json(refusal);
     try {
       await storage.deleteProviderService(req.params.id);
     } catch (err: any) {
@@ -3584,6 +3655,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return res.status(500).json({ message: "Failed to delete service" });
     }
     res.status(204).send();
+  });
+
+  // ── Gap #18 (Gate G5, ratified Aug 13 2026): ARCHIVE — the honest alternative to delete ──────
+  // The ONE write path into status='archived' (the meeting-pin one-write-path posture; the PATCH
+  // rail refuses the value). Archiving is always allowed — it claims nothing about bookings and
+  // breaks nothing they point at: every public read filters status='active', so the listing
+  // leaves search/storefront/marketplace immediately, existing bookings stand, and history keeps
+  // a listing to point at. Archived is terminal except deletion (which stays behind the booking
+  // guard above): "nobody can book it again" is a promise, not a pause.
+  app.post("/api/provider/services/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const services = await storage.getProviderServices(userId);
+      const ownedService = services.find(s => s.id === req.params.id);
+      if (!ownedService) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      if (ownedService.status === "archived") {
+        return res.json({ success: true, alreadyArchived: true });
+      }
+      // A property's rooms are separate bookable rows that inherit the property — archiving the
+      // parent archives them with it, so no room stays bookable under an archived property.
+      await db
+        .update(providerServices)
+        .set({ status: "archived", updatedAt: new Date() })
+        .where(
+          or(
+            eq(providerServices.id, req.params.id),
+            eq(providerServices.parentServiceId, req.params.id),
+          ),
+        );
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Error archiving provider service:", err);
+      res.status(500).json({ message: "Failed to archive service" });
+    }
   });
 
   // City lookup endpoint for planning modals
@@ -4611,6 +4718,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (service.status === "approved") {
         return res.status(400).json({ message: "Cannot delete approved services. Deactivate instead." });
       }
+      // Gap #18 (Gate G5): same booking guard as the provider delete rail — one assessment,
+      // both rails. A non-approved listing can still carry booking rows (e.g. approved once,
+      // then edited back into review), and the CASCADE would take them with it.
+      const refusal = await assessServiceDeletion([req.params.id], (service as any).serviceName ?? (service as any).name);
+      if (refusal) return res.status(409).json(refusal);
 
       await storage.deleteProviderServiceListing(req.params.id);
       res.json({ success: true });
@@ -5906,6 +6018,146 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
     },
   );
+
+  // ── Gap #16 reconciliation (Aug 17): TWO parallel builds of this rail existed — this
+  // session's platform-URL variant and the workspace's covers:-discriminator variant. The
+  // WORKSPACE rail below is canonical (decision-maker: Replit is the continuation base; it
+  // also empirically verified the bucket is private, which the proxy design depends on).
+  // The listing home's Photos & media drawer posts to THIS endpoint.
+  // Cover photo upload for provider services.
+  //
+  // PRIVACY POSTURE (mirrors deliverable rail, D3): the object-storage bucket is private
+  // (empirically verified Aug 2026 — unauthenticated GCS GETs return 403). Cover photos are
+  // public marketing images, but they are served through a server-side proxy endpoint (below)
+  // rather than by exposing the GCS URL. We persist a `covers:${key}` opaque reference to
+  // `serviceImage`, and the GET /api/services/:id/cover-image endpoint streams the bytes.
+  // This is the same `prefix:key` pattern the deliverable rail uses for `objstore:${key}`.
+  //
+  // Owner-gated write. Accepts JPEG/PNG only, validated by magic bytes. No multipart —
+  // `express.raw()` scoped to this route only (same as deliverable-file above).
+  const COVER_OBJSTORE_PREFIX = "covers:";
+  const COVER_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+  const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+  const PNG_MAGIC  = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // \x89PNG
+
+  app.post(
+    "/api/provider/services/:id/cover-photo",
+    isAuthenticated,
+    express.raw({ type: ["image/jpeg", "image/png", "application/octet-stream"], limit: "5mb" }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        // Raw read — we need the opaque `covers:${key}` reference for old-file cleanup;
+        // the normalized read returns the proxy URL which cannot be parsed back to a key.
+        const service = await storage.getProviderServiceByIdRaw(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({
+            message: "Send the image as a raw request body with Content-Type: image/jpeg or image/png",
+            code: "COVER_PHOTO_REQUIRED",
+          });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > COVER_MAX_BYTES) {
+          return res.status(400).json({
+            message: "Image exceeds the 5 MB size limit",
+            code: "COVER_PHOTO_TOO_LARGE",
+          });
+        }
+        // Detect format from magic bytes — never trust client Content-Type alone.
+        let ext: string;
+        let contentType: string;
+        if (buffer.subarray(0, 3).equals(JPEG_MAGIC)) {
+          ext = "jpg"; contentType = "image/jpeg";
+        } else if (buffer.subarray(0, 4).equals(PNG_MAGIC)) {
+          ext = "png"; contentType = "image/png";
+        } else {
+          return res.status(400).json({
+            message: "Only JPEG and PNG images are accepted",
+            code: "COVER_PHOTO_INVALID_FORMAT",
+          });
+        }
+
+        const key = `covers/${service.id}/${randomBytes(16).toString("hex")}.${ext}`;
+        const { uploadBuffer, deleteObject } = await import("./infrastructure/object-storage");
+        try {
+          await uploadBuffer(key, buffer);
+        } catch (storageErr) {
+          console.error("Cover photo upload failed:", storageErr);
+          return res.status(503).json({
+            message: "Object storage is not available right now. Try again shortly.",
+            code: "OBJECT_STORAGE_UNAVAILABLE",
+          });
+        }
+
+        // Persist the opaque `covers:${key}` reference first. On persistence failure, delete the
+        // newly uploaded object best-effort so it does not orphan in storage.
+        const storedValue = `${COVER_OBJSTORE_PREFIX}${key}`;
+        try {
+          await storage.updateProviderService(service.id, { serviceImage: storedValue });
+        } catch (dbErr) {
+          console.error("Cover photo DB persist failed:", dbErr);
+          deleteObject(key).catch(() => {});
+          return res.status(500).json({ message: "Failed to save cover photo" });
+        }
+
+        // Best-effort cleanup of the previous managed cover object (now that the DB is updated).
+        const prevStored = (service.serviceImage ?? "").trim();
+        if (prevStored.startsWith(COVER_OBJSTORE_PREFIX)) {
+          deleteObject(prevStored.slice(COVER_OBJSTORE_PREFIX.length)).catch(() => {});
+        }
+
+        // Return the proxy URL — the GCS URL is never disclosed (bucket is private).
+        res.json({
+          message: "Cover photo uploaded",
+          imageUrl: `/api/services/${service.id}/cover-image`,
+          contentType,
+        });
+      } catch (err) {
+        console.error("Cover photo upload error:", err);
+        res.status(500).json({ message: "Failed to upload cover photo" });
+      }
+    },
+  );
+
+  // Public cover-image proxy: streams a managed cover photo stored as `covers:${key}`.
+  // No auth required — cover photos are public marketing images. Falls back to a redirect
+  // for legacy external `serviceImage` URLs (Unsplash etc.) that predate the managed rail.
+  // Raw read — the normalized value is the proxy URL itself, which breaks the key extraction.
+  app.get("/api/services/:id/cover-image", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceByIdRaw(req.params.id);
+      if (!service) return res.status(404).json({ message: "Service not found" });
+
+      const stored = (service.serviceImage ?? "").trim();
+      if (stored.startsWith(COVER_OBJSTORE_PREFIX)) {
+        const key = stored.slice(COVER_OBJSTORE_PREFIX.length);
+        const { downloadBytes } = await import("./infrastructure/object-storage");
+        let bytes: Buffer;
+        try {
+          bytes = await downloadBytes(key);
+        } catch {
+          return res.status(404).json({ message: "Cover image not found" });
+        }
+        const ct = key.endsWith(".png") ? "image/png" : "image/jpeg";
+        res.setHeader("Content-Type", ct);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        return res.send(bytes);
+      }
+
+      // Legacy external URL — redirect so existing images keep working.
+      if (stored.startsWith("http")) {
+        return res.redirect(302, stored);
+      }
+
+      return res.status(404).json({ message: "No cover image on file" });
+    } catch (err) {
+      console.error("Cover image serve error:", err);
+      res.status(500).json({ message: "Failed to serve cover image" });
+    }
+  });
 
   // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
   // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client

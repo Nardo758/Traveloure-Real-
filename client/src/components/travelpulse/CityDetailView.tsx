@@ -874,13 +874,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="stats-grid">
-        <Card data-testid="stat-active-travelers">
-          <CardContent className="py-4 text-center">
-            <Users className="h-6 w-6 mx-auto mb-2 text-primary" />
-            <p className="text-2xl font-bold" data-testid="value-active-travelers">{city.activeTravelers.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">Active Travelers</p>
-          </CardContent>
-        </Card>
+        {/* activeTravelers stat card suppressed per R3 — no absolute visitor count on traveler surfaces */}
         <Card data-testid="stat-trending-spots">
           <CardContent className="py-4 text-center">
             <TrendingUp className="h-6 w-6 mx-auto mb-2 text-primary" />

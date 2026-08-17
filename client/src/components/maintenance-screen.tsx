@@ -56,9 +56,7 @@ export function MaintenanceGate({ children }: { children: React.ReactNode }) {
       >
         We'll check automatically and bring you back as soon as we're ready.
       </p>
-      <div className="mt-10 opacity-50">
-        <TraveloureLogo className="h-5" />
-      </div>
+      <div className="mt-10"><TraveloureLogo className="h-5 opacity-60" /></div>
     </div>
   );
 }

@@ -91,33 +91,7 @@ import {
   Play,
   X,
   CalendarRange,
-  Share2,
   AlertCircle,
-  Camera,
-  Car,
-  ChefHat,
-  Map,
-  Heart,
-  Sparkles,
-  CalendarHeart,
-  UserCheck,
-  Languages,
-  Baby,
-  Music,
-  Mic2,
-  Flower2,
-  Palette,
-  Package,
-  BookOpen,
-  Scissors,
-  Shield,
-  Zap,
-  Briefcase,
-  UtensilsCrossed,
-  MapPin,
-  Users,
-  PartyPopper,
-  Award,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -236,41 +210,22 @@ function formatPrice(price: string | number | null | undefined): string {
   return Number.isFinite(n) ? `$${n.toFixed(2).replace(/\.00$/, "")}` : String(price);
 }
 
-// S5 (ruling 74 disp. 1): the category inspiration tiles, MOVED here from Catalog's empty
-// state (services.tsx) — this screen is now the one door, so the "start from what you do"
-// shortcut lives on it, not on Catalog. Same 30 live service categories, same slugs, same
-// ?category= query param the create flow already reads at step 1.
-const inspirationCards = [
-  { label: "Photography & Video", slug: "Photography & Videography", icon: Camera, color: "bg-rose-50 text-rose-500" },
-  { label: "Transportation", slug: "Transportation & Logistics", icon: Car, color: "bg-blue-50 text-blue-500" },
-  { label: "Food & Culinary", slug: "Food & Culinary", icon: ChefHat, color: "bg-orange-50 text-orange-500" },
-  { label: "Tours & Experiences", slug: "Tours & Experiences", icon: Map, color: "bg-green-50 text-green-500" },
-  { label: "Health & Wellness", slug: "Health & Wellness", icon: Heart, color: "bg-pink-50 text-pink-500" },
-  { label: "Beauty & Styling", slug: "Beauty & Styling", icon: Sparkles, color: "bg-purple-50 text-purple-500" },
-  { label: "Events & Celebrations", slug: "Events & Celebrations", icon: CalendarHeart, color: "bg-amber-50 text-amber-500" },
-  { label: "Personal Assistance", slug: "Personal Assistance", icon: UserCheck, color: "bg-teal-50 text-teal-500" },
-  { label: "Language & Translation", slug: "Language & Translation", icon: Languages, color: "bg-indigo-50 text-indigo-500" },
-  { label: "Childcare & Family", slug: "Childcare & Family", icon: Baby, color: "bg-sky-50 text-sky-500" },
-  { label: "Lodging", slug: "Lodging & Accommodation", icon: BedDouble, color: "bg-cyan-50 text-cyan-600" },
-  { label: "Music & Performance", slug: "Music & Performance", icon: Music, color: "bg-violet-50 text-violet-500" },
-  { label: "Entertainment", slug: "Entertainment", icon: Mic2, color: "bg-fuchsia-50 text-fuchsia-500" },
-  { label: "Floral & Decor", slug: "Floral & Decoration", icon: Flower2, color: "bg-pink-50 text-pink-400" },
-  { label: "Arts & Crafts", slug: "Arts & Crafts Instruction", icon: Palette, color: "bg-lime-50 text-lime-600" },
-  { label: "Rentals", slug: "Rental Services", icon: Package, color: "bg-stone-50 text-stone-500" },
-  { label: "Cultural & Educational", slug: "Cultural & Educational", icon: BookOpen, color: "bg-emerald-50 text-emerald-600" },
-  { label: "Attire & Fashion", slug: "Attire & Fashion", icon: Scissors, color: "bg-rose-50 text-rose-400" },
-  { label: "Safety & Security", slug: "Safety & Security", icon: Shield, color: "bg-slate-50 text-slate-500" },
-  { label: "Business & Professional", slug: "Business & Professional", icon: Briefcase, color: "bg-console-bg text-console-dark" },
-  { label: "Technical Services", slug: "Technical Services", icon: Zap, color: "bg-yellow-50 text-yellow-600" },
-  { label: "Restaurants & Dining", slug: "Restaurants & Dining", icon: UtensilsCrossed, color: "bg-red-50 text-red-500" },
-  { label: "Repairs & Tasks", slug: "Taskrabbit Services", icon: Wrench, color: "bg-orange-50 text-orange-400" },
-  { label: "Companionship", slug: "Companionship & Assistance", icon: Users, color: "bg-blue-50 text-blue-400" },
-  { label: "Stationery & Print", slug: "Stationery & Paper Goods", icon: Languages, color: "bg-indigo-50 text-indigo-400" },
-  { label: "Special Effects", slug: "Specialty Effects & Activities", icon: Zap, color: "bg-yellow-50 text-yellow-500" },
-  { label: "Send-Off & Post-Event", slug: "Send-Off & Post-Event", icon: PartyPopper, color: "bg-pink-50 text-pink-500" },
-  { label: "Unique Specialists", slug: "Unique Specialty Services", icon: Award, color: "bg-violet-50 text-violet-500" },
-  { label: "Spiritual & Wellness", slug: "Spiritual & Wellness", icon: Sparkles, color: "bg-teal-50 text-teal-400" },
-  { label: "Local Expertise", slug: "Local Expertise", icon: MapPin, color: "bg-green-50 text-green-500" },
+// S5 (ruling 74 disp. 1): the category inspiration tiles — the 12 live service categories
+// shown on the Workstation page, matching the ratified provider console design. Each tile
+// pre-selects the category and jumps into the Basics screen via ?category=.
+const inspirationCards: { label: string; slug: string; desc: string }[] = [
+  { label: "Tours & Experiences",       slug: "Tours & Experiences",       desc: "Walks, museum tours, cultural sessions" },
+  { label: "Food & Culinary",           slug: "Food & Culinary",           desc: "Private chefs, cooking lessons, food tours" },
+  { label: "Photography & Videography", slug: "Photography & Videography", desc: "Portrait, event, travel video" },
+  { label: "Transportation & Logistics",slug: "Transportation & Logistics", desc: "Transfers, day trips, specialty transport" },
+  { label: "Arts & Crafts Instruction", slug: "Arts & Crafts Instruction", desc: "Pottery, calligraphy, ikebana, dance" },
+  { label: "Personal Assistance",       slug: "Personal Assistance",       desc: "Trip planning, errands, concierge" },
+  { label: "Events & Celebrations",     slug: "Events & Celebrations",     desc: "Proposals, birthdays, small weddings" },
+  { label: "Beauty & Styling",          slug: "Beauty & Styling",          desc: "Hair, make-up, kimono dressing" },
+  { label: "Restaurants & Dining",      slug: "Restaurants & Dining",      desc: "Private dining, tastings, venue seats" },
+  { label: "Lodging & Accommodation",   slug: "Lodging & Accommodation",   desc: "Rooms, homestays, glamping" },
+  { label: "Entertainment",             slug: "Entertainment",             desc: "Musicians, performers, hosts" },
+  { label: "Rental Services",           slug: "Rental Services",           desc: "Bikes, gear, cameras, kimono" },
 ];
 
 /**
@@ -373,16 +328,6 @@ export default function ProviderWorkstation() {
   const [droppedOnPrefill, setDroppedOnPrefill] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Bundle | null>(null);
 
-  function openCreate() {
-    setEditingBundle(null);
-    setBundleName("");
-    setBundleDescription("");
-    setBundlePrice("");
-    setSelectedIds([]);
-    setDroppedOnPrefill([]);
-    setBuilderOpen(true);
-  }
-
   function openEdit(bundle: Bundle) {
     setEditingBundle(bundle);
     setBundleName(bundle.serviceName ?? "");
@@ -413,34 +358,6 @@ export default function ProviderWorkstation() {
     // A bundle IS a provider_services row — it also appears in the Catalog list.
     queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
   };
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/provider/bundles", {
-        serviceName: bundleName.trim(),
-        description: bundleDescription.trim() || undefined,
-        price: bundlePrice,
-        componentServiceIds: selectedIds,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidateBundleQueries();
-      setBuilderOpen(false);
-      // D1a honesty: born `submitted`, not live.
-      toast({
-        title: "Bundle submitted for review",
-        description: "It appears in your Catalog and goes live once approved.",
-      });
-    },
-    onError: (err) => {
-      toast({
-        title: "Could not create bundle",
-        description: parseApiErrorMessage(err, "Please check the fields and try again."),
-        variant: "destructive",
-      });
-    },
-  });
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -513,7 +430,7 @@ export default function ProviderWorkstation() {
     },
   });
 
-  const mutationBusy = createMutation.isPending || updateMutation.isPending;
+  const mutationBusy = updateMutation.isPending;
   const bundleList = Array.isArray(bundles) ? bundles : [];
 
   // ── §17 Product Builder — PROPERTY rung ──────────────────────────────────────
@@ -528,86 +445,9 @@ export default function ProviderWorkstation() {
     queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
   };
 
-  const [propertyBuilderOpen, setPropertyBuilderOpen] = useState(false);
-  // S-2 (ledger 2026-08-16-console-sweep): the mock's property builder is a step ladder that
-  // ENDS in Review — "1. The property · 2. Rooms · 3. Review" — where the service lane already
-  // ends in "Review & submit". Same fields, same one POST; the steps only sequence them and put
-  // a read-back between the provider and Submit.
-  type PropertyBuilderStep = "property" | "rooms" | "review";
-  const [propertyBuilderStep, setPropertyBuilderStep] = useState<PropertyBuilderStep>("property");
-  const [propName, setPropName] = useState("");
-  const [propDescription, setPropDescription] = useState("");
-  const [propLocation, setPropLocation] = useState("");
-  // L27-P3: the confirmed map point for the property (null = no pin placed). Sent only
-  // when set; the server derives `location_precision='exact'` from a confirmed point and
-  // never from a typed address (§13).
-  const [propPoint, setPropPoint] = useState<LocationPoint | null>(null);
-  const [roomDrafts, setRoomDrafts] = useState<RoomDraft[]>([
-    { key: "r0", roomName: "", price: "", units: "" },
-  ]);
+  // Property create flow lives at /provider/properties/new (PropertyCreate page).
+  // This workstation retains only the editor dialog for existing properties.
   const [propertyDeleteTarget, setPropertyDeleteTarget] = useState<Property | null>(null);
-
-  function openPropertyCreate() {
-    setPropName("");
-    setPropDescription("");
-    setPropLocation("");
-    setPropPoint(null);
-    setRoomDrafts([{ key: `r${Date.now()}`, roomName: "", price: "", units: "" }]);
-    setPropertyBuilderStep("property");
-    setPropertyBuilderOpen(true);
-  }
-  function addRoomDraft() {
-    setRoomDrafts((prev) => [...prev, { key: `r${Date.now()}-${prev.length}`, roomName: "", price: "", units: "" }]);
-  }
-  function removeRoomDraft(key: string) {
-    setRoomDrafts((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
-  }
-  function updateRoomDraft(key: string, patch: Partial<RoomDraft>) {
-    setRoomDrafts((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  }
-
-  const roomDraftsValid =
-    roomDrafts.length > 0 &&
-    roomDrafts.every((r) => {
-      const p = parseFloat(r.price);
-      return r.roomName.trim().length > 0 && Number.isFinite(p) && p > 0;
-    });
-  const propertyFormValid = propName.trim().length > 0 && roomDraftsValid;
-
-  const createPropertyMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/provider/properties", {
-        serviceName: propName.trim(),
-        description: propDescription.trim() || undefined,
-        location: propLocation.trim() || undefined,
-        // Only a confirmed pin travels; omitted otherwise (no coordinates written).
-        ...(propPoint ? { locationPoint: propPoint } : {}),
-        rooms: roomDrafts.map((r) => ({
-          roomName: r.roomName.trim(),
-          price: r.price,
-          ...(r.units.trim() ? { units: parseInt(r.units, 10) } : {}),
-        })),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      invalidatePropertyQueries();
-      setPropertyBuilderOpen(false);
-      // D1a honesty: born `submitted`, not live.
-      toast({
-        title: "Property submitted for review",
-        description:
-          "It appears in your Catalog and goes live once approved. Publish night availability on each room next.",
-      });
-    },
-    onError: (err) => {
-      toast({
-        title: "Could not create property",
-        description: parseApiErrorMessage(err, "Please check the fields and try again."),
-        variant: "destructive",
-      });
-    },
-  });
 
   const propertyStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: "active" | "paused" }) => {
@@ -1088,95 +928,74 @@ export default function ProviderWorkstation() {
   return (
     <ProviderLayout title="Workstation">
       <div className="p-6 space-y-6">
-        <PageHeader
-          icon={Wrench}
-          title="Workstation"
-          subtitle="One door for building what you sell — start with a service, grow into bundles."
-          testId="text-workstation-title"
-          actions={
-            // Catalog+Distribute (ruling 74, lane D1): the on-ramp into the distribution hub.
-            <Link href="/provider/distribute">
-              <Button size="sm" variant="outline" data-testid="button-goto-distribute">
-                <Share2 className="w-4 h-4 mr-1.5" /> Distribute
-              </Button>
-            </Link>
-          }
-        />
-
-        {/* S5 (ruling 74 disp. 1, executed) — WORKSTATION REBUILD: the one-door launcher,
-            transcribed from the ratified mock's "One door" view (docs/design/service-creation-
-            mock.html, panel-door). Every "Add New Service" affordance in the provider console
-            lands HERE first — this is the only place a new listing is born. Scoped under
-            .ws-mock (teal accent, mock tokens) — page-local only, no global theme change. */}
+        {/* ── One-door launcher — transcribed from the ratified provider console design.
+            Every "Add New Service" affordance routes here first; this is the only place
+            a new listing is born. Page-local teal tokens via .ws-mock. */}
         <div className="ws-mock" data-testid="text-launcher-headline-block">
           <style>{WORKSTATION_MOCK_CSS}</style>
 
-          <h2 className="ws-screen" data-testid="text-launcher-headline">
-            What are you building?
-          </h2>
-          <p className="ws-screen-sub">
-            Workstation · the single entry point for anything you sell. Pick a shape to start —
-            you can change most of it later.
-          </p>
+          {/* Heading row — no mock-only callout dots or "Preview as unlocked" button */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <h2 className="ws-screen" data-testid="text-launcher-headline">
+                What are you building?
+              </h2>
+              <p className="ws-screen-sub" style={{ marginBottom: 0 }}>
+                Workstation · the single entry point for anything you sell. Pick a shape to
+                start; you can change most of it later.
+              </p>
+            </div>
+          </div>
 
-          {/* ── The creation ladder (§17): single service → bundle → property, transcribed
-              as the mock's .doortiles grid ──────────────────────────────────────────── */}
+          {/* ── Creation ladder (§17): single service → bundle → property ── */}
           <div className="ws-doortiles" data-testid="grid-product-ladder">
-            {/* Rung 1 — single service: always available, the existing ServiceForm. The
-                literal <Link href="/provider/services/new"> stays the ONE permitted direct
-                deep link into ServiceForm step 1 (pinned by service-creation-launcher.test.ts). */}
+            {/* Rung 1 — single service */}
             <Link href="/provider/services/new">
               <div className="ws-doortile" data-testid="card-ladder-service">
-                <Plus className="ws-doortile-icon" aria-hidden="true" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M7 9h10M7 13h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
                 <h4>Single service</h4>
-                <p>
-                  One offering with its own price and availability. Every new service is
-                  reviewed before it goes live.
-                </p>
-                <span className="ws-cta" data-testid="button-ladder-new-service">
-                  Start a service →
-                </span>
+                <p>One thing you offer — a session, a walk, a guide, a transfer. Five fields to a saved draft.</p>
+                <span className="ws-cta" data-testid="button-ladder-new-service">Start a service →</span>
               </div>
             </Link>
 
-            {/* Rung 2 — bundle: unlocks at 2+ approved+active services (real count, §13) —
-                the mock's dashed locked tile + real progressbar renders whenever it isn't. */}
+            {/* Rung 2 — bundle: locked until 2+ approved active services */}
             {servicesLoading ? (
               <div className="ws-doortile" data-testid="card-ladder-bundle">
-                <Boxes className="ws-doortile-icon" aria-hidden="true" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                </svg>
                 <h4>Bundle</h4>
-                <p>
-                  Compose two or more of your approved services under one price. Bundles are
-                  reviewed before they sell, like any listing.
-                </p>
+                <p>Two or more of your approved services sold together at one price.</p>
                 <Skeleton className="h-4 w-32 mt-3" />
               </div>
             ) : bundleUnlocked ? (
-              <button
-                type="button"
-                onClick={openCreate}
-                className="ws-doortile ws-doortile-btn"
-                data-testid="card-ladder-bundle"
-              >
-                <Boxes className="ws-doortile-icon" aria-hidden="true" />
-                <h4>Bundle</h4>
-                <p>
-                  Compose two or more of your approved services under one price. Bundles are
-                  reviewed before they sell, like any listing.
-                </p>
-                <span className="ws-cta" data-testid="button-ladder-new-bundle">
-                  New bundle →
-                </span>
-              </button>
+              <Link href="/provider/bundles/new">
+                <div className="ws-doortile" data-testid="card-ladder-bundle">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                    <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                    <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                  </svg>
+                  <h4>Bundle</h4>
+                  <p>Two or more of your approved services sold together at one price.</p>
+                  <span className="ws-cta" data-testid="button-ladder-new-bundle">New bundle →</span>
+                </div>
+              </Link>
             ) : (
               <div className="ws-doortile ws-locked" data-testid="card-ladder-bundle">
-                <Lock className="ws-doortile-icon" aria-hidden="true" />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <rect x="5" y="10" width="14" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" stroke="currentColor" strokeWidth="1.7"/>
+                </svg>
                 <h4>Bundle</h4>
                 <p>Two or more of your approved services sold together at one price.</p>
                 <p className="ws-warnbox" data-testid="text-bundle-locked">
-                  Locked. Unlocks when you have 2 approved active services — you have{" "}
-                  {eligibleComponents.length}.{" "}
-                  <Link href="/provider/services">Go to Catalog →</Link>
+                  Locked. Unlocks when you have 2 approved services — you have{" "}
+                  {eligibleComponents.length} approved, {Math.max(0, serviceList.filter(s => s.approvalStatus === "submitted" || s.approvalStatus === "in_review").length)} in review.
                 </p>
                 <div className="ws-progressbar">
                   <i style={{ width: `${Math.min(100, (eligibleComponents.length / 2) * 100)}%` }} />
@@ -1187,34 +1006,23 @@ export default function ProviderWorkstation() {
               </div>
             )}
 
-            {/* Rung 3 — property (§17 Product Builder, PROPERTY rung): live and buildable in
-                this codebase — unlike the mock's placeholder "builder not yet specified" state,
-                which described a spec gap S8/FP-3 have since closed (§13: the tile must not
-                claim a gap that no longer exists), so this renders as an unlocked tile like
-                Single service, not the mock's dashed/locked Property variant. */}
-            <button
-              type="button"
-              onClick={openPropertyCreate}
-              className="ws-doortile ws-doortile-btn"
-              data-testid="card-ladder-property"
-            >
-              <BedDouble className="ws-doortile-icon" aria-hidden="true" />
-              <h4>Property</h4>
-              <p>
-                A room, apartment or house with per-night pricing and room availability.
-                Properties and rooms are reviewed before they sell, like any listing.
-              </p>
-              <span className="ws-cta" data-testid="button-ladder-new-property">
-                Start a property →
-              </span>
-            </button>
+            {/* Rung 3 — property: full stepped page at /provider/properties/new */}
+            <Link href="/provider/properties/new">
+              <div className="ws-doortile" data-testid="card-ladder-property">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                  <path d="M10 21v-6h4v6" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+                </svg>
+                <h4>Property</h4>
+                <p>A room, apartment or house with per-night pricing and room availability.</p>
+                <span className="ws-cta" data-testid="button-ladder-new-property">Start a property →</span>
+              </div>
+            </Link>
           </div>
 
           <div className="ws-divider" />
 
-          {/* S5: the category inspiration tiles — transcribed as the mock's .cats grid, kept
-              at the real 30 live service categories (§13: the mock's own CATS array is a
-              12-item illustration, not the full catalog to reproduce — no invented copy). */}
+          {/* Category tiles — 12 live service categories, each pre-selects and jumps to Basics */}
           <h5 className="ws-grouplabel">Or start from what you do</h5>
           <p className="ws-screen-sub" style={{ marginBottom: 14 }}>
             These are the live service categories. Picking one pre-selects the category and
@@ -1229,6 +1037,9 @@ export default function ProviderWorkstation() {
                 data-testid={`card-inspiration-${card.slug.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
               >
                 <b>{card.label}</b>
+                <span style={{ fontSize: 11.5, color: "var(--ws-muted)", lineHeight: 1.35, display: "block", marginTop: 2 }}>
+                  {card.desc}
+                </span>
               </Link>
             ))}
           </div>
@@ -1307,9 +1118,11 @@ export default function ProviderWorkstation() {
               }
               cta={
                 bundleUnlocked ? (
-                  <Button size="sm" onClick={openCreate} data-testid="button-empty-new-bundle">
-                    <Plus className="w-4 h-4 mr-1.5" /> New bundle
-                  </Button>
+                  <Link href="/provider/bundles/new">
+                    <Button size="sm" data-testid="button-empty-new-bundle">
+                      <Plus className="w-4 h-4 mr-1.5" /> New bundle
+                    </Button>
+                  </Link>
                 ) : undefined
               }
               testId="empty-workstation-bundles"
@@ -1455,9 +1268,11 @@ export default function ProviderWorkstation() {
               title="No properties yet"
               body="Add an accommodation with one or more room types, each priced per night — it goes through review before it sells."
               cta={
-                <Button size="sm" onClick={openPropertyCreate} data-testid="button-empty-new-property">
-                  <Plus className="w-4 h-4 mr-1.5" /> New property
-                </Button>
+                <Link href="/provider/properties/new">
+                  <Button size="sm" data-testid="button-empty-new-property">
+                    <Plus className="w-4 h-4 mr-1.5" /> New property
+                  </Button>
+                </Link>
               }
               testId="empty-workstation-properties"
             />
@@ -1653,285 +1468,7 @@ export default function ProviderWorkstation() {
           )}
         </section>
 
-        {/* ── Property builder dialog (create) ──────────────────────────────────── */}
-        <Dialog open={propertyBuilderOpen} onOpenChange={(open) => !open && setPropertyBuilderOpen(false)}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-property-builder">
-            <DialogHeader>
-              <DialogTitle>New property</DialogTitle>
-              <DialogDescription>
-                Add the property and at least one room type. Both are reviewed before they sell;
-                night availability is set up separately once the property is created.
-              </DialogDescription>
-            </DialogHeader>
-
-            {/* S-2: the mock's step ladder — 1. The property · 2. Rooms · 3. Review. Forward
-                tabs gate on the same validity the footer buttons use; every field keeps its
-                testid (the steps sequence the form, they don't change it). */}
-            <div className="inline-flex rounded-md border border-console-light overflow-hidden" role="group">
-              {(
-                [
-                  { key: "property", label: "1. The property", enabled: true },
-                  { key: "rooms", label: "2. Rooms", enabled: propName.trim().length > 0 },
-                  { key: "review", label: "3. Review", enabled: propertyFormValid },
-                ] as const
-              ).map((step) => (
-                <button
-                  key={step.key}
-                  type="button"
-                  disabled={!step.enabled}
-                  onClick={() => setPropertyBuilderStep(step.key)}
-                  aria-pressed={propertyBuilderStep === step.key}
-                  className={
-                    "px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
-                    (propertyBuilderStep === step.key
-                      ? "bg-console-dark text-white"
-                      : "bg-white text-console-mid hover:bg-console-light/40")
-                  }
-                  data-testid={`tab-property-builder-${step.key}`}
-                >
-                  {step.label}
-                </button>
-              ))}
-            </div>
-
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (propertyBuilderStep !== "review" || !propertyFormValid || createPropertyMutation.isPending) return;
-                createPropertyMutation.mutate();
-              }}
-            >
-              <div className="space-y-4" hidden={propertyBuilderStep !== "property"}>
-              <div>
-                <Label htmlFor="property-name" className="text-sm">
-                  Property name
-                </Label>
-                <Input
-                  id="property-name"
-                  value={propName}
-                  onChange={(e) => setPropName(e.target.value)}
-                  maxLength={255}
-                  required
-                  placeholder="e.g. Machiya Guesthouse Kyoto"
-                  data-testid="input-property-name"
-                />
-              </div>
-              <div>
-                <Label htmlFor="property-location" className="text-sm">
-                  Location (optional)
-                </Label>
-                <Input
-                  id="property-location"
-                  value={propLocation}
-                  onChange={(e) => setPropLocation(e.target.value)}
-                  maxLength={255}
-                  placeholder="e.g. Higashiyama, Kyoto"
-                  data-testid="input-property-location"
-                />
-              </div>
-
-              {/* L27-P3: optional precise pin for the property. Rooms inherit it (they sit
-                  at the same address). Renders nothing when no Maps key is configured. */}
-              <LocationPointPicker
-                value={propPoint}
-                // Create dialog: nothing is stored yet, so there is no row precision to
-                // report — the picker labels a fresh confirm as "Pin placed", not
-                // "confirmed on the listing" (§13: don't claim saved state before saving).
-                precision={null}
-                addressHint={propLocation}
-                onChange={setPropPoint}
-                label="Pin the property on the map (optional)"
-                helpText="Confirming a pin places this property — and its rooms — accurately on planning maps."
-                idPrefix="property-location"
-              />
-
-              <div>
-                <Label htmlFor="property-description" className="text-sm">
-                  Description (optional)
-                </Label>
-                <Textarea
-                  id="property-description"
-                  value={propDescription}
-                  onChange={(e) => setPropDescription(e.target.value)}
-                  rows={3}
-                  placeholder="What makes this property worth staying at."
-                  data-testid="input-property-description"
-                />
-              </div>
-              </div>
-
-              <div hidden={propertyBuilderStep !== "rooms"}>
-                <Label className="text-sm">Room types (at least 1)</Label>
-                <div className="mt-2 space-y-3">
-                  {roomDrafts.map((draft, idx) => (
-                    <div
-                      key={draft.key}
-                      className="rounded-lg border border-console-light p-3 space-y-2"
-                      data-testid={`row-room-draft-${idx}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-console-mid">Room {idx + 1}</span>
-                        {roomDrafts.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={() => removeRoomDraft(draft.key)}
-                            data-testid={`button-remove-room-draft-${idx}`}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                      <Input
-                        value={draft.roomName}
-                        onChange={(e) => updateRoomDraft(draft.key, { roomName: e.target.value })}
-                        maxLength={255}
-                        placeholder="Room name, e.g. Garden View Double"
-                        data-testid={`input-room-draft-name-${idx}`}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={draft.price}
-                          onChange={(e) => updateRoomDraft(draft.key, { price: e.target.value })}
-                          placeholder="Price / night"
-                          data-testid={`input-room-draft-price-${idx}`}
-                        />
-                        <Input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={draft.units}
-                          onChange={(e) => updateRoomDraft(draft.key, { units: e.target.value })}
-                          placeholder="Units (optional)"
-                          data-testid={`input-room-draft-units-${idx}`}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={addRoomDraft}
-                  data-testid="button-add-room-draft"
-                >
-                  <Plus className="w-4 h-4 mr-1.5" /> Add another room type
-                </Button>
-                <p className="text-xs text-console-mid mt-1">
-                  Units is descriptive only — the real per-night capacity is set when you
-                  publish night availability after creating the property.
-                </p>
-              </div>
-
-              {/* S-2: the Review step — a read-back of exactly what one Submit will send,
-                  before it is sent. Derived from the same draft state, nothing re-asked. */}
-              {propertyBuilderStep === "review" && (
-                <div className="space-y-3" data-testid="property-builder-review">
-                  <div className="rounded-lg border border-console-light divide-y divide-console-light text-sm">
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Property</span>
-                      <span className="font-medium" data-testid="text-review-property-name">{propName.trim() || "—"}</span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Location</span>
-                      <span data-testid="text-review-property-location">{propLocation.trim() || "Not set"}</span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Map pin</span>
-                      <span data-testid="text-review-property-pin">
-                        {propPoint ? "Pin placed" : "Not placed — optional"}
-                      </span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">Description</span>
-                      <span className="min-w-0 break-words" data-testid="text-review-property-description">
-                        {propDescription.trim() || "Not set"}
-                      </span>
-                    </div>
-                    <div className="flex gap-3 px-3 py-2">
-                      <span className="w-28 flex-shrink-0 text-console-mid text-xs pt-0.5">
-                        Rooms ({roomDrafts.length})
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        {roomDrafts.map((r, idx) => (
-                          <span key={r.key} className="block" data-testid={`text-review-room-${idx}`}>
-                            {r.roomName.trim() || `Room ${idx + 1}`} · ${r.price || "?"} / night
-                            {r.units.trim() ? ` · ${r.units} unit${r.units.trim() === "1" ? "" : "s"}` : ""}
-                          </span>
-                        ))}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-console-mid">
-                    The property and each room are reviewed before they sell (born submitted, never
-                    live on save). Night availability is published afterwards on Catalog →
-                    Availability — nothing is bookable until it exists.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPropertyBuilderOpen(false)}
-                  data-testid="button-property-cancel"
-                >
-                  Cancel
-                </Button>
-                {propertyBuilderStep !== "property" && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      setPropertyBuilderStep(propertyBuilderStep === "review" ? "rooms" : "property")
-                    }
-                    data-testid="button-property-back"
-                  >
-                    ← Back
-                  </Button>
-                )}
-                {propertyBuilderStep === "property" && (
-                  <Button
-                    type="button"
-                    disabled={propName.trim().length === 0}
-                    onClick={() => setPropertyBuilderStep("rooms")}
-                    data-testid="button-property-next"
-                  >
-                    Next: Rooms →
-                  </Button>
-                )}
-                {propertyBuilderStep === "rooms" && (
-                  <Button
-                    type="button"
-                    disabled={!propertyFormValid}
-                    onClick={() => setPropertyBuilderStep("review")}
-                    data-testid="button-property-next"
-                  >
-                    Next: Review →
-                  </Button>
-                )}
-                {propertyBuilderStep === "review" && (
-                  <Button
-                    type="submit"
-                    disabled={!propertyFormValid || createPropertyMutation.isPending}
-                    data-testid="button-property-submit"
-                  >
-                    {createPropertyMutation.isPending ? "Saving…" : "Submit for review"}
-                  </Button>
-                )}
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Property create → /provider/properties/new (PropertyCreate page). */}
 
         {/* ── FP-3: property editor (Basics + Rooms) ────────────────────────────── */}
         <Dialog
@@ -2493,11 +2030,9 @@ export default function ProviderWorkstation() {
             data-testid="dialog-bundle-builder"
           >
             <DialogHeader>
-              <DialogTitle>{editingBundle ? "Edit bundle" : "New bundle"}</DialogTitle>
+              <DialogTitle>Edit bundle</DialogTitle>
               <DialogDescription>
-                {editingBundle
-                  ? "Price or component changes to an approved bundle send it back for review."
-                  : "Pick at least 2 of your approved services and set one price. New bundles are reviewed before they sell."}
+                Price or component changes to an approved bundle send it back for review.
               </DialogDescription>
             </DialogHeader>
 
@@ -2506,8 +2041,7 @@ export default function ProviderWorkstation() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!formValid || mutationBusy) return;
-                if (editingBundle) updateMutation.mutate();
-                else createMutation.mutate();
+                updateMutation.mutate();
               }}
             >
               <div>
@@ -2624,11 +2158,7 @@ export default function ProviderWorkstation() {
                   disabled={!formValid || mutationBusy}
                   data-testid="button-bundle-submit"
                 >
-                  {mutationBusy
-                    ? "Saving…"
-                    : editingBundle
-                      ? "Save changes"
-                      : "Submit for review"}
+                  {mutationBusy ? "Saving…" : "Save changes"}
                 </Button>
               </div>
             </form>

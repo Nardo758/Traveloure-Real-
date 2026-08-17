@@ -109,6 +109,13 @@
     border-radius:100px;padding:2px 10px;white-space:nowrap;
   }
   .propchip::before{content:"";width:6px;height:6px;border-radius:100px;background:#C79A3C;flex:0 0 6px;}
+  /* the teal "ratified/built" twin of the propchip — build status folded back from the ledger */
+  .builtchip{
+    display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:550;
+    color:var(--accent);background:var(--accent-soft);border:1px solid #CBDAD7;
+    border-radius:100px;padding:2px 10px;white-space:nowrap;
+  }
+  .builtchip::before{content:"";width:6px;height:6px;border-radius:100px;background:var(--accent);flex:0 0 6px;}
 
   .field{margin-bottom:16px;}
   .field label{display:block;font-size:13px;font-weight:550;margin-bottom:5px;}
@@ -614,7 +621,7 @@
     <button class="ni" data-nav="workstation"><span class="gl">⚒</span>Workstation</button>
     <div class="ng">Business</div>
     <button class="ni" data-nav="catalog"><span class="gl">▦</span>Catalog</button>
-    <button class="ni proposed" data-nav="distribute"><span class="gl">↗</span>Distribute<span class="newdot" title="proposed new nav entry">⑧</span></button>
+    <button class="ni" data-nav="distribute"><span class="gl">↗</span>Distribute<span class="newdot" title="shipped nav entry (S6)">⑧</span></button>
     <button class="ni" data-nav="customers"><span class="gl">☺</span>Customers</button>
     <button class="ni" data-nav="performance"><span class="gl">↑</span>Performance</button>
     <button class="ni" data-nav="money"><span class="gl">$</span>Money</button>
@@ -668,12 +675,30 @@
           <button aria-pressed="false">In review</button>
           <button aria-pressed="false">Draft</button>
         </div>
-        <div class="seg" id="cat-mode-seg" style="margin-left:auto;">
+        <!-- Manage ⇄ Preview (ruling 74 C2, built): a SEPARATE axis from List|Map — it governs
+             the list layout only. Map is neither Manage nor Preview (it is already the traveler
+             preview), so this seg hides in map mode. -->
+        <div class="seg" id="cat-view-seg" style="margin-left:auto;">
+          <button data-cview="manage" aria-pressed="true">Manage</button>
+          <button data-cview="preview" aria-pressed="false">Preview as traveler</button>
+        </div>
+        <div class="seg" id="cat-mode-seg">
           <button data-mode="list" aria-pressed="true">List</button>
           <button data-mode="map" aria-pressed="false">Map</button>
         </div>
       </div>
     </div>
+
+    <!-- Preview-as-traveler (ruling 74 C2): the SAME public-visibility predicate the storefront
+         enforces — approved + active only. Paused, draft and in-review listings are simply
+         absent, exactly like the public page; nothing renders greyed-out "for context". -->
+    <div id="cat-preview-banner" hidden
+         style="background:var(--accent-soft);border:1px solid #CBDAD7;color:var(--accent);border-radius:6px;padding:11px 14px;font-size:12.5px;line-height:1.5;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span style="flex:1;min-width:240px;"><b>Preview — you're seeing your storefront as travelers do.</b>
+      Paused, draft and in-review listings are hidden here, exactly like your public page.</span>
+      <span class="builtchip">Ratified · built — Manage ⇄ Preview (ruling 74 C2)</span>
+    </div>
+    <div id="cat-preview-grid" class="doortiles" hidden style="margin-bottom:16px;"></div>
 
     <div class="card" id="cat-list-mode">
       <div id="listings"></div>
@@ -721,8 +746,9 @@
             Meeting point in Gion · host travels free up to 8 km.
             <span style="display:block;margin-top:6px;color:var(--warn-ink);">
               Whether the traveler sees the exact pin or a fuzzed neighbourhood point is a
-              <b>spec decision, not a shipped behaviour</b> (spec gap #13). This canvas draws the authored point
-              as-is — no precision rule is implied.
+              <b>shipped behaviour</b> (S8 privacy circle, ledger 104): before booking the traveler
+              sees an approximate ~500&nbsp;m circle, never the exact pin; the exact pin is revealed only on a
+              confirmed booking. This canvas draws the authored point as-is.
             </span>
           </div>
         </div>
@@ -774,55 +800,26 @@
         </div>
       </div>
 
-      <!-- gap #13 — every authored answer gets a traveler-side home, or stops being collected -->
+      <!-- gap #13 — "Render it, or stop collecting it" — DEMO PANEL RETIRED (decision-maker,
+           Aug 17 2026). The rule shipped, so the sample table came out of the mock: a mock
+           panel restating what the product renders is exactly the derivation-drift class §18
+           rule 1 names — it would drift the moment a field moves. The note below is the
+           standing pointer to verify against the PRODUCT, never this file. -->
       <section id="render-it">
-        <h2 class="screen">Render it, or stop collecting it<span class="dot ghost">⑬</span>
-          <span class="propchip">Proposed — gap #13 · ratify or amend</span></h2>
-        <p class="screen-sub">
-          The create flow asks a provider a lot of questions. The proposed rule: every answer either has a
-          traveler-side representation, or an explicit decision that it is provider-only. Here are the in-person
-          tour's answers actually rendered — the half of the audit that had nowhere to land.
-        </p>
-        <div class="row2" style="align-items:start;">
-          <div class="card">
-            <div class="card-hd"><h3>What the traveler sees</h3>
-              <span class="hint">Gion Evening Food Walk</span></div>
-            <div class="card-pad" style="padding-top:6px;">
-              <div class="sumrow"><div class="k">Party size</div><div class="v">1–8 people · you can book for up to 8</div></div>
-              <div class="sumrow"><div class="k">Book by</div><div class="v">24 hours before the start — the host's lead time</div></div>
-              <div class="sumrow"><div class="k">Free cancellation until</div><div class="v">5 days before · 50% up to 2 days before</div></div>
-              <div class="sumrow"><div class="k">Starts</div><div class="v">18:00, Tuesdays &amp; Thursdays · runs about 2½ hours</div></div>
-              <div class="sumrow"><div class="k">Languages</div><div class="v">English · Japanese</div></div>
-              <div class="sumrow"><div class="k">Getting there</div><div class="v">Make your own way to the meeting point in Gion</div></div>
-              <div class="sumrow"><div class="k">Bring</div><div class="v">Socks without holes — you will be on tatami</div></div>
-              <div class="sumrow"><div class="k">Access</div><div class="v">One step at the entrance, low seating. A low stool can be provided — say so when you book.
-                <span style="display:block;color:var(--muted);font-size:12px;margin-top:3px;">Shown in the host's own words. No accessibility standard is claimed on their behalf.</span></div></div>
-              <div class="sumrow"><div class="k">Travel fee</div><div class="v">None within 8 km of the meeting point. Beyond that, a fee may apply — the host will confirm.</div></div>
-            </div>
-          </div>
-          <div class="stack-gap">
-            <div class="card card-pad">
-              <div style="font-size:14px;font-weight:600;margin-bottom:6px;">The rule this demonstrates</div>
-              <div style="font-size:12.5px;color:var(--muted);line-height:1.6;">
-                Nine questions the flow asks, nine things a traveler can read before paying. Where a field has no
-                traveler-side home, the proposal is to <b style="color:var(--ink)">stop asking for it</b> rather than
-                store an answer nobody will ever see — the audit found four such fields collected and never read.
-              </div>
-            </div>
-            <div class="card card-pad">
-              <div style="font-size:14px;font-weight:600;margin-bottom:6px;">Deliberately provider-only</div>
-              <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:10px;">
-                Not everything should surface. These are proposed as <b style="color:var(--ink)">private by
-                decision</b>, not by accident:
-              </div>
-              <div style="display:flex;gap:7px;flex-wrap:wrap;">
-                <span class="pill">Build notes</span>
-                <span class="pill">Exact street address until booked</span>
-                <span class="pill">Blackout reasons</span>
-                <span class="pill">Cost / margin working</span>
-              </div>
-            </div>
-          </div>
+        <div class="note-quiet" style="margin-bottom:26px;">
+          <b style="color:var(--ink)">“Render it, or stop collecting it” (gap #13) — demo panel retired; the rule lives in the code.</b>
+          <span class="builtchip" style="margin-left:8px;">Ratified · built — T-REP (ledger 101) · Bring/Access (migration 228)</span>
+          <span style="display:block;margin-top:7px;">
+            Every question the create flow asks now has a traveler-side home, or is private by
+            decision — build notes, exact street address until booked, blackout reasons, cost/margin
+            working (CLAUDE.md §24). <b style="color:var(--ink)">Double-check against the product,
+            not a mock:</b> open a live listing's traveler page (<code>/services/:id</code>) and
+            confirm the rows render — party size, book-by lead time, cancellation, starts,
+            languages, getting there, Bring, Access, travel fee — and that an unanswered field is
+            <b style="color:var(--ink)">omitted</b>, never shown as “none”. Last verified
+            Aug 17 2026 (<code>client/src/pages/service-detail.tsx</code> reads them from the
+            public payload with trim-or-omit semantics).
+          </span>
         </div>
       </section>
     </div>
@@ -831,7 +828,7 @@
     <div id="cat-avail-mount" style="margin-top:22px;">
       <div class="gapbox" id="avail-block">
         <h2 class="screen" style="font-size:18px;">Availability<span class="dot ghost">⑭</span>
-          <span class="propchip">Proposed — gap #2 · ratify or amend</span></h2>
+          <span class="builtchip">Ratified · built — S7 availability, migration 210 (ledger 103)</span></h2>
         <p class="screen-sub">
           The largest hole in the redesign: nothing else in the flow makes a listing <i>bookable</i>. One editor,
           whose semantics come from the listing's delivery method — scheduled listings author slots, property rooms
@@ -913,7 +910,7 @@
           <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1z" stroke="#35605A" stroke-width="1.7" stroke-linejoin="round"/>
           <path d="M10 21v-6h4v6" stroke="#35605A" stroke-width="1.7" stroke-linejoin="round"/>
         </svg>
-        <h4>Property <span class="propchip">gap #1</span></h4>
+        <h4>Property <span class="builtchip">gap #1 · built — S8 (ledger 104)</span></h4>
         <p>A room, apartment or house with per-night pricing and room availability.</p>
         <span class="cta">Start a property →</span>
       </button>
@@ -1121,7 +1118,7 @@
         <!-- gap #17 — which edits go live at once, which re-enter review -->
         <div class="card" id="edit-split">
           <div class="card-hd"><h3>Editing a live listing</h3>
-            <span class="propchip">Proposed — gap #17 · ratify or amend</span>
+            <span class="builtchip">Ratified · built — identity-field re-review (A3)</span>
             <span class="dot ghost">⑰</span></div>
           <div class="card-pad">
             <div style="font-size:12.5px;color:var(--muted);line-height:1.65;margin-bottom:14px;">
@@ -1195,7 +1192,7 @@
             <div style="flex:1;min-width:240px;font-size:12.5px;color:var(--muted);line-height:1.6;">
               <b style="color:var(--ink)">Deleting a listing that has bookings.</b> The confirm dialog is not the
               whole answer — a listing with travelers on it should not be deletable at all.
-              <span class="propchip" style="margin-left:6px;">Proposed — gap #18 · ratify or amend</span>
+              <span class="builtchip" style="margin-left:6px;">Ratified · built — delete refusal + archive (ledger 2026-08-17-delete-archive)</span>
             </div>
             <button class="btn ghost sm" id="listing-delete">Delete this listing</button>
           </div>
@@ -1266,7 +1263,7 @@
     <div class="card" id="door-property">
       <div class="card-hd">
         <h3>New property</h3>
-        <span class="propchip">Proposed — gap #1 · ratify or amend</span>
+        <span class="builtchip">Ratified · built — S8 property builder (ledger 104)</span>
         <span class="stepseg" id="prop-step-seg" style="margin-left:auto;">
           <button data-ps="0" aria-pressed="true">1. The property</button>
           <button data-ps="1" aria-pressed="false">2. Rooms</button>
@@ -1291,7 +1288,7 @@
     <div class="card" id="door-bundle">
       <div class="card-hd">
         <h3>New bundle</h3>
-        <span class="propchip">Proposed — gap #9 · ratify or amend</span>
+        <span class="builtchip">Ratified · built — bundle rail (ledger 100)</span>
         <span class="hint" id="bundle-preview-note">Previewing the unlocked state</span>
       </div>
       <div class="card-pad" id="bundle-body"></div>
@@ -1350,7 +1347,7 @@
           for it.
         </p>
       </div>
-      <span class="propchip">Proposed — nav entry · ratify or amend</span>
+      <span class="builtchip">Ratified · built — S6 sidebar entry (ledger 98)</span>
     </div>
 
     <div class="card card-pad" id="dist-promote" style="border-color:var(--accent);margin-bottom:18px;display:none;">
@@ -1505,7 +1502,7 @@
 <aside class="drawer" id="photo-drawer" aria-hidden="true">
   <div class="dhd">
     <h3>Photos &amp; media</h3>
-    <span class="propchip">gap #16</span>
+    <span class="builtchip">gap #16 · built — cover-photo rail (ledger 2026-08-17-photos-rail)</span>
     <button class="xbtn" id="photo-close" aria-label="Close">×</button>
   </div>
   <div class="dbody">
@@ -1575,7 +1572,11 @@
       <div class="stop"><span class="pos">✓</span><span class="sname"><b>Archive it.</b> It leaves your Catalog and search immediately — nobody can book it again.</span></div>
       <div class="stop"><span class="pos">✓</span><span class="sname">The <b>2 upcoming bookings stand</b>, and you still owe those travelers the walk.</span></div>
       <div class="stop"><span class="pos">✓</span><span class="sname">Past bookings, reviews and payouts keep pointing at a listing that still exists.</span></div>
-      <div class="stop"><span class="pos">✓</span><span class="sname">Once the last booking is delivered, deleting it becomes possible.</span></div>
+      <div class="stop"><span class="pos">✓</span><span class="sname">Once the last booking is delivered, deleting it becomes possible.
+        <i style="color:var(--muted);">Ratified as built (decision-maker, Aug 17 2026 — ledger 2026-08-17-delete-archive):
+        deletion is enabled behind the booking guard; a delivered booking is transacted history and keeps blocking —
+        sold history is never deleted (the withdraw precedent the G5 line cites). This line holds only for bookings
+        that end cancelled-unpaid.</i></span></div>
     </div>
     <div class="mfoot">
       <button class="btn ghost" id="arch-cancel">Keep it live</button>
@@ -2256,7 +2257,7 @@
     return '' +
     '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">' +
       '<h5 class="grouplabel" style="margin:0;">Session details</h5>' +
-      '<span class="propchip">Proposed — gap #4 · ratify or amend</span></div>' +
+      '<span class="builtchip">Ratified · built — S9 session fields (ledger 105)</span></div>' +
 
     '<div class="note-quiet" style="margin-bottom:18px;">' +
       '<b style="color:var(--ink)">No location card, no transport question, no travel surcharge.</b> This method does not ' +
@@ -2323,7 +2324,7 @@
     return '' +
     '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">' +
       '<h5 class="grouplabel" style="margin:0;">Async delivery details</h5>' +
-      '<span class="propchip">Proposed — gap #3 · ratify or amend</span></div>' +
+      '<span class="builtchip">Ratified · built — S9 async fields (ledger 105)</span></div>' +
 
     '<div class="note-quiet" style="margin-bottom:18px;">' +
       'Voice notes and async messaging are the platform\'s <b style="color:var(--ink)">provider-declared async lane</b> ' +
@@ -3002,7 +3003,7 @@
           '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
           '<path d="M3 7.5L12 3l9 4.5-9 4.5z" stroke="#35605A" stroke-width="1.7" stroke-linejoin="round"/>' +
           '<path d="M3 12l9 4.5L21 12M3 16.5L12 21l9-4.5" stroke="#35605A" stroke-width="1.7" stroke-linejoin="round"/></svg>' +
-          '<h4>Bundle <span class="propchip">gap #9</span></h4>' +
+          '<h4>Bundle <span class="builtchip">gap #9 · built</span></h4>' +
           '<p>Two or more of your approved services sold together at one price.</p>' +
           '<span class="cta">Start a bundle →</span>' +
         '</button>';
@@ -3191,7 +3192,7 @@
     /* ── Where is it: the ONE sanctioned location write, reused ─────────────── */
     '<div class="divider" style="margin:22px 0 16px;"></div>' +
     '<h5 class="grouplabel">Where is it<span class="dot ghost dot-inline">⑳</span>' +
-      '<span class="propchip" style="margin-left:6px;">Proposed — gap #1 · ratify or amend</span></h5>' +
+      '<span class="builtchip" style="margin-left:6px;">Ratified · built — S8 privacy circle (ledger 104)</span></h5>' +
     '<div class="note-quiet" style="margin-bottom:14px;">' +
       'This is the <b style="color:var(--ink)">same confirm-gated pin</b> the create flow uses on its Logistics step — ' +
       'arm, click, confirm — mounted here rather than invented again. One sanctioned location write, reused: there is ' +
@@ -3226,7 +3227,7 @@
 
       '<div class="rail-card">' +
         '<div class="rail-hd"><b>What guests see before booking</b>' +
-          '<span class="propchip" style="margin-left:auto;">Proposed — gap #1 · ratify or amend</span></div>' +
+          '<span class="builtchip" style="margin-left:auto;">Ratified · built — S8 privacy circle (ledger 104)</span></div>' +
         '<div class="rail-bd">' +
           '<div class="privseg" id="prop-priv-seg" role="group" aria-label="Privacy states">' +
             '<button type="button" data-priv="before">Before booking</button>' +
@@ -3621,7 +3622,71 @@
     $('cat-list-mode').hidden = (mode === 'map');
     $('cat-map-mode').hidden = (mode !== 'map');
     $('cat-avail-mount').hidden = (mode === 'map');
-    if (mode === 'map') renderTravelMap();
+    // Manage ⇄ Preview governs the LIST layout only (ruling 74 C2) — map is neither, so the
+    // seg and both preview surfaces leave with the list and come back with it.
+    $('cat-view-seg').hidden = (mode === 'map');
+    if (mode === 'map') {
+      $('cat-preview-banner').hidden = true;
+      $('cat-preview-grid').hidden = true;
+      renderTravelMap();
+    } else {
+      catView(catViewMode);
+    }
+  }
+
+  /* ═════════════ Catalog · Manage ⇄ Preview as traveler (ruling 74 C2, built) ═════════════ */
+  var catViewMode = 'manage';
+  function catView(v){
+    catViewMode = v;
+    $('cat-view-seg').querySelectorAll('button').forEach(function(x){
+      x.setAttribute('aria-pressed', String(x.dataset.cview === v));
+    });
+    var preview = (v === 'preview');
+    $('cat-preview-banner').hidden = !preview;
+    $('cat-preview-grid').hidden = !preview;
+    $('cat-list-mode').hidden = preview;
+    if (preview) renderCatPreview();
+  }
+  $('cat-view-seg').querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ catView(b.dataset.cview); });
+  });
+
+  function renderCatPreview(){
+    var grid = $('cat-preview-grid');
+    if (grid.dataset.rendered) return;
+    grid.dataset.rendered = '1';
+    // The public predicate: live listings only — the same three the storefront shows.
+    LISTINGS.filter(function(l){ return l.s === 'live'; }).forEach(function(l){
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.style.cssText = 'overflow:hidden;display:flex;flex-direction:column;';
+      card.innerHTML =
+        '<div style="height:118px;background:#EDEBE3;border-bottom:1px solid var(--hair);display:flex;align-items:center;justify-content:center;position:relative;">' +
+          '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+            '<rect x="3" y="5" width="18" height="14" rx="2.5" stroke="#B8B6AC" stroke-width="1.6"/>' +
+            '<path d="M5 16l4.5-5 3.2 3.6L15.5 12 19 16" stroke="#B8B6AC" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+          '<span style="position:absolute;top:9px;left:9px;background:rgba(255,255,255,.94);border:1px solid var(--hair);border-radius:100px;padding:2px 9px;font-size:10.5px;color:var(--muted);">' +
+            (l.meth === 'pdf' ? 'Remote · PDF guide' : 'Approximate area · Kyoto') + '</span>' +
+        '</div>' +
+        '<div style="padding:13px 15px 15px;display:flex;flex-direction:column;gap:7px;flex:1;">' +
+          '<div style="font-size:14px;font-weight:600;line-height:1.35;">' + l.n + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);flex:1;">' + l.m + '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:4px;">' +
+            '<span style="font-size:16px;font-weight:650;">$' + l.price +
+              '<small style="font-size:11px;font-weight:500;color:var(--muted);"> ' + l.unit + '</small></span>' +
+            '<button class="btn accent sm">Book</button>' +
+          '</div>' +
+        '</div>';
+      grid.appendChild(card);
+    });
+    var note = document.createElement('div');
+    note.className = 'note-quiet';
+    note.style.cssText = 'grid-column:1/-1;';
+    note.innerHTML = 'Rendered with the <b style="color:var(--ink)">same visibility predicate as the public ' +
+      'storefront</b> (approved + active): the draft tea ceremony, the in-review planning call and the ' +
+      'unpublished room are simply absent — not greyed out. The Book buttons are the traveler’s, ' +
+      'shown as they would render; nothing here is a provider control.';
+    grid.appendChild(note);
   }
   $('cat-mode-seg').querySelectorAll('button').forEach(function(b){
     b.addEventListener('click', function(){
@@ -3862,7 +3927,7 @@
   function railScheduled(L){
     return '' +
     '<div class="card" style="margin-bottom:12px;">' +
-      '<div class="card-hd"><h3>Repeats weekly</h3><span class="propchip">gap #2</span></div>' +
+      '<div class="card-hd"><h3>Repeats weekly</h3><span class="builtchip">gap #2 · built — S7 (ledger 103)</span></div>' +
       '<div class="card-pad">' +
         '<div class="field"><label>On these days</label>' +
           '<div class="daychips" id="av-days">' +
@@ -3899,7 +3964,7 @@
   function railNightly(L){
     return '' +
     '<div class="card" style="margin-bottom:12px;">' +
-      '<div class="card-hd"><h3>Published date ranges</h3><span class="propchip">gap #1 · #2</span></div>' +
+      '<div class="card-hd"><h3>Published date ranges</h3><span class="builtchip">gap #1 · #2 · built — S7/S8, bookable via S11 (ledger 103/104/107)</span></div>' +
       '<div class="card-pad">' +
         '<div id="av-ranges">' +
           (L.ranges.length ? L.ranges.map(function(r, i){

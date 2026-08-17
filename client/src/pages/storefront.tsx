@@ -10,9 +10,9 @@
  * verification is genuinely approved (§13).
  */
 import { useQuery } from "@tanstack/react-query";
+import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useRoute, Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -243,7 +243,7 @@ export default function StorefrontPage() {
           Layout header (ruling 60 entry point (b)). */}
       <div className="border-b bg-card">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
-          <Link href="/" className="flex items-center no-underline" data-testid="link-storefront-logo">
+          <Link href="/" className="flex items-center" data-testid="link-storefront-logo">
             <TraveloureLogo />
           </Link>
           <LanguageMenu />

@@ -14,6 +14,7 @@
     "test:payout-parity": "tsx --test server/__tests__/payout-parity.db.test.ts",
     "test:payout-parity-route": "tsx --test server/__tests__/payout-parity-route.http.test.ts",
     "test:user-suspension": "tsx --test server/__tests__/user-suspension.db.test.ts",
+    "test:instagram-frame": "tsx --test server/routes/__tests__/instagram-frame-passthrough.http.test.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
