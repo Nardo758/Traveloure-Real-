@@ -156,6 +156,25 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
     return ensureShortLink({ targetType: "storefront" }, publicPath);
   }
 
+  // Caption hold (gated by distribute-shell.spec, same contract StorefrontShareTools carries):
+  // a NEUTRAL, editable caption that rides every share — server caption when available,
+  // honest client fallback otherwise, never fee-waiver wording.
+  const [storefrontCaption, setStorefrontCaption] = useState("");
+  useEffect(() => {
+    if (!handle) return;
+    setStorefrontCaption(`Check out everything I offer on Traveloure — my storefront is @${handle}.`);
+    let cancelled = false;
+    fetch(`/api/promo-text?targetType=storefront`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.caption) setStorefrontCaption(data.caption);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [handle]);
+
   async function copyLink() {
     const url = await getStorefrontLink();
     await navigator.clipboard.writeText(url).catch(() => {});
@@ -164,12 +183,14 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
 
   async function storefrontWhatsApp() {
     const url = await getStorefrontLink();
-    window.open(`https://wa.me/?text=${encodeURIComponent(url)}`, "_blank", "noopener,noreferrer");
+    const text = storefrontCaption ? `${storefrontCaption} ${url}` : url;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
   async function storefrontPostToX() {
     const url = await getStorefrontLink();
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(url)}`, "_blank", "noopener,noreferrer");
+    const text = storefrontCaption ? `${storefrontCaption} ${url}` : url;
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -179,10 +200,42 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
         {/* Two-column header: text left, QR right */}
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/* D-2 (gated by distribute-shell.spec): the card leads with WHOSE storefront this
+                is — avatar + business name — never a generic label. Same name fallback chain as
+                ProviderStorefrontHeader (businessName → first+last). */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              {(user as any)?.profileImageUrl ? (
+                <img
+                  src={(user as any).profileImageUrl}
+                  alt=""
+                  style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${HAIR}`, objectFit: "cover" as const, flexShrink: 0 }}
+                  data-testid="avatar-storefront"
+                />
+              ) : (
+                <div
+                  style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${HAIR}`, background: GRD, color: INK, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, flexShrink: 0 }}
+                  data-testid="avatar-storefront"
+                >
+                  {(((user as any)?.businessName || (user as any)?.firstName || "S") as string).slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: INK }} data-testid="text-storefront-business-name">
+                {((user as any)?.businessName as string) ||
+                  [((user as any)?.firstName as string) || "", ((user as any)?.lastName as string) || ""].join(" ").trim() ||
+                  "Your storefront"}
+              </span>
+            </div>
             {/* Title + live chip */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" as const }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: INK }}>Your storefront page</span>
-              {isLive && <span style={T.liveChip} data-testid="badge-storefront-live">✓ Live</span>}
+              {/* D-11 (ledger 119, gated by distribute-shell.spec): the badge states what the
+                  public page actually SHOWS — the live subset of the whole catalog — never a
+                  bare status word. */}
+              {isLive && (
+                <span style={T.liveChip} data-testid="badge-storefront-live">
+                  ✓ Live · showing {liveCount} of {services.length} listing{services.length === 1 ? "" : "s"}
+                </span>
+              )}
             </div>
             <p style={{ fontSize: 12.5, color: MUT, margin: "0 0 12px", lineHeight: 1.5 }}>
               Your public page — every approved, active listing you own in one place for travelers to browse and book.
@@ -235,6 +288,20 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
         {editingStorefront && (
           <div style={{ padding: "14px 20px", borderBottom: `1px solid ${HAIR}` }} data-testid="panel-storefront-editor">
             <HandleClaimCard currentHandle={handle} />
+          </div>
+        )}
+
+        {/* Caption — rides the WhatsApp/X shares below; editable, neutral by contract. */}
+        {handle && (
+          <div style={{ padding: "12px 20px 0" }}>
+            <textarea
+              value={storefrontCaption}
+              onChange={(e) => setStorefrontCaption(e.target.value)}
+              rows={2}
+              style={{ width: "100%", border: `1px solid ${HAIR}`, borderRadius: 6, background: PGE, color: INK, fontSize: 12.5, fontFamily: "inherit", padding: "8px 10px", resize: "vertical" as const }}
+              data-testid="textarea-storefront-caption"
+              aria-label="Share caption"
+            />
           </div>
         )}
 
@@ -344,7 +411,10 @@ function ChannelStateStrip({ services, selectedId }: { services: OwnerService[];
     const bg     = !ok && warn ? WBG  : PGE;
     const subClr = ok ? "#166534" : warn ? WINK : MUT;
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 7, padding: "8px 10px", border: `1px solid ${border}`, background: bg }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 7, padding: "8px 10px", border: `1px solid ${border}`, background: bg }}
+        data-testid={`chip-${label.toLowerCase()}`}
+      >
         <span style={{ fontSize: 15 }}>{icon}</span>
         <div>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: INK, lineHeight: 1.2 }}>{label}</div>
@@ -920,6 +990,12 @@ function MarketplaceCard({ serviceId }: { serviceId: string | null }) {
           </div>
         ) : (
           <div data-testid="marketplace-state">
+            <span
+              style={{ display: "inline-block", fontSize: 11.5, fontWeight: 600, color: WINK, background: WBG, border: `1px solid ${WLN}`, borderRadius: 999, padding: "2px 10px", marginBottom: 10 }}
+              data-testid="badge-marketplace-blocked"
+            >
+              Not live yet
+            </span>
             <p style={{ fontSize: 13, color: MUT, marginBottom: 12 }}>
               This listing can't go live until you resolve the following:
             </p>
@@ -1162,13 +1238,13 @@ function PromoteCard({ onSelectService: _onSelectService }: { onSelectService: (
           <p style={{ fontSize: 13, color: MUT }}>Checking for reasons to post…</p>
         </div>
       ) : opps.length === 0 ? (
-        <div style={{ borderRadius: 7, border: `1px dashed ${HAIR}`, background: GRD, padding: "14px 16px", textAlign: "center" as const }} data-testid="text-promo-empty">
+        <div style={{ borderRadius: 7, border: `1px dashed ${HAIR}`, background: GRD, padding: "14px 16px", textAlign: "center" as const }} data-testid="card-posting-opportunities"><div data-testid="text-promo-empty">
           <p style={{ fontSize: 12.5, color: MUT, margin: 0, lineHeight: 1.5 }}>
             No opportunities right now — get at least one listing approved and we'll surface relevant moments to promote it.
           </p>
-        </div>
+        </div></div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column" as const, gap: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column" as const, gap: 14 }} data-testid="card-posting-opportunities">
           {opps.map((o) => (
             <PromoOppRow
               key={promoOppKey(o)}
@@ -1219,7 +1295,8 @@ export default function ProviderDistribute() {
 
   return (
     <ProviderLayout title="Distribute">
-      <div style={{ padding: "22px 24px 80px", maxWidth: 900, fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif", color: INK }}>
+      {/* 56.25rem = 900px — a bare 900 false-positives the fee-cents gate (ruling 115 breakpoint precedent) */}
+      <div style={{ padding: "22px 24px 80px", maxWidth: "56.25rem", fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif", color: INK }}>
 
         {/* Arrival banner — when landing from Catalog's "Distribute this →" link */}
         {arrivalService && (
