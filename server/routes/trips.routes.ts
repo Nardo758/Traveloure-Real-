@@ -3223,7 +3223,14 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
-      await storage.deleteItineraryItem(itemId);
+      // R15 (ledger 2026-08-17-partner-demand-r15-transition-log): record WHO removed the item on
+      // the same-transaction `item_removed` diary row. The actor is derived from the trip
+      // authorization above (never req.body): an assigned expert acting on the plan ⇒ "expert",
+      // otherwise the owner/author ⇒ "traveler".
+      await storage.deleteItineraryItem(itemId, {
+        actorType: tripRole === "expert" ? "expert" : "traveler",
+        actorId: userId,
+      });
       res.json({ success: true });
     } catch (err) {
       console.error("[ItineraryItems] DELETE error:", err);

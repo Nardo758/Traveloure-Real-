@@ -4490,6 +4490,8 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const insertedItems: any[] = [];
       await db.transaction(async (tx) => {
+        // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE regeneration).
+        // A plan rebuild, not a removal: no `item_removed` signal (§13, R15).
         await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, resolvedTripId));
         for (const day of dailyItinerary) {
           const activities = Array.isArray(day?.activities) ? day.activities : [];
