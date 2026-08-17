@@ -153,6 +153,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
+import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
 import vacationRoutes from "./routes/vacation.routes";
 import offeringRequestRoutes from "./routes/offering-requests.routes";
@@ -1020,6 +1021,11 @@ export async function registerRoutes(
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
+
+  // Crawler surfaces (2026-08-17 SEO audit): /sitemap.xml + per-route canonical/title
+  // injection for the public marketing routes. Must register before the Vite catch-all
+  // for the same reason as storefrontRoutes above.
+  app.use(seoRoutes);
 
   // Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) — GET/PATCH
   // /api/me/traveler-profile, the `travelerProfile` namespace on the same users.preferences
@@ -6376,7 +6382,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           : null,
       });
 
-      const booking = await storage.createServiceBooking({
+      // createServiceBookingAtomic wraps the insert + bookings_count increment in a single
+      // DB transaction: either both commit (→ 201) or both roll back (→ 500, no phantom row).
+      // Previously the two operations were separate: if the counter update failed after the
+      // booking row was committed the handler returned 500, causing the user to retry and
+      // create a duplicate "phantom" booking.
+      const booking = await storage.createServiceBookingAtomic({
         ...input,
         travelerId: userId,
         providerId: service.userId,
@@ -6388,9 +6399,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             }
           : {}),
       });
-
-      // Increment service bookings count
-      await storage.incrementServiceBookings(service.id, totalAmount);
 
       res.status(201).json(booking);
     } catch (err) {
@@ -7152,50 +7160,49 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return acc;
       }, []).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
       
-      // Conversion funnel
-      const profileViews = Math.floor(totalBookings * 3.5); // Estimated
+      // Conversion funnel — only stages backed by a REAL count. Phase 1 (lane
+      // partner-demand-data) removed the two fabricated top-of-funnel stages that multiplied
+      // the booking count by invented ratios: no impressions or quotes are captured yet, so
+      // inventing them is dishonest (§13). The honest funnel is inquiries → booked → completed.
       const inquiriesStarted = totalBookings;
-      const quoteSent = Math.floor(totalBookings * 0.85);
       const bookingsMade = completedBookings.length + confirmedBookings.length;
-      
+
       const conversionFunnel = [
-        { stage: "Profile Views", count: profileViews, percent: 100 },
-        { stage: "Inquiries Started", count: inquiriesStarted, percent: profileViews > 0 ? (inquiriesStarted / profileViews) * 100 : 0 },
-        { stage: "Quote Sent", count: quoteSent, percent: inquiriesStarted > 0 ? (quoteSent / inquiriesStarted) * 100 : 0 },
-        { stage: "Booking Made", count: bookingsMade, percent: quoteSent > 0 ? (bookingsMade / quoteSent) * 100 : 0 },
+        { stage: "Inquiries", count: inquiriesStarted, percent: 100 },
+        { stage: "Booked", count: bookingsMade, percent: inquiriesStarted > 0 ? (bookingsMade / inquiriesStarted) * 100 : 0 },
         { stage: "Completed", count: completedBookings.length, percent: bookingsMade > 0 ? (completedBookings.length / bookingsMade) * 100 : 0 },
       ];
       
-      // Calculate benchmarks. D5 (UX audit Jul 29): a zero-data account (no bookings, no
-      // ratings) was falling through to "needs_improvement" / "good" — a judgment against
-      // an empty account, not a real comparison. "no_data" is a distinct, honest status
-      // the client renders as "No data yet" (§13 pattern — never a fabricated verdict).
+      // Benchmarks — Phase 1 / R4 (lane partner-demand-data). The fabricated comparison
+      // TARGETS (the hardcoded response-time, conversion-rate, rating and booking-value goals)
+      // and the verdicts they drove (excellent/good/needs_improvement) are removed: each was
+      // an invented constant, not a real pooled comparison. Real targets return ONLY via the
+      // §10 pooled category-aggregate
+      // with the 5-floor (FOLLOWUPS, not this lane). Each metric now shows its REAL value with
+      // no invented verdict; status is "no_data" only when there is genuinely no data — the
+      // client renders that as "No data yet" (D5/§13 pattern) and shows no badge otherwise.
+      // The hardcoded `responseTime` metric is deleted outright — nothing measures it yet.
       const benchmarks = {
-        responseTime: { value: "2 hrs", benchmark: "1 hr", status: "good" },
         conversionRate: {
           value: `${conversionRate.toFixed(0)}%`,
-          benchmark: "55%",
-          status: inquiryCount === 0 ? "no_data" : conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
+          status: inquiryCount === 0 ? "no_data" : "no_benchmark",
         },
         avgRating: {
           value: avgRating.toFixed(1),
-          benchmark: "4.5",
-          status: avgRating === 0 ? "no_data" : avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
+          status: avgRating === 0 ? "no_data" : "no_benchmark",
         },
         avgBookingValue: {
           value: `$${totalBookings > 0 ? (totalRevenue / totalBookings).toFixed(0) : 0}`,
-          benchmark: "$350",
-          status: totalBookings === 0 ? "no_data" : totalRevenue / totalBookings >= 350 ? "excellent" : "good"
-        }
+          status: totalBookings === 0 ? "no_data" : "no_benchmark",
+        },
       };
-      
-      // Client lifetime value
-      const clientLifetimeValue = {
-        average: totalBookings > 0 ? Math.round(totalRevenue / totalBookings * 1.8) : 0,
-        repeatRate: 35, // Estimated
-        avgBookingsPerClient: 1.8
-      };
-      
+
+      // Client lifetime value — DELETED (Phase 1). Every figure was fabricated: the ×1.8
+      // multiplier on average revenue, a hardcoded repeatRate of 35, and avgBookingsPerClient
+      // of 1.8. Nothing computes lifetime value yet, so the block returns no_data and its
+      // client card renders "No data yet" rather than an invented dollar figure (§13).
+      const clientLifetimeValue = { status: "no_data" as const };
+
       // Track which selected services have been created vs pending
       const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase());
       const serviceAlignment = selectedServicesAtSignup.map(serviceName => ({
@@ -7264,10 +7271,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             destLower.includes(keyword!) || cityLower.includes(keyword!) || countryLower.includes(keyword!)
           );
         });
-        // If no matches, show global trending as fallback
-        if (filteredTrending.length === 0) {
-          filteredTrending = allTrending.slice(0, 10);
-        }
+        // Phase 1: no global "show anything" fallback. An expert with no market match sees
+        // an honestly empty list, never another market's trending (§13).
       }
       
       // Filter cities to match expert's markets
@@ -7281,9 +7286,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             cityLower.includes(keyword!) || countryLower.includes(keyword!)
           );
         });
-        if (filteredCities.length === 0) {
-          filteredCities = allCities.slice(0, 5);
-        }
+        // Phase 1: no global-fallback (§13).
       }
       
       // Filter happening now to match expert's markets
@@ -7294,37 +7297,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const cityLower = (h.city || "").toLowerCase();
           return marketKeywords.some(keyword => cityLower.includes(keyword!));
         });
-        if (filteredHappeningNow.length === 0) {
-          filteredHappeningNow = allHappeningNow.slice(0, 5);
-        }
+        // Phase 1: no global-fallback (§13).
       }
       
-      // Generate seasonal demand based on expert's markets
-      const seasonalDemandByMarket: Record<string, any[]> = {
-        "japan": [{ season: "Cherry Blossom Season", location: "Japan", timing: "Mar-Apr", demandIncrease: 85, suggestedRateIncrease: 25, status: "upcoming", daysAway: 45 }],
-        "europe": [{ season: "Summer Peak", location: "Europe", timing: "Jun-Aug", demandIncrease: 120, suggestedRateIncrease: 35, status: "upcoming", daysAway: 120 }],
-        "usa": [{ season: "Fall Foliage", location: "New England", timing: "Sep-Oct", demandIncrease: 65, suggestedRateIncrease: 20, status: "future", daysAway: 200 }],
-        "caribbean": [{ season: "Winter Holidays", location: "Caribbean", timing: "Dec-Jan", demandIncrease: 95, suggestedRateIncrease: 30, status: "future", daysAway: 280 }],
-        "asia": [{ season: "Lunar New Year", location: "Asia", timing: "Jan-Feb", demandIncrease: 90, suggestedRateIncrease: 30, status: "upcoming", daysAway: 30 }],
-        "australia": [{ season: "Summer Season", location: "Australia", timing: "Dec-Feb", demandIncrease: 80, suggestedRateIncrease: 25, status: "upcoming", daysAway: 60 }],
-      };
-      
-      // Match seasonal demand to expert's markets
-      let seasonalDemand: any[] = [];
-      const allMarkets = [...expertDestinations, expertCity, expertCountry].filter(Boolean).map(s => s?.toLowerCase());
-      for (const market of allMarkets) {
-        for (const [key, demand] of Object.entries(seasonalDemandByMarket)) {
-          if (market?.includes(key) || key.includes(market || "")) {
-            seasonalDemand.push(...demand);
-          }
-        }
-      }
-      // Remove duplicates and provide fallback
-      seasonalDemand = Array.from(new Map(seasonalDemand.map(d => [d.season, d])).values());
-      if (seasonalDemand.length === 0) {
-        seasonalDemand = Object.values(seasonalDemandByMarket).flat().slice(0, 4);
-      }
-      
+      // Seasonal demand — DELETED (Phase 1 / lane partner-demand-data). The entire hardcoded
+      // per-region demand table (fixed demandIncrease / suggestedRateIncrease constants), its
+      // keyword-match loop, and its "show the first 4 regardless of market" fallback were
+      // fabricated: no seasonal demand is computed
+      // anywhere. Returned empty so the client renders an honest empty state (§13). Real
+      // seasonal signal, if built, comes from the demand rollup (Phase 3.6 / trend lane),
+      // never a literal table here.
+      const seasonalDemand: any[] = [];
+
       res.json({
         expertMarkets: {
           destinations: expertDestinations,

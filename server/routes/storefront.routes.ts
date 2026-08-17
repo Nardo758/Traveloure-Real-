@@ -806,19 +806,20 @@ router.get("/p/:handle", async (req, res, next) => {
     const description =
       data.earner.bio ??
       `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
+    const shareUrl = `https://traveloure.com/p/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
       data.readyMade[0]?.heroImageUrl ??
       data.templates[0]?.coverImage ??
       data.earner.profileImageUrl ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
       `<meta property="og:type" content="profile" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -844,7 +845,11 @@ router.get("/p/:handle", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
@@ -884,20 +889,21 @@ router.get("/services/:id", async (req, res, next) => {
     const description =
       service.description?.substring(0, 160) ??
       `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    const shareUrl = `https://traveloure.com/services/${service.id}`;
     // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
     const resolvedServiceImage = service.serviceImage?.startsWith("covers:")
       ? `${req.protocol}://${req.get("host")}/api/services/${service.id}/cover-image`
       : service.serviceImage;
     const ogImage =
       resolvedServiceImage ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
       `<meta property="og:type" content="website" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -923,7 +929,11 @@ router.get("/services/:id", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
@@ -975,16 +985,17 @@ router.get("/ready-made/:id", async (req, res, next) => {
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const shareUrl = `https://traveloure.com/ready-made/${listing.id}`;
     const ogImage =
       listing.heroImageUrl ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,
       `<meta name="description" content="${esc(description)}" />`,
       `<meta property="og:type" content="website" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
       `<meta property="og:url" content="${esc(shareUrl)}" />`,
       `<meta property="og:title" content="${esc(title)}" />`,
       `<meta property="og:description" content="${esc(description)}" />`,
@@ -1010,7 +1021,11 @@ router.get("/ready-made/:id", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this

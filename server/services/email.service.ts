@@ -160,7 +160,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   }
 }
 
-interface BookingConfirmationParams {
+export interface BookingConfirmationParams {
   toEmail: string;
   userName: string;
   bookingId: string;
@@ -169,16 +169,16 @@ interface BookingConfirmationParams {
   confirmationCode: string;
 }
 
-export async function sendBookingConfirmationEmail(params: BookingConfirmationParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log(
-      "[email] RESEND_API_KEY not set — skipping booking confirmation email for booking",
-      params.bookingId
-    );
-    return;
-  }
-
+/**
+ * Build the subject/html/text payload for a booking confirmation email without
+ * sending it. Exported so email-outbox.service.ts can enqueue the payload
+ * without a circular dependency back into this module.
+ */
+export function buildBookingConfirmationEmailPayload(params: BookingConfirmationParams): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const greeting = params.userName ? `Hi ${escHtml(params.userName)},` : "Hi,";
   const myBookingsUrl = `${getAppBaseUrl()}/my-bookings`;
   const dateLine = params.bookingDate
@@ -233,17 +233,50 @@ export async function sendBookingConfirmationEmail(params: BookingConfirmationPa
     `View your bookings: ${myBookingsUrl}`,
   ].filter(line => line !== "").join("\n");
 
-  await client.emails.send({
-    from: getFromAddress(),
-    to: params.toEmail,
+  return {
     subject: `Your booking is confirmed — ${stripCrLf(params.bookingTitle)}`,
-    text,
     html,
-  });
+    text,
+  };
+}
 
-  console.log(
-    `[email] Booking confirmation sent to ${params.toEmail} for booking ${params.bookingId} (code: ${params.confirmationCode})`
-  );
+/**
+ * @deprecated Callers should use enqueueBookingConfirmationEmail from
+ * email-outbox.service.ts so failed sends are retried automatically.
+ * This function is retained for backward compatibility and direct use in
+ * contexts where the outbox is not appropriate (e.g. tests).
+ */
+export async function sendBookingConfirmationEmail(params: BookingConfirmationParams): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log(
+      "[email] RESEND_API_KEY not set — skipping booking confirmation email for booking",
+      params.bookingId
+    );
+    return;
+  }
+
+  const { subject, html, text } = buildBookingConfirmationEmailPayload(params);
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject,
+      text,
+      html,
+    });
+    console.log(
+      `[email] Booking confirmation sent to ${params.toEmail} for booking ${params.bookingId} (code: ${params.confirmationCode})`
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[email] sendBookingConfirmationEmail threw:", {
+      to: params.toEmail,
+      bookingId: params.bookingId,
+      error: message,
+    });
+  }
 }
 
 interface BookingAlertParams {

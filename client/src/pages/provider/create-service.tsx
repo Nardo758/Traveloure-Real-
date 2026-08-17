@@ -1738,6 +1738,19 @@ export default function CreateServiceWizard() {
   const stepIndex = Math.max(0, Math.min(stepParam - 1, steps.length - 1));
   const totalSteps = steps.length;
 
+  // Guard: step > 1 without a draft ID is meaningless — redirect to Basics and explain why.
+  useEffect(() => {
+    if (stepParam > 1 && !serviceId) {
+      navigate("/provider/services/new?step=1", { replace: true });
+      toast({
+        title: "Start from the beginning",
+        description: "Steps 2 and beyond require a saved draft first. Complete Basics to get a draft ID.",
+      });
+    }
+  // Only run on mount or when the URL params change, not on every draft update.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepParam, serviceId]);
+
   function goTo(step: number, id?: string) {
     const newId = id ?? serviceId;
     navigate(`/provider/services/new?step=${step}${newId ? `&id=${newId}` : ""}`, { replace: false });

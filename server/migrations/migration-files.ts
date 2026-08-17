@@ -1194,4 +1194,8 @@ export const MIGRATION_FILES = [
   //   second Capacity column. Additive-nullable VARCHAR(16), no DB CHECK (migration-181/195/228
   //   posture); app-enforced shape; NULL = never answered, omitted on the traveler surface (§13).
   "239_provider_services_seating.sql",
+  // 240: email_outbox — durable store for transactional emails. Failed rows are retried by the
+  //   email-outbox scheduler with exponential backoff (max 5 attempts). Dead rows surfaced on
+  //   the admin dashboard. status: pending|sent|failed|dead. See email-outbox.service.ts.
+  "240_email_outbox.sql",
 ] as const;

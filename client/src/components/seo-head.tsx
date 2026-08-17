@@ -14,7 +14,7 @@ interface SEOHeadProps {
 
 const DEFAULT_TITLE = "Traveloure - Your AI-Powered Travel Planning Platform";
 const DEFAULT_DESCRIPTION = "Plan unforgettable experiences with Traveloure. From romantic getaways to corporate events, our AI-powered platform connects you with expert travel planners and service providers.";
-const DEFAULT_IMAGE = "/og-image.png";
+const DEFAULT_IMAGE = "/og-cover.png";
 const SITE_NAME = "Traveloure";
 const TWITTER_HANDLE = "@traveloure";
 
