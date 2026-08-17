@@ -61,6 +61,15 @@ VITE_TWELVEGO_AFFILIATE_ID = "13805109"
 ADMIN_ALLOWED_IPS = "127.0.0.1"
 PARTNERIZE_PUBLISHER_ID = "1101l337068"
 
+[userenv.development]
+VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt"
+# STRIPE_SECRET_KEY_TEST lives in Replit Secrets — never in git (a committed value
+# reached the PR-498 branch on Aug 17; rotate that key).
+RATE_LIMIT_LOOPBACK_SKIP = "1"
+
+[userenv.production]
+ENVIRONMENT = "PROD"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 30000
