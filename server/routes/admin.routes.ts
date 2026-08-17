@@ -80,6 +80,8 @@ import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dm
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
 import { messageReports, userBlocks } from "@shared/schema";
+import { emailOutbox } from "@shared/schema";
+import { drainOutbox } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -7948,6 +7950,114 @@ router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (
     res.json({ partner, message: "Partner rejected" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to reject partner", error: error.message });
+  }
+});
+
+// ─── Email Outbox admin view ──────────────────────────────────────────────────
+// Surface failed/dead outbox rows so admins can identify confirmation emails
+// that were never delivered and manually trigger retries when necessary.
+// All routes are gated by isAuthenticated (role=admin blanket guard at mount).
+
+/**
+ * GET /api/admin/email-outbox
+ * List outbox rows ordered newest-first. Query params:
+ *   status  — filter by status (pending|failed|dead|sent); omit for all
+ *   limit   — max rows (default 50, max 200)
+ *   offset  — pagination offset (default 0)
+ */
+router.get("/api/admin/email-outbox", isAuthenticated, async (req, res) => {
+  try {
+    const status = typeof req.query.status === "string" ? req.query.status : null;
+    const limit  = Math.min(parseInt(String(req.query.limit  ?? "50"),  10) || 50,  200);
+    const offset = Math.max(parseInt(String(req.query.offset ?? "0"),   10) || 0,   0);
+
+    const rows = await db.execute(sql`
+      SELECT id, email_type, to_email, subject, status,
+             attempt_count, max_attempts, last_error, resend_id,
+             retry_after, sent_at,
+             metadata, created_at, updated_at
+      FROM   email_outbox
+      WHERE  (${status}::text IS NULL OR status = ${status}::text)
+      ORDER  BY created_at DESC
+      LIMIT  ${limit}
+      OFFSET ${offset}
+    `);
+
+    const total = await db.execute(sql`
+      SELECT COUNT(*)::int AS n
+      FROM   email_outbox
+      WHERE  (${status}::text IS NULL OR status = ${status}::text)
+    `);
+
+    res.json({
+      rows:   rows.rows,
+      total:  (total.rows[0] as any)?.n ?? 0,
+      limit,
+      offset,
+    });
+  } catch (err: any) {
+    console.error("[admin/email-outbox] list error:", err);
+    res.status(500).json({ message: "Failed to fetch email outbox", error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/email-outbox/:id/retry
+ * Reset a single outbox row back to pending=0 attempts so the next drain
+ * picks it up, then immediately triggers a drain pass.
+ */
+router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id || isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+    const updated = await db.execute(sql`
+      UPDATE email_outbox
+      SET    status        = 'pending',
+             attempt_count = 0,
+             last_error    = NULL,
+             retry_after   = NULL,
+             updated_at    = NOW()
+      WHERE  id            = ${id}
+        AND  status       IN ('failed', 'dead')
+      RETURNING id, status, to_email, subject
+    `);
+
+    if (!updated.rows.length) {
+      return res.status(404).json({ message: "Row not found or not in a retryable status" });
+    }
+
+    // Fire the drain in the background — don't wait for delivery.
+    drainOutbox().catch(err =>
+      console.error("[admin/email-outbox/retry] drainOutbox error:", err)
+    );
+
+    res.json({ ok: true, row: updated.rows[0] });
+  } catch (err: any) {
+    console.error("[admin/email-outbox/retry] error:", err);
+    res.status(500).json({ message: "Failed to retry outbox row", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/email-outbox/summary
+ * Counts per status — useful for a dashboard badge or health check.
+ */
+router.get("/api/admin/email-outbox/summary", isAuthenticated, async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT status, COUNT(*)::int AS n
+      FROM   email_outbox
+      GROUP  BY status
+    `);
+    const summary: Record<string, number> = {};
+    for (const row of rows.rows as Array<{ status: string; n: number }>) {
+      summary[row.status] = row.n;
+    }
+    res.json(summary);
+  } catch (err: any) {
+    console.error("[admin/email-outbox/summary] error:", err);
+    res.status(500).json({ message: "Failed to fetch email outbox summary", error: err.message });
   }
 });
 
