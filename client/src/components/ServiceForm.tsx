@@ -3813,6 +3813,48 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           pin writer, L27-P3); the stops are the same owner-gated replace-list
           PUT /api/provider/services/:id/route-points (ruling 22a). What changed is WHERE the
           authoring lives — Catalog's map is a traveler preview from this lane on. ── */}
+      {/* ── Mock fidelity (Aug 17, Option-3 reconcile): the mock's Logistics step is MAP-FIRST —
+          "one card, one vocabulary", the map canvas as the centerpiece with the meeting pin,
+          layers and route stops on one rail. The build keeps its ratified content (the Meeting
+          Location form, and Bring/Access on THIS step per ledger 2026-08-16-bring-access, not
+          moved back to Scheduling), but leads with the framing notes + the map, so the
+          composition reads the way the mock draws it. ── */}
+      {onStep("logistics") && needsMeetingPoint && (
+        <div className="space-y-3" data-testid="logistics-framing">
+          <p className="text-sm text-muted-foreground rounded-md border border-dashed bg-muted/30 p-3 leading-relaxed">
+            <b className="text-foreground">One card, one vocabulary.</b> Everything spatial lives on
+            this one step — the meeting point, the map pin, your service area, pickup and drop-off,
+            and route stops. One canvas with one rail, not six questions spread across two screens.
+          </p>
+          <p className="text-xs text-muted-foreground rounded-md border border-dashed bg-amber-50/60 dark:bg-amber-900/10 p-3 leading-relaxed">
+            Map authoring is a creation job, not a catalog job — Catalog keeps a read-only traveler
+            preview. Nothing about the write rails changed: one confirm-gated pin, stops as an
+            ordered list.
+          </p>
+        </div>
+      )}
+
+      {/* MAP — moved above the Meeting Location form (mock's map-first composition). Same
+          component, same one confirm-gated pin writer (L27-P3/22b); only its position moved. */}
+      {onSection("map") && needsMeetingPoint && (
+        <ServiceMapAuthoring
+          serviceId={isEditMode ? (id ?? null) : null}
+          pin={formData.locationPoint}
+          pinLabel={formData.meetingPoint || formData.name || null}
+          radiusKm={formData.serviceRadius > 0 ? formData.serviceRadius : null}
+          surchargeZones={((surchargeTierState as any)?.surchargeTiers ?? []).map(
+            (t: { radiusKm: string; fee: string }) => ({ radiusKm: Number(t.radiusKm), fee: t.fee }),
+          )}
+          addressHint={formData.meetingPoint || ""}
+          savedStops={(existingService?.routePoints as any) ?? []}
+          onPinConfirm={(point) => {
+            setLocationPointTouched(true);
+            setOfficePinPrefilled(false);
+            set("locationPoint", point);
+          }}
+        />
+      )}
+
       {onSection("place") && needsMeetingPoint && (
         <Card>
           <CardHeader>
@@ -4020,28 +4062,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           editor needs a saved row to hang its replace-list PUT on, so in CREATE mode it says so
           and points at Save Draft — the same honest shape the protected deliverable upload uses,
           rather than inventing a row behind the provider's back. ── */}
-      {onSection("map") && needsMeetingPoint && (
-        <ServiceMapAuthoring
-          serviceId={isEditMode ? (id ?? null) : null}
-          pin={formData.locationPoint}
-          pinLabel={formData.meetingPoint || formData.name || null}
-          radiusKm={formData.serviceRadius > 0 ? formData.serviceRadius : null}
-          surchargeZones={((surchargeTierState as any)?.surchargeTiers ?? []).map(
-            (t: { radiusKm: string; fee: string }) => ({ radiusKm: Number(t.radiusKm), fee: t.fee }),
-          )}
-          addressHint={formData.meetingPoint || ""}
-          savedStops={(existingService?.routePoints as any) ?? []}
-          // D-11 (ledger 119): the canvas's ARMED pin mode proposes a candidate; its explicit
-          // confirm lands here — the SAME field the LocationPointPicker's confirm writes, saved
-          // by the same form save (extractServiceLocation stays the one pin writer, L27-P3/22b).
-          onPinConfirm={(point) => {
-            setLocationPointTouched(true);
-            setOfficePinPrefilled(false);
-            set("locationPoint", point);
-          }}
-        />
-      )}
-
       {/* ── "Getting there" — the transport / pickup / surcharge block (FP-2 merged the two
           transport questions into one; this lane moves the merged block onto the Logistics step
           where the rest of the spatial questions now live). Place-anchored only: there is
