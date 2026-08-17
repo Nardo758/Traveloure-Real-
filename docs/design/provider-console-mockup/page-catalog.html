@@ -679,12 +679,30 @@
           <button aria-pressed="false">In review</button>
           <button aria-pressed="false">Draft</button>
         </div>
-        <div class="seg" id="cat-mode-seg" style="margin-left:auto;">
+        <!-- Manage ⇄ Preview (ruling 74 C2, built): a SEPARATE axis from List|Map — it governs
+             the list layout only. Map is neither Manage nor Preview (it is already the traveler
+             preview), so this seg hides in map mode. -->
+        <div class="seg" id="cat-view-seg" style="margin-left:auto;">
+          <button data-cview="manage" aria-pressed="true">Manage</button>
+          <button data-cview="preview" aria-pressed="false">Preview as traveler</button>
+        </div>
+        <div class="seg" id="cat-mode-seg">
           <button data-mode="list" aria-pressed="true">List</button>
           <button data-mode="map" aria-pressed="false">Map</button>
         </div>
       </div>
     </div>
+
+    <!-- Preview-as-traveler (ruling 74 C2): the SAME public-visibility predicate the storefront
+         enforces — approved + active only. Paused, draft and in-review listings are simply
+         absent, exactly like the public page; nothing renders greyed-out "for context". -->
+    <div id="cat-preview-banner" hidden
+         style="background:var(--accent-soft);border:1px solid #CBDAD7;color:var(--accent);border-radius:6px;padding:11px 14px;font-size:12.5px;line-height:1.5;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span style="flex:1;min-width:240px;"><b>Preview — you're seeing your storefront as travelers do.</b>
+      Paused, draft and in-review listings are hidden here, exactly like your public page.</span>
+      <span class="builtchip">Ratified · built — Manage ⇄ Preview (ruling 74 C2)</span>
+    </div>
+    <div id="cat-preview-grid" class="doortiles" hidden style="margin-bottom:16px;"></div>
 
     <div class="card" id="cat-list-mode">
       <div id="listings"></div>
@@ -1588,9 +1606,10 @@
       <div class="stop"><span class="pos">✓</span><span class="sname">The <b>2 upcoming bookings stand</b>, and you still owe those travelers the walk.</span></div>
       <div class="stop"><span class="pos">✓</span><span class="sname">Past bookings, reviews and payouts keep pointing at a listing that still exists.</span></div>
       <div class="stop"><span class="pos">✓</span><span class="sname">Once the last booking is delivered, deleting it becomes possible.
-        <i style="color:var(--muted);">Amended as built (ledger 2026-08-17-delete-archive): a delivered booking is
-        transacted history and keeps blocking — sold history is never deleted (the withdraw precedent the G5 line
-        cites). This line holds only for bookings that end cancelled-unpaid.</i></span></div>
+        <i style="color:var(--muted);">Ratified as built (decision-maker, Aug 17 2026 — ledger 2026-08-17-delete-archive):
+        deletion is enabled behind the booking guard; a delivered booking is transacted history and keeps blocking —
+        sold history is never deleted (the withdraw precedent the G5 line cites). This line holds only for bookings
+        that end cancelled-unpaid.</i></span></div>
     </div>
     <div class="mfoot">
       <button class="btn ghost" id="arch-cancel">Keep it live</button>
@@ -3636,7 +3655,71 @@
     $('cat-list-mode').hidden = (mode === 'map');
     $('cat-map-mode').hidden = (mode !== 'map');
     $('cat-avail-mount').hidden = (mode === 'map');
-    if (mode === 'map') renderTravelMap();
+    // Manage ⇄ Preview governs the LIST layout only (ruling 74 C2) — map is neither, so the
+    // seg and both preview surfaces leave with the list and come back with it.
+    $('cat-view-seg').hidden = (mode === 'map');
+    if (mode === 'map') {
+      $('cat-preview-banner').hidden = true;
+      $('cat-preview-grid').hidden = true;
+      renderTravelMap();
+    } else {
+      catView(catViewMode);
+    }
+  }
+
+  /* ═════════════ Catalog · Manage ⇄ Preview as traveler (ruling 74 C2, built) ═════════════ */
+  var catViewMode = 'manage';
+  function catView(v){
+    catViewMode = v;
+    $('cat-view-seg').querySelectorAll('button').forEach(function(x){
+      x.setAttribute('aria-pressed', String(x.dataset.cview === v));
+    });
+    var preview = (v === 'preview');
+    $('cat-preview-banner').hidden = !preview;
+    $('cat-preview-grid').hidden = !preview;
+    $('cat-list-mode').hidden = preview;
+    if (preview) renderCatPreview();
+  }
+  $('cat-view-seg').querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ catView(b.dataset.cview); });
+  });
+
+  function renderCatPreview(){
+    var grid = $('cat-preview-grid');
+    if (grid.dataset.rendered) return;
+    grid.dataset.rendered = '1';
+    // The public predicate: live listings only — the same three the storefront shows.
+    LISTINGS.filter(function(l){ return l.s === 'live'; }).forEach(function(l){
+      var card = document.createElement('div');
+      card.className = 'card';
+      card.style.cssText = 'overflow:hidden;display:flex;flex-direction:column;';
+      card.innerHTML =
+        '<div style="height:118px;background:#EDEBE3;border-bottom:1px solid var(--hair);display:flex;align-items:center;justify-content:center;position:relative;">' +
+          '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+            '<rect x="3" y="5" width="18" height="14" rx="2.5" stroke="#B8B6AC" stroke-width="1.6"/>' +
+            '<path d="M5 16l4.5-5 3.2 3.6L15.5 12 19 16" stroke="#B8B6AC" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+          '<span style="position:absolute;top:9px;left:9px;background:rgba(255,255,255,.94);border:1px solid var(--hair);border-radius:100px;padding:2px 9px;font-size:10.5px;color:var(--muted);">' +
+            (l.meth === 'pdf' ? 'Remote · PDF guide' : 'Approximate area · Kyoto') + '</span>' +
+        '</div>' +
+        '<div style="padding:13px 15px 15px;display:flex;flex-direction:column;gap:7px;flex:1;">' +
+          '<div style="font-size:14px;font-weight:600;line-height:1.35;">' + l.n + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);flex:1;">' + l.m + '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:4px;">' +
+            '<span style="font-size:16px;font-weight:650;">$' + l.price +
+              '<small style="font-size:11px;font-weight:500;color:var(--muted);"> ' + l.unit + '</small></span>' +
+            '<button class="btn accent sm">Book</button>' +
+          '</div>' +
+        '</div>';
+      grid.appendChild(card);
+    });
+    var note = document.createElement('div');
+    note.className = 'note-quiet';
+    note.style.cssText = 'grid-column:1/-1;';
+    note.innerHTML = 'Rendered with the <b style="color:var(--ink)">same visibility predicate as the public ' +
+      'storefront</b> (approved + active): the draft tea ceremony, the in-review planning call and the ' +
+      'unpublished room are simply absent — not greyed out. The Book buttons are the traveler’s, ' +
+      'shown as they would render; nothing here is a provider control.';
+    grid.appendChild(note);
   }
   $('cat-mode-seg').querySelectorAll('button').forEach(function(b){
     b.addEventListener('click', function(){
