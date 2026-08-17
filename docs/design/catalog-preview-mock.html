@@ -1,0 +1,578 @@
+<title>Catalog Preview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --ink:#1A1A18; --mid:#7A7A72; --faint:#A8A8A0; --line:#E8E8E2;
+    --ground:#FAFAF8; --card:#FFFFFF; --brand:#E85D55; --brand-soft:#FDEFEE;
+    --ok:#2E7D5B; --ok-soft:#EAF4EF; --warn:#B45309; --warn-soft:#FCF3E7;
+    --shadow:0 1px 2px rgba(26,26,24,.05); --shadow-lg:0 6px 22px rgba(26,26,24,.10);
+    --map-a:#e9efe6; --map-b:#dfe7e3; --map-water:#cfe0e6; --map-road:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --ink:#F0EFEA; --mid:#9C9B92; --faint:#6E6D66; --line:#33332F;
+    --ground:#191917; --card:#211F1D; --brand:#F07068; --brand-soft:#3A2523;
+    --ok:#5CBF94; --ok-soft:#1F3229; --warn:#E0A050; --warn-soft:#362A18;
+    --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 8px 26px rgba(0,0,0,.5);
+    --map-a:#20241f; --map-b:#1c221f; --map-water:#1b2b31; --map-road:#3a3a34;
+  }}
+  :root[data-theme="dark"]{
+    --ink:#F0EFEA; --mid:#9C9B92; --faint:#6E6D66; --line:#33332F;
+    --ground:#191917; --card:#211F1D; --brand:#F07068; --brand-soft:#3A2523;
+    --ok:#5CBF94; --ok-soft:#1F3229; --warn:#E0A050; --warn-soft:#362A18;
+    --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 8px 26px rgba(0,0,0,.5);
+    --map-a:#20241f; --map-b:#1c221f; --map-water:#1b2b31; --map-road:#3a3a34;
+  }
+  *{ box-sizing:border-box; } html,body{ margin:0; }
+  body{ background:var(--ground); color:var(--ink); font-size:14px; line-height:1.5;
+    font-family:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  .num{ font-variant-numeric:tabular-nums; }
+  .wrap{ max-width:1120px; margin:0 auto; padding:28px 22px 52px; }
+  @media (prefers-reduced-motion:reduce){ *{ transition:none!important; } }
+
+  h1{ font-size:23px; font-weight:800; letter-spacing:-.02em; margin:0; }
+  .sub{ color:var(--mid); font-size:13.5px; margin:3px 0 0; max-width:66ch; }
+  .slabel{ font-size:10.5px; font-weight:700; letter-spacing:.08em; color:var(--faint); text-transform:uppercase; }
+
+  .head{ display:flex; align-items:center; gap:12px; margin:22px 0 4px; flex-wrap:wrap; }
+  .head .grow{ flex:1; }
+  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--card); box-shadow:var(--shadow); }
+  .seg button{ border:none; background:none; padding:7px 14px; font-size:12.5px; font-weight:600; color:var(--mid);
+    cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:6px; transition:background .15s,color .15s; }
+  .seg button svg{ width:14px;height:14px; }
+  .seg button.on{ background:var(--brand); color:#fff; }
+  .seg.mini button{ padding:6px 12px; font-size:12px; }
+  .addwrap{ display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  .btn{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--card);
+    border-radius:9px; padding:8px 14px; font-size:12.5px; font-weight:600; color:var(--ink); cursor:pointer; font-family:inherit; transition:border-color .15s,transform .1s; }
+  .btn:active{ transform:translateY(1px); }
+  .btn svg{ width:13px;height:13px; }
+  .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; box-shadow:var(--shadow); }
+  .btn.primary:hover{ filter:brightness(.97); }
+  .mini-cap{ font-size:11px; color:var(--faint); font-weight:500; }
+
+  .banner{ display:flex; align-items:center; gap:9px; border-radius:10px; padding:9px 13px; font-size:12.5px; font-weight:600;
+    margin:14px 0 18px; }
+  .banner svg{ width:15px;height:15px; flex:0 0 auto; }
+  .banner.preview{ background:var(--brand-soft); color:var(--brand); border:1px solid color-mix(in srgb,var(--brand) 22%, transparent); }
+  .banner.manage{ background:var(--ok-soft); color:var(--ok); border:1px solid color-mix(in srgb,var(--ok) 20%, transparent); }
+  .banner .reg{ font-weight:500; opacity:.85; }
+  .hide{ display:none!important; }
+
+  /* ── Storefront offering cards ── */
+  .store-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  @media (max-width:820px){ .store-grid{ grid-template-columns:1fr 1fr; } }
+  @media (max-width:540px){ .store-grid{ grid-template-columns:1fr; } }
+  .offer{ background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; transition:transform .16s, box-shadow .16s; }
+  .offer:hover{ transform:translateY(-3px); box-shadow:var(--shadow-lg); }
+  .offer .photo{ aspect-ratio:3/2; position:relative; display:grid; place-items:center; }
+  .offer .photo.one{ background:linear-gradient(140deg,#6d7f9c,#37445d); }
+  .offer .photo.two{ background:linear-gradient(140deg,#c99f6f,#6e4f34); }
+  .offer .photo.three{ background:linear-gradient(140deg,#8a9c6d,#43532f); }
+  .offer .photo .pin{ position:absolute; top:10px; left:10px; background:rgba(0,0,0,.44); color:#fff; font-size:10.5px;
+    font-weight:600; padding:4px 9px; border-radius:999px; display:flex; align-items:center; gap:4px; backdrop-filter:blur(3px); }
+  .offer .photo .pin svg{ width:10px;height:10px; }
+  .offer .photo .ribbon{ position:absolute; top:10px; right:10px; background:#fff; color:var(--brand); font-size:9.5px;
+    font-weight:800; letter-spacing:.05em; padding:3px 8px; border-radius:999px; text-transform:uppercase; box-shadow:var(--shadow); }
+  .offer .edit{ position:absolute; bottom:10px; right:10px; background:var(--card); border:1px solid var(--line); border-radius:8px;
+    padding:5px 10px; font-size:11px; font-weight:600; color:var(--mid); display:flex; align-items:center; gap:5px; box-shadow:var(--shadow);
+    opacity:0; transition:opacity .15s; }
+  .offer:hover .edit{ opacity:1; }
+  .offer .edit svg{ width:11px;height:11px; }
+  .offer .body{ padding:14px 15px 16px; display:flex; flex-direction:column; gap:9px; flex:1; }
+  .offer .cat{ font-size:10.5px; font-weight:700; letter-spacing:.05em; color:var(--brand); text-transform:uppercase; }
+  .offer h3{ font-size:15.5px; font-weight:700; margin:0; letter-spacing:-.01em; line-height:1.3; text-wrap:balance; }
+  .offer .desc{ font-size:12.5px; color:var(--mid); line-height:1.5; flex:1; }
+  .offer .rate{ display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--mid); }
+  .offer .rate svg{ width:13px;height:13px; color:#e0a92e; }
+  .offer .foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:4px; min-height:34px; }
+  .offer .price{ font-size:18px; font-weight:800; letter-spacing:-.01em; }
+  .offer .price small{ font-size:11px; font-weight:600; color:var(--mid); }
+  .offer .price.quote{ font-size:13.5px; font-weight:700; color:var(--mid); }
+  .offer .book{ background:var(--brand); color:#fff; border:none; border-radius:9px; padding:9px 17px; font-size:12.5px;
+    font-weight:700; cursor:pointer; font-family:inherit; }
+  .offer .book.req{ background:var(--card); color:var(--brand); border:1.5px solid var(--brand); }
+  .offer .book.hidden-cta{ display:none; }
+  .offer .price.hidden-price{ visibility:hidden; }
+
+  /* ── Manage cards ── */
+  .manage-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  @media (max-width:760px){ .manage-grid{ grid-template-columns:1fr; } }
+  .mcard{ background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+  .mcard .top{ display:flex; gap:13px; padding:14px; }
+  .mthumb{ width:74px; height:74px; border-radius:10px; flex:0 0 auto; }
+  .mthumb.one{ background:linear-gradient(140deg,#6d7f9c,#37445d); }
+  .mthumb.two{ background:linear-gradient(140deg,#c99f6f,#6e4f34); }
+  .mthumb.three{ background:linear-gradient(140deg,#8a9c6d,#43532f); }
+  .mcard .mmeta{ flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .mcard .mtitle{ display:flex; align-items:center; gap:8px; }
+  .mcard .mtitle b{ font-size:14px; font-weight:700; letter-spacing:-.01em; }
+  .mcard .mtitle .sw{ margin-left:auto; }
+  .toggle-sw{ width:34px; height:19px; border-radius:999px; position:relative; flex:0 0 auto; cursor:pointer; transition:background .15s; }
+  .toggle-sw.on{ background:var(--ok); } .toggle-sw.off{ background:var(--line); }
+  .toggle-sw i{ position:absolute; top:2px; width:15px; height:15px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .toggle-sw.on i{ left:17px; } .toggle-sw.off i{ left:2px; }
+  .chips{ display:flex; gap:5px; flex-wrap:wrap; }
+  .chip{ display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:2px 9px; font-size:10.5px; font-weight:600; }
+  .chip.ok{ background:var(--ok-soft); color:var(--ok); } .chip.brand{ background:var(--brand-soft); color:var(--brand); }
+  .chip.mut{ background:var(--ground); color:var(--mid); border:1px solid var(--line); }
+  .chip svg{ width:10px;height:10px; }
+  .mcard .health{ display:flex; align-items:center; gap:8px; font-size:11px; color:var(--mid); padding:0 14px 12px; }
+  .meter{ flex:1; height:5px; border-radius:3px; background:var(--line); overflow:hidden; max-width:160px; }
+  .meter i{ display:block; height:100%; background:var(--warn); }
+  .mcard .display-opts{ border-top:1px solid var(--line); padding:11px 14px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    background:color-mix(in srgb,var(--ground) 60%, var(--card)); }
+  .opt{ display:flex; align-items:center; gap:7px; font-size:11.5px; font-weight:600; color:var(--ink); cursor:pointer; }
+  .cbx{ width:16px; height:16px; border-radius:5px; border:1.5px solid var(--faint); display:grid; place-items:center; flex:0 0 auto; }
+  .cbx.on{ background:var(--brand); border-color:var(--brand); }
+  .cbx svg{ width:11px; height:11px; color:#fff; opacity:0; } .cbx.on svg{ opacity:1; }
+  .opt .cap{ font-size:9.5px; font-weight:700; letter-spacing:.06em; color:var(--faint); text-transform:uppercase; }
+  .bkmode{ display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+  .bkmode button{ border:none; background:var(--card); padding:4px 9px; font-size:10.5px; font-weight:600; color:var(--mid); cursor:pointer; font-family:inherit; }
+  .bkmode button.on{ background:var(--brand-soft); color:var(--brand); }
+  .mcard .acts{ display:flex; gap:7px; padding:0 14px 14px; }
+  .mcard .acts .b{ flex:1; text-align:center; border:1px solid var(--line); border-radius:8px; padding:7px; font-size:11.5px; font-weight:600; color:var(--mid); cursor:pointer; }
+  .mcard .acts .b:hover{ border-color:var(--faint); color:var(--ink); }
+
+  /* ── Map view ── */
+  .maplayout{ display:grid; grid-template-columns:1fr 300px; gap:16px; }
+  @media (max-width:820px){ .maplayout{ grid-template-columns:1fr; } }
+  .mapcanvas{ position:relative; height:460px; border-radius:16px; overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow);
+    background:
+      radial-gradient(circle at 72% 30%, var(--map-water) 0 60px, transparent 61px),
+      linear-gradient(115deg, var(--map-a), var(--map-b)); }
+  .mapcanvas .road{ position:absolute; background:var(--map-road); opacity:.9; }
+  .mapcanvas .r1{ left:0; right:0; top:44%; height:10px; transform:rotate(-4deg); }
+  .mapcanvas .r2{ top:0; bottom:0; left:38%; width:9px; transform:rotate(3deg); }
+  .mapcanvas .r3{ left:5%; right:30%; top:70%; height:7px; transform:rotate(2deg); }
+  .mapcanvas .water-label{ position:absolute; top:24%; right:16%; font-size:11px; color:var(--mid); font-style:italic; opacity:.7; }
+  .mpin{ position:absolute; transform:translate(-50%,-100%); display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+  .mpin .drop{ width:30px; height:30px; border-radius:50% 50% 50% 0; transform:rotate(-45deg); background:var(--brand);
+    border:2px solid #fff; box-shadow:0 3px 8px rgba(0,0,0,.28); display:grid; place-items:center; }
+  .mpin .drop b{ transform:rotate(45deg); color:#fff; font-size:11px; font-weight:800; }
+  .mpin .lbl{ margin-top:5px; background:var(--card); border:1px solid var(--line); border-radius:7px; padding:3px 8px;
+    font-size:10.5px; font-weight:700; white-space:nowrap; box-shadow:var(--shadow); }
+  .mpin .lbl small{ display:block; font-weight:600; color:var(--mid); font-size:9.5px; }
+  .mapcanvas .attr{ position:absolute; bottom:7px; right:9px; font-size:9.5px; color:var(--mid); opacity:.75; }
+  /* rich map features */
+  .mapsvg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .radius-ring{ position:absolute; transform:translate(-50%,-50%); border-radius:50%;
+    background:color-mix(in srgb,var(--brand) 12%, transparent); border:2px dashed color-mix(in srgb,var(--brand) 55%, transparent); }
+  .radius-lab{ position:absolute; transform:translate(-50%,-50%); font-size:10px; font-weight:700; color:var(--brand);
+    background:var(--card); border:1px solid var(--line); border-radius:6px; padding:2px 7px; white-space:nowrap; box-shadow:var(--shadow); }
+  .approx{ position:absolute; transform:translate(-50%,-50%); border-radius:50%;
+    background:color-mix(in srgb,var(--warn) 10%, transparent); border:2px dotted color-mix(in srgb,var(--warn) 50%, transparent); }
+  .marker{ position:absolute; transform:translate(-50%,-100%); display:flex; flex-direction:column; align-items:center; z-index:3; }
+  .marker .drop{ width:30px; height:30px; border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+    border:2px solid #fff; box-shadow:0 3px 8px rgba(0,0,0,.28); display:grid; place-items:center; }
+  .marker .drop.start{ background:var(--ok); } .marker .drop.stop{ background:var(--brand); }
+  .marker .drop.end{ background:#7c5aa8; }
+  .marker .drop b, .marker .drop svg{ transform:rotate(45deg); color:#fff; }
+  .marker .drop b{ font-size:12px; font-weight:800; } .marker .drop svg{ width:14px; height:14px; }
+  .marker .lbl{ margin-top:5px; background:var(--card); border:1px solid var(--line); border-radius:7px; padding:3px 8px;
+    font-size:10px; font-weight:700; white-space:nowrap; box-shadow:var(--shadow); }
+  .marker .lbl small{ display:block; font-weight:600; color:var(--mid); font-size:9px; }
+  .flag{ position:absolute; transform:translate(-50%,-100%); z-index:3; display:flex; flex-direction:column; align-items:center; }
+  .flag .ic{ width:26px; height:26px; border-radius:8px; background:var(--card); border:1.5px solid var(--line);
+    display:grid; place-items:center; box-shadow:var(--shadow); color:var(--mid); }
+  .flag .ic svg{ width:14px; height:14px; } .flag .ic.pick{ color:#2c7fb8; } .flag .ic.drop{ color:#b8562c; } .flag .ic.transit{ color:#5a7c3a; }
+  .flag .t{ margin-top:3px; font-size:9px; font-weight:700; color:var(--mid); background:var(--card); border-radius:5px; padding:1px 5px; box-shadow:var(--shadow); }
+  .hood{ position:absolute; font-size:12px; font-weight:700; color:var(--mid); opacity:.55; letter-spacing:.02em; z-index:1; }
+  .maplegend{ position:absolute; left:10px; bottom:10px; background:color-mix(in srgb,var(--card) 92%, transparent);
+    border:1px solid var(--line); border-radius:10px; padding:9px 11px; box-shadow:var(--shadow); backdrop-filter:blur(4px); z-index:4; max-width:230px; }
+  .maplegend .lt{ font-size:9.5px; font-weight:800; letter-spacing:.07em; color:var(--faint); text-transform:uppercase; margin-bottom:6px; }
+  .maplegend .li{ display:flex; align-items:center; gap:7px; font-size:10.5px; color:var(--ink); margin:3px 0; }
+  .maplegend .sw{ width:14px; height:14px; border-radius:4px; flex:0 0 auto; display:grid; place-items:center; }
+  .maplegend .sw.start{ background:var(--ok); } .maplegend .sw.stop{ background:var(--brand); }
+  .maplegend .sw.ring{ background:color-mix(in srgb,var(--brand) 14%, transparent); border:1.5px dashed color-mix(in srgb,var(--brand) 55%, transparent); }
+  .maplegend .sw.route{ background:none; } .maplegend .sw.route:before{ content:""; width:14px; height:0; border-top:2px dashed var(--brand); }
+  /* mode switch above map */
+  .maptools{ display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .maptools .lab{ font-size:12px; color:var(--mid); font-weight:600; }
+  .toolchip{ border:1px solid var(--line); background:var(--card); border-radius:8px; padding:5px 11px; font-size:11.5px;
+    font-weight:600; color:var(--mid); cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:5px; }
+  .toolchip svg{ width:12px; height:12px; } .toolchip.on{ background:var(--brand-soft); color:var(--brand); border-color:color-mix(in srgb,var(--brand) 30%, transparent); }
+  .toolchip.biz.on{ background:var(--ok-soft); color:var(--ok); border-color:color-mix(in srgb,var(--ok) 30%, transparent); }
+  .tsep{ font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); padding-left:4px; }
+  .tsep.biz{ color:var(--ok); }
+  /* business map layers */
+  .surcharge-ring{ position:absolute; transform:translate(-50%,-50%); border-radius:50%;
+    border:2px dashed color-mix(in srgb,var(--warn) 50%, transparent); background:color-mix(in srgb,var(--warn) 5%, transparent); }
+  .surcharge-lab{ position:absolute; transform:translate(-50%,-50%); font-size:9.5px; font-weight:700; color:var(--warn);
+    background:var(--card); border:1px solid var(--line); border-radius:6px; padding:2px 7px; white-space:nowrap; box-shadow:var(--shadow); }
+  .demand-blob{ position:absolute; transform:translate(-50%,-50%); border-radius:50%; z-index:0;
+    background:radial-gradient(circle, color-mix(in srgb,var(--ok) 42%, transparent) 0%, transparent 70%); }
+  .gap-badge{ position:absolute; transform:translate(-50%,-50%); z-index:4; background:var(--ok); color:#fff;
+    border:2px solid #fff; border-radius:10px; padding:5px 9px; font-size:10px; font-weight:700; white-space:nowrap;
+    box-shadow:0 3px 9px rgba(0,0,0,.28); display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .gap-badge svg{ width:12px; height:12px; }
+  .gap-badge small{ font-weight:600; opacity:.9; }
+  .maprail{ display:flex; flex-direction:column; gap:10px; }
+  .maprail .rnote{ font-size:11.5px; color:var(--mid); display:flex; align-items:center; gap:6px; }
+  .maprail .rnote b{ color:var(--ink); }
+  .rcard{ border:1px solid var(--line); border-radius:11px; background:var(--card); box-shadow:var(--shadow); padding:11px 12px;
+    display:flex; gap:10px; align-items:center; }
+  .rcard .rt{ width:8px; height:8px; border-radius:50%; background:var(--brand); flex:0 0 auto; }
+  .rcard .rm{ flex:1; min-width:0; } .rcard .rm b{ font-size:12.5px; font-weight:700; display:block; }
+  .rcard .rm span{ font-size:11px; color:var(--mid); }
+  .rcard .rp{ font-size:13px; font-weight:800; }
+  .unpinned{ border:1px dashed color-mix(in srgb,var(--warn) 40%, var(--line)); border-radius:11px; background:var(--warn-soft);
+    padding:11px 12px; }
+  .unpinned .ut{ font-size:12px; font-weight:700; color:var(--warn); display:flex; align-items:center; gap:6px; }
+  .unpinned .ub{ font-size:11.5px; color:color-mix(in srgb,var(--warn) 75%, var(--ink)); margin-top:3px; }
+  .unpinned .addpin{ margin-top:8px; background:var(--warn); color:#fff; border:none; border-radius:7px; padding:6px 11px;
+    font-size:11px; font-weight:700; cursor:pointer; font-family:inherit; }
+
+  /* promote */
+  .promote{ margin-top:20px; border:1px solid var(--line); border-radius:14px; background:var(--card); box-shadow:var(--shadow); overflow:hidden; }
+  .promo-head{ display:flex; align-items:center; gap:10px; padding:13px 15px; border-bottom:1px solid var(--line); }
+  .promo-head .ph-l{ display:flex; align-items:center; gap:8px; flex:1; }
+  .promo-head svg{ width:15px; height:15px; color:var(--brand); }
+  .promo-head b{ font-size:14px; font-weight:700; }
+  .pcount{ font-size:11px; font-weight:700; color:var(--brand); background:var(--brand-soft); border-radius:999px; padding:2px 9px; }
+  .promo-body{ display:flex; flex-direction:column; }
+  .promo-item{ display:flex; align-items:center; gap:11px; padding:12px 15px; border-bottom:1px solid var(--line); }
+  .pdot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; } .pdot.ok{ background:var(--ok); } .pdot.brand{ background:var(--brand); }
+  .promo-item .pm{ flex:1; min-width:0; } .promo-item .pm b{ font-size:12.5px; font-weight:600; display:block; }
+  .promo-item .pm span{ font-size:11.5px; color:var(--mid); }
+  .pgo{ background:none; border:none; font-family:inherit; font-size:12px; font-weight:700; color:var(--brand); cursor:pointer; white-space:nowrap; }
+  .promo-foot{ padding:10px 15px; font-size:11px; color:var(--mid); background:color-mix(in srgb,var(--ground) 60%, var(--card)); }
+  .promo-foot b{ color:var(--ink); }
+
+  /* recommendation */
+  .rec{ margin-top:32px; border:1px dashed var(--line); border-radius:12px; padding:16px 18px;
+    background:color-mix(in srgb,var(--ok-soft) 45%, var(--card)); }
+  .rec h2{ font-size:12.5px; font-weight:800; margin:0 0 9px; display:flex; align-items:center; gap:7px; }
+  .rec h2 svg{ width:14px;height:14px;color:var(--ok); }
+  .rec ul{ margin:0; padding-left:16px; display:flex; flex-direction:column; gap:7px; }
+  .rec li{ font-size:12.5px; line-height:1.5; } .rec li b{ color:var(--ink); }
+  .q{ color:var(--brand); font-weight:700; }
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>Catalog</h1>
+    <p class="sub">Your services — manage them, flip to Preview to see them as a traveler does, or open the Map to place and check your pins. Never leave the page.</p>
+  </div>
+
+  <div class="head">
+    <div class="seg" id="viewSeg">
+      <button data-view="manage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Manage</button>
+      <button data-view="preview" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>Preview as traveler</button>
+    </div>
+    <div class="seg mini" id="layoutSeg">
+      <button data-layout="list" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>List</button>
+      <button data-layout="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/></svg>Map</button>
+    </div>
+    <div class="grow"></div>
+    <div class="addwrap">
+      <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Add New Service</button>
+      <span class="mini-cap">Opens Workstation — one door for service, bundle or property</span>
+    </div>
+  </div>
+
+  <div class="banner preview" id="bannerPreview">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+    You’re seeing your storefront as travelers do. <span class="reg">Paused &amp; unapproved listings are hidden here, exactly like your public page.</span>
+  </div>
+  <div class="banner manage hide" id="bannerManage">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M3 20l4-1L20 6l-3-3L4 16z"/></svg>
+    Manage mode — your controls. <span class="reg">Toggle status, edit, and set what each card shows to travelers below.</span>
+  </div>
+
+  <!-- ══ LIST · PREVIEW ══ -->
+  <div id="previewGrid" class="store-grid">
+    <div class="offer">
+      <div class="photo one"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>Approximate area</div><div class="ribbon">Featured</div><div class="edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m14 6 4 4M3 21l4-1L20 7l-3-3L4 17z"/></svg>Edit</div></div>
+      <div class="body">
+        <span class="cat">Language &amp; Translation</span>
+        <h3>Business Meeting Interpretation (Full Day)</h3>
+        <p class="desc">Full-day (8 hours) business meeting interpretation, English⇄Japanese, by a JAIS-certified interpreter…</p>
+        <div class="rate"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 6 6 .9-4.5 4.3 1 6.3L12 17l-5.5 2.5 1-6.3L3 8.9 9 8z"/></svg>New · JAIS-certified</div>
+        <div class="foot"><div class="price num" data-price>$680<small>/day</small></div><button class="book" data-cta>Book</button></div>
+      </div>
+    </div>
+
+    <div class="offer">
+      <div class="photo two"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>Kyoto</div><div class="edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m14 6 4 4M3 21l4-1L20 7l-3-3L4 17z"/></svg>Edit</div></div>
+      <div class="body">
+        <span class="cat">Language &amp; Translation</span>
+        <h3>Conference &amp; Event Interpretation</h3>
+        <p class="desc">Simultaneous interpretation for conferences, launches, and AGMs. Includes two interpreters (relay)…</p>
+        <div class="rate"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 6 6 .9-4.5 4.3 1 6.3L12 17l-5.5 2.5 1-6.3L3 8.9 9 8z"/></svg>Enterprise</div>
+        <div class="foot"><div class="price quote" data-price>From $2,400<small>/day</small></div><button class="book req" data-cta>Request to book</button></div>
+      </div>
+    </div>
+
+    <div class="offer">
+      <div class="photo three"><div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16v4H4zM4 12h10v8H4zM17 12h3v8h-3z"/></svg>Remote · PDF</div><div class="edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m14 6 4 4M3 21l4-1L20 7l-3-3L4 17z"/></svg>Edit</div></div>
+      <div class="body">
+        <span class="cat">Language &amp; Translation</span>
+        <h3>Business Document Translation</h3>
+        <p class="desc">Certified translation of contracts, MOUs, technical manuals, and financial reports…</p>
+        <div class="rate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 12h16M4 19h10"/></svg>Delivered as PDF</div>
+        <div class="foot"><div class="price num" data-price>$0.08<small>/word</small></div><button class="book" data-cta>Book</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ LIST · MANAGE ══ -->
+  <div id="manageGrid" class="manage-grid hide">
+    <div class="mcard">
+      <div class="top">
+        <div class="mthumb one"></div>
+        <div class="mmeta">
+          <div class="mtitle"><b>Business Meeting Interpretation</b><span class="sw"><span class="toggle-sw on"><i></i></span></span></div>
+          <div class="chips"><span class="chip ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg>Approved</span><span class="chip ok">Active</span><span class="chip brand">Featured</span></div>
+          <div class="num" style="font-size:12.5px;font-weight:700">$680<span style="color:var(--mid);font-weight:600">/day</span></div>
+        </div>
+      </div>
+      <div class="health"><span>Health 4/4</span><span class="meter"><i style="width:100%;background:var(--ok)"></i></span><span style="color:var(--ok)">Ready</span></div>
+      <div class="display-opts" data-target="0">
+        <span class="opt cap">Card shows</span>
+        <span class="opt js-price"><span class="cbx on"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m5 12 5 5L20 7" stroke="#fff" stroke-width="3" fill="none"/></svg></span>Price</span>
+        <span class="opt"><span class="cap">Booking</span><span class="bkmode js-bk"><button data-m="book" class="on">Instant</button><button data-m="req">Request</button><button data-m="none">Hidden</button></span></span>
+      </div>
+      <div class="acts"><span class="b">Edit</span><span class="b">Duplicate</span><span class="b">Share</span></div>
+    </div>
+
+    <div class="mcard">
+      <div class="top">
+        <div class="mthumb two"></div>
+        <div class="mmeta">
+          <div class="mtitle"><b>Conference &amp; Event Interpretation</b><span class="sw"><span class="toggle-sw on"><i></i></span></span></div>
+          <div class="chips"><span class="chip ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg>Approved</span><span class="chip ok">Active</span></div>
+          <div class="num" style="font-size:12.5px;font-weight:700">From $2,400<span style="color:var(--mid);font-weight:600">/day</span></div>
+        </div>
+      </div>
+      <div class="health"><span>Health 4/6</span><span class="meter"><i style="width:66%"></i></span><span style="color:var(--warn)">no exact pin · no availability</span></div>
+      <div class="display-opts" data-target="1">
+        <span class="opt cap">Card shows</span>
+        <span class="opt js-price"><span class="cbx on"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7" stroke="#fff" stroke-width="3" fill="none"/></svg></span>Price</span>
+        <span class="opt"><span class="cap">Booking</span><span class="bkmode js-bk"><button data-m="book">Instant</button><button data-m="req" class="on">Request</button><button data-m="none">Hidden</button></span></span>
+      </div>
+      <div class="acts"><span class="b">Edit</span><span class="b">Duplicate</span><span class="b">Share</span></div>
+    </div>
+
+    <div class="mcard">
+      <div class="top">
+        <div class="mthumb three"></div>
+        <div class="mmeta">
+          <div class="mtitle"><b>Business Document Translation</b><span class="sw"><span class="toggle-sw off"><i></i></span></span></div>
+          <div class="chips"><span class="chip ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg>Approved</span><span class="chip mut">Paused</span></div>
+          <div class="num" style="font-size:12.5px;font-weight:700">$0.08<span style="color:var(--mid);font-weight:600">/word</span></div>
+        </div>
+      </div>
+      <div class="health"><span>Health 4/4</span><span class="meter"><i style="width:100%;background:var(--ok)"></i></span><span style="color:var(--mid)">Paused — hidden from travelers</span></div>
+      <div class="display-opts" data-target="2">
+        <span class="opt cap">Card shows</span>
+        <span class="opt js-price"><span class="cbx on"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7" stroke="#fff" stroke-width="3" fill="none"/></svg></span>Price</span>
+        <span class="opt"><span class="cap">Booking</span><span class="bkmode js-bk"><button data-m="book" class="on">Instant</button><button data-m="req">Request</button><button data-m="none">Hidden</button></span></span>
+      </div>
+      <div class="acts"><span class="b">Edit</span><span class="b">Duplicate</span><span class="b">Share</span></div>
+    </div>
+  </div>
+
+  <!-- ══ PROMOTE (List view) — now a deep-link INTO Distribute, not a second surface ══ -->
+  <div id="promote" class="promote">
+    <div class="promo-head">
+      <div class="ph-l"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v3l14 5V6L3 11zM17 9a3 3 0 0 1 0 6"/></svg><b>Promote</b><span class="pcount">2 opportunities</span></div>
+      <button class="btn primary" style="padding:7px 13px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Open Distribute</button>
+    </div>
+    <div class="promo-body">
+      <div class="promo-item"><span class="pdot ok"></span><div class="pm"><b>A slot opened Fri on Business Meeting Interpretation</b><span>A Story post now tends to fill same-week gaps.</span></div><button class="pgo">Share →</button></div>
+      <div class="promo-item"><span class="pdot brand"></span><div class="pm"><b>Conference &amp; Event Interpretation has no tracked link yet</b><span>Get your direct link so bookings are attributed to you.</span></div><button class="pgo">Get link →</button></div>
+    </div>
+    <div class="promo-foot">Timely nudges live here on the listing; the channels, share kit, and link stats all live in <b>Distribute</b> — one hub, no duplication.</div>
+  </div>
+
+  <!-- ══ MAP ══ -->
+  <div id="mapView" class="hide">
+    <div class="maptools">
+      <span class="lab">Mapping “Business Meeting Interpretation (Full Day)” —</span>
+      <span class="tsep">Traveler</span>
+      <span class="toolchip on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>Start pin</span>
+      <span class="toolchip on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M4 12h16M4 17h7"/><circle cx="19" cy="8" r="2"/></svg>Route stops</span>
+      <span class="toolchip on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Coverage radius</span>
+      <span class="toolchip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14M6 17V9l2-4h8l2 4v8"/><circle cx="8" cy="17" r="1.5"/><circle cx="16" cy="17" r="1.5"/></svg>Pick-up / drop-off</span>
+      <span class="tsep biz">Business</span>
+      <span class="toolchip biz on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5c0-1 1-1.7 2.5-1.7s2.5.7 2.5 1.7-1 1.5-2.5 1.7-2.5.8-2.5 1.8 1 1.5 2.5 1.5 2.5-.6 2.5-1.5"/></svg>Surcharge zone</span>
+      <span class="toolchip biz on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>Demand &amp; gaps</span>
+    </div>
+    <div class="maplayout">
+      <div class="mapcanvas">
+        <div class="road r1"></div><div class="road r2"></div><div class="road r3"></div>
+        <span class="water-label">Kamo River</span>
+        <span class="hood" style="left:58%; top:24%">Gion</span>
+        <span class="hood" style="left:14%; top:66%">Shimogyō</span>
+
+        <!-- BUSINESS: demand heat where requests cluster (real data only) -->
+        <div class="demand-blob" style="left:82%; top:22%; width:200px; height:200px"></div>
+        <div class="demand-blob" style="left:36%; top:52%; width:150px; height:150px"></div>
+
+        <!-- BUSINESS: travel-surcharge zone (outer) + coverage radius (inner) -->
+        <div class="surcharge-ring" style="left:30%; top:60%; width:360px; height:360px"></div>
+        <div class="surcharge-lab" style="left:30%; top:23.5%">+ travel fee beyond 5 km</div>
+        <div class="radius-ring" style="left:30%; top:60%; width:230px; height:230px"></div>
+        <div class="radius-lab" style="left:30%; top:39%">Covers ~5 km · base rate</div>
+
+        <!-- BUSINESS: coverage-gap alert in an uncovered high-demand area -->
+        <div class="gap-badge" style="left:84%; top:20%"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 2v6M12 22a8 8 0 0 0 0-16"/><path d="m8 12 4 4 8-8"/></svg>18 requests · Arashiyama <small>— extend?</small></div>
+
+        <!-- route sequence connectors (dashed = ORDER, not driving directions) -->
+        <svg class="mapsvg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polyline points="30,60 55,42 72,58" fill="none" stroke="var(--brand)" stroke-width="2"
+            stroke-dasharray="4 3" vector-effect="non-scaling-stroke" opacity="0.85"/>
+        </svg>
+
+        <!-- pick-up + drop-off + transit -->
+        <div class="flag" style="left:19%; top:76%"><div class="ic pick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14M6 17V9l2-4h8l2 4v8"/><circle cx="8" cy="17" r="1.5"/><circle cx="16" cy="17" r="1.5"/></svg></div><span class="t">Pick-up</span></div>
+        <div class="flag" style="left:80%; top:44%"><div class="ic drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V5l9 3-9 3M5 21h4"/></svg></div><span class="t">Drop-off</span></div>
+        <div class="flag" style="left:44%; top:70%"><div class="ic transit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="12" rx="2"/><path d="M6 10h12M9 20l1.5-4M15 20l-1.5-4"/></svg></div><span class="t">Kyoto Stn</span></div>
+
+        <!-- route markers -->
+        <div class="marker" style="left:30%; top:60%"><div class="drop start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 21V5l9 3-9 3"/></svg></div><div class="lbl">Start · Kyoto Station<small>Meet 08:30 · exact pin</small></div></div>
+        <div class="marker" style="left:55%; top:42%"><div class="drop stop"><b>2</b></div><div class="lbl">Client office · Gion<small>~4 hrs</small></div></div>
+        <div class="marker" style="left:72%; top:58%"><div class="drop end"><b>3</b></div><div class="lbl">Second venue<small>~2 hrs</small></div></div>
+
+        <!-- legend -->
+        <div class="maplegend">
+          <div class="lt">Traveler layers</div>
+          <div class="li"><span class="sw start"></span>Start / meeting pin</div>
+          <div class="li"><span class="sw stop"></span>Numbered route stops (in order)</div>
+          <div class="li"><span class="sw route"></span>Dashed line = sequence, not driving route</div>
+          <div class="li"><span class="sw ring"></span>Coverage radius (how far you travel)</div>
+          <div class="lt" style="margin-top:8px;color:var(--ok)">Business layers</div>
+          <div class="li"><span class="sw" style="border:1.5px dashed color-mix(in srgb,var(--warn) 55%,transparent)"></span>Travel-surcharge zone</div>
+          <div class="li"><span class="sw" style="background:radial-gradient(circle,color-mix(in srgb,var(--ok) 50%,transparent),transparent)"></span>Demand heat &amp; coverage gaps</div>
+        </div>
+        <span class="attr">© OpenStreetMap contributors</span>
+      </div>
+
+      <div class="maprail">
+        <div class="rnote"><b>2 of 3</b> services located · 1 needs a pin</div>
+        <div class="rcard"><span class="rt"></span><div class="rm"><b>Business Meeting Interpretation</b><span>Route · 3 stops · covers ~5 km</span></div><div class="rp num">$680</div></div>
+        <div class="rcard"><span class="rt" style="background:var(--warn)"></span><div class="rm"><b>Conference &amp; Event Interpretation</b><span>Approximate area only — no exact pin</span></div><div class="rp num">$2.4k</div></div>
+        <div class="unpinned">
+          <div class="ut"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Business Document Translation — no pin</div>
+          <div class="ub">Remote / PDF service. Honestly left off the map, never dropped on the city centre (§13). Pin it only if it has a real location.</div>
+          <button class="addpin">Place a pin</button>
+        </div>
+        <div style="font-size:11px;color:var(--faint);line-height:1.5;padding:2px 2px 0">
+          Every pin is placed by you and confirmed — nothing is geocoded onto the map by guess.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- mapping toolkit proposal -->
+  <div class="rec" style="background:color-mix(in srgb,var(--brand-soft) 40%, var(--card))">
+    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--brand)"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>The mapping toolkit — what a provider could show travelers</h2>
+    <p style="margin:0 0 11px;font-size:12px;color:var(--mid)">Everything below is folded into the map above except the last column, which is still your pick. Each stays honest — no invented drive-times, no guessed pins, real data only (§13).</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div>
+        <h3 style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);margin:0 0 7px">Traveler layers · on map</h3>
+        <ul>
+          <li><b>Start / meeting pin</b> — placed &amp; confirmed by you, never geocoded by guess.</li>
+          <li><b>Numbered route stops</b> — dashed = sequence, never fake driving directions.</li>
+          <li><b>Coverage radius</b> or a <b>pickup route</b> — pick one, the other isn’t erased.</li>
+          <li><b>Pick-up / drop-off</b> + honest <b>“2 of 3 located”</b>, unpinned kept in the rail.</li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ok);margin:0 0 7px">Business layers · on map</h3>
+        <ul>
+          <li><b>Demand heat</b> — where real requests cluster, so you see where the money is.</li>
+          <li><b>Coverage-gap alert</b> — demand outside your radius (“18 near Arashiyama — extend?”).</li>
+          <li><b>Travel-surcharge zone</b> — your fee beyond a distance ring; listing config, not a platform fee.</li>
+          <li><b>Market reach</b> — travelers inside your radius, to size a market before expanding.</li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 7px">Also proposed · your pick</h3>
+        <ul>
+          <li><b>Photo on the pin</b> — a snapshot of the meetup spot (“the red torii gate”).</li>
+          <li><b>Nearest transit marker</b> · <b>time-at-stop</b> (your declared dwell).</li>
+          <li><b>Approximate-area vs exact pin</b> — soft zone for privacy, precise on booking.</li>
+          <li><b>Saved route templates</b> · <b>availability by area × day</b> · <b>map thumbnail on the card</b> · <b>“Route” share image</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- decisions + open calls -->
+  <div class="rec">
+    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>Locked, and still open</h2>
+    <ul>
+      <li><b>One door — decided.</b> <b>Add New Service</b> now opens Workstation, where you pick service / bundle / property. One creation flow, lighter code, one thing for providers to learn.</li>
+      <li><b>Book + price on every card,</b> with a per-listing <b>“Card shows”</b> control in Manage — price on/off and Booking = Instant / Request / Hidden. (Flip to Manage, change a card, flip back to Preview to see it.) Rides your existing <i>Instant Booking</i> setting.</li>
+      <li><span class="q">Open for you:</span> which <b>new mapping ideas</b> above do you want in v1? · keep the hover <b>Edit</b> on Preview cards or strip it? · allow <b>“Hidden price”</b> on all services or only quote-based ones?</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var viewSeg = document.getElementById('viewSeg');
+    var layoutSeg = document.getElementById('layoutSeg');
+    var previewGrid = document.getElementById('previewGrid');
+    var manageGrid = document.getElementById('manageGrid');
+    var promote = document.getElementById('promote');
+    var mapView = document.getElementById('mapView');
+    var bannerPreview = document.getElementById('bannerPreview');
+    var bannerManage = document.getElementById('bannerManage');
+    var mode = 'preview', layout = 'list';
+
+    function render(){
+      var listPreview = layout==='list' && mode==='preview';
+      var listManage  = layout==='list' && mode==='manage';
+      previewGrid.classList.toggle('hide', !listPreview);
+      manageGrid.classList.toggle('hide', !listManage);
+      promote.classList.toggle('hide', layout!=='list');
+      mapView.classList.toggle('hide', layout!=='map');
+      bannerPreview.classList.toggle('hide', !(layout==='list' && mode==='preview'));
+      bannerManage.classList.toggle('hide', !(layout==='list' && mode==='manage'));
+    }
+    viewSeg.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        viewSeg.querySelectorAll('button').forEach(function(x){x.classList.remove('on');});
+        b.classList.add('on'); mode=b.dataset.view; render();
+      });
+    });
+    layoutSeg.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        layoutSeg.querySelectorAll('button').forEach(function(x){x.classList.remove('on');});
+        b.classList.add('on'); layout=b.dataset.layout; render();
+      });
+    });
+
+    // Manage display options → reflect on the matching preview card
+    var offers = previewGrid.querySelectorAll('.offer');
+    document.querySelectorAll('.display-opts').forEach(function(opts){
+      var idx = +opts.dataset.target;
+      var offer = offers[idx];
+      var priceEl = offer.querySelector('[data-price]');
+      var ctaEl = offer.querySelector('[data-cta]');
+      // price toggle
+      opts.querySelector('.js-price').addEventListener('click', function(){
+        var box = this.querySelector('.cbx');
+        var on = box.classList.toggle('on');
+        priceEl.classList.toggle('hidden-price', !on);
+      });
+      // booking mode
+      opts.querySelectorAll('.js-bk button').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          opts.querySelectorAll('.js-bk button').forEach(function(x){x.classList.remove('on');});
+          btn.classList.add('on');
+          var m = btn.dataset.m;
+          ctaEl.classList.remove('req','hidden-cta');
+          if(m==='book'){ ctaEl.textContent='Book'; }
+          else if(m==='req'){ ctaEl.textContent='Request to book'; ctaEl.classList.add('req'); }
+          else { ctaEl.classList.add('hidden-cta'); }
+        });
+      });
+    });
+  })();
+</script>
+
+
