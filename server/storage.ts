@@ -134,6 +134,7 @@ import type {
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition, type TransitionActorType } from "./services/item-transition-log.service";
+import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
@@ -1286,7 +1287,15 @@ export class DatabaseStorage implements IStorage {
 
   async createTrip(trip: InsertTrip & { userId: string }): Promise<Trip> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newTrip] = await db.insert(trips).values({ ...trip, trackingNumber }).returning();
+    // 2A.3 / R8: market_slug is SERVER-DERIVED from the destination at write time (never taken
+    // from the client — insertTripSchema omits it). NULL when the destination resolves to none of
+    // the 8 operating markets (R13 unmapped bucket, §13). originMarket rides through from the body
+    // as ordinary owner-authored capture data.
+    const marketSlug = resolveMarketSlug(trip.destination);
+    const [newTrip] = await db
+      .insert(trips)
+      .values({ ...trip, marketSlug, trackingNumber })
+      .returning();
 
     // Write the owner's trip_collaborators row in the same operation that creates the
     // trip — getTripRole()/canMutateTrip() resolve access by assignment only (never
@@ -1316,9 +1325,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTrip(id: string, updates: Partial<InsertTrip>): Promise<Trip | undefined> {
+    // 2A.3 / R8: keep market_slug consistent with the destination. When an edit changes the
+    // destination, re-derive server-side (never client-set — insertTripSchema omits market_slug).
+    // A destination that resolves to none of the 8 markets clears it back to NULL (R13/§13).
+    const derived: Partial<InsertTrip> & { marketSlug?: string | null } =
+      updates.destination !== undefined ? { marketSlug: resolveMarketSlug(updates.destination) } : {};
     const [updatedTrip] = await db
       .update(trips)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, ...derived, updatedAt: new Date() })
       .where(eq(trips.id, id))
       .returning();
     return updatedTrip;

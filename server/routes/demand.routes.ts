@@ -29,7 +29,6 @@ import {
   destinationEvents,
   shortLinks,
   serviceBookings,
-  DEMAND_SIGNAL_EVENT_KINDS,
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
@@ -101,7 +100,20 @@ async function deriveMarket(userId: string): Promise<string | null> {
 
 const SIGNAL_MIN_EVENTS = 3;
 
-const SIGNAL_LABELS: Record<DemandSignalEventKind, string> = {
+// The demand-NOT-MET signal kinds that surface on the business-advisor trending panel. The
+// research-interaction kinds (layer_toggled, research_circle_tapped — 2A.5) share the
+// demand_signal_events TABLE but are Market Research map telemetry, not demand-not-met signals, so
+// they are deliberately EXCLUDED from this surface (§13 — a map layer toggle is never presented as
+// unmet demand). Keying SIGNAL_LABELS and the loop below on this subset (not the full vocabulary)
+// means a newly-registered non-demand kind cannot leak here without a deliberate addition.
+const DEMAND_NOT_MET_SIGNAL_KINDS = [
+  "stay_anchor_miss",
+  "places_fallthrough",
+  "no_stay_flag",
+  "search_unfilled",
+] as const satisfies readonly DemandSignalEventKind[];
+
+const SIGNAL_LABELS: Record<(typeof DEMAND_NOT_MET_SIGNAL_KINDS)[number], string> = {
   stay_anchor_miss: "Trips built here found no platform stays nearby",
   places_fallthrough: "Experience searches fell through to outside sources",
   no_stay_flag: "Trips were flagged for missing lodging",
@@ -142,7 +154,7 @@ async function getDemandSignals(market: string): Promise<{ signals: DemandSignal
   }
 
   const signals: DemandSignalRow[] = [];
-  for (const kind of DEMAND_SIGNAL_EVENT_KINDS) {
+  for (const kind of DEMAND_NOT_MET_SIGNAL_KINDS) {
     const entry = byKind.get(kind);
     if (!entry || entry.total < SIGNAL_MIN_EVENTS) continue;
     let detail: string | undefined;
