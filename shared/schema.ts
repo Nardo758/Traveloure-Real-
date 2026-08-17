@@ -7121,20 +7121,14 @@ export const bookingRequests = pgTable("booking_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const providerAvailability = pgTable("provider_availability", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  providerId: varchar("provider_id", { length: 255 }).notNull(),
-  serviceId: uuid("service_id"),
-  availabilityType: varchar("availability_type", { length: 20 }).notNull(),
-  blockedDates: jsonb("blocked_dates").default([]),
-  availableDates: jsonb("available_dates").default([]),
-  isAvailable: boolean("is_available").default(true),
-  dailyCapacity: integer("daily_capacity"),
-  currentBookings: integer("current_bookings").default(0),
-  timeSlots: jsonb("time_slots"),
-  recurringUnavailable: jsonb("recurring_unavailable"),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// DROPPED — Partner Demand 2C (ledger 2026-08-17-partner-demand-2c-sunset, migration 242). The
+// `provider_availability` table was a confirmed ORPHAN: 0 rows in prod (R7 Q4), NO insert path
+// anywhere in the repo, and no readers — declared availability lives in
+// `provider_availability_schedule` + `provider_blackout_dates`, bookable truth in
+// `vendor_availability_slots`. Its one live writer (a no-op UPDATE on the booking-confirm path)
+// was removed first. The declaration is deleted here so the deploy push does not recreate the
+// table after migration 242 drops it (publish-trap rule). Do NOT confuse with the LIVE
+// `providerAvailabilitySchedule` (a different table) or the React `ProviderAvailability` page.
 
 export const expertHandoffs = pgTable("expert_handoffs", {
   id: uuid("id").primaryKey().defaultRandom(),
