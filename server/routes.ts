@@ -5971,6 +5971,117 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     },
   );
 
+  // ── Gap #16 (Gate G5, ratified Aug 13 2026): the SERVICE-PHOTO upload rail — the ruling-58
+  // objstore rail extended to images. Unlike the deliverable (a gated asset whose location is a
+  // secret), a listing photo is PUBLIC display content: "platform-protected" here means stored
+  // by us and served from OUR domain — it cannot be hot-link-broken, moved or changed by a third
+  // party — not access-gated. So the stored `serviceImage` value is the platform-served URL
+  // itself (`/api/service-photos/<serviceId>/<hex>.<ext>`): a plain relative URL every existing
+  // card/thumb renders unchanged, with no objstore: discriminator mapping needed anywhere.
+  // Pasted external URLs remain allowed on the ordinary PATCH rail (the mock's honest trade-off,
+  // stated where the choice is made) — this rail is the recommended path, not the only one.
+  const SERVICE_PHOTO_PATH_PREFIX = "/api/service-photos/";
+  const SERVICE_PHOTO_MAX_BYTES = 10 * 1024 * 1024; // 10MB
+  const SERVICE_PHOTO_FILE_RE = /^[0-9a-f]{32}\.(jpg|png|webp)$/;
+
+  app.post(
+    "/api/provider/services/:id/photo",
+    isAuthenticated,
+    express.raw({
+      type: ["image/jpeg", "image/png", "image/webp", "application/octet-stream"],
+      limit: "10mb",
+    }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        const service = await storage.getProviderServiceById(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        // Gap #18: archived is terminal — no edit rail may touch an archived row.
+        if (service.status === "archived") {
+          return res.status(409).json({ message: "This listing is archived and can't be edited.", code: "LISTING_ARCHIVED" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({
+            message: "Send the image as a raw request body with its image Content-Type",
+            code: "PHOTO_REQUIRED",
+          });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > SERVICE_PHOTO_MAX_BYTES) {
+          return res.status(400).json({ message: "Image exceeds the 10MB photo size limit", code: "PHOTO_TOO_LARGE" });
+        }
+        // Magic bytes are the real gate — Content-Type is client-declared (the PDF_MAGIC posture).
+        const { sniffImageExtension } = await import("./utils/image-sniff");
+        const ext = sniffImageExtension(buffer);
+        if (!ext) {
+          return res.status(400).json({ message: "Only JPEG, PNG or WebP images are accepted", code: "PHOTO_NOT_IMAGE" });
+        }
+
+        // Unguessable key (never serviceId/filename alone), same posture as the deliverable rail.
+        const key = `service-photos/${service.id}/${randomBytes(16).toString("hex")}.${ext}`;
+        const { uploadBuffer, deleteObject } = await import("./infrastructure/object-storage");
+        try {
+          await uploadBuffer(key, buffer);
+        } catch (storageErr) {
+          // Honest degradation when no bucket is attached — the paste-a-link path still works.
+          console.error("Service photo upload failed:", storageErr);
+          return res.status(503).json({
+            message: "Object storage is not available right now. Try again shortly, or paste an image link instead.",
+            code: "OBJECT_STORAGE_UNAVAILABLE",
+          });
+        }
+
+        const url = `${SERVICE_PHOTO_PATH_PREFIX}${service.id}/${key.split("/").pop()}`;
+
+        // Best-effort cleanup of the PREVIOUS platform-managed cover, if any — never an external
+        // pasted URL (not ours to delete), never blocks the response.
+        const previous = (service.serviceImage ?? "").trim();
+        if (previous.startsWith(SERVICE_PHOTO_PATH_PREFIX)) {
+          const prevKey = `service-photos/${previous.slice(SERVICE_PHOTO_PATH_PREFIX.length)}`;
+          if (prevKey !== key) deleteObject(prevKey).catch(() => {});
+        }
+
+        await storage.updateProviderService(service.id, { serviceImage: url });
+        // Unlike the deliverable, the URL is the point — it is public display content.
+        res.json({ message: "Cover photo uploaded", url, protected: true });
+      } catch (err) {
+        console.error("Service photo upload error:", err);
+        res.status(500).json({ message: "Failed to upload photo" });
+      }
+    },
+  );
+
+  // The platform-served photo read: public by design (a listing photo renders on public cards),
+  // unguessable by key. Streams the stored bytes from our own domain — the "cannot be
+  // hot-link-broken" half of the platform-protected promise.
+  app.get("/api/service-photos/:serviceId/:file", async (req, res) => {
+    try {
+      const { serviceId, file } = req.params;
+      if (!SERVICE_PHOTO_FILE_RE.test(file) || !/^[0-9a-f-]{36}$/.test(serviceId)) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      const { downloadBytes } = await import("./infrastructure/object-storage");
+      const { IMAGE_CONTENT_TYPES } = await import("./utils/image-sniff");
+      let bytes: Buffer;
+      try {
+        bytes = await downloadBytes(`service-photos/${serviceId}/${file}`);
+      } catch {
+        return res.status(404).json({ message: "Not found" });
+      }
+      const ext = file.slice(file.lastIndexOf(".") + 1) as keyof typeof IMAGE_CONTENT_TYPES;
+      res.setHeader("Content-Type", IMAGE_CONTENT_TYPES[ext] ?? "application/octet-stream");
+      // Keys are content-addressed-per-upload (a new upload gets a new key), so long immutable
+      // caching is safe and keeps card grids cheap.
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.send(bytes);
+    } catch (err) {
+      console.error("Service photo read error:", err);
+      res.status(500).json({ message: "Failed to load photo" });
+    }
+  });
+
   // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
   // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
   // state (§14 posture, extended to this non-money reveal because the asset itself is the
