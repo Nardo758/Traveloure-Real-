@@ -83,7 +83,6 @@ import { EmptyState } from "@/components/backoffice/primitives";
 import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
 import { ProviderAvailabilityManager } from "@/components/logistics/provider-availability-manager";
-import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
@@ -104,13 +103,13 @@ import {
   Star,
   MoreHorizontal,
   Search,
+  Eye,
 } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { isPlaceAnchored } from "@shared/service-fundamentals";
 // FP-3: property + property_room rows are edited on the Workstation property surface, never in
 // the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
 // guard imports the same module).
@@ -123,6 +122,12 @@ import {
   deriveAvailabilityChips,
   type CatalogStatusBucket,
 } from "@/lib/catalog-listing-presentation";
+import {
+  deriveLocationPinChip,
+  deriveBookingCta,
+  derivePreviewPrice,
+  derivePreviewRating,
+} from "@/lib/catalog-preview-presentation";
 
 interface Service {
   id: string;
@@ -589,9 +594,16 @@ function HealthIndicator({ health }: { health: ServiceHealth | undefined }) {
 
 // ─── Manage ⇄ Preview toggle (Catalog+Distribute ruling 74, lane C2) ─────────────────────────
 //
-// Preview renders each listing through C1's SHARED OfferingCard — the EXACT traveler card the
-// public /p/:handle storefront draws — so "what you see = what users see" by construction.
-// Unchanged by the rebuild: the mock does not cover Preview, only Manage.
+// CATALOG PREVIEW UPGRADE (decision-maker directive): Preview is now a from-scratch
+// transcription of docs/design/catalog-preview-mock.html's `.offer` storefront card — the
+// mock's OWN coral/dark-theme tokens (traveler-side branding, distinct from Manage's
+// ink/teal idiom), not the generic shared `OfferingCard` the C2/C3 lanes originally reused.
+// `OfferingCard` (client/src/components/OfferingCard.tsx) stays untouched here — it is also
+// the LIVE public /p/:handle storefront card (storefront.tsx), which this directive does not
+// cover; changing it would be scope creep onto a surface no mock authorizes yet.
+// `catalog-preview-presentation.ts` carries the pure pin-chip / CTA / price / rating
+// derivations this card renders — same honesty rule as the Manage-mode sibling module: real
+// data only, absence renders as absence (§13).
 
 const PREVIEW_DELIVERY_LABELS: Record<string, string> = {
   pdf: "PDF guide",
@@ -602,14 +614,6 @@ const PREVIEW_DELIVERY_LABELS: Record<string, string> = {
   async_messaging: "Messaging",
   hybrid: "Hybrid",
 };
-
-function previewPriceUnitLabel(priceType?: string | null, pricingUnit?: string | null): string | null {
-  if (pricingUnit === "per_night") return "per night";
-  if (priceType === "per_person") return "per person";
-  if (priceType === "hourly") return "per hour";
-  if (priceType === "per_event") return "per event";
-  return null;
-}
 
 /** One honest "In person · Gion, Kyoto · $68 per person" style line — never invents a field
  *  the row doesn't carry. Mirrors the mock's `.lmeta` line format. */
@@ -641,21 +645,6 @@ function listingMetaLine(service: Service): string {
     parts.push("Custom quote");
   }
   return parts.join(" · ");
-}
-
-/** Storefront rating line — "New" pill when there are no reviews (never a fabricated score),
- *  else star + weighted average + review count. Mirrors storefront.tsx RatingLine. */
-function PreviewRatingLine({ rating, count }: { rating?: string | number | null; count?: number | null }) {
-  if (!count || count === 0 || rating == null) {
-    return <Badge variant="outline" className="text-[11px] w-fit">New</Badge>;
-  }
-  return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-      {Number(rating).toFixed(1)}
-      <span>· {count} review{count === 1 ? "" : "s"}</span>
-    </span>
-  );
 }
 
 // C3 (ruling 74/75): the per-listing "Card shows" control on the Manage row. Two prefs — Show
@@ -818,53 +807,154 @@ function PropertyRoomsBlock({ property, rooms }: { property: Service; rooms: Ser
   );
 }
 
-function CatalogPreviewCard({ service }: { service: Service }) {
+// Deterministic photo-gradient fallback — cycles the mock's own three `.photo.one/two/three`
+// tints by a hash of the listing id, so the same untitled-photo card always gets the same
+// tint (never a fake photo, §13 — a gradient is visibly NOT a photograph).
+const PREVIEW_PHOTO_GRADIENTS = [
+  "linear-gradient(140deg,#6d7f9c,#37445d)",
+  "linear-gradient(140deg,#c99f6f,#6e4f34)",
+  "linear-gradient(140deg,#8a9c6d,#43532f)",
+];
+function previewPhotoGradient(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return PREVIEW_PHOTO_GRADIENTS[hash % PREVIEW_PHOTO_GRADIENTS.length];
+}
+
+/**
+ * The mock's `.offer` storefront card, transcribed as page-scoped Tailwind arbitrary values
+ * on the mock's own coral/traveler-side tokens (--ink #1A1A18, --mid #7A7A72, --line #E8E8E2,
+ * --card #fff, --brand #E85D55, --brand-soft #FDEFEE) — light-only, matching this console's
+ * existing (light-only) convention; see the lane report for the dark-mode note.
+ *
+ * Not the shared `OfferingCard` (that stays the live public-storefront card, untouched here —
+ * see the block comment above this section). This card owns its own markup so the mock's photo
+ * pin chip / ribbon / hover-Edit / category eyebrow / balanced title / 2-line clamp / price+CTA
+ * anatomy can be transcribed exactly.
+ */
+function CatalogPreviewOfferCard({ service, categoryName }: { service: Service; categoryName?: string }) {
   const { t: tCommon } = useTranslation("common");
   // FP-3: Preview is "what travelers see", so a room KEEPS its traveler card here (a room really
   // is a bookable public listing) — only the hover Edit affordance re-routes to its property.
   const editHref = listingEditHref(service);
+  const title = service.serviceName || service.name || "Untitled service";
 
-  const chips = service.deliveryMethod && PREVIEW_DELIVERY_LABELS[service.deliveryMethod]
-    ? [PREVIEW_DELIVERY_LABELS[service.deliveryMethod]]
-    : [];
-  // D5: place-anchored listings get a city-level text chip (row's own city field; nothing mapped/derived, §13).
-  if (
-    isPlaceAnchored({ deliveryMethod: service.deliveryMethod, productShape: service.productShape }) &&
-    service.city?.trim()
-  ) {
-    chips.push(`📍 ${service.city.trim()}`);
-  }
-
-  const rawPrice = service.price;
-  const hasPrice = rawPrice != null && rawPrice !== "";
-  const price = hasPrice ? `$${Number(rawPrice).toFixed(0)}` : "Custom quote";
-  const unit = hasPrice ? previewPriceUnitLabel(service.priceType, service.pricingUnit) : null;
-  const cta = service.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+  const pinChip = deriveLocationPinChip({
+    productShape: service.productShape,
+    city: service.city,
+    deliveryMethod: service.deliveryMethod,
+  });
+  const cta = deriveBookingCta(service.bookingMode);
+  const priceDisplay = derivePreviewPrice({
+    showPrice: service.showPrice,
+    price: service.price,
+    priceType: service.priceType,
+    pricingUnit: service.pricingUnit,
+  });
+  const rating = derivePreviewRating({ rating: service.averageRating, count: service.reviewCount });
 
   return (
-    <div className="relative group/edit" data-testid={`preview-card-${service.id}`}>
-      <OfferingCard
-        href={`/services/${service.id}`}
-        testId={`storefront-service-${service.id}`}
-        image={service.serviceImage ?? null}
-        title={service.serviceName || service.name || "Untitled service"}
-        chips={chips}
-        ratingSlot={<PreviewRatingLine rating={service.averageRating} count={service.reviewCount} />}
-        price={price}
-        unit={unit}
-        cta={cta}
-        showPrice={service.showPrice}
-        bookingMode={service.bookingMode}
-      />
-      {/* Hover-only Edit deep-link (ruling 74 res. B) — a sibling of the card's own <Link>, not a
-          nested anchor; z-10 keeps it clickable above the full-card link. */}
+    <div
+      className="group/edit relative flex flex-col overflow-hidden rounded-2xl border border-[#E8E8E2] bg-white shadow-[0_1px_2px_rgba(26,26,24,.05)] transition-transform duration-150 hover:-translate-y-[3px] hover:shadow-[0_6px_22px_rgba(26,26,24,.10)]"
+      data-testid={`preview-card-${service.id}`}
+    >
       <Link
-        href={editHref}
-        className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md border border-console-light bg-white/95 px-2 py-1 text-xs font-medium text-console-dark shadow-sm opacity-0 transition-opacity group-hover/edit:opacity-100 focus:opacity-100"
-        data-testid={`button-preview-edit-${service.id}`}
+        href={`/services/${service.id}`}
+        data-testid={`storefront-service-${service.id}`}
+        className="flex flex-1 flex-col text-inherit no-underline"
       >
-        <Edit className="w-3.5 h-3.5" /> {tCommon("actions.edit")}
+        <div
+          className="relative aspect-[3/2]"
+          style={service.serviceImage ? undefined : { background: previewPhotoGradient(service.id) }}
+        >
+          {service.serviceImage && (
+            <img
+              src={service.serviceImage}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          )}
+          {pinChip && (
+            <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[10.5px] font-semibold text-white backdrop-blur-sm">
+              <MapPin className="h-2.5 w-2.5" />
+              {pinChip}
+            </span>
+          )}
+          {service.isFeatured && (
+            <span className="absolute right-2.5 top-2.5 rounded-full bg-white px-2 py-[3px] text-[9.5px] font-extrabold uppercase tracking-wide text-[#E85D55] shadow-[0_1px_2px_rgba(26,26,24,.05)]">
+              Featured
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col gap-[9px] px-[15px] pb-4 pt-3.5">
+          {categoryName && (
+            <span className="text-[10.5px] font-bold uppercase tracking-wide text-[#E85D55]">
+              {categoryName}
+            </span>
+          )}
+          <h3 className="text-[15.5px] font-bold leading-[1.3] tracking-[-0.01em] text-[#1A1A18] [text-wrap:balance]">
+            {title}
+          </h3>
+          {service.description && (
+            <p className="line-clamp-2 flex-1 text-[12.5px] leading-relaxed text-[#7A7A72]">
+              {service.description}
+            </p>
+          )}
+          {rating && (
+            <div className="flex items-center gap-[5px] text-[11.5px] text-[#7A7A72]" data-testid={`catalog-preview-rating-${service.id}`}>
+              <Star className="h-3.5 w-3.5 text-[#e0a92e] fill-[#e0a92e]" />
+              {rating.stars.toFixed(1)}
+              <span>· {rating.count} review{rating.count === 1 ? "" : "s"}</span>
+            </div>
+          )}
+          <div className="mt-auto flex min-h-[34px] items-center justify-between gap-2 pt-1">
+            <div
+              className={cn(
+                "font-extrabold tracking-[-0.01em]",
+                priceDisplay.quote ? "text-[13.5px] font-bold text-[#7A7A72]" : "text-[18px] text-[#1A1A18]",
+                priceDisplay.hidden && "invisible",
+              )}
+              data-testid={`catalog-preview-price-${service.id}`}
+            >
+              {priceDisplay.text}
+              {priceDisplay.unit && (
+                <small className="ml-1 text-[11px] font-semibold text-[#7A7A72]">{priceDisplay.unit}</small>
+              )}
+            </div>
+            {cta && (
+              <span
+                className={cn(
+                  "whitespace-nowrap rounded-[9px] px-[17px] py-[9px] text-[12.5px] font-bold",
+                  cta.variant === "solid"
+                    ? "bg-[#E85D55] text-white"
+                    : "border-[1.5px] border-[#E85D55] bg-white text-[#E85D55]",
+                )}
+                data-testid={`catalog-preview-cta-${service.id}`}
+              >
+                {cta.label}
+              </span>
+            )}
+          </div>
+        </div>
       </Link>
+      {/* Hover-only Edit deep-link (ruling 74 res. B, owner affordance) — a sibling of the
+          card's own <Link>, not a nested anchor. The mock nests `.edit` INSIDE `.photo`
+          (bottom-right of the PHOTO, not the whole card, so it never collides with the
+          price/CTA footer below a longer description) — this overlay reuses the exact same
+          `aspect-[3/2]` sizing as the photo so it always tracks the photo's true bounds at
+          any card width, without needing to live inside the outer full-card <Link>.
+          `pointer-events-none` on the overlay lets clicks elsewhere in the photo area still
+          reach the full-card link underneath; only the Edit link itself re-enables them. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 aspect-[3/2]">
+        <Link
+          href={editHref}
+          className="pointer-events-auto absolute bottom-2.5 right-2.5 z-10 inline-flex items-center gap-[5px] rounded-lg border border-[#E8E8E2] bg-white/95 px-2.5 py-[5px] text-[11px] font-semibold text-[#7A7A72] opacity-0 shadow-[0_1px_2px_rgba(26,26,24,.05)] transition-opacity group-hover/edit:opacity-100 focus:opacity-100"
+          data-testid={`button-preview-edit-${service.id}`}
+        >
+          <Edit className="h-[11px] w-[11px]" /> {tCommon("actions.edit")}
+        </Link>
+      </div>
     </div>
   );
 }
@@ -1359,6 +1449,37 @@ export default function ProviderServices() {
           </div>
         )}
 
+        {/* ── Banner (mock: `.banner.preview` / `.banner.manage`, list view only) ─────────── */}
+        {totalServices > 0 && viewMode === "list" && (
+          catalogMode === "preview" ? (
+            <div
+              className="flex items-center gap-[9px] rounded-[10px] border border-[rgba(232,93,85,0.22)] bg-[#FDEFEE] px-[13px] py-[9px] text-[12.5px] font-semibold text-[#E85D55]"
+              data-testid="banner-catalog-preview"
+            >
+              <Eye className="h-[15px] w-[15px] flex-shrink-0" />
+              <span>
+                You&rsquo;re seeing your storefront as travelers do.{" "}
+                <span className="font-medium opacity-[.85]">
+                  Paused &amp; unapproved listings are hidden here, exactly like your public page.
+                </span>
+              </span>
+            </div>
+          ) : (
+            <div
+              className="flex items-center gap-[9px] rounded-[10px] border border-[rgba(46,125,91,0.20)] bg-[#EAF4EF] px-[13px] py-[9px] text-[12.5px] font-semibold text-[#2E7D5B]"
+              data-testid="banner-catalog-manage"
+            >
+              <Edit className="h-[15px] w-[15px] flex-shrink-0" />
+              <span>
+                Manage mode — your controls.{" "}
+                <span className="font-medium opacity-[.85]">
+                  Toggle status, edit, and set what each card shows to travelers below.
+                </span>
+              </span>
+            </div>
+          )
+        )}
+
         {/* ── Content ──────────────────────────────────────────────────────────────────── */}
         {isLoading ? (
           <div className="space-y-3">
@@ -1418,9 +1539,16 @@ export default function ProviderServices() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="catalog-preview-grid">
+            <div
+              className="grid grid-cols-3 gap-[18px] max-[820px]:grid-cols-2 max-[540px]:grid-cols-1"
+              data-testid="catalog-preview-grid"
+            >
               {previewServices.map((service) => (
-                <CatalogPreviewCard key={service.id} service={service} />
+                <CatalogPreviewOfferCard
+                  key={service.id}
+                  service={service}
+                  categoryName={service.categoryId ? categoryNameById[service.categoryId] : undefined}
+                />
               ))}
             </div>
           )

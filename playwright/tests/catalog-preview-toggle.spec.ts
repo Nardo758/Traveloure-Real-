@@ -4,25 +4,27 @@
  * Catalog+Distribute ruling 74, lane C2 proof — the provider Catalog page
  * (client/src/pages/provider/services.tsx) gained a Manage ⇄ Preview view-mode
  * toggle. Manage shows today's operational cards (status switch, edit/duplicate/
- * delete). Preview renders each listing through C1's SHARED OfferingCard — the
- * exact traveler card the public /p/:handle storefront draws — and honors the
- * SAME storefront visibility predicate (approvalStatus='approved' AND
- * status='active', mirrored from server/routes/storefront.routes.ts
+ * delete). CATALOG PREVIEW UPGRADE: Preview now renders each listing through the
+ * page's own `CatalogPreviewOfferCard` — a from-scratch transcription of
+ * docs/design/catalog-preview-mock.html's `.offer` storefront card (still keyed
+ * on the `storefront-service-<id>` testid, so this spec's assertions stay valid),
+ * and honors the SAME storefront visibility predicate (approvalStatus='approved'
+ * AND status='active', mirrored from server/routes/storefront.routes.ts
  * loadStorefront).
  *
  * The point of the lane is the NEGATIVE: a listing that IS visible in Manage but
  * is not approved+active must be ABSENT from Preview — "what you see = what users
  * see". The seeded kyoto-interpreter provider sells three services; "Business
- * Document Translation" is approved+DRAFT (not active), so it shows in Manage and
- * must NOT appear in Preview, while the two approved+active interpretation
- * services do.
+ * Document Translation" is approved but PAUSED (not active), so it shows in
+ * Manage and must NOT appear in Preview, while the two approved+active
+ * interpretation services do.
  *
  * Auth: seeded provider kyoto-interpreter@traveloure.test / TestPass123!.
  *
  * Relevant source:
- *   client/src/pages/provider/services.tsx     (the toggle + CatalogPreviewCard)
- *   client/src/components/OfferingCard.tsx      (C1 shared card, reused verbatim)
- *   server/routes/storefront.routes.ts          (the mirrored visibility predicate)
+ *   client/src/pages/provider/services.tsx        (the toggle + CatalogPreviewOfferCard)
+ *   client/src/lib/catalog-preview-presentation.ts (pin-chip/CTA/price/rating derivation)
+ *   server/routes/storefront.routes.ts             (the mirrored visibility predicate)
  */
 
 import { test, expect } from '@playwright/test';
@@ -84,21 +86,22 @@ test.describe('/provider/services — Manage ⇄ Preview toggle (lane C2)', () =
     const previewGrid = page.getByTestId('catalog-preview-grid');
     await expect(previewGrid).toBeVisible({ timeout: 10_000 });
 
-    // The Preview cards emit the storefront card's own testid shape (storefront-service-<id>),
-    // proving the shared traveler card is what renders here.
-    const previewCards = previewGrid.locator('[data-testid^="storefront-service-"]');
+    // The Preview cards emit the mock's own testid shape (storefront-service-<id>) on the
+    // card's full-card <a> link — the `a[...]` tag scope excludes the card's own non-anchor
+    // sub-element testids (catalog-preview-price-/-cta-/-rating-<id>).
+    const previewCards = previewGrid.locator('a[data-testid^="storefront-service-"]');
     expect(await previewCards.count()).toBe(LIVE_SERVICES.length);
 
     for (const name of LIVE_SERVICES) {
-      const card = previewGrid.locator('[data-testid^="storefront-service-"]', { hasText: name });
+      const card = previewGrid.locator('a[data-testid^="storefront-service-"]', { hasText: name });
       await expect(card).toHaveCount(1);
-      // Storefront card shape: title heading + a book CTA + a link into the service detail page.
+      // Mock card shape: title heading + a book CTA + a link into the service detail page.
       await expect(card.getByRole('heading', { name })).toBeVisible();
-      await expect(card).toContainText(/View & book →|Check dates →/);
+      await expect(card).toContainText(/Book|Request to book/);
       await expect(card).toHaveAttribute('href', /^\/services\//);
     }
 
-    // ── (c) THE HONESTY PROOF — the approved+DRAFT listing is ABSENT from Preview ────────────
+    // ── (c) THE HONESTY PROOF — the approved-but-paused listing is ABSENT from Preview ───────
     await expect(
       previewGrid.locator('[data-testid^="storefront-service-"]', { hasText: HIDDEN_SERVICE }),
     ).toHaveCount(0);
