@@ -6382,7 +6382,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           : null,
       });
 
-      const booking = await storage.createServiceBooking({
+      // createServiceBookingAtomic wraps the insert + bookings_count increment in a single
+      // DB transaction: either both commit (→ 201) or both roll back (→ 500, no phantom row).
+      // Previously the two operations were separate: if the counter update failed after the
+      // booking row was committed the handler returned 500, causing the user to retry and
+      // create a duplicate "phantom" booking.
+      const booking = await storage.createServiceBookingAtomic({
         ...input,
         travelerId: userId,
         providerId: service.userId,
@@ -6394,9 +6399,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             }
           : {}),
       });
-
-      // Increment service bookings count
-      await storage.incrementServiceBookings(service.id, totalAmount);
 
       res.status(201).json(booking);
     } catch (err) {
