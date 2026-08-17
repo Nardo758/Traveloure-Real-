@@ -225,6 +225,7 @@ interface ServiceFormData {
   serviceTimezone: string;         // IANA id
   partySizeMin: string;
   partySizeMax: string;
+  seating: string;                 // "" | "private" | "shared" — the Capacity step's Seating
   changeCutoffHours: string;
   canAnchor: "" | "yes" | "no";    // tri-state: "" = never declared
   // ── S9 session/async fields (docs/DECISIONS.md ledger row 102, migration 212) ───────────────
@@ -376,6 +377,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     serviceTimezone: "",
     partySizeMin: "",
     partySizeMax: "",
+    seating: "",
     changeCutoffHours: "",
     joinLink: "",
     responseWindowHours: "",
@@ -491,6 +493,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     serviceTimezone: s.serviceTimezone || "",
     partySizeMin: s.partySizeMin == null ? "" : String(s.partySizeMin),
     partySizeMax: s.partySizeMax == null ? "" : String(s.partySizeMax),
+    seating: s.seating || "",
     changeCutoffHours: s.changeCutoffHours == null ? "" : String(s.changeCutoffHours),
     // S9 (ledger row 102): joinLink hydrates from the owner-gated read only (this mapper's one
     // caller); response window / scope statement round-trip like the D7 block above.
@@ -1433,6 +1436,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               serviceTimezone: formData.serviceTimezone.trim() || null,
               partySizeMin: intOrNull(formData.partySizeMin),
               partySizeMax: intOrNull(formData.partySizeMax),
+              // Capacity-step "Seating" (migration 239): "" ⇒ null (never answered, §13).
+              seating: formData.seating || null,
               changeCutoffHours: intOrNull(formData.changeCutoffHours),
               canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
             }
@@ -4387,10 +4392,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 to [max]" pair, not two separate labelled fields, and drops the redundant inner
                 "Capacity" heading (the card title already says it). The gated
                 `logistics-section-capacity` testid and both party-size input testids are kept. */}
-            <div className="space-y-3" data-testid="logistics-section-capacity">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start" data-testid="logistics-section-capacity">
               <div>
                 <Label htmlFor="partySizeMin">Party size</Label>
-                <div className="mt-1 flex items-center gap-2 max-w-sm">
+                <div className="mt-1 flex items-center gap-2">
                   <Input
                     id="partySizeMin" type="number" min={0} placeholder="1"
                     value={formData.partySizeMin}
@@ -4409,6 +4414,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   One pair of numbers — the party size the checkout refuses a booking against, so a
                   traveler can never book a party you cannot take. Per-person vs per-group is your
                   pricing type, set there, not asked twice here.
+                </p>
+              </div>
+              {/* Seating (migration 239) — the mock's second Capacity column. App-enforced
+                  private|shared; "" = not answered (omitted on the traveler page, §13). */}
+              <div>
+                <Label htmlFor="seating">Seating</Label>
+                <Select
+                  value={formData.seating || undefined}
+                  onValueChange={(v) => set("seating", v)}
+                >
+                  <SelectTrigger id="seating" className="mt-1" data-testid="select-seating">
+                    <SelectValue placeholder="Not specified" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private" data-testid="option-seating-private">
+                      Private — one party at a time
+                    </SelectItem>
+                    <SelectItem value="shared" data-testid="option-seating-shared">
+                      Shared — I'll seat several parties together
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Asked once, here, and rendered on the traveler's page in these words. Leave
+                  unset if it doesn't apply — we won't guess one for you.
                 </p>
               </div>
             </div>
