@@ -1973,7 +1973,12 @@ migrations stamped through 209, six spot-checks green). Wave 3 lanes (S7–S11, 
 - **#10** custom-offering redesign (keep flow, land in a real pending-category state).
 - **#11** category↔method rules incl. the Lodging/Property collision (explicit allow-matrix).
 - **#15** hybrid-with-artifact branch (defer unless a real provider asks).
-- **#16** photos/media — upload vs pasted URLs (extend the ruling-58 objstore rail to images).
+- ~~**#16** photos/media — upload vs pasted URLs (extend the ruling-58 objstore rail to images).~~
+  **CLOSED (ledger `2026-08-17-photos-rail`):** cover-photo upload rail
+  (`POST .../photo`, magic-byte gated, platform-served URL) + the listing home's Photos & media
+  drawer with the paste-link fallback; "Add a cover photo" checklist row derives from
+  `serviceImage || galleryImages[0]`. Gallery ordering / clips / required-to-go-live stay open
+  questions per the mock (closes SC-19's upload half).
 - **#17** edit-path for a live listing (back through review only for identity fields — define the
   field list).
 - ~~**#18** delete-with-bookings (refuse + archive, mirroring the shipped withdraw precedent).~~
