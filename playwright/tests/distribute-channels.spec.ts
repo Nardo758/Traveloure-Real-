@@ -66,10 +66,11 @@ test.describe('/provider/distribute — Direct · Social · state strip · Promo
     await expect(page.getByTestId('text-distribute-title')).toContainText('Distribute');
 
     // Select the approved+active listing so the Social kit (approved+active gated) renders.
+    // The workspace's Distribute rework made this a NATIVE <select> — Playwright drives those
+    // with selectOption, not option clicks (the intent — "pick the live listing" — is unchanged).
     const selector = page.getByTestId('select-listing');
     await expect(selector).toBeVisible({ timeout: 15_000 });
-    await selector.click();
-    await page.getByTestId(`option-listing-${liveId}`).click();
+    await selector.selectOption(liveId);
 
     // ── D4: channel-state strip — real chips + analytics DEEP-LINK, no inline analytics ─────────
     const strip = page.getByTestId('channel-state-strip');
@@ -122,10 +123,13 @@ test.describe('/provider/distribute — Direct · Social · state strip · Promo
     // to anymore). ────────────────────────────────────────────────────────────────────────────
     const socialCard = page.getByTestId('card-channel-social');
     await expect(socialCard).toBeVisible();
-    await expect(page.getByTestId(`img-share-feed-${liveId}`)).toBeVisible();
-    await expect(page.getByTestId(`img-share-story-${liveId}`)).toBeVisible();
+    // The workspace's tap-to-select gallery renders every format as a picker thumbnail
+    // (img-social-frame-<format>) instead of the old per-listing img-share-<format>-<id> grid —
+    // same contract (all formats previewed, unlocked only for approved+active), new vocabulary.
+    await expect(page.getByTestId('img-social-frame-feed')).toBeVisible();
+    await expect(page.getByTestId('img-social-frame-story')).toBeVisible();
     // Route frame is honestly conditional (404 collapses it) — present or absent, never broken.
-    const caption = page.getByTestId('textarea-offering-caption');
+    const caption = page.getByTestId('textarea-social-caption');
     await expect(caption).toBeVisible();
     expect(((await caption.inputValue()) ?? '').length, 'social caption populated').toBeGreaterThan(0);
     // Instagram-publish affordance survives the move (one of connect / publish / checking / disabled).

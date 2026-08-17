@@ -171,3 +171,39 @@ Bench note for reruns: author availability through
 `PUT /api/provider/services/:id/availability-patterns` (it materializes
 `vendor_availability_slots`); rows inserted directly into `service_availability_patterns` never
 reach the month grid, which reads materialized slots.
+
+---
+
+## Follow-up run — Aug 17, 2026 (integrator re-run on the unified branch; adds the AV-1 finding the scripted set predates, this repo's container; code under test: branch `claude/resume-artifact-work-vmvy96` @ post-gap-16/18)
+
+**Console conformance CONFIRMED** — every row PASS except A6 (BLOCKED on data, design verified
+in code) and the one DIVERGES below, which was root-caused and fixed in the same session
+(commit on this branch; re-verified live). Environment: local Postgres, dev boot with stubbed
+Stripe key, provider `kyoto-interpreter@traveloure.test` (terms accepted; 2 approved+active
+in-person listings, 1 async listing; 4 one-off slots seeded for the grid). Screenshots:
+`docs/testing/assets/console-conformance-aug17/`.
+
+| Row | Verdict | Evidence |
+|---|---|---|
+| A1 | PASS | "What are you building?" + one-door subtitle (`A1-workstation.png`). |
+| A2 | PASS | Single service · Bundle (locked copy w/ real progress) · Property tiles. |
+| A3 | PASS | "Or start from what you do" category grid renders live categories. |
+| A4 | PASS | Your bundles / Your properties orientation cards render. |
+| A5 | PASS | "+ New property" opens the 1. The property · 2. Rooms · 3. Review ladder; `button-property-submit` absent on step 1 (`A5-property-builder-step1.png`). |
+| A6 | BLOCKED | Account owns no property; edit dialog unreachable this run. The per-step-save design is the S-2 ruling's own negative space, verified in code. |
+| B1 | PASS | Search + All/Live/In review/Draft chips + List\|Map; Manage\|Preview axis also present (ruling 74 C2, now in the mock too) (`B1-catalog-toolbar.png`). |
+| B2 | PASS | 3 rows: thumb/name/meta/pill/storefront toggle/Availability →/health/Edit/Promote this → (`B1-catalog-toolbar.png`). |
+| B3 | PASS | Read-only traveler notice, "X of Y" coverage, unlocated named off-canvas, ODbL attribution (`B3-catalog-map.png`). |
+| B4 | PASS | Shared month grid above the rails for the scheduled listing: legend Bookable/Blacked out/Nothing published/Today, opens on the next bookable month, real slot times, Next-available chip (`B4-availability-inperson.png`). First probe hit the async listing (drawer preselects the clicked row) — that is B5b's branch, not a B4 failure. |
+| B5a | PASS | "Repeats weekly" title on the scheduled listing; "Published date ranges" correctly absent for a non-property listing. |
+| B5b | PASS→**DIVERGES found & FIXED** | The no-calendar sentence rendered, **but a "One-off dated slots" card rendered beneath it** — provider-wide (another listing's slots listed under this selection), with a second service picker that let a dated slot be authored onto the async listing the branch had just refused a calendar for. Fixed same session: the card scopes to the drawer's selected listing, renders only for scheduled semantics (`needsScheduling`, non-property — the same routing `ServiceAvailabilityEditor` uses), and the duplicate inner picker is removed. Re-verified: async selection shows ONLY the no-calendar card (`B5-availability-async-fixed.png`); scheduled selection unchanged (`B4-availability-inperson.png`). |
+| B6 | PASS | "Editing a live listing" two-column panel on the approved listing (Goes live immediately / Re-enters review, "Nothing is taken down for an edit"); also present: gap-16 Photos & media card + "Add a cover photo" checklist row (`B6-listing-home.png`, `B6b-photos-drawer.png`). |
+| B7 | PASS | Behavioral truth test: PATCH price → applied live immediately; PATCH name → `editReview.stagedKeys=["serviceName"]`, live name untouched, `edit_review_status='pending'`; Catalog shows "Edit in review" pill (`B7-edit-in-review-pill.png`). |
+| C1 | PASS | Storefront card with `/p/<handle>` URL + Edit handle & bio (`C1-distribute.png`). |
+| C2 | PASS | Feed · Story · Route frames + copy-link/QR. (The Route honesty line renders inside the Route frame's detail — the landing text probe missed it; visually confirmed in `C1-distribute.png`.) |
+| C3 | PASS | Promote opportunities + "Measurement stays on Performance." note; no analytics numbers on the page. |
+| C4 | PASS | "Promote this →" arrival: "Promoting «name»" banner, ← Back to Catalog, crumb line (`C4-promote-arrival.png`). |
+| C5 | PASS | Marketplace channel, Direct-link channel, channel-state strip all present. |
+
+Zero page errors across the whole walk. The B5b finding is filed in `docs/planning/QA_PUNCH_LIST.md`
+(§ "Console conformance run — Aug 17") with its fix noted; everything else needed no repair.

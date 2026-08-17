@@ -83,6 +83,7 @@ import { ServiceMapAuthoring } from "@/components/provider/service-map-authoring
 // WAVE 2 / S4 (ledger row 99): the post-creation "Pricing & fees" drawer — surcharge mode +
 // amounts, deposit config and cancellation policy moved here from the wizard steps above.
 import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
+import { ServicePhotosDrawer } from "@/components/provider/service-photos-drawer";
 import { ServiceLanguagesCard } from "@/components/service-languages-card";
 import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
 
@@ -688,6 +689,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // checklist — never inside it (none of the fields it edits is required-for-final; see
   // pricing-fees.ts's module doc). Local open/close state only; the drawer owns its own fetch/save.
   const [pricingDrawerOpen, setPricingDrawerOpen] = useState(false);
+  // Gap #16: the listing home's Photos & media drawer — the cover photo's owning surface.
+  const [photosDrawerOpen, setPhotosDrawerOpen] = useState(false);
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -1896,6 +1899,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         ...requiredFieldInput,
         attestationsApplicable: attestationResolution.applicable.length > 0,
         availabilitySlotCount: Array.isArray(availabilitySlots) ? availabilitySlots.length : 0,
+        // Gap #16: the same expression the Catalog thumb renders (serviceImage || gallery[0]) —
+        // the row ticks exactly when a traveler-facing card would show a photo.
+        coverPhotoPresent: Boolean(formData.serviceImage || formData.galleryImages[0]),
       })
     : [];
 
@@ -2005,6 +2011,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     const openChecklistRow = (row: ChecklistRow) => {
       if (row.target.kind === "availability") {
         navigate(`/provider/services?availability=${encodeURIComponent(id!)}`);
+        return;
+      }
+      // Gap #16: "Add a cover photo" opens the Photos & media drawer — the owning surface.
+      if (row.target.kind === "photos") {
+        setPhotosDrawerOpen(true);
         return;
       }
       setViewListingHome(false);
@@ -2130,20 +2141,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </Button>
           </CardContent>
         </Card>
+        {/* Gap #16 (Gate G5): the card opens the Photos & media drawer — the cover photo's
+            owning surface (upload rail + pasted-link fallback). The gallery stays authored on
+            the Review & submit step (an open question the mock names, deliberately not built). */}
         <Card data-testid="card-listing-photos">
           <CardContent className="p-5 flex items-start justify-between gap-4 flex-wrap">
             <div className="flex-1 min-w-[220px]">
               <p className="text-sm font-medium text-gray-900">Photos &amp; media</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Cover photo and gallery — authored on the Review &amp; submit step.
+                Cover photo — uploaded to platform-protected storage, or a pasted link. The
+                gallery stays on Review &amp; submit.
               </p>
             </div>
             <Button
               variant="outline"
-              onClick={() => {
-                setViewListingHome(false);
-                setCurrentStep(TOTAL_STEPS);
-              }}
+              onClick={() => setPhotosDrawerOpen(true)}
               data-testid="button-open-listing-photos"
             >
               Manage
@@ -2322,6 +2334,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           basePriceLabel={price != null ? `$${price}${formData.priceType !== "Fixed" ? ` (${formData.priceType})` : ""}` : "No price set yet"}
           service={existingService}
           surchargeTiers={(surchargeTierState as any)?.surchargeTiers}
+        />
+        <ServicePhotosDrawer
+          open={photosDrawerOpen}
+          onOpenChange={setPhotosDrawerOpen}
+          serviceId={id!}
+          coverUrl={formData.serviceImage || formData.galleryImages[0] || ""}
+          onCoverChange={(url) => set("serviceImage", url)}
         />
       </div>
     );

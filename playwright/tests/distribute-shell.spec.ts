@@ -125,20 +125,21 @@ test.describe('/provider/distribute — shell + Storefront + Marketplace (lane D
     expect(captionText).not.toContain('service fee');
 
     // ── Listing selector lists the owner's services ───────────────────────────────────────────
+    // The workspace's Distribute rework made this a NATIVE <select>: options are asserted
+    // attached (native options aren't "visible" until the OS dropdown opens) and picked with
+    // selectOption — the intent (both listings offered, pick each) is unchanged.
     const selector = page.getByTestId('select-listing');
     await expect(selector).toBeVisible();
-    await selector.click();
-    await expect(page.getByTestId(`option-listing-${liveId}`)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId(`option-listing-${blockedId}`)).toBeVisible();
+    await expect(page.getByTestId(`option-listing-${liveId}`)).toBeAttached({ timeout: 10_000 });
+    await expect(page.getByTestId(`option-listing-${blockedId}`)).toBeAttached();
 
     // ── Marketplace channel — pick the LIVE listing → honest live badge ───────────────────────
-    await page.getByTestId(`option-listing-${liveId}`).click();
+    await selector.selectOption(liveId);
     await expect(page.getByTestId('badge-marketplace-live')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('button-marketplace-view-public')).toBeVisible();
 
     // ── Marketplace channel — pick the BLOCKED listing → honest blocked state + true reason ───
-    await selector.click();
-    await page.getByTestId(`option-listing-${blockedId}`).click();
+    await selector.selectOption(blockedId);
     await expect(page.getByTestId('badge-marketplace-blocked')).toBeVisible({ timeout: 10_000 });
     // The seeded provider is NOT identity-verified → the true verification-gate reason with a fix link.
     const verifBlocker = page.getByTestId('blocker-VERIFICATION_GATE');
