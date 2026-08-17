@@ -2,23 +2,34 @@
  * create-service-layout.spec.ts
  *
  * Guards the create-service wizard (Basics → Scheduling → Capacity →
- * Logistics → Review) against silent layout regressions.
+ * Logistics) against silent layout regressions that are invisible to the
+ * auth-routes smoke test.
  *
  * What it covers:
- *   Basics    — two-column row: "What are you offering?" + "Name it"
- *               two-column row: Price inputs + "One line about it" textarea
- *   Capacity  — party-size [min] "to" [max] inputs inline in the same grid
- *               cell, Seating dropdown in the adjacent cell (same Row grid)
- *   Logistics — InfoNote framing banner leads (before map canvas)
- *               map canvas or map-unavailable fallback present above the
- *               "Meeting point address" input
+ *   Basics    — two-column row: "What are you offering?" + "Name it" share
+ *               the same immediate grid-container parent (DOM node identity).
+ *               Two-column row: Price inputs + description textarea share the
+ *               same immediate grid-container parent.
+ *   Capacity  — party-size [min] / [max] inputs share the same immediate flex
+ *               container. That container and the Seating dropdown share the
+ *               same outer Row grid-container.
+ *   Logistics — the InfoNote framing banner precedes the map canvas/fallback
+ *               (bounding-box Y comparison). The map canvas or map-unavailable
+ *               fallback appears above the "Meeting point address" input.
+ *
+ * Draft hygiene:
+ *   The full-flow test (Capacity + Logistics) creates one provider_services
+ *   draft. The draft ID is captured from the URL immediately after step 1
+ *   advances and is deleted via DELETE /api/provider/services/:id in a
+ *   finally block, whether the test passes or fails.
  *
  * Prerequisites:
- *   • Server running
- *   • scripts/seed-ci-test-users.ts has run (creates ci-provider@traveloure.test)
+ *   • Server running at BASE_URL.
+ *   • scripts/seed-ci-test-users.ts has run (creates ci-provider@traveloure.test).
  *   • playwright/global-setup.ts has saved playwright/.auth/provider.json
+ *     (requires PW_AUTH_SETUP=1).
  *
- * Run alongside auth-routes in the PW_AUTH_SETUP=1 gate.
+ * CI home: spec-coverage-gate.yml (runs with PW_AUTH_SETUP=1 + seed-ci-users).
  */
 
 import { test, expect } from '@playwright/test';
@@ -29,19 +40,30 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 const IS_CI = process.env.CI === 'true';
 const PROVIDER_AUTH_FILE = path.resolve(process.cwd(), 'playwright/.auth/provider.json');
 
-// ── Session guard ──────────────────────────────────────────────────────────────
-// Verifies that the stored cookies yield a real authenticated session.
-// In CI this throws if the session check fails so the gate cannot silently pass
-// with guest sessions. In local dev it skips the whole describe so the developer
-// workflow is not blocked.
+// ── Shared: advance the wizard one step ───────────────────────────────────────
+// Clicks whichever "Next" or "Save draft & continue" button is visible in the
+// card footer and waits for the URL to change before returning.
+async function clickNext(page: import('@playwright/test').Page): Promise<void> {
+  const btn = page.locator('button').filter({
+    hasText: /Save draft & continue|Next:/i,
+  }).first();
+  await expect(btn).toBeVisible({ timeout: 8_000 });
+  const currentUrl = page.url();
+  await btn.click();
+  await page.waitForURL((url) => url.toString() !== currentUrl, { timeout: 15_000 });
+}
+
+// ── Shared: session guard ─────────────────────────────────────────────────────
+// Verifies the stored cookies yield a real service_provider session.
+// In CI mode any failure throws immediately; in local dev it skips the block.
 async function assertProviderSession(
   page: import('@playwright/test').Page,
 ): Promise<void> {
   const res = await page.request.get(`${BASE_URL}/api/auth/session`);
   if (!res.ok()) {
     const msg =
-      '[create-service-layout] /api/auth/session returned ' +
-      `${res.status()} — provider auth state is missing or expired. ` +
+      `[create-service-layout] /api/auth/session returned ${res.status()} ` +
+      '— provider auth state is missing or expired. ' +
       'Run scripts/seed-ci-test-users.ts then re-run global-setup.';
     if (IS_CI) throw new Error(msg);
     test.skip(true, msg);
@@ -58,33 +80,14 @@ async function assertProviderSession(
   }
 }
 
-// ── Helper: advance the wizard one step ───────────────────────────────────────
-// Clicks whichever "Next" or "Save draft & continue" button is visible in the
-// card footer and waits for the URL to update before returning.
-async function clickNext(page: import('@playwright/test').Page): Promise<void> {
-  // The footer button text is either "Save draft & continue →" (step 1, new)
-  // or "Next: <StepName> →" for subsequent steps.
-  const btn = page.locator('button').filter({
-    hasText: /Save draft & continue|Next:/i,
-  }).first();
-  await expect(btn).toBeVisible({ timeout: 8_000 });
-  const currentUrl = page.url();
-  await btn.click();
-  // Wait for navigation to a new step (URL changes)
-  await page.waitForURL((url) => url.toString() !== currentUrl, { timeout: 15_000 });
-}
-
-// ── Describe block: runs as the ci-provider user ───────────────────────────────
+// ── Describe block ─────────────────────────────────────────────────────────────
 test.describe('Create-service wizard layout', () => {
   test.use({
     storageState: PROVIDER_AUTH_FILE,
     baseURL: BASE_URL,
   });
 
-  // Verify auth state is present before any test in this block runs.
   test.beforeAll(async ({ browser }) => {
-    // Skip entire block gracefully if the auth file was never written (local dev
-    // without a running server).
     if (!fs.existsSync(PROVIDER_AUTH_FILE)) {
       console.warn(
         '[create-service-layout] playwright/.auth/provider.json not found — ' +
@@ -92,7 +95,6 @@ test.describe('Create-service wizard layout', () => {
       );
       return;
     }
-
     const ctx = await browser.newContext({ storageState: PROVIDER_AUTH_FILE });
     const page = await ctx.newPage();
     try {
@@ -103,196 +105,231 @@ test.describe('Create-service wizard layout', () => {
     }
   });
 
-  // ── Test 1: Basics step layout ───────────────────────────────────────────────
-  test('Basics step shows two two-column rows (offering+name, price+description)', async ({ page }) => {
+  // ── Test 1: Basics layout (no draft created — no cleanup needed) ─────────────
+  test('Basics step: offering+name and price+description each share a grid-row parent', async ({ page }) => {
     if (!fs.existsSync(PROVIDER_AUTH_FILE)) {
       test.skip(true, 'Auth file missing — run global-setup first.');
       return;
     }
 
     await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
-
-    // ── The card header should show "Basics" ──────────────────────────────────
     await expect(
       page.locator('h3').filter({ hasText: /^Basics$/i }),
     ).toBeVisible({ timeout: 10_000 });
 
-    // ── Row 1: "What are you offering?" select + "Name it" input ─────────────
-    // Both labels must be present and the two fields must share a CSS grid row.
-    const offeringLabel = page.getByText('What are you offering?', { exact: true });
-    const nameLabel = page.getByText('Name it', { exact: true });
-    await expect(offeringLabel).toBeVisible();
-    await expect(nameLabel).toBeVisible();
+    // ── Row 1 labels ──────────────────────────────────────────────────────────
+    await expect(page.getByText('What are you offering?', { exact: true })).toBeVisible();
+    await expect(page.getByText('Name it', { exact: true })).toBeVisible();
 
-    // Verify the two fields are siblings inside the same grid container.
-    // The Row component renders: <div style="display:grid;grid-template-columns:1fr 1fr">
-    // We locate the category <select> and service-name <input> and assert they
-    // share the same parent element.
-    const categorySelect = page.locator('select').first();
-    const nameInput = page.locator('input[placeholder*="Morning Tea"]');
-    await expect(categorySelect).toBeVisible();
-    await expect(nameInput).toBeVisible();
+    // ── Row 1 DOM identity: category select and name input share the same
+    //    immediate grid-container (their grandparent = the Row div).
+    const row1Shared: boolean = await page.evaluate(() => {
+      const catSelect = document.querySelector('select') as HTMLElement | null;
+      const nameInput = document.querySelector(
+        'input[placeholder*="Morning Tea"]',
+      ) as HTMLElement | null;
+      if (!catSelect || !nameInput) return false;
+      // catSelect → Field div → Row grid
+      // nameInput → Field div → Row grid
+      return (
+        catSelect.parentElement?.parentElement ===
+        nameInput.parentElement?.parentElement
+      );
+    });
+    expect(row1Shared).toBe(true);
 
-    const catParent = await categorySelect.evaluate((el) => el.parentElement?.parentElement?.outerHTML?.slice(0, 80) ?? '');
-    const nameParent = await nameInput.evaluate((el) => el.parentElement?.parentElement?.outerHTML?.slice(0, 80) ?? '');
-    // Both Field wrappers share a common grid container: their grandparent should be the same node.
-    const catGrand = await categorySelect.evaluate((el) =>
-      el.parentElement?.parentElement?.parentElement?.getAttribute('style') ?? '',
-    );
-    const nameGrand = await nameInput.evaluate((el) =>
-      el.parentElement?.parentElement?.parentElement?.getAttribute('style') ?? '',
-    );
-    // Both should sit inside a `display: grid` container with 1fr 1fr columns.
-    expect(catGrand).toMatch(/grid/i);
-    expect(nameGrand).toMatch(/grid/i);
-    // The grid container style must be the same string (same element).
-    expect(catGrand).toBe(nameGrand);
+    // ── Row 2 labels ──────────────────────────────────────────────────────────
+    await expect(page.getByText('Price', { exact: true })).toBeVisible();
+    await expect(page.getByText('One line about it', { exact: true })).toBeVisible();
 
-    // ── Row 2: Price input + short-description textarea ───────────────────────
-    const priceLabel = page.getByText('Price', { exact: true });
-    const descLabel  = page.getByText('One line about it', { exact: true });
-    await expect(priceLabel).toBeVisible();
-    await expect(descLabel).toBeVisible();
-
-    // Price input (placeholder "$68") and textarea share the same grid row.
-    const priceInput = page.locator('input[placeholder="$68"]');
-    const descTextarea = page.locator('textarea[placeholder*="90-minute"]');
-    await expect(priceInput).toBeVisible();
-    await expect(descTextarea).toBeVisible();
-
-    const priceGrand = await priceInput.evaluate((el) =>
-      // price input is nested inside a flex div, then the Field div, then the Row grid
-      el.parentElement?.parentElement?.parentElement?.getAttribute('style') ?? '',
-    );
-    const descGrand = await descTextarea.evaluate((el) =>
-      el.parentElement?.parentElement?.getAttribute('style') ?? '',
-    );
-    expect(priceGrand).toMatch(/grid/i);
-    expect(descGrand).toMatch(/grid/i);
-    // Same grid container — confirms side-by-side layout.
-    expect(priceGrand).toBe(descGrand);
+    // ── Row 2 DOM identity: price input (inside a flex wrapper) and description
+    //    textarea share the same outer grid-container.
+    //    price input → flex div → Field div → Row grid
+    //    textarea    → Field div → Row grid
+    const row2Shared: boolean = await page.evaluate(() => {
+      const priceInput = document.querySelector(
+        'input[placeholder="$68"]',
+      ) as HTMLElement | null;
+      const descTextarea = document.querySelector(
+        'textarea[placeholder*="90-minute"]',
+      ) as HTMLElement | null;
+      if (!priceInput || !descTextarea) return false;
+      // price input is nested: input → flex-div → Field → Row
+      const priceRow =
+        priceInput.parentElement?.parentElement?.parentElement ?? null;
+      // textarea: textarea → Field → Row
+      const descRow = descTextarea.parentElement?.parentElement ?? null;
+      return priceRow !== null && priceRow === descRow;
+    });
+    expect(row2Shared).toBe(true);
   });
 
-  // ── Test 2: full wizard flow — Capacity and Logistics layout ─────────────────
-  test('Capacity shows party-size inline inputs and Seating side-by-side; Logistics leads with framing note then map', async ({ page }) => {
+  // ── Test 2: Capacity + Logistics layout (creates a draft — cleanup required) ─
+  test('Capacity: party-size inline + Seating in same grid row; Logistics: note leads, map above address', async ({ page }) => {
     if (!fs.existsSync(PROVIDER_AUTH_FILE)) {
       test.skip(true, 'Auth file missing — run global-setup first.');
       return;
     }
 
-    // ── Navigate to step 1 and fill minimum required data ────────────────────
-    await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
-    await expect(
-      page.locator('h3').filter({ hasText: /^Basics$/i }),
-    ).toBeVisible({ timeout: 10_000 });
+    // Track the draft ID so we can delete it in the finally block.
+    let draftServiceId: string | null = null;
 
-    // Delivery method defaults to "in_person" — the 5-step flow is already
-    // selected. Fill in a service name so the draft saves without issues.
-    const nameInput = page.locator('input[placeholder*="Morning Tea"]');
-    await nameInput.fill('CI Layout Test Service');
+    try {
+      // ── Navigate to step 1, fill minimum required data ──────────────────────
+      await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
+      await expect(
+        page.locator('h3').filter({ hasText: /^Basics$/i }),
+      ).toBeVisible({ timeout: 10_000 });
 
-    // ── Step 1 → Step 2 (Scheduling) ─────────────────────────────────────────
-    await clickNext(page);
-    await expect(
-      page.locator('h3').filter({ hasText: /^Scheduling$/i }),
-    ).toBeVisible({ timeout: 10_000 });
+      // Delivery method defaults to "in_person" → 5-step flow (the one with
+      // Capacity and Logistics). Fill the service name so the draft saves cleanly.
+      const nameInput = page.locator('input[placeholder*="Morning Tea"]');
+      await nameInput.fill('CI Layout Test Service — delete me');
 
-    // ── Step 2 → Step 3 (Capacity) ───────────────────────────────────────────
-    await clickNext(page);
-    await expect(
-      page.locator('h3').filter({ hasText: /^Capacity$/i }),
-    ).toBeVisible({ timeout: 10_000 });
+      // ── Step 1 → Step 2 (Scheduling) ────────────────────────────────────────
+      await clickNext(page);
 
-    // ── Assert Capacity layout ─────────────────────────────────────────────────
-    // 1. "Party size" label is visible.
-    await expect(page.getByText('Party size', { exact: true })).toBeVisible();
+      // Capture the draft ID from the URL immediately after advancing.
+      const step2Url = new URL(page.url());
+      draftServiceId = step2Url.searchParams.get('id');
 
-    // 2. Min and max inputs are both visible.
-    const minInput = page.locator('[aria-label="Minimum party size"]');
-    const maxInput = page.locator('[aria-label="Maximum party size"]');
-    await expect(minInput).toBeVisible();
-    await expect(maxInput).toBeVisible();
+      await expect(
+        page.locator('h3').filter({ hasText: /^Scheduling$/i }),
+      ).toBeVisible({ timeout: 10_000 });
 
-    // 3. The word "to" appears between them (inline layout).
-    await expect(page.getByText('to', { exact: true })).toBeVisible();
+      // ── Step 2 → Step 3 (Capacity) ──────────────────────────────────────────
+      await clickNext(page);
+      await expect(
+        page.locator('h3').filter({ hasText: /^Capacity$/i }),
+      ).toBeVisible({ timeout: 10_000 });
 
-    // 4. Both inputs sit inside the same flex container (the inline row).
-    const minFlex = await minInput.evaluate((el) =>
-      el.parentElement?.getAttribute('style') ?? '',
-    );
-    const maxFlex = await maxInput.evaluate((el) =>
-      el.parentElement?.getAttribute('style') ?? '',
-    );
-    // Both share the same flex container.
-    expect(minFlex).toMatch(/flex/i);
-    expect(minFlex).toBe(maxFlex);
+      // ── Capacity assertions ──────────────────────────────────────────────────
 
-    // 5. "Seating" label is visible — its column is in the adjacent grid cell.
-    await expect(page.getByText('Seating', { exact: true })).toBeVisible();
+      // 1. Labels are visible.
+      await expect(page.getByText('Party size', { exact: true })).toBeVisible();
+      await expect(page.getByText('Seating', { exact: true })).toBeVisible();
 
-    // 6. The Seating select is visible.
-    const seatingSelect = page.locator('select').filter({ hasText: /Private|Shared/i }).first();
-    await expect(seatingSelect).toBeVisible();
+      // 2. Both aria-labelled inputs are visible.
+      await expect(page.locator('[aria-label="Minimum party size"]')).toBeVisible();
+      await expect(page.locator('[aria-label="Maximum party size"]')).toBeVisible();
 
-    // 7. Party-size container and Seating field share the same outer Row grid.
-    const partyGrid = await minInput.evaluate((el) =>
-      // flex div → Field div → Row grid
-      el.parentElement?.parentElement?.parentElement?.getAttribute('style') ?? '',
-    );
-    const seatingGrid = await seatingSelect.evaluate((el) =>
-      // select → Field div → Row grid
-      el.parentElement?.parentElement?.getAttribute('style') ?? '',
-    );
-    expect(partyGrid).toMatch(/grid/i);
-    expect(seatingGrid).toMatch(/grid/i);
-    expect(partyGrid).toBe(seatingGrid);
+      // 3. The word "to" separator appears inline between the inputs.
+      await expect(page.getByText('to', { exact: true })).toBeVisible();
 
-    // ── Step 3 → Step 4 (Logistics) ───────────────────────────────────────────
-    await clickNext(page);
-    await expect(
-      page.locator('h3').filter({ hasText: /^Logistics$/i }),
-    ).toBeVisible({ timeout: 10_000 });
+      // 4. Min + Max inputs share the same immediate flex parent (DOM identity).
+      const partySizeInline: boolean = await page.evaluate(() => {
+        const minInput = document.querySelector(
+          '[aria-label="Minimum party size"]',
+        ) as HTMLElement | null;
+        const maxInput = document.querySelector(
+          '[aria-label="Maximum party size"]',
+        ) as HTMLElement | null;
+        if (!minInput || !maxInput) return false;
+        return minInput.parentElement === maxInput.parentElement;
+      });
+      expect(partySizeInline).toBe(true);
 
-    // ── Assert Logistics layout ────────────────────────────────────────────────
-    // 1. The InfoNote framing banner leads — text "One card, one vocabulary."
-    const framingNote = page.getByText('One card, one vocabulary.', { exact: false });
-    await expect(framingNote).toBeVisible();
+      // 5. The party-size Field and the Seating select share the same outer Row
+      //    grid-container (DOM identity).
+      //    minInput → flex div → Field div → Row grid
+      //    seatingSelect → Field div → Row grid
+      const capacityRowShared: boolean = await page.evaluate(() => {
+        const minInput = document.querySelector(
+          '[aria-label="Minimum party size"]',
+        ) as HTMLElement | null;
+        const seatingSelect = Array.from(document.querySelectorAll('select')).find(
+          (s) =>
+            s.textContent?.includes('Private') ||
+            s.textContent?.includes('Shared'),
+        ) as HTMLElement | null;
+        if (!minInput || !seatingSelect) return false;
+        // minInput → flex-div → Field → Row
+        const partyRow =
+          minInput.parentElement?.parentElement?.parentElement ?? null;
+        // seatingSelect → Field → Row
+        const seatingRow =
+          seatingSelect.parentElement?.parentElement ?? null;
+        return partyRow !== null && partyRow === seatingRow;
+      });
+      expect(capacityRowShared).toBe(true);
 
-    // 2. Map canvas OR the map-unavailable fallback div appears above the
-    //    "Meeting point address" input.
-    //    The map canvas is a <div> containing the Google Map; the fallback is a
-    //    <div> with text "Map unavailable".
-    const mapArea = page.locator(
-      '[style*="height: 340px"], [style*="height:340px"], div:has-text("Map unavailable")',
-    ).first();
-    await expect(mapArea).toBeVisible({ timeout: 10_000 });
+      // ── Step 3 → Step 4 (Logistics) ─────────────────────────────────────────
+      await clickNext(page);
+      await expect(
+        page.locator('h3').filter({ hasText: /^Logistics$/i }),
+      ).toBeVisible({ timeout: 10_000 });
 
-    // 3. "Meeting point address" label is visible below the map.
-    const meetingLabel = page.getByText('Meeting point address', { exact: true });
-    await expect(meetingLabel).toBeVisible();
+      // ── Logistics assertions ─────────────────────────────────────────────────
 
-    // 4. The meeting-point input is visible and below (later in DOM) the map area.
-    const meetingInput = page.locator('input[placeholder*="Kennin-ji"]');
-    await expect(meetingInput).toBeVisible();
+      // 1. InfoNote framing banner leads (unique text from the component).
+      const framingNote = page.getByText('One card, one vocabulary.', { exact: false });
+      await expect(framingNote).toBeVisible();
 
-    // 5. Confirm DOM order: map area appears before the meeting-point input.
-    //    Evaluate both bounding boxes and assert map has a smaller Y coordinate.
-    const mapBox     = await mapArea.boundingBox();
-    const inputBox   = await meetingInput.boundingBox();
-    if (mapBox && inputBox) {
-      expect(mapBox.y).toBeLessThan(inputBox.y);
-    } else {
-      // If either box is null the element is not rendered — fail explicitly.
-      throw new Error(
-        '[create-service-layout] Could not obtain bounding boxes for map area or ' +
-        'meeting-point input — one of them is not rendered.',
-      );
-    }
+      // 2. Map canvas (height:340 wrapper) OR the map-unavailable fallback div.
+      //    VITE_GOOGLE_MAPS_API_KEY is not set in CI, so the fallback is expected.
+      //    Target the fallback by its exact container text to avoid matching ancestors.
+      const realMap = page.locator('div').filter({
+        // The map wrapper div has height 340 in its inline style
+        hasText: '',  // non-empty placeholder — filtered by style below
+      }).locator('[style*="height: 340"]').first();
 
-    // 6. InfoNote framing banner is above (smaller Y) the map area.
-    const noteBox = await framingNote.boundingBox();
-    if (noteBox && mapBox) {
+      // Fallback container: the div whose direct text is "Map unavailable — …"
+      // Use a specific `has-text` filter scoped to a leaf-level div.
+      const mapFallback = page.locator('div').filter({
+        hasText: /^Map unavailable — enter meeting point text below and continue\.$/,
+      }).first();
+
+      // Wait for whichever is present.
+      const mapArea = page
+        .locator('div[style*="height: 340"]')
+        .or(
+          page.locator('div').filter({
+            hasText:
+              /Map unavailable — enter meeting point text below and continue\./,
+          }),
+        )
+        .first();
+
+      await expect(mapArea).toBeVisible({ timeout: 10_000 });
+
+      // 3. "Meeting point address" label + input are visible.
+      await expect(
+        page.getByText('Meeting point address', { exact: true }),
+      ).toBeVisible();
+
+      const meetingInput = page.locator('input[placeholder*="Kennin-ji"]');
+      await expect(meetingInput).toBeVisible();
+
+      // 4. DOM order: framing note → map area → meeting-point input (Y-axis).
+      const noteBox    = await framingNote.boundingBox();
+      const mapBox     = await mapArea.boundingBox();
+      const inputBox   = await meetingInput.boundingBox();
+
+      if (!noteBox || !mapBox || !inputBox) {
+        throw new Error(
+          '[create-service-layout] Could not obtain bounding boxes for ' +
+          'framing note, map area, or meeting-point input — at least one ' +
+          'element is not rendered.',
+        );
+      }
+
+      // Framing note is above the map.
       expect(noteBox.y).toBeLessThan(mapBox.y);
+      // Map area is above (or at the same Y as) the meeting-point input.
+      expect(mapBox.y).toBeLessThan(inputBox.y);
+    } finally {
+      // ── Draft cleanup ────────────────────────────────────────────────────────
+      // Always delete the draft — even on test failure / retry — so the CI DB
+      // stays clean across runs.
+      if (draftServiceId) {
+        try {
+          await page.request.delete(
+            `${BASE_URL}/api/provider/services/${draftServiceId}`,
+          );
+        } catch {
+          // Best-effort: a failed delete doesn't mask a real test failure.
+        }
+      }
     }
   });
 });
