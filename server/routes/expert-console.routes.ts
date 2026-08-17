@@ -387,7 +387,8 @@ router.post("/api/me/services/:serviceId/slots/range", isAuthenticated, async (r
 // ─── Next availability (Backoffice C1) ──────────────────────────────────────────────────────
 //
 // `vendor_availability_slots` is the CANONICAL table for concrete, dated bookable slots
-// (roadmap ⛭ decision 3 — `provider_availability` is deprecated/dead, never read here).
+// (roadmap ⛭ decision 3 — `provider_availability` was deprecated/dead and is now DROPPED,
+// Partner Demand 2C / migration 242).
 // One grouped query — MIN(date) over future, not-fully-booked slots, GROUP BY serviceId —
 // scoped to the caller's OWN provider_services ids (never trusts ids from the client), so
 // this never N+1s regardless of how many offerings the My Offerings table renders.

@@ -1203,4 +1203,8 @@ export const MIGRATION_FILES = [
   //   market_slug backfill from destination, and idx_trips_market_slug. Additive-nullable + DROP
   //   DEFAULT only, no CHECK (publish-safe). Both columns declared in shared/schema.ts.
   "241_trips_demand_capture_r8.sql",
+  // 242: DROP provider_availability (Partner Demand 2C) — confirmed orphan (0 rows, no insert
+  //   path, no readers). Its one no-op UPDATE writer on the booking-confirm path was removed and
+  //   the schema.ts declaration deleted in the same change (publish-trap). IF EXISTS = push-safe.
+  "242_drop_provider_availability.sql",
 ] as const;
