@@ -2990,21 +2990,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             // T3-2: every canonical delivery value gets its own faithful UI option so
             // editing an existing service always reopens showing the value actually
             // stored (see fromCanonicalDelivery) instead of collapsing onto "In-Person".
-            const allMethods: { value: UiDelivery; label: string }[] = [
-              { value: "in-person", label: "In-Person" },
-              { value: "video-call", label: "Video Call" },
-              { value: "hybrid", label: "Hybrid (In-Person + Video)" },
-              { value: "pdf", label: "PDF Guide" },
-              { value: "call", label: "Phone Call" },
-              { value: "voice_notes", label: "Voice Notes" },
-              { value: "async_messaging", label: "Async Messaging" },
+            // MOCK CONFORMANCE (decision-maker, Aug 17 — "the mock lays out the ratified
+            // Service Creation flow"): the method question renders as the mock's TILE GRID
+            // (name + meta, aria-pressed), not a dropdown — same state write, same tier
+            // filter, same never-clobber; only the chrome changed.
+            const allMethods: { value: UiDelivery; label: string; meta: string }[] = [
+              { value: "in-person", label: "In person", meta: "Place-anchored" },
+              { value: "video-call", label: "Video call", meta: "Live, remote" },
+              { value: "call", label: "Phone call", meta: "Live, remote" },
+              { value: "pdf", label: "PDF guide", meta: "Artifact" },
+              { value: "voice_notes", label: "Voice notes", meta: "Async lane" },
+              { value: "async_messaging", label: "Async messaging", meta: "Async lane" },
+              { value: "hybrid", label: "Hybrid", meta: "In person + video" },
             ];
             let visibleMethods = allowed
               ? allMethods.filter((m) => allowed.has(m.value))
               : allMethods;
             // A tier's deliveryFormats filter (above) is a NEW-selection guardrail, not an
             // editor for an existing row — an already-stored value must always stay visible
-            // and selected, or the Select silently falls back off it and a no-change save
+            // and selected, or the grid silently falls off it and a no-change save
             // would corrupt the stored delivery_method (the exact T3-2 bug, one layer up).
             if (allowed && !visibleMethods.some((m) => m.value === formData.deliveryMethod)) {
               const current = allMethods.find((m) => m.value === formData.deliveryMethod);
@@ -3012,23 +3016,40 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             }
             return (
               <div>
-                <Label htmlFor="deliveryMethod">Delivery Method *</Label>
-                <Select
-                  value={formData.deliveryMethod}
-                  onValueChange={(v: any) => set("deliveryMethod", v)}
+                <Label>How do you deliver this? *</Label>
+                <div
+                  className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2"
+                  role="radiogroup"
+                  aria-label="Delivery method"
+                  data-testid="grid-delivery-method"
                 >
-                  <SelectTrigger id="deliveryMethod" className="mt-2">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleMethods.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                    ))}
-                    {visibleMethods.length === 0 && (
-                      <SelectItem value="in-person">In-Person</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                  {visibleMethods.map((m) => {
+                    const pressed = formData.deliveryMethod === m.value;
+                    return (
+                      <button
+                        key={m.value}
+                        type="button"
+                        aria-pressed={pressed}
+                        onClick={() => set("deliveryMethod", m.value)}
+                        className={
+                          "rounded-md border px-3 py-2.5 text-left transition-colors " +
+                          (pressed
+                            ? "border-[#35605A] bg-[#EDF2F1] shadow-[inset_0_0_0_1px_#35605A]"
+                            : "border-[#E8E8E2] bg-white hover:border-[#7A7A72]")
+                        }
+                        data-testid={`method-tile-${m.value}`}
+                      >
+                        <span className="block text-[13px] font-semibold text-[#1A1A18]">{m.label}</span>
+                        <span className={"block text-[11.5px] leading-snug " + (pressed ? "text-[#35605A]" : "text-[#7A7A72]")}>
+                          {m.meta}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  The rest of the form is built from this answer — the step list updates the moment you change it.
+                </p>
                 {allowed && (
                   <p className="text-xs text-muted-foreground mt-1">
                     Options filtered to your selected tier's delivery formats.
@@ -3264,6 +3285,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 />
               </div>
             )}
+            {/* Mock ④ — money in one place: creation asks one price; the tune-later drawer
+                owns the rest. Stated here, where the provider would otherwise go looking. */}
+            <p className="text-xs text-muted-foreground">
+              One price is enough here. Surcharges, deposits and cancellation live in{" "}
+              <b className="text-foreground">Pricing &amp; fees</b> after you save — none of them
+              are required to go live.
+            </p>
           </div>
 
           {/* ── The fifth and last field of the fast path. Moved up from the old step 2 so that
@@ -3273,7 +3301,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               schema does not demand it and no publish gate checks it. It IS scored by the owner
               health rail, which is what "recommended" means here. */}
           <div>
-            <Label htmlFor="description">Description <span className="text-muted-foreground font-normal">(recommended)</span></Label>
+            <Label htmlFor="description">One line about it <span className="text-muted-foreground font-normal">(recommended)</span></Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -3282,6 +3310,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               rows={4}
               className="mt-2"
             />
+            {/* Mock's live counter — an honest count, no invented threshold (the publish gate
+                does not require a description; the health rail scores it). */}
+            <p className="text-xs text-muted-foreground mt-1" data-testid="text-description-count">
+              {formData.description.length} characters — you can write the long version later.
+            </p>
           </div>
 
           {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
