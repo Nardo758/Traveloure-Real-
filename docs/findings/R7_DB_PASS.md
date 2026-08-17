@@ -1,0 +1,170 @@
+# R7 DB PASS — Partner Demand Data · read-only dev-DB audit
+
+Run 2026-08-17 on Replit dev DB (`psql $DATABASE_URL -f r7-db-pass.sql`), script pre-validated against schema.ts@8d7b581. Zero errors — no schema drift vs push-canonical. Verbatim output follows.
+
+```
+Pager usage is off.
+Timing is off.
+================ Q1a — search_analytics population ================
+ total_rows | earliest | latest | has_results_count | zero_result_searches | has_origin_country | has_ip_country | has_travel_dates | has_travelers | converted 
+------------+----------+--------+-------------------+----------------------+--------------------+----------------+------------------+---------------+-----------
+          0 |          |        |                 0 |                    0 |                  0 |              0 |                0 |             0 |         0
+(1 row)
+
+================ Q1b — search_type coverage (does 'service' appear?) ================
+ search_type | n | has_rc | zero_rc 
+-------------+---+--------+---------
+(0 rows)
+
+================ Q1c — destination free-text shape (top 40) ================
+ destination | n 
+-------------+---
+(0 rows)
+
+================ Q1d — recency (live now vs historical residue) ================
+ month | n 
+-------+---
+(0 rows)
+
+================ Q2 — trips party size: real vs default-masked ================
+ total_trips | all_defaults_suspect | has_explicit_travelers | nt_moved | adults_moved | kids_moved 
+-------------+----------------------+------------------------+----------+--------------+------------
+         217 |                   94 |                     52 |       75 |            1 |          0
+(1 row)
+
+================ Q2b — cross-field disagreement (travelers vs number_of_travelers) ================
+ disagree 
+----------
+       19
+(1 row)
+
+================ Q3 — trips.destination normalization difficulty (top 50) ================
+        destination        | n  
+---------------------------+----
+ kyoto, japan              | 47
+ lisbon                    | 43
+ kyoto                     | 25
+ san francisco             | 24
+ paris, france             | 17
+ barcelona, spain          | 16
+ tokyo, japan              |  9
+ lisbon, portugal          |  6
+ new york                  |  6
+ westchester ny            |  2
+ barcelona                 |  1
+ california, usa           |  1
+ maui & big island, hawaii |  1
+ budapest                  |  1
+ nigeria                   |  1
+ rome                      |  1
+ prague                    |  1
+ bali                      |  1
+ amsterdam                 |  1
+ l                         |  1
+ unknown                   |  1
+ krakow                    |  1
+ bali, indonesia           |  1
+ paris                     |  1
+ tokyo                     |  1
+ osaka, japan              |  1
+ nara,                     |  1
+ ci test destination       |  1
+ london                    |  1
+ tampa                     |  1
+ osaka                     |  1
+ california                |  1
+(32 rows)
+
+================ Q3b — naive match rate vs the 8 market slugs ================
+ total | matches_a_market 
+-------+------------------
+   217 |               72
+(1 row)
+
+================ Q4 — availability table row counts (orphan check) ================
+               t                | count 
+--------------------------------+-------
+ provider_availability          |     0
+ provider_availability_schedule |    25
+ provider_blackout_dates        |     5
+ vendor_availability_slots      |   149
+(4 rows)
+
+================ Q4b — provider_availability ownership (test residue vs real) ================
+ provider_id | email | n 
+-------------+-------+---
+(0 rows)
+
+================ Q5 — the ten pre-existing analytics tables (LIVE/STALE/DEAD) ================
+              t               | n | earliest | latest 
+------------------------------+---+----------+--------
+ demand_signals               | 0 |          | 
+ service_requests             | 0 |          | 
+ provider_performance_metrics | 0 |          | 
+ market_intelligence          | 0 |          | 
+ pricing_intelligence         | 0 |          | 
+ activity_booking_analytics   | 0 |          | 
+ activity_demand_trends       | 0 |          | 
+ trip_analytics_enhanced      | 0 |          | 
+ service_gap_analysis         | 0 |          | 
+ seasonal_opportunities       | 0 |          | 
+(10 rows)
+
+================ Q5b — service_requests status distribution (worked vs abandoned queue) ================
+ status | n 
+--------+---
+(0 rows)
+
+================ Q6a — itinerary_items volume by routing_status ================
+   routing_status   |  n  
+--------------------+-----
+ in_planning        | 466
+ purchased          |  42
+ ready_for_checkout |  26
+ with_expert        |   9
+(4 rows)
+
+================ Q6b — trips per mapped market (10-floor reality check) ================
+ destination  | trips 
+--------------+-------
+ kyoto, japan |    47
+ kyoto        |    25
+(2 rows)
+
+================ Q6c — fee_ledger depth (money-block backfill span) ================
+ n | earliest | latest 
+---+----------+--------
+ 0 |          | 
+(1 row)
+
+================ Q6d — test-account contamination in trips ================
+ total_trips | test_account_trips 
+-------------+--------------------
+         217 |                 74
+(1 row)
+
+================ Q7 — schema-drift spot-check (ORM default == DB default?) ================
+    table_name    |     column_name     |          column_default          | is_nullable 
+------------------+---------------------+----------------------------------+-------------
+ itinerary_items  | routing_status      | 'in_planning'::character varying | NO
+ search_analytics | results_count       |                                  | YES
+ trips            | adults              | 2                                | YES
+ trips            | kids                | 0                                | YES
+ trips            | number_of_travelers | 1                                | YES
+(5 rows)
+
+================ Q8 — demand_signal_events volume + kind distribution (the ELEVENTH table) ================
+       kind       | n |          earliest          |           latest           
+------------------+---+----------------------------+----------------------------
+ no_stay_flag     | 1 | 2026-08-11 16:12:18.343712 | 2026-08-11 16:12:18.343712
+ stay_anchor_miss | 1 | 2026-08-11 16:12:17.468132 | 2026-08-11 16:12:17.468132
+(2 rows)
+
+================ Q8b — demand_signal_events market coverage ================
+ market | n 
+--------+---
+ Kyoto  | 2
+(1 row)
+
+================ R7 DB PASS COMPLETE ================
+```
