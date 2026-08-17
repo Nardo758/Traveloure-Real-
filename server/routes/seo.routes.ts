@@ -114,7 +114,7 @@ router.get("/sitemap.xml", async (_req, res) => {
     }
     res
       .status(200)
-      .set({ "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=900" })
+      .set({ "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=900" }) // fee-literal-ok: HTTP Cache-Control max-age in SECONDS (15 min), not a fee in cents — phase2-fee-gate cents false positive (§18d)
       .send(sitemapCache.xml);
   } catch (err) {
     console.error("[seo] sitemap generation failed:", err);
