@@ -65,18 +65,16 @@ interface AnalyticsDashboard {
     repeatClients?: number;
   };
   keyMetrics: {
-    responseTime: { value: string; benchmark: string; status: string };
-    conversionRate: { value: string; benchmark: string; status: string };
-    avgRating: { value: string; benchmark: string; status: string };
-    avgBookingValue: { value: string; benchmark: string; status: string };
+    // Phase 1 / R4: fabricated `benchmark` targets and the hardcoded `responseTime` metric
+    // removed. Real value + a status ("no_data" | "no_benchmark") only.
+    conversionRate: { value: string; status: string };
+    avgRating: { value: string; status: string };
+    avgBookingValue: { value: string; status: string };
   };
   conversionFunnel: Array<{ stage: string; count: number; percent: number }>;
   revenueByService: Array<{ service: string; revenue: number; bookings: number; percentage: number }>;
-  clientLifetimeValue: {
-    average: number;
-    repeatRate: number;
-    avgBookingsPerClient: number;
-  };
+  // Phase 1: CLV figures were fabricated (×1.8, repeatRate 35) — deleted; no_data only.
+  clientLifetimeValue: { status: string };
   monthlyMetrics?: Array<{ month: string; clients: number; revenue: number; rating: number }>;
   recentReviews?: Array<{ id: string; client: string; rating: number; text: string; date: string }>;
 }
@@ -155,21 +153,16 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
       impact: "Increase visibility",
     },
     {
+      // Phase 1: the "below average / healthy" verdict depended on the fabricated 55%
+      // benchmark. With no benchmark, we state the real value and say so — no invented verdict.
       type: "growth",
-      title: "Optimize your conversion rate",
-      description: analytics?.keyMetrics?.conversionRate?.status === "needs_improvement"
-        ? "Your conversion rate is below average. Consider faster response times and competitive pricing."
-        : "Your conversion rate is healthy. Keep up the good work!",
+      title: "Your conversion rate",
+      description: `Your conversion rate is ${analytics?.keyMetrics?.conversionRate?.value || "N/A"} (completed bookings ÷ inquiries). A benchmark to compare against isn't available yet.`,
       action: "View funnel",
       impact: analytics?.keyMetrics?.conversionRate?.value || "N/A",
     },
-    {
-      type: "retention",
-      title: "Client lifetime value opportunity",
-      description: `Average CLV is $${analytics?.clientLifetimeValue?.average || 0}. Repeat rate: ${analytics?.clientLifetimeValue?.repeatRate || 0}%`,
-      action: "Re-engage clients",
-      impact: "Increase repeat bookings",
-    },
+    // Phase 1: the "Client lifetime value opportunity" insight was fabricated (CLV / repeat
+    // rate were invented) — removed.
   ];
 
   const getInsightColor = (type: string) => {
@@ -402,9 +395,7 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                   </div>
                   <p className="text-sm text-muted-foreground">Conversion Rate</p>
                   <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.conversionRate?.value || "0%"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Benchmark: {analytics?.keyMetrics?.conversionRate?.benchmark || "55%"}
-                  </p>
+                  {/* Phase 1 / R4: fabricated "Benchmark: 55%" removed — no invented target. */}
                 </CardContent>
               </Card>
 
@@ -416,9 +407,7 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                   </div>
                   <p className="text-sm text-muted-foreground">Average Rating</p>
                   <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.avgRating?.value || "0"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Benchmark: {analytics?.keyMetrics?.avgRating?.benchmark || "—"}
-                  </p>
+                  {/* Phase 1 / R4: fabricated benchmark target removed. */}
                 </CardContent>
               </Card>
 
@@ -430,9 +419,7 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                   </div>
                   <p className="text-sm text-muted-foreground">Avg Booking Value</p>
                   <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.avgBookingValue?.value || "$0"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Benchmark: {analytics?.keyMetrics?.avgBookingValue?.benchmark || "$350"}
-                  </p>
+                  {/* Phase 1 / R4: fabricated "Benchmark: $350" removed — no invented target. */}
                 </CardContent>
               </Card>
             </div>
@@ -568,6 +555,11 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
+                        {(marketIntel?.seasonalDemand || []).length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4" data-testid="seasonal-no-data">
+                            No seasonal demand data yet — this stays empty until real demand is computed.
+                          </p>
+                        )}
                         {(marketIntel?.seasonalDemand || []).map((season, index) => (
                           <div key={index} className="p-3 rounded-lg border" data-testid={`season-${index}`}>
                             <div className="flex items-center justify-between mb-2">
@@ -596,19 +588,15 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                     <CardDescription>Understanding your client relationships</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="text-center p-6 rounded-lg border">
-                        <p className="text-3xl font-bold text-foreground">${analytics?.clientLifetimeValue?.average || 0}</p>
-                        <p className="text-sm text-muted-foreground mt-1">Average CLV</p>
-                      </div>
-                      <div className="text-center p-6 rounded-lg border">
-                        <p className="text-3xl font-bold text-foreground">{analytics?.clientLifetimeValue?.repeatRate || 0}%</p>
-                        <p className="text-sm text-muted-foreground mt-1">Repeat Rate</p>
-                      </div>
-                      <div className="text-center p-6 rounded-lg border">
-                        <p className="text-3xl font-bold text-foreground">{analytics?.clientLifetimeValue?.avgBookingsPerClient || 0}</p>
-                        <p className="text-sm text-muted-foreground mt-1">Avg Bookings/Client</p>
-                      </div>
+                    {/* Phase 1: the CLV figures (average, repeat rate, bookings/client) were all
+                        fabricated (×1.8 multiplier, hardcoded repeatRate 35) and are deleted.
+                        Nothing computes lifetime value yet, so this renders an honest empty state
+                        instead of an invented dollar figure (§13). */}
+                    <div className="text-center py-10 rounded-lg border border-dashed" data-testid="clv-no-data">
+                      <p className="text-sm text-muted-foreground">
+                        No lifetime-value data yet. This populates once repeat-client tracking is
+                        built — we won't show an estimated figure in the meantime.
+                      </p>
                     </div>
 
                     <Card className="border mt-6">
@@ -1036,6 +1024,11 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {(marketIntel?.seasonalDemand || []).length === 0 && (
+                            <p className="text-sm text-muted-foreground py-4 col-span-full" data-testid="rev-seasonal-no-data">
+                              No seasonal demand data yet.
+                            </p>
+                          )}
                           {(marketIntel?.seasonalDemand || []).map((season: any, index: number) => {
                             const SeasonIcon = season.icon ?? Sun;
                             return (
