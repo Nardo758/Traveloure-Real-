@@ -2856,3 +2856,22 @@ no-change control) stays green.
 > reason. Only the mutation run exposed it. Insert order is now load-bearing and commented as such.
 > A test written against a nondeterministic bug can pass by luck; mutation is the only way to know.
 
+
+## Console conformance run — Aug 17, 2026 (dispatch CONSOLE_CONFORMANCE_DISPATCH_AUG16 executed; verdict table appended there)
+
+The Aug-16 dispatch's checklists A1–A6/B1–B7/C1–C5 were finally executed against a running stack
+(local Postgres, seeded provider). **Outcome: conformance CONFIRMED** — one real divergence found,
+root-caused and fixed in the same session:
+
+- **AV-1 (P2, FIXED): the availability drawer's "One-off dated slots" card ignored the editor's
+  per-listing, per-semantics contract.** It rendered for EVERY selection — including beneath the
+  async listing's "No calendar — this sells without slots" card — its slot list was provider-wide
+  (another listing's slots displayed under the current selection), and it embedded a second
+  service picker through which a dated slot could be authored onto an async listing the
+  no-calendar branch had just refused a calendar for (the exact question-inventing S-4 exists to
+  prevent). Fix (`provider-availability-manager.tsx`): the card scopes its list to the drawer's
+  selected listing, renders only when that listing takes scheduled semantics (`needsScheduling`,
+  non-property — the SAME routing `ServiceAvailabilityEditor` uses, not a second predicate), and
+  the duplicate inner picker is gone (the drawer's one picker is the mock's design; the add form
+  already posted `selectedServiceId`). Re-verified live both ways; tsc baseline unchanged; no
+  spec referenced the removed pieces.
