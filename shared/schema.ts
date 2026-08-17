@@ -818,6 +818,11 @@ export const providerServices = pgTable("provider_services", {
   // Booking constraints.
   partySizeMin: integer("party_size_min"),
   partySizeMax: integer("party_size_max"),
+  // Capacity-step "Seating" (migration 239). App-enforced 'private'|'shared' (no DB CHECK —
+  // migration-181/195/228 posture, avoids the publish-time CHECK trap); NULL = never answered ⇒
+  // OMITTED on the traveler surface (§13), never rendered as a guessed default. Owner-authored
+  // descriptive content (no amount/identity/rate/grant), so §19's strip does not apply.
+  seating: varchar("seating", { length: 16 }),
   changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
 
   // ══ S9 session/async fields (docs/DECISIONS.md ledger row 102, migration 212) ════════════════

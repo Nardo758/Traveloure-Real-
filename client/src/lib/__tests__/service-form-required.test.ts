@@ -21,6 +21,7 @@ import {
   deriveServiceChecklist,
   effectivePriceScalar,
   missingRequiredForFinal,
+  DESCRIPTION_CHECKLIST_MIN,
   type ServiceChecklistInput,
   type ServiceFormRequiredInput,
 } from "../service-form-required";
@@ -243,6 +244,9 @@ function checklistInput(over: Partial<ServiceChecklistInput> = {}): ServiceCheck
     attestationsApplicable: false,
     availabilitySlotCount: 0,
     coverPhotoPresent: true,
+    // 140+ characters, so the description140 row is done in the "complete listing" fixtures.
+    description:
+      "A slow morning walk through the quiet side of Gion with a licensed local guide — tea, backstreet shrines, and the market stalls travelers usually miss entirely.",
     ...over,
   };
 }
@@ -253,7 +257,7 @@ test("C1: a complete, fully-published in-person listing is done everywhere", () 
   const rows = deriveServiceChecklist(
     checklistInput({ attestationsApplicable: true, attestationGateBlocked: false, availabilitySlotCount: 3 }),
   );
-  assert.deepEqual(rowIds(rows), ["name", "category", "price", "meetingPoint", "attestations", "coverPhoto", "availability"]);
+  assert.deepEqual(rowIds(rows), ["name", "category", "price", "meetingPoint", "attestations", "description140", "coverPhoto", "availability"]);
   assert.ok(rows.every((r) => r.done), `expected every row done, got ${JSON.stringify(rows.filter((r) => !r.done))}`);
 });
 
@@ -267,7 +271,7 @@ test("C2: a pdf listing NEVER shows a pin row — and never a session/async row 
       deliverableUploaded: true,
     }),
   );
-  assert.deepEqual(rowIds(rows), ["name", "category", "price", "deliverable", "coverPhoto", "availability"]);
+  assert.deepEqual(rowIds(rows), ["name", "category", "price", "deliverable", "description140", "coverPhoto", "availability"]);
   assert.equal(rows.some((r) => r.id === "meetingPoint"), false);
 });
 
@@ -275,7 +279,7 @@ test("C3: a remote (call) listing shows neither a pin row nor a deliverable row"
   const rows = deriveServiceChecklist(
     checklistInput({ deliveryMethod: "call", needsMeetingPoint: false, meetingPoint: "" }),
   );
-  assert.deepEqual(rowIds(rows), ["name", "category", "price", "coverPhoto", "availability"]);
+  assert.deepEqual(rowIds(rows), ["name", "category", "price", "description140", "coverPhoto", "availability"]);
 });
 
 test("C4: attestations row renders ONLY when applicable — never a hollow tick for a confirmation never asked", () => {
@@ -317,6 +321,30 @@ test("C5b (gap #16): the cover-photo row derives from record state and targets t
 
   const present = deriveServiceChecklist(checklistInput({ coverPhotoPresent: true }));
   assert.equal(present.find((r) => r.id === "coverPhoto")!.done, true);
+});
+
+test("C5c (mock 140+ ask): the description row ticks at the shared threshold and NEVER gates the final action", () => {
+  const short = deriveServiceChecklist(checklistInput({ description: "Too short." }));
+  const shortRow = short.find((r) => r.id === "description140")!;
+  assert.ok(shortRow, "description140 row should always render");
+  assert.equal(shortRow.done, false);
+  assert.equal(shortRow.target.kind, "step");
+
+  const exactly = deriveServiceChecklist(
+    checklistInput({ description: "x".repeat(DESCRIPTION_CHECKLIST_MIN) }),
+  );
+  assert.equal(exactly.find((r) => r.id === "description140")!.done, true);
+
+  // Whitespace padding never counts toward the threshold.
+  const padded = deriveServiceChecklist(
+    checklistInput({ description: "  short  " + " ".repeat(DESCRIPTION_CHECKLIST_MIN) }),
+  );
+  assert.equal(padded.find((r) => r.id === "description140")!.done, false);
+
+  // NON-GATING: a short description never appears in the required set — description was
+  // deliberately removed from the asterisk set (FP-2) and this row does not reintroduce it.
+  const missing = missingRequiredForFinal(completeProvider({ isEditMode: true }));
+  assert.equal(missing.length, 0);
 });
 
 test("C6: required category fields get their own row, by label; optional fields never appear", () => {
