@@ -31,7 +31,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { Loader2, ImageIcon, UploadCloud } from "lucide-react";
 
-const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+// The workspace cover rail (POST .../cover-photo) accepts JPEG/PNG, magic-byte gated server-side.
+const ACCEPTED_TYPES = ["image/jpeg", "image/png"];
 
 interface ServicePhotosDrawerProps {
   open: boolean;
@@ -63,14 +64,16 @@ export function ServicePhotosDrawer({
     if (!ACCEPTED_TYPES.includes(file.type)) {
       toast({
         title: "That file isn't a photo we can take",
-        description: "JPEG, PNG or WebP images only.",
+        description: "JPEG or PNG images only.",
         variant: "destructive",
       });
       return;
     }
     setUploading(true);
     try {
-      const res = await fetch(`/api/provider/services/${serviceId}/photo`, {
+      // The workspace's canonical cover rail: covers:-discriminator storage, private-bucket
+      // proxy serve; the response's imageUrl is the proxy URL every card renders.
+      const res = await fetch(`/api/provider/services/${serviceId}/cover-photo`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": file.type },
@@ -82,8 +85,8 @@ export function ServicePhotosDrawer({
         // generic failure and never a fake success.
         throw new Error(body?.message ?? `Upload failed (${res.status})`);
       }
-      // The server has already written provider_services.serviceImage; mirror it locally.
-      if (typeof body?.url === "string") onCoverChange(body.url);
+      // The server has already written provider_services.serviceImage; mirror the proxy URL locally.
+      if (typeof body?.imageUrl === "string") onCoverChange(body.imageUrl);
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services/health"] });
       toast({
