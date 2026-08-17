@@ -118,7 +118,7 @@ import { isPlaceAnchored } from "@shared/service-fundamentals";
 // the ServiceForm questionnaire. ONE home for that routing decision (ServiceForm's back-door
 // guard imports the same module).
 import { listingEditHref, isPropertyRoom } from "@/lib/property-editor-link";
-import { describeCatalogRefusal, type CatalogAction } from "@/lib/catalog-error-copy";
+import { describeCatalogRefusal, refusalBody, type CatalogAction } from "@/lib/catalog-error-copy";
 import {
   catalogStatusBucket,
   catalogPillDisplay,
@@ -1013,6 +1013,10 @@ function ListingRow({
   const displayName = service.serviceName || service.name || t("card.untitled");
   const isBundle = service.productShape === "bundle";
   const isProperty = service.productShape === "property";
+  // Gap #18: archived is terminal — the server refuses every PATCH on an archived row, so the
+  // row renders no dead controls (no storefront switch, no card settings, no edit/promote);
+  // Delete (still behind the server's booking guard) is the one remaining action.
+  const isArchived = service.status === "archived";
   const editHref = listingEditHref(service);
 
   return (
@@ -1040,6 +1044,7 @@ function ListingRow({
 
         <div className="flex items-center gap-3.5 mt-2.5 flex-wrap">
           <CatalogPill service={service} />
+          {!isArchived && (
           <label className="flex items-center gap-1.5 text-[12.5px] text-[#7A7A72] cursor-pointer">
             <Switch
               checked={isActive}
@@ -1049,9 +1054,10 @@ function ListingRow({
             />
             Show on my storefront
           </label>
+          )}
           {/* mock row's "Availability →" — per-listing jump into the slot editor (same drawer
               the compact Availability card's "Edit slots" opens, preselected to this listing). */}
-          {onOpenAvailability && (
+          {onOpenAvailability && !isArchived && (
             <button
               type="button"
               onClick={onOpenAvailability}
@@ -1065,7 +1071,7 @@ function ListingRow({
         </div>
 
         {/* C3: per-listing "Card shows" control (Show price + Booking mode). */}
-        <CardShowsControl service={service} onPatch={onPatchDisplay} disabled={displayPatchDisabled} />
+        {!isArchived && <CardShowsControl service={service} onPatch={onPatchDisplay} disabled={displayPatchDisabled} />}
 
         {/* FP-3: the property's room types collapse to one line, expanding to the same row shape. */}
         {isProperty && <PropertyRoomsBlock property={service} rooms={rooms} />}
@@ -1088,6 +1094,7 @@ function ListingRow({
 
       {/* mock `.lright` — quiet actions: Edit + "Promote this →"; Duplicate/Delete in overflow */}
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto">
+        {!isArchived && (
         <Link href={editHref}>
           <button
             type="button"
@@ -1097,6 +1104,8 @@ function ListingRow({
             {t("card.edit", { defaultValue: "Edit" })}
           </button>
         </Link>
+        )}
+        {!isArchived && (
         <Link href={`/provider/distribute?listing=${service.id}`}>
           <button
             type="button"
@@ -1106,7 +1115,26 @@ function ListingRow({
             Promote this →
           </button>
         </Link>
-        {!isBundle && !isProperty && (
+        )}
+        {isArchived && !isBundle && !isProperty ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="More actions"
+                className="text-[#7A7A72] hover:text-[#1A1A18] p-0.5"
+                data-testid={`button-more-${service.id}`}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onRequestDelete} className="text-red-600 focus:text-red-600" data-testid={`button-delete-${service.id}`}>
+                <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : !isBundle && !isProperty && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -1157,6 +1185,9 @@ const STATUS_CHIPS: Array<{ key: "all" | CatalogStatusBucket; label: string }> =
   { key: "live", label: "Live" },
   { key: "in_review", label: "In review" },
   { key: "draft", label: "Draft" },
+  // Gap #18: rendered only when archived rows exist — an archived listing has left circulation
+  // but stays findable here, since deletion becomes possible again if its rows never transacted.
+  { key: "archived", label: "Archived" },
 ];
 
 export default function ProviderServices() {
@@ -1177,6 +1208,15 @@ export default function ProviderServices() {
   const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
   // FP-2 / Package A item 6: Delete is CONFIRMED, not immediate.
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  // Gap #18 (Gate G5): the server refused a delete because bookings exist — the refusal dialog
+  // renders the server's OWN counts/message (never a client re-derivation) and offers Archive.
+  const [archiveOffer, setArchiveOffer] = useState<{
+    service: Service;
+    code: string;
+    message: string;
+    openCount: number;
+    transactedCount: number;
+  } | null>(null);
   // Availability drawer — houses the REAL S7 editor (ProviderAvailabilityManager), preselected.
   const [availabilityDrawerOpen, setAvailabilityDrawerOpen] = useState(false);
   const [availabilityDrawerServiceId, setAvailabilityDrawerServiceId] = useState<string | null>(null);
@@ -1279,7 +1319,46 @@ export default function ProviderServices() {
       toast({ title: "Service deleted" });
     },
     onError: (error: Error, id) => {
-      toastRefusal("delete", error, services?.find((s) => s.id === id));
+      // Gap #18: a booking-guarded refusal opens the archive dialog instead of a toast — the
+      // dialog body is the server's own sentence and counts (§13 — nothing restated client-side).
+      const body = refusalBody(error);
+      const service = services?.find((s) => s.id === id);
+      if (
+        service &&
+        (body?.code === "HAS_OPEN_BOOKINGS" || body?.code === "HAS_BOOKING_HISTORY") &&
+        typeof body?.message === "string"
+      ) {
+        setDeleteTarget(null);
+        setArchiveOffer({
+          service,
+          code: body.code as string,
+          message: body.message,
+          openCount: Number(body.openCount ?? 0),
+          transactedCount: Number(body.transactedCount ?? 0),
+        });
+        return;
+      }
+      toastRefusal("delete", error, service);
+    },
+  });
+
+  // Gap #18: the archive action offered by the refusal dialog. One write path server-side
+  // (POST .../archive); archived is terminal except deletion.
+  const archiveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/provider/services/${id}/archive`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      setArchiveOffer(null);
+      toast({
+        title: "Listing archived",
+        description: "It has left your Catalog and search — nobody can book it again. Its bookings and history stand.",
+      });
+    },
+    onError: (error: Error, id) => {
+      toastRefusal("archive", error, services?.find((s) => s.id === id));
     },
   });
 
@@ -1310,6 +1389,7 @@ export default function ProviderServices() {
     live: allServices.filter((s) => catalogStatusBucket(s) === "live").length,
     in_review: allServices.filter((s) => catalogStatusBucket(s) === "in_review").length,
     draft: allServices.filter((s) => catalogStatusBucket(s) === "draft").length,
+    archived: allServices.filter((s) => catalogStatusBucket(s) === "archived").length,
     other: 0,
   };
 
@@ -1430,7 +1510,7 @@ export default function ProviderServices() {
               />
             </div>
             <Seg>
-              {STATUS_CHIPS.map((chip) => (
+              {STATUS_CHIPS.filter((chip) => chip.key !== "archived" || statusCounts.archived > 0).map((chip) => (
                 <SegButton
                   key={chip.key}
                   active={statusFilter === chip.key}
@@ -1628,6 +1708,58 @@ export default function ProviderServices() {
                 data-testid="button-confirm-delete-service"
               >
                 {tCommon("actions.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* ── Gap #18 (Gate G5) — deletion refused, Archive offered ─────────────────────────
+            Opens when the server's booking guard 409s a delete. The body sentence is the
+            server's own message (counts included) — never restated client-side; the bullet
+            list states what archiving really does, in the ratified mock's words. */}
+        <AlertDialog open={!!archiveOffer} onOpenChange={(open) => !open && setArchiveOffer(null)}>
+          <AlertDialogContent data-testid="dialog-archive-offer">
+            <AlertDialogHeader>
+              <AlertDialogTitle>This listing cannot be deleted</AlertDialogTitle>
+              <AlertDialogDescription data-testid="text-archive-offer-reason">
+                {archiveOffer?.message}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {archiveOffer && (
+              <ul className="rounded-md border border-dashed border-[#E8E8E2] bg-[#FAFAF8] px-4 py-3 space-y-2 text-[13px] text-[#1A1A18]">
+                <li className="flex gap-2">
+                  <span aria-hidden className="text-[#35605A]">✓</span>
+                  <span>
+                    <b>Archive it.</b> It leaves your Catalog and search immediately — nobody can
+                    book it again.
+                  </span>
+                </li>
+                {archiveOffer.openCount > 0 && (
+                  <li className="flex gap-2">
+                    <span aria-hidden className="text-[#35605A]">✓</span>
+                    <span>
+                      The {archiveOffer.openCount} upcoming booking
+                      {archiveOffer.openCount === 1 ? " stands" : "s stand"} — you still owe{" "}
+                      {archiveOffer.openCount === 1 ? "that traveler" : "those travelers"} what they
+                      booked.
+                    </span>
+                  </li>
+                )}
+                <li className="flex gap-2">
+                  <span aria-hidden className="text-[#35605A]">✓</span>
+                  <span>Past bookings, reviews and payouts keep pointing at a listing that still exists.</span>
+                </li>
+              </ul>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-archive-offer-cancel">Keep it live</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => archiveOffer && archiveMutation.mutate(archiveOffer.service.id)}
+                disabled={archiveMutation.isPending}
+                className="bg-[#1A1A18] hover:bg-black"
+                data-testid="button-archive-offer-confirm"
+              >
+                Archive listing
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

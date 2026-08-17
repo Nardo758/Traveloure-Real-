@@ -1976,7 +1976,13 @@ migrations stamped through 209, six spot-checks green). Wave 3 lanes (S7–S11, 
 - **#16** photos/media — upload vs pasted URLs (extend the ruling-58 objstore rail to images).
 - **#17** edit-path for a live listing (back through review only for identity fields — define the
   field list).
-- **#18** delete-with-bookings (refuse + archive, mirroring the shipped withdraw precedent).
+- ~~**#18** delete-with-bookings (refuse + archive, mirroring the shipped withdraw precedent).~~
+  **CLOSED (ledger `2026-08-17-delete-archive`):** both delete rails call `assessServiceDeletion`
+  (open bookings ⇒ `HAS_OPEN_BOOKINGS`; completed/refunded history ⇒ `HAS_BOOKING_HISTORY` — sold
+  history is never deleted, superseding the mock's "once delivered, deletable" bullet, flagged in
+  the ledger row); `POST .../archive` is the one write path into terminal `status='archived'`;
+  Catalog renders the refusal dialog + Archive offer. Proven by
+  `service-delete-archive.db.test.ts` D1–D7.
 
 ### Standing engineering queue (no [DM] needed; sequenced after/alongside Wave 3)
 

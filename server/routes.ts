@@ -16,6 +16,7 @@ import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
 import { storage, type BookingStatusNotification } from "./storage";
+import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import {
   materializeServiceAvailability,
   materializeDateRangeAvailability,
@@ -3311,6 +3312,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!ownedService) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
+      // ── Gap #18 (Gate G5): 'archived' is terminal and has ONE write path ─────────────────────
+      // POST /api/provider/services/:id/archive is the only writer of status='archived' (so the
+      // refusal dialog's semantics can't be bypassed by a raw PATCH), and an archived listing is
+      // never edited back to life — "nobody can book it again" is a promise, not a pause. Delete
+      // (behind its own booking guard) is the only exit.
+      if (req.body?.status === "archived") {
+        return res.status(400).json({
+          message: "Archiving has its own action — use the Archive option on the listing.",
+          code: "ARCHIVE_VIA_ENDPOINT",
+        });
+      }
+      if (ownedService.status === "archived") {
+        return res.status(409).json({
+          message: "This listing is archived. Archived listings can't be edited or reactivated — they exist so past bookings keep a listing to point at.",
+          code: "LISTING_ARCHIVED",
+        });
+      }
       // Extract neighborhoods before schema parse (not a DB column)
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       // L27-P3: same server-derived location handling as create. A PATCH that carries
@@ -3575,6 +3593,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!ownedService) {
       return res.status(404).json({ message: "Service not found or not owned by you" });
     }
+    // Gap #18 (Gate G5): a listing with open bookings or transacted history is never deleted —
+    // service_bookings.service_id is ON DELETE CASCADE, so the delete would take the booking
+    // rows (receipts, reviews, payout records) with it. 409 + the archive offer instead.
+    const refusal = await assessServiceDeletion([req.params.id], ownedService.serviceName);
+    if (refusal) return res.status(409).json(refusal);
     try {
       await storage.deleteProviderService(req.params.id);
     } catch (err: any) {
@@ -3584,6 +3607,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return res.status(500).json({ message: "Failed to delete service" });
     }
     res.status(204).send();
+  });
+
+  // ── Gap #18 (Gate G5, ratified Aug 13 2026): ARCHIVE — the honest alternative to delete ──────
+  // The ONE write path into status='archived' (the meeting-pin one-write-path posture; the PATCH
+  // rail refuses the value). Archiving is always allowed — it claims nothing about bookings and
+  // breaks nothing they point at: every public read filters status='active', so the listing
+  // leaves search/storefront/marketplace immediately, existing bookings stand, and history keeps
+  // a listing to point at. Archived is terminal except deletion (which stays behind the booking
+  // guard above): "nobody can book it again" is a promise, not a pause.
+  app.post("/api/provider/services/:id/archive", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const services = await storage.getProviderServices(userId);
+      const ownedService = services.find(s => s.id === req.params.id);
+      if (!ownedService) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      if (ownedService.status === "archived") {
+        return res.json({ success: true, alreadyArchived: true });
+      }
+      // A property's rooms are separate bookable rows that inherit the property — archiving the
+      // parent archives them with it, so no room stays bookable under an archived property.
+      await db
+        .update(providerServices)
+        .set({ status: "archived", updatedAt: new Date() })
+        .where(
+          or(
+            eq(providerServices.id, req.params.id),
+            eq(providerServices.parentServiceId, req.params.id),
+          ),
+        );
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Error archiving provider service:", err);
+      res.status(500).json({ message: "Failed to archive service" });
+    }
   });
 
   // City lookup endpoint for planning modals
@@ -4611,6 +4670,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (service.status === "approved") {
         return res.status(400).json({ message: "Cannot delete approved services. Deactivate instead." });
       }
+      // Gap #18 (Gate G5): same booking guard as the provider delete rail — one assessment,
+      // both rails. A non-approved listing can still carry booking rows (e.g. approved once,
+      // then edited back into review), and the CASCADE would take them with it.
+      const refusal = await assessServiceDeletion([req.params.id], (service as any).serviceName ?? (service as any).name);
+      if (refusal) return res.status(409).json(refusal);
 
       await storage.deleteProviderServiceListing(req.params.id);
       res.json({ success: true });
