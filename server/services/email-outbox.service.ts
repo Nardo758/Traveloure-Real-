@@ -5,14 +5,18 @@
  * fire-and-forget calls to Resend, callers enqueue an email row (status=pending)
  * and the outbox scheduler retries failed rows with exponential backoff.
  *
- * Retry schedule (attempt_count → seconds until next retry):
- *   1 →   5 min
- *   2 →  15 min
- *   3 →  45 min
- *   4 → 120 min  (2 h)
- *   5 → 360 min  (6 h)
- * After max_attempts (default 5) the row is marked 'dead' and surfaced on the
- * admin dashboard for manual inspection.
+ * Retry schedule (after attempt N fails, wait before attempt N+1):
+ *   attempt 1 fails →   5 min delay
+ *   attempt 2 fails →  15 min delay
+ *   attempt 3 fails →  45 min delay
+ *   attempt 4 fails → 120 min delay (2 h)
+ *   attempt 5 fails → 360 min delay (6 h)
+ *   attempt 6 fails → DEAD — no more retries; row surfaced on admin dashboard
+ *
+ * Concurrency safety: drainOutbox() atomically claims rows with a
+ * `FOR UPDATE SKIP LOCKED` CTE so concurrent scheduler processes never
+ * pick up the same row. Claimed rows move to status='processing' with a
+ * 10-minute lease; expired leases are recovered on the next drain pass.
  *
  * Booking flow contract: enqueueEmail() and drainOutbox() never throw into
  * their callers — all errors are caught, logged, and recorded on the row.
@@ -23,20 +27,47 @@ import { sql } from "drizzle-orm";
 import { emailOutbox, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
 import {
-  sendEmail,
-  type SendEmailParams,
   buildBookingConfirmationEmailPayload,
   type BookingConfirmationParams,
 } from "./email.service";
+import type { SendEmailResult } from "./email.service";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
-const BACKOFF_MINUTES = [5, 15, 45, 120, 360] as const;
+/**
+ * Minutes to wait after each failed attempt before scheduling the next retry.
+ * Index 0 = delay after the 1st failure, index 4 = delay after the 5th failure.
+ * The 6th failure marks the row dead (no entry at index 5).
+ */
+export const BACKOFF_MINUTES = [5, 15, 45, 120, 360] as const;
 
-function nextRetryAfter(attemptCount: number): Date {
-  const minutes = BACKOFF_MINUTES[Math.min(attemptCount, BACKOFF_MINUTES.length - 1)];
+/**
+ * Return the Date at which the next delivery attempt should be scheduled.
+ * `failedAttemptCount` is the 1-based count of attempts that have already failed.
+ * Exported (with underscore prefix) for testing only.
+ */
+export function _nextRetryAfter(failedAttemptCount: number): Date {
+  const index   = Math.min(failedAttemptCount - 1, BACKOFF_MINUTES.length - 1);
+  const minutes = BACKOFF_MINUTES[index];
   return new Date(Date.now() + minutes * 60 * 1000);
 }
+
+// ── Test seam ─────────────────────────────────────────────────────────────────
+
+/**
+ * Test-only seam. Override `sendEmailFn` to intercept the actual send call
+ * without network calls.
+ *
+ * @example
+ * _outboxTestHooks.sendEmailFn = async (_params) => ({ ok: false, error: "simulated failure" });
+ */
+export const _outboxTestHooks: {
+  sendEmailFn?: (params: SendEmailParams) => Promise<SendEmailResult>;
+} = {};
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+import type { SendEmailParams } from "./email.service";
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -62,15 +93,16 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
     const [row] = await db
       .insert(emailOutbox)
       .values({
-        emailType:   params.emailType ?? "generic",
-        toEmail:     toEmailStr,
-        subject:     params.subject,
-        html:        params.html,
-        textBody:    params.text,
-        replyTo:     params.replyTo,
-        status:      "pending",
+        emailType:    params.emailType ?? "generic",
+        toEmail:      toEmailStr,
+        subject:      params.subject,
+        html:         params.html,
+        textBody:     params.text,
+        replyTo:      params.replyTo,
+        status:       "pending",
         attemptCount: 0,
-        metadata:    params.metadata ?? {},
+        maxAttempts:  6,
+        metadata:     params.metadata ?? {},
       } satisfies InsertEmailOutbox)
       .returning({ id: emailOutbox.id });
 
@@ -84,60 +116,87 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
   }
 
   // Attempt immediate delivery.
-  await attemptDelivery(outboxId, params);
+  await attemptDelivery(outboxId, params, { attemptCount: 0, maxAttempts: 6 });
 
   return outboxId;
 }
 
 /**
- * Retry loop: pick up all pending/failed rows whose retry_after has elapsed and
- * attempt delivery. Called by the outbox scheduler every 5 minutes.
+ * Drain loop: atomically claim up to 50 due or lease-expired rows, then
+ * attempt delivery on each claimed row.  Called by the outbox scheduler every
+ * 5 minutes.
+ *
+ * Concurrency safety: the CTE uses `FOR UPDATE SKIP LOCKED` so a concurrent
+ * drain process skips any rows already claimed by this one.  Claimed rows
+ * move to status='processing' with a 10-minute lease; if this process dies,
+ * the next pass recovers rows whose lease has elapsed.
  *
  * Never throws.
  */
 export async function drainOutbox(): Promise<void> {
-  let due: Array<{
+  type ClaimedRow = {
     id: number;
-    toEmail: string;
+    to_email: string;
     subject: string;
     html: string;
-    textBody: string | null;
-    fromAddress: string | null;
-    replyTo: string | null;
-    attemptCount: number;
-    maxAttempts: number;
-  }>;
+    text_body: string | null;
+    from_address: string | null;
+    reply_to: string | null;
+    attempt_count: number;
+    max_attempts: number;
+  };
+
+  let claimed: ClaimedRow[];
 
   try {
+    // Single atomic statement: select due rows (FOR UPDATE SKIP LOCKED) and
+    // immediately move them to 'processing' so concurrent drains cannot pick
+    // the same row.  The 10-minute lease (retry_after) means a dead process
+    // leaves rows that the next pass can recover.
     const result = await db.execute(sql`
-      SELECT id, to_email, subject, html, text_body, from_address, reply_to,
-             attempt_count, max_attempts
-      FROM   email_outbox
-      WHERE  status IN ('pending', 'failed')
-        AND  (retry_after IS NULL OR retry_after <= NOW())
-      ORDER  BY created_at ASC
-      LIMIT  50
+      WITH candidates AS (
+        SELECT id FROM email_outbox
+        WHERE (
+          status IN ('pending', 'failed')
+          AND (retry_after IS NULL OR retry_after <= NOW())
+        )
+        OR (
+          status = 'processing'
+          AND retry_after < NOW() - INTERVAL '1 minute'
+        )
+        ORDER BY created_at ASC
+        LIMIT 50
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE email_outbox AS o
+      SET    status      = 'processing',
+             retry_after = NOW() + INTERVAL '10 minutes',
+             updated_at  = NOW()
+      FROM   candidates c
+      WHERE  o.id = c.id
+      RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
+                o.from_address, o.reply_to, o.attempt_count, o.max_attempts
     `);
-    due = (result.rows ?? []) as typeof due;
+    claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
-    logger.error({ err }, "[email-outbox] drainOutbox: failed to query due rows");
+    logger.error({ err }, "[email-outbox] drainOutbox: failed to claim rows");
     return;
   }
 
-  if (due.length === 0) return;
-  logger.info({ count: due.length }, "[email-outbox] drainOutbox: processing due rows");
+  if (claimed.length === 0) return;
+  logger.info({ count: claimed.length }, "[email-outbox] drainOutbox: processing claimed rows");
 
-  for (const row of due) {
+  for (const row of claimed) {
     const params: SendEmailParams = {
-      to:      row.toEmail,
+      to:      row.to_email,
       subject: row.subject,
       html:    row.html,
-      ...(row.textBody ? { text: row.textBody } : {}),
-      ...(row.replyTo  ? { replyTo: row.replyTo } : {}),
+      ...(row.text_body ? { text: row.text_body } : {}),
+      ...(row.reply_to  ? { replyTo: row.reply_to } : {}),
     };
     await attemptDelivery(row.id, params, {
-      attemptCount: row.attemptCount,
-      maxAttempts:  row.maxAttempts,
+      attemptCount: row.attempt_count,
+      maxAttempts:  row.max_attempts,
     });
   }
 }
@@ -145,22 +204,32 @@ export async function drainOutbox(): Promise<void> {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /**
- * Try to send `params` via sendEmail and update the outbox row accordingly.
- * When `outboxId` is null the send still happens but nothing is written to the DB.
+ * Try to send `params` via sendEmail (or the test-seam override) and update
+ * the outbox row accordingly.  When `outboxId` is null the send still happens
+ * but nothing is written to the DB.
+ *
  * Never throws.
  */
 async function attemptDelivery(
   outboxId: number | null,
   params: SendEmailParams,
-  current?: { attemptCount: number; maxAttempts: number }
+  current: { attemptCount: number; maxAttempts: number }
 ): Promise<void> {
-  const attemptCount = (current?.attemptCount ?? 0) + 1;
-  const maxAttempts  = current?.maxAttempts ?? 5;
+  const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
+  const maxAttempts  = current.maxAttempts;
   const toStr        = Array.isArray(params.to) ? params.to.join(", ") : params.to;
 
-  let result: Awaited<ReturnType<typeof sendEmail>>;
+  // Use the test seam if provided, otherwise import sendEmail at call-time so
+  // tests that override _outboxTestHooks.sendEmailFn take effect without a
+  // circular import at module-load time.
+  let result: SendEmailResult;
   try {
-    result = await sendEmail(params);
+    if (_outboxTestHooks.sendEmailFn) {
+      result = await _outboxTestHooks.sendEmailFn(params);
+    } else {
+      const { sendEmail } = await import("./email.service");
+      result = await sendEmail(params);
+    }
   } catch (err: unknown) {
     // sendEmail is documented to never throw, but be defensive.
     const message = err instanceof Error ? err.message : String(err);
@@ -178,6 +247,7 @@ async function attemptDelivery(
                resend_id     = ${result.id ?? null},
                sent_at       = NOW(),
                last_error    = NULL,
+               retry_after   = NULL,
                updated_at    = NOW()
         WHERE  id = ${outboxId}
       `);
@@ -186,9 +256,9 @@ async function attemptDelivery(
         "[email-outbox] sent"
       );
     } else {
-      const isDead   = attemptCount >= maxAttempts;
+      const isDead    = attemptCount >= maxAttempts;
       const newStatus = isDead ? "dead" : "failed";
-      const retryAt  = isDead ? null : nextRetryAfter(attemptCount);
+      const retryAt   = isDead ? null : _nextRetryAfter(attemptCount);
 
       await db.execute(sql`
         UPDATE email_outbox
