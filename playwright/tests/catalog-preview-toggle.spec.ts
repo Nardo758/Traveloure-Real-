@@ -57,6 +57,22 @@ test.describe('/provider/services — Manage ⇄ Preview toggle (lane C2)', () =
   test('Preview mirrors the public storefront visibility filter; hover-Edit is present', async ({ page }) => {
     await loginProvider(page);
 
+    // SELF-PROVISIONED PRECONDITION (the lane's own hidden-precondition lesson, applied to this
+    // spec): the seed births all three listings approved+ACTIVE, so the negative this lane
+    // exists to prove — a Manage-visible listing ABSENT from Preview — has no seeded subject.
+    // Pause the hidden service here (the same owner PATCH the Manage toggle uses) and restore
+    // it in the cleanup below, so the spec carries its own state instead of assuming a bench's.
+    const services = await (await page.request.get(`${BASE_URL}/api/provider/services`)).json();
+    const hidden = services.find((s: any) => s.serviceName === HIDDEN_SERVICE);
+    expect(hidden, `seeded service "${HIDDEN_SERVICE}" not found`).toBeTruthy();
+    const priorStatus = hidden.status;
+    const pauseResp = await page.request.patch(`${BASE_URL}/api/provider/services/${hidden.id}`, {
+      headers: { 'Content-Type': 'application/json' },
+      data: { status: 'paused' },
+    });
+    expect(pauseResp.ok(), `pause failed: ${pauseResp.status()}`).toBeTruthy();
+
+    try {
     await page.goto(`${BASE_URL}/provider/services`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
     // ── (a) Manage view (default) shows the management cards with their affordances ──────────
@@ -121,5 +137,17 @@ test.describe('/provider/services — Manage ⇄ Preview toggle (lane C2)', () =
     // ── Switching back to Manage restores the operational cards ──────────────────────────────
     await page.getByTestId('button-mode-manage').click();
     await expect(page.locator('[data-testid^="card-service-"]').first()).toBeVisible();
+    } finally {
+      // BEST-EFFORT restore. Reactivating goes through the REAL verification publish-gate
+      // (VERIFICATION_GATE — the seeded fixture is born active by direct DB write and has no
+      // identity/business verification, so the API refuses to re-activate it). That refusal is
+      // ratified behavior, not a bug, so the spec does not assert the restore: on a bench the
+      // listing may stay paused afterwards — a stable end-state this spec's own precondition
+      // step tolerates (pausing a paused row is a no-op). CI uses a throwaway DB either way.
+      await page.request.patch(`${BASE_URL}/api/provider/services/${hidden.id}`, {
+        headers: { 'Content-Type': 'application/json' },
+        data: { status: priorStatus ?? 'active' },
+      });
+    }
   });
 });
