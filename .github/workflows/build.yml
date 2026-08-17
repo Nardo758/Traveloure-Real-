@@ -87,6 +87,23 @@ jobs:
       - name: Client-trusted amount/identity/rate guard
         run: node scripts/check-money-endpoints.cjs
 
+  item-removed-logging-guard:
+    name: item-removed-logging-guard (R15 removal-signal coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if an itinerary_items hard-delete path lacks an item-removed:<kind> annotation, or a
+      # `logged` site has no same-transaction `item_removed` write. Node built-ins only — no npm ci
+      # needed. See ledger 2026-08-17-partner-demand-r15-transition-log. Predicate fixtures FIRST
+      # (§18d): a guard with a wrong predicate passes truthfully.
+      - name: Item-removed guard predicate self-test
+        run: node scripts/check-item-removed-logging.cjs --self-test
+      - name: Item-removed logging coverage guard
+        run: node scripts/check-item-removed-logging.cjs
+
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest
