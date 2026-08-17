@@ -89,6 +89,7 @@ jobs:
             playwright/tests/auth-form-validation.spec.ts \
             playwright/tests/booking-payment-isolation.spec.ts \
             playwright/tests/concierge-phase-a.spec.ts \
+            playwright/tests/create-service-layout.spec.ts \
             playwright/tests/executive-card-expand.spec.ts \
             playwright/tests/expert-booking-decline-dialog.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
@@ -174,6 +175,7 @@ jobs:
             playwright/tests/auth-form-validation.spec.ts \
             playwright/tests/booking-payment-isolation.spec.ts \
             playwright/tests/concierge-phase-a.spec.ts \
+            playwright/tests/create-service-layout.spec.ts \
             playwright/tests/executive-card-expand.spec.ts \
             playwright/tests/expert-booking-decline-dialog.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
@@ -218,7 +220,7 @@ jobs:
               '',
               `[Run details](${runUrl})`,
               '',
-              '> Claims 8 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, EA card expansion, the expert decline dialog, navbar responsiveness, the 28-assertion RBAC matrix, and the Stripe Connect reminder.',
+              '> Claims 9 specs that existed but ran in NO workflow until Aug 16 2026 — sign-in form validation, booking payment-field isolation, the concierge quote contract, create-service wizard layout (Basics/Capacity/Logistics), EA card expansion, the expert decline dialog, navbar responsiveness, the 28-assertion RBAC matrix, and the Stripe Connect reminder.',
               '> Each was verified green end-to-end before being gated, so a red here is a real regression, not inherited rot.',
             ].filter(Boolean).join('\n');
             await github.rest.issues.createComment({
