@@ -153,6 +153,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
+import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
 import vacationRoutes from "./routes/vacation.routes";
 import offeringRequestRoutes from "./routes/offering-requests.routes";
@@ -1020,6 +1021,11 @@ export async function registerRoutes(
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
+
+  // Crawler surfaces (2026-08-17 SEO audit): /sitemap.xml + per-route canonical/title
+  // injection for the public marketing routes. Must register before the Vite catch-all
+  // for the same reason as storefrontRoutes above.
+  app.use(seoRoutes);
 
   // Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) — GET/PATCH
   // /api/me/traveler-profile, the `travelerProfile` namespace on the same users.preferences
