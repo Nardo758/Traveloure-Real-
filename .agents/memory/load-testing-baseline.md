@@ -4,7 +4,7 @@ description: How to load-test this app safely and what the Aug 2026 dev-containe
 ---
 
 **Constraints**
-- STRIPE_SECRET_KEY is **live-mode** — never load-drive any endpoint that reaches `stripe.paymentIntents.create` (`POST /api/checkout` path). Verify the double-submit guard at the DB layer instead: the real concurrency guard is the unique partial index `service_bookings_idempotency_key_idx` (idempotency_key WHERE NOT NULL), not Stripe.
+- STRIPE_SECRET_KEY is **live-mode**, BUT an /api/checkout re-drive (Aug 2026) produced a PI that only existed under STRIPE_SECRET_KEY_TEST — the running checkout path uses a test-mode key at runtime. Verify which key answered before assuming a live object was created; still never load-drive any endpoint that reaches `stripe.paymentIntents.create` (`POST /api/checkout` path). Verify the double-submit guard at the DB layer instead: the real concurrency guard is the unique partial index `service_bookings_idempotency_key_idx` (idempotency_key WHERE NOT NULL), not Stripe.
 - `generalRateLimiter` (100 req/min/IP) has `skip: loopbackSkip` — localhost load tests bypass it, so they measure app capacity; real external clients get throttled at 100/min/IP first.
 - App pg pool max=20 (server/db.ts); DB max_connections=112. A test harness with its own pool ≥100 will hit 53300 too_many_connections.
 - `service_bookings` inserts need explicit `id` (no DB default) — gen_random_uuid()::varchar.
