@@ -812,7 +812,7 @@ router.get("/p/:handle", async (req, res, next) => {
       data.readyMade[0]?.heroImageUrl ??
       data.templates[0]?.coverImage ??
       data.earner.profileImageUrl ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
@@ -845,7 +845,8 @@ router.get("/p/:handle", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
     template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
     template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
     template = template.replace(/<meta name="description"[^>]*>\s*/, "");
@@ -895,7 +896,7 @@ router.get("/services/:id", async (req, res, next) => {
       : service.serviceImage;
     const ogImage =
       resolvedServiceImage ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
@@ -928,7 +929,8 @@ router.get("/services/:id", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
     template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
     template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
     template = template.replace(/<meta name="description"[^>]*>\s*/, "");
@@ -983,10 +985,10 @@ router.get("/ready-made/:id", async (req, res, next) => {
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const shareUrl = `https://traveloure.com/ready-made/${listing.id}`;
     const ogImage =
       listing.heroImageUrl ??
-      `${req.protocol}://${req.get("host")}/og-cover.png`;
+      `https://traveloure.com/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
@@ -1019,7 +1021,8 @@ router.get("/ready-made/:id", async (req, res, next) => {
     // Strip the template's own static og:title/og:description before injecting ours —
     // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
     // duplicates are sloppy). Only sites that inject their own tags run this.
-    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
     template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
     template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
     template = template.replace(/<meta name="description"[^>]*>\s*/, "");

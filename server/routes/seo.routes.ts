@@ -17,7 +17,7 @@
 import { Router } from "express";
 import fs from "fs";
 import path from "path";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
@@ -56,10 +56,31 @@ async function buildSitemap(): Promise<string> {
       .select({ id: readyMadeTrips.id, updatedAt: readyMadeTrips.updatedAt })
       .from(readyMadeTrips)
       .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true))),
-    db
-      .select({ handle: users.handle })
-      .from(users)
-      .where(and(isNotNull(users.handle), eq(users.isDeleted, false), eq(users.isSuspended, false))),
+    // Mirror loadStorefront's public-visibility predicate: a /p/:handle page only
+    // exists when the owner has at least one APPROVED offering in one of the three
+    // lanes — a bare handle 404s, and listing it would feed crawlers dead URLs.
+    // When the storefront verification gate is enabled, skip storefronts entirely
+    // (conservative: we can't cheaply evaluate per-owner verification here).
+    (async () => {
+      const flag = await db.execute(sql`
+        SELECT setting_value FROM platform_settings
+        WHERE setting_key = 'storefront_require_verified'
+      `).catch(() => null);
+      if ((flag?.rows?.[0] as any)?.setting_value === "true") return [] as { handle: string }[];
+      const result = await db.execute(sql`
+        SELECT u.handle FROM users u
+        WHERE u.handle IS NOT NULL AND u.is_deleted = false AND u.is_suspended = false
+          AND (
+            EXISTS (SELECT 1 FROM provider_services ps
+                    WHERE ps.user_id = u.id AND ps.approval_status = 'approved' AND ps.status = 'active')
+            OR EXISTS (SELECT 1 FROM expert_templates et
+                       WHERE et.expert_id = u.id AND et.approval_status = 'approved')
+            OR EXISTS (SELECT 1 FROM ready_made_trips rmt
+                       WHERE rmt.author_id = u.id AND rmt.status = 'approved' AND rmt.active = true)
+          )
+      `);
+      return result.rows as { handle: string }[];
+    })(),
   ]);
 
   const urls: { loc: string; lastmod?: string }[] = [
