@@ -427,6 +427,14 @@ export interface IStorage {
 
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
 
+  /**
+   * Atomically insert a booking row AND increment the service's bookings_count in a single
+   * DB transaction.  If either step fails the whole transaction rolls back — no phantom booking
+   * row is ever left committed without a matching 201 response.  Use this instead of calling
+   * createServiceBooking + incrementServiceBookings separately from a route handler.
+   */
+  createServiceBookingAtomic(booking: InsertServiceBooking): Promise<ServiceBooking>;
+
   updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[]): Promise<ServiceBooking | undefined>;
 
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
@@ -2780,6 +2788,69 @@ export class DatabaseStorage implements IStorage {
       metadata: { serviceId: newBooking.serviceId, providerId: newBooking.providerId },
     });
     
+    return newBooking;
+  }
+
+  /**
+   * Atomically insert a booking row AND increment the service's bookings_count in a single
+   * DB transaction.  If either step fails the whole transaction rolls back — no phantom booking
+   * row is ever left committed without a matching 201 response.
+   *
+   * The PS15 PI-strip and content-registration side-effects mirror createServiceBooking:
+   * - PI fields are stripped before the transaction so the predicate is never violated.
+   * - registerContent is called AFTER the transaction commits (best-effort; failure there
+   *   is logged but must not roll back the already-committed booking).
+   */
+  async createServiceBookingAtomic(booking: InsertServiceBooking): Promise<ServiceBooking> {
+    // ── PS15 layer 2 strip (same as createServiceBooking) ───────────────────
+    const {
+      stripePaymentIntentId: _pi,
+      stripeDepositIntentId: _dpi,
+      stripeBalanceIntentId: _bpi,
+      ...safeBooking
+    } = booking as InsertServiceBooking & {
+      stripePaymentIntentId?: unknown;
+      stripeDepositIntentId?: unknown;
+      stripeBalanceIntentId?: unknown;
+    };
+    if (_pi !== undefined && _pi !== null) {
+      console.error(
+        '[PS15] createServiceBookingAtomic: DROPPED a caller-supplied stripePaymentIntentId — ' +
+        'this field is written only by stampAuthorization (ruling 41/46).',
+      );
+    }
+
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+
+    // ── Atomic: insert + counter in one transaction ──────────────────────────
+    // If the counter UPDATE throws (e.g. the service row was deleted mid-flight) the
+    // transaction rolls back and no booking row is committed, so the route returns 500
+    // without having created a phantom booking that the user would then duplicate on retry.
+    const newBooking = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(serviceBookings)
+        .values({ ...safeBooking, trackingNumber })
+        .returning();
+      await tx
+        .update(providerServices)
+        .set({ bookingsCount: sql`${providerServices.bookingsCount} + 1`, updatedAt: new Date() })
+        .where(eq(providerServices.id, safeBooking.serviceId as string));
+      return row;
+    });
+
+    // ── Best-effort content registration (non-fatal after commit) ────────────
+    this.registerContent({
+      trackingNumber,
+      contentType: 'booking',
+      contentId: newBooking.id,
+      ownerId: newBooking.travelerId,
+      title: `Booking ${trackingNumber}`,
+      status: newBooking.status === 'pending' ? 'pending_review' : 'published',
+      metadata: { serviceId: newBooking.serviceId, providerId: newBooking.providerId },
+    }).catch((err: unknown) =>
+      console.error('[booking] registerContent failed after atomic create (non-fatal):', err),
+    );
+
     return newBooking;
   }
 
