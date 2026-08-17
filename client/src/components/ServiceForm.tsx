@@ -4383,44 +4383,40 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <p className="text-xs text-muted-foreground">
-              The party size the checkout refuses a booking against — a traveler can never book a
-              party you cannot take.
-            </p>
-
-            {/* ── Capacity ── */}
-            <div className="space-y-3 pt-4 border-t" data-testid="logistics-section-capacity">
+            {/* Mock fidelity (Aug 17): the mock draws Capacity as ONE inline "Party size [min]
+                to [max]" pair, not two separate labelled fields, and drops the redundant inner
+                "Capacity" heading (the card title already says it). The gated
+                `logistics-section-capacity` testid and both party-size input testids are kept. */}
+            <div className="space-y-3" data-testid="logistics-section-capacity">
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Capacity
-                </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  The party size this fits. Per-person vs per-group is your pricing type — set there,
-                  not asked twice here.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="partySizeMin">Minimum party size</Label>
+                <Label htmlFor="partySizeMin">Party size</Label>
+                <div className="mt-1 flex items-center gap-2 max-w-sm">
                   <Input
-                    id="partySizeMin" type="number" min={0} placeholder="e.g. 1"
+                    id="partySizeMin" type="number" min={0} placeholder="1"
                     value={formData.partySizeMin}
                     onChange={(e) => set("partySizeMin", e.target.value)}
-                    className="mt-1" data-testid="input-party-size-min"
+                    data-testid="input-party-size-min"
                   />
-                </div>
-                <div>
-                  <Label htmlFor="partySizeMax">Maximum party size</Label>
+                  <span className="text-sm text-muted-foreground shrink-0">to</span>
                   <Input
-                    id="partySizeMax" type="number" min={0} placeholder="e.g. 8"
+                    id="partySizeMax" type="number" min={0} placeholder="4"
                     value={formData.partySizeMax}
                     onChange={(e) => set("partySizeMax", e.target.value)}
-                    className="mt-1" data-testid="input-party-size-max"
+                    data-testid="input-party-size-max"
                   />
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  One pair of numbers — the party size the checkout refuses a booking against, so a
+                  traveler can never book a party you cannot take. Per-person vs per-group is your
+                  pricing type, set there, not asked twice here.
+                </p>
               </div>
             </div>
+            {/* The mock's "why its own step" note. */}
+            <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3">
+              Capacity is its own step because it is the answer most often got wrong when it was
+              buried in one long screen.
+            </p>
           </CardContent>
         </Card>
       )}
