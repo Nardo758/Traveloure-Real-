@@ -11,7 +11,8 @@ import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
-import { sendBookingConfirmationEmail, sendBookingAlertEmail } from './email.service';
+import { enqueueBookingConfirmationEmail } from './email-outbox.service';
+import { sendBookingAlertEmail } from './email.service';
 import { getStripeSecretKey } from '../utils/stripe-key';
 
 const stripe = new Stripe(getStripeSecretKey() || '', {
@@ -846,16 +847,14 @@ class BookingService {
     `).then(result => {
       const row = result?.rows?.[0] as any;
       if (row?.email) {
-        sendBookingConfirmationEmail({
+        enqueueBookingConfirmationEmail({
           toEmail: row.email,
           userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
           bookingId,
           bookingTitle: row.title || 'Your booking',
           bookingDate: row.booking_date ?? null,
           confirmationCode,
-        }).catch(err =>
-          console.error(`[email] booking confirmation failed for booking ${bookingId}:`, err)
-        );
+        });
       }
     }).catch(err =>
       console.error(`[email] failed to fetch booking details for confirmation email (booking ${bookingId}):`, err)

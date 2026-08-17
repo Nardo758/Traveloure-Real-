@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -8891,6 +8891,34 @@ export const crowdBandConfig = pgTable("crowd_band_config", {
 ]);
 export type CrowdBandConfig = typeof crowdBandConfig.$inferSelect;
 export type InsertCrowdBandConfig = typeof crowdBandConfig.$inferInsert;
+
+// ─── Email Outbox ─────────────────────────────────────────────────────────────
+// Durable store for transactional emails. Failed rows are retried by the
+// email-outbox scheduler with exponential backoff (max 5 attempts). Dead rows
+// are surfaced on the admin dashboard. See migration 240_email_outbox.sql.
+export const emailOutbox = pgTable("email_outbox", {
+  id:           bigserial("id", { mode: "number" }).primaryKey(),
+  emailType:    varchar("email_type", { length: 64 }).notNull().default("generic"),
+  toEmail:      text("to_email").notNull(),
+  subject:      text("subject").notNull(),
+  html:         text("html").notNull(),
+  textBody:     text("text_body"),
+  fromAddress:  text("from_address"),
+  replyTo:      text("reply_to"),
+  // pending | sent | failed | dead
+  status:       varchar("status", { length: 16 }).notNull().default("pending"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  maxAttempts:  integer("max_attempts").notNull().default(5),
+  lastError:    text("last_error"),
+  resendId:     text("resend_id"),
+  retryAfter:   timestamp("retry_after", { withTimezone: true }),
+  sentAt:       timestamp("sent_at", { withTimezone: true }),
+  metadata:     jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  createdAt:    timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type EmailOutbox = typeof emailOutbox.$inferSelect;
+export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
 
 // trend_scores — materialized resolver output. One row per entity. Rewritten each scoring run.
 // crowd_band null = entity is below confidence floor (L9) — must not appear on any surface.
