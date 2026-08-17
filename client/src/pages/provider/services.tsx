@@ -902,7 +902,7 @@ function CatalogPreviewOfferCard({ service, categoryName }: { service: Service; 
             </p>
           )}
           {rating && (
-            <div className="flex items-center gap-[5px] text-[11.5px] text-[#7A7A72]" data-testid={`storefront-service-${service.id}-rating`}>
+            <div className="flex items-center gap-[5px] text-[11.5px] text-[#7A7A72]" data-testid={`catalog-preview-rating-${service.id}`}>
               <Star className="h-3.5 w-3.5 text-[#e0a92e] fill-[#e0a92e]" />
               {rating.stars.toFixed(1)}
               <span>· {rating.count} review{rating.count === 1 ? "" : "s"}</span>
@@ -915,7 +915,7 @@ function CatalogPreviewOfferCard({ service, categoryName }: { service: Service; 
                 priceDisplay.quote ? "text-[13.5px] font-bold text-[#7A7A72]" : "text-[18px] text-[#1A1A18]",
                 priceDisplay.hidden && "invisible",
               )}
-              data-testid={`storefront-service-${service.id}-price`}
+              data-testid={`catalog-preview-price-${service.id}`}
             >
               {priceDisplay.text}
               {priceDisplay.unit && (
@@ -930,7 +930,7 @@ function CatalogPreviewOfferCard({ service, categoryName }: { service: Service; 
                     ? "bg-[#E85D55] text-white"
                     : "border-[1.5px] border-[#E85D55] bg-white text-[#E85D55]",
                 )}
-                data-testid={`storefront-service-${service.id}-cta`}
+                data-testid={`catalog-preview-cta-${service.id}`}
               >
                 {cta.label}
               </span>
@@ -939,15 +939,22 @@ function CatalogPreviewOfferCard({ service, categoryName }: { service: Service; 
         </div>
       </Link>
       {/* Hover-only Edit deep-link (ruling 74 res. B, owner affordance) — a sibling of the
-          card's own <Link>, not a nested anchor; z-10 keeps it clickable above the full-card
-          link, positioned bottom-right per the mock's `.offer .edit`. */}
-      <Link
-        href={editHref}
-        className="absolute bottom-2.5 right-2.5 z-10 inline-flex items-center gap-[5px] rounded-lg border border-[#E8E8E2] bg-white/95 px-2.5 py-[5px] text-[11px] font-semibold text-[#7A7A72] opacity-0 shadow-[0_1px_2px_rgba(26,26,24,.05)] transition-opacity group-hover/edit:opacity-100 focus:opacity-100"
-        data-testid={`button-preview-edit-${service.id}`}
-      >
-        <Edit className="h-[11px] w-[11px]" /> {tCommon("actions.edit")}
-      </Link>
+          card's own <Link>, not a nested anchor. The mock nests `.edit` INSIDE `.photo`
+          (bottom-right of the PHOTO, not the whole card, so it never collides with the
+          price/CTA footer below a longer description) — this overlay reuses the exact same
+          `aspect-[3/2]` sizing as the photo so it always tracks the photo's true bounds at
+          any card width, without needing to live inside the outer full-card <Link>.
+          `pointer-events-none` on the overlay lets clicks elsewhere in the photo area still
+          reach the full-card link underneath; only the Edit link itself re-enables them. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 aspect-[3/2]">
+        <Link
+          href={editHref}
+          className="pointer-events-auto absolute bottom-2.5 right-2.5 z-10 inline-flex items-center gap-[5px] rounded-lg border border-[#E8E8E2] bg-white/95 px-2.5 py-[5px] text-[11px] font-semibold text-[#7A7A72] opacity-0 shadow-[0_1px_2px_rgba(26,26,24,.05)] transition-opacity group-hover/edit:opacity-100 focus:opacity-100"
+          data-testid={`button-preview-edit-${service.id}`}
+        >
+          <Edit className="h-[11px] w-[11px]" /> {tCommon("actions.edit")}
+        </Link>
+      </div>
     </div>
   );
 }
