@@ -139,7 +139,12 @@ test.describe('Create-service wizard layout', () => {
     expect(row1Shared).toBe(true);
 
     // ── Row 2 labels ──────────────────────────────────────────────────────────
-    await expect(page.getByText('Price', { exact: true })).toBeVisible();
+    // The Price <label> contains a DotGhost child span ("④"), so its text
+    // content is "Price④" — not an exact-text match on "Price" alone.
+    // Target the <label> element directly and filter by partial text instead.
+    await expect(
+      page.locator('label').filter({ hasText: 'Price' }).first(),
+    ).toBeVisible();
     await expect(page.getByText('One line about it', { exact: true })).toBeVisible();
 
     // ── Row 2 DOM identity: price input (inside a flex wrapper) and description
@@ -266,31 +271,33 @@ test.describe('Create-service wizard layout', () => {
       await expect(framingNote).toBeVisible();
 
       // 2. Map canvas (height:340 wrapper) OR the map-unavailable fallback div.
-      //    VITE_GOOGLE_MAPS_API_KEY is not set in CI, so the fallback is expected.
-      //    Target the fallback by its exact container text to avoid matching ancestors.
-      const realMap = page.locator('div').filter({
-        // The map wrapper div has height 340 in its inline style
-        hasText: '',  // non-empty placeholder — filtered by style below
-      }).locator('[style*="height: 340"]').first();
+      //
+      //    In CI, VITE_GOOGLE_MAPS_API_KEY is not set → only the fallback renders.
+      //    The fallback div is a leaf element whose direct text content IS the
+      //    full string below (no children), so getByText with exact:true resolves
+      //    to that specific element — not an ancestor — giving a correct bounding box.
+      //
+      //    When a real API key IS present, the map renders inside a div with
+      //    inline style "height: 340px" (set by the map-cursor wrapper in the JSX).
+      //
+      //    Strategy: attempt to get the real map wrapper's bounding box first.
+      //    If it is absent (null), fall through to the exact-text fallback locator.
+      const FALLBACK_TEXT =
+        'Map unavailable — enter meeting point text below and continue.';
 
-      // Fallback container: the div whose direct text is "Map unavailable — …"
-      // Use a specific `has-text` filter scoped to a leaf-level div.
-      const mapFallback = page.locator('div').filter({
-        hasText: /^Map unavailable — enter meeting point text below and continue\.$/,
-      }).first();
+      // The map wrapper div has exactly `height: 340` in its inline style attribute.
+      const mapWrapper = page.locator('div[style*="height: 340"]').first();
+      // The fallback is a leaf div whose full text equals FALLBACK_TEXT exactly.
+      const mapFallbackEl = page.getByText(FALLBACK_TEXT, { exact: true });
 
-      // Wait for whichever is present.
-      const mapArea = page
-        .locator('div[style*="height: 340"]')
-        .or(
-          page.locator('div').filter({
-            hasText:
-              /Map unavailable — enter meeting point text below and continue\./,
-          }),
-        )
-        .first();
+      // Wait: at least one of these must become visible.
+      await expect(mapWrapper.or(mapFallbackEl).first()).toBeVisible({ timeout: 10_000 });
 
-      await expect(mapArea).toBeVisible({ timeout: 10_000 });
+      // Resolve to the element that is actually in the DOM (stable bounding box).
+      const mapBox =
+        (await mapWrapper.isVisible().catch(() => false))
+          ? await mapWrapper.boundingBox()
+          : await mapFallbackEl.boundingBox();
 
       // 3. "Meeting point address" label + input are visible.
       await expect(
@@ -301,9 +308,8 @@ test.describe('Create-service wizard layout', () => {
       await expect(meetingInput).toBeVisible();
 
       // 4. DOM order: framing note → map area → meeting-point input (Y-axis).
-      const noteBox    = await framingNote.boundingBox();
-      const mapBox     = await mapArea.boundingBox();
-      const inputBox   = await meetingInput.boundingBox();
+      const noteBox  = await framingNote.boundingBox();
+      const inputBox = await meetingInput.boundingBox();
 
       if (!noteBox || !mapBox || !inputBox) {
         throw new Error(
@@ -315,7 +321,7 @@ test.describe('Create-service wizard layout', () => {
 
       // Framing note is above the map.
       expect(noteBox.y).toBeLessThan(mapBox.y);
-      // Map area is above (or at the same Y as) the meeting-point input.
+      // Map area is above the meeting-point input.
       expect(mapBox.y).toBeLessThan(inputBox.y);
     } finally {
       // ── Draft cleanup ────────────────────────────────────────────────────────
