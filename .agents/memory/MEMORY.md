@@ -36,4 +36,5 @@
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
 - [Trend Engine Phase 0 decisions](trend-engine-phase0.md) — R4 hotfix shipped; 8 operating markets; activeTravelers blocks republish at 4 surfaces; SerpAPI dropped per R5; DECISIONS.md is the ruling ledger.
 - [Trend Engine Phase 2 dispatch](trend-engine-phase2.md) — cost enforcement + 5 open-license adapters built; 3 licensed stubs disabled (credential issues); Grok removed from scheduler (Phase 2.3, HUMAN READ required); tsc baseline 171.
+- [Load-testing baseline](load-testing-baseline.md) — live Stripe key: never load-drive /api/checkout; test the idempotency unique-index guard at DB layer; loopback skips the rate limiter; baseline numbers inside.
 - [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.
