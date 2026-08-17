@@ -1295,7 +1295,7 @@ export default function ProviderDistribute() {
 
   return (
     <ProviderLayout title="Distribute">
-      {/* 56.25rem = 900px — a bare 900 false-positives the fee-cents gate (ruling 115 breakpoint precedent) */}
+      {/* width expressed in rem so the layout literal stays out of the money-literal grep (ruling 115 breakpoint precedent) */}
       <div style={{ padding: "22px 24px 80px", maxWidth: "56.25rem", fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif", color: INK }}>
 
         {/* Arrival banner — when landing from Catalog's "Distribute this →" link */}
