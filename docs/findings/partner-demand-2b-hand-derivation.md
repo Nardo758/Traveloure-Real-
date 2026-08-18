@@ -114,3 +114,92 @@ Replit (DB reachable):
 
 Until that runs, the real-data figures are **not** claimed — this file asserts only that the computation is correct by
 construction and proven on exact fixtures.
+
+---
+
+## Real-data addendum — RUN 2026-08-18 (Replit, main @ 460df63b, dev DB)
+
+Migration `243_partner_demand_rollup.sql` applied at boot (`[Migrations] Applied + recorded: 243_partner_demand_rollup.sql
+… 1 newly applied, 242 already recorded`). Schema hand-verified: all 9 columns per the migration; indexes
+`partner_demand_rollup_pkey`, `pdr_market_date_idx`, `pdr_scope_unique` all present. Rollup triggered once via
+`computeAndStoreDemandRollup()` (**8 rows written**), then read through the authenticated admin endpoint
+`GET /api/admin/demand-rollup` (blanket §2 admin guard; login as the seeded admin). Kyoto strict framing is **n=29**
+(Q9 canonical); the loose n=53 appears nowhere below.
+
+### Kyoto `unmet_demand_slip` — stored cell vs hand derivation
+
+**Rendered row (admin read):**
+
+```
+{ "marketSlug": "kyoto", "date": "2026-10-01", "metric": "unmet_demand_slip",
+  "value": null, "n": 3, "status": "no_data" }
+```
+
+**Stored value (DB):** `{ "count": 3, "amount": 240, "valuedCount": 3 }`, `source_row_count = 3`.
+
+**Hand derivation from the same R16-filtered source query** (open items `routing_status IN
+('in_planning','with_expert')` joined to trips + users, `WHERE (email IS NULL OR email NOT ILIKE '%@traveloure.test')
+AND author_id IS NULL AND market_slug = 'kyoto'`):
+
+| market_slug | start_date | estimated_cost | routing_status |
+|-------------|------------|----------------|----------------|
+| kyoto       | 2026-10-01 | 80.00          | in_planning    |
+| kyoto       | 2026-10-01 | 80.00          | in_planning    |
+| kyoto       | 2026-10-01 | 80.00          | in_planning    |
+
+- Market-local date: `2026-10-01T00:00:00Z` → Asia/Tokyo = **2026-10-01** (09:00 JST, same calendar day). ✅
+- Inventory check: zero bookable `vendor_availability_slots` rows for any Kyoto-city service on 2026-10-01 ⇒ the
+  (kyoto, 2026-10-01) key is absent from the inventory set ⇒ all 3 rows are slips. ✅
+- **count = 3**; all 3 rows priced at $80 ⇒ **amount = 240**, **valuedCount = 3**. Matches the stored cell exactly. ✅
+- **Floor behaviour is correct, not a bug:** n=3 < MARKET floor (10) ⇒ the read renders `no_data` (§13); the stored
+  row is untouched. This is the suppression tier doing its job on a genuinely thin cell.
+
+**Honesty note (§13, reported not silently "fixed"):** the 3 source rows belong to
+`optv2-…@journey-w1.test` — journey-suite residue, not organic demand. R16 as ratified excludes only
+`%@traveloure.test` + authoring trips, so these rows legitimately pass the predicate as written. Whether
+`%@journey-w1.test` (or `%.test` generally) joins the R9 pattern list is a lane ruling, not something this pass
+decides. Either way the cell is floor-suppressed today, so no partner-facing figure is affected.
+
+### Kyoto `slip_funnel` — stored cell vs hand derivation
+
+**Rendered row (admin read):** `status: "ok"`, `n = 27`, date `2026-08-15`, value:
+
+```
+stageEntries:      { purchased: 23, ready_for_checkout: 27 }
+transitions:       { "in_planning->ready_for_checkout": 27, "ready_for_checkout->purchased": 23,
+                     "payment_pending->confirmed": 20 }
+transitionRates:   { "in_planning->ready_for_checkout": 0, "ready_for_checkout->purchased": 0.8519,
+                     "payment_pending->confirmed": 0 }
+avgHoursInStage:   { in_planning: null, with_expert: null, ready_for_checkout: 0, purchased: null }
+removed: 0        removalDataSince: null        itemsObserved: 27
+```
+
+**Hand derivation from the same R16-filtered diary query** (`item_transition_log` joined to trips + users, same
+predicate, `market_slug = 'kyoto'` — 70 events over 27 distinct items, all on 2026-08-14 UTC). SQL aggregates over the
+identical source:
+
+| what | key | value |
+|------|-----|-------|
+| stage entries (distinct items entering) | ready_for_checkout | 27 |
+| stage entries | purchased | 23 |
+| transition count | in_planning->ready_for_checkout | 27 |
+| transition count | ready_for_checkout->purchased | 23 |
+| transition count | payment_pending->confirmed | 20 |
+| items observed (distinct item_id) | — | 27 |
+| removed (`item_removed` events) | — | 0 |
+| latest event (UTC) | — | 2026-08-14 19:12:00 |
+
+- `ready_for_checkout->purchased` rate: 23 ÷ entries[ready_for_checkout] (27) = 0.851851… → rounded **0.8519**. ✅
+- `in_planning->ready_for_checkout` and `payment_pending->confirmed` rates: their `from` stages are never a
+  `toStatus` in this diary (in_planning is only ever a source; payment_pending is not a ladder stage) ⇒
+  entries = 0 ⇒ guarded to **0**, not NaN (§13). ✅
+- `avgHoursInStage.ready_for_checkout = 0` — checkout flips happen seconds after the rfc entry (e.g. 17:46:18 →
+  17:46:23), mean dwell rounds to 0.00 h. ✅
+- Storage date **2026-08-15** = market-local (Asia/Tokyo) date of the latest diary event, 2026-08-14 19:12 UTC =
+  2026-08-15 04:12 JST — the funnel's one reserved "as of" date per market. ✅
+- `removed = 0`, `removalDataSince = null` — no `item_removed` events exist yet for real Kyoto trips (the diary
+  writer only went live in Phase 2A), so the metric honestly states it has no removal window. ✅
+- n = 27 ≥ MARKET floor (10) ⇒ renders `ok`. ✅
+
+Every stored/rendered figure matches its hand re-derivation from the identical R16-filtered source rows. The
+fixture-proven arithmetic above and the real-data path agree.
