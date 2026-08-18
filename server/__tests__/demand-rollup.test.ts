@@ -13,9 +13,11 @@ import {
   computeUnmetStay,
   classifyKind,
   addDaysISO,
+  summarizeMarkets,
   type SlipDemandRow,
   type DiaryRow,
   type StayDemandRow,
+  type SummaryInputRow,
 } from "../services/demand-rollup.compute";
 import { clearsFloor, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
@@ -176,4 +178,30 @@ test("R19: stay and slip cells carry distinct metric tags — service- and stay-
   assert.equal(stay[0].metric, "unmet_demand_stay");
   assert.equal(slip[0].metric, "unmet_demand_slip");
   assert.notEqual(stay[0].metric, slip[0].metric);
+});
+
+// ── summarizeMarkets: server-side hero aggregate (R19/R20 — forks + no suppressed leak) ───────────
+test("summarizeMarkets: forks kind + metric, sums only floor-cleared cells, suppressed never leak", () => {
+  const rows: SummaryInputRow[] = [
+    // requested slip, floor-cleared → counts
+    { marketSlug: "kyoto", metric: "unmet_demand_slip", kind: "requested", status: "ok", value: { count: 5, amount: 400, valuedCount: 5 } },
+    // requested slip, SUPPRESSED → must NOT leak into the aggregate (§13)
+    { marketSlug: "kyoto", metric: "unmet_demand_slip", kind: "requested", status: "no_data", value: { count: 3, amount: 999, valuedCount: 3 } },
+    // missed slip, cleared → lands in the MISSED bucket, never summed with requested
+    { marketSlug: "kyoto", metric: "unmet_demand_slip", kind: "missed", status: "ok", value: { count: 2, amount: 120, valuedCount: 2 } },
+    // requested stay, cleared → stay bucket (count-only, never a $)
+    { marketSlug: "kyoto", metric: "unmet_demand_stay", kind: "requested", status: "ok", value: { trips: 27, nights: 135, travelers: 54 } },
+  ];
+  const [k] = summarizeMarkets(rows);
+  assert.equal(k.marketSlug, "kyoto");
+  // requested slip: only the cleared cell (400), the suppressed 999 is invisible
+  assert.equal(k.requested.slipAmount, 400);
+  assert.equal(k.requested.slipCount, 5);
+  // requested stay is count-only and separate from slip $
+  assert.equal(k.requested.stayTrips, 27);
+  assert.equal(k.requested.stayNights, 135);
+  assert.equal(k.requested.stayTravelers, 54);
+  // missed is its OWN bucket — never blended into requested (R20)
+  assert.equal(k.missed.slipAmount, 120);
+  assert.equal(k.requested.slipAmount !== k.missed.slipAmount, true);
 });

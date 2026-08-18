@@ -71,6 +71,7 @@ const ProviderInbox = lazy(() => import("@/pages/provider/inbox"));
 const ProviderServices = lazy(() => import("@/pages/provider/services"));
 const ProviderEarnings = lazy(() => import("@/pages/provider/earnings"));
 const ProviderPerformance = lazy(() => import("@/pages/provider/performance"));
+const ProviderMarketResearch = lazy(() => import("@/pages/provider/market-research"));
 // C9: ProviderAnalytics/ProviderProfile lazy imports dropped — those pages are now mounted
 // only as embedded tabs (provider performance.tsx / settings.tsx); their routes redirect.
 const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
@@ -935,6 +936,9 @@ function Router() {
       </Route>
       <Route path="/provider/performance">
         {() => <ProtectedRoute component={ProviderPerformance} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/market-research">
+        {() => <ProtectedRoute component={ProviderMarketResearch} requiredRole="provider" />}
       </Route>
       {/* Console IA C9: Analytics retired as a standalone page — it is hosted as
           Performance's Analytics tab (provider performance.tsx lazy-mounts the analytics
