@@ -8524,6 +8524,46 @@ export const DEMAND_SIGNAL_EVENT_KINDS = [
 ] as const;
 export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];
 
+// Partner Demand 2B skeleton rollup (ledger 2026-08-18-partner-demand-2b, migration 243). The L6
+// single-computation home for every demand figure: one row per (market_slug, date, metric,
+// partner_id?, service_id?). `value` is jsonb so a scalar (unmet_demand_slip) and a structured
+// funnel (slip_funnel) share one shape; `source_row_count` is the N behind the figure (feeds the
+// read-path floor gate AND the show-the-N honesty furniture). Declared here per the publish-trap
+// rule. Admin/internal only — never partner-facing except through the floor-enforced read endpoint.
+// The nightly job is REPLACE-BY-DATE (delete a market-local date's rows, insert fresh) so recompute
+// is idempotent without depending on NULL-in-unique semantics.
+export const UNMAPPED_MARKET_SLUG = "__unmapped__" as const; // the R13 bucket's reserved slug value
+export const DEMAND_ROLLUP_METRICS = ["unmet_demand_slip", "slip_funnel"] as const;
+export type DemandRollupMetric = (typeof DEMAND_ROLLUP_METRICS)[number];
+
+export const partnerDemandRollup = pgTable("partner_demand_rollup", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  marketSlug: varchar("market_slug", { length: 40 }).notNull(), // real slug or UNMAPPED_MARKET_SLUG
+  date: date("date").notNull(),                                 // MARKET-LOCAL date (not UTC)
+  metric: varchar("metric", { length: 40 }).notNull(),          // DEMAND_ROLLUP_METRICS
+  partnerId: varchar("partner_id"),                             // nullable — market-level rows: NULL
+  serviceId: varchar("service_id"),                             // nullable — per-service rows only
+  value: jsonb("value").notNull(),                              // metric payload (scalar or funnel)
+  sourceRowCount: integer("source_row_count").notNull(),        // the N (floor gate + show-the-N)
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+}, (t) => [
+  // Hygiene unique on the full scope key. NULL partner/service are distinct in a plain unique, but
+  // the replace-by-date job deletes a date's rows before inserting, so market-level dupes never form.
+  uniqueIndex("pdr_scope_unique").on(t.marketSlug, t.date, t.metric, t.partnerId, t.serviceId),
+  index("pdr_market_date_idx").on(t.marketSlug, t.date),
+]);
+export const insertPartnerDemandRollupSchema = createInsertSchema(partnerDemandRollup).pick({
+  marketSlug: true,
+  date: true,
+  metric: true,
+  partnerId: true,
+  serviceId: true,
+  value: true,
+  sourceRowCount: true,
+});
+export type PartnerDemandRollup = typeof partnerDemandRollup.$inferSelect;
+export type InsertPartnerDemandRollup = z.infer<typeof insertPartnerDemandRollupSchema>;
+
 // Ordered route stops for a provider service — CLAUDE.md ruling 22 (decision-maker ratified
 // Aug 10, 2026; migration 192). dmo_extracted_places pattern: child rows, CASCADE, composite
 // UNIQUE on (service_id, position). lat/lng nullable — an unlocated stop stays visibly flagged
