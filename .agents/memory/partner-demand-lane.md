@@ -13,3 +13,10 @@ description: State + conventions of the partner-demand lane (Phase 1/2A verified
 
 **Why:** lane decisions are ruling-driven (ledger); acting ahead of dispatches or re-deriving scripts corrupts the evidence chain.
 **How to apply:** when a partner-demand dispatch arrives, verify exactly what it asks, commit findings to docs/findings/, and hold at the stated gates.
+
+## 2B real-data verification (2026-08-18)
+- Migration 243 (`partner_demand_rollup`) applied cleanly at boot; nightly job fires 95 min after boot (24h cadence); trigger manually via `computeAndStoreDemandRollup()` with tsx.
+- Admin read `GET /api/admin/demand-rollup` is floor-enforced: market grain needs n≥10 or renders `no_data` (stored row untouched).
+- Kyoto cells hand-verified against the R16-filtered source queries — figures match exactly; addendum in docs/findings/partner-demand-2b-hand-derivation.md.
+- **Open honesty flag:** Kyoto unmet_demand_slip rows come from `@journey-w1.test` (journey-suite residue). R16 excludes only `%@traveloure.test` + authoring trips, so they pass as written. Whether the pattern list widens is a lane ruling — do not add it unilaterally. Cell is floor-suppressed today, so nothing partner-facing is affected.
+- Lockfile caution stands: after postMerge npm install, check `git status` for package-lock.json pollution; scrub with `node scripts/scrub-lockfile.cjs` before committing.
