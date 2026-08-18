@@ -22,6 +22,7 @@ import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimit } from "../middleware/rateLimiter";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
+import { z } from "zod";
 import {
   demandSignalEvents,
   providerServices,
@@ -29,6 +30,7 @@ import {
   destinationEvents,
   shortLinks,
   serviceBookings,
+  users,
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
@@ -642,6 +644,62 @@ router.get("/api/admin/demand-rollup", async (req, res) => {
   } catch (error) {
     console.error("[demand] /api/admin/demand-rollup error:", error);
     res.status(500).json({ message: "Failed to fetch admin demand rollup" });
+  }
+});
+
+// ── Market Research layer prefs — the registry rail (R25-final.1; ledger 3.1c, R25-final) ────────
+// ONE route, TWO concerns kept distinct: (1) the DURABLE per-user layer toggle is upserted into the
+// GENERAL prefs store (`users.preferences.settings.researchLayers` — the same store /api/me/preferences
+// uses; NOT a new table, per the grep-before-create rule), so layers persist across a partner's phone
+// and desktop; (2) the OBSERVABLE `layer_toggled` signal fires via `logDemandSignal`, fire-and-forget.
+// The log must NEVER fail the pref write — the isolation `logDemandSignal` already guarantees.
+// `research_circle_tapped` will ride this same route when the map circles arrive.
+const researchPrefsSchema = z
+  .object({
+    layerId: z.string().trim().min(1).max(40),
+    visible: z.boolean(),
+    market: z.string().trim().max(40).optional(),
+  })
+  .strict();
+
+router.get("/api/me/research-prefs", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const [me] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
+    const layers = (((me?.preferences as any)?.settings?.researchLayers) ?? {}) as Record<string, boolean>;
+    res.json({ layers });
+  } catch (error) {
+    console.error("[demand] /api/me/research-prefs read error:", error);
+    res.status(500).json({ message: "Failed to load research layer preferences" });
+  }
+});
+
+router.post("/api/me/research-prefs", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const parsed = researchPrefsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid research layer preference", errors: parsed.error.flatten() });
+    }
+    const { layerId, visible, market } = parsed.data;
+
+    // (1) DURABLE — read-modify-write the jsonb, matching /api/me/preferences' own pattern.
+    const [me] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
+    const current = ((me?.preferences as any) ?? {});
+    const settings = current.settings ?? {};
+    const researchLayers: Record<string, boolean> = { ...(settings.researchLayers ?? {}), [layerId]: visible };
+    await db
+      .update(users)
+      .set({ preferences: { ...current, settings: { ...settings, researchLayers } } })
+      .where(eq(users.id, userId));
+
+    // (2) OBSERVABLE — fire-and-forget; isolated so a signal-write failure never fails the pref write (§13).
+    logDemandSignal({ kind: "layer_toggled", market: market ?? null, context: { layerId, visible } });
+
+    res.json({ layers: researchLayers });
+  } catch (error) {
+    console.error("[demand] /api/me/research-prefs write error:", error);
+    res.status(500).json({ message: "Failed to save research layer preference" });
   }
 });
 
