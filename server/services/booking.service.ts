@@ -684,7 +684,6 @@ class BookingService {
     const providerPayoutAmt = parseFloat(booking.provider_payout || '0');
     const platformFeeAmt = parseFloat(booking.platform_fee || '0');
     const totalAmt = parseFloat(booking.total_amount || '0');
-    const partySize = Math.max(1, booking.travelers || 1);
 
     const { availableAtFor } = await import('../config/earnings-hold.config');
     const { PROCESSING_FEE_RATE } = await import('./commission');
@@ -767,17 +766,13 @@ class BookingService {
           `);
         }
 
-        // 4. Decrement provider general availability (service_id IS NULL rows only —
-        //    avoids over-counting service-specific capacity entries the booking
-        //    context cannot identify without a stored service_id on the booking).
-        await tx.execute(sql`
-          UPDATE provider_availability
-          SET current_bookings = COALESCE(current_bookings, 0) + ${partySize},
-              updated_at = NOW()
-          WHERE provider_id = ${providerId}
-            AND service_id IS NULL
-            AND is_available = true
-        `);
+        // 4. (REMOVED — Partner Demand 2C, ledger 2026-08-17-partner-demand-2c-sunset.) This
+        //    decremented `provider_availability`, a confirmed ORPHAN table: 0 rows, NO insert path
+        //    anywhere in the repo, and no readers (bookable truth is `vendor_availability_slots`;
+        //    declared availability is `provider_availability_schedule`). The UPDATE matched zero
+        //    rows on every booking confirmation — a proven no-op — so removing it changes no
+        //    behavior and unblocks the table DROP (migration 242). It was the ONLY live writer the
+        //    row-count-based R7 pass missed; verify-then-delete (R1) with the writer gone first.
       }
     });
 

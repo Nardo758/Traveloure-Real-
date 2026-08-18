@@ -133,7 +133,8 @@ import type {
   DemandRow as MarketDemandRow,
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
-import { logItemTransition } from "./services/item-transition-log.service";
+import { logItemTransition, type TransitionActorType } from "./services/item-transition-log.service";
+import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
@@ -1286,7 +1287,15 @@ export class DatabaseStorage implements IStorage {
 
   async createTrip(trip: InsertTrip & { userId: string }): Promise<Trip> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newTrip] = await db.insert(trips).values({ ...trip, trackingNumber }).returning();
+    // 2A.3 / R8: market_slug is SERVER-DERIVED from the destination at write time (never taken
+    // from the client — insertTripSchema omits it). NULL when the destination resolves to none of
+    // the 8 operating markets (R13 unmapped bucket, §13). originMarket rides through from the body
+    // as ordinary owner-authored capture data.
+    const marketSlug = resolveMarketSlug(trip.destination);
+    const [newTrip] = await db
+      .insert(trips)
+      .values({ ...trip, marketSlug, trackingNumber })
+      .returning();
 
     // Write the owner's trip_collaborators row in the same operation that creates the
     // trip — getTripRole()/canMutateTrip() resolve access by assignment only (never
@@ -1316,9 +1325,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTrip(id: string, updates: Partial<InsertTrip>): Promise<Trip | undefined> {
+    // 2A.3 / R8: keep market_slug consistent with the destination. When an edit changes the
+    // destination, re-derive server-side (never client-set — insertTripSchema omits market_slug).
+    // A destination that resolves to none of the 8 markets clears it back to NULL (R13/§13).
+    const derived: Partial<InsertTrip> & { marketSlug?: string | null } =
+      updates.destination !== undefined ? { marketSlug: resolveMarketSlug(updates.destination) } : {};
     const [updatedTrip] = await db
       .update(trips)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, ...derived, updatedAt: new Date() })
       .where(eq(trips.id, id))
       .returning();
     return updatedTrip;
@@ -6759,40 +6773,69 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteItineraryItem(id: string): Promise<void> {
+  // R15 (ledger 2026-08-17-partner-demand-r15-transition-log): this is the ONE genuine
+  // single-item REMOVAL path — a traveler or expert takes an item off the plan and nothing
+  // replaces it (the DELETE /api/trips/:tripId/itinerary-items/:itemId route). It writes an
+  // append-only `item_removed` diary row in the SAME transaction as the delete (ruling 18 —
+  // all-or-nothing pair), so the demand pipeline's removal clock can never miss a removal or
+  // record one that rolled back. `opts.actorType`/`actorId` come from the route's authorization
+  // (owner/author ⇒ "traveler", assigned expert ⇒ "expert"); callers that omit them (internal /
+  // legacy) default to "traveler" with a null actorId — an honest "someone removed it" rather
+  // than a guessed actor. Replace/regenerate deletes (AI rebuild, apply-to-trip) are NOT this
+  // path and MUST NOT log `item_removed` (§13 — a plan rebuild is not a removal); they carry an
+  // `item-removed:replace` annotation and are enforced apart by scripts/check-item-removed-logging.cjs.
+  async deleteItineraryItem(
+    id: string,
+    opts?: { actorType?: TransitionActorType; actorId?: string | null },
+  ): Promise<void> {
     // ITEM 3 (L13, CLAUDE.md §18 L4): `transport_legs.from_activity_id`/`to_activity_id` are plain
     // varchars with no FK (the columns serve two scopes — variant-snapshot and trip-live — so an
     // FK is deliberately not added here; app-level is the right layer per the lane brief). Deleting
     // an item without also deleting legs that reference it would silently orphan those legs.
-    // Look up the item's tripId FIRST (cheap single-row read) so the cascade can be scoped: only
-    // TRIP-scoped legs (variantId IS NULL, same tripId) referencing this item as either endpoint.
-    // Variant-scoped legs are NEVER touched here — a variant is a frozen snapshot (§18), and a
-    // live-trip item deletion must not mutate it even if a variant leg happens to carry the same
-    // id string as a from/to endpoint.
+    // Look up the item's tripId AND routingStatus FIRST (cheap single-row read): the tripId scopes
+    // the leg cascade, and both feed the R15 diary row (fromStatus = the item's last known
+    // routing_status). Only TRIP-scoped legs (variantId IS NULL, same tripId) referencing this
+    // item as either endpoint are cascaded — variant-scoped legs are a frozen snapshot (§18) and
+    // are NEVER touched here even if a variant leg happens to carry the same id string.
     const [item] = await db
-      .select({ tripId: itineraryItems.tripId })
+      .select({ tripId: itineraryItems.tripId, routingStatus: itineraryItems.routingStatus })
       .from(itineraryItems)
       .where(eq(itineraryItems.id, id));
 
-    await db.delete(itineraryItems).where(eq(itineraryItems.id, id));
+    await db.transaction(async (tx) => {
+      // item-removed:logged — the delete and its `item_removed` diary row commit as one (ruling 18).
+      await tx.delete(itineraryItems).where(eq(itineraryItems.id, id));
 
-    if (item?.tripId) {
-      const cascaded = await db
-        .delete(transportLegs)
-        .where(
-          and(
-            eq(transportLegs.tripId, item.tripId),
-            isNull(transportLegs.variantId),
-            or(eq(transportLegs.fromActivityId, id), eq(transportLegs.toActivityId, id)),
-          ),
-        )
-        .returning({ id: transportLegs.id });
-      if (cascaded.length > 0) {
-        console.log(
-          `[ItineraryItems] cascade-deleted ${cascaded.length} trip-scoped transport leg(s) referencing deleted item ${id} (trip ${item.tripId})`,
-        );
+      if (item?.tripId) {
+        const cascaded = await tx
+          .delete(transportLegs)
+          .where(
+            and(
+              eq(transportLegs.tripId, item.tripId),
+              isNull(transportLegs.variantId),
+              or(eq(transportLegs.fromActivityId, id), eq(transportLegs.toActivityId, id)),
+            ),
+          )
+          .returning({ id: transportLegs.id });
+        if (cascaded.length > 0) {
+          console.log(
+            `[ItineraryItems] cascade-deleted ${cascaded.length} trip-scoped transport leg(s) referencing deleted item ${id} (trip ${item.tripId})`,
+          );
+        }
+
+        // R15: same-transaction removal signal. Skipped only when the item did not exist (no
+        // tripId ⇒ nothing was removed ⇒ no phantom row, §13).
+        await logItemTransition(tx, {
+          tripId: item.tripId,
+          itemId: id, // history outlives the item — item_id is nullable-no-FK by design
+          eventType: "item_removed",
+          fromStatus: item.routingStatus ?? null,
+          toStatus: null, // removed = no next state
+          actorType: opts?.actorType ?? "traveler",
+          actorId: opts?.actorId ?? null,
+        });
       }
-    }
+    });
   }
 
   // Expert Workspace Status
@@ -7157,6 +7200,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async replaceItineraryItems(tripId: string, items: any[]): Promise<void> {
+    // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE logical
+    // regeneration, not a removal). Emitting `item_removed` here would be a false removal signal
+    // (§13, R15): the traveler removed nothing, the plan was regenerated. No `item_removed` write.
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
     if (items.length > 0) {
       await db.insert(itineraryItems).values(items);
@@ -7570,6 +7616,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteItineraryItemsByTrip(tripId: string): Promise<void> {
+    // item-removed:dead — no live caller (grep-verified Aug 17 2026); kept for its total-wipe
+    // semantics should a future caller need it. If it is ever wired to a live removal path, it
+    // must move to the `deleteItineraryItem` transactional+`item_removed` shape (R15).
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
   }
 
@@ -7580,6 +7629,9 @@ export class DatabaseStorage implements IStorage {
   // DELIBERATELY a NEW method: `deleteItineraryItemsByTrip` keeps its total-wipe semantics for its
   // own (currently zero other) callers — this does not change any existing behaviour.
   async deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }> {
+    // item-removed:replace — the routing-aware apply-to-trip replace (in_planning rows the
+    // optimizer is about to re-insert). Its live sibling (plancard.routes.ts apply) already logs a
+    // trip-scoped `variant_applied` event; this is a plan rebuild, not a removal (§13, R15).
     const deleted = await db
       .delete(itineraryItems)
       .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")))

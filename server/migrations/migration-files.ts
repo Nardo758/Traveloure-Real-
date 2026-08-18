@@ -1198,4 +1198,13 @@ export const MIGRATION_FILES = [
   //   email-outbox scheduler with exponential backoff (max 5 attempts). Dead rows surfaced on
   //   the admin dashboard. status: pending|sent|failed|dead. See email-outbox.service.ts.
   "240_email_outbox.sql",
+  // 241: trips demand capture (R8, lane 2A.3) — additive-nullable origin_market + market_slug,
+  //   party-size DE-MASKING (drop the 1/2/0 defaults so unspecified stays NULL), best-effort
+  //   market_slug backfill from destination, and idx_trips_market_slug. Additive-nullable + DROP
+  //   DEFAULT only, no CHECK (publish-safe). Both columns declared in shared/schema.ts.
+  "241_trips_demand_capture_r8.sql",
+  // 242: DROP provider_availability (Partner Demand 2C) — confirmed orphan (0 rows, no insert
+  //   path, no readers). Its one no-op UPDATE writer on the booking-confirm path was removed and
+  //   the schema.ts declaration deleted in the same change (publish-trap). IF EXISTS = push-safe.
+  "242_drop_provider_availability.sql",
 ] as const;
