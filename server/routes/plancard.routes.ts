@@ -115,6 +115,9 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // `ready_for_checkout` / `purchased` rows survive untouched (a `purchased` row carries
       // `booking_id`, migration 159). Inserted variant items take the migration-159 default
       // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
+      // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
+      // This transaction logs a trip-scoped `variant_applied` event below (its own same-transaction
+      // diary row); a plan rebuild is not a removal, so no per-row `item_removed` (§13, R15).
       await tx
         .delete(itineraryItems)
         .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")));

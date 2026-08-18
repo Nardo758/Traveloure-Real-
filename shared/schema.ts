@@ -96,9 +96,16 @@ export const trips = pgTable("trips", {
   // see client/src/pages/my-trips.tsx); DO NOT add new writers. See tripStatusEnum above and
   // docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
-  numberOfTravelers: integer("number_of_travelers").default(1),
-  adults: integer("adults").default(2),
-  kids: integer("kids").default(0),
+  // Partner Demand Data lane 2A.3 / R8 (ledger 2026-08-17-partner-demand-phase0-rulings R8):
+  // party-size DE-MASKING. These previously defaulted 1/2/0 at THREE layers (DB, ORM here, and
+  // insertTripSchema's zod default), so a trip created without party-size info was indistinguishable
+  // from a real party of 2 — the rollup could never tell "unknown" from "two adults" (§13). The
+  // ORM defaults are dropped here, the DB defaults by migration 241, and the zod defaults become
+  // `.optional()`; an unspecified party size is now honestly NULL. Existing readers already guard
+  // (`?? 1` / `|| 1`); the demand rollup treats NULL as "not captured", never as a count.
+  numberOfTravelers: integer("number_of_travelers"),
+  adults: integer("adults"),
+  kids: integer("kids"),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   preferences: jsonb("preferences").default({}),
   eventDetails: jsonb("event_details").default({}),
@@ -138,12 +145,28 @@ export const trips = pgTable("trips", {
   // the dead `status` field above — a narrow rendering-handover signal consumed only by
   // shared/trip-primary-surface.ts's `tripCardIsPrimary` OR-branch, never a lifecycle/status value.
   finalizedAt: timestamp("finalized_at"),
+  // Partner Demand Data lane 2A.3 / R8 (migration 241, additive-nullable, declared here per the
+  // publish-trap rule; no DB CHECK — house posture). CAPTURE-FORWARD (R11): both are written at
+  // trip creation going forward and NEVER backfilled from a guess.
+  //   originMarket — the traveler's stated origin (free text as captured; normalization is a later
+  //     concern). NULL = the flow did not ask / the traveler did not answer (§13), never a default.
+  //   marketSlug — the DESTINATION resolved to one of the 8 operating-market slugs
+  //     (server/services/trend-engine/operating-markets.ts marketKey) at write time, or NULL when
+  //     the free-text destination resolves to none of them (R13's unmapped_destination bucket — an
+  //     honest "outside the 8", never forced onto a market). The demand rollup derives market from
+  //     THIS column, and item_transition_log rows derive theirs via trip_id → this column (R15/L6).
+  originMarket: varchar("origin_market", { length: 100 }),
+  marketSlug: varchar("market_slug", { length: 40 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   // Migration 133: partial index used by ready-made trip authoring queries (author_id IS NOT NULL).
   // Declared here — drizzle push drops indexes absent from this file on publish.
   index("idx_trips_author_id").on(table.authorId).where(sql`author_id IS NOT NULL`),
+  // 2A.3 (migration 241): the demand rollup groups trips by market_slug. Declared here so the
+  // deploy push keeps it (publish-trap rule). Partial — NULL rows (R13 unmapped bucket) are
+  // counted separately and don't need the index.
+  index("idx_trips_market_slug").on(table.marketSlug).where(sql`market_slug IS NOT NULL`),
 ]);
 
 export const generatedItineraries = pgTable("generated_itineraries", {
@@ -1900,17 +1923,25 @@ export const generatedItinerariesRelations = relations(generatedItineraries, ({ 
 // === Schemas ===
 
 // Enhanced trip schema with better validations (simpler version for compatibility)
-export const insertTripSchema = createInsertSchema(trips).omit({ 
-  id: true, 
-  userId: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertTripSchema = createInsertSchema(trips).omit({
+  id: true,
+  userId: true,
+  createdAt: true,
+  updatedAt: true,
+  // 2A.3 / R8: market_slug is SERVER-DERIVED from destination in storage.createTrip (never
+  // client-settable — a false market_slug would misroute demand). originMarket is NOT omitted:
+  // it is ordinary owner-authored capture data (no privilege), accepted from the body.
+  marketSlug: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
-  numberOfTravelers: z.coerce.number().int().min(1).default(1),
-  adults: z.coerce.number().int().min(1).default(2),
-  kids: z.coerce.number().int().min(0).default(0),
+  // 2A.3 / R8 de-masking: party size is OPTIONAL, no fabricated default. A value, when present,
+  // still validates (min bounds); when absent it stays undefined ⇒ NULL, an honest "not captured"
+  // the demand rollup can distinguish from a real count (§13). The route no longer synthesizes
+  // numberOfTravelers from adults+kids when nothing was provided.
+  numberOfTravelers: z.coerce.number().int().min(1).optional(),
+  adults: z.coerce.number().int().min(1).optional(),
+  kids: z.coerce.number().int().min(0).optional(),
 });
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });
@@ -7090,20 +7121,14 @@ export const bookingRequests = pgTable("booking_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const providerAvailability = pgTable("provider_availability", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  providerId: varchar("provider_id", { length: 255 }).notNull(),
-  serviceId: uuid("service_id"),
-  availabilityType: varchar("availability_type", { length: 20 }).notNull(),
-  blockedDates: jsonb("blocked_dates").default([]),
-  availableDates: jsonb("available_dates").default([]),
-  isAvailable: boolean("is_available").default(true),
-  dailyCapacity: integer("daily_capacity"),
-  currentBookings: integer("current_bookings").default(0),
-  timeSlots: jsonb("time_slots"),
-  recurringUnavailable: jsonb("recurring_unavailable"),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+// DROPPED — Partner Demand 2C (ledger 2026-08-17-partner-demand-2c-sunset, migration 242). The
+// `provider_availability` table was a confirmed ORPHAN: 0 rows in prod (R7 Q4), NO insert path
+// anywhere in the repo, and no readers — declared availability lives in
+// `provider_availability_schedule` + `provider_blackout_dates`, bookable truth in
+// `vendor_availability_slots`. Its one live writer (a no-op UPDATE on the booking-confirm path)
+// was removed first. The declaration is deleted here so the deploy push does not recreate the
+// table after migration 242 drops it (publish-trap rule). Do NOT confuse with the LIVE
+// `providerAvailabilitySchedule` (a different table) or the React `ProviderAvailability` page.
 
 export const expertHandoffs = pgTable("expert_handoffs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -8486,6 +8511,16 @@ export const DEMAND_SIGNAL_EVENT_KINDS = [
   "places_fallthrough",
   "no_stay_flag",
   "search_unfilled",
+  // Partner Demand Data lane 2A.5 (ledger 2026-08-17-partner-demand-phase2-rulings, Market
+  // Research spec of record): the two Market Research interaction signals — a map layer toggled
+  // on/off (`layer_toggled`) and a research "where does demand want to go" circle tapped
+  // (`research_circle_tapped`). REGISTERED ONLY — no UI writes them yet (the Market Research page
+  // is Phase 3 ground-truth, not built in Phase 2). Reserving the vocabulary now keeps the write
+  // sites, when they land, from inventing an unregistered kind. Both remain advisory
+  // fire-and-forget (`logDemandSignal`), never same-transaction — that guarantee is
+  // item_transition_log's (R10/R15), never blended here.
+  "layer_toggled",
+  "research_circle_tapped",
 ] as const;
 export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];
 
