@@ -20,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 import { ShieldAlert, CheckCircle, XCircle, Eye, User } from "lucide-react";
 
 interface ModerationReport {
@@ -53,6 +54,7 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 export default function AdminMessageModeration() {
+  const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<string>("pending");
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
 
@@ -79,6 +81,50 @@ export default function AdminMessageModeration() {
   const handleAction = (id: string, status: string) => {
     updateStatusMutation.mutate({ id, status, adminNote: adminNotes[id] });
   };
+
+  // "Suspend user" = real enforcement: suspend the reported user via the same
+  // admin suspend endpoint the users page uses, THEN mark the report actioned.
+  // The suspend endpoint is idempotent (already-suspended users keep their
+  // original suspension metadata), so retrying after a partial failure —
+  // suspend succeeded but the report PATCH failed — is safe: the retry's
+  // suspend leg is a no-op and only the report status is repaired.
+  const suspendAndActionMutation = useMutation({
+    mutationFn: async (report: ModerationReport) => {
+      const reason =
+        adminNotes[report.id]?.trim() ||
+        `Message abuse report: ${REASON_LABELS[report.reason] ?? report.reason}`;
+      let suspendRes: { alreadySuspended?: boolean };
+      try {
+        const res = await apiRequest("PATCH", `/api/admin/users/${report.reportedUserId}/suspend`, { reason });
+        suspendRes = await res.json();
+      } catch (err: any) {
+        throw new Error(`Could not suspend user: ${err?.message ?? "unknown error"}. The report is still pending.`);
+      }
+      try {
+        await apiRequest("PATCH", `/api/admin/message-reports/${report.id}`, {
+          status: "actioned",
+          adminNote: adminNotes[report.id] || `User suspended (${reason})`,
+        });
+      } catch (err: any) {
+        throw new Error(
+          "The user WAS suspended, but marking the report as actioned failed — click Suspend user again to repair the report status (the suspension will not be re-applied).",
+        );
+      }
+      return suspendRes;
+    },
+    onSuccess: (suspendRes) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/message-reports"] });
+      toast({
+        title: suspendRes?.alreadySuspended ? "Report actioned" : "User suspended",
+        description: suspendRes?.alreadySuspended
+          ? "The user was already suspended; the report has been marked actioned."
+          : "The user has been suspended and the report marked actioned.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Enforcement action failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   return (
     <DashboardLayout>
@@ -215,11 +261,11 @@ export default function AdminMessageModeration() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => handleAction(report.id, "actioned")}
-                          disabled={updateStatusMutation.isPending}
+                          onClick={() => suspendAndActionMutation.mutate(report)}
+                          disabled={updateStatusMutation.isPending || suspendAndActionMutation.isPending}
                           data-testid={`button-actioned-${report.id}`}
                         >
-                          <XCircle className="w-3.5 h-3.5 mr-1.5" /> Action taken
+                          <XCircle className="w-3.5 h-3.5 mr-1.5" /> Suspend user
                         </Button>
                         <Button
                           size="sm"

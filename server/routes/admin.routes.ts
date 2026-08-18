@@ -7776,6 +7776,18 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
     if (target.isDeleted) return res.status(400).json({ message: "Cannot suspend a deleted account" });
     if (target.role === "admin") return res.status(400).json({ message: "Cannot suspend another admin account" });
 
+    // Idempotent: re-suspending an already-suspended user must not overwrite the
+    // original suspendedAt/suspensionReason (enforcement evidence). This also makes
+    // moderation-queue retries safe when a prior suspend succeeded but the report
+    // status update failed, or when multiple reports target the same user.
+    if (target.isSuspended) {
+      return res.json({
+        message: "Account already suspended",
+        alreadySuspended: true,
+        user: { id: target.id, isSuspended: true, suspendedAt: target.suspendedAt, suspensionReason: target.suspensionReason },
+      });
+    }
+
     const [updated] = await db
       .update(users)
       .set({ isSuspended: true, suspendedAt: new Date(), suspensionReason: reason, updatedAt: new Date() })
