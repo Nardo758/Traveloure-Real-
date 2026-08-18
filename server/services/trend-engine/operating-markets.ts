@@ -116,3 +116,25 @@ export function getMarketByCityName(cityName: string): OperatingMarket | undefin
   const lower = cityName.toLowerCase();
   return OPERATING_MARKETS.find(m => m.cityName.toLowerCase() === lower);
 }
+
+/**
+ * Partner Demand Data lane 2A.3 / R8: resolve a free-text `trips.destination` to ONE operating
+ * market slug (marketKey) or NULL. Used at trip-write time to stamp `trips.market_slug`, and by
+ * the backfill migration's mapping spec (Q3 top-40).
+ *
+ * §13 / R13 posture: STRICT exact-match on the city segment — a destination that resolves to none
+ * of the 8 markets returns NULL (the rollup's honest `unmapped_destination` bucket), NEVER the
+ * nearest guess. Q3 showed the real clusters outside the 8 (Lisbon, San Francisco, Paris,
+ * Barcelona) plus junk (`l`, `unknown`, `ci test destination`); all of these correctly return NULL.
+ * The only real in-set volume today is Kyoto (`kyoto`, `kyoto, japan`), both handled by taking the
+ * first comma-segment and matching marketKey OR cityName case-insensitively.
+ */
+export function resolveMarketSlug(destination: string | null | undefined): string | null {
+  if (!destination) return null;
+  const city = destination.split(",")[0].trim().toLowerCase();
+  if (!city) return null;
+  const match = OPERATING_MARKETS.find(
+    (m) => m.marketKey === city || m.cityName.toLowerCase() === city,
+  );
+  return match ? match.marketKey : null;
+}

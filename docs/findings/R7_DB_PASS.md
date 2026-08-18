@@ -168,3 +168,79 @@ Timing is off.
 
 ================ R7 DB PASS COMPLETE ================
 ```
+
+---
+
+## Item B — interpretation + verdict table
+
+Script ran clean top-to-bottom (zero errors) ⇒ **no schema drift vs push-canonical** (Q7 confirms: `routing_status` default `in_planning`/NOT NULL, `results_count` no-default/nullable, `adults`/`kids`/`number_of_travelers` defaults 2/0/1 — all match the ORM).
+
+**Per-query reads:**
+
+- **Q1 — `search_analytics` is DEAD (0 rows).** The write path exists in code (`content-query.service.ts:807`, client `trackSearchEvent`) but has **never produced a row** — so `results_count` is moot and `search_type` never even reaches `'service'`. R5's `unmet_demand_search` signal has **zero data**; the write path is dark in practice. → FOLLOWUPS: trace why `trackSearchEvent` → insert never fires.
+- **Q2 — party size is materially broken.** 94/217 trips (**43%**) sit at the exact default triple with no explicit `travelers` — unusable (can't tell "2 adults" from never-asked). Only 52 (24%) carry explicit `travelers`; `adults`/`kids` are essentially never moved (1/0 rows), and Q2b shows **19 trips where `travelers` ≠ `number_of_travelers`** — the three-overlapping-fields problem is real and writers disagree. → **R8 explicit-capture is P1.**
+- **Q3 — `trips.destination` is noisy free-text; the target markets and the actual demand diverge.** 33% (72/217) match a market slug, and **all 72 are Kyoto** (`kyoto, japan` 47 + `kyoto` 25). The other 7 markets (edinburgh/porto/bogotá/cartagena/mumbai/goa/jaipur) have **zero** trips. Meanwhile the 2nd–5th biggest destination clusters — **Lisbon 49, San Francisco 24, Paris 18, Barcelona 17** — are NOT in the 8-market set, alongside junk (`l`, `unknown`, `nara,`, `ci test destination`). → R8 normalization needed; separately, flag to Leon that real demand concentrates outside 6 of the 8 chosen markets.
+- **Q4 — `provider_availability` is a confirmed ORPHAN (0 rows, no owners).** Live source `provider_availability_schedule` (25) + `provider_blackout_dates` (5); `vendor_availability_slots` (149) is bookable truth. → **DROP `provider_availability`** (R1 verify-then-delete; no escalation — no real rows).
+- **Q5 — all ten pre-existing analytics tables are DEAD (0 rows each).** `service_requests` also 0 (Q5b). → R6: none are live substrates, so `partner_demand_rollup` collides with nothing; each is Grok-era scaffolding to sunset (confirm each generator is removed first — the dark-writer-resuming risk). `service_requests` (a real designed capture, migration 123, never used by a traveler) → FOLLOWUPS to surface it in the traveler flow, not build-new.
+- **Q6a — slip substrate exists.** `itinerary_items`: in_planning 466, purchased 42, ready_for_checkout 26, with_expert 9 (543 total); no `removed` state (hard-delete confirmed). Enough volume for a point-in-time slip funnel.
+- **Q6b/Q6d — the 10-floor is NOT safely cleared by any market.** Kyoto is the only market with volume (72 naive), but 74/217 trips (**34%**) are test accounts (`@traveloure.test`) and the seeds are **Kyoto-centric**, so an unknown-but-likely-large share of those 72 are test data. **After exclusion, whether even Kyoto clears 10 real trips is unproven** — needs one cross-tab (`destination ~ kyoto AND email NOT LIKE '%@traveloure.test'`). The other 7 markets are 0 regardless.
+- **Q6c — `fee_ledger` is EMPTY (0 rows).** The money blocks (channel economics 3.3) have **no history to backfill**; §-3 money reads are correct-by-design but have nothing to read yet.
+- **Q8 — `demand_signal_events` is live but nascent.** 2 rows total (`no_stay_flag` 1, `stay_anchor_miss` 1), both Kyoto, both Aug 11; `places_fallthrough` 0. The disciplined writer works but has produced almost nothing, and its kinds are advisory — not the demand-not-met signals R5 needs.
+
+### Verdict table
+
+| Question | Verdict |
+|---|---|
+| **3.1 viable — which R5 signals are live?** | **PARTIAL.** `unmet_demand_slip` (hero) is computable **today** point-in-time (466 in_planning items ∩ 149 slots); **time-in-stage + removal need R2**. `unmet_demand_request` (`service_requests`) = **0 rows → not live** (FOLLOWUPS: surface capture). `unmet_demand_search` (`search_analytics`) = **0 rows → not live** (FOLLOWUPS: dark write path). *Failed conditions: request-grain and search-grain have no data.* |
+| **Party-size usable today / R8 priority** | **~43% default-masked, 24% explicit, 19 cross-field disagreements → P1.** R8 explicit nullable capture is the highest-value schema change for the sellable asset. |
+| **`provider_availability` drop or escalate** | **DROP** — 0 rows, no owners (R1 verify-then-delete). |
+| **Ten-table dispositions incl. `demand_signals` generator** | **ALL TEN DEAD (0 rows).** Sunset each after confirming its generator is removed (dark-writer risk). `service_requests` → FOLLOWUPS (surface in traveler flow), not build-new. |
+| **Any market clears the 10-floor today** | **NOT PROVEN.** Only Kyoto has volume (72 naive); with 34% Kyoto-concentrated test contamination, real-non-test Kyoto is unproven and may approach/fall below 10 — needs the destination×test cross-tab. All 7 other markets = 0. |
+| **Test-exclusion predicate needed** | **YES** — 34% (`74/217`) contamination. R9 shared predicate is mandatory, not optional. |
+| **Schema drift** | **NONE** — Q7 clean; script ran error-free. |
+
+### A2 recommendation (adopt-substrate vs sibling) — evidence for Leon's ruling
+
+The evidence points to **(b) sibling-tables**, with the rollup as the single computation layer:
+- **No rich substrate to adopt.** `demand_signal_events` has **2 rows** of advisory kinds; the ten legacy tables are all dead. Adopting it as *the* canonical lifecycle stream buys no existing data — it's near-greenfield either way.
+- **The write disciplines are genuinely opposite (A3).** `logDemandSignal()` is fire-and-forget by design (a lost advisory signal must never fail the host request); R2 lifecycle events must be **same-transaction** (a lost transition breaks funnel integrity). Forcing both into one table means one kind-class silently weakens its guarantee.
+- **L6 is preserved at the rollup layer regardless** — `partner_demand_rollup` reads all sources (slip events, availability, `demand_signal_events`, fee_ledger) and computes each figure **once** there; no demand number is computed in two places.
+
+**This is Leon's call, not the agent's** — recommendation only. If (a) adopt-as-substrate is chosen, the design must show one table carrying both write disciplines (transactional insert path alongside the fire-and-forget helper, per kind-class) without weakening either.
+
+**HARD STOP:** this verdict table gates the Phase 2 dispatch (rollup schema, R2/R3 event trails, R8 capture, R6 sunsets). No Phase 2 schema work begins until Leon reviews it and rules A2(a)/(b).
+
+
+---
+
+## Q9 — destination × test-account cross-tab (Phase 2A step 5, run 2026-08-18)
+
+Script: `q9.sql` (read-only; test predicate mirrors R9's `isRealAccountSql`, NULL-email-is-real per §13). Zero errors.
+
+```
+================ Q9a — market_slug × account-type cross-tab (ALL trips) ================
+ market_slug | total_trips | real_trips | test_trips 
+-------------+-------------+------------+------------
+ (unmapped)  |         145 |         90 |         55
+ kyoto       |          72 |         53 |         19
+(2 rows)
+
+
+================ Q9b — KYOTO 10-floor VERDICT (raw destination, backfill-independent) ========
+ kyoto_total | test_acct | real_acct | authoring_trips | real_traveler_trips | clears_10_floor 
+-------------+-----------+-----------+-----------------+---------------------+-----------------
+          72 |        19 |        53 |              24 |                  29 | t
+(1 row)
+
+
+================ Q9c — cross-check: does migration 241 market_slug agree with raw kyoto? ======
+ backfill_kyoto | raw_kyoto 
+----------------+-----------
+             72 |        72
+(1 row)
+
+```
+
+**Verdict row: Kyoto clears 10-floor with real trips: YES (n=29)** — real_traveler_trips = 29 (72 raw kyoto − 19 test-account − 24 expert-authoring), keyed on real_traveler_trips per the lane's design note (authoring listings are expert inventory, not traveler demand; on the raw R7-Q6b framing it would be real_acct = 53, also YES).
+
+Q9c cross-check: backfill_kyoto = raw_kyoto = 72 — migration 241's resolver/backfill validated against raw destination text, no backfill bug.

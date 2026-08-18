@@ -154,6 +154,10 @@ export class ItineraryIntelligenceService {
   }
 
   async deleteItem(id: string): Promise<void> {
+    // item-removed:dead — the DELETE /api/itinerary-items/:id route that called this is RETIRED
+    // (V4 rail-unification, Aug 7 2026; see routes.ts retirement note). No live caller. If ever
+    // re-wired to a removal path it must adopt the transactional+`item_removed` shape R15 requires
+    // (use storage.deleteItineraryItem, the canonical cascade-safe rail).
     await db.delete(itineraryItems).where(eq(itineraryItems.id, id));
   }
 

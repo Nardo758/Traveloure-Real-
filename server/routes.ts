@@ -1158,18 +1158,18 @@ export async function registerRoutes(
   // Guests receive a shareToken to access the trip until sign-up.
   app.post(api.trips.create.path, async (req, res) => {
     try {
-      // Trip-defaults consistency fix: insertTripSchema defaults numberOfTravelers to 1 and
-      // adults to 2 independently, so an omitted numberOfTravelers produced an incoherent
-      // freshly-created trip (1 traveler, 2 adults). When the caller didn't explicitly send
-      // numberOfTravelers, derive it from adults+kids instead of taking the schema's static
-      // default, mirroring the numberOfTravelers===adults convention already used at the other
-      // trip-creation call sites (cart-to-itinerary conversion, quick-start itinerary).
+      // 2A.3 / R8 party-size DE-MASKING: the schema no longer fabricates a default 1/2/0, so an
+      // omitted party size stays undefined ⇒ NULL (an honest "not captured", §13). We still derive
+      // a coherent numberOfTravelers when the caller gave REAL component data (adults present) —
+      // that is a computed real value, not a fabricated default — but when NOTHING was provided we
+      // leave it NULL rather than inventing "2 adults". Booking/pricing consumers already guard
+      // (`?? 1` / `|| 1`); the demand rollup reads NULL as unknown, never as a count.
       const numberOfTravelersProvided =
         req.body?.numberOfTravelers !== undefined && req.body?.numberOfTravelers !== null && req.body?.numberOfTravelers !== "";
       const input = api.trips.create.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
-      if (!numberOfTravelersProvided) {
+      if (!numberOfTravelersProvided && sanitizedInput.adults != null) {
         sanitizedInput.numberOfTravelers = sanitizedInput.adults + (sanitizedInput.kids ?? 0);
       }
 
@@ -1474,6 +1474,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // existed) and keep the pre-existing replaced behavior — the same
       // `suggestedBy <> 'expert'` fallback as before, now reached only when `origin` itself
       // gives no answer.
+      // item-removed:replace — AI itinerary regeneration (delete the prior AI/traveler set,
+      // insert the freshly-generated one below). A plan rebuild, not a removal: no `item_removed`
+      // signal (§13, R15) — the traveler removed nothing, the generator replaced the set.
       await db.delete(itineraryItems).where(
         and(
           eq(itineraryItems.tripId, trip.id),
