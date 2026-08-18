@@ -39,9 +39,10 @@
  *               input (bounding-box Y order).
  *
  * Draft hygiene:
- *   The full-flow test creates one provider_services draft. Its id is read from
- *   the /provider/services/:id/edit URL after step 1 advances and deleted via
- *   DELETE /api/provider/services/:id in a finally block, pass or fail.
+ *   The full-flow test walks the wizard via client-state step advance
+ *   (goToStep → setCurrentStep), which saves NO server draft — so it leaves no
+ *   provider_services row behind. The finally block's DELETE is defensive (inert
+ *   unless a future autosave ever persists a draft into an /:id/edit URL).
  *
  * Prerequisites:
  *   • Server running at BASE_URL.
@@ -74,16 +75,16 @@ async function expectOnStep(
 }
 
 // ── Shared: advance the wizard one step ───────────────────────────────────────
-// Clicks whichever "Next" or "Save draft & continue" button is visible in the
-// card footer and waits for the URL to change before returning.
+// The footer "Next:" button (data-testid="button-step-next") advances via
+// goToStep() → setCurrentStep(), which is CLIENT STATE ONLY: in create mode the
+// URL stays /provider/services/new (the ?step= param is an edit-mode deep-link
+// concern), and advancing saves no draft and is not gated on required fields.
+// So we click and return — the caller confirms the advance via expectOnStep()
+// (the step header re-renders), NOT via a URL change (there isn't one).
 async function clickNext(page: import('@playwright/test').Page): Promise<void> {
-  const btn = page.locator('button').filter({
-    hasText: /Save draft & continue|Next:/i,
-  }).first();
+  const btn = page.getByTestId('button-step-next');
   await expect(btn).toBeVisible({ timeout: 8_000 });
-  const currentUrl = page.url();
   await btn.click();
-  await page.waitForURL((url) => url.toString() !== currentUrl, { timeout: 15_000 });
 }
 
 // ── Shared: session guard ─────────────────────────────────────────────────────
@@ -192,36 +193,37 @@ test.describe('Create-service wizard layout', () => {
     expect(row2Shared).toBe(true);
   });
 
-  // ── Test 2: Capacity + Logistics layout (creates a draft — cleanup required) ─
+  // ── Test 2: Capacity + Logistics layout (walks the wizard via client-state ──
+  //    step advance; creates no server draft, so cleanup is defensively inert) ──
   test('Capacity: party-size inline + Seating in same grid row; Logistics: note leads, map above address', async ({ page }) => {
     if (!fs.existsSync(PROVIDER_AUTH_FILE)) {
       test.skip(true, 'Auth file missing — run global-setup first.');
       return;
     }
 
-    // Track the draft ID so we can delete it in the finally block.
+    // Walking the wizard advances via client state (goToStep → setCurrentStep),
+    // so NO server draft is created and the URL stays /provider/services/new —
+    // normally there is nothing to clean up. draftServiceId stays null unless a
+    // future autosave ever persists a draft and reflects its id in an /:id/edit
+    // URL, in which case the finally block deletes it (defensive, currently inert).
     let draftServiceId: string | null = null;
 
     try {
-      // ── Navigate to step 1, fill minimum required data ──────────────────────
+      // ── Navigate to step 1 ──────────────────────────────────────────────────
+      // Delivery method defaults to "in_person" → 5-step flow (Basics, Scheduling,
+      // Capacity, Logistics, Review). Advancing is not gated on required fields,
+      // so no data entry is needed to walk to the Capacity/Logistics steps.
       await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
       await expectOnStep(page, 'Basics');
 
-      // Delivery method defaults to "in_person" → 5-step flow (the one with
-      // Capacity and Logistics). Fill the service name so the draft saves cleanly.
-      const nameInput = page.locator('#name');
-      await nameInput.fill('CI Layout Test Service — delete me');
-
-      // ── Step 1 → Step 2 (Scheduling) ────────────────────────────────────────
+      // ── Step 1 → Step 2 (Scheduling) — client-state advance, no URL change ───
       await clickNext(page);
-
-      // Capture the draft ID from the URL immediately after advancing. Create mode
-      // saves the draft and moves to /provider/services/:id/edit (id in the PATH,
-      // never a ?id= query param — see ServiceForm navigate() on save).
-      const idMatch = page.url().match(/\/provider\/services\/([^/?#]+)\/edit/);
-      draftServiceId = idMatch ? idMatch[1] : null;
-
       await expectOnStep(page, 'Scheduling');
+
+      // Defensive: if the wizard ever begins reflecting a persisted draft's id in
+      // the URL, capture it for cleanup. Today the URL is still /new, so this is null.
+      const idMatch = page.url().match(/\/provider\/services\/([^/?#]+)\/edit/);
+      if (idMatch) draftServiceId = idMatch[1];
 
       // ── Step 2 → Step 3 (Capacity) ──────────────────────────────────────────
       await clickNext(page);
