@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { userAndExpertChats, users, notifications, userBlocks, messageReports } from "@shared/schema";
+import { userAndExpertChats, users, notifications, userBlocks, messageReports, adminNotifications } from "@shared/schema";
 import { eq, and, or, desc, sql, isNull, ilike } from "drizzle-orm";
 
 export function buildConversationId(userId1: string, userId2: string): string {
@@ -327,7 +327,32 @@ export async function reportMessage(
     .insert(messageReports)
     .values({ reporterId, reportedUserId, messageId, reportType: "message", reason: safeReason, details: details ?? null })
     .returning({ id: messageReports.id });
+  await notifyAdminsOfReport(row.id, "message", safeReason, reportedUserId);
   return row;
+}
+
+/**
+ * Surface a new abuse report to admins via admin_notifications — the same
+ * channel the lead-routing alerts use, which both the admin notifications
+ * page and the daily digest (section A: unread rows) already read. Failure
+ * here must never fail the report itself.
+ */
+async function notifyAdminsOfReport(
+  reportId: string,
+  reportType: "message" | "user",
+  reason: string,
+  reportedUserId: string,
+): Promise<void> {
+  try {
+    await db.insert(adminNotifications).values({
+      type: "message_report",
+      message: `New ${reportType} abuse report (${reason}) — review it in Message Reports`,
+      reason,
+      metadata: { reportId, reportType, reportedUserId },
+    });
+  } catch (err: any) {
+    console.error("[messages] admin notification for report failed (non-fatal):", err?.message ?? err);
+  }
 }
 
 type ReportReason = (typeof VALID_REASONS)[number];
@@ -351,6 +376,7 @@ export async function reportUser(
     .insert(messageReports)
     .values({ reporterId, reportedUserId, messageId: null, reportType: "user", reason: safeReason, details: details ?? null })
     .returning({ id: messageReports.id });
+  await notifyAdminsOfReport(row.id, "user", safeReason, reportedUserId);
   return row;
 }
 
