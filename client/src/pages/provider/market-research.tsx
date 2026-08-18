@@ -36,6 +36,8 @@ interface RollupRow {
   n: number;
   status: "ok" | "no_data";
   kind: DemandKind;
+  partnerId: string | null;
+  serviceId: string | null;   // per-service (R25b) cells are the Catalog funnel's (3.3), not this list
 }
 interface SummaryBucket {
   slipAmount: number | null; slipCount: number; slipValuedCount: number;
@@ -74,7 +76,7 @@ export default function ProviderMarketResearch() {
   const windows = useMemo(() => {
     if (!data || !selected) return [] as RollupRow[];
     const rows = data.rows.filter(
-      (r) => r.marketSlug === selected && r.kind === kind &&
+      (r) => r.marketSlug === selected && r.kind === kind && r.serviceId == null && r.partnerId == null &&
         (r.metric === "unmet_demand_slip" || r.metric === "unmet_demand_stay"),
     );
     return rows.sort((a, b) => (kind === "requested" ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)));
