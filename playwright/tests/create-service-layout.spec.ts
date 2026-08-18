@@ -26,7 +26,7 @@
  *   capacity row grid   → data-testid="logistics-section-capacity"              4415
  *   seating             → data-testid="select-seating"                          4449
  *   logistics framing   → text "One card, one vocabulary."                      3825
- *   map (CI fallback)   → data-testid="location-picker-map-unavailable"     picker:95
+ *   map area (canvas)   → data-testid="card-service-map-authoring"  service-map-authoring:297
  *   meeting point       → #meetingPoint                                         3869
  *
  * What it covers (intent unchanged):
@@ -268,12 +268,11 @@ test.describe('Create-service wizard layout', () => {
       const framingNote = page.getByText('One card, one vocabulary.', { exact: false });
       await expect(framingNote).toBeVisible();
 
-      // 2. The map area: the LocationPointPicker map, or — in CI, where no maps
-      //    API key is set — its "Map unavailable" fallback. Anchor on the
-      //    fallback testid, falling back to the picker wrapper if a key is present.
-      const mapUnavailable = page.getByTestId('location-picker-map-unavailable');
-      const mapPicker = page.locator('[data-testid$="-picker"]').first();
-      const mapArea = mapUnavailable.or(mapPicker).first();
+      // 2. The map area is the ServiceMapAuthoring card — the map-first canvas the
+      //    Logistics step leads with. Its Card wrapper (data-testid=
+      //    "card-service-map-authoring") always renders on Logistics, with or
+      //    without a maps API key, so it's a stable anchor for presence + Y-order.
+      const mapArea = page.getByTestId('card-service-map-authoring');
       await expect(mapArea).toBeVisible({ timeout: 10_000 });
 
       // 3. Meeting-point input is visible (label renders "Meeting Point *").
