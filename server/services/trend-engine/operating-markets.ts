@@ -106,6 +106,29 @@ export const OPERATING_MARKETS: readonly OperatingMarket[] = [
   },
 ] as const;
 
+/**
+ * Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): IANA timezone per operating market, so
+ * the demand rollup's daily grain uses the MARKET-LOCAL date (not UTC) — a slip observed at 23:30
+ * in Kyoto belongs to that Kyoto day, not the next UTC day. Keyed by marketKey; the `unmapped`
+ * bucket has no single timezone and uses UTC (documented honestly at the rollup, R13).
+ */
+export const MARKET_TIMEZONES: Readonly<Record<string, string>> = {
+  kyoto: "Asia/Tokyo",
+  goa: "Asia/Kolkata",
+  mumbai: "Asia/Kolkata",
+  jaipur: "Asia/Kolkata",
+  edinburgh: "Europe/London",
+  porto: "Europe/Lisbon",
+  bogota: "America/Bogota",
+  cartagena: "America/Bogota",
+};
+
+/** The IANA timezone for a market slug, or "UTC" for the unmapped bucket / an unknown slug (§13 —
+ *  an unknown market has no local calendar to claim, so it falls back to UTC honestly). */
+export function timezoneForMarket(marketSlug: string | null | undefined): string {
+  return (marketSlug && MARKET_TIMEZONES[marketSlug]) || "UTC";
+}
+
 /** Quick lookup by marketKey */
 export function getMarketByKey(key: string): OperatingMarket | undefined {
   return OPERATING_MARKETS.find(m => m.marketKey === key);

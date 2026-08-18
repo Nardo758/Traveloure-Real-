@@ -37,3 +37,34 @@ export function isRealAccountSql(emailCol: SQL | AnyColumn): SQL {
   const notLike = TEST_ACCOUNT_EMAIL_PATTERNS.map((p) => sql`${emailCol} NOT ILIKE ${p}`);
   return sql`(${emailCol} IS NULL OR (${sql.join(notLike, sql` AND `)}))`;
 }
+
+/**
+ * R16 (ledger 2026-08-18-partner-demand-2b) — SYNTHETIC-TRIP exclusion generalizes R9. Q9 surfaced
+ * a SECOND synthetic class beside test accounts: AUTHORING trips — expert-authored ready-made
+ * scaffolding (`trips.author_id` set; `userId` NULL). They are inventory an expert drafts, NOT
+ * traveler demand, so counting them would overstate demand exactly as test accounts do (in Kyoto:
+ * 24 of 72). This is the ONE synthetic predicate every rollup COMPUTATION and READ inherits — both
+ * classes in one place so the two can never be excluded two different ways (§18 rule 1 / L6).
+ *
+ * The Q9 STRICT count (real account AND not authoring, n=29 for Kyoto) is canonical everywhere; the
+ * loose framing (real account only, n=53) must never appear in a partner-facing or recruitment
+ * figure (R16).
+ */
+
+/** JS-side: true ⇒ the trip is SYNTHETIC (a seeded test account OR an expert authoring listing). */
+export function isSyntheticTrip(trip: {
+  email?: string | null;
+  authorId?: string | null;
+}): boolean {
+  return isTestAccountEmail(trip.email) || trip.authorId != null;
+}
+
+/**
+ * Drizzle SQL fragment: "<emailCol>,<authorIdCol> is a REAL traveler trip" — a real account AND not
+ * an authoring listing. The canonical R16 filter for every demand-rollup computation/read; compose
+ * into a WHERE, e.g. `.where(and(<market filter>, isRealTripSql(users.email, trips.authorId)))`.
+ * A NULL email is real (§13); a non-NULL author_id is synthetic (authoring inventory).
+ */
+export function isRealTripSql(emailCol: SQL | AnyColumn, authorIdCol: SQL | AnyColumn): SQL {
+  return sql`(${isRealAccountSql(emailCol)} AND ${authorIdCol} IS NULL)`;
+}

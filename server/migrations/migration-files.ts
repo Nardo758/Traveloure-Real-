@@ -1207,4 +1207,7 @@ export const MIGRATION_FILES = [
   //   path, no readers). Its one no-op UPDATE writer on the booking-confirm path was removed and
   //   the schema.ts declaration deleted in the same change (publish-trap). IF EXISTS = push-safe.
   "242_drop_provider_availability.sql",
+  // 243: partner_demand_rollup (Partner Demand 2B) — the L6 rollup table. Additive, no CHECK
+  //   (publish-safe); declared in shared/schema.ts (table + 2 indexes). Nightly replace-by-date job.
+  "243_partner_demand_rollup.sql",
 ] as const;

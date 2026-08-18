@@ -32,6 +32,7 @@ import {
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
+import { readPartnerDemandRollup, readAdminDemandRollup } from "../services/demand-rollup.service";
 
 const router = Router();
 
@@ -605,6 +606,36 @@ router.get("/api/me/business-advisor", isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error("[demand] business-advisor GET error:", error);
     res.status(500).json({ message: "Failed to fetch business advice" });
+  }
+});
+
+// ── Partner Demand 2B.3: floor-enforced rollup reads (ledger 2026-08-18-partner-demand-2b) ──────
+// Both read through the ONE L6 module (demand-rollup.service.ts) — no demand math here. Floors are
+// enforced in the service (below → no_data), the R16 synthetic-trip predicate is inherited, and the
+// response carries per-figure `n` + `cadence` so a Phase-3 surface renders the honesty furniture
+// without recomputing anything.
+
+// PARTNER-scoped: the caller's own markets only; the UNMAPPED bucket is excluded (R13 admin-only).
+router.get("/api/me/demand-rollup", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const out = await readPartnerDemandRollup(userId);
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/me/demand-rollup error:", error);
+    res.status(500).json({ message: "Failed to fetch demand rollup" });
+  }
+});
+
+// ADMIN variant: every market incl. the unmapped bucket (R13). Inherits the §2 blanket admin guard
+// (`app.use("/api/admin", adminApiGuard)`, mounted before this router) — no per-route opt-in (§2).
+router.get("/api/admin/demand-rollup", async (_req, res) => {
+  try {
+    const out = await readAdminDemandRollup();
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/admin/demand-rollup error:", error);
+    res.status(500).json({ message: "Failed to fetch admin demand rollup" });
   }
 });
 
