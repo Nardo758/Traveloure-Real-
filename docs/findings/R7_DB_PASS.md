@@ -210,3 +210,37 @@ The evidence points to **(b) sibling-tables**, with the rollup as the single com
 
 **HARD STOP:** this verdict table gates the Phase 2 dispatch (rollup schema, R2/R3 event trails, R8 capture, R6 sunsets). No Phase 2 schema work begins until Leon reviews it and rules A2(a)/(b).
 
+
+---
+
+## Q9 — destination × test-account cross-tab (Phase 2A step 5, run 2026-08-18)
+
+Script: `q9.sql` (read-only; test predicate mirrors R9's `isRealAccountSql`, NULL-email-is-real per §13). Zero errors.
+
+```
+================ Q9a — market_slug × account-type cross-tab (ALL trips) ================
+ market_slug | total_trips | real_trips | test_trips 
+-------------+-------------+------------+------------
+ (unmapped)  |         145 |         90 |         55
+ kyoto       |          72 |         53 |         19
+(2 rows)
+
+
+================ Q9b — KYOTO 10-floor VERDICT (raw destination, backfill-independent) ========
+ kyoto_total | test_acct | real_acct | authoring_trips | real_traveler_trips | clears_10_floor 
+-------------+-----------+-----------+-----------------+---------------------+-----------------
+          72 |        19 |        53 |              24 |                  29 | t
+(1 row)
+
+
+================ Q9c — cross-check: does migration 241 market_slug agree with raw kyoto? ======
+ backfill_kyoto | raw_kyoto 
+----------------+-----------
+             72 |        72
+(1 row)
+
+```
+
+**Verdict row: Kyoto clears 10-floor with real trips: YES (n=29)** — real_traveler_trips = 29 (72 raw kyoto − 19 test-account − 24 expert-authoring), keyed on real_traveler_trips per the lane's design note (authoring listings are expert inventory, not traveler demand; on the raw R7-Q6b framing it would be real_acct = 53, also YES).
+
+Q9c cross-check: backfill_kyoto = raw_kyoto = 72 — migration 241's resolver/backfill validated against raw destination text, no backfill bug.
