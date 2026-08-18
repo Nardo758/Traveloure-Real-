@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   marketLocalDate,
   computeUnmetSlip,
+  computeUnmetSlipByService,
   computeSlipFunnel,
   computeUnmetStay,
   classifyKind,
@@ -204,4 +205,53 @@ test("summarizeMarkets: forks kind + metric, sums only floor-cleared cells, supp
   // missed is its OWN bucket — never blended into requested (R20)
   assert.equal(k.missed.slipAmount, 120);
   assert.equal(k.requested.slipAmount !== k.missed.slipAmount, true);
+});
+
+test("summarizeMarkets hero-not-sum: a per-service child cell is NEVER summed into the hero (R25b)", () => {
+  const rows: SummaryInputRow[] = [
+    { marketSlug: "kyoto", metric: "unmet_demand_slip", kind: "requested", status: "ok", value: { count: 10, amount: 400, valuedCount: 10 } }, // market cell
+    { marketSlug: "kyoto", metric: "unmet_demand_slip", kind: "requested", status: "ok", value: { count: 5, amount: 200, valuedCount: 5 }, serviceId: "svc-A" }, // child
+  ];
+  const [k] = summarizeMarkets(rows);
+  assert.equal(k.requested.slipAmount, 400, "hero equals the market cell, not market+child (600)");
+  assert.equal(k.requested.slipCount, 10);
+});
+
+// ── per-service grain (R25b, 3.1b) ───────────────────────────────────────────────────────────────
+test("computeUnmetSlipByService: groups by service, skips NULL-service rows, uses per-service inventory", () => {
+  const demand: SlipDemandRow[] = [
+    { marketSlug: "kyoto", date: "2026-09-01", estimatedCost: 100, serviceId: "svc-A" },
+    { marketSlug: "kyoto", date: "2026-09-01", estimatedCost: 50, serviceId: "svc-A" },
+    { marketSlug: "kyoto", date: "2026-09-01", estimatedCost: 80, serviceId: "svc-B" }, // met by svc-B's own slot
+    { marketSlug: "kyoto", date: "2026-09-01", estimatedCost: 30, serviceId: null },     // no service → excluded
+  ];
+  const svcInv = new Set<string>(["svc-B|2026-09-01"]);
+  const cells = computeUnmetSlipByService(demand, svcInv);
+  assert.equal(cells.length, 1, "only svc-A is unmet; svc-B met by its own slot; null-service excluded");
+  assert.equal(cells[0].serviceId, "svc-A");
+  assert.equal(cells[0].count, 2);
+  assert.equal(cells[0].amount, 150);
+  assert.equal(cells[0].valuedCount, 2);
+  assert.deepEqual(computeUnmetSlipByService(demand, svcInv), computeUnmetSlipByService(demand, svcInv)); // determinism
+});
+
+test("computeSlipFunnel by service: per-service cells skip NULL-service; market grain still counts all", () => {
+  const diary: DiaryRow[] = [
+    { marketSlug: "kyoto", itemId: "A", eventType: "status_transition", fromStatus: "in_planning", toStatus: "with_expert", createdAt: new Date("2026-09-01T00:00:00Z"), serviceId: "svc-A" },
+    { marketSlug: "kyoto", itemId: "B", eventType: "status_transition", fromStatus: "in_planning", toStatus: "with_expert", createdAt: new Date("2026-09-01T00:00:00Z"), serviceId: null },
+  ];
+  const svc = computeSlipFunnel(diary, { by: "service" });
+  assert.equal(svc.length, 1, "only the serviced item forms a per-service cell");
+  assert.equal(svc[0].serviceId, "svc-A");
+  assert.equal(svc[0].payload.stageEntries["with_expert"], 1);
+  // market grain (default) is UNCHANGED and counts BOTH items, no serviceId on the cell
+  const mkt = computeSlipFunnel(diary);
+  assert.equal(mkt.length, 1);
+  assert.equal(mkt[0].serviceId, undefined);
+  assert.equal(mkt[0].payload.stageEntries["with_expert"], 2);
+});
+
+test("floor at service grain: a service-scoped cell uses the 25 (partner) floor", () => {
+  assert.equal(clearsFloor({ sourceRowCount: 24, partnerId: null, serviceId: "svc-A" }), false);
+  assert.equal(clearsFloor({ sourceRowCount: 25, partnerId: null, serviceId: "svc-A" }), true);
 });
