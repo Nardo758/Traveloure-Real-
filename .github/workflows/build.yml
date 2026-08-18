@@ -284,6 +284,12 @@ jobs:
         run: node scripts/check-demand-rollup.cjs --self-test
       - name: Demand-rollup discipline gate
         run: node scripts/check-demand-rollup.cjs
+      # R26 coords cheap-fix regression pin (ledger 2026-08-18-partner-demand-coords-fix): the three
+      # producer-side copy-fixes stay intact. Node built-ins only. Predicate fixtures FIRST (§18d).
+      - name: Coords-preservation predicate self-test
+        run: node scripts/check-coords-preservation.cjs --self-test
+      - name: Coords-preservation guard
+        run: node scripts/check-coords-preservation.cjs
 
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)

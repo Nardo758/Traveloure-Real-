@@ -37,12 +37,18 @@ lost is neighborhood history lost):
    `latitude: row.latitude ?? null, longitude: row.longitude ?? null` to the insert.
 2. **Cart convert-to-itinerary** — `routes.ts:8281`. The already-fetched `service` row has coords; add
    `latitude: service?.latitude ?? null, longitude: service?.longitude ?? null`.
-3. **Optimizer variant-item PRODUCER** — `itinerary-optimizer.ts:947` and `:1418`. `baselineItems`/`reorderedItems`
-   carry coords (proven by the geo-clustering reads at `:1072`, `:1629`); both inserts omit them. Add the two lat/lng
-   fields; coords then flow producer → `itinerary_variant_items` → apply automatically (the consumer at
-   `plancard.routes.ts:174` already maps them). This is the H9-family producer-side loss, for coordinates.
+3. ~~**Optimizer variant-item PRODUCER** — `itinerary-optimizer.ts:947` and `:1418`.~~ **RECLASSIFIED → REAL PROJECT
+   (correction, 3.1c).** On implementation the "coords in hand" claim did not hold: the geo-clustering read at
+   `:1077` reads the **re-fetched `itinerary_variant_items`**, not the input, and the producer's input
+   `baselineItems`/`reorderedItems` is typed `ItineraryItem` (`itinerary-optimizer.ts:167`) — an interface with
+   **no `latitude`/`longitude`**, so nothing is in hand to copy (the cast would read `undefined → null` always,
+   inert). Getting coords here means threading lat/lng through the `ItineraryItem` interface and every constructor
+   that builds a baseline item — a real project, not a copy-at-insert. Moved to the FOLLOWUP below.
 
-**REAL PROJECT** (genuinely absent at source — needs a geocoding/place-resolution step, priced honestly):
+**REAL PROJECT** (genuinely absent at source, or one interface-layer up — priced honestly):
+- **Optimizer variant producer** (`itinerary-optimizer.ts:947/:1418`) — reclassified in 3.1c: the `ItineraryItem`
+  interface (`:167`) has no lat/lng, so coords are absent before the insert; threading them through the interface and
+  its constructors is the project.
 - **All AI-generator paths** (`routes.ts:1495`, `:10185`, `content.routes.ts:4499`, `trips.routes.ts:517`) — Grok
   output has only a free-text `location`. Capture = a geocode pass after generation.
 - **Affiliate confirm** and **suggestion approve** — the source tables carry no coordinate columns at all.
