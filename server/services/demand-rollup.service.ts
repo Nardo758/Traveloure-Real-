@@ -26,7 +26,7 @@ import {
 } from "@shared/schema";
 import { isRealTripSql } from "./demand-test-exclusion";
 import { resolveMarketSlug, timezoneForMarket } from "./trend-engine/operating-markets";
-import { clearsFloor, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
+import { clearsFloor, DEMAND_WINDOW_DAYS, type DemandAudience } from "../config/demand-floors.config";
 import {
   OPEN_SLIP_STATUSES,
   marketLocalDate,
@@ -225,7 +225,8 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
       sourceRowCount: c.trips,
     });
   }
-  // ── per-service cells (R25b): same key, service_id SET ⇒ partner floor via grainOfRow ──
+  // ── per-service cells (R25b): same key, service_id SET. Their floor is decided at READ time by
+  //    the reader's audience (R27), NOT here — the stored cell is grain, not a floor. ──
   for (const c of slipServiceCells) {
     toInsert.push({
       marketSlug: c.marketSlug,
@@ -316,10 +317,11 @@ function resolveWindow(now: Date, from?: string, to?: string): RollupWindow {
   };
 }
 
-/** Map a stored row → read row: floor suppression (§13) + requested/missed disposition (R20). The
- *  cell's market-local "today" decides its kind, so a market's own timezone governs the boundary. */
-function toReadRow(row: StoredRollupRow, now: Date): RollupReadRow {
-  const ok = clearsFloor({ sourceRowCount: row.sourceRowCount, partnerId: row.partnerId, serviceId: row.serviceId });
+/** Map a stored row → read row: floor suppression (§13, R27 audience-keyed) + requested/missed
+ *  disposition (R20). The cell's market-local "today" decides its kind; the AUDIENCE (own-book vs
+ *  cross-partner) decides its floor, NOT its grain — the same cell suppresses differently per reader. */
+function toReadRow(row: StoredRollupRow, now: Date, audience: DemandAudience): RollupReadRow {
+  const ok = clearsFloor(row.sourceRowCount, audience);
   const marketSlug = String(row.marketSlug);
   const tz = timezoneForMarket(marketSlug === UNMAPPED_MARKET_SLUG ? null : marketSlug);
   const date = String(row.date);
@@ -359,7 +361,8 @@ export async function readAdminDemandRollup(opts: RollupReadOpts = {}): Promise<
   const now = opts.now ?? new Date();
   const window = resolveWindow(now, opts.from, opts.to);
   const stored = await db.select().from(partnerDemandRollup);
-  const rows = stored.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now));
+  // ADMIN is a CROSS-PARTNER reader (R27) — every row floors at 10, whatever its grain.
+  const rows = stored.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now, "cross_partner"));
   return {
     cadence: "updated daily",
     window,
@@ -402,7 +405,8 @@ export async function readPartnerDemandRollup(
   const visible = stored.filter(
     (r) => r.marketSlug !== UNMAPPED_MARKET_SLUG && (r.serviceId == null || ownServiceIds.has(r.serviceId)),
   );
-  const rows = visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now));
+  // The PARTNER reads their OWN book (R27) — their market + owned-service cells floor at 5.
+  const rows = visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now, "own_book"));
 
   return {
     cadence: "updated daily",

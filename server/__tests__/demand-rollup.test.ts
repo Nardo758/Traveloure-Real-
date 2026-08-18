@@ -20,7 +20,7 @@ import {
   type StayDemandRow,
   type SummaryInputRow,
 } from "../services/demand-rollup.compute";
-import { clearsFloor, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
+import { clearsFloor, floorForScope, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 // ── market-local date ────────────────────────────────────────────────────────────────────────
 test("market-local date: 23:30 JST lands on the JST date, not the next UTC day", () => {
@@ -32,18 +32,24 @@ test("market-local date: 23:30 JST lands on the JST date, not the next UTC day",
   assert.equal(marketLocalDate(new Date("2026-08-18T23:30:00Z"), "UTC"), "2026-08-18");
 });
 
-// ── floor enforcement (config, read path) ──────────────────────────────────────────────────────
-test("floor: market grain below 10 → suppressed, at 10 → renders", () => {
-  assert.equal(DEMAND_FLOORS.market, 10);
-  assert.equal(clearsFloor({ sourceRowCount: 9, partnerId: null, serviceId: null }), false);
-  assert.equal(clearsFloor({ sourceRowCount: 10, partnerId: null, serviceId: null }), true);
+// ── floor enforcement — R27 audience-scoped (config, read path) ──────────────────────────────────
+test("floor R27: tiers come from config — own-book 5, cross-partner 10, sold 25", () => {
+  assert.equal(DEMAND_FLOORS.ownBook, 5);
+  assert.equal(DEMAND_FLOORS.crossPartner, 10);
+  assert.equal(DEMAND_FLOORS.sold, 25);
+  assert.equal(floorForScope("own_book"), 5);
+  assert.equal(floorForScope("cross_partner"), 10);
+  assert.equal(floorForScope("sold"), 25);
 });
 
-test("floor: partner/service grain uses the higher 25-floor", () => {
-  assert.equal(DEMAND_FLOORS.partner, 25);
-  assert.equal(clearsFloor({ sourceRowCount: 24, partnerId: "p1", serviceId: null }), false);
-  assert.equal(clearsFloor({ sourceRowCount: 25, partnerId: "p1", serviceId: null }), true);
-  assert.equal(clearsFloor({ sourceRowCount: 25, partnerId: null, serviceId: "s1" }), true);
+test("floor R27: the SAME cell suppresses by AUDIENCE, not grain", () => {
+  // n=7 renders to the OWNER (own-book 5) but is SUPPRESSED in an admin cross-partner view (10)
+  assert.equal(clearsFloor(7, "own_book"), true);
+  assert.equal(clearsFloor(7, "cross_partner"), false);
+  // n=12 clears both audiences; n=4 clears neither
+  assert.equal(clearsFloor(12, "own_book"), true);
+  assert.equal(clearsFloor(12, "cross_partner"), true);
+  assert.equal(clearsFloor(4, "own_book"), false);
 });
 
 // ── unmet_demand_slip (hand-derivable) ─────────────────────────────────────────────────────────
@@ -251,7 +257,3 @@ test("computeSlipFunnel by service: per-service cells skip NULL-service; market 
   assert.equal(mkt[0].payload.stageEntries["with_expert"], 2);
 });
 
-test("floor at service grain: a service-scoped cell uses the 25 (partner) floor", () => {
-  assert.equal(clearsFloor({ sourceRowCount: 24, partnerId: null, serviceId: "svc-A" }), false);
-  assert.equal(clearsFloor({ sourceRowCount: 25, partnerId: null, serviceId: "svc-A" }), true);
-});
