@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import v8 from "v8";
 import { pool } from "../db";
 import { logger } from "./logger";
 import { getCircuitBreakerStatus } from "./circuit-breaker";
@@ -68,12 +69,16 @@ async function checkDatabasePool(): Promise<HealthCheck> {
 
 async function checkMemory(): Promise<HealthCheck> {
   const used = process.memoryUsage();
+  const { heap_size_limit } = v8.getHeapStatistics();
+
   const heapUsedMB = Math.round(used.heapUsed / 1024 / 1024);
-  const heapTotalMB = Math.round(used.heapTotal / 1024 / 1024);
+  const heapLimitMB = Math.round(heap_size_limit / 1024 / 1024);
   const rssMB = Math.round(used.rss / 1024 / 1024);
-  
-  const utilizationPercent = (used.heapUsed / used.heapTotal) * 100;
-  
+
+  // Compare against the real V8 heap limit, not the elastic heapTotal, so an
+  // idle server never reports unhealthy just because V8 hasn't grown the heap yet.
+  const utilizationPercent = (used.heapUsed / heap_size_limit) * 100;
+
   let status: "healthy" | "unhealthy" | "degraded" = "healthy";
   if (utilizationPercent > 85) {
     status = "degraded";
@@ -81,10 +86,10 @@ async function checkMemory(): Promise<HealthCheck> {
   if (utilizationPercent > 95) {
     status = "unhealthy";
   }
-  
+
   return {
     status,
-    message: `Heap: ${heapUsedMB}MB/${heapTotalMB}MB (${utilizationPercent.toFixed(1)}%), RSS: ${rssMB}MB`,
+    message: `Heap: ${heapUsedMB}MB/${heapLimitMB}MB limit (${utilizationPercent.toFixed(1)}%), RSS: ${rssMB}MB`,
   };
 }
 
