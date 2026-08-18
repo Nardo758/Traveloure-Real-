@@ -41,6 +41,7 @@ import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { getStripeSecretKey } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
+import { runDemandRollup } from "./jobs/demandRollup";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
@@ -641,6 +642,16 @@ if (process.env.NODE_ENV === "production") {
         void runAvailabilityMaterializationSweep();
       }, 24 * 60 * 60 * 1000);
     }, 90 * 60 * 1000);
+
+    // Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): nightly rollup recompute
+    // (unmet_demand_slip + slip_funnel), REPLACE-BY-DATE/idempotent. Same delayed-first-pass +
+    // 24h cadence; all math in the L6 demand-rollup.service.ts (R16 synthetic filter applied there).
+    setTimeout(() => {
+      void runDemandRollup();
+      setInterval(() => {
+        void runDemandRollup();
+      }, 24 * 60 * 60 * 1000);
+    }, 95 * 60 * 1000);
 
     // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
     // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
