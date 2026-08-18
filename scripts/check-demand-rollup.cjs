@@ -38,8 +38,12 @@ const STRICT_FILES = [
 // legacy debt outside this lane, flagged separately at the HARD STOP — not something a 2B gate should
 // either police or launder. The 2B analytics reads all happen in the module above, which IS scanned.
 const TOTALREV_FILES = STRICT_FILES;
-const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel)\b/;
+const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel|computeUnmetStay)\b/;
 const FLOOR_LITERAL = /[<>]=?\s*(5|10|25)\b/;
+// R20 (ledger 2026-08-18-partner-demand-phase3): the ±90 window is ONE config constant
+// (DEMAND_WINDOW_DAYS). A bare `90` in a demand path is a literal that would drift from the config,
+// so it may appear ONLY in demand-floors.config.ts. \b90\b won't match 86_400_000 / slice(0, 10).
+const WINDOW_LITERAL = /\b90\b/;
 // Only the BANNED denorm counter — a local `totalRevenue` computed from serviceBookings SUM is the
 // real number and is fine (Locked Decision 3 bans the providerServices.totalRevenue denorm only).
 const BANNED_TOTALREV = /providerServices\s*\.\s*totalRevenue|\btotal_revenue\b/;
@@ -60,6 +64,9 @@ function scan(rel, text, strict) {
       if (FLOOR_LITERAL.test(code) && rel !== FLOOR_CONFIG) {
         errs.push(`${rel}:${n} — bare floor literal comparison; floors come from ${FLOOR_CONFIG} (clearsFloor/floorFor)`);
       }
+      if (WINDOW_LITERAL.test(code) && rel !== FLOOR_CONFIG) {
+        errs.push(`${rel}:${n} — bare 90 (±window) literal; the window comes from ${FLOOR_CONFIG} (DEMAND_WINDOW_DAYS)`);
+      }
     }
   });
   return errs;
@@ -72,6 +79,9 @@ function runSelfTest() {
     { name: "compute fn IN home passes", rel: COMPUTE_HOME, text: "export function computeUnmetSlip(){}", strict: true, expect: 0 },
     { name: "floor literal outside config fails (strict file)", rel: "server/services/demand-rollup.service.ts", text: "if (n >= 10) render();", strict: true, expect: 1 },
     { name: "floor literal IN config passes", rel: FLOOR_CONFIG, text: "return count >= 10;", strict: true, expect: 0 },
+    { name: "window literal (90) outside config fails", rel: "server/services/demand-rollup.service.ts", text: "const to = addDaysISO(today, 90);", strict: true, expect: 1 },
+    { name: "window literal (90) IN config passes", rel: FLOOR_CONFIG, text: "export const DEMAND_WINDOW_DAYS = 90;", strict: true, expect: 0 },
+    { name: "86_400_000 does not trip the 90 window gate", rel: COMPUTE_HOME, text: "const ms = t + days * 86_400_000;", strict: true, expect: 0 },
     { name: "legacy floor/compute in mixed non-strict file is not policed", rel: "server/routes/demand.routes.ts", text: "if (sampleSize >= 5) { function computeUnmetSlip(){} }", strict: false, expect: 0 },
     { name: "clean service line passes", rel: "server/services/demand-rollup.service.ts", text: "const ok = clearsFloor(row);", strict: true, expect: 0 },
   ];

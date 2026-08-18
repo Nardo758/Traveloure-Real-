@@ -27,6 +27,17 @@ export const DEMAND_FLOORS = {
 export type DemandGrain = "base" | "market" | "partner";
 
 /**
+ * The ±window (in days) of the demand time axis (R20, ledger 2026-08-18-partner-demand-phase3).
+ * ONE constant — shared by the read-path default date range, the trend baselines, and the funnel
+ * captions — so "requested" (forward) and "missed" (past) are always measured over the same span.
+ * Lives here, never as a literal in a demand path (grep-gated like the floors); only the
+ * decision-maker moves it. The read defaults to [today − WINDOW, today + WINDOW]; explicit
+ * `from`/`to` params narrow it but the past view can never show deeper than the rollup's own
+ * history (§13 — "history since <first run>", never a fabricated full band).
+ */
+export const DEMAND_WINDOW_DAYS = 90;
+
+/**
  * The floor a rollup row must clear to render, chosen by grain. A row scoped to a specific
  * partner/service (partner_id or service_id present) uses the PARTNER floor; a market-only row
  * uses the MARKET floor; anything finer-grained-unknown falls back to BASE.
