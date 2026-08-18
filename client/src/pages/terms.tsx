@@ -330,12 +330,17 @@ export default function TermsOfServicePage() {
             
             <h3 className="text-xl font-medium mb-3">8.1 Cancellation by Travelers</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Cancellation policies are set by individual Experts and Service Providers. Standard platform policies include:
+              Each service displays one of four cancellation policies, chosen by the Expert or Service Provider. The refund you receive depends on that policy and on how far in advance of the scheduled start time you cancel:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li><strong>Expert Consultations:</strong> 24-hour cancellation notice for full credit refund; less than 24 hours may forfeit fees</li>
-              <li><strong>Service Bookings:</strong> Varies by provider; typically 48-72 hours for partial refund</li>
+              <li><strong>Flexible:</strong> Full refund if you cancel at least 24 hours before the scheduled start; no refund after that.</li>
+              <li><strong>Moderate:</strong> Full refund if you cancel at least 5 days (120 hours) before the scheduled start; 50% refund at least 48 hours before; no refund after that.</li>
+              <li><strong>Strict:</strong> 50% refund if you cancel at least 7 days (168 hours) before the scheduled start; no refund after that.</li>
+              <li><strong>Non-refundable:</strong> No automatic refund at any time. Contact the provider or support if you believe an exception applies.</li>
             </ul>
+            <p className="text-muted-foreground leading-relaxed mb-6">
+              Refund percentages apply to the <strong>full amount you were charged, including the Traveloure platform fee and any insurance fee</strong>. When you cancel within a full-refund window, you receive 100% of what you paid — the platform fee is refunded along with the service price, not retained. Before you confirm a cancellation, the exact refund amount and applicable policy are shown to you; the amount displayed there is the amount refunded.
+            </p>
 
             <h3 className="text-xl font-medium mb-3">8.2 Cancellation by Experts or Providers</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
@@ -344,7 +349,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="text-xl font-medium mb-3">8.3 Refund Processing</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Refunds are processed within 5-10 business days to original payment method or as platform credits. Payment processing fees are non-refundable. In cases of force majeure (natural disasters, pandemics, etc.), special cancellation and refund policies may apply.
+              Refunds are issued to your original payment method and typically appear within 5-10 business days, depending on your bank or card issuer. Refunds are calculated on the full amount charged — including the Traveloure platform fee and any insurance fee — at the percentage set by the applicable cancellation policy (see Section 8.1). In cases of force majeure (natural disasters, pandemics, etc.), special cancellation and refund policies may apply.
             </p>
           </section>
 
