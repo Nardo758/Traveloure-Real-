@@ -141,30 +141,31 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   } as any);
 
   // Record platform revenue for this sale — mirrors the booking_commission pattern
-  // (server/services/booking.service.ts:721-729). §15: guarded by hasPlatformRevenueForSource
-  // so a retry of this function never double-records; non-fatal so a bookkeeping failure never
-  // blocks the buyer's fulfilled clone.
+  // (server/services/booking.service.ts:721-729). §15: guarded by insertPlatformRevenueOnce
+  // with metadata.paymentIntentId so the migration-244 DB unique index (not just the
+  // advisory read-then-write check) blocks a double-write on any Stripe retry or
+  // concurrent duplicate submission. Non-fatal so a bookkeeping failure never blocks
+  // the buyer's fulfilled clone.
   try {
-    if (!(await storage.hasPlatformRevenueForSource(purchase.id))) {
-      const grossAmount = purchase.pricePaidCents / 100;
-      const platformFee = grossAmount - expertShare;
-      const processingFees = platformFee * PROCESSING_FEE_RATE;
-      const netAmount = platformFee - processingFees;
-      await storage.recordPlatformRevenue({
-        sourceType: "ready_made_commission",
-        sourceId: purchase.id,
-        grossAmount: String(grossAmount),
-        platformFee: String(platformFee),
-        netAmount: String(netAmount),
-        processingFees: String(processingFees),
-        currency: purchase.currency || "USD",
-        expertId: listing.authorId,
-        expertEarnings: String(expertShare),
-        description: `Ready-made trip sale commission: ${listing.title}`,
-        status: "recorded",
-        transactionDate: new Date(),
-      } as any);
-    }
+    const grossAmount = purchase.pricePaidCents / 100;
+    const platformFee = grossAmount - expertShare;
+    const processingFees = platformFee * PROCESSING_FEE_RATE;
+    const netAmount = platformFee - processingFees;
+    await storage.insertPlatformRevenueOnce({
+      sourceType: "ready_made_commission",
+      sourceId: purchase.id,
+      grossAmount: String(grossAmount),
+      platformFee: String(platformFee),
+      netAmount: String(netAmount),
+      processingFees: String(processingFees),
+      currency: purchase.currency || "USD",
+      expertId: listing.authorId,
+      expertEarnings: String(expertShare),
+      description: `Ready-made trip sale commission: ${listing.title}`,
+      metadata: { paymentIntentId: purchase.stripePaymentIntentId },
+      status: "recorded",
+      transactionDate: new Date(),
+    } as any);
   } catch (err) {
     console.error(`Failed to record platform revenue for ready-made purchase ${purchase.id}:`, err);
   }
