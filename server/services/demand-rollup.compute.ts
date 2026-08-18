@@ -196,3 +196,82 @@ export function computeSlipFunnel(diaryRows: DiaryRow[]): SlipFunnelCell[] {
   }
   return cells;
 }
+
+// ── unmet_demand_stay (R19) ────────────────────────────────────────────────────────────────────
+/**
+ * A trip in a market with travel dates and NO stay anchored on-platform — a PROPERTY-shaped demand
+ * signal, kept strictly separate from the service-shaped slip (R19: the two never blend, and every
+ * surface forks its units by type). "No stay anchored" is decided STRUCTURALLY by the service (no
+ * `accommodation` itinerary item AND no `trip_selected_hotels` row); this pure core receives
+ * already-filtered rows. It measures "no stay RECORDED on-platform", not "the traveler has no bed"
+ * (§13) — which is exactly why it is count-only and floor-gated. Party size is honestly NULL when
+ * the flow never captured it (R8 de-masking) and is NEVER counted as a traveler. NO dollar figure
+ * (R19 — no $ until property-pricing data earns trust); the `stay_anchor_miss`/`no_stay_flag`
+ * advisory events CORROBORATE this metric but never compute it.
+ */
+export interface StayDemandRow {
+  marketSlug: string;
+  checkIn: string;             // market-local check-in date (YYYY-MM-DD)
+  nights: number;              // endDate − startDate, ≥ 1
+  travelers: number | null;    // numberOfTravelers; NULL = not captured (§13), never a guessed count
+}
+export interface UnmetStayCell {
+  marketSlug: string;
+  date: string;                // = check-in date (the cell's date)
+  metric: "unmet_demand_stay";
+  trips: number;               // # trips seeking a stay checking in on this date (the floor key)
+  nights: number;              // Σ nights across those trips (total demanded nights)
+  travelers: number | null;    // Σ captured party sizes; NULL when none of the trips captured one
+  travelersCaptured: number;   // how many trips carried a party size (show-the-N for the party figure)
+}
+
+/**
+ * Per (market, check-in date): aggregate trips with dates but no anchored stay. Deterministic
+ * (sorted by market, then date). Units are trips/nights/travelers — NEVER $ (R19). A NULL party
+ * size adds to `trips` and `nights` but never to `travelers` (§13 — absence is not a headcount);
+ * `travelersCaptured` carries the N behind the party figure.
+ */
+export function computeUnmetStay(rows: StayDemandRow[]): UnmetStayCell[] {
+  const cells = new Map<string, UnmetStayCell>();
+  for (const r of rows) {
+    const key = `${r.marketSlug}|${r.checkIn}`;
+    let cell = cells.get(key);
+    if (!cell) {
+      cell = { marketSlug: r.marketSlug, date: r.checkIn, metric: "unmet_demand_stay", trips: 0, nights: 0, travelers: null, travelersCaptured: 0 };
+      cells.set(key, cell);
+    }
+    cell.trips += 1;
+    if (Number.isFinite(r.nights) && r.nights > 0) cell.nights += r.nights;
+    if (r.travelers != null && Number.isFinite(r.travelers)) {
+      cell.travelers = (cell.travelers ?? 0) + r.travelers;
+      cell.travelersCaptured += 1;
+    }
+  }
+  return Array.from(cells.values()).sort(
+    (a, b) => a.marketSlug.localeCompare(b.marketSlug) || a.date.localeCompare(b.date),
+  );
+}
+
+// ── ±window axis & the requested/missed split (R20) ──────────────────────────────────────────────
+export type DemandKind = "requested" | "missed";
+
+/**
+ * A rollup cell's disposition relative to a market-local "today": a cell whose date is today or
+ * later is still "requested" (a live forward window); once its date passes with the cell still
+ * unmet it is "missed" (the `expired_unmet` disposition — a settled loss). Binding copy rule
+ * (R20, R5-class): forward = "requested", past = "missed", and the two are NEVER summed into one
+ * figure. Pure ISO-date string compare — deterministic, no clock.
+ */
+export function classifyKind(cellDate: string, marketTodayDate: string): DemandKind {
+  return cellDate >= marketTodayDate ? "requested" : "missed";
+}
+
+/**
+ * Add (or subtract) whole days to an ISO YYYY-MM-DD date, returning ISO. Uses `new Date(<arg>)`
+ * only — argless `Date`/`Date.now` are never called here, so it stays deterministic for a given
+ * input and sandbox-safe. Used to derive the default ±WINDOW read bounds (R20).
+ */
+export function addDaysISO(isoDate: string, days: number): string {
+  const ms = new Date(`${isoDate}T00:00:00Z`).getTime() + days * 86_400_000;
+  return new Date(ms).toISOString().slice(0, 10);
+}

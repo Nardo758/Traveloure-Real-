@@ -8533,7 +8533,9 @@ export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];
 // The nightly job is REPLACE-BY-DATE (delete a market-local date's rows, insert fresh) so recompute
 // is idempotent without depending on NULL-in-unique semantics.
 export const UNMAPPED_MARKET_SLUG = "__unmapped__" as const; // the R13 bucket's reserved slug value
-export const DEMAND_ROLLUP_METRICS = ["unmet_demand_slip", "slip_funnel"] as const;
+// unmet_demand_stay (R19, ledger 2026-08-18-partner-demand-phase3) — property-shaped demand, kept
+// strictly separate from the service-shaped slip; app-enforced (metric column has NO DB CHECK).
+export const DEMAND_ROLLUP_METRICS = ["unmet_demand_slip", "slip_funnel", "unmet_demand_stay"] as const;
 export type DemandRollupMetric = (typeof DEMAND_ROLLUP_METRICS)[number];
 
 export const partnerDemandRollup = pgTable("partner_demand_rollup", {
