@@ -275,3 +275,72 @@ export function addDaysISO(isoDate: string, days: number): string {
   const ms = new Date(`${isoDate}T00:00:00Z`).getTime() + days * 86_400_000;
   return new Date(ms).toISOString().slice(0, 10);
 }
+
+// ── per-market summary for the hero figure (R19/R20) ─────────────────────────────────────────────
+/**
+ * A market's headline demand, aggregated SERVER-SIDE so the client never sums cell values ("no
+ * client math", L6). Two hard forks that must never collapse: by KIND (requested/forward vs
+ * missed/expired — R20 never blends them) and by METRIC (service-shaped slip $ vs stay-shaped
+ * trips/nights — R19 never blends units). Only FLOOR-CLEARED cells (`status === "ok"`) feed a
+ * summary, so a suppressed value can never leak into an aggregate (§13). The cumulative funnel is
+ * rendered directly and is not summed here.
+ */
+export interface MarketSummaryBucket {
+  slipAmount: number | null;   // Σ slip $ over floor-cleared cells (null when none carried a price)
+  slipCount: number;           // Σ slip item counts
+  slipValuedCount: number;     // Σ priced slip items (the N behind slipAmount)
+  stayTrips: number;           // Σ trips seeking an unanchored stay (count-only, R19)
+  stayNights: number;          // Σ demanded nights
+  stayTravelers: number | null; // Σ captured party sizes (null when none captured, §13)
+}
+export interface MarketSummary {
+  marketSlug: string;
+  requested: MarketSummaryBucket; // forward windows
+  missed: MarketSummaryBucket;    // expired_unmet — a settled loss
+}
+export interface SummaryInputRow {
+  marketSlug: string;
+  metric: string;
+  kind: DemandKind;
+  status: "ok" | "no_data";
+  value: unknown;
+}
+
+function blankBucket(): MarketSummaryBucket {
+  return { slipAmount: null, slipCount: 0, slipValuedCount: 0, stayTrips: 0, stayNights: 0, stayTravelers: null };
+}
+
+/**
+ * Aggregate already-floor-classified read rows into one summary per market. Pure and deterministic
+ * (sorted by market); knows nothing about floors itself — it trusts each row's `status` flag, so
+ * the floor decision stays in config and only its OUTCOME is summed here.
+ */
+export function summarizeMarkets(rows: SummaryInputRow[]): MarketSummary[] {
+  const map = new Map<string, MarketSummary>();
+  const forMarket = (m: string): MarketSummary => {
+    let s = map.get(m);
+    if (!s) { s = { marketSlug: m, requested: blankBucket(), missed: blankBucket() }; map.set(m, s); }
+    return s;
+  };
+  for (const r of rows) {
+    if (r.status !== "ok") continue; // suppressed cells never leak into an aggregate (§13)
+    const summary = forMarket(r.marketSlug);
+    const bucket = r.kind === "requested" ? summary.requested : summary.missed;
+    if (r.metric === "unmet_demand_slip") {
+      const v = r.value as { count?: number; amount?: number | null; valuedCount?: number } | null;
+      if (v) {
+        bucket.slipCount += v.count ?? 0;
+        bucket.slipValuedCount += v.valuedCount ?? 0;
+        if (v.amount != null) bucket.slipAmount = (bucket.slipAmount ?? 0) + v.amount;
+      }
+    } else if (r.metric === "unmet_demand_stay") {
+      const v = r.value as { trips?: number; nights?: number; travelers?: number | null } | null;
+      if (v) {
+        bucket.stayTrips += v.trips ?? 0;
+        bucket.stayNights += v.nights ?? 0;
+        if (v.travelers != null) bucket.stayTravelers = (bucket.stayTravelers ?? 0) + v.travelers;
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.marketSlug.localeCompare(b.marketSlug));
+}

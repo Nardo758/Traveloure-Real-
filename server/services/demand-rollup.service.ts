@@ -35,10 +35,12 @@ import {
   computeUnmetStay,
   classifyKind,
   addDaysISO,
+  summarizeMarkets,
   type SlipDemandRow,
   type DiaryRow,
   type StayDemandRow,
   type DemandKind,
+  type MarketSummary,
 } from "./demand-rollup.compute";
 
 // Re-export the pure core so the service module is the single import surface for callers/tests
@@ -250,6 +252,8 @@ export interface RollupReadResult {
   window: RollupWindow;    // the ±WINDOW date span actually read (R20)
   historySince: string | null; // earliest run behind these rows — the honest floor of the past view
   rows: RollupReadRow[];   // each tagged requested|missed; NEVER a blended total (R20 binding rule)
+  summary: MarketSummary[]; // per-market headline, aggregated SERVER-SIDE (L6 "no client math"),
+                           // forked by kind AND metric, only floor-cleared cells (§13)
 }
 export interface RollupReadOpts { from?: string; to?: string; now?: Date }
 
@@ -312,12 +316,14 @@ function inWindow(row: { date: string }, w: RollupWindow): boolean {
 export async function readAdminDemandRollup(opts: RollupReadOpts = {}): Promise<RollupReadResult> {
   const now = opts.now ?? new Date();
   const window = resolveWindow(now, opts.from, opts.to);
-  const rows = await db.select().from(partnerDemandRollup);
+  const stored = await db.select().from(partnerDemandRollup);
+  const rows = stored.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now));
   return {
     cadence: "updated daily",
     window,
-    historySince: historySinceOf(rows),
-    rows: rows.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now)),
+    historySince: historySinceOf(stored),
+    rows,
+    summary: summarizeMarkets(rows),
   };
 }
 
@@ -339,20 +345,22 @@ export async function readPartnerDemandRollup(
   ).sort();
 
   if (markets.length === 0) {
-    return { cadence: "updated daily", window, historySince: null, markets: [], rows: [] };
+    return { cadence: "updated daily", window, historySince: null, markets: [], rows: [], summary: [] };
   }
 
-  const rows = await db
+  const stored = await db
     .select()
     .from(partnerDemandRollup)
     .where(inArray(partnerDemandRollup.marketSlug, markets));
-  const visible = rows.filter((r) => r.marketSlug !== UNMAPPED_MARKET_SLUG);
+  const visible = stored.filter((r) => r.marketSlug !== UNMAPPED_MARKET_SLUG);
+  const rows = visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now));
 
   return {
     cadence: "updated daily",
     window,
     historySince: historySinceOf(visible),
     markets,
-    rows: visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now)),
+    rows,
+    summary: summarizeMarkets(rows),
   };
 }
