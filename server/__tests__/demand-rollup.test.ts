@@ -10,10 +10,14 @@ import {
   marketLocalDate,
   computeUnmetSlip,
   computeSlipFunnel,
+  computeUnmetStay,
+  classifyKind,
+  addDaysISO,
   type SlipDemandRow,
   type DiaryRow,
+  type StayDemandRow,
 } from "../services/demand-rollup.compute";
-import { clearsFloor, DEMAND_FLOORS } from "../config/demand-floors.config";
+import { clearsFloor, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 // ── market-local date ────────────────────────────────────────────────────────────────────────
 test("market-local date: 23:30 JST lands on the JST date, not the next UTC day", () => {
@@ -102,4 +106,74 @@ test("determinism: identical inputs → identical rows (both metrics)", () => {
     { marketSlug: "goa", itemId: "C", eventType: "status_transition", fromStatus: "in_planning", toStatus: "with_expert", createdAt: new Date("2026-08-18T00:00:00Z") },
   ];
   assert.deepEqual(computeSlipFunnel(diary), computeSlipFunnel(diary));
+});
+
+// ── unmet_demand_stay (R19, hand-derivable) ──────────────────────────────────────────────────────
+test("computeUnmetStay: trips/nights/travelers aggregate per (market, check-in); count-only", () => {
+  const rows: StayDemandRow[] = [
+    { marketSlug: "kyoto", checkIn: "2026-10-12", nights: 3, travelers: 4 },
+    { marketSlug: "kyoto", checkIn: "2026-10-12", nights: 2, travelers: null }, // party not captured
+    { marketSlug: "kyoto", checkIn: "2026-10-15", nights: 1, travelers: 2 },
+    { marketSlug: "__unmapped__", checkIn: "2026-10-12", nights: 5, travelers: null },
+  ];
+  const cells = computeUnmetStay(rows);
+  assert.equal(cells.length, 3);
+  // kyoto/2026-10-12: 2 trips; nights 3+2=5; only row-1 captured a party (4) ⇒ travelers 4, captured 1
+  const k1012 = cells.find((c) => c.marketSlug === "kyoto" && c.date === "2026-10-12")!;
+  assert.equal(k1012.trips, 2);
+  assert.equal(k1012.nights, 5);
+  assert.equal(k1012.travelers, 4);
+  assert.equal(k1012.travelersCaptured, 1);
+  // count-only (R19): the cell carries NO dollar field of any name
+  assert.equal("amount" in k1012, false);
+  assert.equal("value" in k1012 || "usd" in k1012 || "dollars" in k1012, false);
+});
+
+test("computeUnmetStay: NULL party never becomes a headcount (§13), sorted deterministically", () => {
+  const rows: StayDemandRow[] = [
+    { marketSlug: "__unmapped__", checkIn: "2026-10-12", nights: 5, travelers: null },
+    { marketSlug: "kyoto", checkIn: "2026-10-15", nights: 1, travelers: 2 },
+  ];
+  const cells = computeUnmetStay(rows);
+  // output sorts by market then date: __unmapped__ before kyoto
+  assert.deepEqual(cells.map((c) => c.marketSlug), ["__unmapped__", "kyoto"]);
+  const unmapped = cells[0];
+  assert.equal(unmapped.travelers, null, "no party captured ⇒ travelers stays NULL, not 0");
+  assert.equal(unmapped.travelersCaptured, 0);
+  assert.equal(unmapped.nights, 5);
+  assert.equal(unmapped.trips, 1);
+});
+
+test("computeUnmetStay: determinism — identical input, identical rows", () => {
+  const rows: StayDemandRow[] = [
+    { marketSlug: "kyoto", checkIn: "2026-10-12", nights: 3, travelers: 4 },
+    { marketSlug: "goa", checkIn: "2026-10-12", nights: 2, travelers: null },
+  ];
+  assert.deepEqual(computeUnmetStay(rows), computeUnmetStay(rows));
+});
+
+// ── ±window axis & requested/missed split (R20) ──────────────────────────────────────────────────
+test("classifyKind: today-or-later is 'requested', a passed date is 'missed' (never summed)", () => {
+  assert.equal(classifyKind("2026-10-20", "2026-10-18"), "requested"); // future window
+  assert.equal(classifyKind("2026-10-18", "2026-10-18"), "requested"); // today counts as requested
+  assert.equal(classifyKind("2026-10-17", "2026-10-18"), "missed");    // expired_unmet
+});
+
+test("addDaysISO: month/year rollovers and ±WINDOW symmetry (config-driven, no literal)", () => {
+  assert.equal(addDaysISO("2026-08-18", 0), "2026-08-18");
+  assert.equal(addDaysISO("2026-08-31", 1), "2026-09-01");   // month rollover
+  assert.equal(addDaysISO("2026-03-01", -1), "2026-02-28");  // 2026 is not a leap year
+  assert.equal(addDaysISO("2026-01-01", -1), "2025-12-31");  // year rollover
+  // the default read window is exactly ±DEMAND_WINDOW_DAYS around a date, and it is symmetric
+  assert.equal(DEMAND_WINDOW_DAYS, 90);
+  const d = "2026-08-18";
+  assert.equal(addDaysISO(addDaysISO(d, DEMAND_WINDOW_DAYS), -DEMAND_WINDOW_DAYS), d);
+});
+
+test("R19: stay and slip cells carry distinct metric tags — service- and stay-shaped never blend", () => {
+  const stay = computeUnmetStay([{ marketSlug: "kyoto", checkIn: "2026-10-12", nights: 3, travelers: 4 }]);
+  const slip = computeUnmetSlip([{ marketSlug: "kyoto", date: "2026-10-12", estimatedCost: 100 }], new Set());
+  assert.equal(stay[0].metric, "unmet_demand_stay");
+  assert.equal(slip[0].metric, "unmet_demand_slip");
+  assert.notEqual(stay[0].metric, slip[0].metric);
 });
