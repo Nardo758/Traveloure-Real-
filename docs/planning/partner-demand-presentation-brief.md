@@ -4,6 +4,20 @@
 **Status:** RESEARCH ONLY — no code, no rendering. **Gate:** Leon approves this brief before any Phase 3 rendering
 or Phase 4 one-pager generation begins.
 
+> **APPROVAL (Leon, 2026-08-18) — STRUCTURAL, conditional.** §2c Requested-Windows list approved as proposed. §3
+> one-pager structure approved (hero-with-N, three visuals rendering existing 2B metrics, four-honesty-gate methodology
+> block, `$XX,XXX` placeholder discipline). **Condition — the real-numbers gate is NOT delegated:** structural
+> approval is not print approval. Phase 4 sequence is fixed: Replit run → real Kyoto figures into the hand-derivation
+> addendum → **one rendered draft with real numbers** → Leon's final yes. If the season hero figure comes back small
+> (illustratively, ~$340 vs. the $1,240 fixture), the one-pager is **held, not printed** — a page that argues *against*
+> joining is worse than no page. That threshold call is made looking at the actual figure, never pre-delegated.
+>
+> **PROCESS LESSON (belongs in every future brief template):** *any artifact a dispatch references must be committed
+> in-tree, not left as a chat-only output.* The visual target existed as a chat artifact but never entered the repo, so
+> the agent correctly refused to validate an unseen file (§13). This is the **second** time chat-only material created
+> a gap (the R7 script had the same snag before `q9.sql` was committed). A referenced file that isn't in `git ls-files`
+> is a missing file, full stop.
+
 > This brief answers four questions and nothing more: (1) how do the incumbents present forward-window unmet demand,
 > stage funnels, honest empty states, and the sample-size N; (2) does the shipped visual target hold up against that,
 > and what "requested-windows" element bridges its calendar and its map; (3) what is the one-pager's layout, drafted
@@ -18,9 +32,13 @@ The dispatch refers to a **shipped `partner-demand-visual-target.html`**. As of 
 lane tip, **that file is not in the repository or its git history** (`git ls-files`, `git log --all` both clean). I have
 therefore validated the target **as the dispatch describes its three components** — calendar ghost-slots, a catalog
 funnel row, and Market Research map circles — rather than claiming to have opened a specific HTML file I cannot see
-(§13: I do not assert a validation I did not perform). **Action for Leon:** if a concrete HTML target exists outside the
-repo, drop it in the tree (suggest `docs/planning/partner-demand-visual-target.html`) and I will do a pixel-level
-conformance pass as a fast follow. Everything below stands on its own regardless.
+(§13: I do not assert a validation I did not perform).
+
+**Resolved (Leon, 2026-08-18):** the file *does* exist — built as a chat artifact in an earlier turn (through the
+Performance-home amendment) and never committed. It is not reconstructable from this session either (not on disk, not in
+context), so **Leon drops the shipped HTML into `docs/planning/partner-demand-visual-target.html`** on the lane branch,
+after which the pixel-level conformance pass runs as the fast follow. Until it lands in-tree the target is validated
+as-described only. Everything below stands on its own regardless.
 
 ---
 
