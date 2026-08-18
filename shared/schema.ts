@@ -5287,6 +5287,14 @@ export const platformRevenue = pgTable("platform_revenue", {
   bookingMintUniq: uniqueIndex("platform_revenue_booking_mint_uniq")
     .on(table.sourceId)
     .where(sql`source_type = 'booking_commission' AND gross_amount >= 0`),
+  // Migration 244 (task 1573): webhook concurrency guard — prevents two copies of the same
+  // Stripe payment_intent.succeeded event from writing duplicate revenue rows when they arrive
+  // ~150 ms apart (both pass the read-then-write hasPaymentIntentRevenue check before either
+  // commits). The expression index on the JSONB field is partial so only PI-keyed rows are
+  // constrained; affiliate, manual-credit, and reversal rows are unaffected.
+  paymentIntentUniq: uniqueIndex("platform_revenue_payment_intent_uniq")
+    .on(sql`(metadata->>'paymentIntentId')`)
+    .where(sql`metadata->>'paymentIntentId' IS NOT NULL AND metadata->>'paymentIntentId' <> ''`),
 }));
 
 // Daily revenue summary for dashboard analytics

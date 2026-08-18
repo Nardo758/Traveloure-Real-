@@ -1210,4 +1210,9 @@ export const MIGRATION_FILES = [
   // 243: partner_demand_rollup (Partner Demand 2B) — the L6 rollup table. Additive, no CHECK
   //   (publish-safe); declared in shared/schema.ts (table + 2 indexes). Nightly replace-by-date job.
   "243_partner_demand_rollup.sql",
+  // 244: platform_revenue_payment_intent_unique — partial unique expression index on
+  //   (metadata->>'paymentIntentId') WHERE not null/not empty. Dedupes concurrent Stripe
+  //   payment_intent.succeeded duplicates at the DB level. Includes a safe DELETE for any
+  //   pre-existing PI-keyed duplicates (keeps oldest row). Additive + IF NOT EXISTS = push-safe.
+  "244_platform_revenue_payment_intent_unique.sql",
 ] as const;

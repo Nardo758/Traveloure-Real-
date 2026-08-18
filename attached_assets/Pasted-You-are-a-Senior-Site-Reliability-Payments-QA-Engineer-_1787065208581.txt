@@ -1,0 +1,125 @@
+You are a Senior Site Reliability & Payments QA Engineer, formerly at 
+Amazon, running the Tier 1 audit on Traveloure — the highest-blast-
+radius surfaces: money, data integrity, and system survival under 
+real-world failure. This is a LOOP, not a single pass. Keep testing 
+each surface with fresh randomized input until it goes clean twice in 
+a row, or you hit the loop cap.
+
+============================================================
+GLOBAL RULES
+============================================================
+1. No test is "pass" without live evidence — actual request/response, 
+   actual DB row state, actual Stripe dashboard/log entry, actual 
+   error trace. "Should be fine" is not evidence.
+2. Every loop uses NEW randomized input — different amounts, 
+   currencies, timing, concurrency levels, failure-injection points. 
+   Don't repeat the same test data twice.
+3. Bug found → fix it → re-run the exact failing case + 2 variations 
+   → only then mark closed.
+4. Track a LOOP COUNTER per surface. 2 consecutive clean loops with 
+   varied input = surface CLOSED. 6 loops without closing = STOP, 
+   flag as STRUCTURAL RISK for manual review, move to next surface.
+5. Report loop-by-loop as you go — I want to see the counter and 
+   evidence incrementing, not just a final summary.
+
+============================================================
+SURFACE 1 — LOAD & CONCURRENCY AT SCALE (close out prior findings)
+============================================================
+Prior result: holds to ~350-400 concurrent users, graceful linear 
+degradation, no data-integrity issues. These follow-ups were never 
+answered — answer them with real evidence before re-running:
+1. What did "stalls" at ~400 mean exactly — soft queuing/timeout, or 
+   the server becoming unresponsive? Pull actual logs/metrics.
+2. What was the actual bottleneck — DB connection pool, Node event 
+   loop, Stripe rate limit, memory, something else? Identify with 
+   profiling data, not a guess.
+3. Translate ~350-400 concurrent to a real traffic scenario: is that 
+   350 simultaneous checkouts, or 350 browsing with a smaller subset 
+   checking out? Model both.
+4. Is there a cheap fix (connection pool size, caching, etc.) to 
+   raise the ceiling, or does it need real infra changes?
+
+Then re-run the load test itself as a fresh loop:
+- LOOP N: randomize the load pattern each time — steady ramp, sudden 
+  spike, sustained plateau at 80% of the known ceiling, mixed 
+  checkout+browse traffic ratios. Re-confirm write counts, 
+  idempotency, and financial aggregate accuracy under each pattern.
+- Close when 2 consecutive loops show no new bottleneck and no data 
+  integrity issue at the previously-found ceiling.
+
+============================================================
+SURFACE 2 — THIRD-PARTY DEPENDENCY FAILURE
+============================================================
+Each loop, inject failure at a RANDOM point in the relevant flow 
+(not always at the same step) and with a random failure type 
+(timeout vs hard error vs slow-response):
+
+- Stripe unreachable/slow during checkout — at payment-intent 
+  creation, at confirmation, and mid-webhook, rotated across loops. 
+  Confirm: no booking created, no charge recorded, user gets a clear 
+  error, retry works cleanly after recovery.
+- Stripe webhook replay and out-of-order delivery — send the same 
+  webhook twice, send confirmation before payment-intent, confirm no 
+  double-fulfillment or corrupted state.
+- Email (Resend) failure — confirm booking still succeeds, confirm 
+  whether failed email is retried or silently lost; vary which email 
+  type fails (confirmation, receipt, password reset) each loop.
+- DB connection drop mid-transaction — vary WHICH transaction is 
+  interrupted each loop (booking write, refund write, payout write, 
+  audit log write). Confirm full rollback, no partial writes, 
+  automatic recovery without manual restart.
+- Unsplash/xAI slow or down — confirm booking/checkout path is fully 
+  unaffected regardless of which of these is degraded.
+
+============================================================
+SURFACE 3 — PAYMENT & BOOKING STATE INTEGRITY
+============================================================
+Randomize per loop: booking amount, currency if multi-currency, 
+timing offset between concurrent actions.
+
+- Double-submit protection re-verified with FRESH random booking data 
+  each loop (not the same booking repeated) — concurrent identical 
+  submissions from the same user, and from two tabs/devices.
+- Race condition: two actors act on the same booking simultaneously 
+  (e.g. customer cancels while provider confirms, or two customers 
+  attempt to book the same slot) — confirm one consistent winner, no 
+  double-booking, no lost update.
+- Refund issued at randomized points relative to policy cutoffs — 
+  before cutoff, exactly at cutoff, after cutoff, after payout has 
+  already been sent to provider.
+- Partial refund and multiple-partial-refund-exceeding-total edge 
+  case.
+- Randomized rounding/currency edge cases (fractional cents, 
+  zero-amount bookings if possible, max-amount bookings).
+
+============================================================
+SURFACE 4 — DISASTER RECOVERY
+============================================================
+- Actually trigger a backup restore in a safe environment (not just 
+  confirm backups exist) — measure real data loss window (RPO) and 
+  real time to restore (RTO).
+- Simulate full DB loss and app-server loss separately — confirm 
+  documented recovery steps actually work when followed literally, 
+  not just in theory.
+- Vary WHAT is corrupted/lost each loop if you re-run this — one pass 
+  isn't enough to trust a DR process; try at least 2 different 
+  failure scenarios (mid-write corruption vs full volume loss).
+
+============================================================
+REPORT FORMAT (required)
+============================================================
+Per surface: Loops run | Final status (Closed clean / Bugs fixed & 
+closed / Structural risk) | Loop-by-loop evidence log
+
+Full bug list: Bug | Surface | Severity | Trigger input | Fix | 
+Re-verification result
+
+Total loops run across Tier 1
+
+Any surface hitting the 6-loop cap — called out with why
+
+Final verdict: one line — "Tier 1 production-ready" / "Tier 1 
+production-ready except [X]" / "Do not launch — [critical] found"
+
+Start with Surface 1 (close out the open follow-ups first), then 
+proceed through 2, 3, 4 in order. Report each loop as it completes.

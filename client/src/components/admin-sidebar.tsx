@@ -95,6 +95,7 @@ const menuGroups = [
       { title: "Content Ops", href: "/admin/content-ops", icon: RefreshCw },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
+      { title: "Message Reports", href: "/admin/message-moderation", icon: ShieldAlert },
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
       { title: "Service Requests", href: "/admin/service-requests", icon: Inbox },
     ],
