@@ -5,30 +5,40 @@
  * webhook can never produce more than one platform_revenue row, even when both
  * pass the advisory hasPaymentIntentRevenue pre-check before either commits.
  *
- * The DB-level uniqueness guard (migration 244, partial unique index on
- * metadata->>'paymentIntentId') backed by ON CONFLICT DO NOTHING in
- * insertPlatformRevenueOnce is the authoritative dedup mechanism tested here.
+ * IMPORTANT: all rows use sourceType = 'optimization_fee' (not 'booking_commission')
+ * so migration 203's booking-mint partial index is irrelevant here. Only migration 244's
+ * expression index on (metadata->>'paymentIntentId') blocks the duplicates — that is
+ * exactly the constraint being tested.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { db } from "../../db";
 import { platformRevenue } from "../../../shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { storage } from "../../storage";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const TEST_PI_ID = `pi_test_dedup_${Date.now()}`;
-const TEST_SOURCE_ID = `src_dedup_${Date.now()}`;
+// Use a unique suffix per test run so parallel CI runs don't collide.
+const RUN_ID = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+const TEST_PI_ID = `pi_test_dedup_244_${RUN_ID}`;
 
-function makeRevenuePayload(override: Partial<Parameters<typeof storage.insertPlatformRevenueOnce>[0]> = {}) {
+/**
+ * Build a payload that is:
+ *  - keyed by TEST_PI_ID in metadata (so migration 244 applies)
+ *  - sourceType = 'optimization_fee' (NOT 'booking_commission') so migration 203's
+ *    booking-mint index does NOT apply — the PI index is the only dedup guard here
+ *  - no sourceId (optimization_fee rows typically have none)
+ */
+function makePayload(
+  override: Partial<Parameters<typeof storage.insertPlatformRevenueOnce>[0]> = {},
+) {
   return {
-    sourceType: "booking_commission" as const,
-    sourceId: TEST_SOURCE_ID,
-    grossAmount: "100.00",
-    platformFee: "25.00",
-    netAmount: "24.25",
-    processingFees: "0.75",
+    sourceType: "optimization_fee" as const,
+    grossAmount: "29.00",
+    platformFee: "29.00",
+    netAmount: "28.13",
+    processingFees: "0.87",
     metadata: { paymentIntentId: TEST_PI_ID },
     status: "recorded" as const,
     transactionDate: new Date(),
@@ -36,7 +46,7 @@ function makeRevenuePayload(override: Partial<Parameters<typeof storage.insertPl
   };
 }
 
-async function countRevenueRowsForPi(piId: string): Promise<number> {
+async function countRowsForPi(piId: string): Promise<number> {
   const rows = await db
     .select({ id: platformRevenue.id })
     .from(platformRevenue)
@@ -44,119 +54,112 @@ async function countRevenueRowsForPi(piId: string): Promise<number> {
   return rows.length;
 }
 
-async function cleanupTestRows() {
+async function cleanupByPi(piId: string) {
   await db
     .delete(platformRevenue)
-    .where(sql`${platformRevenue.metadata}->>'paymentIntentId' = ${TEST_PI_ID}`);
+    .where(sql`${platformRevenue.metadata}->>'paymentIntentId' = ${piId}`);
 }
 
-// ── tests ─────────────────────────────────────────────────────────────────────
+// ── verify the index is present ───────────────────────────────────────────────
 
-describe("platform_revenue payment-intent dedup (task 1573)", () => {
-  beforeEach(async () => {
-    await cleanupTestRows();
+describe("migration 244 — index presence", () => {
+  it("platform_revenue_payment_intent_uniq index exists in the database", async () => {
+    const rows = await db.execute(
+      sql`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE tablename = 'platform_revenue'
+          AND indexname = 'platform_revenue_payment_intent_uniq'
+      `,
+    );
+    expect(rows.rows.length).toBe(1);
   });
+});
 
-  afterEach(async () => {
-    await cleanupTestRows();
-  });
+// ── dedup behaviour ───────────────────────────────────────────────────────────
 
-  it("insertPlatformRevenueOnce: first call inserts and returns inserted=true", async () => {
-    const result = await storage.insertPlatformRevenueOnce(makeRevenuePayload());
+describe("platform_revenue payment-intent dedup — migration 244 (task 1573)", () => {
+  beforeEach(() => cleanupByPi(TEST_PI_ID));
+  afterEach(() => cleanupByPi(TEST_PI_ID));
+
+  it("first insert returns inserted=true and exactly one DB row", async () => {
+    const result = await storage.insertPlatformRevenueOnce(makePayload());
     expect(result.inserted).toBe(true);
     expect(result.row.id).toBeTruthy();
     expect((result.row.metadata as any)?.paymentIntentId).toBe(TEST_PI_ID);
-    expect(await countRevenueRowsForPi(TEST_PI_ID)).toBe(1);
+    expect(await countRowsForPi(TEST_PI_ID)).toBe(1);
   });
 
-  it("insertPlatformRevenueOnce: second call for same PI returns inserted=false, no new row", async () => {
-    const first = await storage.insertPlatformRevenueOnce(makeRevenuePayload());
+  it("sequential duplicate: second call returns inserted=false and the same canonical row", async () => {
+    const first = await storage.insertPlatformRevenueOnce(makePayload());
     expect(first.inserted).toBe(true);
 
-    const second = await storage.insertPlatformRevenueOnce(makeRevenuePayload());
+    const second = await storage.insertPlatformRevenueOnce(makePayload());
     expect(second.inserted).toBe(false);
-    // Returns the canonical existing row
     expect(second.row.id).toBe(first.row.id);
-    // Still exactly one row
-    expect(await countRevenueRowsForPi(TEST_PI_ID)).toBe(1);
+    expect(await countRowsForPi(TEST_PI_ID)).toBe(1);
   });
 
-  it("concurrent duplicate inserts: exactly one row survives", async () => {
-    // Fire two insertPlatformRevenueOnce calls simultaneously — simulates two webhook
-    // copies that both pass the hasPaymentIntentRevenue read before either commits.
+  it("concurrent duplicates (Promise.all): exactly one row — only the PI index can block this", async () => {
+    // Both calls race against the same paymentIntentId on an optimization_fee row.
+    // Migration 203 has no index covering this source type, so the only applicable
+    // unique constraint is migration 244's PI expression index.
     const [a, b] = await Promise.all([
-      storage.insertPlatformRevenueOnce(makeRevenuePayload()),
-      storage.insertPlatformRevenueOnce(makeRevenuePayload()),
+      storage.insertPlatformRevenueOnce(makePayload()),
+      storage.insertPlatformRevenueOnce(makePayload()),
     ]);
 
-    // Exactly one should be inserted; the other should be a conflict.
     const insertedCount = [a, b].filter((r) => r.inserted).length;
     expect(insertedCount).toBe(1);
 
-    // Both return the same canonical row id.
+    // Both calls return the same canonical row id.
     expect(a.row.id).toBe(b.row.id);
 
-    // Only one DB row for this PI.
-    expect(await countRevenueRowsForPi(TEST_PI_ID)).toBe(1);
+    // Exactly one DB row for this PI.
+    expect(await countRowsForPi(TEST_PI_ID)).toBe(1);
   });
 
-  it("concurrent duplicate inserts: no 500 / no thrown error", async () => {
+  it("triple concurrent duplicates: no error thrown, exactly one row", async () => {
     await expect(
       Promise.all([
-        storage.insertPlatformRevenueOnce(makeRevenuePayload()),
-        storage.insertPlatformRevenueOnce(makeRevenuePayload()),
-        storage.insertPlatformRevenueOnce(makeRevenuePayload()),
-      ])
+        storage.insertPlatformRevenueOnce(makePayload()),
+        storage.insertPlatformRevenueOnce(makePayload()),
+        storage.insertPlatformRevenueOnce(makePayload()),
+      ]),
     ).resolves.toHaveLength(3);
 
-    expect(await countRevenueRowsForPi(TEST_PI_ID)).toBe(1);
+    expect(await countRowsForPi(TEST_PI_ID)).toBe(1);
   });
 
-  it("rows without a paymentIntentId are unaffected by the constraint", async () => {
-    // Insert two rows with no paymentIntentId — they should both succeed.
-    const payload = {
-      sourceType: "coordination_fee" as const,
-      sourceId: undefined as unknown as string,
-      grossAmount: "50.00",
-      platformFee: "50.00",
-      netAmount: "48.50",
-      processingFees: "1.50",
-      metadata: {},
-      status: "recorded" as const,
-      transactionDate: new Date(),
-    };
+  it("recordPlatformRevenue (legacy callers): no throw, returns canonical row on duplicate", async () => {
+    const first = await storage.recordPlatformRevenue(makePayload());
+    const second = await storage.recordPlatformRevenue(makePayload());
 
-    const [r1, r2] = await Promise.all([
-      storage.insertPlatformRevenueOnce(payload),
-      storage.insertPlatformRevenueOnce(payload),
-    ]);
+    expect(first.id).toBe(second.id);
+    expect(await countRowsForPi(TEST_PI_ID)).toBe(1);
+  });
 
-    // Both should insert (no PI-keyed constraint to block them).
-    // (They might conflict on booking_commission index but coordination_fee is exempt.)
-    // Just assert neither throws and both return rows.
+  it("hasPaymentIntentRevenue: false before insert, true after", async () => {
+    expect(await storage.hasPaymentIntentRevenue(TEST_PI_ID)).toBe(false);
+    await storage.insertPlatformRevenueOnce(makePayload());
+    expect(await storage.hasPaymentIntentRevenue(TEST_PI_ID)).toBe(true);
+  });
+
+  it("rows without paymentIntentId are not constrained by migration 244", async () => {
+    // Two optimization_fee rows with no paymentIntentId should both insert freely
+    // (no PI index applies, and no booking-commission index applies either).
+    const payload = makePayload({ metadata: {} });
+
+    const r1 = await storage.insertPlatformRevenueOnce(payload);
+    const r2 = await storage.insertPlatformRevenueOnce(payload);
+
     expect(r1.row.id).toBeTruthy();
     expect(r2.row.id).toBeTruthy();
 
-    // Cleanup
-    await db.delete(platformRevenue).where(eq(platformRevenue.id, r1.row.id));
+    // Clean up both rows explicitly since cleanup only targets TEST_PI_ID.
+    await db.delete(platformRevenue).where(sql`id = ${r1.row.id}`);
     if (r2.row.id !== r1.row.id) {
-      await db.delete(platformRevenue).where(eq(platformRevenue.id, r2.row.id));
+      await db.delete(platformRevenue).where(sql`id = ${r2.row.id}`);
     }
-  });
-
-  it("recordPlatformRevenue (legacy callers): returns the canonical row on duplicate", async () => {
-    // recordPlatformRevenue delegates to insertPlatformRevenueOnce — verify it doesn't throw.
-    const payload = makeRevenuePayload();
-    const first = await storage.recordPlatformRevenue(payload);
-    const second = await storage.recordPlatformRevenue(payload);
-
-    expect(first.id).toBe(second.id);
-    expect(await countRevenueRowsForPi(TEST_PI_ID)).toBe(1);
-  });
-
-  it("hasPaymentIntentRevenue: returns true after a successful insert", async () => {
-    expect(await storage.hasPaymentIntentRevenue(TEST_PI_ID)).toBe(false);
-    await storage.insertPlatformRevenueOnce(makeRevenuePayload());
-    expect(await storage.hasPaymentIntentRevenue(TEST_PI_ID)).toBe(true);
   });
 });
