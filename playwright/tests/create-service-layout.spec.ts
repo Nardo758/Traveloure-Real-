@@ -5,23 +5,43 @@
  * Logistics) against silent layout regressions that are invisible to the
  * auth-routes smoke test.
  *
- * What it covers:
- *   Basics    — two-column row: "What are you offering?" + "Name it" share
- *               the same immediate grid-container parent (DOM node identity).
- *               Two-column row: Price inputs + description textarea share the
- *               same immediate grid-container parent.
- *   Capacity  — party-size [min] / [max] inputs share the same immediate flex
- *               container. That container and the Seating dropdown share the
- *               same outer Row grid-container.
- *   Logistics — the InfoNote framing banner precedes the map canvas/fallback
- *               (bounding-box Y comparison). The map canvas or map-unavailable
- *               fallback appears above the "Meeting point address" input.
+ * ── RE-ANCHOR (2026-08-17, fix/create-service-spec-regression) ────────────────
+ * This spec was authored against a DOM that never existed and was wired into the
+ * spec-coverage gate WITHOUT ever running green (ruling 121's spec-rot class): it
+ * asserted `h3` step headings (the real heading is `<h2 data-testid=
+ * "text-step-long-title">`, D-16 / ledger 119), the SHORT step titles (the real
+ * heading renders the LONG title, e.g. "Capacity — how many people"), and field
+ * placeholders / aria-labels that are nowhere in ServiceForm ("Morning Tea",
+ * "$68", "90-minute", "Minimum party size", "Meeting point address", "Kennin-ji").
+ * Every assertion below is now anchored on a STABLE id / data-testid verified
+ * against client/src/components/ServiceForm.tsx (the DOM has ledger backing —
+ * D-16's h2+testid predates this spec — so the spec conforms to the DOM, not the
+ * reverse). Anchor map (spec-intent → real hook → ServiceForm.tsx):
+ *   step heading        → getByTestId('text-step-long-title') + toContainText   2527
+ *   offering (empty)    → data-testid="button-choose-offering"                  2880
+ *   name                → #name                                                 2912
+ *   price / price-type  → data-testid="input-base-price" / "select-price-type"  3194/3218
+ *   description         → #description                                          3361
+ *   party min / max     → data-testid="input-party-size-min" / "-max"           4423/4430
+ *   capacity row grid   → data-testid="logistics-section-capacity"              4415
+ *   seating             → data-testid="select-seating"                          4449
+ *   logistics framing   → text "One card, one vocabulary."                      3825
+ *   map (CI fallback)   → data-testid="location-picker-map-unavailable"     picker:95
+ *   meeting point       → #meetingPoint                                         3869
+ *
+ * What it covers (intent unchanged):
+ *   Basics    — the offering field and the name input share one two-column grid
+ *               row; the price field and the description share another.
+ *   Capacity  — party-size [min]/[max] share an immediate flex parent; that field
+ *               and the Seating select share the Capacity row grid.
+ *   Logistics — the "one card, one vocabulary" framing note precedes the map
+ *               (or its unavailable fallback), which precedes the meeting-point
+ *               input (bounding-box Y order).
  *
  * Draft hygiene:
- *   The full-flow test (Capacity + Logistics) creates one provider_services
- *   draft. The draft ID is captured from the URL immediately after step 1
- *   advances and is deleted via DELETE /api/provider/services/:id in a
- *   finally block, whether the test passes or fails.
+ *   The full-flow test creates one provider_services draft. Its id is read from
+ *   the /provider/services/:id/edit URL after step 1 advances and deleted via
+ *   DELETE /api/provider/services/:id in a finally block, pass or fail.
  *
  * Prerequisites:
  *   • Server running at BASE_URL.
@@ -39,6 +59,19 @@ import * as path from 'path';
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 const IS_CI = process.env.CI === 'true';
 const PROVIDER_AUTH_FILE = path.resolve(process.cwd(), 'playwright/.auth/provider.json');
+
+// ── Shared: assert we are ON a given wizard step ──────────────────────────────
+// The step header is a single <h2><span data-testid="text-step-long-title"> that
+// renders the current step's LONG title (STEP_LONG_TITLES). Only the current step
+// renders it, so containment on the step word is an unambiguous "we're here".
+async function expectOnStep(
+  page: import('@playwright/test').Page,
+  word: string,
+): Promise<void> {
+  await expect(page.getByTestId('text-step-long-title')).toContainText(word, {
+    timeout: 10_000,
+  });
+}
 
 // ── Shared: advance the wizard one step ───────────────────────────────────────
 // Clicks whichever "Next" or "Save draft & continue" button is visible in the
@@ -113,58 +146,48 @@ test.describe('Create-service wizard layout', () => {
     }
 
     await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
-    await expect(
-      page.locator('h3').filter({ hasText: /^Basics$/i }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expectOnStep(page, 'Basics');
 
-    // ── Row 1 labels ──────────────────────────────────────────────────────────
-    await expect(page.getByText('What are you offering?', { exact: true })).toBeVisible();
-    await expect(page.getByText('Name it', { exact: true })).toBeVisible();
+    // ── Row 1 fields present ────────────────────────────────────────────────────
+    // "What are you offering?" is a <Label> that carries a trailing " *", so match
+    // it non-exactly; the offering control on a fresh (empty) draft is the
+    // "Choose an offering" button. Name is the #name input.
+    await expect(page.getByText('What are you offering?', { exact: false }).first()).toBeVisible();
+    await expect(page.getByTestId('button-choose-offering')).toBeVisible();
+    await expect(page.locator('#name')).toBeVisible();
 
-    // ── Row 1 DOM identity: category select and name input share the same
-    //    immediate grid-container (their grandparent = the Row div).
+    // ── Row 1 DOM identity: the offering control and the name input resolve to
+    //    the SAME two-column grid row (the `.lg:grid-cols-2` container). Uses
+    //    Element.closest on the semantic grid class rather than counting parent
+    //    hops, so it survives wrapper churn as long as the row stays one grid.
     const row1Shared: boolean = await page.evaluate(() => {
-      const catSelect = document.querySelector('select') as HTMLElement | null;
-      const nameInput = document.querySelector(
-        'input[placeholder*="Morning Tea"]',
-      ) as HTMLElement | null;
-      if (!catSelect || !nameInput) return false;
-      // catSelect → Field div → Row grid
-      // nameInput → Field div → Row grid
-      return (
-        catSelect.parentElement?.parentElement ===
-        nameInput.parentElement?.parentElement
-      );
+      const offering = document.querySelector('[data-testid="button-choose-offering"]');
+      const name = document.getElementById('name');
+      if (!offering || !name) return false;
+      const grid = (el: Element | null) => el?.closest('.lg\\:grid-cols-2') ?? null;
+      const g1 = grid(offering);
+      const g2 = grid(name);
+      return g1 !== null && g1 === g2;
     });
     expect(row1Shared).toBe(true);
 
-    // ── Row 2 labels ──────────────────────────────────────────────────────────
-    // The Price <label> contains a DotGhost child span ("④"), so its text
-    // content is "Price④" — not an exact-text match on "Price" alone.
-    // Target the <label> element directly and filter by partial text instead.
-    await expect(
-      page.locator('label').filter({ hasText: 'Price' }).first(),
-    ).toBeVisible();
-    await expect(page.getByText('One line about it', { exact: true })).toBeVisible();
+    // ── Row 2 fields present ────────────────────────────────────────────────────
+    await expect(page.getByTestId('input-base-price')).toBeVisible();
+    await expect(page.getByTestId('select-price-type')).toBeVisible();
+    await expect(page.locator('#description')).toBeVisible();
 
-    // ── Row 2 DOM identity: price input (inside a flex wrapper) and description
-    //    textarea share the same outer grid-container.
-    //    price input → flex div → Field div → Row grid
-    //    textarea    → Field div → Row grid
+    // ── Row 2 DOM identity: price input (#basePrice) and description (#description)
+    //    resolve to the same two-column grid row. The inner price/tier grids use a
+    //    bare `grid-cols-2` (no `lg:` prefix), so closest('.lg:grid-cols-2') skips
+    //    them and lands on the outer row — distinguishing the two correctly.
     const row2Shared: boolean = await page.evaluate(() => {
-      const priceInput = document.querySelector(
-        'input[placeholder="$68"]',
-      ) as HTMLElement | null;
-      const descTextarea = document.querySelector(
-        'textarea[placeholder*="90-minute"]',
-      ) as HTMLElement | null;
-      if (!priceInput || !descTextarea) return false;
-      // price input is nested: input → flex-div → Field → Row
-      const priceRow =
-        priceInput.parentElement?.parentElement?.parentElement ?? null;
-      // textarea: textarea → Field → Row
-      const descRow = descTextarea.parentElement?.parentElement ?? null;
-      return priceRow !== null && priceRow === descRow;
+      const price = document.getElementById('basePrice');
+      const desc = document.getElementById('description');
+      if (!price || !desc) return false;
+      const grid = (el: Element | null) => el?.closest('.lg\\:grid-cols-2') ?? null;
+      const g1 = grid(price);
+      const g2 = grid(desc);
+      return g1 !== null && g1 === g2;
     });
     expect(row2Shared).toBe(true);
   });
@@ -182,133 +205,82 @@ test.describe('Create-service wizard layout', () => {
     try {
       // ── Navigate to step 1, fill minimum required data ──────────────────────
       await page.goto('/provider/services/new', { waitUntil: 'networkidle' });
-      await expect(
-        page.locator('h3').filter({ hasText: /^Basics$/i }),
-      ).toBeVisible({ timeout: 10_000 });
+      await expectOnStep(page, 'Basics');
 
       // Delivery method defaults to "in_person" → 5-step flow (the one with
       // Capacity and Logistics). Fill the service name so the draft saves cleanly.
-      const nameInput = page.locator('input[placeholder*="Morning Tea"]');
+      const nameInput = page.locator('#name');
       await nameInput.fill('CI Layout Test Service — delete me');
 
       // ── Step 1 → Step 2 (Scheduling) ────────────────────────────────────────
       await clickNext(page);
 
-      // Capture the draft ID from the URL immediately after advancing.
-      const step2Url = new URL(page.url());
-      draftServiceId = step2Url.searchParams.get('id');
+      // Capture the draft ID from the URL immediately after advancing. Create mode
+      // saves the draft and moves to /provider/services/:id/edit (id in the PATH,
+      // never a ?id= query param — see ServiceForm navigate() on save).
+      const idMatch = page.url().match(/\/provider\/services\/([^/?#]+)\/edit/);
+      draftServiceId = idMatch ? idMatch[1] : null;
 
-      await expect(
-        page.locator('h3').filter({ hasText: /^Scheduling$/i }),
-      ).toBeVisible({ timeout: 10_000 });
+      await expectOnStep(page, 'Scheduling');
 
       // ── Step 2 → Step 3 (Capacity) ──────────────────────────────────────────
       await clickNext(page);
-      await expect(
-        page.locator('h3').filter({ hasText: /^Capacity$/i }),
-      ).toBeVisible({ timeout: 10_000 });
+      await expectOnStep(page, 'Capacity');
 
       // ── Capacity assertions ──────────────────────────────────────────────────
+      const capacityRow = page.getByTestId('logistics-section-capacity');
 
       // 1. Labels are visible.
       await expect(page.getByText('Party size', { exact: true })).toBeVisible();
       await expect(page.getByText('Seating', { exact: true })).toBeVisible();
 
-      // 2. Both aria-labelled inputs are visible.
-      await expect(page.locator('[aria-label="Minimum party size"]')).toBeVisible();
-      await expect(page.locator('[aria-label="Maximum party size"]')).toBeVisible();
+      // 2. Both party-size inputs are visible.
+      await expect(page.getByTestId('input-party-size-min')).toBeVisible();
+      await expect(page.getByTestId('input-party-size-max')).toBeVisible();
 
-      // 3. The word "to" separator appears inline between the inputs.
-      await expect(page.getByText('to', { exact: true })).toBeVisible();
+      // 3. The "to" separator appears inline between the inputs (scoped to the
+      //    capacity row so it can't match a stray "to" elsewhere on the page).
+      await expect(capacityRow.getByText('to', { exact: true })).toBeVisible();
 
-      // 4. Min + Max inputs share the same immediate flex parent (DOM identity).
+      // 4. Min + Max share the same immediate flex parent (DOM identity).
       const partySizeInline: boolean = await page.evaluate(() => {
-        const minInput = document.querySelector(
-          '[aria-label="Minimum party size"]',
-        ) as HTMLElement | null;
-        const maxInput = document.querySelector(
-          '[aria-label="Maximum party size"]',
-        ) as HTMLElement | null;
-        if (!minInput || !maxInput) return false;
-        return minInput.parentElement === maxInput.parentElement;
+        const min = document.querySelector('[data-testid="input-party-size-min"]');
+        const max = document.querySelector('[data-testid="input-party-size-max"]');
+        return !!min && !!max && min.parentElement === max.parentElement;
       });
       expect(partySizeInline).toBe(true);
 
-      // 5. The party-size Field and the Seating select share the same outer Row
-      //    grid-container (DOM identity).
-      //    minInput → flex div → Field div → Row grid
-      //    seatingSelect → Field div → Row grid
-      const capacityRowShared: boolean = await page.evaluate(() => {
-        const minInput = document.querySelector(
-          '[aria-label="Minimum party size"]',
-        ) as HTMLElement | null;
-        const seatingSelect = Array.from(document.querySelectorAll('select')).find(
-          (s) =>
-            s.textContent?.includes('Private') ||
-            s.textContent?.includes('Shared'),
-        ) as HTMLElement | null;
-        if (!minInput || !seatingSelect) return false;
-        // minInput → flex-div → Field → Row
-        const partyRow =
-          minInput.parentElement?.parentElement?.parentElement ?? null;
-        // seatingSelect → Field → Row
-        const seatingRow =
-          seatingSelect.parentElement?.parentElement ?? null;
-        return partyRow !== null && partyRow === seatingRow;
-      });
-      expect(capacityRowShared).toBe(true);
+      // 5. The party-size field and the Seating select live in the SAME Capacity
+      //    row grid (both are descendants of logistics-section-capacity, the
+      //    grid-cols-2 container). Containment proves they share the row.
+      await expect(capacityRow.getByTestId('input-party-size-min')).toBeVisible();
+      await expect(capacityRow.getByTestId('select-seating')).toBeVisible();
 
       // ── Step 3 → Step 4 (Logistics) ─────────────────────────────────────────
       await clickNext(page);
-      await expect(
-        page.locator('h3').filter({ hasText: /^Logistics$/i }),
-      ).toBeVisible({ timeout: 10_000 });
+      await expectOnStep(page, 'Logistics');
 
       // ── Logistics assertions ─────────────────────────────────────────────────
 
-      // 1. InfoNote framing banner leads (unique text from the component).
+      // 1. The "one card, one vocabulary" framing note leads.
       const framingNote = page.getByText('One card, one vocabulary.', { exact: false });
       await expect(framingNote).toBeVisible();
 
-      // 2. Map canvas (height:340 wrapper) OR the map-unavailable fallback div.
-      //
-      //    In CI, VITE_GOOGLE_MAPS_API_KEY is not set → only the fallback renders.
-      //    The fallback div is a leaf element whose direct text content IS the
-      //    full string below (no children), so getByText with exact:true resolves
-      //    to that specific element — not an ancestor — giving a correct bounding box.
-      //
-      //    When a real API key IS present, the map renders inside a div with
-      //    inline style "height: 340px" (set by the map-cursor wrapper in the JSX).
-      //
-      //    Strategy: attempt to get the real map wrapper's bounding box first.
-      //    If it is absent (null), fall through to the exact-text fallback locator.
-      const FALLBACK_TEXT =
-        'Map unavailable — enter meeting point text below and continue.';
+      // 2. The map area: the LocationPointPicker map, or — in CI, where no maps
+      //    API key is set — its "Map unavailable" fallback. Anchor on the
+      //    fallback testid, falling back to the picker wrapper if a key is present.
+      const mapUnavailable = page.getByTestId('location-picker-map-unavailable');
+      const mapPicker = page.locator('[data-testid$="-picker"]').first();
+      const mapArea = mapUnavailable.or(mapPicker).first();
+      await expect(mapArea).toBeVisible({ timeout: 10_000 });
 
-      // The map wrapper div has exactly `height: 340` in its inline style attribute.
-      const mapWrapper = page.locator('div[style*="height: 340"]').first();
-      // The fallback is a leaf div whose full text equals FALLBACK_TEXT exactly.
-      const mapFallbackEl = page.getByText(FALLBACK_TEXT, { exact: true });
-
-      // Wait: at least one of these must become visible.
-      await expect(mapWrapper.or(mapFallbackEl).first()).toBeVisible({ timeout: 10_000 });
-
-      // Resolve to the element that is actually in the DOM (stable bounding box).
-      const mapBox =
-        (await mapWrapper.isVisible().catch(() => false))
-          ? await mapWrapper.boundingBox()
-          : await mapFallbackEl.boundingBox();
-
-      // 3. "Meeting point address" label + input are visible.
-      await expect(
-        page.getByText('Meeting point address', { exact: true }),
-      ).toBeVisible();
-
-      const meetingInput = page.locator('input[placeholder*="Kennin-ji"]');
+      // 3. Meeting-point input is visible (label renders "Meeting Point *").
+      const meetingInput = page.locator('#meetingPoint');
       await expect(meetingInput).toBeVisible();
 
-      // 4. DOM order: framing note → map area → meeting-point input (Y-axis).
-      const noteBox  = await framingNote.boundingBox();
+      // 4. DOM order (Y-axis): framing note → map area → meeting-point input.
+      const noteBox = await framingNote.boundingBox();
+      const mapBox = await mapArea.boundingBox();
       const inputBox = await meetingInput.boundingBox();
 
       if (!noteBox || !mapBox || !inputBox) {
