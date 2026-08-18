@@ -86,7 +86,11 @@ class RevenueTrackingService {
     const processingFees = platformFee * PROCESSING_FEE_RATE;
     const netAmount = platformFee - processingFees;
 
-    await storage.recordPlatformRevenue({
+    // Task 1573: use insertPlatformRevenueOnce so the DB unique constraint on paymentIntentId
+    // (migration 244) is the authoritative dedup gate. If two concurrent webhooks race past the
+    // pre-check, the second insert hits ON CONFLICT DO NOTHING and inserted===false, which causes
+    // us to skip the expert/provider earnings mints — preventing partial double-writes.
+    const { inserted } = await storage.insertPlatformRevenueOnce({
       sourceType: event.sourceType,
       sourceId: event.sourceId,
       trackingNumber: event.trackingNumber,
@@ -103,6 +107,12 @@ class RevenueTrackingService {
       status: 'recorded',
       transactionDate: new Date(),
     });
+
+    if (!inserted) {
+      // The DB constraint absorbed a duplicate — skip all dependent side-effects so we never
+      // mint a second expert/provider earning for the same payment event.
+      return;
+    }
 
     if (event.expertId && event.expertShare) {
       await storage.createExpertEarning({
