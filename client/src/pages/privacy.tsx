@@ -168,8 +168,7 @@ export default function PrivacyPolicyPage() {
             <h3 className="text-xl font-medium mb-3">3.5 Marketing and Communications</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
               <li>Send promotional materials, newsletters, and special offers (with your consent)</li>
-              <li>Conduct marketing campaigns and analytics</li>
-              <li>Measure advertising effectiveness</li>
+              <li>Conduct marketing campaigns</li>
               <li>Manage loyalty and referral programs</li>
             </ul>
           </section>
@@ -349,7 +348,6 @@ export default function PrivacyPolicyPage() {
               <li>Travel inventory providers (Viator, GetYourGuide, Klook, Fever, Musement, 12Go)</li>
               <li>Payment processors (Stripe)</li>
               <li>Social media platforms (Meta/Facebook/Instagram)</li>
-              <li>Analytics and advertising services</li>
               <li>Mapping and location services</li>
               <li>Customer support tools</li>
             </ul>
@@ -374,38 +372,22 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4">11. Cookies and Tracking Technologies</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              We use cookies and similar tracking technologies to enhance your experience and gather information about visitors and visits to our platform.
+              We use only the cookies strictly necessary to operate the platform. We do not use third-party analytics, advertising, or cross-site tracking technologies.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">11.1 Types of Cookies We Use</h3>
+            <h3 className="text-xl font-medium mb-3">11.1 Cookies We Use</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li><strong>Essential cookies:</strong> Required for platform functionality (authentication, security, preferences)</li>
-              <li><strong>Performance cookies:</strong> Collect information about how you use our platform (analytics, error tracking)</li>
-              <li><strong>Functional cookies:</strong> Remember your preferences and personalization settings</li>
-              <li><strong>Marketing cookies:</strong> Track your activity across websites for advertising purposes</li>
+              <li><strong>Essential cookies only:</strong> A session cookie that keeps you signed in and protects your account (authentication and security). These cookies are required for the platform to function and do not track you across other websites.</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">11.2 Third-Party Tracking</h3>
-            <p className="text-muted-foreground leading-relaxed mb-4">
-              We use third-party analytics and advertising services that may collect information through cookies and similar technologies:
+            <h3 className="text-xl font-medium mb-3">11.2 No Third-Party Tracking</h3>
+            <p className="text-muted-foreground leading-relaxed mb-6">
+              We do not use third-party analytics or advertising services such as Google Analytics or Facebook Pixel, and we do not set performance, functional, or marketing cookies. If we introduce any such technologies in the future, we will update this policy first and, where required by law, ask for your consent before they are activated.
             </p>
-            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li>Google Analytics: Website usage analytics</li>
-              <li>Facebook Pixel: Advertising and conversion tracking</li>
-              <li>Marketing automation platforms: Email campaign tracking</li>
-            </ul>
 
             <h3 className="text-xl font-medium mb-3">11.3 Managing Cookies</h3>
-            <p className="text-muted-foreground leading-relaxed mb-4">
-              You can control cookies through:
-            </p>
-            <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li>Our cookie consent tool (available on first visit and in settings)</li>
-              <li>Browser settings (most browsers allow you to refuse or delete cookies)</li>
-              <li>Opt-out tools provided by advertising networks</li>
-            </ul>
-            <p className="text-muted-foreground leading-relaxed mt-4">
-              Note: Disabling essential cookies may affect platform functionality. Performance, functional, and marketing cookies are optional.
+            <p className="text-muted-foreground leading-relaxed">
+              You can delete or block cookies through your browser settings. Note that blocking the essential session cookie will prevent you from staying signed in and may make parts of the platform unusable.
             </p>
           </section>
 

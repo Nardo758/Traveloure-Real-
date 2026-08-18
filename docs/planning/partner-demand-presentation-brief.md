@@ -34,11 +34,12 @@ therefore validated the target **as the dispatch describes its three components*
 funnel row, and Market Research map circles — rather than claiming to have opened a specific HTML file I cannot see
 (§13: I do not assert a validation I did not perform).
 
-**Resolved (Leon, 2026-08-18):** the file *does* exist — built as a chat artifact in an earlier turn (through the
-Performance-home amendment) and never committed. It is not reconstructable from this session either (not on disk, not in
-context), so **Leon drops the shipped HTML into `docs/planning/partner-demand-visual-target.html`** on the lane branch,
-after which the pixel-level conformance pass runs as the fast follow. Until it lands in-tree the target is validated
-as-described only. Everything below stands on its own regardless.
+**LANDED (Phase 3 STEP 3.0, 2026-08-18):** Leon supplied the file and it is now committed in-tree at
+`docs/planning/partner-demand-visual-target.html` (complete 8-surface reference: Calendar ghost-slots, Catalog funnel
+row, layered Map, Workspace chooser, Market Research page, Today card, Performance→Demand, Admin strip — incl. the
+scrubber / past-"missed" / stay-navy-dashed treatments). The §0 gap is **closed**. The pixel-level conformance pass is
+no longer a hypothetical — it is the screenshot gate on STEP 3.2 (Market Research page) against this file. The
+process lesson (any referenced artifact must be in-tree, not chat-only) stands recorded above.
 
 ---
 
