@@ -268,6 +268,23 @@ jobs:
       - name: Omit-schema-ratchet guard
         run: node scripts/check-omit-schema-ratchet.cjs
 
+  demand-rollup-guard:
+    name: demand-rollup-guard (Partner Demand 2B / ledger 2026-08-18-partner-demand-2b)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Partner Demand 2B discipline gate over the demand-rollup MODULE (compute/service/job/config):
+      # no `providerServices.totalRevenue` read (Locked Decision 3), demand MATH confined to the L6
+      # compute home, and floor thresholds only in demand-floors.config.ts (never a bare literal).
+      # Node built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Demand-rollup gate predicate self-test
+        run: node scripts/check-demand-rollup.cjs --self-test
+      - name: Demand-rollup discipline gate
+        run: node scripts/check-demand-rollup.cjs
+
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
     runs-on: ubuntu-latest
