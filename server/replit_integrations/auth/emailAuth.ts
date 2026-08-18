@@ -302,7 +302,7 @@ export function setupEmailAuth(app: Express): void {
   }
 
   const forgotPasswordSchema = z.object({
-    email: z.string().email("Invalid email address"),
+    email: z.string().email("Invalid email address").max(254, "Email is too long"),
   });
 
   app.post("/api/auth/forgot-password", async (req, res) => {
@@ -364,8 +364,10 @@ export function setupEmailAuth(app: Express): void {
   });
 
   const resetPasswordSchema = z.object({
-    token: z.string().min(32, "Invalid reset token"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    token: z.string().min(32, "Invalid reset token").max(128, "Invalid reset token"),
+    // Cap length: hashPassword runs scrypt on this verbatim — an unbounded value is a
+    // CPU/memory DoS vector on this public endpoint. Matches the register cap; no trim.
+    newPassword: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
   });
 
   app.post("/api/auth/reset-password", async (req, res) => {
@@ -487,7 +489,7 @@ export function setupEmailAuth(app: Express): void {
   });
 
   const verifyEmailSchema = z.object({
-    token: z.string().min(32, "Invalid verification token"),
+    token: z.string().min(32, "Invalid verification token").max(128, "Invalid verification token"),
   });
 
   // POST /api/auth/verify-email — public; client posts the raw token from the
