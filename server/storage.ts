@@ -882,6 +882,12 @@ export interface IStorage {
 
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
 
+  /** Idempotent insert: resolves to { row, inserted: true } on success, { row, inserted: false }
+   *  when the DB unique constraint (migration 244 — paymentIntentId, or migration 203 —
+   *  booking_commission mint) detected a duplicate and silently skipped the insert.
+   *  Callers MUST skip dependent side-effects (earnings mints) when inserted === false. */
+  insertPlatformRevenueOnce(revenue: InsertPlatformRevenue): Promise<{ row: PlatformRevenue; inserted: boolean }>;
+
   getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]>;
 
   getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
@@ -5757,18 +5763,52 @@ export class DatabaseStorage implements IStorage {
   // updateDailyRevenueSummary below — a pre-existing divergence, out of scope for F-4. When
   // changing this writer's columns or side-effects, also update the raw tx INSERT in
   // booking.service.ts — MONEY_MAP F-4.
+  //
+  // Task 1573: delegates to insertPlatformRevenueOnce so all callers benefit from the
+  // ON CONFLICT DO NOTHING guard (migration 244 — paymentIntentId index; migration 203 —
+  // booking-mint index). Returns the canonical row whether inserted or pre-existing.
   async recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue> {
-    const [newRevenue] = await db.insert(platformRevenue).values(revenue).returning();
-    
-    // Update daily summary
-    const date = new Date(revenue.transactionDate || new Date()).toISOString().split('T')[0];
-    await this.updateDailyRevenueSummary(date, {
-      totalGross: String(parseFloat(revenue.grossAmount) || 0),
-      totalPlatformFee: String(parseFloat(revenue.platformFee) || 0),
-      totalNet: String(parseFloat(revenue.netAmount) || 0),
-    });
-    
-    return newRevenue;
+    const { row } = await this.insertPlatformRevenueOnce(revenue);
+    return row;
+  }
+
+  async insertPlatformRevenueOnce(revenue: InsertPlatformRevenue): Promise<{ row: PlatformRevenue; inserted: boolean }> {
+    const [newRow] = await db
+      .insert(platformRevenue)
+      .values(revenue)
+      .onConflictDoNothing()
+      .returning();
+
+    if (newRow) {
+      // Genuine insert — update the daily summary.
+      const date = new Date(revenue.transactionDate || new Date()).toISOString().split('T')[0];
+      await this.updateDailyRevenueSummary(date, {
+        totalGross: String(parseFloat(revenue.grossAmount) || 0),
+        totalPlatformFee: String(parseFloat(revenue.platformFee) || 0),
+        totalNet: String(parseFloat(revenue.netAmount) || 0),
+      });
+      return { row: newRow, inserted: true };
+    }
+
+    // ON CONFLICT DO NOTHING fired — fetch the canonical row that blocked us.
+    const piId: string | undefined = (revenue.metadata as Record<string, string> | undefined)?.paymentIntentId;
+    if (piId) {
+      const [existing] = await db
+        .select()
+        .from(platformRevenue)
+        .where(sql`${platformRevenue.metadata}->>'paymentIntentId' = ${piId}`)
+        .limit(1);
+      if (existing) return { row: existing, inserted: false };
+    }
+    if (revenue.sourceId) {
+      const [existing] = await db
+        .select()
+        .from(platformRevenue)
+        .where(eq(platformRevenue.sourceId, revenue.sourceId))
+        .limit(1);
+      if (existing) return { row: existing, inserted: false };
+    }
+    throw new Error("insertPlatformRevenueOnce: ON CONFLICT fired but no existing row found");
   }
 
   async getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]> {
