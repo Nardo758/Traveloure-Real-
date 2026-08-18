@@ -619,7 +619,11 @@ router.get("/api/me/business-advisor", isAuthenticated, async (req, res) => {
 router.get("/api/me/demand-rollup", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
-    const out = await readPartnerDemandRollup(userId);
+    // R20: optional ±WINDOW override. Malformed values are ignored server-side (default applies);
+    // no other query param is read, so this is purely additive to the 2B contract.
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    const out = await readPartnerDemandRollup(userId, { from, to });
     res.json(out);
   } catch (error) {
     console.error("[demand] /api/me/demand-rollup error:", error);
@@ -629,9 +633,11 @@ router.get("/api/me/demand-rollup", isAuthenticated, async (req, res) => {
 
 // ADMIN variant: every market incl. the unmapped bucket (R13). Inherits the §2 blanket admin guard
 // (`app.use("/api/admin", adminApiGuard)`, mounted before this router) — no per-route opt-in (§2).
-router.get("/api/admin/demand-rollup", async (_req, res) => {
+router.get("/api/admin/demand-rollup", async (req, res) => {
   try {
-    const out = await readAdminDemandRollup();
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    const out = await readAdminDemandRollup({ from, to });
     res.json(out);
   } catch (error) {
     console.error("[demand] /api/admin/demand-rollup error:", error);

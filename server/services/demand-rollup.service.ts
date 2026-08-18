@@ -10,13 +10,14 @@
  * listings) are excluded via the R16 predicate at BOTH computation and read. Money metrics stay
  * R12-blocked; search/request grain stays dark-gated — neither is computed here.
  */
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   itineraryItems,
   itemTransitionLog,
   partnerDemandRollup,
   trips,
+  tripSelectedHotels,
   users,
   vendorAvailabilitySlots,
   providerServices,
@@ -25,14 +26,19 @@ import {
 } from "@shared/schema";
 import { isRealTripSql } from "./demand-test-exclusion";
 import { resolveMarketSlug, timezoneForMarket } from "./trend-engine/operating-markets";
-import { clearsFloor } from "../config/demand-floors.config";
+import { clearsFloor, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 import {
   OPEN_SLIP_STATUSES,
   marketLocalDate,
   computeUnmetSlip,
   computeSlipFunnel,
+  computeUnmetStay,
+  classifyKind,
+  addDaysISO,
   type SlipDemandRow,
   type DiaryRow,
+  type StayDemandRow,
+  type DemandKind,
 } from "./demand-rollup.compute";
 
 // Re-export the pure core so the service module is the single import surface for callers/tests
@@ -122,6 +128,43 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
   }));
   const funnelCells = computeSlipFunnel(diaryRows);
 
+  // ── unmet_demand_stay source rows (R19): REAL trips with a real date range and NO stay anchored
+  //    on-platform — neither an `accommodation` itinerary item NOR a trip_selected_hotels row. This
+  //    is a structural read ("no stay RECORDED", not "no bed" — §13), which is why the metric is
+  //    count-only and floor-gated. The stay_anchor_miss/no_stay_flag advisory events corroborate it
+  //    but are never read here. ──
+  const stayTrips = await db
+    .select({
+      marketSlug: trips.marketSlug,
+      startDate: trips.startDate,
+      endDate: trips.endDate,
+      travelers: trips.numberOfTravelers,
+    })
+    .from(trips)
+    .leftJoin(users, eq(trips.userId, users.id))
+    .where(
+      and(
+        isRealTripSql(users.email, trips.authorId),
+        sql`${trips.endDate} > ${trips.startDate}`,
+        sql`NOT EXISTS (SELECT 1 FROM itinerary_items ii WHERE ii.trip_id = ${trips.id} AND ii.item_type = 'accommodation')`,
+        sql`NOT EXISTS (SELECT 1 FROM trip_selected_hotels tsh WHERE tsh.trip_id = ${trips.id})`,
+      ),
+    );
+
+  const stayRows: StayDemandRow[] = stayTrips.map((r) => {
+    const startInstant = new Date(`${r.startDate}T00:00:00Z`);
+    const nights = Math.round(
+      (new Date(`${r.endDate}T00:00:00Z`).getTime() - startInstant.getTime()) / 86_400_000,
+    );
+    return {
+      marketSlug: bucketSlug(r.marketSlug),
+      checkIn: marketLocalDate(startInstant, timezoneForMarket(r.marketSlug)),
+      nights,
+      travelers: r.travelers != null ? Number(r.travelers) : null,
+    };
+  });
+  const stayCells = computeUnmetStay(stayRows);
+
   // The funnel is cumulative history, not a per-day figure, so it stores under ONE reserved date per
   // market: the market-local date of the most recent diary event ("as of"), so recompute replaces.
   const latestDiaryDateByMarket = new Map<string, string>();
@@ -155,6 +198,17 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
       sourceRowCount: c.payload.itemsObserved,
     });
   }
+  for (const c of stayCells) {
+    toInsert.push({
+      marketSlug: c.marketSlug,
+      date: c.date,
+      metric: "unmet_demand_stay",
+      partnerId: null,
+      serviceId: null,
+      value: { trips: c.trips, nights: c.nights, travelers: c.travelers, travelersCaptured: c.travelersCaptured },
+      sourceRowCount: c.trips,
+    });
+  }
 
   // REPLACE-BY-DATE (idempotent): delete the exact (market, date, metric, NULL, NULL) rows we are
   // about to write, then insert. A stale row for a date with no current demand is left as history
@@ -179,7 +233,7 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
   return toInsert.length;
 }
 
-// ── floor-enforced reads (2B.3) ────────────────────────────────────────────────────────────────
+// ── floor-enforced reads (2B.3) + ±window axis & requested/missed split (R20) ───────────────────
 export interface RollupReadRow {
   marketSlug: string;
   date: string;
@@ -187,46 +241,95 @@ export interface RollupReadRow {
   value: unknown | null;   // null ⇒ suppressed below floor (§13 no_data)
   n: number;               // source_row_count (show-the-N)
   status: "ok" | "no_data";
+  kind: DemandKind;        // R20: "requested" (date ≥ market-today) | "missed" (expired unfilled)
   computedAt: Date;
 }
+export interface RollupWindow { from: string; to: string; }
+export interface RollupReadResult {
+  cadence: string;
+  window: RollupWindow;    // the ±WINDOW date span actually read (R20)
+  historySince: string | null; // earliest run behind these rows — the honest floor of the past view
+  rows: RollupReadRow[];   // each tagged requested|missed; NEVER a blended total (R20 binding rule)
+}
+export interface RollupReadOpts { from?: string; to?: string; now?: Date }
 
-function applyFloor(row: {
+type StoredRollupRow = {
   marketSlug: string; date: string; metric: string; value: unknown;
   sourceRowCount: number; partnerId: string | null; serviceId: string | null; computedAt: Date;
-}): RollupReadRow {
-  const ok = clearsFloor({ sourceRowCount: row.sourceRowCount, partnerId: row.partnerId, serviceId: row.serviceId });
+};
+
+function isIsoDate(s?: string): s is string {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+/** Default read window = [today − WINDOW, today + WINDOW] (R20); explicit from/to narrow it. `now`
+ *  is injected so the caller owns the clock. A malformed param is ignored, not an error. */
+function resolveWindow(now: Date, from?: string, to?: string): RollupWindow {
+  const todayUtc = now.toISOString().slice(0, 10);
   return {
-    marketSlug: row.marketSlug,
-    date: String(row.date),
+    from: isIsoDate(from) ? from : addDaysISO(todayUtc, -DEMAND_WINDOW_DAYS),
+    to: isIsoDate(to) ? to : addDaysISO(todayUtc, DEMAND_WINDOW_DAYS),
+  };
+}
+
+/** Map a stored row → read row: floor suppression (§13) + requested/missed disposition (R20). The
+ *  cell's market-local "today" decides its kind, so a market's own timezone governs the boundary. */
+function toReadRow(row: StoredRollupRow, now: Date): RollupReadRow {
+  const ok = clearsFloor({ sourceRowCount: row.sourceRowCount, partnerId: row.partnerId, serviceId: row.serviceId });
+  const marketSlug = String(row.marketSlug);
+  const tz = timezoneForMarket(marketSlug === UNMAPPED_MARKET_SLUG ? null : marketSlug);
+  const date = String(row.date);
+  return {
+    marketSlug,
+    date,
     metric: row.metric,
     value: ok ? row.value : null,
     n: row.sourceRowCount,
     status: ok ? "ok" : "no_data",
+    kind: classifyKind(date, marketLocalDate(now, tz)),
     computedAt: row.computedAt as Date,
   };
 }
 
-/** ADMIN read: every rollup row, floor-enforced, INCLUDING the unmapped bucket (R13). The caller
- *  gates on the §2 blanket admin guard; this function does not itself authorize. */
-export async function readAdminDemandRollup(): Promise<{ cadence: string; rows: RollupReadRow[] }> {
+/** Earliest run behind a set of rows — the honest floor of the "past" view depth (R20: "history
+ *  since <first run>", never a fabricated full band). Null when there are no rows. */
+function historySinceOf(rows: { computedAt: Date }[]): string | null {
+  let earliest: Date | null = null;
+  for (const r of rows) {
+    const d = r.computedAt as Date;
+    if (d && (earliest == null || d.getTime() < earliest.getTime())) earliest = d;
+  }
+  return earliest ? earliest.toISOString().slice(0, 10) : null;
+}
+
+function inWindow(row: { date: string }, w: RollupWindow): boolean {
+  const d = String(row.date);
+  return d >= w.from && d <= w.to;
+}
+
+/** ADMIN read: every rollup row, floor-enforced, INCLUDING the unmapped bucket (R13), within the
+ *  ±WINDOW (R20). The caller gates on the §2 blanket admin guard; this does not itself authorize. */
+export async function readAdminDemandRollup(opts: RollupReadOpts = {}): Promise<RollupReadResult> {
+  const now = opts.now ?? new Date();
+  const window = resolveWindow(now, opts.from, opts.to);
   const rows = await db.select().from(partnerDemandRollup);
   return {
     cadence: "updated daily",
-    rows: rows.map((r) =>
-      applyFloor({
-        marketSlug: r.marketSlug, date: r.date, metric: r.metric, value: r.value,
-        sourceRowCount: r.sourceRowCount, partnerId: r.partnerId, serviceId: r.serviceId, computedAt: r.computedAt,
-      }),
-    ),
+    window,
+    historySince: historySinceOf(rows),
+    rows: rows.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now)),
   };
 }
 
 /** PARTNER read: floor-enforced rows for the caller's own markets (derived from their
- *  provider_services cities, never a client value), UNMAPPED bucket EXCLUDED (R13 admin-only).
- *  No money/rate figure is present (R12). */
+ *  provider_services cities, never a client value), UNMAPPED bucket EXCLUDED (R13 admin-only),
+ *  within the ±WINDOW (R20). No money/rate figure is present (R12). */
 export async function readPartnerDemandRollup(
   partnerUserId: string,
-): Promise<{ cadence: string; markets: string[]; rows: RollupReadRow[] }> {
+  opts: RollupReadOpts = {},
+): Promise<RollupReadResult & { markets: string[] }> {
+  const now = opts.now ?? new Date();
+  const window = resolveWindow(now, opts.from, opts.to);
   const svc = await db
     .select({ city: providerServices.city })
     .from(providerServices)
@@ -235,23 +338,21 @@ export async function readPartnerDemandRollup(
     new Set(svc.map((s) => resolveMarketSlug(s.city)).filter((m): m is string => !!m)),
   ).sort();
 
-  if (markets.length === 0) return { cadence: "updated daily", markets: [], rows: [] };
+  if (markets.length === 0) {
+    return { cadence: "updated daily", window, historySince: null, markets: [], rows: [] };
+  }
 
   const rows = await db
     .select()
     .from(partnerDemandRollup)
     .where(inArray(partnerDemandRollup.marketSlug, markets));
+  const visible = rows.filter((r) => r.marketSlug !== UNMAPPED_MARKET_SLUG);
 
   return {
     cadence: "updated daily",
+    window,
+    historySince: historySinceOf(visible),
     markets,
-    rows: rows
-      .filter((r) => r.marketSlug !== UNMAPPED_MARKET_SLUG)
-      .map((r) =>
-        applyFloor({
-          marketSlug: r.marketSlug, date: r.date, metric: r.metric, value: r.value,
-          sourceRowCount: r.sourceRowCount, partnerId: r.partnerId, serviceId: r.serviceId, computedAt: r.computedAt,
-        }),
-      ),
+    rows: visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now)),
   };
 }
