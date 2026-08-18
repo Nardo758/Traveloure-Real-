@@ -10,28 +10,14 @@
 -- We use a partial unique expression index so the constraint applies only to rows that
 -- carry a paymentIntentId; rows from other code paths (affiliate catalog syncs, manual
 -- credits, reversal rows) are unaffected.
+--
+-- NO rows are deleted here. Removing financial ledger rows without first reversing the
+-- corresponding daily_revenue_summary increments and auditing related expert/provider
+-- earnings would create silent accounting inconsistencies. If PI-keyed duplicate rows
+-- exist in a target database, this migration will fail loudly — the correct signal that
+-- a manual reconciliation is required before the index can be applied. See follow-up
+-- task #1579 for the production pre-flight audit procedure.
 
--- Step 1: remove any duplicates that exist today, keeping the oldest row per PI id.
--- Safe: only the newest duplicate is deleted; the oldest becomes the canonical row.
-DELETE FROM platform_revenue
-WHERE id IN (
-  SELECT id
-  FROM (
-    SELECT
-      id,
-      metadata->>'paymentIntentId' AS pi_id,
-      ROW_NUMBER() OVER (
-        PARTITION BY metadata->>'paymentIntentId'
-        ORDER BY created_at ASC
-      ) AS rn
-    FROM platform_revenue
-    WHERE metadata->>'paymentIntentId' IS NOT NULL
-      AND metadata->>'paymentIntentId' <> ''
-  ) ranked
-  WHERE rn > 1
-);
-
--- Step 2: create the partial unique index.
 CREATE UNIQUE INDEX IF NOT EXISTS platform_revenue_payment_intent_uniq
   ON platform_revenue ((metadata->>'paymentIntentId'))
   WHERE metadata->>'paymentIntentId' IS NOT NULL
