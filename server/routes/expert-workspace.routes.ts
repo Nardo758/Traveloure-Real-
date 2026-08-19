@@ -684,8 +684,10 @@ router.post(
         itemType: "activity",
         dayNumber: Math.floor(idx / PER_DAY) + 1,
         locationName: row.city || null,
-        // R26 coords cheap-fix: the extracted place carries a best-effort geocode; copy it so
-        // neighborhood history can accrue. NULL stays NULL — no city-center invention (§13).
+        // R26 coords cheap-fix: the DMO content row (dmo_raw_content) carries a best-effort
+        // geocode; copy it so neighborhood history can accrue. NULL stays NULL — no city-center
+        // invention (§13). (Source is dmo_raw_content, read at the select above — NOT
+        // dmo_extracted_places; an earlier note mislabeled the table.)
         latitude: row.latitude ?? null,
         longitude: row.longitude ?? null,
         suggestedBy: "expert",
