@@ -34,7 +34,8 @@ import {
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
-import { readPartnerDemandRollup, readAdminDemandRollup } from "../services/demand-rollup.service";
+import { readPartnerDemandRollup, readAdminDemandRollup, readTopDemandSignal } from "../services/demand-rollup.service";
+import { buildDemandRollupFacts, type DemandRollupFacts } from "../services/demand-rollup.compute";
 
 const router = Router();
 
@@ -487,25 +488,36 @@ async function getLinkStatsFacts(userId: string): Promise<LinkStatsFacts> {
   return { totalClicks, totalBookings, totalRevenue, conversionRate: totalClicks > 0 ? totalBookings / totalClicks : null };
 }
 
+// 3.4 Item 2.2 — the L6 rollup demand figures ride into the advisor prompt WITH their governance
+// labels (R5/R19/R20), so the model can never blend units or sum dispositions. The labeling is a
+// PURE function in the L6 module (buildDemandRollupFacts — unit-tested with no DB); this route only
+// supplies the server-aggregated, floor-cleared summary to it.
+async function getDemandRollupFacts(userId: string): Promise<DemandRollupFacts> {
+  const rollup = await readPartnerDemandRollup(userId);
+  return buildDemandRollupFacts(rollup.summary);
+}
+
 interface BusinessAdvisorFacts {
   market: string | null;
   listingHealth: ListingHealthSummary | null;
   benchmarks: BenchmarkFacts;
   linkStats: LinkStatsFacts;
   demand: { signals: DemandSignalRow[]; crowd: CrowdMonthRow[] | null; events: UpcomingEventRow[] | null };
+  demandRollup: DemandRollupFacts; // 3.4 Item 2.2 — labeled L6 figures (R5/R19/R20)
 }
 
 /** Assembles the FACTS object server-side and a stable factsHash over it, in one pass — mirrors
  *  assembleFacts() in advisor.routes.ts's narration pattern (no AI call here). */
 async function assembleBusinessAdvisorFacts(userId: string): Promise<{ facts: BusinessAdvisorFacts; factsHash: string }> {
   const market = await deriveMarket(userId);
-  const [listingHealth, benchmarks, linkStats, demandResult, crowd, events] = await Promise.all([
+  const [listingHealth, benchmarks, linkStats, demandResult, crowd, events, demandRollup] = await Promise.all([
     getListingHealthSummary(userId),
     getBenchmarkFacts(userId),
     getLinkStatsFacts(userId),
     market ? getDemandSignals(market) : Promise.resolve({ signals: [] as DemandSignalRow[], lowSignal: true }),
     market ? getCrowd(market) : Promise.resolve(null),
     market ? getUpcomingEvents(market) : Promise.resolve(null),
+    getDemandRollupFacts(userId),
   ]);
 
   const facts: BusinessAdvisorFacts = {
@@ -514,6 +526,7 @@ async function assembleBusinessAdvisorFacts(userId: string): Promise<{ facts: Bu
     benchmarks,
     linkStats,
     demand: { signals: demandResult.signals, crowd, events },
+    demandRollup,
   };
   const factsHash = crypto.createHash("sha1").update(JSON.stringify(facts)).digest("hex");
   return { facts, factsHash };
@@ -530,6 +543,7 @@ Rules:
 - If listingHealth.topGaps is non-empty, mention closing the biggest gap first.
 - If benchmarks.status is "no_data", say so honestly rather than comparing to a number.
 - If demand.signals is non-empty, connect at least one signal to a concrete next step.
+- demandRollup carries the market's unmet-demand figures. OBEY demandRollup.rulesNote exactly: NEVER blend a service dollar figure (serviceDollars) with a stay count (stayTrips/stayNights), and NEVER sum "requested" (live) with "missed" (expired) demand — report each in its own kind and unit, or not at all.
 - Write plain prose. No markdown, no bullet lists, no headers.`;
 
 router.post("/api/me/business-advisor", aiRateLimit, isAuthenticated, async (req, res) => {
@@ -630,6 +644,19 @@ router.get("/api/me/demand-rollup", isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error("[demand] /api/me/demand-rollup error:", error);
     res.status(500).json({ message: "Failed to fetch demand rollup" });
+  }
+});
+
+// PARTNER Today card (3.4 Item 2.1): the ONE highest-value demand signal, selected server-side
+// (R19-honest, floor-cleared only) so the dashboard renders a single card with no client math.
+router.get("/api/me/demand-rollup/top", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const out = await readTopDemandSignal(userId);
+    res.json(out);
+  } catch (error) {
+    console.error("[demand] /api/me/demand-rollup/top error:", error);
+    res.status(500).json({ message: "Failed to fetch top demand signal" });
   }
 });
 

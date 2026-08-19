@@ -9,7 +9,7 @@
  * /provider/performance?tab=analytics.
  */
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useSearch } from "wouter";
+import { useSearch, Link } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -32,6 +32,7 @@ import {
   MessageSquare,
   AlertTriangle,
   Sparkles,
+  ChevronRight,
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
 
@@ -685,9 +686,34 @@ function ReviewsTab() {
   );
 }
 
+// 3.4 Item 2.2 — the L6 rollup read shape (subset the Demand tab renders). Figures arrive computed
+// and floor-cleared; the tab renders them verbatim (no client math) and forks kind (R20) + unit (R19).
+interface DemandRollupBucket {
+  slipAmount: number | null; slipCount: number; slipValuedCount: number;
+  stayTrips: number; stayNights: number; stayTravelers: number | null;
+}
+interface DemandRollupMarketSummary {
+  marketSlug: string; requested: DemandRollupBucket; missed: DemandRollupBucket;
+}
+interface DemandRollupStall { fromStage: string; toStage: string; dropped: number; entered: number }
+interface DemandRollupRow {
+  metric: string; serviceId: string | null; stallStage: DemandRollupStall | null;
+}
+interface DemandRollupResult {
+  summary: DemandRollupMarketSummary[]; rows: DemandRollupRow[]; cadence: string;
+}
+const FUNNEL_STAGE_LABELS: Record<string, string> = {
+  in_planning: "Planning", with_expert: "With expert", ready_for_checkout: "Ready", purchased: "Booked",
+};
+
 function DemandTab() {
   const { data, isLoading, isError } = useQuery<DemandSignalsResponse>({
     queryKey: ["/api/me/demand-signals"],
+  });
+
+  // 3.4 Item 2.2 — the L6 unmet-demand rollup (own_book), rendered as month figures + a funnel line.
+  const { data: rollup } = useQuery<DemandRollupResult>({
+    queryKey: ["/api/me/demand-rollup"],
   });
 
   // Business Advisor GET can 204 ("no advice generated yet") — a bare res.json() would throw on
@@ -863,6 +889,71 @@ function DemandTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* 3.4 Item 2.2 — Unmet demand (L6 rollup): month figures + funnel line, all server-computed.
+          Requested (forward) and Missed (expired) are shown SEPARATELY — never summed (R20) — and
+          service $ never blends with stay counts (R19). Deep-links to the full Market Research map. */}
+      {rollup && rollup.summary.length > 0 && (
+        <Card data-testid="card-demand-rollup">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              Unmet demand
+            </CardTitle>
+            <CardDescription>Requested vs missed, {rollup.cadence} — service $ and stay demand shown separately</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {rollup.summary.map((m) => {
+              const funnelStall = rollup.rows.find(
+                (r) => r.metric === "slip_funnel" && r.serviceId == null && r.stallStage,
+              )?.stallStage;
+              return (
+                <div key={m.marketSlug} className="rounded-lg border p-3 space-y-2" data-testid={`row-rollup-${m.marketSlug}`}>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Requested (forward window) — R20 kind, never summed with missed */}
+                    <div data-testid={`rollup-requested-${m.marketSlug}`}>
+                      <p className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Requested</p>
+                      <p className="text-sm text-foreground">
+                        {m.requested.slipAmount != null
+                          ? m.requested.slipAmount.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+                          : "—"}{" "}
+                        <span className="text-xs text-muted-foreground">· {m.requested.slipCount} experiences</span>
+                      </p>
+                      {m.requested.stayTrips > 0 && (
+                        <p className="text-xs text-muted-foreground">{m.requested.stayTrips} stay {m.requested.stayTrips === 1 ? "trip" : "trips"} · {m.requested.stayNights} nights</p>
+                      )}
+                    </div>
+                    {/* Missed (expired unfilled) — a settled loss, R20 own bucket */}
+                    <div data-testid={`rollup-missed-${m.marketSlug}`}>
+                      <p className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Missed</p>
+                      <p className="text-sm text-foreground">
+                        {m.missed.slipAmount != null
+                          ? m.missed.slipAmount.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+                          : "—"}{" "}
+                        <span className="text-xs text-muted-foreground">· {m.missed.slipCount} experiences</span>
+                      </p>
+                      {m.missed.stayTrips > 0 && (
+                        <p className="text-xs text-muted-foreground">{m.missed.stayTrips} stay {m.missed.stayTrips === 1 ? "trip" : "trips"} · {m.missed.stayNights} nights</p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Funnel line — the server-chosen biggest drop-off (stallStage), no client math */}
+                  {funnelStall && (
+                    <p className="text-xs text-muted-foreground pt-1 border-t" data-testid={`rollup-funnel-${m.marketSlug}`}>
+                      Biggest drop-off: {FUNNEL_STAGE_LABELS[funnelStall.fromStage] ?? funnelStall.fromStage} → {FUNNEL_STAGE_LABELS[funnelStall.toStage] ?? funnelStall.toStage} ({funnelStall.dropped} of {funnelStall.entered})
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            <Link href="/provider/market-research">
+              <span className="text-xs font-semibold text-primary hover:underline cursor-pointer inline-flex items-center gap-0.5" data-testid="link-rollup-market-research">
+                See the full demand map <ChevronRight className="w-3.5 h-3.5" />
+              </span>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Business Advisor — on-demand AI narration over the same server-assembled facts
           (listing health, benchmarks, link stats, demand signals). */}

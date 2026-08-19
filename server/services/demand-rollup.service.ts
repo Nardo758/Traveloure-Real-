@@ -25,7 +25,7 @@ import {
   type InsertPartnerDemandRollup,
 } from "@shared/schema";
 import { isRealTripSql } from "./demand-test-exclusion";
-import { resolveMarketSlug, timezoneForMarket } from "./trend-engine/operating-markets";
+import { resolveMarketSlug, timezoneForMarket, getMarketByKey } from "./trend-engine/operating-markets";
 import { clearsFloor, floorForScope, DEMAND_WINDOW_DAYS, type DemandAudience } from "../config/demand-floors.config";
 import {
   OPEN_SLIP_STATUSES,
@@ -38,6 +38,7 @@ import {
   classifyKind,
   addDaysISO,
   summarizeMarkets,
+  pickTopDemandSignal,
   type SlipDemandRow,
   type DiaryRow,
   type StayDemandRow,
@@ -45,6 +46,7 @@ import {
   type MarketSummary,
   type SlipFunnelPayload,
   type StallStage,
+  type TopDemandSignal,
 } from "./demand-rollup.compute";
 
 // Re-export the pure core so the service module is the single import surface for callers/tests
@@ -435,4 +437,20 @@ export async function readPartnerDemandRollup(
     // hero-not-sum (R25b): market-level cells only feed the summary.
     summary: summarizeMarkets(rows.filter((r) => r.partnerId == null && r.serviceId == null)),
   };
+}
+
+/**
+ * The ONE highest-value demand signal for the Today card (3.4 Item 2.1). Reads the partner's own
+ * rollup (own_book floor, R16-filtered, UNMAPPED excluded) and selects the single top signal
+ * SERVER-SIDE (pickTopDemandSignal — R19-honest, floor-cleared only), resolving the market's display
+ * name so the client renders honest copy with no client math. Null when there is no floor-cleared
+ * requested demand (§13 — the card simply does not render). */
+export async function readTopDemandSignal(
+  partnerUserId: string,
+): Promise<{ signal: (TopDemandSignal & { marketName: string }) | null }> {
+  const rollup = await readPartnerDemandRollup(partnerUserId);
+  const top = pickTopDemandSignal(rollup.summary);
+  if (!top) return { signal: null };
+  const marketName = getMarketByKey(top.marketSlug)?.cityName ?? top.marketSlug;
+  return { signal: { ...top, marketName } };
 }
