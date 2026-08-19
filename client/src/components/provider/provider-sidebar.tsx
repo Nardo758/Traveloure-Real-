@@ -30,6 +30,7 @@ import {
   Wrench,
   BookOpen,
   Share2,
+  Compass,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
@@ -107,6 +108,9 @@ const menuGroups = [
       // bookings (GET /api/me/customers); no invented CRM fields.
       { title: "Customers", i18nKey: "nav.customers", href: "/provider/customers", icon: Users },
       { title: "Performance", i18nKey: "nav.performance", href: "/provider/performance", icon: TrendingUp },
+      // Partner Demand Phase 3 (STEP 3.2): market-level demand — what travelers ask for vs. your
+      // coverage. Read-only study surface (stations act, this reviews).
+      { title: "Market Research", i18nKey: "nav.marketResearch", href: "/provider/market-research", icon: Compass },
       // C9: "Analytics" entry RETIRED — the page (intact) is hosted as Performance's
       // Analytics tab (the expert C6 fold); /provider/analytics redirects to
       // /provider/performance?tab=analytics.

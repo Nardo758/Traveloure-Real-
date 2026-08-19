@@ -8286,6 +8286,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
           dayNumber: 1,
           locationName: meta.city || meta.location || serviceLocation,
+          // R26 coords cheap-fix: the fetched service row carries its pin; copy it (NULL stays
+          // NULL — no invention, §13) so the item has real coordinates for neighborhood history.
+          latitude: service?.latitude ?? null,
+          longitude: service?.longitude ?? null,
           notes: cartItem.notes || null,
           suggestedBy: "user",
           origin: "traveler",

@@ -684,6 +684,10 @@ router.post(
         itemType: "activity",
         dayNumber: Math.floor(idx / PER_DAY) + 1,
         locationName: row.city || null,
+        // R26 coords cheap-fix: the extracted place carries a best-effort geocode; copy it so
+        // neighborhood history can accrue. NULL stays NULL — no city-center invention (§13).
+        latitude: row.latitude ?? null,
+        longitude: row.longitude ?? null,
         suggestedBy: "expert",
         origin: "expert",
         status: "planned",

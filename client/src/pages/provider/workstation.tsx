@@ -1018,6 +1018,19 @@ export default function ProviderWorkstation() {
                 <span className="ws-cta" data-testid="button-ladder-new-property">Start a property →</span>
               </div>
             </Link>
+
+            {/* Rung 4 — market research: see real demand before building (Partner Demand 3.2) */}
+            <Link href="/provider/market-research">
+              <div className="ws-doortile" data-testid="card-ladder-market-research">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="ws-doortile-icon">
+                  <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.7"/>
+                  <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
+                <h4>Market research</h4>
+                <p>See what travelers are asking for — and where you have no bookable slot — before you build.</p>
+                <span className="ws-cta" data-testid="button-ladder-market-research">Explore demand →</span>
+              </div>
+            </Link>
           </div>
 
           <div className="ws-divider" />
