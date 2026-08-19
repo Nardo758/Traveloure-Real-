@@ -42,7 +42,16 @@ const TOTALREV_FILES = STRICT_FILES;
 // TOTAL comes from the server-computed `summary` (L6). A client-side `.reduce(` over demand rows
 // would re-derive a figure on the client, exactly what L6/§18-rule-1 forbid. This list is narrow
 // (the demand surfaces), and the idiom is the canonical client-summation tell.
-const CLIENT_NOMATH_FILES = ["client/src/pages/provider/market-research.tsx"];
+// 3.3 Catalog funnel rows added a SECOND demand surface: the services page renders per-listing
+// funnel cells. Same rule — it renders server fields (stallStage, stage counts, floor) and must
+// never .reduce() a total out of demand rows (L6 "no client math").
+const CLIENT_NOMATH_FILES = [
+  "client/src/pages/provider/market-research.tsx",
+  "client/src/pages/provider/services.tsx",
+  // 3.3 Item 1.2 — Calendar ghost slots + month demand aggregate. The aggregate arrives computed
+  // in the /api/me/calendar `demand` field; the page must never .reduce() a total from the rows.
+  "client/src/pages/provider/calendar.tsx",
+];
 const CLIENT_MATH = /\.reduce\s*\(/;
 const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel|computeUnmetStay)\b/;
 const FLOOR_LITERAL = /[<>]=?\s*(5|10|25)\b/;
