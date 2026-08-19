@@ -26,19 +26,22 @@ import {
 } from "@shared/schema";
 import { isRealTripSql } from "./demand-test-exclusion";
 import { resolveMarketSlug, timezoneForMarket } from "./trend-engine/operating-markets";
-import { clearsFloor, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
+import { clearsFloor, DEMAND_WINDOW_DAYS, type DemandAudience } from "../config/demand-floors.config";
 import {
   OPEN_SLIP_STATUSES,
   marketLocalDate,
   computeUnmetSlip,
+  computeUnmetSlipByService,
   computeSlipFunnel,
   computeUnmetStay,
   classifyKind,
   addDaysISO,
+  summarizeMarkets,
   type SlipDemandRow,
   type DiaryRow,
   type StayDemandRow,
   type DemandKind,
+  type MarketSummary,
 } from "./demand-rollup.compute";
 
 // Re-export the pure core so the service module is the single import surface for callers/tests
@@ -62,6 +65,7 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
       marketSlug: trips.marketSlug,
       startDate: trips.startDate,
       estimatedCost: itineraryItems.estimatedCost,
+      serviceId: itineraryItems.providerServiceId,
     })
     .from(itineraryItems)
     .innerJoin(trips, eq(itineraryItems.tripId, trips.id))
@@ -77,13 +81,16 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     marketSlug: bucketSlug(r.marketSlug),
     date: marketLocalDate(new Date(`${r.startDate}T00:00:00Z`), timezoneForMarket(r.marketSlug)),
     estimatedCost: r.estimatedCost != null ? Number(r.estimatedCost) : null,
+    serviceId: r.serviceId ?? null,
   }));
 
-  // ── inventory keys: (market, date) pairs with a bookable slot. Slot→market via the provider
-  //    service's city resolved in JS (resolveMarketSlug lives in JS, not SQL). ──
+  // ── inventory keys: (market, date) AND (serviceId, date) pairs with a bookable slot. Slot→market
+  //    via the provider service's city resolved in JS (resolveMarketSlug lives in JS, not SQL). The
+  //    per-service set backs the R25b per-listing slip (a service is "met" only by its OWN slot). ──
   const bookableSlots = await db
     .select({
       date: vendorAvailabilitySlots.date,
+      serviceId: vendorAvailabilitySlots.serviceId,
       city: providerServices.city,
       capacity: vendorAvailabilitySlots.capacity,
       bookedCount: vendorAvailabilitySlots.bookedCount,
@@ -93,17 +100,22 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .innerJoin(providerServices, eq(vendorAvailabilitySlots.serviceId, providerServices.id));
 
   const inventoryKeys = new Set<string>();
+  const serviceInventoryKeys = new Set<string>();
   for (const s of bookableSlots) {
     const bookable = s.status === "available" && Number(s.bookedCount ?? 0) < Number(s.capacity ?? 1);
     if (!bookable) continue;
     const slug = resolveMarketSlug(s.city);
     const d = marketLocalDate(new Date(`${s.date}T00:00:00Z`), timezoneForMarket(slug));
     inventoryKeys.add(`${bucketSlug(slug)}|${d}`);
+    if (s.serviceId != null) serviceInventoryKeys.add(`${s.serviceId}|${d}`);
   }
 
   const slipCells = computeUnmetSlip(demandRows, inventoryKeys);
+  const slipServiceCells = computeUnmetSlipByService(demandRows, serviceInventoryKeys);
 
   // ── slip_funnel source rows: item diary joined to trip market, R16-filtered ──
+  // leftJoin itinerary_items so each transition can resolve its provider_service_id (usually NULL
+  //  for open items — those fall to the market funnel only, never a guessed service; R25b).
   const diary = await db
     .select({
       marketSlug: trips.marketSlug,
@@ -112,10 +124,12 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
       fromStatus: itemTransitionLog.fromStatus,
       toStatus: itemTransitionLog.toStatus,
       createdAt: itemTransitionLog.createdAt,
+      serviceId: itineraryItems.providerServiceId,
     })
     .from(itemTransitionLog)
     .innerJoin(trips, eq(itemTransitionLog.tripId, trips.id))
     .leftJoin(users, eq(trips.userId, users.id))
+    .leftJoin(itineraryItems, eq(itemTransitionLog.itemId, itineraryItems.id))
     .where(isRealTripSql(users.email, trips.authorId));
 
   const diaryRows: DiaryRow[] = diary.map((r) => ({
@@ -125,8 +139,10 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     fromStatus: r.fromStatus,
     toStatus: r.toStatus,
     createdAt: r.createdAt as Date,
+    serviceId: r.serviceId ?? null,
   }));
   const funnelCells = computeSlipFunnel(diaryRows);
+  const funnelServiceCells = computeSlipFunnel(diaryRows, { by: "service" });
 
   // ── unmet_demand_stay source rows (R19): REAL trips with a real date range and NO stay anchored
   //    on-platform — neither an `accommodation` itinerary item NOR a trip_selected_hotels row. This
@@ -209,10 +225,35 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
       sourceRowCount: c.trips,
     });
   }
+  // ── per-service cells (R25b): same key, service_id SET. Their floor is decided at READ time by
+  //    the reader's audience (R27), NOT here — the stored cell is grain, not a floor. ──
+  for (const c of slipServiceCells) {
+    toInsert.push({
+      marketSlug: c.marketSlug,
+      date: c.date,
+      metric: "unmet_demand_slip",
+      partnerId: null,
+      serviceId: c.serviceId ?? null,
+      value: { count: c.count, amount: c.amount, valuedCount: c.valuedCount },
+      sourceRowCount: c.count,
+    });
+  }
+  for (const c of funnelServiceCells) {
+    toInsert.push({
+      marketSlug: c.marketSlug,
+      date: latestDiaryDateByMarket.get(c.marketSlug) ?? c.payload.removalDataSince ?? "1970-01-01",
+      metric: "slip_funnel",
+      partnerId: null,
+      serviceId: c.serviceId ?? null,
+      value: c.payload,
+      sourceRowCount: c.payload.itemsObserved,
+    });
+  }
 
-  // REPLACE-BY-DATE (idempotent): delete the exact (market, date, metric, NULL, NULL) rows we are
-  // about to write, then insert. A stale row for a date with no current demand is left as history
-  // (never silently mutated).
+  // REPLACE-BY-DATE (idempotent): delete the exact (market, date, metric, partner, service) rows we
+  // are about to write — matching EACH row's OWN scope (eq when set, isNull when null) so every
+  // grain (market-level AND per-service) replaces cleanly and none leaks across a re-run (scope-leak
+  // gate). A stale row for a date with no current demand is left as history (never silently mutated).
   await db.transaction(async (tx) => {
     for (const row of toInsert) {
       await tx
@@ -222,8 +263,8 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
             eq(partnerDemandRollup.marketSlug, row.marketSlug),
             eq(partnerDemandRollup.date, row.date),
             eq(partnerDemandRollup.metric, row.metric),
-            isNull(partnerDemandRollup.partnerId),
-            isNull(partnerDemandRollup.serviceId),
+            row.partnerId == null ? isNull(partnerDemandRollup.partnerId) : eq(partnerDemandRollup.partnerId, row.partnerId),
+            row.serviceId == null ? isNull(partnerDemandRollup.serviceId) : eq(partnerDemandRollup.serviceId, row.serviceId),
           ),
         );
     }
@@ -242,6 +283,8 @@ export interface RollupReadRow {
   n: number;               // source_row_count (show-the-N)
   status: "ok" | "no_data";
   kind: DemandKind;        // R20: "requested" (date ≥ market-today) | "missed" (expired unfilled)
+  partnerId: string | null; // scope: market-level rows are (null, null); per-service set serviceId
+  serviceId: string | null; // R25b — the per-listing grain; null on market-level cells
   computedAt: Date;
 }
 export interface RollupWindow { from: string; to: string; }
@@ -250,6 +293,8 @@ export interface RollupReadResult {
   window: RollupWindow;    // the ±WINDOW date span actually read (R20)
   historySince: string | null; // earliest run behind these rows — the honest floor of the past view
   rows: RollupReadRow[];   // each tagged requested|missed; NEVER a blended total (R20 binding rule)
+  summary: MarketSummary[]; // per-market headline, aggregated SERVER-SIDE (L6 "no client math"),
+                           // forked by kind AND metric, only floor-cleared cells (§13)
 }
 export interface RollupReadOpts { from?: string; to?: string; now?: Date }
 
@@ -272,10 +317,11 @@ function resolveWindow(now: Date, from?: string, to?: string): RollupWindow {
   };
 }
 
-/** Map a stored row → read row: floor suppression (§13) + requested/missed disposition (R20). The
- *  cell's market-local "today" decides its kind, so a market's own timezone governs the boundary. */
-function toReadRow(row: StoredRollupRow, now: Date): RollupReadRow {
-  const ok = clearsFloor({ sourceRowCount: row.sourceRowCount, partnerId: row.partnerId, serviceId: row.serviceId });
+/** Map a stored row → read row: floor suppression (§13, R27 audience-keyed) + requested/missed
+ *  disposition (R20). The cell's market-local "today" decides its kind; the AUDIENCE (own-book vs
+ *  cross-partner) decides its floor, NOT its grain — the same cell suppresses differently per reader. */
+function toReadRow(row: StoredRollupRow, now: Date, audience: DemandAudience): RollupReadRow {
+  const ok = clearsFloor(row.sourceRowCount, audience);
   const marketSlug = String(row.marketSlug);
   const tz = timezoneForMarket(marketSlug === UNMAPPED_MARKET_SLUG ? null : marketSlug);
   const date = String(row.date);
@@ -287,6 +333,8 @@ function toReadRow(row: StoredRollupRow, now: Date): RollupReadRow {
     n: row.sourceRowCount,
     status: ok ? "ok" : "no_data",
     kind: classifyKind(date, marketLocalDate(now, tz)),
+    partnerId: row.partnerId,
+    serviceId: row.serviceId,
     computedAt: row.computedAt as Date,
   };
 }
@@ -312,12 +360,17 @@ function inWindow(row: { date: string }, w: RollupWindow): boolean {
 export async function readAdminDemandRollup(opts: RollupReadOpts = {}): Promise<RollupReadResult> {
   const now = opts.now ?? new Date();
   const window = resolveWindow(now, opts.from, opts.to);
-  const rows = await db.select().from(partnerDemandRollup);
+  const stored = await db.select().from(partnerDemandRollup);
+  // ADMIN is a CROSS-PARTNER reader (R27) — every row floors at 10, whatever its grain.
+  const rows = stored.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now, "cross_partner"));
   return {
     cadence: "updated daily",
     window,
-    historySince: historySinceOf(rows),
-    rows: rows.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now)),
+    historySince: historySinceOf(stored),
+    rows,
+    // hero-not-sum (R25b): the summary aggregates MARKET-LEVEL cells only, never their per-service
+    // children — a market's hero equals its market cell, never the sum of its listings' cells.
+    summary: summarizeMarkets(rows.filter((r) => r.partnerId == null && r.serviceId == null)),
   };
 }
 
@@ -331,28 +384,37 @@ export async function readPartnerDemandRollup(
   const now = opts.now ?? new Date();
   const window = resolveWindow(now, opts.from, opts.to);
   const svc = await db
-    .select({ city: providerServices.city })
+    .select({ id: providerServices.id, city: providerServices.city })
     .from(providerServices)
     .where(eq(providerServices.userId, partnerUserId));
   const markets = Array.from(
     new Set(svc.map((s) => resolveMarketSlug(s.city)).filter((m): m is string => !!m)),
   ).sort();
+  const ownServiceIds = new Set(svc.map((s) => s.id));
 
   if (markets.length === 0) {
-    return { cadence: "updated daily", window, historySince: null, markets: [], rows: [] };
+    return { cadence: "updated daily", window, historySince: null, markets: [], rows: [], summary: [] };
   }
 
-  const rows = await db
+  const stored = await db
     .select()
     .from(partnerDemandRollup)
     .where(inArray(partnerDemandRollup.marketSlug, markets));
-  const visible = rows.filter((r) => r.marketSlug !== UNMAPPED_MARKET_SLUG);
+  // UNMAPPED excluded (R13); a per-service cell is returned ONLY if the caller OWNS that service —
+  // a market cell (service_id NULL) is always in-scope for the caller's own markets.
+  const visible = stored.filter(
+    (r) => r.marketSlug !== UNMAPPED_MARKET_SLUG && (r.serviceId == null || ownServiceIds.has(r.serviceId)),
+  );
+  // The PARTNER reads their OWN book (R27) — their market + owned-service cells floor at 5.
+  const rows = visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now, "own_book"));
 
   return {
     cadence: "updated daily",
     window,
     historySince: historySinceOf(visible),
     markets,
-    rows: visible.filter((r) => inWindow(r, window)).map((r) => toReadRow(r as StoredRollupRow, now)),
+    rows,
+    // hero-not-sum (R25b): market-level cells only feed the summary.
+    summary: summarizeMarkets(rows.filter((r) => r.partnerId == null && r.serviceId == null)),
   };
 }

@@ -78,8 +78,16 @@ async function openSignInModal(page: import("@playwright/test").Page) {
 // directly and are immune to UI layout changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("I5 — spaces-only password: schema rejection (API)", () => {
-  test("POST /api/auth/login with password='   ' returns 400, not 401", async ({
+test.describe("I5 — whitespace-only login password: NOT trimmed, compared exactly (API)", () => {
+  // Ratified security decision (main@5f3e811e "Harden email-auth input validation"): the LOGIN
+  // password is NEVER trimmed. Registration stores the password verbatim, so trimming at login
+  // would (a) let a whitespace-padded variant of a correct password authenticate, and (b) lock out
+  // anyone whose real password legitimately has leading/trailing spaces. loginSchema is therefore
+  // `z.string().min(1)` (no .trim()). Consequence: a whitespace-only password PASSES schema
+  // (length ≥ 1) and is compared exactly → it fails authentication (401), it is NOT a schema
+  // rejection (400). These tests guard that decision — a 400 here would mean someone re-added
+  // .trim() to loginSchema and reintroduced the vulnerability.
+  test("POST /api/auth/login with password='   ' is not trimmed → 401 (auth), not 400 (schema)", async ({
     request,
   }) => {
     const { status, body } = await authPost(request, "/api/auth/login", {
@@ -89,42 +97,34 @@ test.describe("I5 — spaces-only password: schema rejection (API)", () => {
 
     expect(
       status,
-      `Expected 400 (schema rejection) but got ${status}. ` +
-        `A 401 means the trimmed-empty string reached the DB — the .trim() fix is not active.\n` +
+      `Expected 401 (exact-compare auth failure) but got ${status}. ` +
+        `A 400 would mean loginSchema re-added .trim() — reverting main@5f3e811e. Do NOT trim login passwords.\n` +
         `Body: ${JSON.stringify(body)}`,
-    ).toBe(400);
+    ).toBe(401);
 
-    // Zod must name the failing field
-    const errors: Array<{ path: string[] }> = body.errors ?? [];
-    const passwordErr = errors.find((e) => e.path?.includes("password"));
-    expect(
-      passwordErr,
-      `Expected a Zod validation error on field "password". Got: ${JSON.stringify(errors)}`,
-    ).toBeTruthy();
-
-    console.log("[I5-API] PASS — spaces-only password → HTTP 400 at schema layer");
+    console.log("[I5-API] PASS — spaces-only password not trimmed → HTTP 401 (exact compare)");
   });
 
-  test("POST /api/auth/login with password='\\t\\t\\t' (tabs only) returns 400", async ({
+  test("POST /api/auth/login with password='\\t\\t\\t' (tabs only) is not trimmed → 401", async ({
     request,
   }) => {
     const { status } = await authPost(request, "/api/auth/login", {
       email: "test@example.com",
       password: "\t\t\t",
     });
-    expect(status).toBe(400);
-    console.log("[I5-API] PASS — tabs-only password → HTTP 400");
+    expect(status).toBe(401);
+    console.log("[I5-API] PASS — tabs-only password not trimmed → HTTP 401");
   });
 
-  test("POST /api/auth/login with password='\\n\\r\\n' (newlines only) returns 400", async ({
+  test("POST /api/auth/login with password='\\n\\r\\n' (newlines only) is not trimmed → 401", async ({
     request,
   }) => {
     const { status } = await authPost(request, "/api/auth/login", {
       email: "test@example.com",
       password: "\n\r\n",
     });
-    expect(status).toBe(400);
-    console.log("[I5-API] PASS — newlines-only password → HTTP 400");
+    expect(status).toBe(401);
+    console.log("[I5-API] PASS — newlines-only password not trimmed → HTTP 401");
   });
 });
 

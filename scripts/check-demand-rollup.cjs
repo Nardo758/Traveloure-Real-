@@ -38,6 +38,12 @@ const STRICT_FILES = [
 // legacy debt outside this lane, flagged separately at the HARD STOP — not something a 2B gate should
 // either police or launder. The 2B analytics reads all happen in the module above, which IS scanned.
 const TOTALREV_FILES = STRICT_FILES;
+// STEP 3.2 "no client math" gate: the Market Research page renders endpoint fields only — every
+// TOTAL comes from the server-computed `summary` (L6). A client-side `.reduce(` over demand rows
+// would re-derive a figure on the client, exactly what L6/§18-rule-1 forbid. This list is narrow
+// (the demand surfaces), and the idiom is the canonical client-summation tell.
+const CLIENT_NOMATH_FILES = ["client/src/pages/provider/market-research.tsx"];
+const CLIENT_MATH = /\.reduce\s*\(/;
 const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel|computeUnmetStay)\b/;
 const FLOOR_LITERAL = /[<>]=?\s*(5|10|25)\b/;
 // R20 (ledger 2026-08-18-partner-demand-phase3): the ±90 window is ONE config constant
@@ -47,6 +53,17 @@ const WINDOW_LITERAL = /\b90\b/;
 // Only the BANNED denorm counter — a local `totalRevenue` computed from serviceBookings SUM is the
 // real number and is fine (Locked Decision 3 bans the providerServices.totalRevenue denorm only).
 const BANNED_TOTALREV = /providerServices\s*\.\s*totalRevenue|\btotal_revenue\b/;
+
+function scanClientNoMath(rel, text) {
+  const errs = [];
+  text.split("\n").forEach((line, i) => {
+    const code = line.replace(/\/\/.*$/, "");
+    if (CLIENT_MATH.test(code)) {
+      errs.push(`${rel}:${i + 1} — client-side .reduce() over demand data; totals come from the server 'summary' (L6 no-client-math)`);
+    }
+  });
+  return errs;
+}
 
 function scan(rel, text, strict) {
   const errs = [];
@@ -85,7 +102,16 @@ function runSelfTest() {
     { name: "legacy floor/compute in mixed non-strict file is not policed", rel: "server/routes/demand.routes.ts", text: "if (sampleSize >= 5) { function computeUnmetSlip(){} }", strict: false, expect: 0 },
     { name: "clean service line passes", rel: "server/services/demand-rollup.service.ts", text: "const ok = clearsFloor(row);", strict: true, expect: 0 },
   ];
+  const clientCases = [
+    { name: "client .reduce() over demand data fails", text: "const total = rows.reduce((s, r) => s + r.value.amount, 0);", expect: 1 },
+    { name: "client render of a server summary field passes", text: "const total = summary.requested.slipAmount;", expect: 0 },
+  ];
   let failed = 0;
+  for (const c of clientCases) {
+    const got = scanClientNoMath("client/src/pages/provider/market-research.tsx", c.text).length;
+    if (got === c.expect) console.log(`  ✓ ${c.name}`);
+    else { failed++; console.error(`  ✗ ${c.name} — got ${got} err(s), want ${c.expect}`); }
+  }
   for (const c of cases) {
     const got = scan(c.rel, c.text, c.strict).length;
     if (got === c.expect) console.log(`  ✓ ${c.name}`);
@@ -102,6 +128,11 @@ function main() {
     const full = path.join(REPO, rel);
     if (!fs.existsSync(full)) continue;
     errs.push(...scan(rel, fs.readFileSync(full, "utf8"), STRICT_FILES.includes(rel)));
+  }
+  for (const rel of CLIENT_NOMATH_FILES) {
+    const full = path.join(REPO, rel);
+    if (!fs.existsSync(full)) continue;
+    errs.push(...scanClientNoMath(rel, fs.readFileSync(full, "utf8")));
   }
   if (errs.length) {
     console.error(`demand-rollup gate: ${errs.length} FAILURE(S):`);
