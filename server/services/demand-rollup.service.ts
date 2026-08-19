@@ -26,7 +26,7 @@ import {
 } from "@shared/schema";
 import { isRealTripSql } from "./demand-test-exclusion";
 import { resolveMarketSlug, timezoneForMarket } from "./trend-engine/operating-markets";
-import { clearsFloor, DEMAND_WINDOW_DAYS, type DemandAudience } from "../config/demand-floors.config";
+import { clearsFloor, floorForScope, DEMAND_WINDOW_DAYS, type DemandAudience } from "../config/demand-floors.config";
 import {
   OPEN_SLIP_STATUSES,
   marketLocalDate,
@@ -34,6 +34,7 @@ import {
   computeUnmetSlipByService,
   computeSlipFunnel,
   computeUnmetStay,
+  computeStallStage,
   classifyKind,
   addDaysISO,
   summarizeMarkets,
@@ -42,6 +43,8 @@ import {
   type StayDemandRow,
   type DemandKind,
   type MarketSummary,
+  type SlipFunnelPayload,
+  type StallStage,
 } from "./demand-rollup.compute";
 
 // Re-export the pure core so the service module is the single import surface for callers/tests
@@ -285,6 +288,10 @@ export interface RollupReadRow {
   kind: DemandKind;        // R20: "requested" (date ≥ market-today) | "missed" (expired unfilled)
   partnerId: string | null; // scope: market-level rows are (null, null); per-service set serviceId
   serviceId: string | null; // R25b — the per-listing grain; null on market-level cells
+  // 3.3 Catalog funnel rows: the funnel's biggest leak, derived SERVER-SIDE (L6 "no client math")
+  // from this cell's own slip_funnel payload. Set only on a floor-cleared slip_funnel row; null on
+  // every other metric, on a suppressed row, and on a funnel with no honest stall to claim (§13).
+  stallStage: StallStage | null;
   computedAt: Date;
 }
 export interface RollupWindow { from: string; to: string; }
@@ -292,6 +299,8 @@ export interface RollupReadResult {
   cadence: string;
   window: RollupWindow;    // the ±WINDOW date span actually read (R20)
   historySince: string | null; // earliest run behind these rows — the honest floor of the past view
+  floor: number;           // the audience's suppression floor (R27) — the client renders the honest
+                           // "shows at N" line from THIS, never a hardcoded literal (config-only)
   rows: RollupReadRow[];   // each tagged requested|missed; NEVER a blended total (R20 binding rule)
   summary: MarketSummary[]; // per-market headline, aggregated SERVER-SIDE (L6 "no client math"),
                            // forked by kind AND metric, only floor-cleared cells (§13)
@@ -325,6 +334,12 @@ function toReadRow(row: StoredRollupRow, now: Date, audience: DemandAudience): R
   const marketSlug = String(row.marketSlug);
   const tz = timezoneForMarket(marketSlug === UNMAPPED_MARKET_SLUG ? null : marketSlug);
   const date = String(row.date);
+  // The stall segment rides ONLY on a floor-cleared slip_funnel cell — never re-derived on a client
+  // (L6). A suppressed cell (value nulled) carries no stall either, so nothing leaks below the floor.
+  const stallStage =
+    ok && row.metric === "slip_funnel" && row.value != null
+      ? computeStallStage(row.value as SlipFunnelPayload)
+      : null;
   return {
     marketSlug,
     date,
@@ -335,6 +350,7 @@ function toReadRow(row: StoredRollupRow, now: Date, audience: DemandAudience): R
     kind: classifyKind(date, marketLocalDate(now, tz)),
     partnerId: row.partnerId,
     serviceId: row.serviceId,
+    stallStage,
     computedAt: row.computedAt as Date,
   };
 }
@@ -367,6 +383,7 @@ export async function readAdminDemandRollup(opts: RollupReadOpts = {}): Promise<
     cadence: "updated daily",
     window,
     historySince: historySinceOf(stored),
+    floor: floorForScope("cross_partner"),
     rows,
     // hero-not-sum (R25b): the summary aggregates MARKET-LEVEL cells only, never their per-service
     // children — a market's hero equals its market cell, never the sum of its listings' cells.
@@ -393,7 +410,7 @@ export async function readPartnerDemandRollup(
   const ownServiceIds = new Set(svc.map((s) => s.id));
 
   if (markets.length === 0) {
-    return { cadence: "updated daily", window, historySince: null, markets: [], rows: [], summary: [] };
+    return { cadence: "updated daily", window, historySince: null, floor: floorForScope("own_book"), markets: [], rows: [], summary: [] };
   }
 
   const stored = await db
@@ -412,6 +429,7 @@ export async function readPartnerDemandRollup(
     cadence: "updated daily",
     window,
     historySince: historySinceOf(visible),
+    floor: floorForScope("own_book"),
     markets,
     rows,
     // hero-not-sum (R25b): market-level cells only feed the summary.
