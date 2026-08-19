@@ -82,6 +82,17 @@ export default function AdminData() {
     queryKey: ["/api/admin/data/location-summary"],
   });
 
+  // 3.5 Item 3 — demand-rollup HEALTH (row counts + freshness). Lets ops tell a healthy quiet day
+  // from a scheduler that stopped, the §17 "silence must be distinguishable" posture. Read-only.
+  const { data: rollupHealth } = useQuery<{
+    totalRows: number;
+    distinctMarkets: number;
+    lastComputedAt: string | null;
+    byMetric: { metric: string; count: number; lastComputedAt: string | null }[];
+  }>({
+    queryKey: ["/api/admin/demand-rollup/health"],
+  });
+
   const refreshAllMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", "/api/fever/cache/refresh-all");
@@ -310,6 +321,42 @@ export default function AdminData() {
   return (
     <AdminLayout title="Data by Location">
       <div className="p-6 space-y-6">
+        {/* 3.5 Item 3 — demand rollup health. Freshness + row counts so a stalled scheduler is
+            visible (§17). A null lastComputedAt = the job has never run (stated, never guessed). */}
+        {rollupHealth && (
+          <Card data-testid="card-rollup-health">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Demand rollup health</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-6 text-sm">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Last computed</p>
+                  <p className="font-medium text-gray-900" data-testid="text-rollup-last-computed">
+                    {rollupHealth.lastComputedAt
+                      ? new Date(rollupHealth.lastComputedAt).toLocaleString()
+                      : "never run"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Rows</p>
+                  <p className="font-medium text-gray-900" data-testid="text-rollup-rows">{rollupHealth.totalRows}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Markets</p>
+                  <p className="font-medium text-gray-900">{rollupHealth.distinctMarkets}</p>
+                </div>
+                {rollupHealth.byMetric.map((m) => (
+                  <div key={m.metric} data-testid={`rollup-metric-${m.metric}`}>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">{m.metric}</p>
+                    <p className="font-medium text-gray-900">{m.count}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* One-off backfill/ops tools (relocated here from the top-level sidebar) */}
         <Card data-testid="card-backfill-tools">
           <CardHeader className="pb-2">
