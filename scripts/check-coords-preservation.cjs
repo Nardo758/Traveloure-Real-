@@ -6,7 +6,7 @@
  *
  * THE INVARIANT: the item write sites that read a coord-bearing SOURCE must copy its lat/lng onto
  * the row so neighborhood history can accrue (R26; NULL stays NULL — no invention, §13):
- *   - DMO → ready-made draft     (server/routes/expert-workspace.routes.ts) — source dmo_extracted_places
+ *   - DMO → ready-made draft     (server/routes/expert-workspace.routes.ts) — source dmo_raw_content
  *   - cart → convert-to-itinerary (server/routes.ts)                        — source provider_services
  * NOTE — the optimizer variant producer was in the original R26 list but was DEMOTED to the FOLLOWUP:
  * its `ItineraryItem` interface carries no lat/lng, so there was nothing in hand to copy (the coords
