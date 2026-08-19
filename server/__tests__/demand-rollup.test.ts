@@ -12,6 +12,7 @@ import {
   computeUnmetSlipByService,
   computeSlipFunnel,
   computeUnmetStay,
+  computeStallStage,
   classifyKind,
   addDaysISO,
   summarizeMarkets,
@@ -19,6 +20,7 @@ import {
   type DiaryRow,
   type StayDemandRow,
   type SummaryInputRow,
+  type SlipFunnelPayload,
 } from "../services/demand-rollup.compute";
 import { clearsFloor, floorForScope, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
@@ -239,6 +241,41 @@ test("computeUnmetSlipByService: groups by service, skips NULL-service rows, use
   assert.equal(cells[0].amount, 150);
   assert.equal(cells[0].valuedCount, 2);
   assert.deepEqual(computeUnmetSlipByService(demand, svcInv), computeUnmetSlipByService(demand, svcInv)); // determinism
+});
+
+// ── stall stage (3.3 Catalog funnel rows) ────────────────────────────────────────────────────────
+function funnelPayload(stageEntries: Record<string, number>): SlipFunnelPayload {
+  return { stageEntries, transitions: {}, transitionRates: {}, avgHoursInStage: {}, removed: 0, removalDataSince: null, itemsObserved: 0 };
+}
+
+test("computeStallStage: picks the largest stage-to-stage drop (the funnel's biggest leak)", () => {
+  // 20 → 18 → 4 → 3: the with_expert→ready_for_checkout segment loses 14, the biggest fall
+  const stall = computeStallStage(funnelPayload({ in_planning: 20, with_expert: 18, ready_for_checkout: 4, purchased: 3 }));
+  assert.notEqual(stall, null);
+  assert.equal(stall!.fromStage, "with_expert");
+  assert.equal(stall!.toStage, "ready_for_checkout");
+  assert.equal(stall!.entered, 18);
+  assert.equal(stall!.continued, 4);
+  assert.equal(stall!.dropped, 14);
+  assert.equal(stall!.dropRate, Math.round((14 / 18) * 10000) / 10000);
+});
+
+test("computeStallStage: a tie resolves to the EARLIER ladder segment (deterministic)", () => {
+  // in_planning→with_expert drops 10; ready_for_checkout→purchased also drops 10 → earlier wins
+  const stall = computeStallStage(funnelPayload({ in_planning: 10, with_expert: 0, ready_for_checkout: 10, purchased: 0 }));
+  assert.equal(stall!.fromStage, "in_planning");
+  assert.equal(stall!.toStage, "with_expert");
+  assert.equal(stall!.dropped, 10);
+});
+
+test("computeStallStage: null (§13) when there is no honest stall to claim", () => {
+  // no stage carried entries → no claim
+  assert.equal(computeStallStage(funnelPayload({})), null);
+  // a flat/monotonic-up funnel never drops → no stall invented (not a zero-drop segment)
+  assert.equal(computeStallStage(funnelPayload({ in_planning: 5, with_expert: 5, ready_for_checkout: 6, purchased: 6 })), null);
+  // determinism
+  const p = funnelPayload({ in_planning: 9, with_expert: 2 });
+  assert.deepEqual(computeStallStage(p), computeStallStage(p));
 });
 
 test("computeSlipFunnel by service: per-service cells skip NULL-service; market grain still counts all", () => {

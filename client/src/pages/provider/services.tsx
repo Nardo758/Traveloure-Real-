@@ -551,6 +551,54 @@ interface HealthResponse {
   omitted: { key: string; reason: string }[];
 }
 
+// ── 3.3 Catalog funnel rows: the per-service demand funnel, read from the L6 rollup endpoint
+//    (GET /api/me/demand-rollup — own_book scope, server-enforced to the caller's OWN listings).
+//    This page RENDERS server fields and NEVER re-derives a demand figure (L6 "no client math"):
+//    the stall segment, every stage count, the drop size, and the suppression floor all arrive
+//    already computed. The only thing local here is presentation ORDER + labels. ──
+type SlipFunnelStageKey = "in_planning" | "with_expert" | "ready_for_checkout" | "purchased";
+// Ladder ORDER for the bar (left→right). Mirrors the server SLIP_FUNNEL_STAGES enum — a stable
+// lifecycle order, not a restated server decision: the SERVER owns which segment stalls
+// (row.stallStage), the client owns only the pixel order in which the stages are laid out.
+const SLIP_FUNNEL_LADDER: readonly SlipFunnelStageKey[] = [
+  "in_planning",
+  "with_expert",
+  "ready_for_checkout",
+  "purchased",
+];
+const SLIP_FUNNEL_STAGE_LABELS: Record<SlipFunnelStageKey, string> = {
+  in_planning: "Planning",
+  with_expert: "With expert",
+  ready_for_checkout: "Ready",
+  purchased: "Booked",
+};
+interface DemandStallStage {
+  fromStage: string;
+  toStage: string;
+  entered: number;
+  continued: number;
+  dropped: number;
+  dropRate: number;
+}
+interface DemandFunnelPayload {
+  stageEntries: Record<string, number>;
+  removed: number;
+  removalDataSince: string | null;
+  itemsObserved: number;
+}
+interface DemandRollupRow {
+  metric: string;
+  serviceId: string | null;
+  value: DemandFunnelPayload | null;   // null ⇒ suppressed below floor (§13); n still present
+  n: number;
+  status: "ok" | "no_data";
+  stallStage: DemandStallStage | null; // server-derived (3.3); null when suppressed or no stall
+}
+interface DemandRollupResult {
+  floor: number;                        // the own_book suppression floor (R27) — never hardcode it
+  rows: DemandRollupRow[];
+}
+
 const HEALTH_CHECK_KEYS = [
   "photo",
   "exact_pin",
@@ -658,6 +706,53 @@ function HealthIndicator({ health }: { health: ServiceHealth | undefined }) {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** 3.3 Catalog funnel row — the per-listing demand funnel drawn under the meta line. Renders ONLY
+ *  server-computed fields (L6 "no client math"): stage counts, the server-chosen stall segment, and
+ *  the honest below-floor line whose N + floor both come from the endpoint. Renders NOTHING when the
+ *  listing has no funnel cell yet (§13 honest absence — no funnel history to show). */
+function ListingDemandFunnel({ row, floor }: { row: DemandRollupRow | undefined; floor: number }) {
+  if (!row) return null;
+  // Below the owner's floor: the demand VALUE is suppressed server-side, but the raw N is exposed so
+  // the owner sees the honest reason it's hidden — copy, N, and floor all from the server (no literal).
+  if (row.status !== "ok" || !row.value) {
+    return (
+      <p className="text-[11.5px] text-[#B8B6AC] mt-1.5" data-testid={`text-demand-belowfloor-${row.serviceId}`}>
+        Appears in {row.n} planned {row.n === 1 ? "trip" : "trips"} — shows at {floor}
+      </p>
+    );
+  }
+  const entries = row.value.stageEntries ?? {};
+  const stall = row.stallStage;
+  return (
+    <div className="mt-1.5 flex items-center gap-1 flex-wrap text-[11px]" data-testid={`demand-funnel-${row.serviceId}`}>
+      {SLIP_FUNNEL_LADDER.map((stage, i) => {
+        const count = entries[stage] ?? 0;
+        const stallHere = stall?.fromStage === stage;
+        const isLast = i === SLIP_FUNNEL_LADDER.length - 1;
+        return (
+          <span key={stage} className="flex items-center gap-1">
+            <span className="text-[#7A7A72] whitespace-nowrap">
+              <span className="font-semibold text-[#1A1A18]">{count}</span> {SLIP_FUNNEL_STAGE_LABELS[stage]}
+            </span>
+            {!isLast &&
+              (stallHere && stall ? (
+                <span
+                  className="text-[#B4472F] font-medium px-1"
+                  data-testid={`demand-stall-${row.serviceId}`}
+                  title={`Biggest drop-off here: ${stall.dropped} of ${stall.entered} don't continue`}
+                >
+                  ↓{stall.dropped}
+                </span>
+              ) : (
+                <span className="text-[#D8D6CE]">›</span>
+              ))}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1089,6 +1184,8 @@ function ListingRow({
   onRequestDelete,
   duplicateDisabled,
   onOpenAvailability,
+  demandRow,
+  demandFloor,
 }: {
   service: Service;
   health: ServiceHealth | undefined;
@@ -1101,6 +1198,8 @@ function ListingRow({
   onRequestDelete: () => void;
   duplicateDisabled: boolean;
   onOpenAvailability?: () => void;
+  demandRow?: DemandRollupRow;   // 3.3 — this listing's per-service demand funnel cell (own_book)
+  demandFloor: number;           // R27 own_book floor for the honest below-floor line (from server)
 }) {
   const { t } = useTranslation("catalog");
   const displayName = service.serviceName || service.name || t("card.untitled");
@@ -1134,6 +1233,9 @@ function ListingRow({
         <p className="text-[12.5px] text-[#7A7A72] mt-0.5 truncate" data-testid={`text-listing-meta-${service.id}`}>
           {listingMetaLine(service)}
         </p>
+
+        {/* 3.3 Catalog funnel row — per-service demand funnel under the meta line (own_book). */}
+        {!isArchived && <ListingDemandFunnel row={demandRow} floor={demandFloor} />}
 
         <div className="flex items-center gap-3.5 mt-2.5 flex-wrap">
           <CatalogPill service={service} />
@@ -1188,6 +1290,21 @@ function ListingRow({
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-auto min-w-[120px]">
         {/* Health bar at the top of the right column — mock anatomy: bar + status label, top-right of each row */}
         <HealthIndicator health={health} />
+        {/* 3.3 removal badge — items travelers pulled from a plan featuring this listing. Server
+            count + removalDataSince tooltip; shown only when the funnel cleared the floor and > 0. */}
+        {!isArchived && demandRow?.status === "ok" && demandRow.value && demandRow.value.removed > 0 && (
+          <span
+            className="text-[10px] text-[#B4472F] bg-[#B4472F]/8 border border-[#B4472F]/20 rounded px-1.5 py-0.5 whitespace-nowrap"
+            data-testid={`badge-removed-${service.id}`}
+            title={
+              demandRow.value.removalDataSince
+                ? `Removal data since ${demandRow.value.removalDataSince}`
+                : "Removal history start unknown"
+            }
+          >
+            {demandRow.value.removed} removed
+          </span>
+        )}
         {!isArchived && (
         <Link href={editHref}>
           <button
@@ -1334,6 +1451,22 @@ export default function ProviderServices() {
   // page historically — use globalThis.Map explicitly to avoid any ambiguity.
   const healthByServiceId = new globalThis.Map<string, ServiceHealth>(
     (healthData?.services ?? []).map((h) => [h.serviceId, h]),
+  );
+
+  // 3.3 Catalog funnel rows — the per-listing demand funnel. ONE query to the L6 rollup endpoint
+  // (own_book scope, server-enforced to the caller's OWN listings — the page never re-scopes). Its
+  // per-service slip_funnel cells (one per service) key by serviceId; the owner floor rides on the
+  // result so the honest below-floor line needs no client literal (config-only). 404s (200-HTML
+  // pre-mount) land with no data ⇒ each row renders nothing (§13), same posture as health.
+  const { data: demandData } = useQuery<DemandRollupResult>({
+    queryKey: ["/api/me/demand-rollup"],
+    enabled: !!services && services.length > 0,
+  });
+  const demandFloor = demandData?.floor ?? 0;
+  const demandByServiceId = new globalThis.Map<string, DemandRollupRow>(
+    (demandData?.rows ?? [])
+      .filter((r) => r.metric === "slip_funnel" && r.serviceId != null)
+      .map((r) => [r.serviceId as string, r]),
   );
 
   // WAVE 2 / S2: the listing home's "Publish some availability" checklist row (and any other
@@ -1778,6 +1911,8 @@ export default function ProviderServices() {
                   onOpenAvailability={() => {
                     navigate(`/provider/availability?serviceId=${service.id}`);
                   }}
+                  demandRow={demandByServiceId.get(service.id)}
+                  demandFloor={demandFloor}
                 />
               ))}
             </div>

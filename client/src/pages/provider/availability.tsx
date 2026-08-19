@@ -138,7 +138,7 @@ const fieldStyle: CSSProperties = {
 
 // ── Date-ranges right-rail card ───────────────────────────────────────────────
 
-function DateRangesRail({ serviceId }: { serviceId: string }) {
+function DateRangesRail({ serviceId, presetDate }: { serviceId: string; presetDate?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const qKey = ["/api/provider/services", serviceId, "date-ranges"];
@@ -150,11 +150,16 @@ function DateRangesRail({ serviceId }: { serviceId: string }) {
 
   const [rows, setRows] = useState<{ startDate: string; endDate: string; nightlyPrice: string; capacity: number }[]>([]);
   const [hydrated, setHydrated] = useState(false);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newStart, setNewStart] = useState("");
+  // Ghost-slot deep-link (3.3 Item 1.2): a `?date=` window opens the add-range form with the
+  // requested day as the start, so a "requested" tap on a property lands ready to open the window.
+  const [showAdd, setShowAdd] = useState(!!presetDate);
+  const [newStart, setNewStart] = useState(presetDate ?? "");
   const [newEnd, setNewEnd] = useState("");
   const [newPrice, setNewPrice] = useState("");
 
+  useEffect(() => {
+    if (presetDate) { setNewStart(presetDate); setShowAdd(true); }
+  }, [presetDate]);
   useEffect(() => { setHydrated(false); }, [serviceId]);
   useEffect(() => {
     if (!hydrated && data) {
@@ -502,7 +507,7 @@ function WeeklyPatternsRail({ serviceId }: { serviceId: string }) {
 
 // ── One-off slots right-rail card ─────────────────────────────────────────────
 
-function OneOffSlotsRail({ serviceId }: { serviceId: string }) {
+function OneOffSlotsRail({ serviceId, presetDate }: { serviceId: string; presetDate?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -515,8 +520,13 @@ function OneOffSlotsRail({ serviceId }: { serviceId: string }) {
     .filter((s) => s.serviceId === serviceId && s.date >= today && s.status !== "withdrawn")
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const [showAdd, setShowAdd] = useState(false);
-  const [newDate, setNewDate] = useState("");
+  // Calendar ghost-slot deep-link (3.3 Item 1.2): a `?date=` window preselects the add-slot form
+  // with that day filled in and open, so tapping a "requested" day lands ready to publish a slot.
+  const [showAdd, setShowAdd] = useState(!!presetDate);
+  const [newDate, setNewDate] = useState(presetDate ?? "");
+  useEffect(() => {
+    if (presetDate) { setNewDate(presetDate); setShowAdd(true); }
+  }, [presetDate]);
   const [newStart, setNewStart] = useState("09:00");
   const [newEnd, setNewEnd] = useState("17:00");
   const [newSeats, setNewSeats] = useState(1);
@@ -667,13 +677,13 @@ function NoCalendarPanel({ deliveryMethod }: { deliveryMethod?: string | null })
 
 // ── Service editor — dispatches by product shape / delivery method ─────────────
 
-function ServiceEditor({ service }: { service: ProviderService }) {
+function ServiceEditor({ service, presetDate }: { service: ProviderService; presetDate?: string }) {
   if (isPropertyShaped(service)) {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 16, alignItems: "start" }}>
         <AvailabilityMonthGrid serviceId={service.id} semantics="nightly" />
         <div>
-          <DateRangesRail serviceId={service.id} />
+          <DateRangesRail serviceId={service.id} presetDate={presetDate} />
           <BlackoutsRail serviceId={service.id} />
         </div>
       </div>
@@ -685,7 +695,7 @@ function ServiceEditor({ service }: { service: ProviderService }) {
         <AvailabilityMonthGrid serviceId={service.id} semantics="scheduled" />
         <div>
           <WeeklyPatternsRail serviceId={service.id} />
-          <OneOffSlotsRail serviceId={service.id} />
+          <OneOffSlotsRail serviceId={service.id} presetDate={presetDate} />
           <BlackoutsRail serviceId={service.id} />
         </div>
       </div>
@@ -700,6 +710,11 @@ export default function ProviderAvailability() {
   const search = useSearch();
   const params = new URLSearchParams(search);
   const deepLinkId = params.get("serviceId") ?? undefined;
+  // 3.3 Item 1.2 — the Calendar ghost-slot chip deep-links here with `?date=YYYY-MM-DD` to
+  // preselect the requested window in the add-slot/add-range form. Validated shape (ignored if
+  // malformed) so a stray param never seeds a bad date.
+  const dateParam = params.get("date") ?? undefined;
+  const presetDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
 
   const { data: services, isLoading } = useQuery<ProviderService[]>({
     queryKey: ["/api/provider/services"],
@@ -806,7 +821,7 @@ export default function ProviderAvailability() {
             </div>
 
             {/* Editor */}
-            {selectedService && <ServiceEditor service={selectedService} />}
+            {selectedService && <ServiceEditor service={selectedService} presetDate={presetDate} />}
           </>
         )}
       </div>
