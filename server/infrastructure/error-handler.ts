@@ -86,6 +86,23 @@ export function globalErrorHandler(
 ): void {
   const requestId = (req as any).id || req.headers["x-request-id"] || "unknown";
 
+  // Body-parser rejections (e.g. express.json `limit` exceeded) arrive as plain
+  // errors with `type`/`status` set. Surface them as clean 4xx JSON instead of
+  // falling through to the generic 500 INTERNAL_ERROR branch.
+  const bodyParserErr = err as Error & { type?: string; status?: number; statusCode?: number };
+  if (bodyParserErr.type === "entity.too.large") {
+    res.status(413).json({
+      error: {
+        message: "Request body too large",
+        code: "PAYLOAD_TOO_LARGE",
+        statusCode: 413,
+        timestamp: new Date().toISOString(),
+        requestId,
+      },
+    });
+    return;
+  }
+
   if (err instanceof AppError) {
     logger.warn(
       {
