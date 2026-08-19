@@ -51,6 +51,9 @@ const CLIENT_NOMATH_FILES = [
   // 3.3 Item 1.2 — Calendar ghost slots + month demand aggregate. The aggregate arrives computed
   // in the /api/me/calendar `demand` field; the page must never .reduce() a total from the rows.
   "client/src/pages/provider/calendar.tsx",
+  // 3.4 Item 2.2 — Performance → Demand tab renders the L6 rollup month figures + funnel line;
+  // every figure comes from the server summary/stallStage, never re-derived on the client.
+  "client/src/pages/provider/performance.tsx",
 ];
 const CLIENT_MATH = /\.reduce\s*\(/;
 const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel|computeUnmetStay)\b/;

@@ -16,11 +16,15 @@ import {
   classifyKind,
   addDaysISO,
   summarizeMarkets,
+  pickTopDemandSignal,
+  buildDemandRollupFacts,
+  DEMAND_ROLLUP_RULES_NOTE,
   type SlipDemandRow,
   type DiaryRow,
   type StayDemandRow,
   type SummaryInputRow,
   type SlipFunnelPayload,
+  type MarketSummary,
 } from "../services/demand-rollup.compute";
 import { clearsFloor, floorForScope, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
@@ -276,6 +280,72 @@ test("computeStallStage: null (§13) when there is no honest stall to claim", ()
   // determinism
   const p = funnelPayload({ in_planning: 9, with_expert: 2 });
   assert.deepEqual(computeStallStage(p), computeStallStage(p));
+});
+
+// ── top demand signal for the Today card (3.4 Item 2.1) ──────────────────────────────────────────
+function mkSummary(marketSlug: string, requested: Partial<MarketSummary["requested"]>): MarketSummary {
+  const blank = { slipAmount: null, slipCount: 0, slipValuedCount: 0, stayTrips: 0, stayNights: 0, stayTravelers: null };
+  return { marketSlug, requested: { ...blank, ...requested }, missed: { ...blank } };
+}
+
+test("pickTopDemandSignal: highest-$ SERVICE signal wins; R19 units carried, never blended", () => {
+  const top = pickTopDemandSignal([
+    mkSummary("goa", { slipAmount: 400, slipCount: 8 }),
+    mkSummary("kyoto", { slipAmount: 900, slipCount: 12, stayTrips: 50 }), // higher $ AND has stay
+  ]);
+  assert.equal(top?.shape, "service");
+  assert.equal(top?.marketSlug, "kyoto");
+  assert.equal(top?.amount, 900);
+  assert.equal(top?.count, 12);
+  // R19: a service signal carries NO stay units
+  assert.equal(top?.trips, undefined);
+  assert.equal(top?.nights, undefined);
+});
+
+test("pickTopDemandSignal: STAY signal is the fallback only when NO service $ exists (R19, no $)", () => {
+  const top = pickTopDemandSignal([
+    mkSummary("kyoto", { stayTrips: 27, stayNights: 135 }), // stay only, no slip $
+  ]);
+  assert.equal(top?.shape, "stay");
+  assert.equal(top?.trips, 27);
+  assert.equal(top?.nights, 135);
+  // R19: a stay signal NEVER carries $
+  assert.equal(top?.amount, undefined);
+  assert.equal((top as { amount?: number })?.amount, undefined);
+});
+
+test("pickTopDemandSignal: null when there is no floor-cleared requested demand (§13); deterministic tie", () => {
+  assert.equal(pickTopDemandSignal([]), null);
+  assert.equal(pickTopDemandSignal([mkSummary("kyoto", {})]), null); // no slip $, no stay trips
+  // tie on $ → earlier market (summaries arrive sorted) wins, stably
+  const tie = [mkSummary("goa", { slipAmount: 500, slipCount: 5 }), mkSummary("kyoto", { slipAmount: 500, slipCount: 9 })];
+  assert.equal(pickTopDemandSignal(tie)?.marketSlug, "goa");
+  assert.deepEqual(pickTopDemandSignal(tie), pickTopDemandSignal(tie));
+});
+
+// ── advisor labeled facts (3.4 Item 2.2) — R5/R19/R20 labels ride into the prompt ───────────────
+test("buildDemandRollupFacts: each figure is tagged by kind (R20) and shape (R19); rulesNote rides along", () => {
+  const facts = buildDemandRollupFacts([
+    mkSummary("kyoto", { slipAmount: 900, slipCount: 12, stayTrips: 27, stayNights: 135 }),
+  ]);
+  // rulesNote carries both invariants into the prompt
+  assert.equal(facts.rulesNote, DEMAND_ROLLUP_RULES_NOTE);
+  assert.match(facts.rulesNote, /R19/);
+  assert.match(facts.rulesNote, /R20/);
+  assert.match(facts.rulesNote, /never/i);
+  const k = facts.markets[0];
+  assert.equal(k.market, "kyoto");
+  // R20: requested and missed are SEPARATE buckets (never one summed figure)
+  assert.ok("requested" in k && "missed" in k);
+  // R19: service demand is a DOLLAR figure; stay demand is count-only in the SAME bucket, no $ key
+  assert.equal(k.requested.serviceDollars, 900);
+  assert.equal(k.requested.serviceCount, 12);
+  assert.equal(k.requested.stayTrips, 27);
+  assert.equal(k.requested.stayNights, 135);
+  assert.equal("stayDollars" in k.requested, false, "R19: a stay figure never carries a dollar key");
+  // missed is its own bucket, empty here (a settled loss is never blended into requested)
+  assert.equal(k.missed.serviceDollars, null);
+  assert.equal(k.missed.stayTrips, 0);
 });
 
 test("computeSlipFunnel by service: per-service cells skip NULL-service; market grain still counts all", () => {
