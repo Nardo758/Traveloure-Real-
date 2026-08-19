@@ -257,6 +257,22 @@ export default function FeeBandsAdminPage() {
     queryKey: ["/api/admin/platform-settings"],
   });
 
+  // 3.5 Item 3 — demand suppression floors (R27), READ-ONLY from config (no literals on the client).
+  const { data: floors } = useQuery<{
+    editable: boolean;
+    source: string;
+    windowDays: number;
+    tiers: { audience: string; floor: number; label: string; scope: string }[];
+  }>({ queryKey: ["/api/admin/demand-floors"] });
+
+  // 3.5 Item 3 — the recruitment one-pager control. Generation is R18-gated to Phase 4; the button
+  // is wired to the stub which authorizes nothing and returns the honest "awaiting Phase 4" message.
+  const { toast } = useToast();
+  const onePagerMutation = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/admin/demand-one-pager", {})).json(),
+    onSuccess: (r: { message?: string }) => toast({ title: "One-pager", description: r?.message ?? "Not generated." }),
+  });
+
   if (bandsLoading || settingsLoading) {
     return (
       <AdminLayout title="Fee Bands">
@@ -324,6 +340,63 @@ export default function FeeBandsAdminPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {flatBands.map((b) => <BandRow key={b.band_key} band={b} />)}
+        </CardContent>
+      </Card>
+
+      {/* 3.5 Item 3 — demand suppression floors (R27). NOT fees — small-sample thresholds, keyed by
+          WHO reads the figure. Read-only: config-set, moved only by the decision-maker in code. */}
+      {floors && (
+        <Card className="border-gray-200" data-testid="card-demand-floors">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Layers className="w-4 h-4" />
+              Demand suppression floors (R27)
+            </CardTitle>
+            <p className="text-xs text-gray-500">
+              A demand figure whose sample is below its audience's floor renders as no-data (§13). These
+              are NOT fees — they key on WHO reads the figure, not the cell's grain. Config-set
+              (<code className="bg-gray-100 px-1 rounded">{floors.source}</code>), moved only by the
+              decision-maker; window ±{floors.windowDays} days.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {floors.tiers.map((t) => (
+              <div key={t.audience} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2" data-testid={`row-floor-${t.audience}`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{t.label}</p>
+                  <p className="text-xs text-gray-500">{t.scope}</p>
+                </div>
+                <Badge variant="outline" className="flex-shrink-0" data-testid={`badge-floor-${t.audience}`}>≥ {t.floor}</Badge>
+              </div>
+            ))}
+            <p className="text-[11px] text-gray-400 pt-1">Read-only here — changing a floor is a config change, escalated to the decision-maker (no DB override).</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 3.5 Item 3 — recruitment one-pager. Control ships; generation is R18-gated to Phase 4. */}
+      <Card className="border-dashed border-gray-200" data-testid="card-one-pager">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <DollarSign className="w-4 h-4" />
+            Recruitment one-pager
+          </CardTitle>
+          <p className="text-xs text-gray-500">
+            A partner-recruitment one-pager built from cross-partner demand (floor {floors?.tiers.find((t) => t.audience === "cross_partner")?.floor ?? "—"}).
+            Generation is disabled until Phase 4 authorization (R18) — the control is wired, but it produces no artifact yet.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onePagerMutation.mutate()}
+            disabled={onePagerMutation.isPending}
+            data-testid="button-generate-one-pager"
+          >
+            {onePagerMutation.isPending ? "Checking…" : "Generate one-pager"}
+          </Button>
+          <p className="text-[11px] text-gray-400 mt-2">Awaiting Phase 4 authorization — this button reports status only.</p>
         </CardContent>
       </Card>
     </div>
