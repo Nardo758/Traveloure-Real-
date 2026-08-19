@@ -31,11 +31,13 @@ import {
   shortLinks,
   serviceBookings,
   users,
+  partnerDemandRollup,
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
 import { readPartnerDemandRollup, readAdminDemandRollup, readTopDemandSignal } from "../services/demand-rollup.service";
 import { buildDemandRollupFacts, type DemandRollupFacts } from "../services/demand-rollup.compute";
+import { DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 const router = Router();
 
@@ -672,6 +674,69 @@ router.get("/api/admin/demand-rollup", async (req, res) => {
     console.error("[demand] /api/admin/demand-rollup error:", error);
     res.status(500).json({ message: "Failed to fetch admin demand rollup" });
   }
+});
+
+// ADMIN 3.5 Item 3 — demand-rollup HEALTH (observability, not a demand figure). Row counts +
+// freshness so ops can tell a healthy quiet day from a scheduler that stopped running (the §17
+// "silence must be distinguishable" posture, applied to the rollup table). Inherits the §2 admin
+// guard. No floor/metric math here — just counts and the latest computed_at.
+router.get("/api/admin/demand-rollup/health", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        metric: partnerDemandRollup.metric,
+        count: sql<number>`count(*)::int`,
+        latest: sql<string | null>`max(${partnerDemandRollup.computedAt})`,
+      })
+      .from(partnerDemandRollup)
+      .groupBy(partnerDemandRollup.metric);
+    const totals = await db
+      .select({
+        totalRows: sql<number>`count(*)::int`,
+        markets: sql<number>`count(distinct ${partnerDemandRollup.marketSlug})::int`,
+        latest: sql<string | null>`max(${partnerDemandRollup.computedAt})`,
+      })
+      .from(partnerDemandRollup);
+    res.json({
+      totalRows: Number(totals[0]?.totalRows ?? 0),
+      distinctMarkets: Number(totals[0]?.markets ?? 0),
+      lastComputedAt: totals[0]?.latest ?? null,
+      byMetric: rows.map((r) => ({ metric: r.metric, count: Number(r.count), lastComputedAt: r.latest ?? null })),
+    });
+  } catch (error) {
+    console.error("[demand] /api/admin/demand-rollup/health error:", error);
+    res.status(500).json({ message: "Failed to fetch demand rollup health" });
+  }
+});
+
+// ADMIN 3.5 Item 3 — the demand suppression floors, READ-ONLY, served FROM CONFIG (no literals on
+// the client). R27: the tier keys on WHO reads a figure, not the cell's grain. These are config-set
+// (server/config/demand-floors.config.ts) and moved ONLY by the decision-maker in code — there is no
+// DB override and this endpoint never writes; a Leon-editable, audit-logged floor control is a
+// separate ratified change (it would need a floors table, escalate per Coordination Prevention).
+router.get("/api/admin/demand-floors", async (_req, res) => {
+  res.json({
+    editable: false,
+    source: "server/config/demand-floors.config.ts",
+    windowDays: DEMAND_WINDOW_DAYS,
+    tiers: [
+      { audience: "own_book", floor: DEMAND_FLOORS.ownBook, label: "Own book", scope: "Shown to the party the figure is ABOUT (a partner viewing their own market/listing). The lowest bar." },
+      { audience: "cross_partner", floor: DEMAND_FLOORS.crossPartner, label: "Cross-partner", scope: "Shown to someone OTHER than its subject — admin cross-partner views, the recruitment one-pager." },
+      { audience: "sold", floor: DEMAND_FLOORS.sold, label: "Sold", scope: "A figure in a SOLD dataset. The highest bar; nothing renders it today." },
+    ],
+  });
+});
+
+// ADMIN 3.5 Item 3 — the recruitment one-pager control. The UI ships, but GENERATION is R18-gated
+// to Phase 4: this endpoint is a STUB that authorizes nothing and produces no artifact. It returns
+// an honest "awaiting Phase 4 authorization" so the button is wired end-to-end without doing the
+// thing that isn't authorized yet (§13 — never a fake success).
+router.post("/api/admin/demand-one-pager", async (_req, res) => {
+  res.status(200).json({
+    status: "awaiting_phase_4",
+    generated: false,
+    message: "One-pager generation is disabled until Phase 4 authorization (R18). This control is wired; generation is not yet enabled.",
+  });
 });
 
 // ── Market Research layer prefs — the registry rail (R25-final.1; ledger 3.1c, R25-final) ────────
