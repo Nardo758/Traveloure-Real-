@@ -48,6 +48,9 @@ const TOTALREV_FILES = STRICT_FILES;
 const CLIENT_NOMATH_FILES = [
   "client/src/pages/provider/market-research.tsx",
   "client/src/pages/provider/services.tsx",
+  // 3.3 Item 1.2 — Calendar ghost slots + month demand aggregate. The aggregate arrives computed
+  // in the /api/me/calendar `demand` field; the page must never .reduce() a total from the rows.
+  "client/src/pages/provider/calendar.tsx",
 ];
 const CLIENT_MATH = /\.reduce\s*\(/;
 const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel|computeUnmetStay)\b/;
