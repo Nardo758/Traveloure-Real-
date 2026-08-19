@@ -24,6 +24,20 @@ const ACCS  = "#EDF2F1";
 const WARN_BG   = "#FBF6EC";
 const WARN_LINE = "#D9C79A";
 const WARN_INK  = "#6B551F";
+// ghost (3.3 Item 1.2) — requested-but-uncovered demand. A DASHED gold chip: distinct from the
+// solid amber blackout and the solid teal slot, it reads as "not a slot yet — an opportunity".
+const GHOST_LINE = "#C79A3C";
+const GHOST_INK  = "#8A6620";
+
+// R21 forward calendar-pressure shading (season + holiday/festival) is LIVE-gated, not built dark
+// on a hunch: it shades high-pressure weeks ONLY when trend_scores actually carries forward
+// calendar-pressure rows for the caller's markets. That populate-check is a runtime DB query
+// (⚑ Replit — see docs/findings/partner-demand-3.3-ghost-fixture.md), so until it's verified the
+// layer ships OFF behind this flag rather than shading weeks from an empty/partial table (§13).
+// UNBLOCK: confirm trend_scores has forward calendar-pressure rows (written by
+// server/services/trend-engine/trend-score.service.ts), then wire the decomposed calendar-pressure
+// read here and flip this true. The composite trend_score / crowd_band must NEVER render (R21).
+const SHOW_PRESSURE_SHADING = false;
 
 // ── types ─────────────────────────────────────────────────────────────────────
 type Lane = "inbound" | "outbound" | "availability" | "store";
@@ -40,6 +54,10 @@ interface CalendarEvent {
 
 // ── chip style — driven by kind, not lane, so blackouts and full slots differ
 function chipStyle(e: CalendarEvent): React.CSSProperties {
+  if (e.kind === "ghost") {
+    // Dashed hollow gold — a requested-but-uncovered window (3.3 Item 1.2), never a solid chip.
+    return { background: "transparent", color: GHOST_INK, border: `1px dashed ${GHOST_LINE}` };
+  }
   if (e.kind === "blackout") {
     return { background: WARN_BG, color: WARN_INK, border: `1px solid ${WARN_LINE}` };
   }
@@ -51,6 +69,15 @@ function chipStyle(e: CalendarEvent): React.CSSProperties {
   }
   // open_slot + everything else → teal
   return { background: ACCS, color: ACC };
+}
+
+// R21 forward calendar-pressure shading for a given day. Returns undefined (no shade) while the
+// layer is gated OFF — a flat, honest calendar rather than one shaded from an unverified table.
+// When SHOW_PRESSURE_SHADING flips true at the unblock, the decomposed calendar-pressure read is
+// wired in here (season + holiday/festival only; NEVER the composite trend_score / crowd_band, R21).
+function pressureShade(_dateStr: string | null): string | undefined {
+  if (!SHOW_PRESSURE_SHADING) return undefined;
+  return undefined; // populate-gated — wired at the R21 unblock
 }
 
 // ── month helpers ─────────────────────────────────────────────────────────────
@@ -75,7 +102,12 @@ export default function ProviderCalendar() {
   const to       = ymd(year, month0, daysInMonth);
   const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const { data, isLoading } = useQuery<{ events: CalendarEvent[] }>({
+  // `demand` is the server-computed month aggregate (no client math): total requested + how many
+  // days are uncovered. It rides on the SAME /api/me/calendar read that carries the ghost chips.
+  const { data, isLoading } = useQuery<{
+    events: CalendarEvent[];
+    demand?: { requested: number; uncoveredDays: number };
+  }>({
     queryKey: ["/api/me/calendar", { from, to }],
   });
 
@@ -140,11 +172,25 @@ export default function ProviderCalendar() {
             }}
           >
             <span
-              style={{ fontSize: 15, fontWeight: 700, color: INK, flex: 1 }}
+              style={{ fontSize: 15, fontWeight: 700, color: INK }}
               data-testid="text-calendar-month"
             >
               {monthLabel(year, month0)}
             </span>
+
+            {/* 3.3 Item 1.2 — month demand aggregate (server-computed; no client math). Shown only
+                when there is uncovered requested demand this month; honest market-level framing. */}
+            {data?.demand && data.demand.requested > 0 ? (
+              <span
+                style={{ fontSize: 12, color: GHOST_INK, marginLeft: 10, fontWeight: 600 }}
+                data-testid="text-calendar-demand-aggregate"
+              >
+                {data.demand.requested} requested · {data.demand.uncoveredDays} day
+                {data.demand.uncoveredDays === 1 ? "" : "s"} with no open slot
+              </span>
+            ) : null}
+
+            <span style={{ flex: 1 }} />
 
             {/* Read-only label */}
             <span style={{ fontSize: 12, color: MUT, marginRight: 6 }}>Read-only</span>
@@ -223,7 +269,8 @@ export default function ProviderCalendar() {
                         // Today gets a bold inked border on all 4 sides
                         outline: isToday ? `2px solid ${INK}` : "none",
                         outlineOffset: -2,
-                        background: "#fff",
+                        // R21 pressure shade when the layer is live (gated OFF today → "#fff").
+                        background: pressureShade(dateStr) ?? "#fff",
                         position: "relative",
                       }}
                     >
@@ -272,16 +319,18 @@ export default function ProviderCalendar() {
           data-testid="legend-calendar"
         >
           {[
-            { label: "Open slot", bg: ACCS, border: "#BFD5D0" },
-            { label: "Full slot",  bg: "#E0EDEB", border: "#BFD5D0" },
-            { label: "Blackout",   bg: WARN_BG,   border: WARN_LINE },
-            { label: "Booking",    bg: ACCS,       border: "#BFD5D0" },
-          ].map(({ label, bg, border }) => (
+            { label: "Open slot", bg: ACCS, border: "#BFD5D0", dashed: false },
+            { label: "Full slot",  bg: "#E0EDEB", border: "#BFD5D0", dashed: false },
+            { label: "Blackout",   bg: WARN_BG,   border: WARN_LINE, dashed: false },
+            { label: "Booking",    bg: ACCS,       border: "#BFD5D0", dashed: false },
+            // 3.3 Item 1.2 — the ghost chip: requested-but-uncovered demand (dashed, hollow).
+            { label: "Requested (no slot)", bg: "transparent", border: GHOST_LINE, dashed: true },
+          ].map(({ label, bg, border, dashed }) => (
             <span key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span
                 style={{
                   display: "inline-block", width: 10, height: 10, borderRadius: 3,
-                  background: bg, border: `1px solid ${border}`,
+                  background: bg, border: `1px ${dashed ? "dashed" : "solid"} ${border}`,
                 }}
               />
               {label}
