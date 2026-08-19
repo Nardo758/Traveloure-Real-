@@ -750,6 +750,12 @@ class BookingService {
           const revenueId = crypto.randomUUID();
           const netAmount = platformFeeAmt * (1 - PROCESSING_FEE_RATE);
           const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
+          // ON CONFLICT DO NOTHING targets the partial unique index
+          // platform_revenue_booking_mint_uniq (migration 203):
+          //   UNIQUE (source_id) WHERE source_type = 'booking_commission' AND gross_amount >= 0
+          // This makes the INSERT idempotent: if the transaction is retried (e.g., a Stripe
+          // webhook fires twice) the second attempt silently skips rather than inserting a
+          // duplicate revenue row.  MONEY_MAP F-4 comment above still applies.
           await tx.execute(sql`
             INSERT INTO platform_revenue (
               id, source_type, source_id, gross_amount, platform_fee,
@@ -763,6 +769,8 @@ class BookingService {
               ${`Booking commission from booking ${bookingId}`},
               'recorded', NOW(), NOW()
             )
+            ON CONFLICT (source_id) WHERE source_type = 'booking_commission' AND gross_amount >= 0
+            DO NOTHING
           `);
         }
 
