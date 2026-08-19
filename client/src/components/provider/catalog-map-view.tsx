@@ -387,7 +387,10 @@ function FitInsights({ points }: { points: Array<[number, number]> }) {
   return null;
 }
 
-function MarketInsightsView() {
+// Exported for reuse on the Market Research page (Partner Demand 3.1c.4) — the ruling-84 search-intent
+// map layer, mounted there as a labeled registry layer (extend, never fork). Its OSM tiles, ODbL
+// attribution, and neighborhood-centroid honesty ride the component unchanged.
+export function MarketInsightsView() {
   const { data, isLoading, isError } = useQuery<MarketInsights>({
     queryKey: ["/api/provider/market-insights"],
   });

@@ -508,6 +508,11 @@ if (process.env.NODE_ENV === "production") {
 
   await registerRoutes(httpServer, app);
 
+  // Unknown /api/* paths must return 404 JSON, not fall through to the SPA
+  // catch-all (which returned 200 text/html and masked missing routes).
+  // Mounted immediately after registerRoutes so every real API route wins first.
+  app.use("/api", notFoundHandler);
+
   // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
   // Must be registered after API routes but before Vite's catch-all
   app.use("/__mockup", (req: Request, res: Response) => {
