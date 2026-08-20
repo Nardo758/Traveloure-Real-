@@ -99,6 +99,12 @@ test("render: DRAFT watermark is the default and toggles off with watermark:null
   assert.ok(draft.length > clean.length, "the DRAFT stamp adds content");
 });
 
+test("render: MOCKUP watermark is distinct from the draft artifact label", async () => {
+  const draft = await renderOnepagerPdf(MODEL, { watermark: "DRAFT" });
+  const mockup = await renderOnepagerPdf(MODEL, { watermark: "MOCKUP" });
+  assert.ok(!mockup.equals(draft), "a mockup cannot be mistaken for a DRAFT artifact");
+});
+
 // 4.2c.3 — R34 lock: a locked model (trendBlock null, MODEL's default) renders NO trend content.
 // A literal "Demand trend" text-layer grep is defeated by font subsetting (pdfkit encodes embedded-
 // Inter text as glyph indices, not ASCII — empirically the string is absent from the buffer even
