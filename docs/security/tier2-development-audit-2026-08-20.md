@@ -33,7 +33,7 @@ Final result: **5/5 surfaces passed, 2/2 clean loops per surface, 0 failures**.
 | Authorization/IDOR | Random users against real foreign booking and trip fixtures; unauthenticated/non-admin admin access; guessed message and review IDs; application query with foreign identifier | Admin paths return 401/403; foreign resources never return private data; guessed IDs return bounded 4xx responses. Real foreign booking/trip fixtures existed in both loops. |
 | Validation/injection | Two stored-XSS payload families, SQL-like and SVG search strings, invalid AI roles, overlong blueprint input, 51-segment transport request, overlong image prompt | Stored profile output contains no executable markup; search does not 500 or reflect executable SVG; all malformed/oversized AI inputs return 400 before provider invocation. Two clean loops. |
 | Abuse controls | Eleven login attempts, six contact submissions, eleven AI requests, and 31 search requests from fresh per-loop IPs | Final requests return 429 for auth, contact, AI, and search in both loops. |
-| Upload validation | Executable/PHP bytes renamed as PNG, truncated JPEG, empty Base64, marker-only pseudo-PNG/JPEG, exact 5 MiB valid image and one-byte-over boundary | Spoofed, empty, truncated, and marker-only content returns 400; exact limit passes and over-limit fails. Two live loops plus 10/10 focused unit checks. |
+| Upload validation | Executable/PHP bytes renamed as PNG, truncated JPEG, empty Base64, marker-only pseudo-PNG/JPEG, a valid-CRC PNG with prohibited filter byte 5, malformed GIF extension/palette semantics, oversized logical canvas, cumulative multi-frame decode work, exact 5 MiB valid image and one-byte-over boundary | Spoofed, empty, truncated, marker-only, semantically invalid, oversized-canvas, and aggregate-work payloads are rejected; exact limit passes and over-limit fails. Two live loops plus 16/16 focused unit checks. |
 
 ## Confirmed findings and remediation
 
@@ -62,8 +62,8 @@ Final result: **5/5 surfaces passed, 2/2 clean loops per surface, 0 failures**.
 
 **Severity:** High  
 **Finding:** Base64 and MIME checks accepted renamed non-images. A first remediation using only file sentinels was rejected during independent review because marker-only pseudo-images could still pass.  
-**Fix:** Central validation now parses JPEG frame components, quantization-table references, scan selectors, entropy data, and exact segment structure, then requires a bounded non-tolerant `jpeg-js` decode; PNG validation parses mandatory chunks and inflates image data to the expected dimensions; GIF validation requires an active color table and decodes the LZW stream to the declared pixel count while checking color indices. Pixel and decoded-byte caps bound decompression work. WebP uploads are explicitly disabled in both server policy and the expert-photo picker until a bounded decoder is integrated. Static site WebP assets are unaffected. The expert-photo path reuses the shared validator with its 2 MiB limit.
-**Verification:** Executable/PHP payloads, truncation, empty data, malformed JPEG/GIF streams, and marker-only pseudo-images fail. Header-only VP8L is rejected as a disallowed format. Real minimal PNG/JPEG/GIF fixtures and a decoded exact-5-MiB JPEG pass.
+**Fix:** Central validation now parses JPEG frame components, quantization-table references, scan selectors, entropy data, and exact segment structure, then requires a bounded non-tolerant `jpeg-js` decode. PNG validation parses mandatory chunks, bounds and inflates image data to the exact declared scanline size, then requires a CRC-checking `pngjs` decode so invalid filter semantics cannot pass. GIF validation requires an active color table, enforces each extension's fixed structure, bounds logical-canvas and cumulative animation work, and decodes each LZW stream to the declared pixel count while checking color indices. Pixel, frame-count, aggregate decoded-pixel, and decoded-byte caps bound decompression work. WebP uploads are explicitly disabled in both server policy and the expert-photo picker until a bounded decoder is integrated. Static site WebP assets are unaffected. The expert-photo path reuses the shared validator with its 2 MiB limit.
+**Verification:** Executable/PHP payloads, truncation, empty data, malformed JPEG/GIF streams, extensions, and transparent palette references, marker-only pseudo-images, a valid-CRC 1×1 PNG using prohibited filter byte 5, a 65,535×65,535 logical-canvas GIF carrying only a 1×1 frame, and a two-frame low-entropy GIF exceeding the global 64 MiB decoded budget all fail. Header-only VP8L is rejected as a disallowed format. Real minimal PNG/JPEG/GIF fixtures and a decoded exact-5-MiB JPEG pass.
 
 ### 5. AI/provider requests were insufficiently bounded
 
@@ -89,7 +89,7 @@ No exploitable IDOR was confirmed in the tested development routes. The live neg
 2. **Authorization negative coverage remains sparse across the full route inventory.** The critical sampled paths passed, but every admin/payout/application/message mutation is not represented by a dedicated negative test.
 3. **`/api/generate-image` is currently not mounted.** Live requests return 404, so it is not an active cost surface. Its handler was secured defensively before any future registration; enabling it requires a dedicated live test and product policy decision.
 4. **Local Playwright CLI initially could not launch Chromium because `libglib-2.0.so.0` was unavailable.** The audit used a native HTTP/DB harness. A managed browser verification later passed the homepage and confirmed `/api/auth/me` returns a minimal 401 response.
-5. **Existing TypeScript baseline is not clean.** Final `tsc --noEmit` still reports the pre-existing `content.routes.ts` schedule-item `title` mismatch; no new error was reported in the changed security files.
+5. **Existing TypeScript baseline is not clean.** Final `tsc --noEmit` reports the established 164-error project baseline; no error was reported in the changed PNG validator or its test.
 6. **Development Vite HMR websocket errors remain visible.** They did not block rendering or API verification and are unrelated to the audited controls.
 
 ## Scanner evidence
@@ -107,7 +107,10 @@ After adding `jpeg-js`, a final `npm audit --omit=dev` reported **2 high, 7 mode
 ## Final checks
 
 - Live two-loop audit: **PASS (5/5)**
-- Image validation regression: **PASS (11/11)**
+- Image validation regression: **PASS (16/16)**
+- Expert-application XSS regression: **PASS (10/10)**
+- Independent blocker review: **PASS (no confirmed task-blocking defect)**
+- TypeScript comparison: **PASS (164 errors, unchanged baseline; no PNG-related error)**
 - Managed browser smoke/auth response: **PASS**
 - Application workflow after restart: **RUNNING**
 - Homepage snapshot: rendered successfully
