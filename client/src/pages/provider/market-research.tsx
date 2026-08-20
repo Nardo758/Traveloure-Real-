@@ -38,12 +38,13 @@ interface RollupRow {
   n: number;
   status: "ok" | "no_data";
   kind: DemandKind;
+  lowN: boolean;              // R29: floor-cleared but thin (early signal) — labeled, never silent
   partnerId: string | null;
   serviceId: string | null;   // per-service (R25b) cells are the Catalog funnel's (3.3), not this list
 }
 interface SummaryBucket {
-  slipAmount: number | null; slipCount: number; slipValuedCount: number;
-  stayTrips: number; stayNights: number; stayTravelers: number | null;
+  slipAmount: number | null; slipCount: number; slipValuedCount: number; slipLowN: boolean;
+  stayTrips: number; stayNights: number; stayTravelers: number | null; stayLowN: boolean;
 }
 interface MarketSummary { marketSlug: string; requested: SummaryBucket; missed: SummaryBucket }
 interface RollupResponse {
@@ -171,6 +172,23 @@ export default function ProviderMarketResearch() {
   );
 }
 
+// R29 — an "early signal" tag for a floor-cleared-but-thin (low-n) enumerable own-book figure. States
+// the thinness plainly beside the value; never lets a 3-sample figure read as a full one (§13).
+function EarlySignalTag() {
+  return (
+    <span
+      data-testid="early-signal-tag"
+      style={{
+        marginLeft: 8, fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", verticalAlign: "middle",
+        padding: "2px 8px", borderRadius: 99, color: GOLD_INK,
+        background: "var(--earn-gold-wash)", border: "1px solid var(--earn-faint)",
+      }}
+    >
+      early signal
+    </span>
+  );
+}
+
 function Hero({ market, summary, historySince }: { market: string; summary: MarketSummary | null; historySince: string | null }) {
   const b = summary?.requested;
   const hasSlip = b && b.slipAmount != null && b.slipAmount > 0;
@@ -182,6 +200,7 @@ function Hero({ market, summary, historySince }: { market: string; summary: Mark
           <>
             <div style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 30, fontWeight: 700, color: NAVY }}>
               {usd.format(b!.slipAmount!)}
+              {b!.slipLowN && <EarlySignalTag />}
             </div>
             <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>
               requested in {prettyMarket(market)} with no bookable slot · based on{" "}
@@ -192,6 +211,7 @@ function Hero({ market, summary, historySince }: { market: string; summary: Mark
           <>
             <div style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 30, fontWeight: 700, color: NAVY }}>
               {b!.stayTrips} trips · {b!.stayNights} nights
+              {b!.stayLowN && <EarlySignalTag />}
             </div>
             <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>
               seeking a stay in {prettyMarket(market)} with none anchored · count-only, no price shown · updated daily
@@ -249,9 +269,9 @@ function WindowRow({ market, row }: { market: string; row: RollupRow }) {
             Not enough planned trips yet to show a figure (n={row.n}) — appears once the sample clears the floor.
           </span>
         ) : isStay ? (
-          <StayCell value={row.value as StayValue} n={row.n} />
+          <StayCell value={row.value as StayValue} n={row.n} lowN={row.lowN} />
         ) : (
-          <SlipCell value={row.value as SlipValue} n={row.n} />
+          <SlipCell value={row.value as SlipValue} n={row.n} lowN={row.lowN} />
         )}
       </div>
       {row.kind === "requested" && (
@@ -322,7 +342,7 @@ function SearchInterestLayer({ market }: { market: string }) {
   );
 }
 
-function SlipCell({ value, n }: { value: SlipValue | null; n: number }) {
+function SlipCell({ value, n, lowN = false }: { value: SlipValue | null; n: number; lowN?: boolean }) {
   if (!value) return <span style={{ color: MUTED }}>—</span>;
   return (
     <span>
@@ -332,11 +352,12 @@ function SlipCell({ value, n }: { value: SlipValue | null; n: number }) {
         <><b style={{ color: NAVY }}>{value.count}</b> requested <span style={{ color: MUTED }}>(no priced items)</span></>
       )}
       <span style={{ color: MUTED }}> · {value.count} item{value.count === 1 ? "" : "s"} · n={n}</span>
+      {lowN && <EarlySignalTag />}
     </span>
   );
 }
 
-function StayCell({ value, n }: { value: StayValue | null; n: number }) {
+function StayCell({ value, n, lowN = false }: { value: StayValue | null; n: number; lowN?: boolean }) {
   if (!value) return <span style={{ color: MUTED }}>—</span>;
   return (
     <span>
@@ -344,6 +365,7 @@ function StayCell({ value, n }: { value: StayValue | null; n: number }) {
       <b style={{ color: NAVY }}>{value.nights}</b> night{value.nights === 1 ? "" : "s"}
       {value.travelers != null && <> · {value.travelers} traveler{value.travelers === 1 ? "" : "s"}</>}
       <span style={{ color: MUTED }}> · n={n}</span>
+      {lowN && <EarlySignalTag />}
     </span>
   );
 }
