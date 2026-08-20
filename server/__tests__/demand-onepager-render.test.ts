@@ -10,7 +10,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as path from "path";
-import { renderOnepagerPdf, type OnepagerGeoInput } from "../services/demand-onepager.render";
+import {
+  contextMapBoxForOptionalBlocks,
+  renderOnepagerPdf,
+  type OnepagerGeoInput,
+} from "../services/demand-onepager.render";
 import type { OnepagerModel } from "../services/demand-onepager.compute";
 
 // 4.2c — a small synthetic geo (a few water/road polylines, a park ring, two neighborhoods; one
@@ -71,6 +75,7 @@ const MODEL: OnepagerModel = {
   methodology:
     "Based on 27 planned trips (strict count: real travelers, synthetic and authoring trips excluded) · May–Nov · updated monthly. Demand shown only where the sample clears our honesty floor (at least 10 planned trips per market). Stay demand is a trip and night count only — never a dollar figure.",
   monthRange: "May–Nov",
+  windowCaption: null,
   window: { from: "2026-05-22", to: "2026-11-18" },
 };
 
@@ -137,6 +142,11 @@ test("R36 determinism: same geo ⇒ byte-identical render", async () => {
   const a = await renderOnepagerPdf(MODEL, { geo: GEO });
   const b = await renderOnepagerPdf(MODEL, { geo: GEO });
   assert.ok(a.equals(b), "geo render is byte-stable");
+});
+
+test("R37 map layout: all-dark receives half-page prominence; all-lit returns to compact letterhead", () => {
+  assert.deepEqual(contextMapBoxForOptionalBlocks(499, 0), { w: 250, h: 175 });
+  assert.deepEqual(contextMapBoxForOptionalBlocks(499, 3), { w: 168, h: 118 });
 });
 
 // 4.2c.4 — no-demand-encoding by CONSTRUCTION: the panel function takes only geo shapes. Assert the
