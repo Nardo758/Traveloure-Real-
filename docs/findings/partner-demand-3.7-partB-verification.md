@@ -43,3 +43,24 @@ verify on an `ubuntu-latest` CI runner.
   3. Screenshots → Leon, compared against `partner-demand-visual-target.html` — the fidelity pass.
   4. On Leon's approval, freeze those screenshots as baselines — the gate flips to a regression guard.
      That approval is 3.7's fidelity sign-off; the frozen baselines are its durable artifact.
+
+## B4 executed — freeze record (all four steps done)
+1. **Review-mode gate** landed green (baseline-freezing OFF), screenshots uploaded as an artifact.
+2. **A4 deltas** landed: Fraunces headline, hero gold-wash band, ±90 scrubber band + today marker,
+   window row `calendar↗` deep-link.
+3. **Fidelity pass:** Leon reviewed the four surfaces (hero `$240 · early signal`, scrubber, windows)
+   against `docs/planning/partner-demand-visual-target.html` — **approved** ("looks good").
+4. **Frozen.** The capture spec is now a **hermetic** `toHaveScreenshot` regression guard — a frozen
+   `page.clock` + the mocked `$240/n=3` R29 payload → deterministic render (these surfaces show live
+   dates that would drift a live-clock baseline daily). Baselines are CI-generated on `ubuntu-latest`
+   with real Fraunces (local Google-Fonts is proxy-blocked → would bake the Georgia fallback), via the
+   workflow's `update_baselines` dispatch which commits `*-chromium-linux.png` from the runner
+   (commit `63e58088`). The gate compares on every push/PR and fails on drift; before baselines exist
+   it skips with an informational notice (never a false green, never a transient red).
+
+**3.7 CLOSED on this freeze.** Phase 4 becomes writable. Its pre-flight is the real page, not a
+projection: the honest one-pager number is **$240 early-signal** — "generate now with a modest
+early-signal figure, or wait for beta volume" is the threshold call.
+
+**Carried, not part of 3.7:** the left-nav label renders the raw i18n key `marketResearch` (missing
+translation) — page body is correct; tracked as a separate small fix.
