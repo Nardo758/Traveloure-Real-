@@ -1215,4 +1215,8 @@ export const MIGRATION_FILES = [
   //   payment_intent.succeeded duplicates at the DB level. Includes a safe DELETE for any
   //   pre-existing PI-keyed duplicates (keeps oldest row). Additive + IF NOT EXISTS = push-safe.
   "244_platform_revenue_payment_intent_unique.sql",
+  // 245: demand_onepager_approvals (Partner Demand Phase 4 R32) — admin one-pager approval decisions.
+  //   Persists only the approval (PDF regenerated deterministically on demand, no blob). Additive, no
+  //   CHECK (publish-safe); declared in shared/schema.ts (table + UNIQUE market_slug).
+  "245_demand_onepager_approvals.sql",
 ] as const;

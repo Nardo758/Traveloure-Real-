@@ -265,12 +265,40 @@ export default function FeeBandsAdminPage() {
     tiers: { audience: string; floor: number; label: string; scope: string }[];
   }>({ queryKey: ["/api/admin/demand-floors"] });
 
-  // 3.5 Item 3 — the recruitment one-pager control. Generation is R18-gated to Phase 4; the button
-  // is wired to the stub which authorizes nothing and returns the honest "awaiting Phase 4" message.
+  // Phase 4 R32 — the recruitment one-pager control (R18 lifted; generation is live). One row per
+  // operating market with its qualification + approval state.
   const { toast } = useToast();
-  const onePagerMutation = useMutation({
-    mutationFn: async () => (await apiRequest("POST", "/api/admin/demand-one-pager", {})).json(),
-    onSuccess: (r: { message?: string }) => toast({ title: "One-pager", description: r?.message ?? "Not generated." }),
+  const qc = useQueryClient();
+  type OnepagerRow = {
+    slug: string; name: string; qualifies: boolean;
+    variant: "property-led" | "service-led" | null;
+    approved: boolean; approvalKept: boolean; approvedAt: string | null;
+  };
+  const { data: onePager } = useQuery<{ markets: OnepagerRow[]; templateVersion: number }>({
+    queryKey: ["/api/admin/demand/onepager"],
+  });
+  // Fetch a PDF (POST draft / GET approved) as a blob and open it in a new tab.
+  const openOnePagerPdf = async (url: string, method: "GET" | "POST") => {
+    try {
+      const res = await apiRequest(method, url, method === "POST" ? {} : undefined);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast({ title: "One-pager", description: j?.message ?? "Failed to generate", variant: "destructive" });
+        return;
+      }
+      window.open(URL.createObjectURL(await res.blob()), "_blank");
+    } catch {
+      toast({ title: "One-pager", description: "Failed to generate", variant: "destructive" });
+    }
+  };
+  const approveOnePager = useMutation({
+    mutationFn: async (slug: string) => (await apiRequest("POST", `/api/admin/demand/onepager/${slug}/approve`, {})).json(),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/admin/demand/onepager"] }); toast({ title: "One-pager", description: "Approved." }); },
+    onError: () => toast({ title: "One-pager", description: "Could not approve.", variant: "destructive" }),
+  });
+  const withdrawOnePager = useMutation({
+    mutationFn: async (slug: string) => (await apiRequest("POST", `/api/admin/demand/onepager/${slug}/withdraw`, {})).json(),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/admin/demand/onepager"] }); toast({ title: "One-pager", description: "Approval withdrawn." }); },
   });
 
   if (bandsLoading || settingsLoading) {
@@ -374,29 +402,68 @@ export default function FeeBandsAdminPage() {
         </Card>
       )}
 
-      {/* 3.5 Item 3 — recruitment one-pager. Control ships; generation is R18-gated to Phase 4. */}
-      <Card className="border-dashed border-gray-200" data-testid="card-one-pager">
+      {/* Phase 4 R32 — recruitment one-pager control. One row per operating market. */}
+      <Card data-testid="card-one-pager">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <DollarSign className="w-4 h-4" />
             Recruitment one-pager
           </CardTitle>
           <p className="text-xs text-gray-500">
-            A partner-recruitment one-pager built from cross-partner demand (floor {floors?.tiers.find((t) => t.audience === "cross_partner")?.floor ?? "—"}).
-            Generation is disabled until Phase 4 authorization (R18) — the control is wired, but it produces no artifact yet.
+            Partner-recruitment one-pager built from cross-partner demand (public floor{" "}
+            {floors?.tiers.find((t) => t.audience === "cross_partner")?.floor ?? "—"}). Generate a DRAFT to preview;
+            Approve to keep an artifact retrievable. Approval is withdrawn automatically if a market drops below floor or
+            the layout changes. Distribution is out of scope — this ends at "an approved PDF exists".
           </p>
         </CardHeader>
-        <CardContent>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onePagerMutation.mutate()}
-            disabled={onePagerMutation.isPending}
-            data-testid="button-generate-one-pager"
-          >
-            {onePagerMutation.isPending ? "Checking…" : "Generate one-pager"}
-          </Button>
-          <p className="text-[11px] text-gray-400 mt-2">Awaiting Phase 4 authorization — this button reports status only.</p>
+        <CardContent className="space-y-2">
+          {(onePager?.markets ?? []).map((m) => (
+            <div key={m.slug} className="flex items-center gap-3 py-1.5 border-b border-gray-100 last:border-0" data-testid={`onepager-row-${m.slug}`}>
+              <div className="w-32 text-sm font-medium">{m.name}</div>
+              {!m.qualifies ? (
+                <div className="text-xs text-gray-400 flex-1" data-testid={`onepager-nofloor-${m.slug}`}>
+                  No figure clears the public floor yet.
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 flex items-center gap-2">
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{m.variant}</span>
+                    {m.approved && m.approvalKept && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-green-100 text-green-700" data-testid={`onepager-status-${m.slug}`}>Approved</span>
+                    )}
+                    {m.approved && !m.approvalKept && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700" data-testid={`onepager-status-${m.slug}`}>Approval invalid — re-approve</span>
+                    )}
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => openOnePagerPdf(`/api/admin/demand/onepager/${m.slug}/generate`, "POST")} data-testid={`onepager-draft-${m.slug}`}>
+                    Draft
+                  </Button>
+                  {m.approved && m.approvalKept && (
+                    <Button variant="outline" size="sm" onClick={() => openOnePagerPdf(`/api/admin/demand/onepager/${m.slug}/pdf`, "GET")} data-testid={`onepager-view-${m.slug}`}>
+                      View approved
+                    </Button>
+                  )}
+                  {m.approved ? (
+                    <Button variant="ghost" size="sm" onClick={() => withdrawOnePager.mutate(m.slug)} disabled={withdrawOnePager.isPending} data-testid={`onepager-withdraw-${m.slug}`}>
+                      Withdraw
+                    </Button>
+                  ) : (
+                    <Button variant="default" size="sm" onClick={() => approveOnePager.mutate(m.slug)} disabled={approveOnePager.isPending} data-testid={`onepager-approve-${m.slug}`}>
+                      Approve
+                    </Button>
+                  )}
+                  {m.approved && !m.approvalKept && (
+                    <Button variant="default" size="sm" onClick={() => approveOnePager.mutate(m.slug)} disabled={approveOnePager.isPending} data-testid={`onepager-reapprove-${m.slug}`}>
+                      Re-approve
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+          {(onePager?.markets ?? []).length === 0 && (
+            <p className="text-[11px] text-gray-400">Loading markets…</p>
+          )}
         </CardContent>
       </Card>
     </div>

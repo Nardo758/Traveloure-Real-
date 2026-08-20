@@ -81,6 +81,14 @@ const FRAUNCES = readFontSafe("Fraunces-SemiBold.ttf");
 // Pinned so the PDF's CreationDate never varies run-to-run (content-stability; see header).
 const FIXED_PDF_EPOCH = new Date(0);
 
+/**
+ * The LAYOUT template version (R32). Bump this whenever the one-pager layout changes — an approval
+ * stamped with an older version is no longer "the artifact Leon approved", so the keep-rule invalidates
+ * it and it must be re-approved. History: 1 = 4.1 basic; 2 = 4.2 brief §3 + Fraunces; 3 = 4.2b/4.2c
+ * (event spotlight, trend lock, gap pairing, context map).
+ */
+export const ONEPAGER_TEMPLATE_VERSION = 3;
+
 const USD0 = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",

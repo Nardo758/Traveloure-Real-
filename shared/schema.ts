@@ -8574,6 +8574,26 @@ export const insertPartnerDemandRollupSchema = createInsertSchema(partnerDemandR
 export type PartnerDemandRollup = typeof partnerDemandRollup.$inferSelect;
 export type InsertPartnerDemandRollup = z.infer<typeof insertPartnerDemandRollupSchema>;
 
+// demand_onepager_approvals — R32 (ledger 2026-08-20-partner-demand-onepager-lifecycle; migration 245).
+// The Phase 4 admin control persists ONLY the approval DECISION — the draft/approved PDF is regenerated
+// deterministically on demand (generateOnepagerDraft), so no PDF blob is stored. A row EXISTS iff the
+// market's one-pager is APPROVED. Approval is KEPT only while (a) `templateVersion` matches the current
+// ONEPAGER_TEMPLATE_VERSION and (b) the market still clears the public floor for the approved variant;
+// the re-validation job WITHDRAWS (deletes) a row that fails either, honestly ending the artifact. §19
+// posture: no createInsertSchema (writes are a hand-written allowlist in the service). Declared here per
+// the publish-trap rule (additive, no DB CHECK — variant app-enforced, migration-181/195 posture).
+export const demandOnepagerApprovals = pgTable("demand_onepager_approvals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  marketSlug: varchar("market_slug", { length: 40 }).notNull().unique(),
+  variant: varchar("variant", { length: 20 }).notNull(), // approved variant: property-led | service-led
+  approvedBy: varchar("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at").notNull().defaultNow(),
+  templateVersion: integer("template_version").notNull(), // ONEPAGER_TEMPLATE_VERSION at approval time
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type DemandOnepagerApproval = typeof demandOnepagerApprovals.$inferSelect;
+
 // Ordered route stops for a provider service — CLAUDE.md ruling 22 (decision-maker ratified
 // Aug 10, 2026; migration 192). dmo_extracted_places pattern: child rows, CASCADE, composite
 // UNIQUE on (service_id, position). lat/lng nullable — an unlocated stop stays visibly flagged

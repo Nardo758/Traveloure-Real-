@@ -38,6 +38,16 @@ import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/ser
 import { readPartnerDemandRollup, readAdminDemandRollup, readTopDemandSignal } from "../services/demand-rollup.service";
 import { buildDemandRollupFacts, type DemandRollupFacts } from "../services/demand-rollup.compute";
 import { DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
+import { getMarketByKey } from "../services/trend-engine/operating-markets";
+import { generateOnepagerDraft, resolveOnepagerModel } from "../services/demand-onepager.service";
+import { ONEPAGER_TEMPLATE_VERSION } from "../services/demand-onepager.render";
+import {
+  listOnepagerControl,
+  approveOnepager,
+  withdrawOnepager,
+  getOnepagerApproval,
+  isApprovalKept,
+} from "../services/demand-onepager.admin";
 
 const router = Router();
 
@@ -727,16 +737,88 @@ router.get("/api/admin/demand-floors", async (_req, res) => {
   });
 });
 
-// ADMIN 3.5 Item 3 — the recruitment one-pager control. The UI ships, but GENERATION is R18-gated
-// to Phase 4: this endpoint is a STUB that authorizes nothing and produces no artifact. It returns
-// an honest "awaiting Phase 4 authorization" so the button is wired end-to-end without doing the
-// thing that isn't authorized yet (§13 — never a fake success).
-router.post("/api/admin/demand-one-pager", async (_req, res) => {
-  res.status(200).json({
-    status: "awaiting_phase_4",
-    generated: false,
-    message: "One-pager generation is disabled until Phase 4 authorization (R18). This control is wired; generation is not yet enabled.",
-  });
+// ADMIN Phase 4 — the recruitment one-pager control (R32). R18 is LIFTED; generation is live. All
+// routes below are /api/admin/* and therefore behind the §2 blanket admin guard (default-deny, DB
+// role lookup — never a request value). Distribution is OUT OF SCOPE: this ends at "an approved PDF
+// exists, retrievable by an admin"; external use stays locked behind Leon's artifact-one review.
+
+// List: every operating market with its qualification + approval state (non-qualifying markets carry
+// qualifies:false so the UI shows the honest line, never a disabled mystery button).
+router.get("/api/admin/demand/onepager", async (_req, res) => {
+  try {
+    res.json({ markets: await listOnepagerControl(), templateVersion: ONEPAGER_TEMPLATE_VERSION });
+  } catch (error) {
+    console.error("[demand] onepager control list error:", error);
+    res.status(500).json({ message: "Failed to load one-pager control" });
+  }
+});
+
+// Generate a DRAFT PDF for a market (watermarked). 422 when the market does not clear the public floor.
+router.post("/api/admin/demand/onepager/:market/generate", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    if (!getMarketByKey(market)) return res.status(404).json({ message: "Unknown market" });
+    const draft = await generateOnepagerDraft(market);
+    if (!draft) return res.status(422).json({ message: "Market does not clear the public floor — no artifact" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="onepager-${market}-draft.pdf"`);
+    res.send(draft.pdf);
+  } catch (error) {
+    console.error("[demand] onepager generate error:", error);
+    res.status(500).json({ message: "Failed to generate draft" });
+  }
+});
+
+// Approve a market's one-pager (R32; audit-logged). 422 when it does not qualify.
+router.post("/api/admin/demand/onepager/:market/approve", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    if (!getMarketByKey(market)) return res.status(404).json({ message: "Unknown market" });
+    const approval = await approveOnepager(market, { userId: getUserId(req)!, role: "admin" });
+    res.json({ approved: true, approval });
+  } catch (error: any) {
+    if (String(error?.message ?? "").includes("does not clear")) {
+      return res.status(422).json({ message: "Market does not clear the public floor — cannot approve" });
+    }
+    console.error("[demand] onepager approve error:", error);
+    res.status(500).json({ message: "Failed to approve" });
+  }
+});
+
+// Withdraw an approval (R32; audit-logged).
+router.post("/api/admin/demand/onepager/:market/withdraw", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    await withdrawOnepager(market, { userId: getUserId(req)!, role: "admin" });
+    res.json({ withdrawn: true });
+  } catch (error) {
+    console.error("[demand] onepager withdraw error:", error);
+    res.status(500).json({ message: "Failed to withdraw" });
+  }
+});
+
+// The retrievable APPROVED PDF (R32 "approved PDF exists, retrievable by an admin"). Renders WITHOUT
+// the DRAFT watermark only when the approval is still KEPT (template current + still clears floor);
+// otherwise 409 with the reason (an admin who lost approval via re-validation sees why).
+router.get("/api/admin/demand/onepager/:market/pdf", async (req, res) => {
+  try {
+    const market = String(req.params.market);
+    if (!getMarketByKey(market)) return res.status(404).json({ message: "Unknown market" });
+    const approval = await getOnepagerApproval(market);
+    if (!approval) return res.status(409).json({ message: "Not approved" });
+    const model = await resolveOnepagerModel(market);
+    if (!isApprovalKept(approval, model, ONEPAGER_TEMPLATE_VERSION)) {
+      return res.status(409).json({ message: "Approval no longer valid (market below floor or template changed)" });
+    }
+    const draft = await generateOnepagerDraft(market, {}, { watermark: null });
+    if (!draft) return res.status(409).json({ message: "Market does not clear the public floor" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="onepager-${market}.pdf"`);
+    res.send(draft.pdf);
+  } catch (error) {
+    console.error("[demand] onepager approved-pdf error:", error);
+    res.status(500).json({ message: "Failed to retrieve approved one-pager" });
+  }
 });
 
 // ── Market Research layer prefs — the registry rail (R25-final.1; ledger 3.1c, R25-final) ────────
