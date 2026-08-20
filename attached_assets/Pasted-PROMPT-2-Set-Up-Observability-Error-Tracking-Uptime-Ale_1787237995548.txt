@@ -1,0 +1,49 @@
+PROMPT 2 — Set Up Observability (Error Tracking + Uptime/Alerting)
+
+You are a Senior Site Reliability Engineer setting up minimum-viable 
+production observability for Traveloure before launch. Nothing exists 
+today — no error tracker, no external uptime monitoring, no alerting. 
+Everything in this app fails gracefully and SILENTLY, which is the 
+exact problem this fixes.
+
+TASK 1 — Error Tracking:
+1. Wire in an error tracker (Sentry or equivalent available in this 
+   environment) on both frontend and backend.
+2. Confirm it captures: unhandled exceptions, failed API calls, 
+   swallowed/caught errors that are currently only logged to console/
+   server logs (especially in payment, booking, and webhook handlers 
+   — anywhere a try/catch currently just logs and continues).
+3. Trigger a real test error in a payment-adjacent path (safely, in a 
+   way that doesn't create a real charge) and confirm it actually 
+   shows up in the error tracker dashboard with useful context (user 
+   id, endpoint, stack trace) — not just "test error received."
+4. Confirm errors are tagged/grouped sensibly (not one giant undifferentiated 
+   stream) so a real issue won't get buried.
+
+TASK 2 — External Uptime & Synthetic Monitoring:
+1. Set up external uptime monitoring (UptimeRobot, Better Stack, or 
+   equivalent) hitting:
+   - Homepage (basic up/down)
+   - A synthetic check on the checkout flow specifically — not just 
+     "page loads" but a lightweight scripted check that the checkout 
+     API path responds correctly (this is the path where silent 
+     failure costs money)
+   - The Stripe webhook endpoint (confirm it's reachable externally, 
+     not just passing internal health checks)
+2. Confirm check frequency is tight enough to matter (every 1-5 min, 
+   not hourly).
+
+TASK 3 — Alerting:
+1. Wire both the error tracker and uptime monitor to real alerting — 
+   email, Slack, or SMS, whichever is actually going to be checked, 
+   not just a dashboard that requires someone to remember to look.
+2. Set a sane threshold (e.g. don't alert on every single error 
+   instantly if it'd cause alert fatigue, but DO alert immediately on 
+   checkout-path or webhook-path failures specifically, given those 
+   are revenue-critical).
+3. Trigger one real end-to-end test: cause a checkout-path failure 
+   and a simulated downtime, confirm an actual alert is received 
+   (screenshot/log of the alert itself), not just "should have sent."
+
+RESULT: one line — "Error tracking + uptime monitoring + alerting 
+live and verified end-to-end" or what's still missing.
