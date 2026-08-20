@@ -23,19 +23,51 @@
 
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { travelPulseCalendarEvents, partnerDemandRollup } from "@shared/schema";
+import { travelPulseCalendarEvents, partnerDemandRollup, cityNeighborhoods } from "@shared/schema";
 import { readAdminDemandRollup, type RollupReadOpts } from "./demand-rollup.service";
 import { getMarketByKey } from "./trend-engine/operating-markets";
+import { getMarketGeographyForDestination } from "./market-geography.service";
 import {
   buildOnepagerModel,
   qualifyingMarkets,
   type OnepagerModel,
   type OnepagerEventInput,
 } from "./demand-onepager.compute";
-import { renderOnepagerPdf } from "./demand-onepager.render";
+import { renderOnepagerPdf, type OnepagerGeoInput } from "./demand-onepager.render";
 import { DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 export { renderOnepagerPdf };
+
+/**
+ * R36 — resolve the context-map geo for a market: the market's vector geography (DB-first with the
+ * committed KYOTO_GEOGRAPHY fallback, via the shared service) + its neighborhood centroids. Sorted by
+ * name for deterministic render. `geography` null ⇒ the panel omits itself (R37). This is DB glue; the
+ * render draws it and encodes NO demand.
+ */
+export async function resolveMarketGeo(marketSlug: string, marketName: string): Promise<OnepagerGeoInput> {
+  const [geography, nbRows] = await Promise.all([
+    getMarketGeographyForDestination(marketSlug),
+    db
+      .select({
+        name: cityNeighborhoods.name,
+        lat: cityNeighborhoods.centroidLat,
+        lng: cityNeighborhoods.centroidLng,
+        radiusKm: cityNeighborhoods.radiusKm,
+      })
+      .from(cityNeighborhoods)
+      .where(eq(sql`lower(${cityNeighborhoods.city})`, marketName.toLowerCase())),
+  ]);
+  const neighborhoods = nbRows
+    .map((r) => ({
+      name: r.name,
+      lat: Number(r.lat),
+      lng: Number(r.lng),
+      radiusKm: Number(r.radiusKm ?? 1.5),
+    }))
+    .filter((n) => Number.isFinite(n.lat) && Number.isFinite(n.lng))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { geography, neighborhoods };
+}
 
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -153,6 +185,7 @@ export async function generateOnepagerDraft(
 ): Promise<OnepagerDraft | null> {
   const model = await resolveOnepagerModel(marketSlug, opts);
   if (!model) return null;
-  const pdf = await renderOnepagerPdf(model, { watermark: "DRAFT" });
+  const geo = await resolveMarketGeo(marketSlug, model.marketName);
+  const pdf = await renderOnepagerPdf(model, { watermark: "DRAFT", geo });
   return { model, pdf };
 }
