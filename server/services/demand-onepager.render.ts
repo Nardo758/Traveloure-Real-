@@ -32,6 +32,20 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { OnepagerModel } from "./demand-onepager.compute";
+// R36 context map — mirror the SHARED pure projector the client SVG map uses (do not invent a parser).
+// projectPath returns an SVG path "d" string that pdfkit's doc.path() consumes directly.
+import { projectPath, projectPoint, type MarketGeography } from "@shared/geo/market-geography";
+
+/**
+ * R36/R37 geo input for the context map panel — ORIENTATION ONLY, never demand. This is the render's
+ * ONLY window onto geography; its type carries NO rollup/summary/demand field BY CONSTRUCTION, so the
+ * panel cannot encode a metric (the no-demand-encoding guard). `geography` null ⇒ the panel is omitted
+ * entirely (no placeholder). Neighborhoods are centroid+radius only (the tables store no polygons).
+ */
+export interface OnepagerGeoInput {
+  geography: MarketGeography | null;
+  neighborhoods: { name: string; lat: number; lng: number; radiusKm: number }[];
+}
 
 // ── brand tokens (mirror share-image.service.ts:24-30) ───────────────────────────────────────────
 const INK = "#1A1A18";
@@ -39,6 +53,12 @@ const MUTED = "#7A7A72";
 const NAVY = "#1E3A5F"; // hero headline
 const BAR = "#C9B77A"; // muted gold bar fill for the supporting visual
 const BAR_TRACK = "#ECE8DC"; // faint track behind each bar
+// R36 context-map palette — MUTED so the map never competes with the gold demand bars (orientation only).
+const MAP_PANEL = "#FCFBF7"; // faint paper panel behind the map
+const MAP_WATER = "#DCE6F1";
+const MAP_PARK = "#EAF4EF";
+const MAP_ROAD = "#E8E8E2";
+const MAP_PIN = "#7A7A72";
 
 // ── fonts (mirror share-image.service.ts:51-65 resolution) ───────────────────────────────────────
 const moduleDir =
@@ -156,6 +176,85 @@ function drawWindowBars(
   });
 }
 
+/** Expand a lon/lat bbox so it fills a box of (boxW × boxH) WITHOUT distortion — grows the shorter
+ *  visual axis (lon is compressed by cos(lat)). Presentation geometry only; no demand. */
+function fitBbox(
+  bbox: [number, number, number, number],
+  boxW: number,
+  boxH: number,
+): [number, number, number, number] {
+  let [w, s, e, n] = bbox;
+  const k = Math.cos((((s + n) / 2) * Math.PI) / 180) || 1;
+  const lonSpan = e - w || 0.01;
+  const latSpan = n - s || 0.01;
+  const cur = (lonSpan * k) / latSpan; // current visual aspect (w/h)
+  const want = boxW / boxH;
+  if (cur > want) {
+    const need = (lonSpan * k) / want; // grow latSpan
+    const add = (need - latSpan) / 2;
+    s -= add;
+    n += add;
+  } else {
+    const need = (latSpan * want) / k; // grow lonSpan
+    const add = (need - lonSpan) / 2;
+    w -= add;
+    e += add;
+  }
+  // 6% breathing room so shapes don't touch the panel edge.
+  const dx = (e - w) * 0.06;
+  const dy = (n - s) * 0.06;
+  return [w - dx, s - dy, e + dx, n + dy];
+}
+
+/**
+ * R36/R37 — the context map panel: a muted vector locator (water/parks/roads + neighborhood label
+ * points) drawn from geo shapes ONLY. Its signature accepts NO model/summary — the map cannot encode
+ * demand by construction. Returns false (drew nothing) when `geo.geography` is null, so the caller omits
+ * the block with no placeholder (R37). Deterministic: projectPath rounds to 0.1, neighborhoods are
+ * pre-sorted by the caller.
+ */
+function drawContextMap(
+  doc: any,
+  fonts: { regular: string; bold: string; display: string },
+  geo: OnepagerGeoInput,
+  box: { x: number; y: number; w: number; h: number },
+  marketName: string,
+): boolean {
+  const g = geo.geography;
+  if (!g) return false; // R37 — omit entirely
+  const { x, y, w, h } = box;
+  const bbox = fitBbox(g.bbox, w, h);
+
+  doc.save();
+  doc.rect(x, y, w, h).fill(MAP_PANEL);
+  doc.rect(x, y, w, h).clip();
+  doc.translate(x, y);
+  // parks (filled rings), then water (wide soft strokes), then roads (thin) — orientation, not signal.
+  for (const ring of g.parks) doc.path(projectPath(ring, bbox, w, h, true)).fill(MAP_PARK);
+  for (const line of g.water) doc.path(projectPath(line, bbox, w, h)).lineWidth(2.5).strokeColor(MAP_WATER).stroke();
+  for (const line of g.roads) doc.path(projectPath(line, bbox, w, h)).lineWidth(0.4).strokeColor(MAP_ROAD).stroke();
+  // neighborhoods — a small pin + label at the centroid (the tables store no polygons, R36).
+  for (const nb of geo.neighborhoods) {
+    const [px, py] = projectPoint([nb.lng, nb.lat], bbox, w, h);
+    if (px < 0 || px > w || py < 0 || py > h) continue; // outside the frame → skip
+    doc.circle(px, py, 1.4).fill(MAP_PIN);
+    doc.font(fonts.regular).fontSize(5).fillColor("#5A5A52").text(nb.name, px + 3, py - 3, { lineBreak: false });
+  }
+  doc.restore();
+
+  // Caption + SCOPED ODbL (R36 — the geo tables are OSM-derived; the page-wide removal ruling stands).
+  doc.font(fonts.regular).fontSize(7).fillColor(MUTED).text(
+    `${marketName} · neighborhoods shown for reference`,
+    x,
+    y + h + 3,
+    { width: w },
+  );
+  doc.font(fonts.regular).fontSize(6).fillColor(MUTED).text("Map data © OpenStreetMap contributors", x, y + h + 13, {
+    width: w,
+  });
+  return true;
+}
+
 /**
  * Render a one-pager view-model to a PDF Buffer. Brief §3 layout: Fraunces hero (variant headline +
  * subline + methodology line), one supporting visual (the top requested check-in windows as bars,
@@ -164,7 +263,7 @@ function drawWindowBars(
  */
 export async function renderOnepagerPdf(
   model: OnepagerModel,
-  opts: { watermark?: "DRAFT" | null } = {},
+  opts: { watermark?: "DRAFT" | null; geo?: OnepagerGeoInput } = {},
 ): Promise<Buffer> {
   const watermark = opts.watermark === undefined ? "DRAFT" : opts.watermark;
   // ESM-safe lazy load (matches admin.routes.ts:4359).
@@ -194,6 +293,18 @@ export async function renderOnepagerPdf(
     .fillColor(MUTED)
     .text(`Based on ${model.hero.strictCount} planned trips (strict count) · ${model.monthRange} · updated monthly`);
   doc.moveDown(1.2);
+
+  // R36/R37 context map — a modest letterhead locator under the hero (NOT a supporting visual, so the
+  // ≤3-visual budget is untouched). Omitted with no placeholder when geo is absent (R37).
+  if (opts.geo) {
+    const mapW = 168;
+    const mapH = 118;
+    const mapY = doc.y;
+    if (drawContextMap(doc, fonts, opts.geo, { x: left, y: mapY, w: mapW, h: mapH }, model.marketName)) {
+      doc.y = mapY + mapH + 26; // clear the map + caption + scoped ODbL line
+      doc.moveDown(0.6);
+    }
+  }
 
   // R33 event spotlight (block 2, before windows) — a gold-accented callout with the event name in
   // Fraunces; the demand copy is the model's verbatim line. Omitted entirely when null (no filler).
