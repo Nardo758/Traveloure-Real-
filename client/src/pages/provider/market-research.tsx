@@ -133,28 +133,10 @@ export default function ProviderMarketResearch() {
             {/* hero — SERVER-SUMMARISED, forked by kind + metric; no client math */}
             <Hero market={selected} summary={summary} historySince={data.historySince} />
 
-            {/* ±window axis: requested (forward) / missed (past) — never summed */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 10px", fontSize: 12, color: MUTED }}
-                 data-testid="demand-scrubber">
-              <span>Window {data.window.from} → {data.window.to}</span>
-              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
-                {(["requested", "missed"] as DemandKind[]).map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => setKind(k)}
-                    data-testid={`kind-toggle-${k}`}
-                    style={{
-                      fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 99, cursor: "pointer",
-                      border: `1px solid ${k === kind ? (k === "requested" ? GOLD_INK : "var(--earn-muted)") : "var(--earn-faint)"}`,
-                      background: k === kind ? (k === "requested" ? "var(--earn-gold-wash)" : "var(--earn-chip)") : "transparent",
-                      color: k === "requested" ? GOLD_INK : "var(--earn-muted)",
-                    }}
-                  >
-                    {k === "requested" ? "Requested (forward)" : "Missed (past)"}
-                  </button>
-                ))}
-              </span>
-            </div>
+            {/* ±window axis (STEP 3.7 Part B, B4): a −90…+90 BAND — past half muted (missed),
+                forward half gold (requested), with a navy "today" marker — never a summed total (R20).
+                The toggle pills select which half's windows the list shows. */}
+            <ScrubberBand window={data.window} kind={kind} setKind={setKind} />
 
             {/* Requested-Windows list */}
             <WindowsList market={selected} kind={kind} windows={windows} historySince={data.historySince} />
@@ -168,6 +150,63 @@ export default function ProviderMarketResearch() {
         )}
       </div>
     </ProviderLayout>
+  );
+}
+
+// The fractional position (0..1) of a target ISO date within [from, to]; 0.5 if the span is degenerate.
+function dayFraction(fromISO: string, toISO: string, targetISO: string): number {
+  const f = Date.parse(`${fromISO}T00:00:00Z`);
+  const t = Date.parse(`${toISO}T00:00:00Z`);
+  const x = Date.parse(`${targetISO}T00:00:00Z`);
+  if (!(t > f) || Number.isNaN(x)) return 0.5;
+  return Math.max(0, Math.min(1, (x - f) / (t - f)));
+}
+
+// B4 — the ±window scrubber, drawn as a BAND (visual target Surface 5): a −90…+90 track split at
+// "today", past half muted (missed), forward half gold (requested), with a navy today-marker. The two
+// pills select which half's windows the list below shows. R20: the halves are NEVER summed.
+function ScrubberBand({ window, kind, setKind }: { window: { from: string; to: string }; kind: DemandKind; setKind: (k: DemandKind) => void }) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayPct = Math.round(dayFraction(window.from, window.to, todayISO) * 100);
+  return (
+    <div style={{ margin: "18px 0 10px" }} data-testid="demand-scrubber">
+      <div
+        style={{
+          position: "relative", height: 10, borderRadius: 99, border: "1px solid var(--earn-faint)",
+          background: `linear-gradient(90deg, var(--earn-chip) 0%, var(--earn-chip) ${todayPct}%, var(--earn-gold-wash) ${todayPct}%, var(--earn-gold-wash) 100%)`,
+        }}
+      >
+        <div
+          data-testid="scrubber-today"
+          style={{ position: "absolute", top: -3, bottom: -3, left: `${todayPct}%`, width: 2, background: NAVY, transform: "translateX(-1px)" }}
+        />
+      </div>
+      <div style={{ position: "relative", marginTop: 4, fontSize: 11, color: MUTED, height: 14 }}>
+        <span>{window.from}</span>
+        <span style={{ position: "absolute", left: `${todayPct}%`, transform: "translateX(-50%)", color: NAVY, fontWeight: 700 }}>today</span>
+        <span style={{ position: "absolute", right: 0 }}>{window.to}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, fontSize: 12, color: MUTED, flexWrap: "wrap" }}>
+        <span>past = <b style={{ color: "var(--earn-muted)" }}>missed</b> · forward = <b style={{ color: GOLD_INK }}>requested</b> — never summed</span>
+        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+          {(["requested", "missed"] as DemandKind[]).map((k) => (
+            <button
+              key={k}
+              onClick={() => setKind(k)}
+              data-testid={`kind-toggle-${k}`}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 99, cursor: "pointer",
+                border: `1px solid ${k === kind ? (k === "requested" ? GOLD_INK : "var(--earn-muted)") : "var(--earn-faint)"}`,
+                background: k === kind ? (k === "requested" ? "var(--earn-gold-wash)" : "var(--earn-chip)") : "transparent",
+                color: k === "requested" ? GOLD_INK : "var(--earn-muted)",
+              }}
+            >
+              {k === "requested" ? "Requested (forward)" : "Missed (past)"}
+            </button>
+          ))}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -193,8 +232,10 @@ function Hero({ market, summary, historySince }: { market: string; summary: Mark
   const hasSlip = b && b.slipAmount != null && b.slipAmount > 0;
   const hasStay = b && b.stayTrips > 0;
   return (
-    <Card data-testid="market-research-hero">
-      <CardContent className="p-5">
+    <Card data-testid="market-research-hero" style={{ borderTop: `2px solid var(--earn-gold-wash)` }}>
+      {/* B4 — the hero figure sits on a gold-wash band (visual target Surface 5): a faint gold
+          gradient behind the number, the requested-demand accent color. */}
+      <CardContent className="p-5" style={{ background: "linear-gradient(180deg, var(--earn-gold-wash) 0%, transparent 70%)" }}>
         {hasSlip ? (
           <>
             <div style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 30, fontWeight: 700, color: NAVY }}>
@@ -273,6 +314,14 @@ function WindowRow({ market, row }: { market: string; row: RollupRow }) {
           <SlipCell value={row.value as SlipValue} n={row.n} lowN={row.lowN} />
         )}
       </div>
+      {/* B4 — row deep-links (visual target Surface 5). calendar↗ opens the Calendar at this window's
+          month. map↗ is intentionally OMITTED: the search-interest map layer was unmounted (B-search),
+          so there is no honest map target to deep-link to — a dead link would violate §13. */}
+      <Link href={`/provider/calendar?date=${encodeURIComponent(row.date)}`} data-testid="window-calendar">
+        <span style={{ fontSize: 12, fontWeight: 600, color: NAVY, cursor: "pointer", whiteSpace: "nowrap" }}>
+          calendar ↗
+        </span>
+      </Link>
       {row.kind === "requested" && (
         <Link href={createHref} data-testid="window-create">
           <span style={{ fontSize: 12, fontWeight: 600, color: GOLD_INK, cursor: "pointer", whiteSpace: "nowrap" }}>
