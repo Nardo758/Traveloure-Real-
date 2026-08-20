@@ -85,7 +85,13 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .where(
       and(
         inArray(itineraryItems.routingStatus, OPEN_SLIP_STATUSES as unknown as string[]),
-        isRealTripSql(users.email, trips.authorId),
+        isRealTripSql(users.email, trips.authorId, {
+          userId: trips.userId,
+          destination: trips.destination,
+          startDate: trips.startDate,
+          endDate: trips.endDate,
+          createdAt: trips.createdAt,
+        }),
       ),
     );
 
@@ -142,7 +148,13 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .innerJoin(trips, eq(itemTransitionLog.tripId, trips.id))
     .leftJoin(users, eq(trips.userId, users.id))
     .leftJoin(itineraryItems, eq(itemTransitionLog.itemId, itineraryItems.id))
-    .where(isRealTripSql(users.email, trips.authorId));
+    .where(isRealTripSql(users.email, trips.authorId, {
+      userId: trips.userId,
+      destination: trips.destination,
+      startDate: trips.startDate,
+      endDate: trips.endDate,
+      createdAt: trips.createdAt,
+    }));
 
   const diaryRows: DiaryRow[] = diary.map((r) => ({
     marketSlug: bucketSlug(r.marketSlug),
@@ -172,7 +184,13 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .leftJoin(users, eq(trips.userId, users.id))
     .where(
       and(
-        isRealTripSql(users.email, trips.authorId),
+        isRealTripSql(users.email, trips.authorId, {
+          userId: trips.userId,
+          destination: trips.destination,
+          startDate: trips.startDate,
+          endDate: trips.endDate,
+          createdAt: trips.createdAt,
+        }),
         sql`${trips.endDate} > ${trips.startDate}`,
         sql`NOT EXISTS (SELECT 1 FROM itinerary_items ii WHERE ii.trip_id = ${trips.id} AND ii.item_type = 'accommodation')`,
         sql`NOT EXISTS (SELECT 1 FROM trip_selected_hotels tsh WHERE tsh.trip_id = ${trips.id})`,
@@ -262,24 +280,12 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     });
   }
 
-  // REPLACE-BY-DATE (idempotent): delete the exact (market, date, metric, partner, service) rows we
-  // are about to write — matching EACH row's OWN scope (eq when set, isNull when null) so every
-  // grain (market-level AND per-service) replaces cleanly and none leaks across a re-run (scope-leak
-  // gate). A stale row for a date with no current demand is left as history (never silently mutated).
+  // Full materialized rebuild (idempotent): this table has no independently-authored rows; every cell
+  // is derived from the authoritative source above. Replacing the whole snapshot in one transaction
+  // means an approved synthetic-data exclusion can remove a now-invalid cell instead of leaving it
+  // visible as false "history" (R38). A failed insert rolls the delete back with the transaction.
   await db.transaction(async (tx) => {
-    for (const row of toInsert) {
-      await tx
-        .delete(partnerDemandRollup)
-        .where(
-          and(
-            eq(partnerDemandRollup.marketSlug, row.marketSlug),
-            eq(partnerDemandRollup.date, row.date),
-            eq(partnerDemandRollup.metric, row.metric),
-            row.partnerId == null ? isNull(partnerDemandRollup.partnerId) : eq(partnerDemandRollup.partnerId, row.partnerId),
-            row.serviceId == null ? isNull(partnerDemandRollup.serviceId) : eq(partnerDemandRollup.serviceId, row.serviceId),
-          ),
-        );
-    }
+    await tx.delete(partnerDemandRollup);
     if (toInsert.length) await tx.insert(partnerDemandRollup).values(toInsert);
   });
 
