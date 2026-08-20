@@ -114,3 +114,14 @@ export function isLowNSignal(
  * decision-maker moves it.
  */
 export const DEMAND_WINDOW_DAYS = 90;
+
+/**
+ * R34 (ledger 2026-08-20-partner-demand-onepager-trend-lock) — the minimum weeks of computed daily
+ * rollup history a market must have before a "demand trending" visual/claim may join the recruitment
+ * one-pager. Below this, there is NO trend block, NO slope language, NO "early trajectory" softening —
+ * a slope drawn from a few weeks of data is fabrication in time-series form (the floors' logic applied
+ * to trends). The unlock is automatic as history accrues nightly; the threshold moves ONLY by the
+ * decision-maker. Lives here (config), never as a literal in a demand/onepager path — grep-gated like
+ * the floors and the window.
+ */
+export const TREND_MIN_WEEKS = 10;
