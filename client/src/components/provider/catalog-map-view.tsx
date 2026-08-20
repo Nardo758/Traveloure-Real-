@@ -436,12 +436,18 @@ export function MarketInsightsView() {
         className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E8E2] bg-[#FAFAF8] px-3 py-2"
         data-testid="market-insights-honesty"
       >
+        {/* STEP 3.7 Part B (B2, §13): the map plots TWO substrates — search circles AND coverage-gap
+            squares — so the honesty line names BOTH; a viewer never reads a gap square as a search.
+            The window qualifier is dropped: the per-event searches are recent but the demand_signals
+            rollup is an all-time aggregate, so "last 90 days" would over-claim for the mixed count. */}
         <span className="text-[13px] font-medium" style={{ color: "#1A1A18" }} data-testid="text-real-search-count">
-          Based on {totalRealSearches} real search{totalRealSearches === 1 ? "" : "es"} in the last 90 days
+          Based on {totalRealSearches} real search{totalRealSearches === 1 ? "" : "es"}
+          {gaps.length > 0 ? ` · ${gaps.length} coverage gap${gaps.length === 1 ? "" : "s"}` : ""}
           {data.cities.length > 0 ? ` · ${data.cities.join(", ")}` : ""}
         </span>
         <span className="text-[11px]" style={{ color: "#7A7A72" }}>
-          Real rows only — thin signal shows "not enough signal yet", never invented heat.
+          Real rows only — search circles + coverage-gap squares are different signals, never blended;
+          thin signal shows "not enough signal yet", never invented heat.
         </span>
       </div>
 

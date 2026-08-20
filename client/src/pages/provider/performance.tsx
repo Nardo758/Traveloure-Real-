@@ -689,8 +689,8 @@ function ReviewsTab() {
 // 3.4 Item 2.2 — the L6 rollup read shape (subset the Demand tab renders). Figures arrive computed
 // and floor-cleared; the tab renders them verbatim (no client math) and forks kind (R20) + unit (R19).
 interface DemandRollupBucket {
-  slipAmount: number | null; slipCount: number; slipValuedCount: number;
-  stayTrips: number; stayNights: number; stayTravelers: number | null;
+  slipAmount: number | null; slipCount: number; slipValuedCount: number; slipLowN: boolean;
+  stayTrips: number; stayNights: number; stayTravelers: number | null; stayLowN: boolean;
 }
 interface DemandRollupMarketSummary {
   marketSlug: string; requested: DemandRollupBucket; missed: DemandRollupBucket;
@@ -705,6 +705,15 @@ interface DemandRollupResult {
 const FUNNEL_STAGE_LABELS: Record<string, string> = {
   in_planning: "Planning", with_expert: "With expert", ready_for_checkout: "Ready", purchased: "Booked",
 };
+
+/** R29 — "early signal" pill for a floor-cleared-but-thin (low-n) demand figure (§13). */
+function EarlyPill() {
+  return (
+    <Badge variant="outline" className="ml-1.5 border-amber-300 bg-amber-100 text-amber-800 text-[9px] py-0 px-1.5 align-middle" data-testid="rollup-early-signal">
+      early signal
+    </Badge>
+  );
+}
 
 function DemandTab() {
   const { data, isLoading, isError } = useQuery<DemandSignalsResponse>({
@@ -918,9 +927,10 @@ function DemandTab() {
                           ? m.requested.slipAmount.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })
                           : "—"}{" "}
                         <span className="text-xs text-muted-foreground">· {m.requested.slipCount} experiences</span>
+                        {m.requested.slipLowN && <EarlyPill />}
                       </p>
                       {m.requested.stayTrips > 0 && (
-                        <p className="text-xs text-muted-foreground">{m.requested.stayTrips} stay {m.requested.stayTrips === 1 ? "trip" : "trips"} · {m.requested.stayNights} nights</p>
+                        <p className="text-xs text-muted-foreground">{m.requested.stayTrips} stay {m.requested.stayTrips === 1 ? "trip" : "trips"} · {m.requested.stayNights} nights{m.requested.stayLowN && <EarlyPill />}</p>
                       )}
                     </div>
                     {/* Missed (expired unfilled) — a settled loss, R20 own bucket */}
@@ -931,9 +941,10 @@ function DemandTab() {
                           ? m.missed.slipAmount.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })
                           : "—"}{" "}
                         <span className="text-xs text-muted-foreground">· {m.missed.slipCount} experiences</span>
+                        {m.missed.slipLowN && <EarlyPill />}
                       </p>
                       {m.missed.stayTrips > 0 && (
-                        <p className="text-xs text-muted-foreground">{m.missed.stayTrips} stay {m.missed.stayTrips === 1 ? "trip" : "trips"} · {m.missed.stayNights} nights</p>
+                        <p className="text-xs text-muted-foreground">{m.missed.stayTrips} stay {m.missed.stayTrips === 1 ? "trip" : "trips"} · {m.missed.stayNights} nights{m.missed.stayLowN && <EarlyPill />}</p>
                       )}
                     </div>
                   </div>
