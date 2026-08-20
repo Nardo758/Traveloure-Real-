@@ -19,12 +19,10 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MarketInsightsView } from "@/components/provider/catalog-map-view";
-import { apiRequest } from "@/lib/queryClient";
 
 // ── response shape (mirrors server RollupReadResult + markets/summary) ───────────────────────────
 type DemandKind = "requested" | "missed";
@@ -38,12 +36,13 @@ interface RollupRow {
   n: number;
   status: "ok" | "no_data";
   kind: DemandKind;
+  lowN: boolean;              // R29: floor-cleared but thin (early signal) — labeled, never silent
   partnerId: string | null;
   serviceId: string | null;   // per-service (R25b) cells are the Catalog funnel's (3.3), not this list
 }
 interface SummaryBucket {
-  slipAmount: number | null; slipCount: number; slipValuedCount: number;
-  stayTrips: number; stayNights: number; stayTravelers: number | null;
+  slipAmount: number | null; slipCount: number; slipValuedCount: number; slipLowN: boolean;
+  stayTrips: number; stayNights: number; stayTravelers: number | null; stayLowN: boolean;
 }
 interface MarketSummary { marketSlug: string; requested: SummaryBucket; missed: SummaryBucket }
 interface RollupResponse {
@@ -160,14 +159,32 @@ export default function ProviderMarketResearch() {
             {/* Requested-Windows list */}
             <WindowsList market={selected} kind={kind} windows={windows} historySince={data.historySince} />
 
-            {/* Search-interest map — a SEPARATE, labeled layer (R25-final.1): a different metric
-                (where travelers are LOOKING) from the unmet-demand hero/windows above. Never blended,
-                never summed, never the ghost-gold treatment, no unmet-$ circles. */}
-            <SearchInterestLayer market={selected} />
+            {/* Search-interest map UNMOUNTED (STEP 3.7 Part B, R29 dispatch): the search substrate is
+                dark on real data (search_analytics/demand_signals empty), so the layer could only paint
+                coverage-gap markers under a "search interest" header — a label/pixels mismatch (§13).
+                It returns as a separately-named, honest surface once the search write-path lands (the
+                standing FOLLOWUP). See docs/findings/partner-demand-3.7-partA-diagnosis.md §A2. */}
           </>
         )}
       </div>
     </ProviderLayout>
+  );
+}
+
+// R29 — an "early signal" tag for a floor-cleared-but-thin (low-n) enumerable own-book figure. States
+// the thinness plainly beside the value; never lets a 3-sample figure read as a full one (§13).
+function EarlySignalTag() {
+  return (
+    <span
+      data-testid="early-signal-tag"
+      style={{
+        marginLeft: 8, fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", verticalAlign: "middle",
+        padding: "2px 8px", borderRadius: 99, color: GOLD_INK,
+        background: "var(--earn-gold-wash)", border: "1px solid var(--earn-faint)",
+      }}
+    >
+      early signal
+    </span>
   );
 }
 
@@ -182,6 +199,7 @@ function Hero({ market, summary, historySince }: { market: string; summary: Mark
           <>
             <div style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 30, fontWeight: 700, color: NAVY }}>
               {usd.format(b!.slipAmount!)}
+              {b!.slipLowN && <EarlySignalTag />}
             </div>
             <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>
               requested in {prettyMarket(market)} with no bookable slot · based on{" "}
@@ -192,6 +210,7 @@ function Hero({ market, summary, historySince }: { market: string; summary: Mark
           <>
             <div style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 30, fontWeight: 700, color: NAVY }}>
               {b!.stayTrips} trips · {b!.stayNights} nights
+              {b!.stayLowN && <EarlySignalTag />}
             </div>
             <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>
               seeking a stay in {prettyMarket(market)} with none anchored · count-only, no price shown · updated daily
@@ -249,9 +268,9 @@ function WindowRow({ market, row }: { market: string; row: RollupRow }) {
             Not enough planned trips yet to show a figure (n={row.n}) — appears once the sample clears the floor.
           </span>
         ) : isStay ? (
-          <StayCell value={row.value as StayValue} n={row.n} />
+          <StayCell value={row.value as StayValue} n={row.n} lowN={row.lowN} />
         ) : (
-          <SlipCell value={row.value as SlipValue} n={row.n} />
+          <SlipCell value={row.value as SlipValue} n={row.n} lowN={row.lowN} />
         )}
       </div>
       {row.kind === "requested" && (
@@ -265,64 +284,14 @@ function WindowRow({ market, row }: { market: string; row: RollupRow }) {
   );
 }
 
-const SEARCH_LAYER_ID = "search_interest";
+// SearchInterestLayer REMOVED (STEP 3.7 Part B, R29 dispatch). It mounted `MarketInsightsView`
+// unscoped and, with the search substrate dark on real data, could only paint coverage-gap markers
+// under a "search interest" header (a label/pixels mismatch, §13 — see the 3.7 Part-A diagnosis).
+// The layer returns as a separately-named, honest surface once the search write-path FOLLOWUP lands.
+// `MarketInsightsView` itself is unchanged and still mounts on Catalog; B1 filters its endpoint so a
+// non-operating market never reaches a partner surface wherever it renders.
 
-/**
- * The ruling-84 search-intent map, mounted as a labeled REGISTRY layer (R25-final.1, 3.1c.4). Its
- * own header + vocabulary, visually separated from the unmet-demand hero; its own cadence; the
- * toggle persists per-user server-side (POST /api/me/research-prefs → users.preferences) and fires
- * the layer_toggled signal there. NO unmet-$ on this map — it shows search interest (a different
- * metric), never the ghost-gold "requested" treatment.
- */
-function SearchInterestLayer({ market }: { market: string }) {
-  const qc = useQueryClient();
-  const { data: prefs } = useQuery<{ layers: Record<string, boolean> }>({ queryKey: ["/api/me/research-prefs"] });
-  const [override, setOverride] = useState<boolean | null>(null);
-  // default ON until a stored preference says otherwise; a local override gives instant feedback.
-  const stored = prefs?.layers?.[SEARCH_LAYER_ID];
-  const visible = override ?? stored ?? true;
-
-  const toggle = async () => {
-    const next = !visible;
-    setOverride(next); // optimistic
-    try {
-      await apiRequest("POST", "/api/me/research-prefs", { layerId: SEARCH_LAYER_ID, visible: next, market });
-      qc.invalidateQueries({ queryKey: ["/api/me/research-prefs"] });
-    } catch {
-      setOverride(!next); // revert on failure — the durable write is the source of truth
-    }
-  };
-
-  return (
-    <div style={{ marginTop: 22 }} data-testid="search-interest-layer">
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
-        <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 16, color: NAVY }}>
-          Where travelers are looking — search interest
-        </h2>
-        <button
-          onClick={toggle}
-          data-testid="search-interest-toggle"
-          style={{
-            fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 99, cursor: "pointer",
-            border: "1px solid var(--earn-faint)", background: "transparent", color: "var(--earn-muted)",
-          }}
-        >
-          {visible ? "Hide" : "Show"}
-        </button>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: MUTED, textAlign: "right" }}>
-          search interest, not unmet demand<br />updated daily
-        </span>
-      </div>
-      {visible && (
-        <div data-testid="search-interest-map">
-          <MarketInsightsView />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SlipCell({ value, n }: { value: SlipValue | null; n: number }) {
+function SlipCell({ value, n, lowN = false }: { value: SlipValue | null; n: number; lowN?: boolean }) {
   if (!value) return <span style={{ color: MUTED }}>—</span>;
   return (
     <span>
@@ -332,11 +301,12 @@ function SlipCell({ value, n }: { value: SlipValue | null; n: number }) {
         <><b style={{ color: NAVY }}>{value.count}</b> requested <span style={{ color: MUTED }}>(no priced items)</span></>
       )}
       <span style={{ color: MUTED }}> · {value.count} item{value.count === 1 ? "" : "s"} · n={n}</span>
+      {lowN && <EarlySignalTag />}
     </span>
   );
 }
 
-function StayCell({ value, n }: { value: StayValue | null; n: number }) {
+function StayCell({ value, n, lowN = false }: { value: StayValue | null; n: number; lowN?: boolean }) {
   if (!value) return <span style={{ color: MUTED }}>—</span>;
   return (
     <span>
@@ -344,6 +314,7 @@ function StayCell({ value, n }: { value: StayValue | null; n: number }) {
       <b style={{ color: NAVY }}>{value.nights}</b> night{value.nights === 1 ? "" : "s"}
       {value.travelers != null && <> · {value.travelers} traveler{value.travelers === 1 ? "" : "s"}</>}
       <span style={{ color: MUTED }}> · n={n}</span>
+      {lowN && <EarlySignalTag />}
     </span>
   );
 }

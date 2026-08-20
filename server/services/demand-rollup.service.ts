@@ -26,7 +26,14 @@ import {
 } from "@shared/schema";
 import { isRealTripSql } from "./demand-test-exclusion";
 import { resolveMarketSlug, timezoneForMarket, getMarketByKey } from "./trend-engine/operating-markets";
-import { clearsFloor, floorForScope, DEMAND_WINDOW_DAYS, type DemandAudience } from "../config/demand-floors.config";
+import {
+  clearsFloor,
+  floorForScope,
+  metricClassOf,
+  isLowNSignal,
+  DEMAND_WINDOW_DAYS,
+  type DemandAudience,
+} from "../config/demand-floors.config";
 import {
   OPEN_SLIP_STATUSES,
   marketLocalDate,
@@ -294,6 +301,10 @@ export interface RollupReadRow {
   // from this cell's own slip_funnel payload. Set only on a floor-cleared slip_funnel row; null on
   // every other metric, on a suppressed row, and on a funnel with no honest stall to claim (§13).
   stallStage: StallStage | null;
+  // R29: a floor-cleared ENUMERABLE own-book figure whose sample is thin (n in [enumerable-floor,
+  // standard-floor)) is real-but-early. `lowN` true ⇒ the surface renders the "early signal" label
+  // beside the value, never silently as a full sample. Always false for derived/cross-partner/sold.
+  lowN: boolean;
   computedAt: Date;
 }
 export interface RollupWindow { from: string; to: string; }
@@ -332,7 +343,11 @@ function resolveWindow(now: Date, from?: string, to?: string): RollupWindow {
  *  disposition (R20). The cell's market-local "today" decides its kind; the AUDIENCE (own-book vs
  *  cross-partner) decides its floor, NOT its grain — the same cell suppresses differently per reader. */
 function toReadRow(row: StoredRollupRow, now: Date, audience: DemandAudience): RollupReadRow {
-  const ok = clearsFloor(row.sourceRowCount, audience);
+  // R29: the floor keys on audience (R27) AND metric class — enumerable own-book demand clears at a
+  // lower tier (3) with a low-n label; derived stats keep the R27 tiers. Class comes from the metric.
+  const metricClass = metricClassOf(row.metric);
+  const ok = clearsFloor(row.sourceRowCount, audience, metricClass);
+  const lowN = ok && isLowNSignal(row.sourceRowCount, audience, metricClass);
   const marketSlug = String(row.marketSlug);
   const tz = timezoneForMarket(marketSlug === UNMAPPED_MARKET_SLUG ? null : marketSlug);
   const date = String(row.date);
@@ -353,6 +368,7 @@ function toReadRow(row: StoredRollupRow, now: Date, audience: DemandAudience): R
     partnerId: row.partnerId,
     serviceId: row.serviceId,
     stallStage,
+    lowN,
     computedAt: row.computedAt as Date,
   };
 }

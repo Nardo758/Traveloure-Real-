@@ -259,3 +259,93 @@ exactly why this step exists.
 3. **Pressure flag (A5)** — keep off (no read exists), or rule the decomposed read into Part B as a build.
 4. **Part B scope** — B1/B2 (data correctness) are almost certainly in; B4 (fidelity) is gated on the
    pixel gate (A6 #1) being live first; B3/B5 per the above rulings.
+
+---
+
+# PART A — DB evidence (⚑ Replit, run by Leon) + rulings + corrected A3
+
+**Ran on `lane/partner-demand-fidelity` against dev.** Kyoto provider =
+`c96e66a2-5601-49dc-8ece-fa800ca65542` (`kyoto-temples@traveloure.test`). No writes.
+
+- **A1b:** provider has **no declared cities** in dev; `search_analytics` and `demand_signals` return
+  **no rows**. So this dev run does NOT reproduce Bali through a real provider-service row — but the
+  **code-path defect stands** (raw city strings, no operating-market/R13 guard); it is latent, not
+  disproven.
+- **A2 substrate:** `search_analytics` **0 total / 0 last-90d**; `demand_signals` **0 rows**. The search
+  substrate is **completely dark on real data.** With zero searches, the "search interest" map can only
+  ever paint coverage-gap squares under a search-interest header → label/pixels disagree by construction.
+- **A3 rollup + items:**
+  - `unmet_demand_slip` requested cell EXISTS and is POSITIVE: `{count:3, amount:240, valuedCount:3}`,
+    **`source_row_count = 3`**, date 2026-10-01.
+  - `unmet_demand_stay` cells: `{trips:27, nights:135}` n=27, and `{trips:2, nights:7}` n=2.
+  - open Kyoto items: **4 open · 1 with provider-service · 3 with price.**
+
+## Corrected A3 — the hero is FLOOR-CORRECT, not a consumption bug
+
+My original A3 hypothesis ("real service demand has no price") is **WRONG** — the items ARE priced
+(3 of 4) and the slip cell carries a real `$240`. The true mechanism, confirmed in code:
+
+> The `$240` slip cell has **`source_row_count = 3`**, which is **below the own_book floor of 5**
+> (`demand-floors.config.ts:22`). `clearsFloor(3,"own_book") = false`
+> (`demand-rollup.service.ts:335`) → the row renders `no_data` with `value=null` →
+> `summarizeMarkets` excludes it (status ≠ "ok"). The stay cell (**n=27**) DOES clear the floor.
+> So `summary.requested.slipAmount` is null and the hero correctly falls to the stay figure.
+
+**This is R27/§13 working exactly as designed:** a 3-sample service figure is below the honesty
+threshold and is suppressed; the 27-sample stay figure clears it and shows. The hero is **honest and
+correct** — it is *not* ignoring a rollup it should consume; it is obeying the floor.
+
+The odd-looking asymmetry ("27 trips shown, $240 hidden") is the floor applied uniformly (both gate at
+5; stay simply has more rows). **There is no hero bug to fix.** The only open question is a **floor
+POLICY** one, and it is Leon's to rule, NOT a Part-B defect: *should a below-floor service signal
+($240, n=3) be surfaced to the market's OWN provider anyway?* The floor exists to prevent exactly that,
+so the default answer is "no, keep suppressing" — but if Leon wants own-market service signals shown
+below 5, that is a `demand-floors.config` policy change (own_book tier), not a code fix to the hero.
+
+---
+
+# PART B — scoped plan (against Leon's rulings; no code written yet)
+
+**B-search (ruled: UNMOUNT).** Remove the partner-facing search-interest layer from
+`market-research.tsx` (the `<SearchInterestLayer>` mount, :166, and its component :277–322). Do NOT
+relabel. Substrate is dark; the layer cannot be honest. Note: `MarketInsightsView` is ALSO mounted on
+**Catalog** (`catalog-map-view.tsx:888`, the per-service sibling toggle) — same endpoint, same latent
+Bali/R13 exposure. Plan resolves this via B1 at the endpoint (below), so the Catalog usage is made safe
+rather than removed. Confirm no other mounts during B.
+- Test: `/provider/market-research` renders no `search-interest-layer`; the research-prefs toggle rail
+  is retired or hidden with it.
+
+**B1 (ruled: operating-market filter + declared-market validation).** At the SHARED source
+(`getProviderMarketCities` / the `/api/provider/market-insights` endpoint): intersect the provider's
+declared `provider_services.city` strings with the 8 operating markets (via `resolveMarketSlug` /
+`market_geography`, **never a literal list**) before scoping; drop non-operating cities. Admin/unfiltered
+feed unaffected (R13 — admin keeps the full feed). This protects every consumer of the endpoint,
+including the Catalog mount, so Bali can never render on a partner surface even where the layer stays.
+- Test: a seeded `provider_services.city='Bali'` row renders in an admin view, NEVER on the partner
+  page; a Kyoto provider's insights scope to Kyoto only.
+
+**B-hero (ruled: diagnose first — DONE above).** No hero code change proposed. The hero is
+floor-correct. Deliverable: the corrected-A3 diagnosis (above) + a FOLLOWUP entry noting the
+below-floor `$240` service signal is suppressed by own_book=5 (a capture/volume gap, not a render bug).
+**Awaiting Leon:** accept as-is (default), OR rule a floor-policy change (separate, explicit).
+
+**B2 (label/dots coherence).** Moot for the partner page once B-search unmounts the layer. If the
+Catalog `MarketInsightsView` is kept, its "N searches in 90 days" label must be made coherent: one
+window, one source, both driven by the same read (fix the `demand_signals` unwindowed contribution,
+storage.ts:6725–6728, and separate the coverage-gap markers from the search-count honesty line so the
+label and the map plot the same substrate). Test asserts label N == plotted search sum.
+
+**B4 (visual fidelity) — GATED on A6.** Do NOT start until the pixel gate is RUNNABLE. Build the gate
+first (A6 #1: an `ubuntu-latest` CI job reusing the existing `playwright install --with-deps chromium`
+block). Then, per the A4 delta table: load Fraunces (or drop the Fraunces reference honestly), add the
+hero gold-wash band, build the ±90 scrubber band with today-marker, and — for any windows-row deep-links
+— either build real `calendar↗`/`map↗` targets or leave them out (never unstyled stubs). Every visual
+fix ships with a screenshot diff vs `partner-demand-visual-target.html`. **No API-contract-only
+verification for visual work.**
+
+**NOT in Part B (ruled):** pressure shading stays `false` (no decomposed read exists; it's a build, not
+a flip; not authorized). One-pager stays R18-locked. Search write-path stays a FOLLOWUP (untouched).
+
+**Gates for the B PR:** all existing demand gates green · tsc ratchet holds · pixel gate RUNS with
+attached screenshots · ⚑ real-data re-verification of B1 (a seeded Bali row is admin-only) · human read
+before merge (partner-facing surface + the shared MarketInsightsView component).
