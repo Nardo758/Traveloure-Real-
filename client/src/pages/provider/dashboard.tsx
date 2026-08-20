@@ -171,6 +171,20 @@ interface TopDemandSignal {
   count?: number;
   trips?: number;    // stay-shaped (R19 — NO $)
   nights?: number;
+  lowN?: boolean;    // R29: early-signal (thin sample) — the card says so, never a silent full figure
+}
+
+/** R29 — "early signal" pill for a floor-cleared-but-thin (low-n) demand figure. States the thinness
+ *  beside the value so a 3-sample figure never reads as a full one (§13). */
+function EarlySignalPill() {
+  return (
+    <span
+      data-testid="early-signal-pill"
+      className="ml-1.5 align-middle rounded-full border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-amber-800"
+    >
+      early signal
+    </span>
+  );
 }
 
 /** ONE card for today's single highest-value demand opportunity (3.4 Item 2.1). Never a feed —
@@ -196,6 +210,7 @@ function TodayDemandCard({ signal }: { signal: TopDemandSignal | null | undefine
               <>
                 <p className="text-[13px] font-bold text-console-darkest" data-testid="text-today-demand-headline">
                   {money} in requested {signal.marketName} experiences with no open slot
+                  {signal.lowN && <EarlySignalPill />}
                 </p>
                 <p className="text-[11.5px] text-console-mid mt-0.5">
                   {signal.count ?? 0} planned {signal.count === 1 ? "experience" : "experiences"} · your highest-value opening today
@@ -205,6 +220,7 @@ function TodayDemandCard({ signal }: { signal: TopDemandSignal | null | undefine
               <>
                 <p className="text-[13px] font-bold text-console-darkest" data-testid="text-today-demand-headline">
                   {signal.trips ?? 0} {signal.trips === 1 ? "trip" : "trips"} seeking a {signal.marketName} stay
+                  {signal.lowN && <EarlySignalPill />}
                 </p>
                 <p className="text-[11.5px] text-console-mid mt-0.5">
                   {signal.nights ?? 0} {signal.nights === 1 ? "night" : "nights"} requested · no on-platform stay yet
