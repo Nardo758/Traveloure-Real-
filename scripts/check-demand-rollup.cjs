@@ -25,11 +25,20 @@ const COMPUTE_HOME = "server/services/demand-rollup.compute.ts";
 const FLOOR_CONFIG = "server/config/demand-floors.config.ts";
 // The 2B demand-rollup MODULE — the four files this lane authors end-to-end. All three checks
 // (totalRevenue ban, floor-literal + computation confinement) apply to exactly these.
+// Phase 4 (recruitment one-pager) extends the same discipline to the demand-onepager module: the
+// generator READS the floored rollup and lays it out — it must never re-derive a demand figure
+// (no metric-fn def, no bare floor/window literal, no totalRevenue read). This is the dispatch's
+// "no-computation grep (generator reads, never derives)" gate. Note demand-onepager.compute.ts does
+// SELECT a variant and FORMAT copy (that is not demand math) — the strict checks target metric-fn
+// definitions and floor literals, which it has none of.
 const STRICT_FILES = [
   "server/services/demand-rollup.compute.ts",
   "server/services/demand-rollup.service.ts",
   "server/jobs/demandRollup.ts",
   "server/config/demand-floors.config.ts",
+  "server/services/demand-onepager.compute.ts",
+  "server/services/demand-onepager.render.ts",
+  "server/services/demand-onepager.service.ts",
 ];
 // STATED NEGATIVE SPACE (ruling 43): this gate does NOT scan server/routes/demand.routes.ts. That is
 // a MIXED legacy file — the two 2B endpoints added there only CALL the service functions (they never
