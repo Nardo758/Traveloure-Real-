@@ -42,6 +42,7 @@ import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { getStripeSecretKey } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runDemandRollup } from "./jobs/demandRollup";
+import { runOnepagerRevalidation } from "./jobs/onepagerRevalidation";
 import { runBookingAutoCompletion } from "./jobs/bookingAutoCompletion";
 import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
@@ -657,6 +658,16 @@ if (process.env.NODE_ENV === "production") {
         void runDemandRollup();
       }, 24 * 60 * 60 * 1000);
     }, 95 * 60 * 1000);
+
+    // Partner Demand Phase 4 (R32): one-pager approval re-validation — withdraw any approval whose
+    // market dropped below the public floor or whose template was bumped. Runs just AFTER the rollup
+    // recompute (105 min delayed first pass) so it evaluates fresh figures, then daily.
+    setTimeout(() => {
+      void runOnepagerRevalidation();
+      setInterval(() => {
+        void runOnepagerRevalidation();
+      }, 24 * 60 * 60 * 1000);
+    }, 105 * 60 * 1000);
 
     // D8 booking auto-completion (docs/DECISIONS.md ruling 63/66; UNIFIED with the replit line's
     // earnings-mint scheduler, ledger 80): THE ONE production auto-completion scheduler — per-method
