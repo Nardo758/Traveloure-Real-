@@ -23,6 +23,7 @@
 
 import type { MarketSummary, MarketSummaryBucket } from "./demand-rollup.compute";
 import type { RollupReadRow, RollupWindow } from "./demand-rollup.service";
+import type { DemandOnepagerApproval } from "@shared/schema";
 import { clearsFloor, metricClassOf, TREND_MIN_WEEKS } from "../config/demand-floors.config";
 
 export type OnepagerVariant = "property-led" | "service-led";
@@ -464,4 +465,23 @@ export function qualifyingMarkets(summaries: MarketSummary[]): string[] {
     .filter((s) => selectVariant(s.requested) != null)
     .map((s) => s.marketSlug)
     .sort();
+}
+
+/**
+ * R32 approval keep-rule (PURE). An approval is KEPT iff it exists, its stamped template version
+ * matches the current one, AND the market still qualifies for the SAME variant it was approved as.
+ * Any other state — no approval, a bumped template, the market dropped below the public floor
+ * (`currentModel` null), or the leading class flipped — is NOT kept, and the re-validation job
+ * withdraws it. Lives in the pure module so it is testable with no DB.
+ */
+export function isApprovalKept(
+  approval: DemandOnepagerApproval | null | undefined,
+  currentModel: OnepagerModel | null,
+  currentTemplateVersion: number,
+): boolean {
+  if (!approval) return false;
+  if (approval.templateVersion !== currentTemplateVersion) return false;
+  if (!currentModel) return false; // below the public floor ⇒ no artifact ⇒ not kept
+  if (currentModel.variant !== approval.variant) return false; // the leading class flipped
+  return true;
 }

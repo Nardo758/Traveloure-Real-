@@ -182,10 +182,13 @@ export async function listQualifyingMarkets(opts: RollupReadOpts = {}): Promise<
 export async function generateOnepagerDraft(
   marketSlug: string,
   opts: RollupReadOpts = {},
+  render: { watermark?: "DRAFT" | null } = {},
 ): Promise<OnepagerDraft | null> {
   const model = await resolveOnepagerModel(marketSlug, opts);
   if (!model) return null;
   const geo = await resolveMarketGeo(marketSlug, model.marketName);
-  const pdf = await renderOnepagerPdf(model, { watermark: "DRAFT", geo });
+  // Default DRAFT (R32); the admin approved-PDF path passes watermark:null.
+  const watermark = render.watermark === undefined ? "DRAFT" : render.watermark;
+  const pdf = await renderOnepagerPdf(model, { watermark, geo });
   return { model, pdf };
 }
