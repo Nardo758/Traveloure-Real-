@@ -131,14 +131,14 @@ function useFonts(doc: any): { regular: string; bold: string; display: string } 
   return { regular, bold, display };
 }
 
-function drawWatermark(doc: any) {
+function drawWatermark(doc: any, label: "DRAFT" | "MOCKUP") {
   doc.save();
   doc.rotate(-30, { origin: [doc.page.width / 2, doc.page.height / 2] });
   doc
     .fontSize(120)
     .fillColor(MUTED)
     .fillOpacity(0.12)
-    .text("DRAFT", 0, doc.page.height / 2 - 60, { width: doc.page.width, align: "center" });
+    .text(label, 0, doc.page.height / 2 - 60, { width: doc.page.width, align: "center" });
   doc.fillOpacity(1);
   doc.restore();
 }
@@ -283,7 +283,7 @@ export function contextMapBoxForOptionalBlocks(contentWidth: number, optionalBlo
  */
 export async function renderOnepagerPdf(
   model: OnepagerModel,
-  opts: { watermark?: "DRAFT" | null; geo?: OnepagerGeoInput } = {},
+  opts: { watermark?: "DRAFT" | "MOCKUP" | null; geo?: OnepagerGeoInput } = {},
 ): Promise<Buffer> {
   const watermark = opts.watermark === undefined ? "DRAFT" : opts.watermark;
   // ESM-safe lazy load (matches admin.routes.ts:4359).
@@ -394,7 +394,7 @@ export async function renderOnepagerPdf(
   // the paragraph would inherit that x and clip off the right edge.
   doc.font(fonts.regular).fontSize(9).fillColor(MUTED).text(model.methodology, left, doc.y, { width: contentWidth });
 
-  if (watermark === "DRAFT") drawWatermark(doc);
+  if (watermark === "DRAFT" || watermark === "MOCKUP") drawWatermark(doc, watermark);
 
   doc.end();
   return await new Promise<Buffer>((resolve, reject) => {
