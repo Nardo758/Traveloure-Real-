@@ -21,6 +21,7 @@ import { sql, type SQL, type AnyColumn } from "drizzle-orm";
 
 /** SQL LIKE patterns identifying seeded test accounts. The sole entry Q6d proved necessary. */
 export const TEST_ACCOUNT_EMAIL_PATTERNS = ["%@traveloure.test"] as const;
+export const SYNTHETIC_COHORT_MIN_SIZE = 10;
 
 /** JS-side predicate (assertions, in-memory filtering). True ⇒ the email is a seeded test account. */
 export function isTestAccountEmail(email: string | null | undefined): boolean {
@@ -59,12 +60,65 @@ export function isSyntheticTrip(trip: {
   return isTestAccountEmail(trip.email) || trip.authorId != null;
 }
 
+/** R38: true when an otherwise-R16-passing, unowned trip belongs to a batched cohort. */
+export function isSyntheticCohortTrip(
+  trip: {
+    email?: string | null;
+    userId?: string | null;
+    authorId?: string | null;
+  },
+  cohortSize: number,
+): boolean {
+  return (
+    cohortSize >= SYNTHETIC_COHORT_MIN_SIZE &&
+    trip.userId == null &&
+    trip.authorId == null &&
+    !isTestAccountEmail(trip.email)
+  );
+}
+
 /**
  * Drizzle SQL fragment: "<emailCol>,<authorIdCol> is a REAL traveler trip" — a real account AND not
  * an authoring listing. The canonical R16 filter for every demand-rollup computation/read; compose
  * into a WHERE, e.g. `.where(and(<market filter>, isRealTripSql(users.email, trips.authorId)))`.
  * A NULL email is real (§13); a non-NULL author_id is synthetic (authoring inventory).
  */
-export function isRealTripSql(emailCol: SQL | AnyColumn, authorIdCol: SQL | AnyColumn): SQL {
-  return sql`(${isRealAccountSql(emailCol)} AND ${authorIdCol} IS NULL)`;
+export function isRealTripSql(
+  emailCol: SQL | AnyColumn,
+  authorIdCol: SQL | AnyColumn,
+  cohort?: {
+    userId: SQL | AnyColumn;
+    destination: SQL | AnyColumn;
+    startDate: SQL | AnyColumn;
+    endDate: SQL | AnyColumn;
+    createdAt: SQL | AnyColumn;
+  },
+): SQL {
+  if (!cohort) {
+    return sql`(${isRealAccountSql(emailCol)} AND ${authorIdCol} IS NULL)`;
+  }
+
+  // R38: exclude only a repeated, unowned, same-day creation cohort. This deliberately does
+  // not turn every NULL email/user into synthetic data (§13); the cohort must clear the floor.
+  const cohortRule = sql`
+    AND NOT (
+      ${cohort.userId} IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM trips AS cohort_trips
+        LEFT JOIN users AS cohort_users ON cohort_users.id = cohort_trips.user_id
+        WHERE cohort_trips.author_id IS NULL
+          AND cohort_trips.user_id IS NULL
+          AND (cohort_users.email IS NULL OR cohort_users.email NOT ILIKE ${TEST_ACCOUNT_EMAIL_PATTERNS[0]})
+          AND lower(cohort_trips.destination) = lower(${cohort.destination})
+          AND cohort_trips.start_date = ${cohort.startDate}
+          AND cohort_trips.end_date = ${cohort.endDate}
+          AND cohort_trips.created_at::date = ${cohort.createdAt}::date
+        GROUP BY lower(cohort_trips.destination), cohort_trips.start_date,
+          cohort_trips.end_date, cohort_trips.created_at::date
+        HAVING count(*) >= ${SYNTHETIC_COHORT_MIN_SIZE}
+      )
+    )
+  `;
+  return sql`(${isRealAccountSql(emailCol)} AND ${authorIdCol} IS NULL ${cohortRule})`;
 }

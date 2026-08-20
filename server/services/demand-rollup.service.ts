@@ -85,7 +85,13 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .where(
       and(
         inArray(itineraryItems.routingStatus, OPEN_SLIP_STATUSES as unknown as string[]),
-        isRealTripSql(users.email, trips.authorId),
+        isRealTripSql(users.email, trips.authorId, {
+          userId: trips.userId,
+          destination: trips.destination,
+          startDate: trips.startDate,
+          endDate: trips.endDate,
+          createdAt: trips.createdAt,
+        }),
       ),
     );
 
@@ -142,7 +148,13 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .innerJoin(trips, eq(itemTransitionLog.tripId, trips.id))
     .leftJoin(users, eq(trips.userId, users.id))
     .leftJoin(itineraryItems, eq(itemTransitionLog.itemId, itineraryItems.id))
-    .where(isRealTripSql(users.email, trips.authorId));
+    .where(isRealTripSql(users.email, trips.authorId, {
+      userId: trips.userId,
+      destination: trips.destination,
+      startDate: trips.startDate,
+      endDate: trips.endDate,
+      createdAt: trips.createdAt,
+    }));
 
   const diaryRows: DiaryRow[] = diary.map((r) => ({
     marketSlug: bucketSlug(r.marketSlug),
@@ -172,7 +184,13 @@ export async function computeAndStoreDemandRollup(): Promise<number> {
     .leftJoin(users, eq(trips.userId, users.id))
     .where(
       and(
-        isRealTripSql(users.email, trips.authorId),
+        isRealTripSql(users.email, trips.authorId, {
+          userId: trips.userId,
+          destination: trips.destination,
+          startDate: trips.startDate,
+          endDate: trips.endDate,
+          createdAt: trips.createdAt,
+        }),
         sql`${trips.endDate} > ${trips.startDate}`,
         sql`NOT EXISTS (SELECT 1 FROM itinerary_items ii WHERE ii.trip_id = ${trips.id} AND ii.item_type = 'accommodation')`,
         sql`NOT EXISTS (SELECT 1 FROM trip_selected_hotels tsh WHERE tsh.trip_id = ${trips.id})`,
