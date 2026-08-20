@@ -28,6 +28,7 @@ const MODEL: OnepagerModel = {
     { date: "2026-10-01", n: 20, trips: 20, nights: 90 },
     { date: "2026-08-22", n: 12, trips: 12, nights: 30 },
   ],
+  windowsTotal: 2,
   methodology:
     "Based on 27 planned trips (strict count: real travelers, synthetic and authoring trips excluded) · May–Nov · updated monthly. Demand shown only where the sample clears our honesty floor (at least 10 planned trips per market). Stay demand is a trip and night count only — never a dollar figure.",
   monthRange: "May–Nov",

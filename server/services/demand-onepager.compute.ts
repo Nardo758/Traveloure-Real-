@@ -58,8 +58,13 @@ export interface OnepagerModel {
   marketName: string;
   variant: OnepagerVariant;
   hero: OnepagerHero;
-  /** Top forward windows of the leading metric (floor-cleared), sorted for the supporting visual. */
+  /** ALL forward windows of the leading metric (floor-cleared), sorted for the supporting visual. The
+   *  render shows the top few and labels "Top K of {windowsTotal}" so a visible subset never implies
+   *  completeness (note-2 reconciliation) — and the full set SUMS to the hero (the market total),
+   *  which the reconciliation test asserts. */
   windows: OnepagerWindowRow[];
+  /** Count of all floor-cleared forward windows (= windows.length) — the "of N" in the Top-K label. */
+  windowsTotal: number;
   /** The four-honesty-gate methodology paragraph (strict count · month range · floor · count-only). */
   methodology: string;
   monthRange: string; // "May–Nov" style label derived from the window (formatting only)
@@ -222,7 +227,17 @@ export function buildOnepagerModel(args: {
   const monthRange = monthRangeOf(window);
   const methodology = buildMethodology(variant, hero.strictCount, monthRange);
 
-  return { marketSlug, marketName, variant, hero, windows, methodology, monthRange, window };
+  return {
+    marketSlug,
+    marketName,
+    variant,
+    hero,
+    windows,
+    windowsTotal: windows.length,
+    methodology,
+    monthRange,
+    window,
+  };
 }
 
 /**

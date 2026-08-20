@@ -169,6 +169,36 @@ test("determinism: window sort is stable — most nights first, date asc tiebrea
   assert.deepEqual(m.windows.map((w) => w.date), ["2026-10-01", "2026-08-22", "2026-09-10"]);
 });
 
+// ── note-2 reconciliation: the full window set SUMS to the hero (market total) ──────────────────
+test("reconciliation (property-led): Σ(window trips|nights) === hero total", () => {
+  const rows = [
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 20, value: { trips: 20, nights: 90, travelers: 25 }, date: "2026-10-01" }),
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 12, value: { trips: 12, nights: 30, travelers: 15 }, date: "2026-08-22" }),
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 11, value: { trips: 11, nights: 24, travelers: 14 }, date: "2026-09-10" }),
+  ];
+  const m = model("kyoto", rows)!;
+  const sumTrips = m.windows.reduce((a, w) => a + (w.trips ?? 0), 0);
+  const sumNights = m.windows.reduce((a, w) => a + (w.nights ?? 0), 0);
+  assert.equal(sumTrips, m.hero.stayTrips, "trips reconcile to the hero total");
+  assert.equal(sumNights, m.hero.stayNights, "nights reconcile to the hero total");
+  assert.equal(sumTrips, m.hero.strictCount, "strict count is the market total, not a window");
+  assert.equal(m.windowsTotal, 3);
+});
+
+test("reconciliation (service-led): Σ(window $|count) === hero total; count-only counts but adds no $", () => {
+  const rows = [
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_slip", n: 14, value: { count: 14, amount: 3000, valuedCount: 14 }, date: "2026-10-01" }),
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_slip", n: 11, value: { count: 11, amount: 2000, valuedCount: 11 }, date: "2026-08-22" }),
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_slip", n: 12, value: { count: 12, amount: null, valuedCount: 0 }, date: "2026-09-10" }),
+  ];
+  const m = model("kyoto", rows)!;
+  const sumAmount = m.windows.reduce((a, w) => a + (w.amount ?? 0), 0);
+  const sumCount = m.windows.reduce((a, w) => a + (w.count ?? 0), 0);
+  assert.equal(sumAmount, m.hero.unmetAmount, "priced $ reconciles to the hero total ($ from priced windows only)");
+  assert.equal(sumCount, m.hero.unmetTripCount, "trip count reconciles (count-only window included)");
+  assert.equal(m.windowsTotal, 3);
+});
+
 // ── qualification (R32 admin control) ──────────────────────────────────────────────────────────
 test("qualifyingMarkets: only markets with a floor-clearing class qualify", () => {
   const rows = [
