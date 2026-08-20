@@ -85,9 +85,10 @@ const FIXED_PDF_EPOCH = new Date(0);
  * The LAYOUT template version (R32). Bump this whenever the one-pager layout changes — an approval
  * stamped with an older version is no longer "the artifact Leon approved", so the keep-rule invalidates
  * it and it must be re-approved. History: 1 = 4.1 basic; 2 = 4.2 brief §3 + Fraunces; 3 = 4.2b/4.2c
- * (event spotlight, trend lock, gap pairing, context map).
+ * (event spotlight, trend lock, gap pairing, context map); 4 = R37 forward-range, window-collapse,
+ * and data-maturity-responsive map layout.
  */
-export const ONEPAGER_TEMPLATE_VERSION = 3;
+export const ONEPAGER_TEMPLATE_VERSION = 4;
 
 const USD0 = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -263,6 +264,17 @@ function drawContextMap(
   return true;
 }
 
+/** R37: map prominence falls as lit optional blocks compete for the same one-page composition. */
+export function contextMapBoxForOptionalBlocks(contentWidth: number, optionalBlockCount: number) {
+  const halfPageWidth = Math.round(contentWidth / 2);
+  const compactWidth = 168;
+  const boundedCount = Math.max(0, Math.min(3, optionalBlockCount));
+  const width = Math.round(
+    halfPageWidth - ((halfPageWidth - compactWidth) * boundedCount) / 3,
+  );
+  return { w: width, h: Math.round(width * 0.7) };
+}
+
 /**
  * Render a one-pager view-model to a PDF Buffer. Brief §3 layout: Fraunces hero (variant headline +
  * subline + methodology line), one supporting visual (the top requested check-in windows as bars,
@@ -302,11 +314,13 @@ export async function renderOnepagerPdf(
     .text(`Based on ${model.hero.strictCount} planned trips (strict count) · ${model.monthRange} · updated monthly`);
   doc.moveDown(1.2);
 
-  // R36/R37 context map — a modest letterhead locator under the hero (NOT a supporting visual, so the
-  // ≤3-visual budget is untouched). Omitted with no placeholder when geo is absent (R37).
+  // R36/R37 context map — half-page width when the optional blocks are dark; it scales down toward
+  // letterhead size as they light, preserving the market geometry via fitBbox. It is NOT a supporting
+  // visual, so the ≤3-visual budget is untouched. Omitted with no placeholder when geo is absent.
   if (opts.geo) {
-    const mapW = 168;
-    const mapH = 118;
+    const optionalBlockCount = [model.eventSpotlight, model.trendBlock, model.gapPairing]
+      .filter(Boolean).length;
+    const { w: mapW, h: mapH } = contextMapBoxForOptionalBlocks(contentWidth, optionalBlockCount);
     const mapY = doc.y;
     if (drawContextMap(doc, fonts, opts.geo, { x: left, y: mapY, w: mapW, h: mapH }, model.marketName)) {
       doc.y = mapY + mapH + 26; // clear the map + caption + scoped ODbL line
@@ -332,7 +346,10 @@ export async function renderOnepagerPdf(
 
   // Supporting visual — top requested check-in windows (bars). Honest completeness label (note-2):
   // the hero is the MARKET TOTAL; these bars are the top K of the market's N floor-cleared windows.
-  if (model.windows.length > 0) {
+  if (model.windowCaption) {
+    doc.font(fonts.regular).fontSize(11).fillColor(INK).text(model.windowCaption);
+    doc.moveDown(1.2);
+  } else if (model.windows.length > 0) {
     const K = 5;
     const shown = model.windows.slice(0, K);
     const noun = model.variant === "property-led" ? "check-in dates" : "windows";
