@@ -195,6 +195,22 @@ export async function renderOnepagerPdf(
     .text(`Based on ${model.hero.strictCount} planned trips (strict count) · ${model.monthRange} · updated monthly`);
   doc.moveDown(1.2);
 
+  // R33 event spotlight (block 2, before windows) — a gold-accented callout with the event name in
+  // Fraunces; the demand copy is the model's verbatim line. Omitted entirely when null (no filler).
+  if (model.eventSpotlight) {
+    const s = model.eventSpotlight;
+    const y0 = doc.y;
+    doc.roundedRect(left, y0, contentWidth, 44, 6).fill(BAR_TRACK); // faint gold-wash panel
+    doc.fillColor("#8A6D1B").font(fonts.bold).fontSize(8).text("EVENT SPOTLIGHT", left + 12, y0 + 8, {
+      characterSpacing: 1,
+    });
+    // event name in Fraunces (gold ink), then the remainder of the verbatim copy in body
+    doc.font(fonts.display).fontSize(13).fillColor("#8A6D1B").text(s.eventName, left + 12, y0 + 20, { continued: true });
+    doc.font(fonts.regular).fontSize(11).fillColor(INK).text(s.copy.slice(s.eventName.length));
+    doc.y = y0 + 44;
+    doc.moveDown(1);
+  }
+
   // Supporting visual — top requested check-in windows (bars). Honest completeness label (note-2):
   // the hero is the MARKET TOTAL; these bars are the top K of the market's N floor-cleared windows.
   if (model.windows.length > 0) {
@@ -209,6 +225,32 @@ export async function renderOnepagerPdf(
     doc.moveDown(0.4);
     drawWindowBars(doc, fonts, model, shown, left, contentWidth);
     doc.moveDown(1.2);
+  }
+
+  // R34 trend — only when unlocked (>= TREND_MIN_WEEKS of history); a compact weekly sparkline. Never
+  // renders below threshold (no placeholder, no slope language).
+  if (model.trendBlock && model.trendBlock.points.length > 0) {
+    const t = model.trendBlock;
+    doc.font(fonts.bold).fontSize(11).fillColor(INK).text(`Demand trend — last ${t.weeks} weeks`, left, doc.y);
+    doc.moveDown(0.3);
+    const max = Math.max(1, ...t.points.map((p) => p.value));
+    const n = t.points.length;
+    const gap = 3;
+    const barW = Math.max(2, Math.floor((contentWidth - (n - 1) * gap) / n));
+    const baseY = doc.y;
+    const h = 28;
+    t.points.forEach((p, i) => {
+      const bh = Math.max(1, Math.round((p.value / max) * h));
+      doc.roundedRect(left + i * (barW + gap), baseY + (h - bh), barW, bh, 1).fill(BAR);
+    });
+    doc.y = baseY + h + 6;
+    doc.moveDown(1);
+  }
+
+  // R35 gap pairing — a single honest line (grains kept distinct); the model built the verbatim copy.
+  if (model.gapPairing) {
+    doc.font(fonts.regular).fontSize(10).fillColor(INK).text(model.gapPairing.copy, left, doc.y, { width: contentWidth });
+    doc.moveDown(1);
   }
 
   // Methodology block — the credibility spine (brief §3, four honesty gates). Explicit x=left: the

@@ -21,12 +21,67 @@
  * unless the post-approval admin flow renders with `watermark: null`.
  */
 
+import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { db } from "../db";
+import { travelPulseCalendarEvents, partnerDemandRollup } from "@shared/schema";
 import { readAdminDemandRollup, type RollupReadOpts } from "./demand-rollup.service";
 import { getMarketByKey } from "./trend-engine/operating-markets";
-import { buildOnepagerModel, qualifyingMarkets, type OnepagerModel } from "./demand-onepager.compute";
+import {
+  buildOnepagerModel,
+  qualifyingMarkets,
+  type OnepagerModel,
+  type OnepagerEventInput,
+} from "./demand-onepager.compute";
 import { renderOnepagerPdf } from "./demand-onepager.render";
+import { DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 export { renderOnepagerPdf };
+
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * R33 — forward event windows for a market from `travel_pulse_calendar_events` (the only real
+ * dated-event source; the trend engine stores aggregate metrics, not dated rows). Matched on the free
+ * `city` string LOWERCASED (there is no market-slug column here). `end` falls back to `start` for a
+ * single-day event. Empty for a market with no ingested forward events (e.g. Kyoto today ⇒ spotlight
+ * ships dark — self-unlocking when events are ingested).
+ */
+async function fetchForwardEvents(marketName: string, now: Date): Promise<OnepagerEventInput[]> {
+  const today = isoDay(now);
+  const horizon = new Date(now);
+  horizon.setUTCDate(horizon.getUTCDate() + DEMAND_WINDOW_DAYS);
+  const rows = await db
+    .select({
+      name: travelPulseCalendarEvents.eventName,
+      start: travelPulseCalendarEvents.startDate,
+      end: travelPulseCalendarEvents.endDate,
+    })
+    .from(travelPulseCalendarEvents)
+    .where(
+      and(
+        eq(sql`lower(${travelPulseCalendarEvents.city})`, marketName.toLowerCase()),
+        gte(travelPulseCalendarEvents.startDate, today),
+        lte(travelPulseCalendarEvents.startDate, isoDay(horizon)),
+      ),
+    );
+  return rows.map((r) => ({ name: r.name, start: String(r.start), end: String(r.end ?? r.start) }));
+}
+
+/**
+ * R34 — distinct-date weeks of computed daily rollup history for a market. Uses `date` (the demand
+ * day-cell), NOT `computedAt` (job write time, which the REPLACE-BY-DATE job overwrites). Below
+ * TREND_MIN_WEEKS the trend block stays dark; at launch this is only days old ⇒ dark, self-unlocking.
+ */
+async function fetchHistoryWeeks(marketSlug: string): Promise<number> {
+  const [row] = await db
+    .select({ days: sql<number>`count(distinct ${partnerDemandRollup.date})` })
+    .from(partnerDemandRollup)
+    .where(eq(partnerDemandRollup.marketSlug, marketSlug));
+  const days = Number(row?.days ?? 0);
+  return Math.floor(days / 7);
+}
 
 export interface OnepagerDraft {
   model: OnepagerModel;
@@ -50,7 +105,29 @@ export async function resolveOnepagerModel(
   const summary = read.summary.find((s) => s.marketSlug === marketSlug);
   const marketName = getMarketByKey(marketSlug)?.cityName ?? marketSlug;
   const rows = read.rows.filter((r) => r.marketSlug === marketSlug);
-  return buildOnepagerModel({ marketSlug, marketName, summary, rows, window: read.window });
+
+  // 4.2b feeds (R33/R34). Each self-omits its block when empty/below-threshold (all dark for Kyoto
+  // today). R35 gap pairing: `coverageGap` is intentionally NOT wired — the only coverage read
+  // (`resolveCoverageGaps`, market-insights.service.ts) counts provider_services (SERVICE supply), and
+  // the property-led hero would need PROPERTY coverage, which no read produces (§13 — never pair
+  // stay-demand with a service-coverage number). Left null pending a property-coverage read (followup);
+  // a service-led market can wire the service-coverage gap here later (the compute already pairs it).
+  const now = opts.now ?? new Date();
+  const [events, historyWeeks] = await Promise.all([
+    fetchForwardEvents(marketName, now),
+    fetchHistoryWeeks(marketSlug),
+  ]);
+
+  return buildOnepagerModel({
+    marketSlug,
+    marketName,
+    summary,
+    rows,
+    window: read.window,
+    events,
+    historyWeeks,
+    coverageGap: null,
+  });
 }
 
 /**

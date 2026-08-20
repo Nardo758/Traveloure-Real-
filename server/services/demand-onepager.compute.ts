@@ -23,8 +23,29 @@
 
 import type { MarketSummary, MarketSummaryBucket } from "./demand-rollup.compute";
 import type { RollupReadRow, RollupWindow } from "./demand-rollup.service";
+import { clearsFloor, metricClassOf, TREND_MIN_WEEKS } from "../config/demand-floors.config";
 
 export type OnepagerVariant = "property-led" | "service-led";
+
+// ── 4.2b block inputs (R33/R34/R35) — supplied by the service; all optional (absent ⇒ block dark) ──
+
+/** A forward event window (R33) — from `travel_pulse_calendar_events`, the only real dated-event
+ *  source (the trend engine stores aggregate metrics, not dated rows). `start`/`end` are ISO dates. */
+export interface OnepagerEventInput {
+  name: string;
+  start: string;
+  end: string; // if the source end is null, the caller passes start (a single-day event)
+}
+
+/** The top zero-coverage neighborhood (R35). KIND-TAGGED so the render never pairs stay demand with a
+ *  service-coverage number: `covers` says what the gap actually measures. Today only `"service"` is
+ *  sourceable (`resolveCoverageGaps` counts provider_services), so a property-led hero receives null
+ *  (no property-coverage read exists — the §13-honest dark, and the capture followup). */
+export interface CoverageGapInput {
+  neighborhoodName: string;
+  covers: "service"; // extend to "property" when a property-coverage read exists (followup)
+  categoryLabel?: string;
+}
 
 /** One forward date-cell of the leading metric, floor-cleared — the data behind a supporting visual
  *  (stay date distribution for property-led, requested-windows list for service-led). Never a
@@ -65,10 +86,48 @@ export interface OnepagerModel {
   windows: OnepagerWindowRow[];
   /** Count of all floor-cleared forward windows (= windows.length) — the "of N" in the Top-K label. */
   windowsTotal: number;
+  /** R33 event spotlight — the highest-demand forward event window, or null (no qualifying window ⇒
+   *  the block is omitted; no "quiet period" filler). A date-SUBSET of the hero, never a second total. */
+  eventSpotlight: EventSpotlight | null;
+  /** R34 trend block — null below TREND_MIN_WEEKS of history (no slope, no trajectory language); the
+   *  weekly series when unlocked. Expected null at launch (rollup history is only days old). */
+  trendBlock: TrendBlock | null;
+  /** R35 gap pairing — market-grain demand paired with a neighborhood zero-coverage gap, grains kept
+   *  distinct; null when either half fails its floor, or (property-led) when no property-coverage read
+   *  exists. Expected null today. */
+  gapPairing: GapPairing | null;
   /** The four-honesty-gate methodology paragraph (strict count · month range · floor · count-only). */
   methodology: string;
   monthRange: string; // "May–Nov" style label derived from the window (formatting only)
   window: RollupWindow;
+}
+
+/** R33 — the highest-demand forward event window, aggregated from the hero's OWN floor-cleared daily
+ *  cells over the event's date range (so it is a subset of the hero total, never a second total). */
+export interface EventSpotlight {
+  eventName: string;
+  start: string;
+  end: string;
+  n: number; // Σ source_row_count over the window (the floor key that cleared it)
+  // property-led (stay, count-only per R19):
+  trips?: number;
+  nights?: number;
+  // service-led (slip $):
+  amount?: number;
+  count?: number;
+  /** The R33 copy line, built here (verbatim pattern) so the render never re-phrases it. */
+  copy: string;
+}
+
+/** R34 — weekly aggregates of the leading metric over available history (only present when unlocked). */
+export interface TrendBlock {
+  weeks: number; // distinct-date weeks of history behind this series (>= TREND_MIN_WEEKS)
+  points: { weekStart: string; value: number }[]; // trips (property) or $ (service) per ISO week, asc
+}
+
+/** R35 — market demand paired with a neighborhood zero-coverage gap, grains kept distinct. */
+export interface GapPairing {
+  copy: string; // the R35 verbatim pairing line
 }
 
 const USD = new Intl.NumberFormat("en-US", {
@@ -201,6 +260,146 @@ function buildMethodology(variant: OnepagerVariant, strictCount: number, monthRa
   return base + unitGate;
 }
 
+/** "Oct 1" or "Oct 1–5" (single day when start === end). Formatting only. */
+function humanRange(start: string, end: string): string {
+  const d = (iso: string) => `${monthOf(iso)} ${Number(iso.slice(8, 10))}`;
+  return start === end ? d(start) : `${d(start)}–${Number(end.slice(8, 10))}`;
+}
+
+/** The leading metric for a variant — the one the hero, windows, spotlight and trend all read. */
+function leadingMetric(variant: OnepagerVariant): "unmet_demand_stay" | "unmet_demand_slip" {
+  return variant === "property-led" ? "unmet_demand_stay" : "unmet_demand_slip";
+}
+
+/** Floor-cleared, market-level cells of the leading metric (the cells that SUM to the hero). `kind`
+ *  narrows to requested (forward) or leaves both for history. Reads `status==='ok'` cells only, so a
+ *  spotlight built from these is a strict subset of the hero (§13 / R33 subset invariant). */
+function leadingCells(
+  variant: OnepagerVariant,
+  marketSlug: string,
+  rows: RollupReadRow[],
+  kind?: "requested" | "missed",
+): RollupReadRow[] {
+  const metric = leadingMetric(variant);
+  return rows.filter(
+    (r) =>
+      r.marketSlug === marketSlug &&
+      r.metric === metric &&
+      r.status === "ok" &&
+      r.partnerId == null &&
+      r.serviceId == null &&
+      r.value != null &&
+      (kind ? r.kind === kind : true),
+  );
+}
+
+/**
+ * R33 — the highest-demand forward EVENT window. For each event, aggregate the hero's OWN floor-cleared
+ * daily cells over [start, end] (so the result is a strict subset of the hero, never a second total —
+ * the subset-reconciliation invariant), then require the WINDOW aggregate to clear the public 10-floor
+ * (R30 on the window). The clearing event with the greatest weight wins. No qualifying event ⇒ null
+ * (the block is omitted; no "quiet period" filler).
+ */
+function buildEventSpotlight(
+  variant: OnepagerVariant,
+  marketName: string,
+  marketSlug: string,
+  rows: RollupReadRow[],
+  events: OnepagerEventInput[],
+): EventSpotlight | null {
+  if (events.length === 0) return null;
+  const cells = leadingCells(variant, marketSlug, rows, "requested");
+  const metricClass = metricClassOf(leadingMetric(variant));
+  const isProperty = variant === "property-led";
+
+  let best: EventSpotlight | null = null;
+  let bestWeight = -1;
+  for (const ev of events) {
+    const inRange = cells.filter((c) => c.date >= ev.start && c.date <= ev.end);
+    if (inRange.length === 0) continue;
+    const n = inRange.reduce((a, c) => a + c.n, 0);
+    if (!clearsFloor(n, "cross_partner", metricClass)) continue; // R30 on the window
+    let trips = 0, nights = 0, amount = 0, count = 0;
+    for (const c of inRange) {
+      const v = c.value as { trips?: number; nights?: number; count?: number; amount?: number | null };
+      if (isProperty) {
+        trips += v.trips ?? 0;
+        nights += v.nights ?? 0;
+      } else {
+        count += v.count ?? 0;
+        if (v.amount != null) amount += v.amount;
+      }
+    }
+    const weight = isProperty ? trips : amount;
+    if (weight <= bestWeight) continue;
+    bestWeight = weight;
+    const dates = humanRange(ev.start, ev.end);
+    const copy = isProperty
+      ? `${ev.name} (${dates}): ${trips} trips seeking stays · ${nights} nights — none anchored.`
+      : `${ev.name} (${dates}): ${USD.format(amount)} in unmet demand · ${count} trips — no bookable slot.`;
+    best = isProperty
+      ? { eventName: ev.name, start: ev.start, end: ev.end, n, trips, nights, copy }
+      : { eventName: ev.name, start: ev.start, end: ev.end, n, amount, count, copy };
+  }
+  return best;
+}
+
+/**
+ * R34 — the trend series, THRESHOLD-LOCKED. Null below TREND_MIN_WEEKS of computed daily history: no
+ * slope, no trajectory language, the block does not exist (a slope from a few weeks is fabrication in
+ * time-series form). When unlocked, weekly aggregates of the leading metric over available history.
+ */
+function buildTrendBlock(
+  variant: OnepagerVariant,
+  marketSlug: string,
+  rows: RollupReadRow[],
+  historyWeeks: number,
+): TrendBlock | null {
+  if (historyWeeks < TREND_MIN_WEEKS) return null; // the lock — expected at launch
+  const isProperty = variant === "property-led";
+  const cells = leadingCells(variant, marketSlug, rows); // both kinds — the time series is history
+  const byWeek = new Map<string, number>();
+  for (const c of cells) {
+    const wk = isoWeekStart(c.date);
+    const v = c.value as { trips?: number; amount?: number | null };
+    const add = isProperty ? v.trips ?? 0 : v.amount ?? 0;
+    byWeek.set(wk, (byWeek.get(wk) ?? 0) + add);
+  }
+  const points = Array.from(byWeek.entries())
+    .map(([weekStart, value]) => ({ weekStart, value }))
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  if (points.length === 0) return null;
+  return { weeks: historyWeeks, points };
+}
+
+/** Monday-anchored ISO-week start date (YYYY-MM-DD) for a cell date — pure UTC arithmetic. */
+function isoWeekStart(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const dow = (d.getUTCDay() + 6) % 7; // Mon=0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * R35 — pair the market-grain hero demand with a neighborhood-grain zero-coverage gap, KEEPING THE
+ * GRAINS DISTINCT. Both halves must clear their own floor (the hero already cleared; the caller only
+ * passes a qualifying zero-coverage gap). KIND honesty: the only sourceable gap today measures SERVICE
+ * coverage, so it may pair only with a SERVICE-led hero — a property-led (stay) hero + a service gap is
+ * a kind mismatch and returns null (the §13-honest dark; a property-coverage read is the followup).
+ */
+function buildGapPairing(
+  variant: OnepagerVariant,
+  marketName: string,
+  hero: OnepagerHero,
+  gap: CoverageGapInput | null | undefined,
+): GapPairing | null {
+  if (!gap) return null;
+  if (variant !== "service-led" || gap.covers !== "service") return null; // never stay-demand × service-gap
+  const cat = gap.categoryLabel ? ` ${gap.categoryLabel}` : "";
+  const copy = `${marketName} service demand: ${hero.headline} · ${gap.neighborhoodName} currently has no${cat} coverage.`;
+  return { copy };
+}
+
 /**
  * Build the one-pager view-model for ONE market from its `cross_partner`-floored summary + rows.
  * Returns null when no figure class clears the public floor (R30/R31 — the floors decide, not
@@ -212,6 +411,12 @@ export function buildOnepagerModel(args: {
   summary: MarketSummary | undefined;
   rows: RollupReadRow[];
   window: RollupWindow;
+  /** R33 forward events; absent/empty ⇒ no spotlight (dark). */
+  events?: OnepagerEventInput[];
+  /** R34 distinct-date weeks of rollup history; absent/below TREND_MIN_WEEKS ⇒ no trend (dark). */
+  historyWeeks?: number;
+  /** R35 top zero-coverage neighborhood; absent ⇒ no gap pairing (dark). */
+  coverageGap?: CoverageGapInput | null;
 }): OnepagerModel | null {
   const { marketSlug, marketName, summary, rows, window } = args;
   if (!summary) return null;
@@ -227,6 +432,11 @@ export function buildOnepagerModel(args: {
   const monthRange = monthRangeOf(window);
   const methodology = buildMethodology(variant, hero.strictCount, monthRange);
 
+  // 4.2b blocks (R33/R34/R35) — each self-omits when its data is absent/below floor (all dark today).
+  const eventSpotlight = buildEventSpotlight(variant, marketName, marketSlug, rows, args.events ?? []);
+  const trendBlock = buildTrendBlock(variant, marketSlug, rows, args.historyWeeks ?? 0);
+  const gapPairing = buildGapPairing(variant, marketName, hero, args.coverageGap ?? null);
+
   return {
     marketSlug,
     marketName,
@@ -234,6 +444,9 @@ export function buildOnepagerModel(args: {
     hero,
     windows,
     windowsTotal: windows.length,
+    eventSpotlight,
+    trendBlock,
+    gapPairing,
     methodology,
     monthRange,
     window,
