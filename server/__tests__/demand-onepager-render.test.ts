@@ -8,8 +8,44 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderOnepagerPdf } from "../services/demand-onepager.render";
+import * as fs from "fs";
+import * as path from "path";
+import { renderOnepagerPdf, type OnepagerGeoInput } from "../services/demand-onepager.render";
 import type { OnepagerModel } from "../services/demand-onepager.compute";
+
+// 4.2c — a small synthetic geo (a few water/road polylines, a park ring, two neighborhoods; one
+// neighborhood sits outside the bbox to exercise the off-frame skip). Orientation only, no demand.
+const GEO: OnepagerGeoInput = {
+  geography: {
+    market: "kyoto",
+    bbox: [135.72, 34.975, 135.8, 35.045],
+    water: [
+      [
+        [135.73, 34.99],
+        [135.75, 35.0],
+        [135.77, 35.02],
+      ],
+    ],
+    parks: [
+      [
+        [135.74, 34.99],
+        [135.75, 34.995],
+        [135.745, 35.0],
+        [135.74, 34.99],
+      ],
+    ],
+    roads: [
+      [
+        [135.73, 34.98],
+        [135.78, 35.03],
+      ],
+    ],
+  },
+  neighborhoods: [
+    { name: "Gion", lat: 35.003, lng: 135.775, radiusKm: 1.2 },
+    { name: "Arashiyama", lat: 35.01, lng: 135.67, radiusKm: 1.5 }, // west of bbox → off-frame skip
+  ],
+};
 
 const MODEL: OnepagerModel = {
   marketSlug: "kyoto",
@@ -56,4 +92,57 @@ test("render: DRAFT watermark is the default and toggles off with watermark:null
   assert.ok(!draft.equals(clean), "the watermark changes the output");
   // The watermarked draft carries more drawing ops, so it is the larger document.
   assert.ok(draft.length > clean.length, "the DRAFT stamp adds content");
+});
+
+// 4.2c.3 — R34 lock: a locked model (trendBlock null, MODEL's default) renders NO trend content.
+// A literal "Demand trend" text-layer grep is defeated by font subsetting (pdfkit encodes embedded-
+// Inter text as glyph indices, not ASCII — empirically the string is absent from the buffer even
+// when the header IS drawn), and no PDF text extractor is available. So this proves the intent by
+// CONSTRUCTION: the trend header/sparkline is inside `if (model.trendBlock ...)`, so a null-trend
+// render is strictly smaller than an identical populated-trend render, and unconditional trend
+// content (a regression) would erase that difference.
+test("R34 render: locked (trendBlock null) emits no trend content — strictly smaller than unlocked", async () => {
+  const unlocked: OnepagerModel = {
+    ...MODEL,
+    trendBlock: {
+      weeks: 12,
+      points: [
+        { weekStart: "2026-06-01", value: 20 },
+        { weekStart: "2026-06-08", value: 30 },
+        { weekStart: "2026-06-15", value: 44 },
+      ],
+    },
+  };
+  const lockedPdf = await renderOnepagerPdf(MODEL); // MODEL.trendBlock === null
+  const unlockedPdf = await renderOnepagerPdf(unlocked);
+  assert.equal(MODEL.trendBlock, null, "fixture is locked");
+  assert.ok(lockedPdf.length < unlockedPdf.length, "the trend block adds content only when unlocked");
+  assert.ok(lockedPdf.equals(await renderOnepagerPdf(MODEL)), "locked render is deterministic");
+});
+
+// ── 4.2c context map (R36/R37) ───────────────────────────────────────────────────────────────────
+test("R37: no geo (or geography null) ⇒ panel omitted, byte-identical to no-geo render", async () => {
+  const noGeo = await renderOnepagerPdf(MODEL); // no opts.geo
+  const nullGeo = await renderOnepagerPdf(MODEL, { geo: { geography: null, neighborhoods: [] } });
+  assert.ok(noGeo.equals(nullGeo), "geography null renders exactly as no geo — no placeholder frame");
+});
+
+test("R36: geography present ⇒ the panel adds content (strictly larger than no-geo)", async () => {
+  const withGeo = await renderOnepagerPdf(MODEL, { geo: GEO });
+  const noGeo = await renderOnepagerPdf(MODEL);
+  assert.ok(withGeo.length > noGeo.length, "the map panel adds drawing content");
+});
+
+test("R36 determinism: same geo ⇒ byte-identical render", async () => {
+  const a = await renderOnepagerPdf(MODEL, { geo: GEO });
+  const b = await renderOnepagerPdf(MODEL, { geo: GEO });
+  assert.ok(a.equals(b), "geo render is byte-stable");
+});
+
+// 4.2c.4 — no-demand-encoding by CONSTRUCTION: the panel function takes only geo shapes. Assert the
+// drawContextMap signature references no model/summary/rollup type, so it cannot encode a metric.
+test("R36 no-demand-encoding: the map's render path accepts no demand types", () => {
+  const src = fs.readFileSync(path.resolve(process.cwd(), "server/services/demand-onepager.render.ts"), "utf8");
+  const sig = src.slice(src.indexOf("function drawContextMap"), src.indexOf("function drawContextMap") + 400);
+  assert.doesNotMatch(sig, /OnepagerModel|summary|MarketSummary|rollup|demand/i, "panel signature is demand-blind");
 });
