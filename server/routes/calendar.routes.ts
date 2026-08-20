@@ -401,13 +401,16 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
         const count = v?.count ?? 0;
         if (count <= 0) continue;
         const marketName = getMarketByKey(r.marketSlug)?.cityName ?? r.marketSlug;
+        // R29: a thin (low-n) requested cell now clears the lowered enumerable floor — it still shows
+        // as a ghost, but the copy states the thinness ("early signal"), never as a full sample (§13).
+        const earlyTag = r.lowN ? " · early signal" : "";
         events.push({
           id: `ghost-${r.marketSlug}-${r.date}`,
           lane: "availability",
           kind: "ghost",
           date: r.date,
           // Honest market-level copy — "in <Market>", never "from you".
-          title: `${count} requested in ${marketName} · no open slot`,
+          title: `${count} requested in ${marketName} · no open slot${earlyTag}`,
           // Tap → the availability editor with this day as the window preselected.
           href: `/provider/availability?date=${r.date}`,
         });
