@@ -57,7 +57,9 @@ const CLIENT_NOMATH_FILES = [
 ];
 const CLIENT_MATH = /\.reduce\s*\(/;
 const COMPUTE_FN_DEF = /\bfunction\s+(computeUnmetSlip|computeSlipFunnel|computeUnmetStay)\b/;
-const FLOOR_LITERAL = /[<>]=?\s*(5|10|25)\b/;
+// R29 added the enumerable own-book tier (3) — a bare floor comparison against any tier value
+// (3/5/10/25) may live ONLY in demand-floors.config.ts; the read path calls clearsFloor/floorForScope.
+const FLOOR_LITERAL = /[<>]=?\s*(3|5|10|25)\b/;
 // R20 (ledger 2026-08-18-partner-demand-phase3): the ±90 window is ONE config constant
 // (DEMAND_WINDOW_DAYS). A bare `90` in a demand path is a literal that would drift from the config,
 // so it may appear ONLY in demand-floors.config.ts. \b90\b won't match 86_400_000 / slice(0, 10).
@@ -108,6 +110,8 @@ function runSelfTest() {
     { name: "compute fn IN home passes", rel: COMPUTE_HOME, text: "export function computeUnmetSlip(){}", strict: true, expect: 0 },
     { name: "floor literal outside config fails (strict file)", rel: "server/services/demand-rollup.service.ts", text: "if (n >= 10) render();", strict: true, expect: 1 },
     { name: "floor literal IN config passes", rel: FLOOR_CONFIG, text: "return count >= 10;", strict: true, expect: 0 },
+    { name: "R29 enumerable floor literal (3) outside config fails", rel: "server/services/demand-rollup.service.ts", text: "if (n >= 3) render();", strict: true, expect: 1 },
+    { name: "R29 enumerable floor literal (3) IN config passes", rel: FLOOR_CONFIG, text: "return count >= 3;", strict: true, expect: 0 },
     { name: "window literal (90) outside config fails", rel: "server/services/demand-rollup.service.ts", text: "const to = addDaysISO(today, 90);", strict: true, expect: 1 },
     { name: "window literal (90) IN config passes", rel: FLOOR_CONFIG, text: "export const DEMAND_WINDOW_DAYS = 90;", strict: true, expect: 0 },
     { name: "86_400_000 does not trip the 90 window gate", rel: COMPUTE_HOME, text: "const ms = t + days * 86_400_000;", strict: true, expect: 0 },

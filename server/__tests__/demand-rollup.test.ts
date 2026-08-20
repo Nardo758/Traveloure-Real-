@@ -26,7 +26,7 @@ import {
   type SlipFunnelPayload,
   type MarketSummary,
 } from "../services/demand-rollup.compute";
-import { clearsFloor, floorForScope, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
+import { clearsFloor, floorForScope, metricClassOf, isLowNSignal, DEMAND_FLOORS, DEMAND_WINDOW_DAYS } from "../config/demand-floors.config";
 
 // ── market-local date ────────────────────────────────────────────────────────────────────────
 test("market-local date: 23:30 JST lands on the JST date, not the next UTC day", () => {
@@ -56,6 +56,41 @@ test("floor R27: the SAME cell suppresses by AUDIENCE, not grain", () => {
   assert.equal(clearsFloor(12, "own_book"), true);
   assert.equal(clearsFloor(12, "cross_partner"), true);
   assert.equal(clearsFloor(4, "own_book"), false);
+});
+
+// ── R29: floors distinguish METRIC CLASS (enumerable vs derived) ──────────────────────────────────
+test("R29: enumerable own-book floor is 3 (config); derived stays 5; cross-partner/sold unchanged", () => {
+  assert.equal(DEMAND_FLOORS.ownBookEnumerable, 3);
+  assert.equal(metricClassOf("unmet_demand_slip"), "enumerable");
+  assert.equal(metricClassOf("unmet_demand_stay"), "enumerable");
+  assert.equal(metricClassOf("slip_funnel"), "derived");
+  assert.equal(metricClassOf("anything_unknown"), "derived"); // safe default = the higher bar
+  // enumerable own-book clears at 3; derived own-book still needs 5
+  assert.equal(floorForScope("own_book", "enumerable"), 3);
+  assert.equal(floorForScope("own_book", "derived"), 5);
+  // cross-partner and sold are UNCHANGED for every class
+  assert.equal(floorForScope("cross_partner", "enumerable"), 10);
+  assert.equal(floorForScope("sold", "enumerable"), 25);
+});
+
+test("R29: the $240/n=3 case — an enumerable own-book cell clears; derived at n=3 does not", () => {
+  // n=3 enumerable own-book clears (this is exactly the real Kyoto slip cell)
+  assert.equal(clearsFloor(3, "own_book", "enumerable"), true);
+  // n=3 derived own-book (e.g. a funnel) still suppressed — statistics keep the higher bar
+  assert.equal(clearsFloor(3, "own_book", "derived"), false);
+  // below the enumerable floor: n=2 still suppressed
+  assert.equal(clearsFloor(2, "own_book", "enumerable"), false);
+  // cross-partner unchanged: n=3 enumerable still suppressed for an admin
+  assert.equal(clearsFloor(3, "cross_partner", "enumerable"), false);
+});
+
+test("R29: isLowNSignal — the [3,5) band is early-signal for own-book enumerable ONLY", () => {
+  assert.equal(isLowNSignal(3, "own_book", "enumerable"), true);   // clears the 3-floor, below the 5-line
+  assert.equal(isLowNSignal(4, "own_book", "enumerable"), true);
+  assert.equal(isLowNSignal(5, "own_book", "enumerable"), false);  // at the standard tier → not low-n
+  assert.equal(isLowNSignal(2, "own_book", "enumerable"), false);  // below the floor → suppressed, not low-n
+  assert.equal(isLowNSignal(3, "own_book", "derived"), false);     // derived has no lowered floor
+  assert.equal(isLowNSignal(3, "cross_partner", "enumerable"), false); // only own-book gets the band
 });
 
 // ── unmet_demand_slip (hand-derivable) ─────────────────────────────────────────────────────────
@@ -229,6 +264,24 @@ test("summarizeMarkets hero-not-sum: a per-service child cell is NEVER summed in
   assert.equal(k.requested.slipCount, 10);
 });
 
+test("R29 summarizeMarkets: a figure resting ENTIRELY on low-n cells is flagged early-signal; mixed is not", () => {
+  const rows: SummaryInputRow[] = [
+    // kyoto requested slip: ONE low-n cell (the $240/n=3 case) → slipLowN true
+    { marketSlug: "kyoto", metric: "unmet_demand_slip", kind: "requested", status: "ok", lowN: true, value: { count: 3, amount: 240, valuedCount: 3 } },
+    // kyoto requested stay: a standard cell (n=27) plus a low-n cell → NOT low-n (standard gives it weight)
+    { marketSlug: "kyoto", metric: "unmet_demand_stay", kind: "requested", status: "ok", lowN: false, value: { trips: 27, nights: 135, travelers: 54 } },
+    { marketSlug: "kyoto", metric: "unmet_demand_stay", kind: "requested", status: "ok", lowN: true, value: { trips: 3, nights: 9, travelers: 3 } },
+  ];
+  const [k] = summarizeMarkets(rows);
+  assert.equal(k.requested.slipAmount, 240);
+  assert.equal(k.requested.slipLowN, true, "slip rests only on the n=3 cell → early signal");
+  assert.equal(k.requested.stayTrips, 30, "27+3 summed");
+  assert.equal(k.requested.stayLowN, false, "a standard n=27 cell contributed → not early signal");
+  // an empty bucket is never flagged low-n
+  assert.equal(k.missed.slipLowN, false);
+  assert.equal(k.missed.stayLowN, false);
+});
+
 // ── per-service grain (R25b, 3.1b) ───────────────────────────────────────────────────────────────
 test("computeUnmetSlipByService: groups by service, skips NULL-service rows, uses per-service inventory", () => {
   const demand: SlipDemandRow[] = [
@@ -284,7 +337,7 @@ test("computeStallStage: null (§13) when there is no honest stall to claim", ()
 
 // ── top demand signal for the Today card (3.4 Item 2.1) ──────────────────────────────────────────
 function mkSummary(marketSlug: string, requested: Partial<MarketSummary["requested"]>): MarketSummary {
-  const blank = { slipAmount: null, slipCount: 0, slipValuedCount: 0, stayTrips: 0, stayNights: 0, stayTravelers: null };
+  const blank = { slipAmount: null, slipCount: 0, slipValuedCount: 0, slipLowN: false, stayTrips: 0, stayNights: 0, stayTravelers: null, stayLowN: false };
   return { marketSlug, requested: { ...blank, ...requested }, missed: { ...blank } };
 }
 
