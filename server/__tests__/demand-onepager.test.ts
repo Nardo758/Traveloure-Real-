@@ -53,13 +53,18 @@ function summaryFor(marketSlug: string, rows: RollupReadRow[]): MarketSummary | 
   return summarizeMarkets(rows).find((s) => s.marketSlug === marketSlug);
 }
 
-function model(marketSlug: string, rows: RollupReadRow[]) {
+function model(
+  marketSlug: string,
+  rows: RollupReadRow[],
+  extra?: Partial<Parameters<typeof buildOnepagerModel>[0]>,
+) {
   return buildOnepagerModel({
     marketSlug,
     marketName: "Kyoto",
     summary: summaryFor(marketSlug, rows),
     rows,
     window: WINDOW,
+    ...extra,
   });
 }
 
@@ -197,6 +202,83 @@ test("reconciliation (service-led): Σ(window $|count) === hero total; count-onl
   assert.equal(sumAmount, m.hero.unmetAmount, "priced $ reconciles to the hero total ($ from priced windows only)");
   assert.equal(sumCount, m.hero.unmetTripCount, "trip count reconciles (count-only window included)");
   assert.equal(m.windowsTotal, 3);
+});
+
+// ── R33 event spotlight ─────────────────────────────────────────────────────────────────────────
+const STAY_ROWS = [
+  mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 20, value: { trips: 20, nights: 90, travelers: 25 }, date: "2026-10-01" }),
+  mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 14, value: { trips: 14, nights: 56, travelers: 18 }, date: "2026-10-03" }),
+  mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 12, value: { trips: 12, nights: 30, travelers: 15 }, date: "2026-08-22" }),
+];
+
+test("R33: no events ⇒ no spotlight (dark)", () => {
+  assert.equal(model("kyoto", STAY_ROWS)!.eventSpotlight, null);
+});
+
+test("R33: an event window over floor-cleared cells prints; copy is the verbatim pattern", () => {
+  const m = model("kyoto", STAY_ROWS, {
+    events: [{ name: "Jidai Matsuri", start: "2026-10-01", end: "2026-10-05" }],
+  })!;
+  const s = m.eventSpotlight!;
+  assert.equal(s.eventName, "Jidai Matsuri");
+  assert.equal(s.trips, 34); // 20 + 14 (both Oct cells in range); Aug cell excluded
+  assert.equal(s.nights, 146);
+  assert.match(s.copy, /Jidai Matsuri \(Oct 1–5\): 34 trips seeking stays · 146 nights — none anchored\./);
+});
+
+test("R33 floor: a window whose cells total below the public floor is omitted", () => {
+  // one cleared cell at exactly n=10 is in range → clears (10 >= 10); drop it and the window is empty.
+  const rows = [mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 10, value: { trips: 10, nights: 20, travelers: 12 }, date: "2026-09-15" })];
+  const cleared = model("kyoto", rows, { events: [{ name: "Foo", start: "2026-09-14", end: "2026-09-16" }] });
+  assert.ok(cleared!.eventSpotlight, "n=10 window clears");
+  // an event whose range covers no cleared cell → null
+  const none = model("kyoto", rows, { events: [{ name: "Bar", start: "2026-11-01", end: "2026-11-05" }] });
+  assert.equal(none!.eventSpotlight, null);
+});
+
+test("R33 subset invariant: spotlight trips ≤ hero trips (never a second total)", () => {
+  const m = model("kyoto", STAY_ROWS, {
+    events: [{ name: "All", start: "2026-01-01", end: "2026-12-31" }], // whole year → all cells
+  })!;
+  assert.ok(m.eventSpotlight!.trips! <= m.hero.stayTrips!, "spotlight is a subset of the hero total");
+});
+
+// ── R34 trend threshold ─────────────────────────────────────────────────────────────────────────
+test("R34: below TREND_MIN_WEEKS ⇒ trend block is null (no slope language)", () => {
+  assert.equal(model("kyoto", STAY_ROWS, { historyWeeks: 9 })!.trendBlock, null);
+});
+
+test("R34: at/above threshold ⇒ trend renders weekly points", () => {
+  const m = model("kyoto", STAY_ROWS, { historyWeeks: 10 })!;
+  assert.ok(m.trendBlock, "10 weeks unlocks the trend");
+  assert.equal(m.trendBlock!.weeks, 10);
+  assert.ok(m.trendBlock!.points.length >= 1);
+  // points are weekly, ascending
+  const ws = m.trendBlock!.points.map((p) => p.weekStart);
+  assert.deepEqual(ws, [...ws].sort());
+});
+
+// ── R35 gap pairing ─────────────────────────────────────────────────────────────────────────────
+test("R35: property-led hero + service-coverage gap ⇒ null (never stay-demand × service-gap)", () => {
+  const m = model("kyoto", STAY_ROWS, {
+    coverageGap: { neighborhoodName: "Gion", covers: "service", categoryLabel: "guide" },
+  })!;
+  assert.equal(m.variant, "property-led");
+  assert.equal(m.gapPairing, null);
+});
+
+test("R35: service-led hero + service-coverage gap ⇒ pairs, grains kept distinct", () => {
+  const slip = [mkRow({ marketSlug: "kyoto", metric: "unmet_demand_slip", n: 15, value: { count: 15, amount: 3200, valuedCount: 15 } })];
+  const m = model("kyoto", slip, {
+    coverageGap: { neighborhoodName: "Gion", covers: "service", categoryLabel: "guide" },
+  })!;
+  assert.equal(m.variant, "service-led");
+  assert.match(m.gapPairing!.copy, /Kyoto service demand: .* · Gion currently has no guide coverage\./);
+});
+
+test("R35: no gap supplied ⇒ null (dark)", () => {
+  const slip = [mkRow({ marketSlug: "kyoto", metric: "unmet_demand_slip", n: 15, value: { count: 15, amount: 3200, valuedCount: 15 } })];
+  assert.equal(model("kyoto", slip)!.gapPairing, null);
 });
 
 // ── qualification (R32 admin control) ──────────────────────────────────────────────────────────
