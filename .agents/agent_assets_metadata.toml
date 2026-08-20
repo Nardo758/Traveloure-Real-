@@ -33,3 +33,10 @@ uri = "file://scratch/kyoto-no-qualifying-demand.pdf"
 type = "pdf"
 title = "Kyoto — No Qualifying Demand Yet"
 description = "Internal status PDF showing Kyoto’s verified four-trip strict remainder, the ten-trip public floor, and the approved R38 provenance exclusion. This is not an approved or distributable demand one-pager."
+
+[[outputs]]
+id = "qlHBH9qPRc8YzaBIgl4LZ"
+uri = "file://scratch/kyoto-map-mockup.pdf"
+type = "pdf"
+title = "Kyoto Partner Demand — Map Mockup"
+description = "One-page visual mockup using the real Kyoto locator map and illustrative placeholder figures. It is prominently watermarked MOCKUP and is not live demand data, an approval artifact, or authorized for distribution."
