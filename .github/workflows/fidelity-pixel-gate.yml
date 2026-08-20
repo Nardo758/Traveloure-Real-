@@ -1,0 +1,160 @@
+name: Fidelity Pixel Gate (review mode)
+
+# Partner Demand · STEP 3.7 Part B — VISUAL fidelity capture for the provider
+# Market Research surface (A4 deltas: Fraunces headline, hero gold-wash band,
+# ±90-day scrubber, window row links).
+#
+# ┌─ SEQUENCING (Leon's B4 ruling — do not reorder without his sign-off) ──────┐
+# │ This gate ships with BASELINE-FREEZING OFF. Its first job is producing     │
+# │ screenshots for HUMAN EYES, compared against                               │
+# │ docs/planning/partner-demand-visual-target.html — not enforcing them.      │
+# │ Freezing baselines from the current (pre-approval) UI would enshrine it as │
+# │ "correct" and make the gate fail every later fix as a regression.          │
+# │                                                                            │
+# │ The spec uses page.screenshot({ path }) — NOT toHaveScreenshot() — so no   │
+# │ baseline exists to compare against and nothing is frozen. The captured     │
+# │ PNGs are uploaded as an artifact for Leon's fidelity review. ONLY after he  │
+# │ approves them does a follow-up flip the spec to toHaveScreenshot() + freeze │
+# │ baselines, turning this from a review instrument into a regression guard.   │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
+# NON-BLOCKING: this workflow is a review instrument, not a required check. Do
+# NOT add `fidelity-capture` to branch-protection required contexts until the
+# baseline flip above has landed.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [lane/partner-demand-fidelity]
+  workflow_dispatch:
+
+concurrency:
+  group: fidelity-pixel-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  fidelity-capture:
+    name: fidelity-capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert spec file exists (market-research-fidelity)
+        # Guard: if the spec is renamed or deleted, Playwright silently reports
+        # "0 passed" and exits 0 — letting the gate go green with no capture run.
+        run: |
+          if [ ! -f "playwright/tests/market-research-fidelity.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/market-research-fidelity.spec.ts"
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Set up CI database (migrations + sessions table + ci users)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
+
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+
+      - name: Seed Kyoto demand fidelity fixture
+        # Runs AFTER the server is ready so any startup rollup job (which
+        # computes zero Kyoto rows in CI and therefore deletes nothing on these
+        # keys) has already run. Populates the "$240 … early signal" hero.
+        run: npx tsx scripts/seed-demand-fidelity-fixture.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Capture market-research fidelity screenshots
+        run: npx playwright test market-research-fidelity --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload fidelity screenshots (for Leon's review)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fidelity-screenshots
+          path: playwright/fidelity-screenshots/
+          retention-days: 30
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fidelity-playwright-report
+          path: playwright-report/
+          retention-days: 14
