@@ -19,12 +19,10 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MarketInsightsView } from "@/components/provider/catalog-map-view";
-import { apiRequest } from "@/lib/queryClient";
 
 // ── response shape (mirrors server RollupReadResult + markets/summary) ───────────────────────────
 type DemandKind = "requested" | "missed";
@@ -161,10 +159,11 @@ export default function ProviderMarketResearch() {
             {/* Requested-Windows list */}
             <WindowsList market={selected} kind={kind} windows={windows} historySince={data.historySince} />
 
-            {/* Search-interest map — a SEPARATE, labeled layer (R25-final.1): a different metric
-                (where travelers are LOOKING) from the unmet-demand hero/windows above. Never blended,
-                never summed, never the ghost-gold treatment, no unmet-$ circles. */}
-            <SearchInterestLayer market={selected} />
+            {/* Search-interest map UNMOUNTED (STEP 3.7 Part B, R29 dispatch): the search substrate is
+                dark on real data (search_analytics/demand_signals empty), so the layer could only paint
+                coverage-gap markers under a "search interest" header — a label/pixels mismatch (§13).
+                It returns as a separately-named, honest surface once the search write-path lands (the
+                standing FOLLOWUP). See docs/findings/partner-demand-3.7-partA-diagnosis.md §A2. */}
           </>
         )}
       </div>
@@ -285,62 +284,12 @@ function WindowRow({ market, row }: { market: string; row: RollupRow }) {
   );
 }
 
-const SEARCH_LAYER_ID = "search_interest";
-
-/**
- * The ruling-84 search-intent map, mounted as a labeled REGISTRY layer (R25-final.1, 3.1c.4). Its
- * own header + vocabulary, visually separated from the unmet-demand hero; its own cadence; the
- * toggle persists per-user server-side (POST /api/me/research-prefs → users.preferences) and fires
- * the layer_toggled signal there. NO unmet-$ on this map — it shows search interest (a different
- * metric), never the ghost-gold "requested" treatment.
- */
-function SearchInterestLayer({ market }: { market: string }) {
-  const qc = useQueryClient();
-  const { data: prefs } = useQuery<{ layers: Record<string, boolean> }>({ queryKey: ["/api/me/research-prefs"] });
-  const [override, setOverride] = useState<boolean | null>(null);
-  // default ON until a stored preference says otherwise; a local override gives instant feedback.
-  const stored = prefs?.layers?.[SEARCH_LAYER_ID];
-  const visible = override ?? stored ?? true;
-
-  const toggle = async () => {
-    const next = !visible;
-    setOverride(next); // optimistic
-    try {
-      await apiRequest("POST", "/api/me/research-prefs", { layerId: SEARCH_LAYER_ID, visible: next, market });
-      qc.invalidateQueries({ queryKey: ["/api/me/research-prefs"] });
-    } catch {
-      setOverride(!next); // revert on failure — the durable write is the source of truth
-    }
-  };
-
-  return (
-    <div style={{ marginTop: 22 }} data-testid="search-interest-layer">
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
-        <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontSize: 16, color: NAVY }}>
-          Where travelers are looking — search interest
-        </h2>
-        <button
-          onClick={toggle}
-          data-testid="search-interest-toggle"
-          style={{
-            fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 99, cursor: "pointer",
-            border: "1px solid var(--earn-faint)", background: "transparent", color: "var(--earn-muted)",
-          }}
-        >
-          {visible ? "Hide" : "Show"}
-        </button>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: MUTED, textAlign: "right" }}>
-          search interest, not unmet demand<br />updated daily
-        </span>
-      </div>
-      {visible && (
-        <div data-testid="search-interest-map">
-          <MarketInsightsView />
-        </div>
-      )}
-    </div>
-  );
-}
+// SearchInterestLayer REMOVED (STEP 3.7 Part B, R29 dispatch). It mounted `MarketInsightsView`
+// unscoped and, with the search substrate dark on real data, could only paint coverage-gap markers
+// under a "search interest" header (a label/pixels mismatch, §13 — see the 3.7 Part-A diagnosis).
+// The layer returns as a separately-named, honest surface once the search write-path FOLLOWUP lands.
+// `MarketInsightsView` itself is unchanged and still mounts on Catalog; B1 filters its endpoint so a
+// non-operating market never reaches a partner surface wherever it renders.
 
 function SlipCell({ value, n, lowN = false }: { value: SlipValue | null; n: number; lowN?: boolean }) {
   if (!value) return <span style={{ color: MUTED }}>—</span>;

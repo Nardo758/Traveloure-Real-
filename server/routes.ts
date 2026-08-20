@@ -79,6 +79,7 @@ import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flag
 import { applyPropertyLocationPrivacy } from "./services/property-location-privacy.service";
 import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
+import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
@@ -2384,9 +2385,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         hasSignal: false,
       };
 
-      const cities = await storage.getProviderMarketCities(userId);
+      // STEP 3.7 Part B (B1, R13): this is a PARTNER-facing surface, so scope to the 8 OPERATING
+      // markets — a provider's raw provider_services.city strings are unvalidated, so a non-operating
+      // market they declared (e.g. "Bali") would otherwise leak here. Keep only cities that resolve to
+      // an operating-market slug (the allow-list, never a literal list); admin surfaces keep the full
+      // feed. Absent-from-the-8 ⇒ dropped, never rendered to the partner.
+      const declaredCities = await storage.getProviderMarketCities(userId);
+      const cities = declaredCities.filter((c) => resolveMarketSlug(c) != null);
       if (cities.length === 0) {
-        // No market footprint yet — honest empty surface, nothing invented (§13).
+        // No operating-market footprint yet — honest empty surface, nothing invented (§13).
         return res.json({
           asOf: new Date().toISOString(),
           cities,
