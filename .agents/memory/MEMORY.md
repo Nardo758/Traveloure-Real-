@@ -38,4 +38,5 @@
 - [Trend Engine Phase 2 dispatch](trend-engine-phase2.md) — cost enforcement + 5 open-license adapters built; 3 licensed stubs disabled (credential issues); Grok removed from scheduler (Phase 2.3, HUMAN READ required); tsc baseline 171.
 - [Load-testing baseline](load-testing-baseline.md) — live Stripe key: never load-drive /api/checkout; test the idempotency unique-index guard at DB layer; loopback skips the rate limiter; baseline numbers inside.
 - [Partner Demand lane](partner-demand-lane.md) — 2B rollup live (migration 243, nightly job +95min); Kyoto cells hand-verified; @journey-w1.test rows pass R16 as written (flagged, ruling pending); lane work only on explicit dispatch.
+- [Partner Demand R38 provenance](partner-demand-r38-provenance.md) — unowned, same-day destination/date cohorts at n≥10 are excluded from all demand grains; materialized rollups must drop invalidated cells.
 - [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.
