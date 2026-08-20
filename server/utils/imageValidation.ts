@@ -10,6 +10,7 @@ export const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif"]);
 const MAX_IMAGE_PIXELS = 16_000_000;
 const MAX_DECODED_PIXEL_BYTES = 64 * 1024 * 1024;
+const MAX_GIF_FRAMES = 500;
 
 export interface ImageValidationOptions {
   maxBytes?: number;
@@ -268,13 +269,22 @@ function hasValidImageStructure(bytes: Buffer, mime: string): boolean {
     if (bytes.length < 20 || (header !== "GIF87a" && header !== "GIF89a")) return false;
     const width = bytes.readUInt16LE(6);
     const height = bytes.readUInt16LE(8);
-    if (!width || !height) return false;
+    // The logical screen is the decoded canvas. Checking only individual image
+    // descriptors would allow a tiny frame to declare an enormous canvas that
+    // downstream decoders/renderers may allocate.
+    if (!width || !height
+      || width * height > MAX_IMAGE_PIXELS
+      || width * height * 4 > MAX_DECODED_PIXEL_BYTES) return false;
     const packed = bytes[10];
     let offset = 13;
     const globalColorCount = packed & 0x80 ? 2 ** ((packed & 0x07) + 1) : 0;
     if (globalColorCount) offset += 3 * globalColorCount;
     if (offset > bytes.length) return false;
     let hasImage = false;
+    let frameCount = 0;
+    let totalFramePixels = 0;
+    let pendingGraphicControl = false;
+    let pendingTransparentColorIndex: number | null = null;
     const readSubBlocks = (): Buffer | null => {
       const chunks: Buffer[] = [];
       while (offset < bytes.length) {
@@ -288,11 +298,52 @@ function hasValidImageStructure(bytes: Buffer, mime: string): boolean {
     };
     while (offset < bytes.length) {
       const introducer = bytes[offset++];
-      if (introducer === 0x3b) return hasImage && offset === bytes.length;
+      if (introducer === 0x3b) {
+        return hasImage && !pendingGraphicControl && offset === bytes.length;
+      }
       if (introducer === 0x21) {
         if (offset >= bytes.length) return false;
-        offset++; // extension label
-        if (readSubBlocks() === null) return false;
+        const extensionLabel = bytes[offset++];
+        if (extensionLabel === 0xf9) {
+          // Graphic Control Extension: fixed 4-byte body + zero terminator.
+          if (pendingGraphicControl || offset + 6 > bytes.length || bytes[offset] !== 4
+            || (bytes[offset + 1] & 0xe0) !== 0
+            || ((bytes[offset + 1] >> 2) & 0x07) > 3
+            || bytes[offset + 5] !== 0) return false;
+          pendingGraphicControl = true;
+          pendingTransparentColorIndex = bytes[offset + 1] & 0x01 ? bytes[offset + 4] : null;
+          offset += 6;
+        } else if (extensionLabel === 0x01) {
+          // Plain Text Extension: fixed 12-byte header followed by data sub-blocks.
+          if (offset >= bytes.length || bytes[offset++] !== 12 || offset + 12 > bytes.length) return false;
+          const textLeft = bytes.readUInt16LE(offset);
+          const textTop = bytes.readUInt16LE(offset + 2);
+          const textWidth = bytes.readUInt16LE(offset + 4);
+          const textHeight = bytes.readUInt16LE(offset + 6);
+          const cellWidth = bytes[offset + 8];
+          const cellHeight = bytes[offset + 9];
+          const foreground = bytes[offset + 10];
+          const background = bytes[offset + 11];
+          if (!globalColorCount || !textWidth || !textHeight || !cellWidth || !cellHeight
+            || textLeft + textWidth > width || textTop + textHeight > height
+            || foreground >= globalColorCount || background >= globalColorCount
+            || (pendingTransparentColorIndex !== null
+              && pendingTransparentColorIndex >= globalColorCount)) return false;
+          offset += 12;
+          if (readSubBlocks() === null) return false;
+          pendingGraphicControl = false;
+          pendingTransparentColorIndex = null;
+        } else if (extensionLabel === 0xff) {
+          // Application Extension: fixed 11-byte identifier followed by data sub-blocks.
+          if (offset >= bytes.length || bytes[offset++] !== 11 || offset + 11 > bytes.length) return false;
+          offset += 11;
+          if (readSubBlocks() === null) return false;
+        } else if (extensionLabel === 0xfe) {
+          // Comment Extension contains only data sub-blocks.
+          if (readSubBlocks() === null) return false;
+        } else {
+          return false;
+        }
         continue;
       }
       if (introducer !== 0x2c || offset + 9 > bytes.length) return false;
@@ -301,13 +352,20 @@ function hasValidImageStructure(bytes: Buffer, mime: string): boolean {
       const imageWidth = bytes.readUInt16LE(offset + 4);
       const imageHeight = bytes.readUInt16LE(offset + 6);
       const imagePacked = bytes[offset + 8];
-      if (!imageWidth || !imageHeight || imageWidth * imageHeight > MAX_IMAGE_PIXELS
+      const framePixels = imageWidth * imageHeight;
+      if (!imageWidth || !imageHeight || framePixels > MAX_IMAGE_PIXELS
         || imageLeft + imageWidth > width || imageTop + imageHeight > height) return false;
+      frameCount++;
+      totalFramePixels += framePixels;
+      if (frameCount > MAX_GIF_FRAMES || totalFramePixels > MAX_IMAGE_PIXELS
+        || totalFramePixels * 4 > MAX_DECODED_PIXEL_BYTES) return false;
       offset += 9;
       const localColorCount = imagePacked & 0x80 ? 2 ** ((imagePacked & 0x07) + 1) : 0;
       if (localColorCount) offset += 3 * localColorCount;
       const activeColorCount = localColorCount || globalColorCount;
-      if (!activeColorCount || offset >= bytes.length) return false;
+      if (!activeColorCount || offset >= bytes.length
+        || (pendingTransparentColorIndex !== null
+          && pendingTransparentColorIndex >= activeColorCount)) return false;
       const minimumCodeSize = bytes[offset++];
       const compressed = readSubBlocks();
       if (!compressed || !hasValidGifLzw(
@@ -316,6 +374,8 @@ function hasValidImageStructure(bytes: Buffer, mime: string): boolean {
         imageWidth * imageHeight,
         activeColorCount,
       )) return false;
+      pendingGraphicControl = false;
+      pendingTransparentColorIndex = null;
       hasImage = true;
     }
     return false;

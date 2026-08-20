@@ -85,6 +85,95 @@ function invalidFilterPng(): Buffer {
   ]);
 }
 
+function packedZeroGifLzw(pixelCount: number): Buffer {
+  const clearCode = 4;
+  const endCode = 5;
+  let codeSize = 3;
+  let nextCode = 6;
+  let previousCode: number | undefined;
+  let previousEntry: number[] | undefined;
+  const dictionary: Array<number[] | undefined> = new Array(4096);
+  for (let index = 0; index < 4; index++) dictionary[index] = [index];
+  const codes: Array<[number, number]> = [];
+
+  const push = (code: number) => {
+    codes.push([code, codeSize]);
+    if (code === clearCode) {
+      codeSize = 3;
+      nextCode = 6;
+      previousCode = undefined;
+      previousEntry = undefined;
+      return;
+    }
+    if (code === endCode) return;
+    const entry = dictionary[code] ?? (
+      code === nextCode && previousEntry ? [...previousEntry, previousEntry[0]] : undefined
+    );
+    if (!entry) throw new Error("invalid generated GIF LZW");
+    if (previousCode !== undefined && nextCode < 4096) {
+      dictionary[nextCode++] = [...previousEntry!, entry[0]];
+      if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+    }
+    previousCode = code;
+    previousEntry = entry;
+  };
+
+  push(clearCode);
+  push(0);
+  for (let remaining = pixelCount - 1; remaining > 0;) {
+    let bestCode = 0;
+    for (let code = 0; code < nextCode; code++) {
+      const candidate = dictionary[code];
+      if (candidate && candidate.length <= remaining
+        && candidate.length > dictionary[bestCode]!.length) bestCode = code;
+    }
+    push(bestCode);
+    remaining -= dictionary[bestCode]!.length;
+  }
+  push(endCode);
+
+  let accumulator = 0;
+  let bits = 0;
+  const output: number[] = [];
+  for (const [code, size] of codes) {
+    accumulator |= code << bits;
+    bits += size;
+    while (bits >= 8) {
+      output.push(accumulator & 0xff);
+      accumulator >>>= 8;
+      bits -= 8;
+    }
+  }
+  if (bits) output.push(accumulator);
+  return Buffer.from(output);
+}
+
+function gifAggregateBomb(frames = 2): Buffer {
+  const width = 4000;
+  const height = 4000;
+  const lzw = packedZeroGifLzw(width * height);
+  const descriptor = Buffer.alloc(10);
+  descriptor[0] = 0x2c;
+  descriptor.writeUInt16LE(width, 5);
+  descriptor.writeUInt16LE(height, 7);
+  const subBlocks: Buffer[] = [];
+  for (let offset = 0; offset < lzw.length; offset += 255) {
+    subBlocks.push(Buffer.from([Math.min(255, lzw.length - offset)]), lzw.subarray(offset, offset + 255));
+  }
+  const frame = Buffer.concat([descriptor, Buffer.from([2]), ...subBlocks, Buffer.from([0])]);
+  const screen = Buffer.alloc(7);
+  screen.writeUInt16LE(width, 0);
+  screen.writeUInt16LE(height, 2);
+  screen[4] = 0x80;
+  return Buffer.concat([
+    Buffer.from("GIF89a"),
+    screen,
+    Buffer.from([0, 0, 0, 255, 255, 255]),
+    ...Array<Buffer>(frames).fill(frame),
+    Buffer.from([0x3b]),
+  ]);
+}
+
 test("absent / empty values pass (optional field)", () => {
   assert.equal(validateImageDataUrl(undefined, "govId"), null);
   assert.equal(validateImageDataUrl(null, "govId"), null);
@@ -193,5 +282,42 @@ test("valid minimal GIF passes decoded structural validation", () => {
   assert.equal(
     validateImageDataUrl("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAkQBADs=", "govId"),
     null,
+  );
+});
+
+test("GIF with a tiny frame but a decompression-bomb logical canvas is rejected", () => {
+  const oversizedCanvas = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAkQBADs=", "base64");
+  oversizedCanvas.writeUInt16LE(0xffff, 6);
+  oversizedCanvas.writeUInt16LE(0xffff, 8);
+  assert.match(
+    validateImageDataUrl(`data:image/gif;base64,${oversizedCanvas.toString("base64")}`, "govId")!,
+    /content does not match/,
+  );
+});
+
+test("GIF with malformed extension syntax is rejected", () => {
+  assert.match(
+    validateImageDataUrl(
+      "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAkQBACEBADs=",
+      "govId",
+    )!,
+    /content does not match/,
+  );
+});
+
+test("GIF transparent color index must exist in the active palette", () => {
+  assert.match(
+    validateImageDataUrl(
+      "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAIALAAAAAABAAEAAAICRAEAOw==",
+      "govId",
+    )!,
+    /content does not match/,
+  );
+});
+
+test("multi-frame GIF cumulative decode work is capped", () => {
+  assert.match(
+    validateImageDataUrl(`data:image/gif;base64,${gifAggregateBomb().toString("base64")}`, "govId")!,
+    /content does not match/,
   );
 });

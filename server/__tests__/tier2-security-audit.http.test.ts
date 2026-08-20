@@ -319,6 +319,22 @@ test("Surface 5 — upload validation closes clean in two randomized loops", asy
       body: { imageData: `data:image/gif;base64,${invalidGif.toString("base64")}` },
       ip: auditIp(23, loop),
     })).status, 400);
+    const oversizedGifCanvas = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAkQBADs=", "base64");
+    oversizedGifCanvas.writeUInt16LE(0xffff, 6);
+    oversizedGifCanvas.writeUInt16LE(0xffff, 8);
+    assert.equal((await api("/api/expert/photo", {
+      method: "PATCH",
+      cookie: session.cookie,
+      body: { imageData: `data:image/gif;base64,${oversizedGifCanvas.toString("base64")}` },
+      ip: auditIp(25, loop),
+    })).status, 400);
+    const malformedExtensionGif = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAkQBACEBADs=";
+    assert.equal((await api("/api/expert/photo", {
+      method: "PATCH",
+      cookie: session.cookie,
+      body: { imageData: `data:image/gif;base64,${malformedExtensionGif}` },
+      ip: auditIp(26, loop),
+    })).status, 400);
     const malformedJpeg = Buffer.from([
       0xff, 0xd8,
       0xff, 0xc0, 0x00, 0x08, 0x08, 0x00, 0x01, 0x00, 0x01, 0x00,
