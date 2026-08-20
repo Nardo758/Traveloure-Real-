@@ -94,8 +94,14 @@ function monthLabel(year: number, month0: number): string {
 // ── page ──────────────────────────────────────────────────────────────────────
 export default function ProviderCalendar() {
   const today  = new Date();
-  const [year,   setYear]   = useState(today.getFullYear());
-  const [month0, setMonth0] = useState(today.getMonth());
+  // B4 — Market Research window rows deep-link here with `?date=YYYY-MM-DD` (calendar↗); open that
+  // date's month so the requested window lands in view. Malformed/absent ⇒ today's month.
+  const deepLinkDate = (() => {
+    const p = new URLSearchParams(window.location.search).get("date");
+    return p && /^\d{4}-\d{2}-\d{2}$/.test(p) ? p : null;
+  })();
+  const [year,   setYear]   = useState(deepLinkDate ? Number(deepLinkDate.slice(0, 4)) : today.getFullYear());
+  const [month0, setMonth0] = useState(deepLinkDate ? Number(deepLinkDate.slice(5, 7)) - 1 : today.getMonth());
 
   const daysInMonth = new Date(year, month0 + 1, 0).getDate();
   const from     = ymd(year, month0, 1);
