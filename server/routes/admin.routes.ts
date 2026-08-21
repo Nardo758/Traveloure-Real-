@@ -143,7 +143,6 @@ import {
   adminGlobalSearch, getAdminSearchCounts,
   getServiceReviewsList, getAdminReviews, getReviewModerationLogs, getServiceReviewById, getReviewById,
   updateServiceReviewStatus, moderateReview, insertReviewModerationLog,
-  getServiceReviewsForServiceRating, updateProviderServiceRating, recalcServiceRating,
   getFeeBands, getFeeBand, updateFeeBand, checkActiveBand,
   getPlatformSettings, getPlatformSettingValue, upsertPlatformSetting,
   getServiceOfferingTypesList, getAllServiceOfferingTypes,
@@ -6417,15 +6416,8 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (!["approved", "flagged", "removed", "pending"].includes(status)) {
         return res.status(400).json({ message: "Invalid status. Must be approved, flagged, removed, or pending." });
       }
-      const review = await getReviewById(req.params.id);
-      if (!review) return res.status(404).json({ message: "Review not found" });
       const updated = await moderateReview(req.params.id, status, actorId, reason);
-      await insertReviewModerationLog({ reviewId: req.params.id, action: status, actorId, reason: reason ?? null });
-
-      // Recalculate service rating/count from approved reviews only
-      const serviceId = review.serviceId;
-      await recalcServiceRating(serviceId);
-
+      if (!updated) return res.status(404).json({ message: "Review not found" });
       res.json(updated);
     } catch (err) {
       console.error("Admin review status error:", err);
