@@ -57,9 +57,11 @@ jobs:
       # dropping the fabricated numberOfTravelers/adults defaults net-removed 4 errors
       # (the default-related type narrowings on the trip-creation path); ZERO new type
       # errors in any touched file. Ratchet fired as designed — locked in here, same PR.
+      # 157 measured 2026-08-21 after the Distribution parity pass; ZERO new type
+      # errors in the touched server/client paths. Locked in here, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '164'
+          TSC_BASELINE: '157'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
