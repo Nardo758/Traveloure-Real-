@@ -68,6 +68,8 @@ const INDEX_MANIFEST = [
   //    before this index lands (exactly what blocked the Aug-2026 prod deploy).
   { name: "idx_fever_event_cache_event_id", table: "fever_event_cache",
     cols: ["event_id"], where: null, migration: "221" },
+  { name: "travel_pulse_cities_city_country_unique", table: "travel_pulse_cities",
+    cols: ["lower(city_name)", "lower(country)"], where: null, migration: "249" },
 ];
 
 /**
@@ -87,7 +89,7 @@ const INDEX_MANIFEST = [
  */
 
 function buildQuery(idx) {
-  const cols = idx.cols.map((c) => `"${c}"`).join(", ");
+  const cols = idx.cols.map((c) => c.startsWith("lower(") ? c : `"${c}"`).join(", ");
   const whereClause = idx.where ? `WHERE ${idx.where}` : "";
   return `
     SELECT ${cols}, count(*) AS n
@@ -171,10 +173,10 @@ async function main() {
  */
 function selfTest() {
   const cases = [
-    { idx: INDEX_MANIFEST[0],
+    { idx: INDEX_MANIFEST.find((i) => i.name === "bookings_idempotency_key_idx"),
       must: ['FROM "bookings"', 'WHERE idempotency_key IS NOT NULL', 'GROUP BY "idempotency_key"', "count(*) > 1"],
       mustNot: [] },
-    { idx: INDEX_MANIFEST[2],
+    { idx: INDEX_MANIFEST.find((i) => i.name === "bookings_expert_slot_unique_idx"),
       must: ['"expert_id", "booking_date", "booking_time"', "booking_time IS NOT NULL"],
       mustNot: [] },
     // A manifest entry with where:null must emit NO WHERE clause — otherwise it would
