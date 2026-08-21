@@ -112,6 +112,8 @@ interface PublishReadiness {
   approvalStatus: string;
   status: string;
   isLive: boolean;
+  hasRouteStops: boolean;
+  shareFrames: { story: boolean; feed: boolean; route: boolean };
   publicHref: string;
   verification: { ok: boolean; role: string | null; identityVerified: boolean; businessVerified: boolean | null };
   attestation: { ok: boolean; unaffirmed: { key: string; label: unknown }[] };
@@ -403,7 +405,10 @@ function ChannelStateStrip({ services, selectedId }: { services: OwnerService[];
   const storefrontReady = !!handle && approvedActiveCount > 0;
   const marketplaceLive  = readiness.data?.isLive ?? false;
   const directReady      = !!findDirectLink(analytics.data?.links, selectedId);
-  const socialReady      = readiness.data?.isLive ?? false;
+  // The server owns F2 + ruling 22(d) frame availability. Do not probe the
+  // rate-limited image endpoints from the channel strip.
+  const socialReady      = readiness.data?.shareFrames?.story === true
+    && readiness.data?.shareFrames?.feed === true;
   const resolving        = !!selectedId && (readiness.isLoading || analytics.isLoading);
 
   function Chip({ icon, label, ok, warn, text, resolving: res }: { icon: string; label: string; ok: boolean; warn?: boolean; text: string; resolving?: boolean }) {
@@ -1207,6 +1212,8 @@ function PromoOppRow({ o, onDismiss }: { o: PostingOpportunity; onDismiss: () =>
 // ── 6. Promote card (account-level; S6 — moves here from Catalog) ─────────────────────────────
 //
 // Real posting nudges tied to reviews and open slots (§13 — no invented opportunities).
+// R-I: every line traces to a real row; seasonal/event nudges remain unavailable until
+// their source has a real writer, rather than being fabricated in this UI.
 // Each card: TagChip · urgency · listing · Dismiss | title | body | ready-to-post caption |
 // Copy + WhatsApp + X + Instagram. Measurement stays on Performance (ruling 74 disposition 8).
 // hint: Structural and logic conflict. Both design and behavior differ.
@@ -1240,7 +1247,8 @@ function PromoteCard({ onSelectService: _onSelectService }: { onSelectService: (
       ) : opps.length === 0 ? (
         <div style={{ borderRadius: 7, border: `1px dashed ${HAIR}`, background: GRD, padding: "14px 16px", textAlign: "center" as const }} data-testid="card-posting-opportunities"><div data-testid="text-promo-empty">
           <p style={{ fontSize: 12.5, color: MUT, margin: 0, lineHeight: 1.5 }}>
-            No opportunities right now — get at least one listing approved and we'll surface relevant moments to promote it.
+            No real posting opportunities are available right now. Reviews and open slots will appear
+            for live listings, while seasonal and event nudges are not currently available.
           </p>
         </div></div>
       ) : (
