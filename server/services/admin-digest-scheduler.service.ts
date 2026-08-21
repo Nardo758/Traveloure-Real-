@@ -26,6 +26,10 @@ class AdminDigestSchedulerService {
 
   start(): void {
     if (this.timer) return;
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[AdminDigest] Scheduler disabled outside production");
+      return;
+    }
 
     // First run 5 minutes after startup so the server is fully warmed up
     setTimeout(() => this.runDigest(), 5 * 60 * 1000);

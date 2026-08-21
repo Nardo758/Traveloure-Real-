@@ -508,15 +508,22 @@ export default function DiscoverPage() {
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("rating");
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [minRating, setMinRating] = useState(0);
-  const [page, setPage] = useState(0);
+  const initialQuery = urlParams.get("q") || "";
+  const readNumberParam = (name: string) => {
+    const value = Number(urlParams.get(name));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const initialPage = Math.max(0, (Number.parseInt(urlParams.get("page") || "1", 10) || 1) - 1);
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
+  const [locationFilter, setLocationFilter] = useState(urlParams.get("location") || expertHandoffDestination);
+  const [selectedCategory, setSelectedCategory] = useState(urlParams.get("categoryId") || "all");
+  const [sortBy, setSortBy] = useState(urlParams.get("sortBy") || "rating");
+  const [minPrice, setMinPrice] = useState(readNumberParam("minPrice"));
+  const [maxPrice, setMaxPrice] = useState(readNumberParam("maxPrice"));
+  const [minRating, setMinRating] = useState(readNumberParam("minRating"));
+  const [page, setPage] = useState(initialPage);
+  const hasMountedSearch = useRef(false);
   const limit = 12;
 
   // Trip packages state
@@ -551,10 +558,34 @@ export default function DiscoverPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-      setPage(0);
+      if (hasMountedSearch.current) setPage(0);
+      else hasMountedSearch.current = true;
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Keep the full discovery state addressable so refreshes, shares, and a
+  // browser-back return from a detail page restore the same result set.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const setOrDelete = (name: string, value: string, omit = false) => {
+      if (!value || omit) params.delete(name);
+      else params.set(name, value);
+    };
+    setOrDelete("q", debouncedQuery);
+    setOrDelete("location", locationFilter);
+    setOrDelete("categoryId", selectedCategory, selectedCategory === "all");
+    setOrDelete("minPrice", String(minPrice), minPrice <= 0);
+    setOrDelete("maxPrice", String(maxPrice), maxPrice <= 0);
+    setOrDelete("minRating", String(minRating), minRating <= 0);
+    setOrDelete("sortBy", sortBy, sortBy === "rating");
+    setOrDelete("page", String(page + 1), page === 0);
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
+      window.history.replaceState(window.history.state, "", nextUrl);
+    }
+  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page]);
 
   // Track search events for tourism analytics
   useEffect(() => {

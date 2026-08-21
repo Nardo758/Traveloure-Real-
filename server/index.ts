@@ -36,7 +36,6 @@ import { fxRateRefreshScheduler } from "./services/fx-rate-refresh.service";
 import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
 import { emailOutboxScheduler } from "./services/email-outbox.service";
-import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { getStripeSecretKey } from "./utils/stripe-key";
@@ -612,9 +611,6 @@ if (process.env.NODE_ENV === "production") {
 
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();
-
-    runDailyAdminDigest();
-    setInterval(runDailyAdminDigest, 24 * 60 * 60 * 1000);
 
     // TravelPulse AI refresh scheduler — previously the ONLY refresh paths were the admin
     // manual endpoints, so trending/city intelligence (and the happening-now surface derived
