@@ -2,6 +2,12 @@ import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
+import {
+  normalizeGeneratedActivityDurationMinutes,
+  normalizeGeneratedDayNumber,
+  normalizeGeneratedEstimatedCost,
+  validateGeneratedItineraryDateRange,
+} from "./utils/generated-itinerary";
 import * as messagingService from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { broadcastToUser } from "./websocket";
@@ -10140,6 +10146,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Generate default dates if not provided (3-day trip starting tomorrow)
       const startDate = dates?.start || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const endDate = dates?.end || new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const dateRangeError = validateGeneratedItineraryDateRange(startDate, endDate);
+      if (dateRangeError) {
+        return res.status(400).json({ message: dateRangeError });
+      }
 
       // Generate itinerary with city intelligence context
       const itineraryRequest = {
@@ -10155,23 +10165,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         userId,
       });
 
-      // Store generated itinerary
-      const [saved] = await db.insert(aiGeneratedItineraries).values({
-        userId,
-        destination: itineraryRequest.destination,
-        startDate: itineraryRequest.dates.start,
-        endDate: itineraryRequest.dates.end,
-        title: result.title,
-        summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost?.toString(),
-        itineraryData: result.dailyItinerary,
-        accommodationSuggestions: result.accommodationSuggestions || [],
-        packingList: result.packingList || [],
-        travelTips: result.travelTips || [],
-        provider: "grok",
-        status: "generated",
-      }).returning();
-
       // Create a backing trip so itinerary_items can FK-reference it.
       const quickTrip = await storage.createTrip({
         userId,
@@ -10184,28 +10177,49 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         eventType: "vacation",
       });
 
+      // Store the generated plan only after the backing trip exists so the
+      // read model and its itinerary_items share one canonical trip linkage.
+      const [saved] = await db.insert(aiGeneratedItineraries).values({
+        userId,
+        tripId: quickTrip.id,
+        destination: itineraryRequest.destination,
+        startDate: itineraryRequest.dates.start,
+        endDate: itineraryRequest.dates.end,
+        title: result.title,
+        summary: result.summary,
+        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
+        itineraryData: result.dailyItinerary,
+        accommodationSuggestions: result.accommodationSuggestions || [],
+        packingList: result.packingList || [],
+        travelTips: result.travelTips || [],
+        provider: "grok",
+        status: "generated",
+      }).returning();
+
       // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
       const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const qsInsertedItems: any[] = [];
       for (const day of qsDailyItinerary) {
         const activities = Array.isArray(day?.activities) ? day.activities : [];
+        const dayNumber = normalizeGeneratedDayNumber(day?.day);
         for (const activity of activities) {
+          const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
           const [inserted] = await db.insert(itineraryItems).values({
             tripId: quickTrip.id,
             title: activity.name || activity.title || "Activity",
             description: activity.description || "",
             itemType: activity.type || "activity",
             status: "planned",
-            dayNumber: day.day || 1,
+            dayNumber,
             startTime: activity.time || "",
-            durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+            durationMinutes,
             locationName: activity.location || itineraryRequest.destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
             suggestedBy: "ai",
             origin: "ai",
           }).returning();
-          qsInsertedItems.push({ ...activity, id: inserted.id });
+          qsInsertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
         }
       }
 

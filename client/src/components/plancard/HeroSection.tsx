@@ -6,6 +6,7 @@ import { Users, Share2, Download, MapPin, Calendar, Zap, CheckCircle2 } from "lu
 import { Link } from "wouter";
 import { getDestinationPhoto, computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { MetricStrip } from "./MetricStrip";
+import { parseCalendarDate } from "@/lib/calendar-date";
 
 interface HeroSectionProps {
   trip: PlanCardTrip;
@@ -49,9 +50,7 @@ export function HeroSection({
   const photoUrl = getDestinationPhoto(trip.destination || "travel");
 
   function safeDate(raw: string | null | undefined): Date | null {
-    if (!raw) return null;
-    const d = new Date(raw);
-    return isValid(d) ? d : null;
+    return parseCalendarDate(raw);
   }
 
   const startDate = safeDate(trip.startDate);
