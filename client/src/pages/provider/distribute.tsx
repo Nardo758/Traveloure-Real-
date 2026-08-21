@@ -386,7 +386,7 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
 // 🔗 Direct · 🖼️ Social. Storefront is account-level (handle + approved listings); the other
 // three resolve per listing. Deep-link to Analytics home (D4 — no analytics panel here).
 // hint: Structural and logic conflict. Both design and behavior differ.
-function ChannelStateStrip({ services, selectedId }: { services: OwnerService[]; selectedId: string | null }) {
+function ChannelStateStrip({ services, selectedId, selectedName }: { services: OwnerService[]; selectedId: string | null; selectedName: string }) {
   const { user } = useAuth();
   const handle = (user as any)?.handle as string | null | undefined;
 
@@ -436,22 +436,31 @@ function ChannelStateStrip({ services, selectedId }: { services: OwnerService[];
   }
 
   return (
-    <div
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" as const, marginBottom: 14 }}
+    <section
+      style={{ border: `1px solid ${HAIR}`, background: "#F6F7F3", borderRadius: 10, padding: "16px", marginBottom: 18 }}
       data-testid="channel-state-strip"
+      aria-label="Distribution channel readiness"
     >
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, flex: 1, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const, marginBottom: 13 }}>
+        <div>
+          <p style={{ ...T.sectionLabel, margin: "0 0 4px", color: ACC }}>Channel readiness</p>
+          <p style={{ fontSize: 13, fontWeight: 650, color: INK, margin: 0 }}>
+            Where <span style={{ fontWeight: 500 }}>“{selectedName}”</span> can be found today
+          </p>
+        </div>
+        <Link href={ANALYTICS_HOME_HREF}>
+          <button style={{ ...T.btn, background: PGE }} data-testid="button-view-link-performance">
+            View link performance →
+          </button>
+        </Link>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(8.5rem, 1fr))", gap: 8 }}>
         <Chip icon="🏪" label="Storefront" ok={storefrontReady} text={handle ? "live" : "no handle yet"} />
         <Chip icon="🛍️" label="Marketplace" ok={marketplaceLive} warn={!marketplaceLive && !resolving} text={marketplaceLive ? "live" : "not live yet"} resolving={resolving} />
         <Chip icon="🔗" label="Direct" ok={directReady} text={directReady ? "link ready" : "no link yet"} resolving={resolving} />
         <Chip icon="🖼️" label="Social" ok={socialReady} warn={!socialReady && !resolving} text={socialReady ? "images ready" : "needs approval"} resolving={resolving} />
       </div>
-      <Link href={ANALYTICS_HOME_HREF}>
-        <button style={T.btn} data-testid="button-view-link-performance">
-          View link performance →
-        </button>
-      </Link>
-    </div>
+    </section>
   );
 }
 // ── 3. Share-kit card (per-listing; S6 — moves here from Catalog) ─────────────────────────────
@@ -1304,7 +1313,7 @@ export default function ProviderDistribute() {
   return (
     <ProviderLayout title="Distribute">
       {/* width expressed in rem so the layout literal stays out of the money-literal grep (ruling 115 breakpoint precedent) */}
-      <div style={{ padding: "22px 24px 80px", maxWidth: "56.25rem", fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif", color: INK }}>
+      <div style={{ padding: "22px 24px 80px", maxWidth: "64rem", fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif", color: INK }}>
 
         {/* Arrival banner — when landing from Catalog's "Distribute this →" link */}
         {arrivalService && (
@@ -1328,22 +1337,37 @@ export default function ProviderDistribute() {
           </div>
         )}
 
-        {/* Page header */}
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: INK, margin: "0 0 4px", letterSpacing: "-0.01em" }} data-testid="text-distribute-title">
-            Distribute
-          </h1>
-          <p style={{ fontSize: 13, color: MUT, margin: 0, lineHeight: 1.55 }}>
-            One hub for getting what you sell seen — your storefront, the marketplace, direct links, share kits and posting nudges.
-          </p>
-        </div>
+        {/* Channel-hub header — separates account-level storefront work from per-listing distribution. */}
+        <header
+          style={{ border: `1px solid ${HAIR}`, borderRadius: 12, padding: "20px 22px", marginBottom: 18, background: "linear-gradient(135deg, #F6F7F3 0%, #FFFFFF 72%)", boxShadow: "0 10px 30px rgba(26,26,24,0.035)" }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap" as const }}>
+            <div style={{ minWidth: 220, flex: 1 }}>
+              <p style={{ ...T.sectionLabel, color: ACC, margin: "0 0 7px" }}>Provider channel hub</p>
+              <h1 style={{ fontSize: 25, fontWeight: 720, color: INK, margin: "0 0 6px", letterSpacing: "-0.025em" }} data-testid="text-distribute-title">
+                Distribute with intent
+              </h1>
+              <p style={{ fontSize: 13.5, color: MUT, margin: 0, lineHeight: 1.55, maxWidth: 610 }}>
+                Put each listing in the right place: your storefront, the marketplace, a direct link, ready-to-share frames, and timely reasons to post.
+              </p>
+            </div>
+            <div style={{ borderLeft: `1px solid ${HAIR}`, paddingLeft: 16, minWidth: 135 }}>
+              <p style={{ ...T.sectionLabel, margin: "0 0 4px" }}>Catalog</p>
+              <p style={{ fontSize: 19, fontWeight: 700, color: INK, margin: 0 }}>{listings.length}</p>
+              <p style={{ fontSize: 11.5, color: MUT, margin: "2px 0 0" }}>listing{listings.length === 1 ? "" : "s"} to distribute</p>
+            </div>
+          </div>
+        </header>
 
         {/* 1. Storefront (account-level) */}
         <StorefrontCard services={listings} />
 
         {/* Listing selector — scopes Share kit, Direct link, and Marketplace */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" as const }}>
-          <span style={T.sectionLabel}>For listing</span>
+        <section style={{ border: `1px solid ${HAIR}`, borderRadius: 9, background: PGE, padding: "13px 16px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const }}>
+          <div>
+            <p style={{ ...T.sectionLabel, margin: "0 0 3px" }}>Active listing</p>
+            <p style={{ fontSize: 12.5, color: MUT, margin: 0 }}>Choose a listing to manage its direct and social distribution.</p>
+          </div>
           {servicesLoading ? (
             <div style={{ height: 32, width: 200, background: HAIR, borderRadius: 6 }} />
           ) : listings.length === 0 ? (
@@ -1359,7 +1383,7 @@ export default function ProviderDistribute() {
             <select
               value={selectedId ?? ""}
               onChange={(e) => setSelectedId(e.target.value)}
-              style={{ border: `1px solid ${HAIR}`, background: PGE, color: INK, padding: "6px 10px", borderRadius: 6, fontSize: 13, fontFamily: "inherit", cursor: "pointer" }}
+              style={{ border: `1px solid ${HAIR}`, background: GRD, color: INK, padding: "8px 11px", borderRadius: 6, fontSize: 13, fontFamily: "inherit", cursor: "pointer", minWidth: 230 }}
               data-testid="select-listing"
             >
               {listings.map((s) => (
@@ -1367,16 +1391,16 @@ export default function ProviderDistribute() {
               ))}
             </select>
           )}
-        </div>
+        </section>
 
         {/* Channel-state strip (shown when a listing is selected) */}
-        {selectedId && <ChannelStateStrip services={listings} selectedId={selectedId} />}
+        {selectedId && <ChannelStateStrip services={listings} selectedId={selectedId} selectedName={selectedName} />}
 
-        {/* 2. Marketplace (per-listing) — resolve first: it gates the other two */}
-        <MarketplaceCard serviceId={selectedId} />
-
-        {/* 3. Direct link (per-listing) — mints on first action, independent of marketplace */}
-        <DirectLinkCard serviceId={selectedId} serviceName={selectedName} />
+        {/* Resolve first: marketplace gates publishing, while direct link remains independent. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(19rem, 1fr))", gap: 16, alignItems: "start" }}>
+          <MarketplaceCard serviceId={selectedId} />
+          <DirectLinkCard serviceId={selectedId} serviceName={selectedName} />
+        </div>
 
         {/* 4. Share kit (per-listing) — unlocks once listing is approved + active */}
         <ShareKitCard service={selectedService} serviceId={selectedId} />
