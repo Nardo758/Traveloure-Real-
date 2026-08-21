@@ -3159,7 +3159,22 @@ export class DatabaseStorage implements IStorage {
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newReview] = await db.insert(serviceReviews).values({ ...review, trackingNumber }).returning();
+    const newReview = await db.transaction(async (tx) => {
+      // Serialize attempts for the same booking so two concurrent requests
+      // cannot both pass a pre-insert duplicate check.
+      await tx.execute(sqlOp`SELECT pg_advisory_xact_lock(hashtext(${review.bookingId}))`);
+      const [existing] = await tx
+        .select({ id: serviceReviews.id })
+        .from(serviceReviews)
+        .where(eq(serviceReviews.bookingId, review.bookingId))
+        .limit(1);
+      if (existing) throw new Error("REVIEW_ALREADY_EXISTS");
+      const [created] = await tx
+        .insert(serviceReviews)
+        .values({ ...review, trackingNumber })
+        .returning();
+      return created;
+    });
     
     // Auto-register in content tracking system
     await this.registerContent({
@@ -3246,6 +3261,7 @@ export class DatabaseStorage implements IStorage {
         case "reviews": keys.push(desc(providerServices.reviewCount)); break;
       }
       keys.push(desc(providerServices.bookingsCount));
+      keys.push(asc(providerServices.id));
       return keys;
     };
 
@@ -3354,7 +3370,8 @@ export class DatabaseStorage implements IStorage {
             desc(expertTemplates.isFeatured),
             desc(expertTemplates.salesCount),
             desc(expertTemplates.averageRating),
-            desc(expertTemplates.createdAt)
+            desc(expertTemplates.createdAt),
+            asc(expertTemplates.id)
           )
           .limit(6);
         return pkgCount;

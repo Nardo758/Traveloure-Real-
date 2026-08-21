@@ -225,16 +225,31 @@ export async function getReviewById(reviewId: string): Promise<any | null> {
   return review ?? null;
 }
 
-export async function flagReview(reviewId: string, reason: string | null, actorId: string): Promise<void> {
-  await db.update(serviceReviews)
-    .set({ status: "flagged", flagReason: reason || null } as any)
-    .where(eq(serviceReviews.id, reviewId));
-  await db.insert(reviewModerationLogs).values({
-    reviewId,
-    action: "flag",
-    actorId,
-    reason: reason || null,
-  } as any);
+export async function flagReview(reviewId: string, reason: string | null, actorId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${reviewId}:${actorId}`}))`);
+    const [existing] = await tx.select({ id: reviewModerationLogs.id })
+      .from(reviewModerationLogs)
+      .where(and(
+        eq(reviewModerationLogs.reviewId, reviewId),
+        eq(reviewModerationLogs.actorId, actorId),
+        eq(reviewModerationLogs.action, "flag"),
+      ))
+      .limit(1);
+    if (existing) return false;
+    // A user report is a moderation signal, not a moderation decision. Keep
+    // approved content visible and its rating intact until an admin acts.
+    await tx.update(serviceReviews)
+      .set({ flagReason: reason || null } as any)
+      .where(eq(serviceReviews.id, reviewId));
+    await tx.insert(reviewModerationLogs).values({
+      reviewId,
+      action: "flag",
+      actorId,
+      reason: reason || null,
+    } as any);
+    return true;
+  });
 }
 
 // ─── Expert Matching ──────────────────────────────────────────────────────────
