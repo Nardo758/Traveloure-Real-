@@ -1409,9 +1409,6 @@ export default function ProviderDistribute() {
           </div>
         </header>
 
-        {/* 1. Storefront (account-level) */}
-        {(activeChannel === "all" || activeChannel === "storefront") && <StorefrontCard services={listings} />}
-
         {/* Listing selector — scopes Share kit, Direct link, and Marketplace */}
         <section style={{ border: `1px solid ${HAIR}`, borderRadius: 9, background: PGE, padding: "13px 16px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const }}>
           <div>
@@ -1453,6 +1450,10 @@ export default function ProviderDistribute() {
             onChannelChange={setActiveChannel}
           />
         )}
+
+        {/* Channel content slot — the shared shell above stays stable while this panel changes. */}
+        {/* 1. Storefront (account-level) */}
+        {(activeChannel === "all" || activeChannel === "storefront") && <StorefrontCard services={listings} />}
 
         {/* Resolve first: marketplace gates publishing, while direct link remains independent. */}
         {(activeChannel === "all" || activeChannel === "marketplace" || activeChannel === "direct") && (
