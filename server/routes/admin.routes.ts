@@ -1829,6 +1829,110 @@ router.post("/api/admin/dmo/intake/:id/reject", isAuthenticated, async (req, res
   }
 });
 
+// ── DMO discover PUBLISH gate (Operation Trailhead LANE T4.2, R-T1-e) ─────────
+// The second half of the intake ladder. Intake approve (above) flips
+// expert_workspace_visible so an expert can curate the stub. PUBLISH flips
+// discover_page_visible so the TRAVELER discover surfaces render it — the
+// born-hidden safety (default false) is what keeps scraped content invisible
+// until an admin deliberately publishes it here. Eligibility (a reviewed stub:
+// already expert-visible, not yet published, not rejected/quarantined) is the
+// SINGLE predicate canPublishToDiscover() in shared/discover-stub.ts, and the
+// state transition is itself the guard — an atomic conditional UPDATE whose WHERE
+// re-asserts every from-state (the §12/§18b posture), so a double-click or a race
+// flips exactly one row and the loser is a 409 no-op. Audit-logged.
+
+// Publish ONE reviewed stub to the traveler discover surfaces.
+router.post("/api/admin/dmo/publish/:id", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [updated] = await db
+      .update(dmoRawContent)
+      .set({ discoverPageVisible: true, publishedAt: new Date(), publishedBy: user.id, updatedAt: new Date() })
+      .where(
+        and(
+          eq(dmoRawContent.id, req.params.id),
+          // from-state allow-list == canPublishToDiscover(): reviewed, unpublished, not rejected.
+          eq(dmoRawContent.expertWorkspaceVisible, true),
+          eq(dmoRawContent.discoverPageVisible, false),
+          sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+        ),
+      )
+      .returning();
+    if (!updated) {
+      return res.status(409).json({
+        message: "Not eligible to publish (must be reviewed into the expert library, unpublished, and not rejected)",
+      });
+    }
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dmo_discover_publish",
+      resourceType: "dmo_raw_content",
+      resourceId: updated.id,
+      metadata: { city: updated.city, country: updated.country, contentType: updated.contentType, inventoryClass: updated.inventoryClass },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/dmo/publish] audit log failed (non-fatal):", err));
+    res.json({ message: "Published to Discover", item: updated });
+  } catch (err: any) {
+    console.error("DMO publish error:", err);
+    res.status(500).json({ message: "Publish failed", error: err.message });
+  }
+});
+
+// Bulk publish per reviewed batch (gated conceptually by Leon's T2.4 review; the admin surface is
+// the mechanism). Body: { ids: string[] }. Each id flips through the SAME atomic conditional, so
+// an already-published or rejected id is silently skipped, never force-flipped. One audit row per
+// id actually flipped.
+router.post("/api/admin/dmo/publish-batch", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x: any) => typeof x === "string") : [];
+  if (ids.length === 0) return res.status(400).json({ message: "ids (non-empty string array) is required" });
+  try {
+    const publishedIds: string[] = [];
+    const skippedIds: string[] = [];
+    for (const id of ids) {
+      const [updated] = await db
+        .update(dmoRawContent)
+        .set({ discoverPageVisible: true, publishedAt: new Date(), publishedBy: user.id, updatedAt: new Date() })
+        .where(
+          and(
+            eq(dmoRawContent.id, id),
+            eq(dmoRawContent.expertWorkspaceVisible, true),
+            eq(dmoRawContent.discoverPageVisible, false),
+            sql`${dmoRawContent.status} NOT IN ('rejected', 'quarantined')`,
+          ),
+        )
+        .returning();
+      if (updated) {
+        publishedIds.push(updated.id);
+        await insertAccessAuditLog({
+          actorId: user.id,
+          actorRole: user.role,
+          action: "dmo_discover_publish",
+          resourceType: "dmo_raw_content",
+          resourceId: updated.id,
+          metadata: { city: updated.city, country: updated.country, contentType: updated.contentType, inventoryClass: updated.inventoryClass, batch: true },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        }).catch((err: any) => console.error("[admin/dmo/publish-batch] audit log failed (non-fatal):", err));
+      } else {
+        skippedIds.push(id);
+      }
+    }
+    res.json({ message: `Published ${publishedIds.length} of ${ids.length}`, publishedIds, skippedIds });
+  } catch (err: any) {
+    console.error("DMO publish-batch error:", err);
+    res.status(500).json({ message: "Batch publish failed", error: err.message });
+  }
+});
+
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
