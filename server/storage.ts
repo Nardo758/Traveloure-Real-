@@ -1595,8 +1595,8 @@ export class DatabaseStorage implements IStorage {
    * Ensure a city exists in travel_pulse_cities so the daily AI scheduler generates
    * content for it. A fresh row has `aiGeneratedAt = NULL`, which `getCitiesNeedingRefresh`
    * treats as stale → the next scheduler cycle runs `updateCityWithAI` and fills it in.
-   * Idempotent (case-insensitive existence check — the table has no unique constraint,
-   * matching updateCityWithAI's own dedup). Returns true only when a NEW row was created.
+   * Idempotent (case-insensitive existence check plus DB conflict handling). Returns true
+   * only when a NEW row was created.
    */
   async ensureCityEnrolled(cityName: string, country: string): Promise<boolean> {
     const name = cityName?.trim();
@@ -1608,8 +1608,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(ilike(travelPulseCities.cityName, name), ilike(travelPulseCities.country, ctry)))
       .limit(1);
     if (existing.length > 0) return false;
-    await db.insert(travelPulseCities).values({ cityName: name, country: ctry });
-    return true;
+    const inserted = await db
+      .insert(travelPulseCities)
+      .values({ cityName: name, country: ctry })
+      .onConflictDoNothing();
+    return Boolean(inserted.rowCount);
   }
 
   /**

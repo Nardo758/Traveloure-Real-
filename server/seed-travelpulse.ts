@@ -219,7 +219,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
         )
       ).limit(1);
       if (existing.length === 0) {
-        await db.insert(travelPulseCities).values({
+        const inserted = await db.insert(travelPulseCities).values({
           id: city.id,
           cityName: city.city_name,
           country: city.country,
@@ -245,8 +245,8 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
           totalAlerts: city.total_alerts,
           imageUrl: city.image_url,
           thumbnailUrl: city.thumbnail_url,
-        });
-        created++;
+        }).onConflictDoNothing();
+        if (inserted.rowCount) created++;
       }
     }
 
