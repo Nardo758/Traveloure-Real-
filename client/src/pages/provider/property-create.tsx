@@ -12,7 +12,7 @@
  * Rooms inherit the property pin (one placement locates the whole house).
  * Night availability is published on Catalog → Availability after creation.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
@@ -105,11 +105,58 @@ export default function PropertyCreate() {
   const [propHouseRules, setPropHouseRules] = useState("");
   const [amenities, setAmenities] = useState<string[]>(["Wi-Fi", "Kitchen", "Air conditioning"]);
   const [amenityDraft, setAmenityDraft] = useState("");
-
-  /* ── step 2 state ── */
+  const [propertyPhotos, setPropertyPhotos] = useState<{ name: string; url: string }[]>([]);
+  const [roomPhotos, setRoomPhotos] = useState<Record<string, { name: string; url: string }[]>>({});
+  const [draftStatus, setDraftStatus] = useState<"loading" | "saved" | "saving">("loading");
+  const draftHydrated = useRef(false);
+  const draftKey = "provider-property-create-draft";
   const [roomDrafts, setRoomDrafts] = useState<RoomDraft[]>([
     { key: "r0", roomName: "", price: "", units: "" },
   ]);
+
+  // Creation is intentionally resumable in this browser. There is no server draft endpoint
+  // behind POST /properties, so do not imply that an abandoned form has been submitted.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const d = JSON.parse(raw);
+        setStep(d.step === "rooms" || d.step === "review" ? d.step : "property");
+        setPropName(d.propName ?? ""); setPropCancellation(d.propCancellation ?? CANCELLATION_OPTIONS[1]);
+        setPropDescription(d.propDescription ?? ""); setPropLocation(d.propLocation ?? "");
+        setPropPoint(d.propPoint ?? null); setPropCheckIn(d.propCheckIn ?? "");
+        setPropCheckOut(d.propCheckOut ?? ""); setPropMinStay(d.propMinStay ?? "");
+        setPropHouseRules(d.propHouseRules ?? ""); setAmenities(d.amenities ?? ["Wi-Fi", "Kitchen", "Air conditioning"]);
+        setRoomDrafts(d.roomDrafts?.length ? d.roomDrafts : [{ key: "r0", roomName: "", price: "", units: "" }]);
+      }
+    } catch { /* A damaged local draft must never prevent starting a new property. */ }
+    draftHydrated.current = true;
+    setDraftStatus("saved");
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated.current) return;
+    setDraftStatus("saving");
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(draftKey, JSON.stringify({
+          step, propName, propCancellation, propDescription, propLocation, propPoint,
+          propCheckIn, propCheckOut, propMinStay, propHouseRules, amenities, roomDrafts,
+        }));
+        setDraftStatus("saved");
+      } catch { setDraftStatus("saved"); }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [step, propName, propCancellation, propDescription, propLocation, propPoint, propCheckIn,
+    propCheckOut, propMinStay, propHouseRules, amenities, roomDrafts]);
+
+  function addPhotos(files: FileList | null, roomKey?: string) {
+    if (!files) return;
+    const photos = Array.from(files).filter((f) => f.type.startsWith("image/")).slice(0, 6)
+      .map((file) => ({ name: file.name, url: URL.createObjectURL(file) }));
+    if (roomKey) setRoomPhotos((prev) => ({ ...prev, [roomKey]: [...(prev[roomKey] ?? []), ...photos] }));
+    else setPropertyPhotos((prev) => [...prev, ...photos]);
+  }
 
   /* ── validation ── */
   const step1Valid = propName.trim().length > 0;
@@ -170,7 +217,7 @@ export default function PropertyCreate() {
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/properties"] });
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       toast({
@@ -178,7 +225,9 @@ export default function PropertyCreate() {
         description:
           "It appears in your Catalog and goes live once approved. Publish night availability on each room next.",
       });
-      navigate("/provider/workstation");
+       try { window.localStorage.removeItem(draftKey); } catch { /* ignore storage failures */ }
+       const firstRoomId = Array.isArray(data?.rooms) ? data.rooms[0]?.id : undefined;
+       navigate(firstRoomId ? `/provider/availability?serviceId=${firstRoomId}` : "/provider/workstation");
     },
     onError: (err) => {
       toast({
@@ -298,23 +347,31 @@ export default function PropertyCreate() {
                 />
               </div>
 
-              {/* photos placeholder */}
+               {/* Photos are staged locally until the property has an id. The create API currently
+                   has no property upload rail, so files are not sent to a made-up endpoint. */}
               <div style={{ marginTop: 16 }}>
                 <label style={lbl()}>Photos <span style={{ color: MUT, fontWeight: 400 }}>(optional)</span></label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
-                  <div style={photobox()}>▤</div>
-                  <div style={photobox()}>▤</div>
-                  <div style={photobox()}>▤</div>
+                   {propertyPhotos.slice(0, 3).map((photo) => (
+                     <img key={photo.url} src={photo.url} alt={photo.name} style={{ ...photobox(), objectFit: "cover" }} />
+                   ))}
+                   {Array.from({ length: Math.max(0, 3 - propertyPhotos.length) }).map((_, i) => (
+                     <div key={`empty-${i}`} style={photobox()}>▤</div>
+                   ))}
                   <div
                     style={{ ...photobox(), borderStyle: "dashed", cursor: "pointer", color: MUT, background: GRD }}
-                    title="Photos can be added after creation via the property editor"
                   >
-                    + Add
+                     <label style={{ cursor: "pointer", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                       + Add
+                       <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
+                         onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }}
+                         data-testid="input-property-photos" />
+                     </label>
                   </div>
                 </div>
                 <div style={help()}>
                   Property photos are the building and the shared spaces. Each room carries its own photo on the next step.
-                  Photos can be updated after creation.
+                   Previews are saved only in this browser until submission; the current create API does not accept image uploads.
                 </div>
               </div>
 
@@ -510,16 +567,10 @@ export default function PropertyCreate() {
                     }}
                     data-testid={`row-room-draft-${idx}`}
                   >
-                    {/* photo placeholder */}
-                    <div
-                      style={{
-                        width: 56, height: 42, flex: "0 0 56px", borderRadius: 5, background: "#EDEBE3",
-                        border: `1px solid ${HAIR}`, display: "flex", alignItems: "center",
-                        justifyContent: "center", color: "#B8B6AC",
-                      }}
-                    >
-                      ▤
-                    </div>
+                    <label style={{ width: 56, height: 42, flex: "0 0 56px", borderRadius: 5, background: "#EDEBE3", border: `1px dashed ${HAIR}`, display: "flex", alignItems: "center", justifyContent: "center", color: MUT, cursor: "pointer", overflow: "hidden" }}>
+                      {roomPhotos[draft.key]?.[0] ? <img src={roomPhotos[draft.key][0].url} alt="Room preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "+ Photo"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { addPhotos(e.target.files, draft.key); e.target.value = ""; }} data-testid={`input-room-photo-${idx}`} />
+                    </label>
 
                     <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 6 }}>
                       <input
@@ -595,6 +646,25 @@ export default function PropertyCreate() {
                 Review is honest about the one thing that actually stops a room being sold: nothing has
                 published dates until you say so, and this builder does not pretend otherwise.
               </div>
+
+               <div style={{ border: `1px solid ${HAIR}`, borderRadius: 6, overflow: "hidden", marginBottom: 18 }} data-testid="location-privacy-preview">
+                 <div style={{ padding: "10px 12px", background: GRD, fontSize: 12.5, fontWeight: 600 }}>Location privacy preview</div>
+                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                   <div style={{ padding: 12, borderTop: `1px solid ${HAIR}`, borderRight: `1px solid ${HAIR}` }}>
+                     <div style={{ fontSize: 11, color: MUT, textTransform: "uppercase", letterSpacing: ".05em" }}>Before booking · provider</div>
+                     <b style={{ display: "block", marginTop: 5, fontSize: 13 }}>Exact confirmed pin</b>
+                     <span style={{ display: "block", color: MUT, fontSize: 11.5, marginTop: 3 }}>{propPoint ? "Visible for your planning maps." : "No pin confirmed yet."}</span>
+                   </div>
+                   <div style={{ padding: 12, borderTop: `1px solid ${HAIR}` }}>
+                     <div style={{ fontSize: 11, color: MUT, textTransform: "uppercase", letterSpacing: ".05em" }}>After booking · guest</div>
+                     <b style={{ display: "block", marginTop: 5, fontSize: 13 }}>General area before confirmation</b>
+                     <span style={{ display: "block", color: MUT, fontSize: 11.5, marginTop: 3 }}>Exact directions stay private until booking.</span>
+                   </div>
+                 </div>
+                 <div style={{ padding: "8px 12px", fontSize: 11, color: WARN_INK, background: WARN_BG, borderTop: `1px solid ${WARN_LINE}` }}>
+                   Preview only: the create API stores the pin and display line but has no separate privacy setting.
+                 </div>
+               </div>
 
               {/* summary rows */}
               <SumRow k="Property" v={propName.trim() || "—"} />
@@ -716,7 +786,9 @@ export default function PropertyCreate() {
                 </button>
               )}
               {step === "property" && (
-                <span style={{ marginLeft: "auto", fontSize: 12, color: MUT }}>Autosaved as a draft property.</span>
+                <span style={{ marginLeft: "auto", fontSize: 12, color: MUT }} data-testid="text-property-draft-status">
+                  {draftStatus === "saving" ? "Saving draft…" : draftStatus === "loading" ? "Restoring draft…" : "Draft saved in this browser"}
+                </span>
               )}
               {step === "rooms" && (
                 <span style={{ marginLeft: "auto", fontSize: 12, color: MUT }}>
