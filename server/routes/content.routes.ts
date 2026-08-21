@@ -12,6 +12,7 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
@@ -182,6 +183,58 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+function boundedJson(maxChars: number) {
+  return z.unknown().refine((value) => {
+    try {
+      const encoded = JSON.stringify(value);
+      return encoded === undefined || encoded.length <= maxChars;
+    } catch {
+      return false;
+    }
+  }, `JSON value must be at most ${maxChars} characters`);
+}
+
+const aiBlueprintRequestSchema = z.object({
+  eventType: z.string().trim().min(1).max(80).default("vacation"),
+  destination: z.string().trim().min(1).max(200).default("To be determined"),
+  travelers: z.coerce.number().int().min(1).max(50).default(2),
+  startDate: z.string().trim().max(32).optional(),
+  endDate: z.string().trim().max(32).optional(),
+  budget: z.union([z.string().trim().max(100), z.number().nonnegative().max(100_000_000)]).optional(),
+  preferences: boundedJson(5_000).optional(),
+}).strict();
+
+const aiChatRequestSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(4_000),
+  }).strict()).min(1).max(30).refine(
+    (messages) => messages.reduce((total, message) => total + message.content.length, 0) <= 12_000,
+    "Combined message content must be at most 12000 characters",
+  ),
+  tripContext: boundedJson(8_000).optional(),
+}).strict();
+
+const optimizeExperienceRequestSchema = z.object({
+  experienceType: z.string().trim().min(1).max(100),
+  destination: z.string().trim().max(200).optional(),
+  date: z.string().trim().max(32).optional(),
+  selectedServices: z.array(z.object({
+    name: z.string().trim().max(200).optional(),
+    provider: z.string().trim().max(200).optional(),
+    price: z.union([z.number().nonnegative().max(100_000_000), z.string().trim().max(50)]).optional(),
+    category: z.string().trim().max(100).optional(),
+  }).strict()).max(50).default([]),
+  preferences: boundedJson(5_000).optional(),
+}).strict();
+
+function sendValidationError(res: any, error: z.ZodError) {
+  return res.status(400).json({
+    message: "Validation failed",
+    errors: error.errors.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
+  });
+}
+
 function sanitizeInput(input: string): string {
   if (typeof input !== 'string') return input;
   return input
@@ -343,9 +396,9 @@ router.get("/api/status", (_req, res) => {
   });
 
 
-router.post("/api/contact", async (req, res) => {
+router.post("/api/contact", strictRateLimiter, async (req, res) => {
     try {
-      const input = contactSchema.parse(req.body);
+      const input = sanitizeStringFields(contactSchema.parse(req.body));
 
       // Persist the submission
       const submission = await insertContactSubmission({
@@ -567,7 +620,8 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
 
 router.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
     try {
-      const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
+      const { eventType, destination, travelers, startDate, endDate, budget, preferences } =
+        aiBlueprintRequestSchema.parse(req.body);
       const userId = getUserId(req)!;
 
       const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
@@ -616,12 +670,18 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
       trackAnthropicResponse(completion, { sourceType: "ai_traveler" });
 
       const blueprintContent = completion.content[0]?.type === "text" ? completion.content[0].text : null;
-      const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
+      let blueprintData: unknown = {};
+      try {
+        blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
+      } catch {
+        return res.status(502).json({ message: "AI provider returned an invalid blueprint" });
+      }
 
       const blueprint = await insertAiBlueprint({ userId, eventType: eventType || 'vacation', destination, blueprintData });
 
       res.status(201).json(blueprint);
     } catch (error) {
+      if (error instanceof z.ZodError) return sendValidationError(res, error);
       console.error("Error generating blueprint:", error);
       res.status(500).json({ message: "Failed to generate blueprint" });
     }
@@ -631,7 +691,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
 
 router.post("/api/ai/chat", isAuthenticated, async (req, res) => {
     try {
-      const { messages, tripContext } = req.body;
+      const { messages, tripContext } = aiChatRequestSchema.parse(req.body);
 
       const systemPrompt = `You are an expert travel advisor assistant for Traveloure. 
 You help users plan trips, answer questions about destinations, provide recommendations for hotels, restaurants, activities, and help with wedding/honeymoon/special event planning.
@@ -667,6 +727,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       const response = completion.content[0]?.type === "text" ? completion.content[0].text : "I'm sorry, I couldn't process your request.";
       res.json({ response });
     } catch (error) {
+      if (error instanceof z.ZodError) return sendValidationError(res, error);
       console.error("Error in AI chat:", error);
       res.status(500).json({ message: "Failed to process chat request" });
     }
@@ -684,7 +745,8 @@ router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => 
       if (!user || (user.role !== "admin" && !isExpertRole(user.role))) {
         return res.status(403).json({ message: "Admin or expert access required" });
       }
-      const { experienceType, destination, date, selectedServices, preferences } = req.body;
+      const { experienceType, destination, date, selectedServices, preferences } =
+        optimizeExperienceRequestSchema.parse(req.body);
       
       const servicesContext = selectedServices?.map((s: any) => ({
         name: s.name,
@@ -745,6 +807,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       
       res.json(optimization);
     } catch (error) {
+      if (error instanceof z.ZodError) return sendValidationError(res, error);
       console.error("Error in experience optimization:", error);
       res.status(500).json({ 
         message: "Failed to optimize experience",
@@ -3543,22 +3606,28 @@ router.post("/api/claude/transportation-analysis", isAuthenticated, async (req, 
 
   // Generate transport packages for trip segments
   const transportPackageSegmentSchema = z.object({
-    id: z.string(),
-    type: z.string(),
-    from: z.object({ name: z.string(), type: z.string() }),
-    to: z.object({ name: z.string(), type: z.string() }),
-    date: z.string().optional(),
-  });
+    id: z.string().trim().min(1).max(100),
+    type: z.string().trim().min(1).max(80),
+    from: z.object({
+      name: z.string().trim().min(1).max(200),
+      type: z.string().trim().min(1).max(80),
+    }).strict(),
+    to: z.object({
+      name: z.string().trim().min(1).max(200),
+      type: z.string().trim().min(1).max(80),
+    }).strict(),
+    date: z.string().trim().max(32).optional(),
+  }).strict();
 
   const transportPackageRequestSchema = z.object({
-    segments: z.array(transportPackageSegmentSchema).min(1),
-    destination: z.string().min(1),
-    travelers: z.number().int().min(1).default(1),
-    tripDays: z.number().int().min(1).default(1),
-  });
+    segments: z.array(transportPackageSegmentSchema).min(1).max(50),
+    destination: z.string().trim().min(1).max(200),
+    travelers: z.number().int().min(1).max(50).default(1),
+    tripDays: z.number().int().min(1).max(365).default(1),
+  }).strict();
 
 
-router.post("/api/transport-packages/generate", isAuthenticated, async (req, res) => {
+router.post("/api/transport-packages/generate", aiRateLimiter, isAuthenticated, async (req, res) => {
     try {
       const parsed = transportPackageRequestSchema.parse(req.body);
       const { segments, destination, travelers, tripDays } = parsed;

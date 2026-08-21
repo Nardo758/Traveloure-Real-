@@ -6,6 +6,7 @@ import * as messagingService from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { broadcastToUser } from "./websocket";
 import { validateImageDataUrl } from "./utils/imageValidation";
+import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
@@ -1929,7 +1930,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Submit expert application
-  app.post("/api/expert-application", isAuthenticated, async (req, res) => {
+  app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       
@@ -1987,7 +1988,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Alias: /api/expert-forms -> /api/expert-application (for API compatibility)
-  app.post("/api/expert-forms", isAuthenticated, async (req, res) => {
+  app.post("/api/expert-forms", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await storage.getLocalExpertForm(userId);
@@ -4524,23 +4525,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // PATCH /api/expert/photo — Save the expert's profile photo.
   // Accepts a base64 data URL; server-side validation of type + decoded size.
-  app.patch("/api/expert/photo", isAuthenticated, async (req, res) => {
+  app.patch("/api/expert/photo", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { imageData } = req.body ?? {};
       if (typeof imageData !== "string") {
         return res.status(400).json({ message: "imageData must be a base64 data URL string" });
       }
-      const match = imageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
-      if (!match) {
-        return res.status(400).json({ message: "Photo must be a PNG, JPEG, or WebP image" });
-      }
       const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB decoded
-      // base64 → bytes: 4 chars encode 3 bytes.
-      const approxBytes = Math.floor((match[2].length * 3) / 4);
-      if (approxBytes > MAX_PHOTO_BYTES) {
-        return res.status(400).json({ message: "Photo must be smaller than 2 MB" });
-      }
+      const imageError = validateImageDataUrl(imageData, "Photo", {
+        maxBytes: MAX_PHOTO_BYTES,
+        allowedMimeTypes: ["image/jpeg", "image/png"],
+      });
+      if (imageError) return res.status(400).json({ message: imageError });
       await db.update(users).set({ profileImageUrl: imageData }).where(eq(users.id, userId));
       res.json({ success: true });
     } catch (err) {
