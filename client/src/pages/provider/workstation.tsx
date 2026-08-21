@@ -210,6 +210,80 @@ function formatPrice(price: string | number | null | undefined): string {
   return Number.isFinite(n) ? `$${n.toFixed(2).replace(/\.00$/, "")}` : String(price);
 }
 
+type RoomAvailabilityHealth =
+  | "no-dates"
+  | "blackout"
+  | "stale"
+  | "ready"
+  | "loading"
+  | "unavailable";
+
+interface RoomAvailabilityRange {
+  startDate: string;
+  endDate: string;
+}
+
+interface RoomAvailabilityBlackout {
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * A small, read-only health summary for the workstation room list. The full editor remains
+ * /provider/availability; this is deliberately based on the same date-range and blackout rails
+ * rather than the materialized slot table (which can be stale while a range is being edited).
+ */
+function RoomAvailabilityHealth({ roomId }: { roomId: string }) {
+  const rangesQuery = useQuery<{ dateRanges?: RoomAvailabilityRange[] }>({
+    queryKey: ["/api/provider/services", roomId, "date-ranges"],
+    queryFn: async () =>
+      (await apiRequest("GET", `/api/provider/services/${roomId}/date-ranges`)).json(),
+  });
+  const blackoutsQuery = useQuery<{ blackouts?: RoomAvailabilityBlackout[] }>({
+    queryKey: ["/api/provider/services", roomId, "blackouts"],
+    queryFn: async () =>
+      (await apiRequest("GET", `/api/provider/services/${roomId}/blackouts`)).json(),
+  });
+
+  let health: RoomAvailabilityHealth = "loading";
+  if (rangesQuery.isError || blackoutsQuery.isError) health = "unavailable";
+  else if (rangesQuery.isLoading || blackoutsQuery.isLoading) health = "loading";
+  else {
+    const ranges = rangesQuery.data?.dateRanges ?? [];
+    const blackouts = blackoutsQuery.data?.blackouts ?? [];
+    const today = new Date().toISOString().slice(0, 10);
+    const latestEnd = ranges.reduce((latest, r) => (r.endDate > latest ? r.endDate : latest), "");
+    const hasBlackout = ranges.some((r) =>
+      blackouts.some((b) => b.startDate <= r.endDate && b.endDate >= r.startDate),
+    );
+
+    if (ranges.length === 0) health = "no-dates";
+    else if (latestEnd < today) health = "stale";
+    else if (hasBlackout) health = "blackout";
+    else health = "ready";
+  }
+
+  const labels: Record<RoomAvailabilityHealth, { label: string; className: string }> = {
+    "no-dates": { label: "No dates", className: "text-console-mid border-console-light bg-console-lightest" },
+    blackout: { label: "Blackout", className: "text-amber-800 border-amber-200 bg-amber-50" },
+    stale: { label: "Stale / expired", className: "text-red-700 border-red-200 bg-red-50" },
+    ready: { label: "Ready", className: "text-emerald-700 border-emerald-200 bg-emerald-50" },
+    loading: { label: "Checking…", className: "text-console-mid border-console-light bg-console-lightest" },
+    unavailable: { label: "Unavailable", className: "text-red-700 border-red-200 bg-red-50" },
+  };
+  const state = labels[health];
+
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${state.className}`}
+      data-testid={`room-availability-health-${roomId}`}
+      title={health === "unavailable" ? "Availability data could not be loaded" : undefined}
+    >
+      {state.label}
+    </span>
+  );
+}
+
 // S5 (ruling 74 disp. 1): the category inspiration tiles — the 12 live service categories
 // shown on the Workstation page, matching the ratified provider console design. Each tile
 // pre-selects the category and jumps into the Basics screen via ?category=.
@@ -1361,6 +1435,7 @@ export default function ProviderWorkstation() {
                                       <span className="text-xs text-console-mid">
                                         {formatPrice(room.price)} / night
                                       </span>
+                                      <RoomAvailabilityHealth roomId={room.id} />
                                       {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
                                       <StatusBadge status={room.status === "active" ? "active" : "paused"} />
                                     </div>
@@ -1375,24 +1450,13 @@ export default function ProviderWorkstation() {
                                       >
                                         <Edit className="w-3.5 h-3.5 mr-1" /> Edit
                                       </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 text-xs"
-                                        onClick={() => {
-                                          setAvailabilityTarget(room);
-                                          setRangeStart("");
-                                          setRangeEnd("");
-                                          setRangeCapacity(
-                                            room.categoryAttributes?.units
-                                              ? String(room.categoryAttributes.units)
-                                              : "1",
-                                          );
-                                        }}
+                                      <Link
+                                        href={`/provider/availability?serviceId=${encodeURIComponent(room.id)}`}
+                                        className="inline-flex items-center justify-center rounded-md px-3 h-7 text-xs font-medium text-console-darkest hover:bg-console-lightest"
                                         data-testid={`button-room-availability-${room.id}`}
                                       >
-                                        <CalendarRange className="w-3.5 h-3.5 mr-1" /> Availability
-                                      </Button>
+                                        <CalendarRange className="w-3.5 h-3.5 mr-1" /> Manage dates
+                                      </Link>
                                       <Button
                                         variant="ghost"
                                         size="sm"
