@@ -1241,4 +1241,9 @@ export const MIGRATION_FILES = [
   // 249: Restores city/country uniqueness after the approved production
   // reconciliation operation. Run that operation before publishing this migration.
   "249_restore_travel_pulse_cities_unique_index.sql",
+  // 250: Defers migration 249's TravelPulse city/country UNIQUE index. Publish cannot
+  // reconcile retained production duplicates before applying schema DDL, so keep the
+  // development schema index-free until an approved production data operation is complete.
+  // Idempotent (DROP INDEX IF EXISTS).
+  "250_defer_travel_pulse_cities_unique_index.sql",
 ] as const;

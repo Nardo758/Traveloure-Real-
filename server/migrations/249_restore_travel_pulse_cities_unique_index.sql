@@ -4,5 +4,8 @@
 -- documented in docs/runbooks/travelpulse-city-reconciliation.md has been run.
 -- This migration intentionally fails closed if duplicate production rows remain;
 -- do not use publish's "copy development over production" recovery option.
+-- SUPERSEDED by migration 250: production reconciliation was not completed before
+-- this migration was merged, so the next migration defers the index again. Retained
+-- unchanged for the append-only migration ledger.
 CREATE UNIQUE INDEX IF NOT EXISTS travel_pulse_cities_city_country_unique
   ON travel_pulse_cities (lower(city_name), lower(country));
