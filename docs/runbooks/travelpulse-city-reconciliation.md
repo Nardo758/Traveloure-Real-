@@ -47,6 +47,23 @@ rows it re-points every `city_media_cache.city_id` reference to the canonical
 row. This is required because that foreign key cascades on delete. No city
 media records are intentionally deleted.
 
+## Disposable-database integration check
+
+Before the production operation, run the merge check against a disposable local
+or CI database:
+
+```sh
+npm run test:travelpulse-reconciliation
+```
+
+The check refuses non-loopback `DATABASE_URL` hosts. It creates duplicate
+case-variant Tokyo/Japan rows with media references on both rows, runs the same
+approved serializable merge transaction used by `--apply`, verifies that the
+highest-pulse canonical row remains and every media reference points to it,
+then creates the normalized `(lower(city_name), lower(country))` unique index.
+Fixtures and any temporary index are removed afterward, and a pre-existing
+index is restored.
+
 ## Post-reconciliation verification
 
 - `server/seed-travelpulse.ts` performs a normalized lookup and uses
