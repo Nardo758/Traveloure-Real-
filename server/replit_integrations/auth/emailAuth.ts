@@ -23,9 +23,11 @@ async function hashPassword(password: string): Promise<string> {
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const [salt, key] = hash.split(":");
+    if (!salt || !key || !/^[0-9a-f]{128}$/i.test(key)) return resolve(false);
     crypto.scrypt(password, salt, 64, (err, derivedKey) => {
       if (err) reject(err);
-      resolve(key === derivedKey.toString("hex"));
+      const expected = Buffer.from(key, "hex");
+      resolve(expected.length === derivedKey.length && crypto.timingSafeEqual(expected, derivedKey));
     });
   });
 }
@@ -384,45 +386,35 @@ export function setupEmailAuth(app: Express): void {
       const tokenHash = hashToken(token);
       const now = new Date();
 
-      // Look up by hash; must be unused and unexpired.
-      const tokenRow = await db
-        .select()
-        .from(passwordResetTokens)
-        .where(and(
-          eq(passwordResetTokens.tokenHash, tokenHash),
-          isNull(passwordResetTokens.usedAt),
-          gt(passwordResetTokens.expiresAt, now),
-        ))
-        .then((r) => r[0]);
+      const hashedPassword = await hashPassword(newPassword);
+      const resetApplied = await db.transaction(async (tx) => {
+        // Claim the token atomically. Concurrent replays race on this conditional
+        // UPDATE; exactly one can transition used_at from NULL.
+        const [claimed] = await tx
+          .update(passwordResetTokens)
+          .set({ usedAt: now })
+          .where(and(
+            eq(passwordResetTokens.tokenHash, tokenHash),
+            isNull(passwordResetTokens.usedAt),
+            gt(passwordResetTokens.expiresAt, now),
+          ))
+          .returning({ userId: passwordResetTokens.userId });
+        if (!claimed) return false;
 
-      if (!tokenRow) {
+        await tx.update(users).set({ password: hashedPassword }).where(eq(users.id, claimed.userId));
+        // Session invalidation is part of the same transaction and covers both
+        // Passport user shapes. A failure rolls back the password/token change.
+        await tx.execute(drizzleSql`
+          DELETE FROM sessions
+          WHERE sess->'passport'->'user'->'claims'->>'sub' = ${claimed.userId}
+             OR sess->'passport'->'user'->>'id' = ${claimed.userId}
+        `);
+        return true;
+      });
+      if (!resetApplied) {
         return res.status(400).json({
           message: "This reset link is invalid or has expired. Please request a new one.",
         });
-      }
-
-      const hashedPassword = await hashPassword(newPassword);
-      await db
-        .update(users)
-        .set({ password: hashedPassword })
-        .where(eq(users.id, tokenRow.userId));
-
-      // Mark token used (single-use) — keep the row for audit, just flag it.
-      await db
-        .update(passwordResetTokens)
-        .set({ usedAt: now })
-        .where(eq(passwordResetTokens.id, tokenRow.id));
-
-      // Invalidate ALL existing sessions for this user — anyone who knew the
-      // old password (or stole a session) is now locked out.
-      try {
-        await db.execute(drizzleSql`
-          DELETE FROM sessions
-          WHERE sess->'passport'->'user'->'claims'->>'sub' = ${tokenRow.userId}
-        `);
-      } catch (sessErr) {
-        // Non-fatal — password is already changed; session-kill is defense-in-depth.
-        console.warn("[auth/reset-password] session invalidation failed:", sessErr);
       }
 
       res.json({
