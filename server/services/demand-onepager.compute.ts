@@ -99,7 +99,10 @@ export interface OnepagerModel {
   gapPairing: GapPairing | null;
   /** The four-honesty-gate methodology paragraph (strict count · month range · floor · count-only). */
   methodology: string;
-  monthRange: string; // "May–Nov" style label derived from the window (formatting only)
+  /** Forward range from the floor-cleared windows rendered on the page (not the full history span). */
+  monthRange: string;
+  /** R37: a single full-total property window replaces the redundant bar table. */
+  windowCaption: string | null;
   window: RollupWindow;
 }
 
@@ -153,6 +156,13 @@ function monthRangeOf(w: RollupWindow): string {
   const a = monthOf(w.from);
   const b = monthOf(w.to);
   return a === b ? a : `${a}–${b}`;
+}
+
+/** Hero subline range: only the forward, floor-cleared windows actually shown on the page. */
+function forwardMonthRangeOf(windows: OnepagerWindowRow[], fallback: RollupWindow): string {
+  if (windows.length === 0) return monthRangeOf(fallback);
+  const dates = windows.map((w) => w.date).sort();
+  return monthRangeOf({ from: dates[0], to: dates[dates.length - 1] });
 }
 
 /** A stay figure clears when its summed forward trips are positive (the summary already dropped every
@@ -240,6 +250,20 @@ function buildWindows(variant: OnepagerVariant, marketSlug: string, rows: Rollup
       const bv = b.amount == null ? -1 : b.amount;
       return bv - av || a.date.localeCompare(b.date);
     });
+}
+
+/** R37: avoid a one-row stay table that merely repeats the hero total. */
+function buildWindowCaption(hero: OnepagerHero, windows: OnepagerWindowRow[]): string | null {
+  if (hero.variant !== "property-led" || windows.length !== 1) return null;
+  const [window] = windows;
+  if (
+    window.trips !== hero.stayTrips ||
+    window.nights !== hero.stayNights ||
+    window.n !== hero.strictCount
+  ) {
+    return null;
+  }
+  return `All requested stays begin ${humanRange(window.date, window.date)}.`;
 }
 
 /** The methodology paragraph — the page's credibility spine (brief §3). Four honesty gates in plain
@@ -430,8 +454,9 @@ export function buildOnepagerModel(args: {
 
   const hero = buildHero(variant, marketName, bucket);
   const windows = buildWindows(variant, marketSlug, rows);
-  const monthRange = monthRangeOf(window);
-  const methodology = buildMethodology(variant, hero.strictCount, monthRange);
+  const monthRange = forwardMonthRangeOf(windows, window);
+  const methodology = buildMethodology(variant, hero.strictCount, monthRangeOf(window));
+  const windowCaption = buildWindowCaption(hero, windows);
 
   // 4.2b blocks (R33/R34/R35) — each self-omits when its data is absent/below floor (all dark today).
   const eventSpotlight = buildEventSpotlight(variant, marketName, marketSlug, rows, args.events ?? []);
@@ -450,6 +475,7 @@ export function buildOnepagerModel(args: {
     gapPairing,
     methodology,
     monthRange,
+    windowCaption,
     window,
   };
 }
