@@ -6,7 +6,7 @@
  * Route: /provider/services/:id  (before /:id/edit so it matches first)
  * Faithful to the ListingHome mockup (provider-console/ListingHome.tsx).
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
 import { DollarSign, CalendarDays, ImageIcon } from "lucide-react";
+import { PricingFeesDrawer } from "@/components/provider/pricing-fees-drawer";
+import { ServicePhotosDrawer } from "@/components/provider/service-photos-drawer";
 
 // ── colours (console design tokens) ──────────────────────────────────────────
 const INK  = "#1A1A18";
@@ -63,6 +65,8 @@ interface ServiceDetail {
   updatedAt?: string | null;
   createdAt?: string | null;
   routePoints?: { id: string; name: string; latitude: string | null; longitude: string | null }[];
+  pickupAvailable?: boolean | null;
+  transportProvision?: string | null;
 }
 
 // Attestations endpoint shape
@@ -307,8 +311,47 @@ function PendingRow({
 
 // ── settings row ──────────────────────────────────────────────────────────────
 function SettingsRow({
-  icon, title, desc, href, last,
-}: { icon: React.ReactNode; title: string; desc: string; href: string; last?: boolean }) {
+  icon, title, desc, href, last, onOpen,
+}: { icon: React.ReactNode; title: string; desc: string; href: string; last?: boolean; onOpen?: () => void }) {
+  if (onOpen) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen();
+          }
+        }}
+        className="hover:bg-[#FAFAF8] transition-colors"
+        style={{
+          display: "flex", gap: 13, alignItems: "flex-start", padding: "14px 18px",
+          borderBottom: last ? "none" : `1px solid ${HAIR}`, cursor: "pointer",
+        }}
+      >
+        <span style={{ width: 19, height: 19, flexShrink: 0, marginTop: 1, color: MUTED, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {icon}
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13.5, fontWeight: 500, color: INK }}>{title}</span>
+          <span style={{ display: "block", fontSize: 12.5, marginTop: 2, lineHeight: 1.45, color: MUTED }}>{desc}</span>
+          <Link href={href}>
+            <a
+              onClick={(event) => event.stopPropagation()}
+              style={{ display: "inline-block", marginTop: 6, fontSize: 11.5, color: ACCENT, textDecoration: "underline", textUnderlineOffset: 2 }}
+            >
+              Open full editor
+            </a>
+          </Link>
+        </span>
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, alignSelf: "center", color: ACCENT }}>
+          <path d="M7 5l5 5-5 5" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    );
+  }
   return (
     <Link href={href}>
       <a
@@ -341,14 +384,22 @@ export default function ProviderListingHome() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [pricingDrawerOpen, setPricingDrawerOpen] = useState(false);
+  const [photosDrawerOpen, setPhotosDrawerOpen] = useState(false);
 
-  const { data: service, isLoading } = useQuery<ServiceDetail>({
+  const { data: service, isLoading, isError } = useQuery<ServiceDetail>({
     queryKey: [`/api/provider/services/${serviceId}`],
     enabled: !!serviceId,
   });
 
   const { data: attestations } = useQuery<AttestationsShape>({
     queryKey: [`/api/provider/services/${serviceId}/attestations`],
+    enabled: !!serviceId,
+  });
+  const { data: surchargeTierState } = useQuery<{
+    surchargeTiers: Array<{ radiusKm: unknown; fee: unknown }>;
+  }>({
+    queryKey: ["/api/provider/services", serviceId, "surcharge-tiers"],
     enabled: !!serviceId,
   });
 
@@ -402,7 +453,7 @@ export default function ProviderListingHome() {
     return (
       <ProviderLayout title="Listing">
         <div className="py-16 text-center text-sm" style={{ color: MUTED }}>
-          Listing not found.{" "}
+          {isError ? "We couldn't load this listing. Please try again." : "Listing not found."}{" "}
           <Link href="/provider/workstation">
             <a className="underline" style={{ color: ACCENT }}>Back to Workstation →</a>
           </Link>
@@ -617,6 +668,7 @@ export default function ProviderListingHome() {
                 title="Pricing & fees"
                 desc="Surcharges, deposit, cancellation. Tune later — not required to go live."
                 href={editHref}
+                onOpen={() => setPricingDrawerOpen(true)}
               />
               <SettingsRow
                 icon={<CalendarDays size={15} />}
@@ -629,6 +681,7 @@ export default function ProviderListingHome() {
                 title="Photos & media"
                 desc="Cover photo, gallery, short clip."
                 href={`${editHref}?step=photos`}
+                onOpen={() => setPhotosDrawerOpen(true)}
                 last
               />
             </div>
@@ -672,6 +725,32 @@ export default function ProviderListingHome() {
             </div>
           </aside>
         </div>
+        <PricingFeesDrawer
+          open={pricingDrawerOpen}
+          onOpenChange={setPricingDrawerOpen}
+          serviceId={serviceId}
+          surchargeApplicable={
+            isPlaceAnchored({ deliveryMethod: service.deliveryMethod, productShape: service.productShape }) &&
+            (!!service.pickupAvailable ||
+              service.transportProvision === "pickup_included" ||
+              service.transportProvision === "pickup_available")
+          }
+          basePriceLabel={service.price != null ? `$${service.price}` : "No price set yet"}
+          service={service as unknown as Record<string, unknown>}
+          surchargeTiers={surchargeTierState?.surchargeTiers}
+        />
+        <ServicePhotosDrawer
+          open={photosDrawerOpen}
+          onOpenChange={setPhotosDrawerOpen}
+          serviceId={serviceId}
+          coverUrl={service.imageUrl ?? ""}
+          onCoverChange={(url) => {
+            queryClient.setQueryData<ServiceDetail>(
+              [`/api/provider/services/${serviceId}`],
+              (current) => current ? { ...current, imageUrl: url } : current,
+            );
+          }}
+        />
       </div>
     </ProviderLayout>
   );
