@@ -1413,7 +1413,7 @@ export default function ProviderDistribute() {
         {(activeChannel === "all" || activeChannel === "storefront") && <StorefrontCard services={listings} />}
 
         {/* Listing selector — scopes Share kit, Direct link, and Marketplace */}
-        {activeChannel !== "storefront" && <section style={{ border: `1px solid ${HAIR}`, borderRadius: 9, background: PGE, padding: "13px 16px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const }}>
+        <section style={{ border: `1px solid ${HAIR}`, borderRadius: 9, background: PGE, padding: "13px 16px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const }}>
           <div>
             <p style={{ ...T.sectionLabel, margin: "0 0 3px" }}>Active listing</p>
             <p style={{ fontSize: 12.5, color: MUT, margin: 0 }}>Choose a listing to manage its direct and social distribution.</p>
@@ -1441,7 +1441,7 @@ export default function ProviderDistribute() {
               ))}
             </select>
           )}
-        </section>}
+        </section>
 
         {/* Channel-state strip (shown when a listing is selected) */}
         {selectedId && (
