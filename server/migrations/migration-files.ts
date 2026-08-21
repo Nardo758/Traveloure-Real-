@@ -1219,4 +1219,10 @@ export const MIGRATION_FILES = [
   //   Persists only the approval (PDF regenerated deterministically on demand, no blob). Additive, no
   //   CHECK (publish-safe); declared in shared/schema.ts (table + UNIQUE market_slug).
   "245_demand_onepager_approvals.sql",
+  // 246: dmo_raw_content.inventory_class (Operation Trailhead T4, R-T1-e) — inventory class on the
+  //   scraped-stub PARENT row. 'external' for all scraped content; enum admits 'provider'|'affiliate'
+  //   for a later resolution-waterfall re-class. Additive-nullable-with-default, no CHECK
+  //   (app-enforced via shared/discover-stub.ts, publish-safe); declared in shared/schema.ts.
+  //   Backfills existing rows to 'external'.
+  "246_dmo_raw_content_inventory_class.sql",
 ] as const;
