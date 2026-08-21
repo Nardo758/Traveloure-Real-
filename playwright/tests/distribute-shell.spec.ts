@@ -141,6 +141,9 @@ test.describe('/provider/distribute — shell + Storefront + Marketplace (lane D
     // ── Marketplace channel — pick the BLOCKED listing → honest blocked state + true reason ───
     await selector.selectOption(blockedId);
     await expect(page.getByTestId('badge-marketplace-blocked')).toBeVisible({ timeout: 10_000 });
+    // Social availability delegates to the server's F2/share-frame facts; an unapproved
+    // listing must never present the channel as ready (ruling 42 derivation discipline).
+    await expect(page.getByTestId('chip-social')).not.toContainText(/images ready/i);
     // The seeded provider is NOT identity-verified → the true verification-gate reason with a fix link.
     const verifBlocker = page.getByTestId('blocker-VERIFICATION_GATE');
     await expect(verifBlocker).toBeVisible();

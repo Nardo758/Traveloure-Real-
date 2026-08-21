@@ -2503,6 +2503,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const isApproved = approvalStatus === "approved";
       const isActive = status === "active";
+      // Share-image availability must have one server author. These facts mirror the
+      // share-image route's F2 gate and ruling 22(d) Route-stop gate; the client must
+      // render them rather than probing the rate-limited PNG endpoints.
+      const routePoints = await storage.getServiceRoutePoints(service.id);
+      const hasRouteStops = routePoints.length > 0;
       // "Live" = the SAME predicate the public storefront read (loadStorefront) actually serves:
       // approved AND active. The verification/attestation gates are PUBLISH gates — they block a
       // TRANSITION to active, not continuous serving — so a grandfathered approved+active listing
@@ -2559,6 +2564,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         approvalStatus,
         status,
         isLive,
+        shareFrames: {
+          story: isLive,
+          feed: isLive,
+          route: isLive && hasRouteStops,
+        },
+        hasRouteStops,
         publicHref: `/services/${service.id}`,
         verification: {
           ok: verification.ok,
