@@ -1232,4 +1232,10 @@ export const MIGRATION_FILES = [
   //   publish-safe); all declared in shared/schema.ts. Born state external/NULL = behavior-neutral on
   //   apply. Idempotent (IF NOT EXISTS throughout).
   "247_trailhead_t3_resolution_waterfall.sql",
+  // 248: Publish compatibility for travel_pulse_cities. Production retains historical
+  // normalized city/country duplicates and Publish cannot apply migration 230's expression
+  // UNIQUE index without a production data mutation. Drop the dev-only conflicting index;
+  // normalized lookup writers remain the duplicate-prevention authority until production data
+  // is cleaned through an approved path. Idempotent (DROP INDEX IF EXISTS).
+  "248_drop_travel_pulse_cities_unique_index.sql",
 ] as const;
