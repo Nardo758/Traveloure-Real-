@@ -65,6 +65,11 @@ function specDelta(diffText) {
     const isAdd = line.startsWith("+") && !line.startsWith("+++");
     const isDel = line.startsWith("-") && !line.startsWith("---");
     if (!isAdd && !isDel) continue;
+    // A spec named in a YAML comment (e.g. this guard's OWN exhibit reference in
+    // spec-arming-gate.yml, or any doc line) is documentation, not wiring — it
+    // neither arms nor disarms. Skip pure-comment lines. Applied to +/- alike so
+    // a comment's removal never falsely "disarms" a real spec either.
+    if (/^\s*#/.test(line.slice(1))) continue;
     let m;
     SPEC_RE.lastIndex = 0;
     while ((m = SPEC_RE.exec(line)) !== null) {
@@ -150,12 +155,27 @@ function selfTest() {
   const F = analyze({ diffText: armDiff, prBody: bodyF });
   const okF = F.missing.includes("create-service-layout.spec.ts");
 
-  const results = { okA, okB, okC, okD, okE, okF };
+  // G: a spec named only in an ADDED YAML COMMENT is documentation, not arming →
+  // PASS with no evidence. This is the exact false-positive this guard's OWN PR
+  // hit (spec-arming-gate.yml's header comment cites create-service-layout.spec.ts).
+  const commentDiff = [
+    "diff --git a/.github/workflows/spec-arming-gate.yml b/.github/workflows/spec-arming-gate.yml",
+    "--- /dev/null",
+    "+++ b/.github/workflows/spec-arming-gate.yml",
+    "@@",
+    "+# Closes the confabulated-spec class: create-service-layout.spec.ts was WIRED",
+    "+#   into spec-coverage-gate.yml without a green run — that is what this guards.",
+    "+name: Spec-Arming Gate",
+  ].join("\n");
+  const G = analyze({ diffText: commentDiff, prBody: "" });
+  const okG = G.armed.length === 0 && G.missing.length === 0;
+
+  const results = { okA, okB, okC, okD, okE, okF, okG };
   if (!Object.values(results).every(Boolean)) {
-    console.error("SELF-TEST FAILED", results, { A, B, C, D, E, F });
+    console.error("SELF-TEST FAILED", results, { A, B, C, D, E, F, G });
     process.exit(1);
   }
-  console.log("self-test OK (A arm-no-evidence FAILS; B run-URL + C spec-green PASS; D non-workflow + E relocation PASS; F wrong-spec evidence still FAILS)");
+  console.log("self-test OK (A arm-no-evidence FAILS; B run-URL + C spec-green PASS; D non-workflow + E relocation PASS; F wrong-spec evidence still FAILS; G added-comment mention is NOT arming)");
   process.exit(0);
 }
 
