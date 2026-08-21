@@ -36,8 +36,24 @@ for approval before any write.
    The command must use the production `DATABASE_URL` supplied by the
    production-data workflow. It is dry-run by default and refuses `--apply`
    without the explicit approval flag.
-5. Verify the script reports no duplicate groups. Verify city-media counts
-   remain unchanged and the canonical rows are present.
+5. Run the production preflight **after the approved merge and before restoring
+   uniqueness**:
+
+   ```sh
+   node scripts/preflight-prod-unique-indexes.cjs "$PROD_DATABASE_URL"
+   ```
+
+   The preflight is read-only and must end with `PASS`. Its TravelPulse section
+   must show:
+
+   - `total` and `canonical` city counts equal (no normalized
+     `(lower(city_name), lower(country))` duplicates remain);
+   - all `city_media_cache` rows are linked to a surviving city
+     (`total=linked`), proving the merge preserved the media references; and
+   - `travel_pulse_cities_city_country_unique` is reported as ready to restore.
+
+   This is a hard gate: an `ERROR`, `FAIL`, duplicate report, or missing-table
+   `SKIP` means stop and reconcile/investigate rather than publishing.
 6. Publish/start the application so migration 249 creates
    `travel_pulse_cities_city_country_unique`. If it fails, stop and investigate;
    never copy development over production.
@@ -66,6 +82,9 @@ index is restored.
 
 ## Post-reconciliation verification
 
+- The required operator order is: approved merge → duplicate audit/preflight →
+  unique-index restoration. Do not run the publish that restores migration 249
+  before the preflight above has passed.
 - `server/seed-travelpulse.ts` performs a normalized lookup and uses
   `ON CONFLICT DO NOTHING`, so rerunning the seed is safe with the restored
   expression index, including concurrent seed attempts.
