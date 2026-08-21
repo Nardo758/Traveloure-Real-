@@ -21,7 +21,7 @@
 
 import { db } from "../db";
 import { travelPulseCalendarEvents } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import {
   type ShapedCalendarEvent,
   type NagerHoliday,
@@ -143,4 +143,29 @@ export async function runCalendarIngest(opts: RunCalendarIngestOptions = {}): Pr
   }
 
   return upsertCalendarEvents([...festivalEvents, ...holidayEvents]);
+}
+
+/**
+ * ⚑ Replit GATE — count forward-dated rows for a market inside the next `days` days, matching the
+ * EXACT predicate the R33 spotlight consumer uses (lowercased city, start in [today, today+days]).
+ * Proves the spotlight is no longer dark for lack of ingestion. Run against the target DB.
+ */
+export async function countForwardEvents(
+  city: string,
+  days = 90,
+  now: Date = new Date(),
+): Promise<number> {
+  const todayIso = now.toISOString().slice(0, 10);
+  const horizonIso = addDaysIso(todayIso, days);
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(travelPulseCalendarEvents)
+    .where(
+      and(
+        eq(sql`lower(${travelPulseCalendarEvents.city})`, city.toLowerCase()),
+        gte(travelPulseCalendarEvents.startDate, todayIso),
+        lte(travelPulseCalendarEvents.startDate, horizonIso),
+      ),
+    );
+  return Number(row?.n ?? 0);
 }
