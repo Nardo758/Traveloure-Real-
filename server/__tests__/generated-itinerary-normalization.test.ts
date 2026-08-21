@@ -2,11 +2,15 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_GENERATED_ACTIVITY_DURATION_MINUTES,
+  MAX_GENERATED_ACTIVITY_DURATION_MINUTES,
   MAX_GENERATED_ITINERARY_DAYS,
+  MAX_GENERATED_MONEY_AMOUNT,
+  MAX_GENERATED_TITLE_CHARS,
   formatGeneratedItinerarySpecialRequests,
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
   normalizeGeneratedEstimatedCost,
+  normalizeGeneratedItineraryPayload,
   parseGeneratedActivityDurationMinutes,
   validateGeneratedItineraryDateRange,
   validateGeneratedItineraryTextLength,
@@ -41,12 +45,17 @@ describe("generated itinerary normalization", () => {
     );
     assert.equal(normalizeGeneratedActivityDurationMinutes("unknown"), 60);
     assert.equal(normalizeGeneratedActivityDurationMinutes(-5, 30), 30);
+    assert.equal(
+      normalizeGeneratedActivityDurationMinutes(MAX_GENERATED_ACTIVITY_DURATION_MINUTES + 500),
+      MAX_GENERATED_ACTIVITY_DURATION_MINUTES,
+    );
   });
 
-  it("keeps provider day numbers and rejects invalid values", () => {
+  it("keeps provider day numbers and bounds invalid or out-of-range values", () => {
     assert.equal(normalizeGeneratedDayNumber(3), 3);
     assert.equal(normalizeGeneratedDayNumber(0), 1);
     assert.equal(normalizeGeneratedDayNumber("2"), 1);
+    assert.equal(normalizeGeneratedDayNumber(99, 1, 4), 4);
   });
 
   it("accepts real calendar ranges within the generation limit", () => {
@@ -98,5 +107,52 @@ describe("generated itinerary normalization", () => {
     assert.equal(normalizeGeneratedEstimatedCost(undefined), null);
     assert.equal(normalizeGeneratedEstimatedCost("unknown"), null);
     assert.equal(normalizeGeneratedEstimatedCost(-1), null);
+    assert.equal(normalizeGeneratedEstimatedCost(MAX_GENERATED_MONEY_AMOUNT + 1), null);
+  });
+
+  it("builds the stored plan and canonical items from the same bounded values", () => {
+    const normalized = normalizeGeneratedItineraryPayload({
+      title: `  ${"T".repeat(MAX_GENERATED_TITLE_CHARS + 20)}  `,
+      summary: "Summary",
+      totalEstimatedCost: "not a price",
+      estimatedSavingsWithExpert: MAX_GENERATED_MONEY_AMOUNT + 1,
+      dailyItinerary: [{
+        day: 500,
+        date: "2033-01-01-extra",
+        theme: "Theme",
+        activities: [{
+          time: "09:00-and-too-long",
+          name: "Museum",
+          type: "activity-type-that-is-much-longer-than-thirty-characters",
+          duration: "999 hours",
+          estimatedCost: MAX_GENERATED_MONEY_AMOUNT + 1,
+          location: "Center",
+          description: "Visit",
+        }],
+        meals: [],
+        transportation: [],
+      }],
+      accommodationSuggestions: [],
+      packingList: [],
+      travelTips: [],
+    }, 3);
+
+    assert.equal(Array.from(normalized.title).length, MAX_GENERATED_TITLE_CHARS);
+    assert.equal(normalized.totalEstimatedCost, null);
+    assert.equal(normalized.estimatedSavingsWithExpert, null);
+    assert.equal(normalized.canonicalItems.length, 1);
+    assert.equal(normalized.canonicalItems[0].dayNumber, 3);
+    assert.equal(
+      normalized.canonicalItems[0].durationMinutes,
+      MAX_GENERATED_ACTIVITY_DURATION_MINUTES,
+    );
+    assert.equal(normalized.canonicalItems[0].estimatedCost, null);
+    assert.equal(normalized.canonicalItems[0].time.length, 10);
+    assert.equal(normalized.canonicalItems[0].type.length, 30);
+
+    const storedActivity = (normalized.dailyItinerary[0].activities as any[])[0];
+    assert.equal(storedActivity.name, normalized.canonicalItems[0].title);
+    assert.equal(storedActivity.duration, `${normalized.canonicalItems[0].durationMinutes} minutes`);
+    assert.equal(storedActivity.estimatedCost, null);
   });
 });
