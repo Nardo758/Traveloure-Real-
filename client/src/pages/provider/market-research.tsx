@@ -62,6 +62,10 @@ const prettyMarket = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const prettyDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
 
+// Trailhead T4.5(b) response: one honest line per market+category with uncovered external content.
+interface ExternalContentLine { market: string; category: string; text: string }
+interface MarketExternalContent { market: string | null; lines: ExternalContentLine[] }
+
 export default function ProviderMarketResearch() {
   const { data, isLoading, isError } = useQuery<RollupResponse>({ queryKey: ["/api/me/demand-rollup"] });
   const [market, setMarket] = useState<string | null>(null);
@@ -69,6 +73,13 @@ export default function ProviderMarketResearch() {
 
   const markets = data?.markets ?? [];
   const selected = market ?? markets[0] ?? null;
+  // Trailhead T4.5(b): external (scraped) content findable in this market where no provider offers
+  // it yet. Presence signal only — the server sends no count (R16). Rendered as ONE honest line.
+  const { data: externalContent } = useQuery<MarketExternalContent>({
+    queryKey: ["/api/me/market-external-content", { market: selected ?? "" }],
+    enabled: !!selected,
+  });
+  const externalLine = externalContent?.lines?.[0] ?? null;
   const summary = useMemo(
     () => data?.summary.find((s) => s.marketSlug === selected) ?? null,
     [data, selected],
@@ -132,6 +143,20 @@ export default function ProviderMarketResearch() {
 
             {/* hero — SERVER-SUMMARISED, forked by kind + metric; no client math */}
             <Hero market={selected} summary={summary} historySince={data.historySince} />
+
+            {/* Trailhead T4.5(b): ONE honest line — external content exists in an uncovered category.
+                Server-authored text (no count, R16); shown only when a genuine gap exists. */}
+            {externalLine && (
+              <div
+                data-testid="external-content-gap-line"
+                style={{
+                  fontSize: 13, color: NAVY, background: "var(--earn-faint)", borderRadius: 12,
+                  padding: "10px 14px", margin: "12px 0", lineHeight: 1.5,
+                }}
+              >
+                {externalLine.text}
+              </div>
+            )}
 
             {/* ±window axis (STEP 3.7 Part B, B4): a −90…+90 BAND — past half muted (missed),
                 forward half gold (requested), with a navy "today" marker — never a summed total (R20).

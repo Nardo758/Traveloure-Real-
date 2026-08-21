@@ -7889,6 +7889,39 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   // pre-gate rows are grandfathered true (no backfill), the F2 pattern.
   expertWorkspaceVisible: boolean("expert_workspace_visible").default(false).notNull(),
   discoverPageVisible: boolean("discover_page_visible").default(false).notNull(),
+  // Operation Trailhead LANE T4 (R-T1-e): inventory class of the stub the traveler read-path renders.
+  // Scraped/DMO content is 'external' — a facts-and-links stub, NEVER a bookable platform service.
+  // The enum admits 'provider'|'affiliate' so a later resolution-waterfall (T3) can re-class a stub
+  // in place without a schema change. App-enforced (shared/discover-stub.ts INVENTORY_CLASSES), NO DB
+  // CHECK — the migration-181/195/228 posture, chosen to avoid the Replit publish-time CHECK trap.
+  // Lives on the PARENT (not dmo_extracted_places): the discover filter already gates on
+  // discover_page_visible / status / country / city here, so the class reads off the same row with no
+  // extra join, and one value governs the whole guide stub and all its child places (a place can never
+  // carry a different inventory class than the guide it was extracted from). Mirrors
+  // provider_services.sourceType living on the sellable row, not a child. Declared here per the
+  // publish-trap rule. Migration 246 backfills every existing row to 'external'.
+  inventoryClass: varchar("inventory_class", { length: 20 }).default("external").notNull(),
+  // Operation Trailhead LANE T3 (R-T3-a/-b/-c) — the RESOLUTION WATERFALL's stored state on the stub.
+  // Distinct from inventory_class: inventory_class is the T4 born-class of the read-path stub (always
+  // 'external' for scraped content); these four are written by the T3 resolution PASS when it finds a
+  // confident booking-path match. A pass may UPGRADE the rung (external → affiliate → provider) but
+  // never downgrade without an append-only resolution_events audit row (R-T3-c). All app-enforced, NO
+  // DB CHECK (migration-181/195/228 posture), declared here per the publish-trap rule. Migration 247
+  // adds them; the born state is external/NULL (defaultResolutionState()).
+  //   • resolution_class    — top-level class, reuses shared/discover-stub INVENTORY_CLASSES verbatim
+  //                           (external|provider|affiliate). Default 'external' = unresolved floor.
+  //   • resolution_subclass — affiliate_direct|affiliate_ota (the R-T3-a direct-vs-OTA split); NULL for
+  //                           provider/external. A SEPARATE field, never encoded into the ref pointer.
+  //   • resolution_ref      — the POINTER the resolved rung dereferences: provider_services.id for a
+  //                           provider match, a program+product ref for an affiliate match, or the
+  //                           source URL for an external reference. NULL until resolved.
+  //   • match_confidence    — 0.00–1.00 name/geo/category composite (R-T3-b); NULL for the floor.
+  //   • resolved_at         — when the current class was stamped; NULL until the first pass touches it.
+  resolutionClass: varchar("resolution_class", { length: 20 }).default("external").notNull(),
+  resolutionSubclass: varchar("resolution_subclass", { length: 20 }),
+  resolutionRef: text("resolution_ref"),
+  matchConfidence: decimal("match_confidence", { precision: 3, scale: 2 }),
+  resolvedAt: timestamp("resolved_at"),
   publishedAt: timestamp("published_at"),
   publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),
   
@@ -7958,6 +7991,37 @@ export const dmoExtractionRuns = pgTable("dmo_extraction_runs", {
 }, (table) => ({
   kindCreatedIdx: index("dmo_extraction_runs_kind_created_idx").on(table.kind, table.createdAt),
 }));
+
+// Operation Trailhead LANE T3 (R-T3-c) — APPEND-ONLY resolution audit log ("why does this stub link
+// where it links"). The diary pattern's 3rd use (after item_transition_log and reconciliation_events):
+// no app code may UPDATE or DELETE a row here. Every class change the resolution PASS applies to a
+// stub writes ONE row in the same operation as the flip. An UPGRADE (external → affiliate → provider)
+// is the expected event; a DOWNGRADE is written too (event_type='downgrade') so a rung that regressed
+// is never silent — R-T3-c forbids a silent downgrade, not a logged one. `stub_id` deliberately has
+// NO FK — a stub's resolution history must survive the stub (the item_transition_log posture). Classes
+// are stored as the FULLY-QUALIFIED rung (external|affiliate_ota|affiliate_direct|provider) so a
+// within-affiliate move (ota → direct) is exact in the log, which the top-level class alone would
+// hide. `pass_id` groups every row a single pass wrote (a run identifier). NO DB CHECK on the vocab
+// columns (migration-181/195/228 posture). Declared here per the publish-trap rule.
+export const resolutionEvents = pgTable("resolution_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  stubId: varchar("stub_id").notNull(), // dmo_raw_content.id — NO FK (history outlives the stub)
+  eventType: varchar("event_type", { length: 20 }).notNull().default("upgrade"), // upgrade | downgrade | initial (app-enforced)
+  fromClass: varchar("from_class", { length: 20 }), // qualified rung before; NULL for the first (initial) resolution
+  toClass: varchar("to_class", { length: 20 }).notNull(), // qualified rung after
+  ref: text("ref"), // the resolution_ref stamped (provider service id | program+product ref | source URL)
+  confidence: decimal("confidence", { precision: 3, scale: 2 }), // match_confidence at the time; NULL for external floor
+  passId: varchar("pass_id", { length: 64 }).notNull(), // groups all rows one pass wrote
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // The per-stub history read (newest-first) and the per-pass audit read both ride these.
+  // Declared here, not only in migration 247 — the deploy push drops undeclared indexes.
+  stubCreatedIdx: index("resolution_events_stub_created_idx").on(table.stubId, table.createdAt),
+  passIdx: index("resolution_events_pass_idx").on(table.passId),
+}));
+
+export type ResolutionEvent = typeof resolutionEvents.$inferSelect;
+export type InsertResolutionEvent = typeof resolutionEvents.$inferInsert;
 
 export const expertDmoCollections = pgTable("expert_dmo_collections", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

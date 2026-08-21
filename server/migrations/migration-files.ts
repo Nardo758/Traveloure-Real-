@@ -1219,4 +1219,17 @@ export const MIGRATION_FILES = [
   //   Persists only the approval (PDF regenerated deterministically on demand, no blob). Additive, no
   //   CHECK (publish-safe); declared in shared/schema.ts (table + UNIQUE market_slug).
   "245_demand_onepager_approvals.sql",
+  // 246: dmo_raw_content.inventory_class (Operation Trailhead T4, R-T1-e) — inventory class on the
+  //   scraped-stub PARENT row. 'external' for all scraped content; enum admits 'provider'|'affiliate'
+  //   for a later resolution-waterfall re-class. Additive-nullable-with-default, no CHECK
+  //   (app-enforced via shared/discover-stub.ts, publish-safe); declared in shared/schema.ts.
+  //   Backfills existing rows to 'external'.
+  "246_dmo_raw_content_inventory_class.sql",
+  // 247: Operation Trailhead T3 (R-T3-a/-b/-c) resolution waterfall — adds resolution_class /
+  //   resolution_subclass / resolution_ref / match_confidence / resolved_at to dmo_raw_content (the
+  //   pass's stored state, distinct from T4's inventory_class) and the append-only resolution_events
+  //   audit log. Additive-nullable, no CHECK (app-enforced via shared/trailhead-resolution.ts,
+  //   publish-safe); all declared in shared/schema.ts. Born state external/NULL = behavior-neutral on
+  //   apply. Idempotent (IF NOT EXISTS throughout).
+  "247_trailhead_t3_resolution_waterfall.sql",
 ] as const;

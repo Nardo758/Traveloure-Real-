@@ -16,7 +16,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { and, eq, gte, ilike, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -32,6 +32,8 @@ import {
   serviceBookings,
   users,
   partnerDemandRollup,
+  dmoRawContent,
+  serviceCategories,
   type DemandSignalEventKind,
 } from "@shared/schema";
 import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
@@ -669,6 +671,67 @@ router.get("/api/me/demand-rollup/top", isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error("[demand] /api/me/demand-rollup/top error:", error);
     res.status(500).json({ message: "Failed to fetch top demand signal" });
+  }
+});
+
+// Trailhead T4.5(b): ONE honest line for the provider Market Research surface — external (scraped)
+// content is now findable in a market+category where no platform provider offers it yet. A PRESENCE
+// signal only: NO count is shown (R16 — a below-floor count is never surfaced), so the line states a
+// fact, not a number. The negative "no platform provider offers it yet" claim is made per external
+// contentType only when NO active+approved provider service in that market carries a category whose
+// slug/name matches that contentType token (§13 — a category we cannot match is omitted, never guessed
+// as covered-or-uncovered). Keyed by the market slug the page already holds.
+router.get("/api/me/market-external-content", isAuthenticated, async (req, res) => {
+  try {
+    const marketKey = typeof req.query.market === "string" ? req.query.market : "";
+    const market = marketKey ? getMarketByKey(marketKey) : undefined;
+    if (!market) return res.json({ market: marketKey || null, lines: [] });
+    const cityName = market.cityName;
+
+    // Published external stubs in this market, grouped by contentType (the category grain).
+    const stubRows = await db
+      .select({ contentType: dmoRawContent.contentType })
+      .from(dmoRawContent)
+      .where(and(
+        eq(dmoRawContent.discoverPageVisible, true),
+        ilike(dmoRawContent.city, cityName),
+        sql`${dmoRawContent.status} NOT IN ('rejected','quarantined')`,
+        eq(dmoRawContent.inventoryClass, "external"),
+      ));
+    if (stubRows.length === 0) return res.json({ market: cityName, lines: [] });
+
+    // Category coverage in this market: the category slug/name of every active+approved provider
+    // service tied to the city. Used ONLY to suppress a line whose category is already served.
+    const coverageRows = await db
+      .select({ slug: serviceCategories.slug, name: serviceCategories.name })
+      .from(providerServices)
+      .leftJoin(serviceCategories, eq(serviceCategories.id, providerServices.categoryId))
+      .where(and(
+        eq(providerServices.status, "active"),
+        eq(providerServices.approvalStatus, "approved"),
+        or(eq(providerServices.city, cityName), ilike(providerServices.location, `%${cityName}%`)),
+      ));
+    const coveredTokens = Array.from(
+      new Set(coverageRows.flatMap((r) => [r.slug, r.name].filter(Boolean).map((s) => String(s).toLowerCase()))),
+    );
+    const isCovered = (contentType: string) => {
+      const t = contentType.toLowerCase();
+      return coveredTokens.some((tok) => tok === t || tok.includes(t) || t.includes(tok));
+    };
+
+    // Distinct external contentTypes with NO matching provider coverage → one honest line each.
+    const uncovered = Array.from(new Set(stubRows.map((s) => s.contentType))).filter((ct) => !isCovered(ct));
+    const lines = uncovered.map((category) => ({
+      market: cityName,
+      category,
+      // No count (R16) — a presence fact, not a number.
+      text: `Travelers can now find ${category} content in ${cityName} — no platform provider offers it yet`,
+    }));
+
+    res.json({ market: cityName, lines });
+  } catch (error) {
+    console.error("[demand] /api/me/market-external-content error:", error);
+    res.status(500).json({ message: "Failed to fetch market external content" });
   }
 });
 
