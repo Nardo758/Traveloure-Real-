@@ -10,6 +10,14 @@ is already proven by `server/__tests__/trailhead-t4-publish-gate.test.ts` (15/15
 > hand-verified only — it was NOT applied by a live `runMigrations()` in the build session. Step 0
 > confirms it applies cleanly and is idempotent.
 
+> **⏱ BASELINE CAPTURE — do this ONCE, before ignition (Leon's directive).** Before the flag is
+> flipped and before any bulk-flip, screenshot the **empty Kyoto discover feed** — the day-before
+> state, no external stubs visible. This is the campaign's own before/after baseline artifact
+> ("here's the feed the day before Trailhead lit it"), for the ledger / an eventual deck. Save it
+> as `docs/findings/assets/kyoto-discover-baseline-preignition.png`. Capture the **after** shot at
+> the bulk-flip (§ review), same viewport, for the pair. This is a keep-forever artifact, not a
+> throwaway — the empty state never comes back once Kyoto is lit.
+
 ---
 
 ## 0. Migration applies + column present
