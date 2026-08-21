@@ -139,6 +139,7 @@ import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
 import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
+import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -3159,22 +3160,7 @@ export class DatabaseStorage implements IStorage {
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const newReview = await db.transaction(async (tx) => {
-      // Serialize attempts for the same booking so two concurrent requests
-      // cannot both pass a pre-insert duplicate check.
-      await tx.execute(sqlOp`SELECT pg_advisory_xact_lock(hashtext(${review.bookingId}))`);
-      const [existing] = await tx
-        .select({ id: serviceReviews.id })
-        .from(serviceReviews)
-        .where(eq(serviceReviews.bookingId, review.bookingId))
-        .limit(1);
-      if (existing) throw new Error("REVIEW_ALREADY_EXISTS");
-      const [created] = await tx
-        .insert(serviceReviews)
-        .values({ ...review, trackingNumber })
-        .returning();
-      return created;
-    });
+    const newReview = await createServiceReviewWithAggregate(review, trackingNumber);
     
     // Auto-register in content tracking system
     await this.registerContent({
@@ -3186,16 +3172,6 @@ export class DatabaseStorage implements IStorage {
       status: 'pending_review',
       metadata: { rating: newReview.rating, serviceId: newReview.serviceId, providerId: newReview.providerId },
     });
-    
-    // Update service average rating — approved reviews only so pending/removed don't skew stats
-    const allReviews = await this.getServiceReviews(review.serviceId);
-    const approvedReviews = allReviews.filter(r => (r as any).status === "approved");
-    const avgRating = approvedReviews.length > 0
-      ? approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length
-      : 0;
-    await db.update(providerServices)
-      .set({ averageRating: String(avgRating), reviewCount: approvedReviews.length, updatedAt: new Date() })
-      .where(eq(providerServices.id, review.serviceId));
     
     return newReview;
   }
