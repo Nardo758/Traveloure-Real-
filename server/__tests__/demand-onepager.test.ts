@@ -144,6 +144,39 @@ test("R31: a count-only slip (amount null) does NOT lead a service-led hero", ()
   assert.equal(model("kyoto", rows)!.variant, "property-led");
 });
 
+// ── R37 · forward range + degenerate-window collapse ───────────────────────────────────────────
+test("R37: hero subline range uses rendered forward windows; methodology keeps the full strict span", () => {
+  const rows = [
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 12, value: { trips: 12, nights: 36 }, date: "2026-09-13" }),
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 11, value: { trips: 11, nights: 22 }, date: "2026-10-04" }),
+  ];
+  const m = model("kyoto", rows)!;
+  assert.equal(m.monthRange, "Sep–Oct");
+  assert.match(m.methodology, /May–Nov/, "methodology describes the full strict-count span");
+});
+
+test("R37: one full-total property window collapses to the required caption", () => {
+  const m = model("kyoto", [
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 12, value: { trips: 12, nights: 48 }, date: "2026-09-13" }),
+  ])!;
+  assert.equal(m.windowCaption, "All requested stays begin Sep 13.");
+});
+
+test("R37: multiple windows retain the requested-windows table", () => {
+  const m = model("kyoto", [
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 12, value: { trips: 12, nights: 36 }, date: "2026-09-13" }),
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 11, value: { trips: 11, nights: 22 }, date: "2026-10-04" }),
+  ])!;
+  assert.equal(m.windowCaption, null);
+});
+
+test("R37: a service-led one-window model retains its table rather than using stay-specific copy", () => {
+  const m = model("kyoto", [
+    mkRow({ marketSlug: "kyoto", metric: "unmet_demand_slip", n: 12, value: { count: 12, amount: 2400, valuedCount: 12 }, date: "2026-09-13" }),
+  ])!;
+  assert.equal(m.windowCaption, null);
+});
+
 // ── R19 · units never blend ──────────────────────────────────────────────────────────────────
 test("R19: property-led hero carries no dollar figure at all", () => {
   const m = model("kyoto", [mkRow({ marketSlug: "kyoto", metric: "unmet_demand_stay", n: 20, value: { trips: 20, nights: 60, travelers: 25 } })])!;
