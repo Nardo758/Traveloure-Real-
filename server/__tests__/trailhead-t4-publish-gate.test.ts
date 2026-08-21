@@ -19,6 +19,12 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = resolve(HERE, "../..");
 
 import {
   INVENTORY_CLASSES,
@@ -129,5 +135,36 @@ describe("T4.4 render-time trend headline (never stored)", () => {
     assert.equal(buildTrendContext({ marketTrending: true, marketName: "Kyoto", imminentEventName: null }), "Kyoto is trending");
     assert.equal(buildTrendContext({ marketTrending: false, marketName: "Kyoto", imminentEventName: "Gion Matsuri" }), "Gion Matsuri approaching");
     assert.equal(buildTrendContext({ marketTrending: false, marketName: "Kyoto", imminentEventName: null }), null);
+  });
+});
+
+describe("T4.4 NO trend value is stored on a content row (grep-proof)", () => {
+  // The scraped-stub tables must carry no trend/score column — the trend lens is joined at RENDER
+  // only (buildTrendContext), never persisted. This asserts the schema declarations for
+  // dmo_raw_content and dmo_extracted_places contain no trend-bearing column.
+  it("dmo_raw_content / dmo_extracted_places declare no trend column", () => {
+    const schema = readFileSync(resolve(REPO, "shared/schema.ts"), "utf8");
+    for (const table of ["dmoRawContent = pgTable", "dmoExtractedPlaces = pgTable"]) {
+      const start = schema.indexOf(table);
+      assert.ok(start >= 0, `table ${table} not found in schema`);
+      // Slice from the table decl to the next `pgTable(` (or 8k chars) — the table's own body.
+      const nextTable = schema.indexOf("= pgTable", start + table.length);
+      const body = schema.slice(start, nextTable > 0 ? nextTable : start + 8000);
+      assert.ok(
+        !/\btrend(ing)?(_?score|Score|_?context|Context)?\b/i.test(body.replace(/inventory_class|inventoryClass/g, "")),
+        `${table} body unexpectedly contains a trend-bearing column`,
+      );
+    }
+  });
+
+  it("the location-view external-stub section places trendContext on the SECTION, never a stub row", () => {
+    const svc = readFileSync(resolve(REPO, "server/services/location-view.service.ts"), "utf8");
+    // The ExternalStub row shape must NOT carry a trend field…
+    const ifaceStart = svc.indexOf("export interface ExternalStub {");
+    const ifaceEnd = svc.indexOf("}", ifaceStart);
+    const iface = svc.slice(ifaceStart, ifaceEnd);
+    assert.ok(!/trend/i.test(iface), "ExternalStub row shape must not carry a trend field");
+    // …but the SECTION envelope must.
+    assert.ok(/interface ExternalStubsSection \{[\s\S]*trendContext/.test(svc), "trendContext must live on the section envelope");
   });
 });
