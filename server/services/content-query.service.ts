@@ -11,7 +11,7 @@ import {
 import {
   users, contactSubmissions, userAndExpertChats, notifications,
   aiBlueprints, serviceProviderForms, expertServiceOfferings, expertServiceCategories,
-  aiInteractions, serviceReviews, reviewModerationLogs,
+  aiInteractions, serviceReviews,
   localExpertForms, destinationIntelligence, aiGeneratedItineraries,
   itineraryComparisons, providerServices, destinationEvents,
   affiliateProducts, affiliatePartners, contentRegistry, affiliateClicks,
@@ -23,6 +23,7 @@ import { contentOriginFor } from "@shared/content-origin";
 import { storage } from "../storage";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
+import { flagReviewSignal } from "./review-mutation.service";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -230,30 +231,7 @@ export async function getReviewById(reviewId: string): Promise<any | null> {
 }
 
 export async function flagReview(reviewId: string, reason: string | null, actorId: string): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${reviewId}:${actorId}`}))`);
-    const [existing] = await tx.select({ id: reviewModerationLogs.id })
-      .from(reviewModerationLogs)
-      .where(and(
-        eq(reviewModerationLogs.reviewId, reviewId),
-        eq(reviewModerationLogs.actorId, actorId),
-        eq(reviewModerationLogs.action, "flag"),
-      ))
-      .limit(1);
-    if (existing) return false;
-    // A user report is a moderation signal, not a moderation decision. Keep
-    // approved content visible and its rating intact until an admin acts.
-    await tx.update(serviceReviews)
-      .set({ flagReason: reason || null } as any)
-      .where(eq(serviceReviews.id, reviewId));
-    await tx.insert(reviewModerationLogs).values({
-      reviewId,
-      action: "flag",
-      actorId,
-      reason: reason || null,
-    } as any);
-    return true;
-  });
+  return flagReviewSignal(reviewId, reason, actorId);
 }
 
 // ─── Expert Matching ──────────────────────────────────────────────────────────

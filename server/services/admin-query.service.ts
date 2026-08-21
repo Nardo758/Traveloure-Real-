@@ -12,6 +12,10 @@ import {
 import {
   eq, and, or, like, sql, desc, count, inArray, isNotNull, asc,
 } from "drizzle-orm";
+import {
+  moderateReviewWithAggregate,
+  recalculateServiceRatingAtomic,
+} from "./review-mutation.service";
 
 // ─── Admin Auth Helpers ───────────────────────────────────────────────────────
 
@@ -647,7 +651,9 @@ export async function getServiceReviewsList(status?: string) {
   if (status) {
     return db.select().from(serviceReviews).where(eq(serviceReviews.status, status)).orderBy(desc(serviceReviews.createdAt));
   }
-  return db.select().from(serviceReviews).where(sql`status IN ('pending', 'flagged')`).orderBy(desc(serviceReviews.createdAt));
+  return db.select().from(serviceReviews)
+    .where(sql`status IN ('pending', 'flagged') OR flag_reason IS NOT NULL`)
+    .orderBy(desc(serviceReviews.createdAt));
 }
 
 export async function getReviewModerationLogs(reviewId: string) {
@@ -1563,17 +1569,16 @@ export async function getLocationSummaryData() { return getLocationSummary(); }
 export async function getUserServiceBookings(userId: string) { return getUserBookingSpend(userId); }
 
 export async function moderateReview(reviewId: string, status: string, actorId: string, reason?: string | null) {
-  return updateServiceReviewStatus(reviewId, { status, moderatedBy: actorId, moderationReason: reason ?? null, moderatedAt: new Date() });
+  return moderateReviewWithAggregate({
+    reviewId,
+    status: status as "approved" | "flagged" | "removed" | "pending",
+    actorId,
+    reason,
+  });
 }
 
 export async function recalcServiceRating(serviceId: string) {
-  const reviews = await getServiceReviewsForServiceRating(serviceId);
-  const approved = reviews.filter(r => r.status === "approved");
-  const reviewCount = approved.length;
-  const avgRating = reviewCount > 0
-    ? (approved.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount).toFixed(1)
-    : "0";
-  await updateProviderServiceRating(serviceId, avgRating, reviewCount);
+  await recalculateServiceRatingAtomic(serviceId);
 }
 
 /**
