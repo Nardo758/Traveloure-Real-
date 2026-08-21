@@ -20,87 +20,44 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { contentGapAlerts, dmoRawContent } from "@shared/schema";
 import type { ContentGapAlert } from "@shared/schema";
+import {
+  GAP_MARKET,
+  GAP_CITY,
+  KYOTO_CONTENT_PLAN,
+  getContentTypePlan,
+  type ContentTypePlan,
+} from "./content-gap-taxonomy";
 
-export const GAP_MARKET = "japan";
-export const GAP_CITY = "Kyoto";
-
-/** One content type's editorial plan: how much we want, where discovered rows attach, how to find them. */
-export interface ContentTypePlan {
-  /** dmoContentTypeEnum value. */
-  contentType: string;
-  /** Human label for the admin UI. */
-  label: string;
-  /** Editorial target — how many curated items we want in this category for a launch-ready Kyoto catalog. */
-  target: number;
-  /** DMO source id (dmo_sources.id) discovered rows are attributed to. Must exist (seeded from the registry). */
-  sourceId: string;
-  /** Tavily discovery queries — each returns a list of distinct places we turn into born-hidden stubs. */
-  discoveryQueries: string[];
-}
-
-/**
- * Kyoto editorial content plan (§12). Targets reflect the experience-planning lens (weddings/events):
- * a traveler planning a Kyoto experience needs venues, restaurants and events, not only temples.
- * Targets are intentionally modest launch minimums — an expert curates the rest.
- */
-export const KYOTO_CONTENT_PLAN: ContentTypePlan[] = [
-  {
-    contentType: "attraction",
-    label: "Attractions & heritage sites",
-    target: 15,
-    sourceId: "dmo-jp-kyoto-travel",
-    discoveryQueries: [
-      "top attractions and temples to visit in Kyoto Japan",
-      "must-see cultural sights in Kyoto Japan",
-    ],
-  },
-  {
-    contentType: "venue",
-    label: "Event & wedding venues",
-    target: 12,
-    sourceId: "dmo-jp-wedding-venues",
-    discoveryQueries: [
-      "best wedding venues in Kyoto Japan",
-      "private event venues for celebrations in Kyoto Japan",
-    ],
-  },
-  {
-    contentType: "restaurant",
-    label: "Restaurants (dining & receptions)",
-    target: 12,
-    sourceId: "dmo-jp-gurunavi",
-    discoveryQueries: [
-      "best fine dining restaurants in Kyoto Japan",
-      "private dining and reception restaurants in Kyoto Japan",
-    ],
-  },
-  {
-    contentType: "event",
-    label: "Seasonal & cultural events",
-    target: 10,
-    sourceId: "dmo-jp-kyoto-travel",
-    discoveryQueries: [
-      "annual festivals and seasonal events in Kyoto Japan",
-      "cultural experiences and ceremonies in Kyoto Japan",
-    ],
-  },
-  {
-    contentType: "destination",
-    label: "Neighborhoods & areas",
-    target: 8,
-    sourceId: "dmo-jp-kyoto-travel",
-    discoveryQueries: [
-      "best neighborhoods and districts to explore in Kyoto Japan",
-    ],
-  },
-];
-
-const planByType = new Map(KYOTO_CONTENT_PLAN.map((p) => [p.contentType, p]));
-
-/** Look up a content type's plan (used by the ingestion pass to resolve source + queries for a gap). */
-export function getContentTypePlan(contentType: string): ContentTypePlan | undefined {
-  return planByType.get(contentType);
-}
+// Re-export the pure taxonomy surface so "the content-gap module" still exposes the plan, the
+// crosswalk and the slot-derivation as one thing (the pure core lives in content-gap-taxonomy.ts so
+// it stays importable/testable WITHOUT a database — this file imports `../db`). L6: one home, no copy.
+export {
+  GAP_MARKET,
+  GAP_CITY,
+  KYOTO_CONTENT_PLAN,
+  getContentTypePlan,
+  // R-T1-a crosswalk + R-T1-b/-d slot-derivation:
+  CATEGORY_TO_CONTENT_TYPE,
+  AFFILIATE_RUNG,
+  SERVICE_ONLY,
+  crosswalk,
+  isDmoContentType,
+  TEMPLATE_CATEGORY_MATRIX,
+  deriveContentPlan,
+  KYOTO_DERIVED_CONTENT_PLAN,
+  INERT_MARKET_CONTENT_PLANS,
+  diffKyotoPlan,
+} from "./content-gap-taxonomy";
+export type {
+  ContentTypePlan,
+  DmoContentType,
+  CategoryKey,
+  CrosswalkTarget,
+  MatrixRow,
+  DerivedContentTarget,
+  DerivedContentPlan,
+  KyotoPlanDivergence,
+} from "./content-gap-taxonomy";
 
 /** Severity from how far short of target we are (deficit ratio). */
 function severityFor(existing: number, target: number): ContentGapAlert["severity"] {
