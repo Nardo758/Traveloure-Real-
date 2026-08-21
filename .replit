@@ -66,6 +66,7 @@ VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxx
 # STRIPE_SECRET_KEY_TEST lives in Replit Secrets — never in git (a committed value
 # reached the PR-498 branch on Aug 17; rotate that key).
 RATE_LIMIT_LOOPBACK_SKIP = "1"
+DMO_INGEST_ENABLED = "0"
 
 [userenv.production]
 ENVIRONMENT = "PROD"
