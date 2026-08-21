@@ -24,12 +24,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
-import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { GuestInviteManager } from "@/components/GuestInviteManager";
 import type { UserExperience } from "@shared/schema";
+import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
 
 type Section = "activities" | "transport";
 
@@ -55,8 +56,9 @@ function getBookingType(actType: string): BookingType {
 function computeLiveDayNumber(startDate: string | undefined, endDate: string | undefined): number | null {
   if (!startDate || !endDate) return null;
   const now = new Date();
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = parseCalendarDate(startDate);
+  const end = parseCalendarDate(endDate);
+  if (!start || !end) return null;
   if (now < start || now > end) return null;
   const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -139,14 +141,23 @@ export default function TripDetails() {
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
   const generatePlan = useGenerateItinerary();
-  const { data: generatedItinerary, isLoading: itineraryLoading, isError: itineraryError, refetch: refetchItinerary } = useGeneratedItinerary(id || "");
+  const { data: generatedItinerary } = useGeneratedItinerary(id || "");
+  const {
+    data: plancardData,
+    isLoading: itineraryLoading,
+    isError: itineraryError,
+    refetch: refetchItinerary,
+  } = useQuery<PlanCardData>({
+    queryKey: [`/api/trips/${id}/plancard`],
+    enabled: !!id,
+  });
   // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
   // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
   // `as any`: itineraryData is a free-shape jsonb column typed `{}` at the ORM layer (see the
   // pre-existing identical casts a few hundred lines below, e.g. `itinerary.days.map(...)`) —
   // matching the file's existing convention rather than introducing a new typing approach.
-  const hasExistingItineraryItems = !!(generatedItinerary?.itineraryData as any)?.days?.some(
-    (d: any) => (d.activities?.length ?? 0) > 0
+  const hasExistingItineraryItems = !!plancardData?.days?.some(
+    (day) => (day.activities?.length ?? 0) > 0,
   );
   const handleRegenerateClick = () => {
     if (hasExistingItineraryItems) {
@@ -223,15 +234,7 @@ export default function TripDetails() {
     });
   };
 
-  // G7: Fetch plancard data for optimizationDelta
-  const { data: plancardData } = useQuery<{
-    optimizationDelta: { savings: number | null; savingsPercent: number | null; starRatingDelta: number | null } | null;
-    lastOptimizedAt: string | null;
-  }>({
-    queryKey: [`/api/trips/${id}/plancard`],
-    enabled: !!id && justOptimized,
-    staleTime: 10000,
-  });
+  // G7: Reuse the canonical plan-card query above for optimization metadata.
   const optimizationDelta = plancardData?.optimizationDelta ?? null;
 
   const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
@@ -434,9 +437,9 @@ export default function TripDetails() {
     );
   }
 
-  const startDate = new Date(trip.startDate);
-  const endDate = new Date(trip.endDate);
-  const duration = differenceInDays(endDate, startDate) + 1;
+  const startDate = parseCalendarDate(trip.startDate);
+  const endDate = parseCalendarDate(trip.endDate);
+  const duration = startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0;
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -510,7 +513,7 @@ export default function TripDetails() {
             <div className="flex flex-wrap gap-6 text-white/90">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
-                {isValid(startDate) && isValid(endDate)
+                {startDate && endDate
                   ? `${format(startDate, "MMMM d")} – ${format(endDate, "MMMM d, yyyy")}`
                   : "Dates not set"}
               </div>
@@ -701,7 +704,7 @@ export default function TripDetails() {
                         Retry
                       </Button>
                     </div>
-                  ) : !generatedItinerary ? (
+                  ) : !hasExistingItineraryItems ? (
                     <div className="text-center py-16">
                       <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
                         <Sparkles className="w-8 h-8 text-primary" />
@@ -730,131 +733,35 @@ export default function TripDetails() {
                       </div>
                     </div>
                   ) : (
-                    <>
-                      {/* PlanCard components merged from itinerary.tsx */}
-                      {(() => {
-                        const itinerary = generatedItinerary.itineraryData;
-                        if (!itinerary) return null;
+                    (() => {
+                      const planCardTrip: PlanCardTrip = {
+                        id: trip.id,
+                        destination: trip.destination ?? "",
+                        title: trip.title ?? undefined,
+                        startDate: (() => {
+                          return calendarDateToIso(trip.startDate);
+                        })(),
+                        endDate: (() => {
+                          return calendarDateToIso(trip.endDate);
+                        })(),
+                        numberOfTravelers: trip.numberOfTravelers ?? 1,
+                        budget: trip.budget ?? undefined,
+                        eventType: trip.eventType ?? undefined,
+                      };
+                      const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
+                      const initialDayIndex = liveDayNumber == null
+                        ? -1
+                        : (plancardData?.days ?? []).findIndex((day) => day.dayNum === liveDayNumber);
 
-                        // Real transport legs map (if available)
-                        const realLegsMap: Record<number, any[]> = {};
-                        // TODO: fetch real legs data if needed
-
-                        const templateConfig = getTemplateConfig(trip?.eventType);
-
-                        // T5-1 fix: this previously read id/destination/title/dates/travelers/
-                        // budget off `itinerary` (= generatedItinerary.itineraryData, the AI
-                        // JSON blob), which only ever contains `{ days, anchorValidation }` — every
-                        // one of those fields was `undefined` (id became the literal string
-                        // "undefined"). That was latent while PlanCard was always handed a static
-                        // `days` prop (its `trip.id`-keyed queries — plancard DTO, expert-advisor,
-                        // suggestions — were only reachable via `!daysProp`/unconditional paths that
-                        // silently 404'd and got swallowed). Now that PlanCard fetches the live DTO
-                        // from `trip.id`, this MUST be the real trip id — sourced from the page's
-                        // own `useTrip` result, not the itinerary blob.
-                        const planCardTrip: PlanCardTrip = {
-                          id: trip.id,
-                          destination: trip.destination ?? itinerary.destination,
-                          title: trip.title ?? itinerary.title,
-                          startDate: (() => { const d = new Date(trip.startDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
-                          endDate: (() => { const d = new Date(trip.endDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
-                          numberOfTravelers: trip.numberOfTravelers ?? itinerary.travelers,
-                          budget: trip.budget ?? itinerary.budget,
-                        };
-
-                        const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
-                          dayNum: d.day,
-                          date: (() => { const p = d.date instanceof Date ? d.date : new Date(d.date); return isValid(p) ? format(p, "yyyy-MM-dd") : ""; })(),
-                          label: (() => {
-                            const parsed = d.date instanceof Date ? d.date : new Date(d.date);
-                            return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);
-                          })(),
-                          activities: (d.activities || []).map((a: any): PlanCardActivity => ({
-                            id: a.id,
-                            name: a.title || a.name || "Activity",
-                            time: a.time || "09:00",
-                            type: a.type || "activity",
-                            location: a.location || "",
-                            lat: a.lat ?? undefined,
-                            lng: a.lng ?? undefined,
-                            status: a.booked ? "confirmed" : "pending",
-                            cost: a.price || 0,
-                            comments: 0,
-                            expertNote: a.notes || a.description || undefined,
-                          })),
-                          transports: (() => {
-                            const dayNum = d.day;
-                            const real = realLegsMap[dayNum];
-                            // Only real (routed) or persisted transport legs reach the PlanCard.
-                            // Do NOT synthesize fabricated walking legs / fake $8/$2/$6 alternatives
-                            // here — they were feeding the headline transit stats + "Book on
-                            // Traveloure" badge as if real (§13). No data → no transport shown.
-                            const legs = real?.length ? real : (d.transportLegs || []);
-                            return legs.map((l: any): PlanCardTransport => ({
-                              id: l.id,
-                              from: l.fromName || l.from || "",
-                              to: l.toName || l.to || "",
-                              mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
-                              duration: l.estimatedDurationMinutes || l.duration || 0,
-                              cost: l.estimatedCostUsd || l.cost || 0,
-                              status: "active",
-                              bookingSource: undefined,
-                              partnerName: undefined,
-                              // Mode-aware primary action (CLAUDE.md §18 item 5): forward these
-                              // IF the stored itineraryData already carries them — never invented
-                              // here. No server change; itineraryData is a free-shape jsonb blob,
-                              // this just stops silently dropping fields that may already be on it.
-                              pickupPoint: l.pickupPoint ?? null,
-                              pickupTime: l.pickupTime ?? null,
-                              driverPhone: l.driverPhone ?? null,
-                              rideDetails: l.rideDetails ?? null,
-                              // §16 closure: no raw URLs off the jsonb blob — token only.
-                              bookingToken: (l as any).bookingToken ?? null,
-                            }));
-                          })(),
-                        }));
-
-                        // Compute extra stats
-                        const totalDays = itinerary.days.length;
-                        const totalActivities = planCardDays.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
-                        const totalLegs = planCardDays.reduce((sum, d) => sum + (d.transports?.length || 0), 0);
-                        const totalTransitMinutes = planCardDays.reduce((sum, d) => sum + (d.transports?.reduce((t, tr) => t + (tr.duration || 0), 0) || 0), 0);
-                        const totalBooked = planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.status === "confirmed").length || 0), 0);
-                        const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
-                        const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
-
-                        // Mobile-lens audit #1: thread "today's" day-of-trip number into the
-                        // card's initial day index. Computed synchronously (see
-                        // computeLiveDayNumber above) rather than read from the page's
-                        // effect-driven `selectedDay` state, which races PlanCard's mount.
-                        // findIndex on the real dayNum rather than assuming a gap-free 1-based
-                        // array, falling back to Day 1 (index 0) pre/post-trip.
-                        const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
-                        const initialDayIndex = liveDayNumber != null
-                          ? planCardDays.findIndex(d => d.dayNum === liveDayNumber)
-                          : -1;
-
-                        return (
-                          // T5-1: no `days` prop — PlanCard(stage="full") fetches the LIVE
-                          // `/api/trips/:id/plancard` DTO itself and builds `days` from it
-                          // (PlanCard.tsx:743-782, `enabled: !daysProp && stage !== "proposal"`)
-                          // whenever it isn't handed one. Previously this page always passed the
-                          // STATIC `planCardDays` built from `generated_itineraries.itinerary_data`,
-                          // which starved the DTO fetch — PlanApprovalBanner never got
-                          // `plancardData?.meta?.planApproval` and RoutingBadge never got
-                          // `activity.routingStatus` (both DTO-only fields, absent from the static
-                          // blob). `planCardDays`/`planCardTrip` above are kept only for
-                          // `initialDayIndex`'s day-number lookup, a page-owned concern unrelated to
-                          // which days source renders.
-                          <PlanCard
-                            role="owner"
-                            stage="full"
-                            trip={planCardTrip}
-                            initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
-                          />
-                        );
-                      })()}
-                    </>
+                      return (
+                        <PlanCard
+                          role="owner"
+                          stage="full"
+                          trip={planCardTrip}
+                          initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
+                        />
+                      );
+                    })()
                   )}
                 </TabsContent>
 
