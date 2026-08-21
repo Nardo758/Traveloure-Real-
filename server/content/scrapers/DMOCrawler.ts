@@ -508,6 +508,8 @@ export class DMOCrawler {
       // Born-hidden — an admin must approve this raw content into the expert library (intake gate, "B").
       expertWorkspaceVisible: false,
       discoverPageVisible: false,
+      // Trailhead T4 (R-T1-e): scraped stubs are external inventory (facts-and-links, never bookable).
+      inventoryClass: "external",
       expertReviewedAt: null,
       expertReviewedBy: null,
       publishedAt: null,

@@ -7889,6 +7889,18 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   // pre-gate rows are grandfathered true (no backfill), the F2 pattern.
   expertWorkspaceVisible: boolean("expert_workspace_visible").default(false).notNull(),
   discoverPageVisible: boolean("discover_page_visible").default(false).notNull(),
+  // Operation Trailhead LANE T4 (R-T1-e): inventory class of the stub the traveler read-path renders.
+  // Scraped/DMO content is 'external' — a facts-and-links stub, NEVER a bookable platform service.
+  // The enum admits 'provider'|'affiliate' so a later resolution-waterfall (T3) can re-class a stub
+  // in place without a schema change. App-enforced (shared/discover-stub.ts INVENTORY_CLASSES), NO DB
+  // CHECK — the migration-181/195/228 posture, chosen to avoid the Replit publish-time CHECK trap.
+  // Lives on the PARENT (not dmo_extracted_places): the discover filter already gates on
+  // discover_page_visible / status / country / city here, so the class reads off the same row with no
+  // extra join, and one value governs the whole guide stub and all its child places (a place can never
+  // carry a different inventory class than the guide it was extracted from). Mirrors
+  // provider_services.sourceType living on the sellable row, not a child. Declared here per the
+  // publish-trap rule. Migration 246 backfills every existing row to 'external'.
+  inventoryClass: varchar("inventory_class", { length: 20 }).default("external").notNull(),
   publishedAt: timestamp("published_at"),
   publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),
   
