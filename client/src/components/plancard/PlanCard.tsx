@@ -14,6 +14,7 @@ import { tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole, type PlanCardLegData,
 } from "./plancard-types";
+import { parseCalendarDate } from "@/lib/calendar-date";
 import { HeroSection } from "./HeroSection";
 import { OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
@@ -66,7 +67,8 @@ function formatRelativeTime(dateStr: string): string {
 function daysUntilDate(dateStr: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr);
+  const d = parseCalendarDate(dateStr);
+  if (!d) return Number.POSITIVE_INFINITY;
   d.setHours(0, 0, 0, 0);
   return Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -82,8 +84,9 @@ function formatMinutes(mins: number): string {
 
 function getSummaryStatusLabel(startDate: string, endDate: string, status?: string): string {
   const now = new Date();
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = parseCalendarDate(startDate);
+  const end = parseCalendarDate(endDate);
+  if (!start || !end) return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Planning";
   if (now >= start && now <= end) return "Active";
   if (now < start) {
     const days = daysUntilDate(startDate);

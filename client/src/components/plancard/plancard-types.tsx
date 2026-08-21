@@ -6,6 +6,7 @@ import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import type { RoutingStatus } from "@shared/schema";
 import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
+import { parseCalendarDate } from "@/lib/calendar-date";
 
 // Re-exported so plancard consumers can name the routing-status union without a second import.
 export type { RoutingStatus };
@@ -300,9 +301,9 @@ export function computeDayCount(
 ): number {
   if (days && days.length > 0) return days.length;
   if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (!isValid(start) || !isValid(end)) return 0;
+  const start = parseCalendarDate(startDate);
+  const end = parseCalendarDate(endDate);
+  if (!start || !end) return 0;
   return Math.max(1, differenceInDays(end, start) + 1);
 }
 

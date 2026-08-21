@@ -6,6 +6,16 @@ import { withQueryTimer } from '../utils/queryTimer';
 import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
+import {
+  normalizeGeneratedActivityDurationMinutes,
+  normalizeGeneratedDayNumber,
+  normalizeGeneratedEstimatedCost,
+  parseGeneratedActivityDurationMinutes,
+  MAX_GENERATED_DESTINATION_CHARS,
+  MAX_GENERATED_SPECIAL_REQUEST_CHARS,
+  validateGeneratedItineraryDateRange,
+  validateGeneratedItineraryTextLength,
+} from "../utils/generated-itinerary";
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -2856,7 +2866,8 @@ router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
       const review = await getReviewById(req.params.id);
       if (!review) return res.status(404).json({ message: "Review not found" });
       if (review.status === "removed") return res.status(400).json({ message: "Review already removed" });
-      await flagReview(req.params.id, reason || null, userId);
+      const created = await flagReview(req.params.id, reason || null, userId);
+      if (!created) return res.status(409).json({ message: "You already flagged this review" });
       res.json({ success: true });
     } catch (err) {
       console.error("Flag review error:", err);
@@ -2875,8 +2886,11 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
         travelerId: userId, 
         status: "completed" 
       });
-      const hasCompletedBooking = bookings.some(b => b.serviceId === req.params.serviceId);
-      if (!hasCompletedBooking) {
+      const bookingId = typeof req.body?.bookingId === "string" ? req.body.bookingId : "";
+      const completedBooking = bookings.find(
+        b => b.id === bookingId && b.serviceId === req.params.serviceId,
+      );
+      if (!completedBooking) {
         return res.status(403).json({ message: "You can only review services you've completed" });
       }
       
@@ -2898,6 +2912,9 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message === "REVIEW_ALREADY_EXISTS") {
+        return res.status(409).json({ message: "This booking has already been reviewed" });
       }
       console.error("Error creating review:", err);
       res.status(500).json({ message: "Failed to create review" });
@@ -4229,7 +4246,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
         endDate: itineraryRequest.dates.end,
         title: result.title,
         summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost?.toString(),
+        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
         itineraryData: result.dailyItinerary,
         accommodationSuggestions: result.accommodationSuggestions || [],
         packingList: result.packingList || [],
@@ -4397,7 +4414,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       } = req.body;
 
       // Normalize destination: accept either a string or an array of {city, country} objects
-      const destination: string | null =
+      const normalizedDestination: string | null =
         destinationRaw && typeof destinationRaw === "string"
           ? destinationRaw
           : Array.isArray(destinations) && destinations.length > 0
@@ -4405,6 +4422,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
                 .map((d: any) => [d.city, d.country].filter(Boolean).join(", "))
                 .join("; ")
             : null;
+      const destination = normalizedDestination?.trim() || null;
 
       // Normalize dates: accept either {start, end} object or flat startDate/endDate fields
       const dates = datesRaw?.start
@@ -4417,8 +4435,32 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       if (!destination) {
         return res.status(400).json({ message: "Destination is required" });
       }
+      const destinationLengthError = validateGeneratedItineraryTextLength(
+        destination,
+        "Destination",
+        MAX_GENERATED_DESTINATION_CHARS,
+      );
+      if (destinationLengthError) {
+        return res.status(400).json({ message: destinationLengthError });
+      }
+      if (specialRequests !== undefined && specialRequests !== null) {
+        const specialRequestsLengthError = validateGeneratedItineraryTextLength(
+          specialRequests,
+          "Special requests",
+          MAX_GENERATED_SPECIAL_REQUEST_CHARS,
+        );
+        if (specialRequestsLengthError) {
+          return res.status(400).json({ message: specialRequestsLengthError });
+        }
+      }
+      const normalizedSpecialRequests =
+        typeof specialRequests === "string" ? specialRequests.trim() || undefined : undefined;
       if (!dates?.start || !dates?.end) {
         return res.status(400).json({ message: "Start and end dates are required" });
+      }
+      const dateRangeError = validateGeneratedItineraryDateRange(dates.start, dates.end);
+      if (dateRangeError) {
+        return res.status(400).json({ message: dateRangeError });
       }
       if (!travelers || typeof travelers !== "number" || travelers < 1) {
         return res.status(400).json({ message: "Number of travelers must be at least 1" });
@@ -4432,7 +4474,12 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // No trip / no anchors → anchorBlock is "" and the prompt is unchanged.
       let tripAnchors: Awaited<ReturnType<typeof storage.getTemporalAnchors>> = [];
       let tripBoundaries: Awaited<ReturnType<typeof storage.getDayBoundaries>> = [];
-      if (tripIdParam && (await verifyTripOwnership(tripIdParam, userId))) {
+      let resolvedTripId = "";
+      if (tripIdParam) {
+        if (!(await verifyTripOwnership(tripIdParam, userId))) {
+          return res.status(403).json({ message: "Forbidden: you do not own this trip" });
+        }
+        resolvedTripId = tripIdParam;
         [tripAnchors, tripBoundaries] = await Promise.all([
           storage.getTemporalAnchors(tripIdParam),
           storage.getDayBoundaries(tripIdParam),
@@ -4460,6 +4507,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         JSON.stringify((mobilityConsiderations || []).slice().sort()),
         budget ?? "",
         eventType ?? "",
+        normalizedSpecialRequests ?? "",
         anchorBlock,
       ].join(":");
 
@@ -4488,6 +4536,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
               mustSeeAttractions: mustSeeAttractions || [],
               dietaryRestrictions: dietaryRestrictions || [],
               mobilityConsiderations: mobilityConsiderations || [],
+              specialRequests: normalizedSpecialRequests,
               immovableConstraints: anchorBlock,
             })
           )
@@ -4498,16 +4547,33 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
       }
 
+      // Resolve the backing trip before any generated-plan writes so every
+      // persisted representation of this generation shares the same trip ID.
+      if (!resolvedTripId) {
+        const newTrip = await storage.createTrip({
+          userId,
+          title: result.title || `${destination} Trip`,
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          numberOfTravelers: travelers,
+          status: "draft",
+          eventType: eventType || experienceType || "vacation",
+          specialRequests: normalizedSpecialRequests || null,
+        });
+        resolvedTripId = newTrip.id;
+      }
+
       // Save generated itinerary to database
       const savedItinerary = await insertAiGeneratedItinerary({
         userId,
-        tripId: tripIdParam || null,
+        tripId: resolvedTripId,
         destination,
         startDate: dates.start,
         endDate: dates.end,
         title: result.title,
         summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost.toString(),
+        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
         itineraryData: result.dailyItinerary,
         accommodationSuggestions: result.accommodationSuggestions,
         packingList: result.packingList,
@@ -4527,32 +4593,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         durationMs: 0,
         success: true,
         userId,
+        tripId: resolvedTripId,
         metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
       });
-
-      // Ensure a trip row exists so we can insert itinerary_items (which FK on trips.id).
-      // Prefer the caller-supplied tripId; if absent, create a new draft trip.
-      let resolvedTripId: string = tripIdParam || "";
-      if (resolvedTripId) {
-        // Ownership check — reject if the trip doesn't belong to this user.
-        const isOwner = await verifyTripOwnership(resolvedTripId, userId);
-        if (!isOwner) {
-          return res.status(403).json({ message: "Forbidden: you do not own this trip" });
-        }
-      } else {
-        const newTrip = await storage.createTrip({
-          userId,
-          title: result.title || `${destination} Trip`,
-          destination,
-          startDate: dates.start,
-          endDate: dates.end,
-          numberOfTravelers: travelers,
-          status: "draft",
-          eventType: eventType || experienceType || "vacation",
-          specialRequests: specialRequests || null,
-        });
-        resolvedTripId = newTrip.id;
-      }
 
       // Rebuild itinerary_items inside a transaction so a partial failure never
       // leaves the trip with a mix of old and new items.
@@ -4564,23 +4607,25 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, resolvedTripId));
         for (const day of dailyItinerary) {
           const activities = Array.isArray(day?.activities) ? day.activities : [];
+          const dayNumber = normalizeGeneratedDayNumber(day?.day);
           for (const activity of activities) {
+            const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
             const [inserted] = await tx.insert(itineraryItems).values({
               tripId: resolvedTripId,
               title: activity.name || activity.title || "Activity",
               description: activity.description || "",
               itemType: activity.type || "activity",
               status: "planned",
-              dayNumber: day.day || 1,
+              dayNumber,
               startTime: activity.time || "",
-              durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+              durationMinutes,
               locationName: activity.location || destination,
               estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
               currency: "USD",
               suggestedBy: "ai",
               origin: "ai",
             }).returning();
-            insertedItems.push({ ...activity, id: inserted.id });
+            insertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
           }
         }
       });
@@ -4589,6 +4634,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
       const comparison = await insertItineraryComparison({
         userId,
+        tripId: resolvedTripId,
         title: `${destination} Trip`,
         destination,
         startDate: dates.start,
@@ -4599,7 +4645,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       });
 
       // Convert generated itinerary to baseline items using the DB-inserted IDs
-      const baselineItems = insertedItems.map((activity: any, idx: number) => ({
+      const baselineItems = insertedItems.map((activity: any) => ({
         id: activity.id,
         name: activity.name || activity.title || 'Activity',
         description: activity.description || '',
@@ -4607,8 +4653,8 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         price: activity.estimatedCost || 0,
         rating: 4.5,
         location: activity.location || destination,
-        duration: typeof activity.duration === "number" ? activity.duration : 60,
-        dayNumber: activity.dayNumber || idx + 1,
+        duration: activity.durationMinutes,
+        dayNumber: activity.dayNumber,
         timeSlot: activity.time?.includes('morning') ? 'morning'
                 : activity.time?.includes('afternoon') ? 'afternoon'
                 : 'evening',
@@ -4663,7 +4709,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
             activities: (Array.isArray(d.activities) ? d.activities : []).map((a: any) => ({
               title: a.name || a.title,
               time: a.time,
-              durationMinutes: typeof a.duration === "number" ? a.duration : undefined,
+              durationMinutes: parseGeneratedActivityDurationMinutes(a.duration) ?? undefined,
             })),
           }),
         );
@@ -4781,7 +4827,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           endDate: dates.end,
           title: `${variation.variationLabel}: ${variation.title}`,
           summary: variation.summary,
-          totalEstimatedCost: variation.totalEstimatedCost.toString(),
+          totalEstimatedCost: normalizeGeneratedEstimatedCost(variation.totalEstimatedCost),
           itineraryData: variation.dailyItinerary,
           accommodationSuggestions: variation.accommodationSuggestions,
           packingList: variation.packingList,
