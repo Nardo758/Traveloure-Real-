@@ -28,7 +28,10 @@ export type FeedItemKind =
   // Injected by the discover page AFTER composition (insert, never replace —
   // rec cadence and wanted-slot spacing stay meaning-bearing):
   | "earn-card"
-  | "package";
+  | "package"
+  // Trailhead T4.3: published scraped/DMO stub — external inventory, rendered
+  // with a DISTINCT non-bookable card so it can't be mistaken for a listing.
+  | "external-stub";
 
 export interface FeedItem {
   kind: FeedItemKind;

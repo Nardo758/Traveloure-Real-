@@ -15,11 +15,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
+import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-stub";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
@@ -51,6 +52,8 @@ interface LocationViewPayload {
   neighborhoods: SectionResult<any[]>;
   gems: SectionResult<any[]>;
   services?: SectionResult<any[]>;
+  // Trailhead T4.3: published scraped/DMO stubs for this market + render-time trend headline.
+  externalStubs?: SectionResult<{ trendContext: string | null; stubs: any[] }>;
 }
 
 interface CityMediaResponse {
@@ -1092,6 +1095,8 @@ function FillerCard({
       return <EarnCard city={city} />;
     case "package":
       return <PackageCard template={item.data} layout={isMarquee ? "row" : "column"} />;
+    case "external-stub":
+      return <CityFeedCardExternalStub stub={item.data} city={city} />;
     default:
       return null;
   }
@@ -1110,6 +1115,7 @@ const FILLER_KINDS = new Set<FeedItem["kind"]>([
   "lead-expert",
   "earn-card",
   "package",
+  "external-stub",
 ]);
 
 // ─── Bento feed renderer ──────────────────────────────────────────────────────
@@ -1787,6 +1793,9 @@ export default function DiscoverLocationPage() {
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
+  // Trailhead T4.3: published external stubs + the render-time trend headline.
+  const externalStubs = data?.externalStubs?.data?.stubs ?? [];
+  const externalTrendContext = data?.externalStubs?.data?.trendContext ?? null;
 
   // ── Engine recommendations (discover_location / discover_date surface) ──
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
@@ -1962,11 +1971,24 @@ export default function DiscoverLocationPage() {
       return it as FeedItem;
     })
     .filter(Boolean) as FeedItem[];
+  // Trailhead T4.3: published external stubs as distinct, non-bookable feed items.
+  const externalStubItems: FeedItem[] = (externalStubs as any[]).map((s) => ({
+    kind: "external-stub" as FeedItem["kind"],
+    id: `external-stub-${s.id}`,
+    data: s,
+  }));
+
   // Exactly ONE earn-card near position 9 (F7/F9), only on the unfiltered "all" view.
   const filteredItems: FeedItem[] = (() => {
     if (activeFilter !== "all") return retagged;
     const out = [...retagged];
     out.splice(Math.min(9, out.length), 0, { kind: "earn-card", id: "earn-card", data: { city } });
+    // External stubs are woven in after the earn-card region (append — they never displace a
+    // native card or the rec cadence). Distinct card treatment (CityFeedCardExternalStub) keeps
+    // them visibly separate from bookable listings.
+    if (externalStubItems.length > 0) {
+      out.splice(Math.min(12, out.length), 0, ...externalStubItems);
+    }
     return out;
   })();
 
@@ -2124,6 +2146,19 @@ export default function DiscoverLocationPage() {
                 >
                   Start earning in {toTitleCase(city)} <ChevronRight className="w-3.5 h-3.5" />
                 </a>
+              </div>
+            )}
+
+            {/* Trailhead T4.4: render-time trend headline for external content — honest ceiling
+                ("‹Market› is trending · ‹Event› approaching"), server-computed, never stored, only
+                shown when published external stubs exist for this market. */}
+            {externalTrendContext && externalStubs.length > 0 && (
+              <div
+                data-testid="external-trend-context"
+                className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>{externalTrendContext}</span>
               </div>
             )}
 
