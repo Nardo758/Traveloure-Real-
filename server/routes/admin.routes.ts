@@ -1933,6 +1933,41 @@ router.post("/api/admin/dmo/publish-batch", isAuthenticated, async (req, res) =>
   }
 });
 
+// Operation Trailhead T3.5 — manually trigger a resolution PASS over published stubs. The waterfall
+// (R-T3-a provider → affiliate → external) is owned by stub-resolution.service.ts; this admin surface
+// is only the trigger. Guarded §2 (admin-only). Body: { mode: 'full'|'delta', city?: string }.
+//
+// ⚑ R-T3-e HARD STOP: the FIRST pass's matches go to Leon as an evidence table BEFORE render consumes
+// them (see docs/findings/trailhead-t3-first-pass-dispatch.md). This route is the mechanism; running
+// the first pass is gated on the T2.4 verdict + T0. With the shipped config every affiliate program is
+// disabled, so a first pass produces only provider matches + an honest external majority.
+router.post("/api/admin/dmo/resolve", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const mode = req.body?.mode === "delta" ? "delta" : "full";
+  const city = typeof req.body?.city === "string" && req.body.city.trim() ? req.body.city.trim() : undefined;
+  try {
+    const { runResolutionPass } = await import("../services/stub-resolution.service");
+    const result = await runResolutionPass({ mode, city });
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dmo_resolution_pass",
+      resourceType: "dmo_raw_content",
+      resourceId: result.passId,
+      metadata: { mode, city: city ?? null, scanned: result.scanned, changed: result.changed, upgrades: result.upgrades, downgrades: result.downgrades, byClass: result.byClass },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/dmo/resolve] audit log failed (non-fatal):", err));
+    res.json({ message: `Resolution pass complete (${mode})`, result });
+  } catch (err: any) {
+    console.error("DMO resolution pass error:", err);
+    res.status(500).json({ message: "Resolution pass failed", error: err.message });
+  }
+});
+
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {

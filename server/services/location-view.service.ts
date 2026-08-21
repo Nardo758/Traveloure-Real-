@@ -24,6 +24,13 @@ import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
 import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
+import {
+  DEFAULT_RESOLUTION_CLASS,
+  isValidResolutionSubclass,
+  RESOLUTION_CLASSES,
+  type ResolutionClass,
+  type ResolutionSubclass,
+} from "@shared/trailhead-resolution";
 import { sortByFeaturedAdjusted } from "./featured-sort";
 
 /**
@@ -113,6 +120,14 @@ export interface LocationViewPayload {
 export interface ExternalStub {
   id: string;
   inventoryClass: InventoryClass;   // 'external' — carried so the client card treatment is honest
+  // Trailhead T3 — the resolution PASS's stored class drives the CTA the card renders (T3.4). Until a
+  // pass runs, every stub is 'external' and the card behaves exactly as under T4 (inert mechanism).
+  //   provider  → internal listing CTA (NO outbound); resolutionRef = provider_services.id
+  //   affiliate → monetized partner CTA via the agent/short-link rail; resolutionRef = program+product ref
+  //   external  → source-link CTA (the T4.3 behavior)
+  resolutionClass: ResolutionClass;
+  resolutionSubclass: ResolutionSubclass | null;
+  resolutionRef: string | null;
   name: string;
   city: string;
   country: string;
@@ -482,6 +497,9 @@ class LocationViewService {
         .select({
           id: dmoRawContent.id,
           inventoryClass: dmoRawContent.inventoryClass,
+          resolutionClass: dmoRawContent.resolutionClass,
+          resolutionSubclass: dmoRawContent.resolutionSubclass,
+          resolutionRef: dmoRawContent.resolutionRef,
           name: dmoRawContent.name,
           city: dmoRawContent.city,
           country: dmoRawContent.country,
@@ -570,9 +588,22 @@ class LocationViewService {
 
       const stubs: ExternalStub[] = stubRows.map((s) => {
         const places = placesByStub.get(s.id) ?? [];
+        // Normalize the stored resolution class to the closed vocabulary; an unknown value falls back
+        // to the external floor (§13 — never render a partner/internal CTA off an unrecognized class).
+        const resolutionClass: ResolutionClass = (RESOLUTION_CLASSES as readonly string[]).includes(s.resolutionClass)
+          ? (s.resolutionClass as ResolutionClass)
+          : DEFAULT_RESOLUTION_CLASS;
+        const resolutionSubclass: ResolutionSubclass | null = isValidResolutionSubclass(s.resolutionSubclass)
+          ? s.resolutionSubclass
+          : null;
         return {
           id: s.id,
           inventoryClass: normalizeInventoryClass(s.inventoryClass),
+          resolutionClass,
+          resolutionSubclass,
+          // A ref only travels for a real resolution; the external floor keeps null (its source URL is
+          // sourceUrl below). A provider/affiliate ref reaching the client is a pointer, never a URL.
+          resolutionRef: resolutionClass === "external" ? null : s.resolutionRef ?? null,
           name: s.name,
           city: s.city,
           country: s.country,
