@@ -4,7 +4,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isTestAccountEmail, isSyntheticTrip, TEST_ACCOUNT_EMAIL_PATTERNS } from "../services/demand-test-exclusion";
+import {
+  isSyntheticCohortTrip,
+  isTestAccountEmail,
+  isSyntheticTrip,
+  SYNTHETIC_COHORT_MIN_SIZE,
+  TEST_ACCOUNT_EMAIL_PATTERNS,
+} from "../services/demand-test-exclusion";
 
 test("R9: @traveloure.test emails are test accounts", () => {
   assert.equal(isTestAccountEmail("kyoto-interpreter@traveloure.test"), true);
@@ -38,4 +44,13 @@ test("R16: a real traveler trip (real/absent email, no author) is NOT synthetic"
   assert.equal(isSyntheticTrip({ email: "traveler@gmail.com", authorId: null }), false);
   assert.equal(isSyntheticTrip({ email: null, authorId: null }), false, "§13 — absent email is real");
   assert.equal(isSyntheticTrip({}), false);
+});
+
+test("R38: only an otherwise-real unowned cohort at the minimum size is synthetic", () => {
+  assert.equal(SYNTHETIC_COHORT_MIN_SIZE, 10);
+  assert.equal(isSyntheticCohortTrip({ email: null, userId: null, authorId: null }, 10), true);
+  assert.equal(isSyntheticCohortTrip({ email: null, userId: null, authorId: null }, 9), false);
+  assert.equal(isSyntheticCohortTrip({ email: "traveler@gmail.com", userId: "u1", authorId: null }, 20), false);
+  assert.equal(isSyntheticCohortTrip({ email: "seed@traveloure.test", userId: null, authorId: null }, 20), false);
+  assert.equal(isSyntheticCohortTrip({ email: null, userId: null, authorId: "expert-1" }, 20), false);
 });

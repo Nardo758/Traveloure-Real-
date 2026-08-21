@@ -383,9 +383,9 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const allowed = ["image/png", "image/jpeg", "image/webp"];
+    const allowed = ["image/png", "image/jpeg"];
     if (!allowed.includes(file.type)) {
-      toast({ title: "Photo must be a PNG, JPEG, or WebP image", variant: "destructive" });
+      toast({ title: "Photo must be a PNG or JPEG image", variant: "destructive" });
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -447,7 +447,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
             <input
               ref={photoInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg"
               className="hidden"
               onChange={handlePhotoSelected}
               data-testid="input-photo-file"
@@ -472,7 +472,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
               </div>
               <div>
                 <p className="text-sm text-console-mid mb-2">
-                  Upload a professional photo that shows your face clearly (PNG, JPEG, or WebP, max 2 MB)
+                  Upload a professional photo that shows your face clearly (PNG or JPEG, max 2 MB)
                 </p>
                 <Button
                   variant="outline"
