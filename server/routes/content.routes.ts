@@ -7,9 +7,8 @@ import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
 import {
-  normalizeGeneratedActivityDurationMinutes,
-  normalizeGeneratedDayNumber,
   normalizeGeneratedEstimatedCost,
+  normalizeGeneratedItineraryPayload,
   parseGeneratedActivityDurationMinutes,
   MAX_GENERATED_DESTINATION_CHARS,
   MAX_GENERATED_SPECIAL_REQUEST_CHARS,
@@ -67,7 +66,7 @@ import {
   getCachedDestinationIntelligenceWithDates, insertDestinationIntelligence,
   insertDestinationIntelligenceStrict, insertAiGeneratedItinerary,
   getAiItinerariesForUser, getAiItineraryById,
-  insertItineraryComparison, updateItineraryComparisonStatus,
+  insertItineraryComparison, saveGeneratedItinerarySnapshot, updateItineraryComparisonStatus,
   getActiveProviderServices, getDestinationEventsByCity,
   getExpertUserIds, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
@@ -4547,12 +4546,16 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
       }
 
-      // Resolve the backing trip before any generated-plan writes so every
-      // persisted representation of this generation shares the same trip ID.
-      if (!resolvedTripId) {
-        const newTrip = await storage.createTrip({
-          userId,
-          title: result.title || `${destination} Trip`,
+      const tripDayCount = Math.floor(
+        (Date.parse(`${dates.end}T00:00:00Z`) - Date.parse(`${dates.start}T00:00:00Z`))
+          / (24 * 60 * 60 * 1000),
+      ) + 1;
+      const normalizedResult = normalizeGeneratedItineraryPayload(result as any, tripDayCount);
+      const snapshot = await saveGeneratedItinerarySnapshot({
+        userId,
+        tripId: resolvedTripId || null,
+        trip: {
+          title: normalizedResult.title || `${destination} Trip`,
           destination,
           startDate: dates.start,
           endDate: dates.end,
@@ -4560,29 +4563,39 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           status: "draft",
           eventType: eventType || experienceType || "vacation",
           specialRequests: normalizedSpecialRequests || null,
-        });
-        resolvedTripId = newTrip.id;
-      }
-
-      // Save generated itinerary to database
-      const savedItinerary = await insertAiGeneratedItinerary({
-        userId,
-        tripId: resolvedTripId,
-        destination,
-        startDate: dates.start,
-        endDate: dates.end,
-        title: result.title,
-        summary: result.summary,
-        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
-        itineraryData: result.dailyItinerary,
-        accommodationSuggestions: result.accommodationSuggestions,
-        packingList: result.packingList,
-        travelTips: result.travelTips,
-        provider: "grok",
-        status: "generated",
+        },
+        generatedPlan: {
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          title: normalizedResult.title,
+          summary: normalizedResult.summary,
+          totalEstimatedCost: normalizedResult.totalEstimatedCost,
+          itineraryData: normalizedResult.dailyItinerary,
+          accommodationSuggestions: normalizedResult.accommodationSuggestions,
+          packingList: normalizedResult.packingList,
+          travelTips: normalizedResult.travelTips,
+          provider: "grok",
+          status: "generated",
+        },
+        canonicalItems: normalizedResult.canonicalItems,
+        comparison: {
+          title: `${destination} Trip`,
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          budget: normalizeGeneratedEstimatedCost(budget),
+          travelers: travelers || 1,
+          status: "generating",
+        },
       });
+      resolvedTripId = snapshot.trip.id;
+      const savedItinerary = snapshot.savedItinerary;
+      const insertedItems = snapshot.insertedItems;
+      const comparison = snapshot.comparison;
 
-      // Log AI interaction
+      // Analytics is deliberately outside the snapshot transaction. It remains
+      // best-effort and cannot roll back (or partially commit) itinerary state.
       await insertAiInteraction({
         taskType: "autonomous_itinerary",
         provider: "grok",
@@ -4595,53 +4608,6 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         userId,
         tripId: resolvedTripId,
         metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
-      });
-
-      // Rebuild itinerary_items inside a transaction so a partial failure never
-      // leaves the trip with a mix of old and new items.
-      const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
-      const insertedItems: any[] = [];
-      await db.transaction(async (tx) => {
-        // item-removed:replace — AI itinerary rebuild (delete-all-then-reinsert as ONE regeneration).
-        // A plan rebuild, not a removal: no `item_removed` signal (§13, R15).
-        await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, resolvedTripId));
-        for (const day of dailyItinerary) {
-          const activities = Array.isArray(day?.activities) ? day.activities : [];
-          const dayNumber = normalizeGeneratedDayNumber(day?.day);
-          for (const activity of activities) {
-            const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
-            const [inserted] = await tx.insert(itineraryItems).values({
-              tripId: resolvedTripId,
-              title: activity.name || activity.title || "Activity",
-              description: activity.description || "",
-              itemType: activity.type || "activity",
-              status: "planned",
-              dayNumber,
-              startTime: activity.time || "",
-              durationMinutes,
-              locationName: activity.location || destination,
-              estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
-              currency: "USD",
-              suggestedBy: "ai",
-              origin: "ai",
-            }).returning();
-            insertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
-          }
-        }
-      });
-
-      // NEW: Create comparison and trigger optimization
-      const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
-      const comparison = await insertItineraryComparison({
-        userId,
-        tripId: resolvedTripId,
-        title: `${destination} Trip`,
-        destination,
-        startDate: dates.start,
-        endDate: dates.end,
-        budget: numericBudget,
-        travelers: travelers || 1,
-        status: 'generating',
       });
 
       // Convert generated itinerary to baseline items using the DB-inserted IDs
@@ -4703,7 +4669,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // is surfaced on the response rather than nested inside itineraryData.)
       let anchorValidation: ReturnType<typeof validateAnchorConflicts> | undefined;
       try {
-        const daysForValidation = (Array.isArray(result.dailyItinerary) ? result.dailyItinerary : []).map(
+        const daysForValidation = normalizedResult.dailyItinerary.map(
           (d: any) => ({
             day: d.day,
             activities: (Array.isArray(d.activities) ? d.activities : []).map((a: any) => ({
@@ -4736,7 +4702,18 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         itinerary: { items: insertedItems },
         anchorValidation,
         message: 'Itinerary generated! Creating optimized variants...',
-        ...result,
+        title: normalizedResult.title,
+        summary: normalizedResult.summary,
+        totalEstimatedCost: normalizedResult.totalEstimatedCost === null
+          ? null
+          : Number(normalizedResult.totalEstimatedCost),
+        dailyItinerary: normalizedResult.dailyItinerary,
+        accommodationSuggestions: normalizedResult.accommodationSuggestions,
+        packingList: normalizedResult.packingList,
+        travelTips: normalizedResult.travelTips,
+        estimatedSavingsWithExpert: normalizedResult.estimatedSavingsWithExpert === null
+          ? null
+          : Number(normalizedResult.estimatedSavingsWithExpert),
         createdAt: savedItinerary.createdAt,
         status: savedItinerary.status
       });
