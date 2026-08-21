@@ -441,10 +441,12 @@ function ChannelStateStrip({
     text: string;
     resolving?: boolean;
   }) {
-    const border = !ok && warn ? WLN  : HAIR;
-    const bg     = !ok && warn ? WBG  : PGE;
-    const subClr = ok ? "#166534" : warn ? WINK : MUT;
     const isActive = activeChannel === channel;
+    // A channel that is not ready is a quiet gap state, not an error. Keep
+    // amber reserved for actual verification blockers elsewhere in the console.
+    const border = isActive ? ACC : HAIR;
+    const bg     = isActive ? ACCS : PGE;
+    const subClr = ok ? "#166534" : MUT;
     return (
       <button
         type="button"
@@ -1339,7 +1341,9 @@ export default function ProviderDistribute() {
   const search = useSearch();
   const deepLinkListing = new URLSearchParams(search).get("listing");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeChannel, setActiveChannel] = useState<DistributionChannel>("all");
+  // The channel hub opens on the account's storefront. Other channels remain
+  // one click away through the readiness strip.
+  const [activeChannel, setActiveChannel] = useState<DistributionChannel>("storefront");
   const consumedDeepLink = useRef<string | null>(null);
 
   useEffect(() => {
