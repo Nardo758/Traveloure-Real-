@@ -15,10 +15,14 @@ import {
   localExpertForms, destinationIntelligence, aiGeneratedItineraries,
   itineraryComparisons, providerServices, destinationEvents,
   affiliateProducts, affiliatePartners, contentRegistry, affiliateClicks,
-  trips, serviceBookings, expertMatchScores,
+  trips, serviceBookings, expertMatchScores, itineraryItems, tripCollaborators,
+  contentVersions,
   experienceTypes,
 } from "@shared/schema";
 import { contentOriginFor } from "@shared/content-origin";
+import { storage } from "../storage";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -319,6 +323,141 @@ export async function insertDestinationIntelligenceStrict(values: Record<string,
 export async function insertAiGeneratedItinerary(values: Record<string, any>): Promise<any> {
   const [saved] = await db.insert(aiGeneratedItineraries).values(values as any).returning();
   return saved;
+}
+
+export interface SaveGeneratedItinerarySnapshotInput {
+  userId: string;
+  tripId?: string | null;
+  trip: {
+    title: string;
+    destination: string;
+    startDate: string;
+    endDate: string;
+    numberOfTravelers: number;
+    status: string;
+    eventType: string;
+    specialRequests: string | null;
+  };
+  generatedPlan: Record<string, any>;
+  canonicalItems: NormalizedGeneratedCanonicalItem[];
+  comparison: Record<string, any>;
+}
+
+/**
+ * Persists every traveler-visible representation of one AI generation as one
+ * snapshot. Existing trips are row-locked so concurrent regenerations cannot
+ * interleave their delete/insert phases.
+ */
+export async function saveGeneratedItinerarySnapshot(
+  input: SaveGeneratedItinerarySnapshotInput,
+): Promise<{
+  trip: any;
+  savedItinerary: any;
+  insertedItems: Array<NormalizedGeneratedCanonicalItem & { id: string }>;
+  comparison: any;
+}> {
+  // Sequence increments are intentionally outside the snapshot transaction:
+  // tracking numbers may have gaps after a rollback, but are never reused.
+  const trackingNumber = input.tripId ? null : await storage.generateTrackingNumber("TRV");
+
+  return db.transaction(async (tx) => {
+    let trip: any;
+    if (input.tripId) {
+      const locked = await tx.execute(sql`
+        SELECT *
+        FROM trips
+        WHERE id = ${input.tripId} AND user_id = ${input.userId}
+        FOR UPDATE
+      `);
+      trip = locked.rows[0];
+      if (!trip) throw new Error("Trip not found or not owned by user");
+    } else {
+      [trip] = await tx.insert(trips).values({
+        userId: input.userId,
+        trackingNumber,
+        title: input.trip.title,
+        destination: input.trip.destination,
+        startDate: input.trip.startDate,
+        endDate: input.trip.endDate,
+        numberOfTravelers: input.trip.numberOfTravelers,
+        status: input.trip.status,
+        eventType: input.trip.eventType,
+        specialRequests: input.trip.specialRequests,
+        marketSlug: resolveMarketSlug(input.trip.destination),
+      } as any).returning();
+
+      await tx.insert(tripCollaborators).values({
+        tripId: trip.id,
+        userId: input.userId,
+        role: "owner",
+      }).onConflictDoNothing();
+
+      const [registryEntry] = await tx.insert(contentRegistry).values({
+        trackingNumber: trackingNumber!,
+        contentType: "trip",
+        contentId: trip.id,
+        ownerId: input.userId,
+        title: trip.title || "Untitled Trip",
+        status: trip.status === "draft" ? "draft" : "published",
+        publishedAt: trip.status === "draft" ? null : new Date(),
+        metadata: { destination: trip.destination, eventType: trip.eventType },
+      } as any).returning();
+      await tx.insert(contentVersions).values({
+        trackingNumber: registryEntry.trackingNumber,
+        version: 1,
+        changeType: "created",
+        changedBy: input.userId,
+        newData: {
+          title: registryEntry.title,
+          description: registryEntry.description,
+          status: registryEntry.status,
+        },
+      } as any);
+    }
+
+    const tripId = input.tripId || trip.id;
+    const [savedItinerary] = await tx.insert(aiGeneratedItineraries).values({
+      ...input.generatedPlan,
+      userId: input.userId,
+      tripId,
+    } as any).returning();
+
+    // item-removed:replace — one complete AI regeneration, not individual removals.
+    await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    const insertedRows = input.canonicalItems.length === 0
+      ? []
+      : await tx.insert(itineraryItems).values(
+        input.canonicalItems.map((activity, sortOrder) => ({
+          tripId,
+          title: activity.title,
+          description: activity.description,
+          itemType: activity.type,
+          status: "planned",
+          dayNumber: activity.dayNumber,
+          startTime: activity.time,
+          durationMinutes: activity.durationMinutes,
+          locationName: activity.location || input.trip.destination,
+          estimatedCost: activity.estimatedCost,
+          currency: "USD",
+          suggestedBy: "ai",
+          origin: "ai",
+          sortOrder,
+        })),
+      ).returning({ id: itineraryItems.id });
+
+    const insertedItems = input.canonicalItems.map((activity, index) => ({
+      ...activity,
+      id: insertedRows[index].id,
+    }));
+
+    const [comparison] = await tx.insert(itineraryComparisons).values({
+      ...input.comparison,
+      userId: input.userId,
+      tripId,
+    } as any).returning();
+
+    return { trip, savedItinerary, insertedItems, comparison };
+  });
 }
 
 export async function getAiItinerariesForUser(userId: string): Promise<any[]> {
