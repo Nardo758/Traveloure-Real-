@@ -122,6 +122,7 @@ interface PublishReadiness {
 
 interface OwnerShortLink { code: string; targetType: string; targetId: string | null; frame: string | null }
 interface LinkAnalyticsShape { links: OwnerShortLink[] }
+type DistributionChannel = "all" | "storefront" | "marketplace" | "direct" | "social";
 
 function findDirectLink(links: OwnerShortLink[] | undefined, serviceId: string | null): OwnerShortLink | null {
   if (!links || !serviceId) return null;
@@ -386,7 +387,19 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
 // 🔗 Direct · 🖼️ Social. Storefront is account-level (handle + approved listings); the other
 // three resolve per listing. Deep-link to Analytics home (D4 — no analytics panel here).
 // hint: Structural and logic conflict. Both design and behavior differ.
-function ChannelStateStrip({ services, selectedId, selectedName }: { services: OwnerService[]; selectedId: string | null; selectedName: string }) {
+function ChannelStateStrip({
+  services,
+  selectedId,
+  selectedName,
+  activeChannel,
+  onChannelChange,
+}: {
+  services: OwnerService[];
+  selectedId: string | null;
+  selectedName: string;
+  activeChannel: DistributionChannel;
+  onChannelChange: (channel: DistributionChannel) => void;
+}) {
   const { user } = useAuth();
   const handle = (user as any)?.handle as string | null | undefined;
 
@@ -411,18 +424,39 @@ function ChannelStateStrip({ services, selectedId, selectedName }: { services: O
     && readiness.data?.shareFrames?.feed === true;
   const resolving        = !!selectedId && (readiness.isLoading || analytics.isLoading);
 
-  function Chip({ icon, label, ok, warn, text, resolving: res }: { icon: string; label: string; ok: boolean; warn?: boolean; text: string; resolving?: boolean }) {
+  function Chip({
+    channel,
+    icon,
+    label,
+    ok,
+    warn,
+    text,
+    resolving: res,
+  }: {
+    channel: Exclude<DistributionChannel, "all">;
+    icon: string;
+    label: string;
+    ok: boolean;
+    warn?: boolean;
+    text: string;
+    resolving?: boolean;
+  }) {
     const border = !ok && warn ? WLN  : HAIR;
     const bg     = !ok && warn ? WBG  : PGE;
     const subClr = ok ? "#166534" : warn ? WINK : MUT;
+    const isActive = activeChannel === channel;
     return (
-      <div
-        style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 7, padding: "8px 10px", border: `1px solid ${border}`, background: bg }}
+      <button
+        type="button"
+        onClick={() => onChannelChange(channel)}
+        role="tab"
+        aria-selected={isActive}
+        style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 7, padding: "8px 10px", border: `1px solid ${isActive ? ACC : border}`, background: isActive ? ACCS : bg, color: INK, textAlign: "left" as const, cursor: "pointer", boxShadow: isActive ? `inset 0 0 0 1px ${ACC}` : "none" }}
         data-testid={`chip-${label.toLowerCase()}`}
       >
         <span style={{ fontSize: 15 }}>{icon}</span>
         <div>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: INK, lineHeight: 1.2 }}>{label}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 650, color: isActive ? ACC : INK, lineHeight: 1.2 }}>{label}</div>
           {res ? (
             <div style={{ fontSize: 10.5, color: MUT, lineHeight: 1.2, marginTop: 2 }}>Checking…</div>
           ) : ok ? (
@@ -431,7 +465,7 @@ function ChannelStateStrip({ services, selectedId, selectedName }: { services: O
             <div style={{ fontSize: 10.5, color: subClr, lineHeight: 1.2, marginTop: 2 }}>{text}</div>
           )}
         </div>
-      </div>
+      </button>
     );
   }
 
@@ -447,18 +481,29 @@ function ChannelStateStrip({ services, selectedId, selectedName }: { services: O
           <p style={{ fontSize: 13, fontWeight: 650, color: INK, margin: 0 }}>
             Where <span style={{ fontWeight: 500 }}>“{selectedName}”</span> can be found today
           </p>
+          <p style={{ fontSize: 11.5, color: MUT, margin: "5px 0 0" }}>Select a channel to focus its tools.</p>
         </div>
         <Link href={ANALYTICS_HOME_HREF}>
           <button style={{ ...T.btn, background: PGE }} data-testid="button-view-link-performance">
             View link performance →
           </button>
         </Link>
+        {activeChannel !== "all" && (
+          <button
+            type="button"
+            onClick={() => onChannelChange("all")}
+            style={{ ...T.btn, background: ACCS, borderColor: ACC, color: ACC }}
+            data-testid="button-show-all-channels"
+          >
+            Show all channels
+          </button>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(8.5rem, 1fr))", gap: 8 }}>
-        <Chip icon="🏪" label="Storefront" ok={storefrontReady} text={handle ? "live" : "no handle yet"} />
-        <Chip icon="🛍️" label="Marketplace" ok={marketplaceLive} warn={!marketplaceLive && !resolving} text={marketplaceLive ? "live" : "not live yet"} resolving={resolving} />
-        <Chip icon="🔗" label="Direct" ok={directReady} text={directReady ? "link ready" : "no link yet"} resolving={resolving} />
-        <Chip icon="🖼️" label="Social" ok={socialReady} warn={!socialReady && !resolving} text={socialReady ? "images ready" : "needs approval"} resolving={resolving} />
+        <Chip channel="storefront" icon="🏪" label="Storefront" ok={storefrontReady} text={handle ? "live" : "no handle yet"} />
+        <Chip channel="marketplace" icon="🛍️" label="Marketplace" ok={marketplaceLive} warn={!marketplaceLive && !resolving} text={marketplaceLive ? "live" : "not live yet"} resolving={resolving} />
+        <Chip channel="direct" icon="🔗" label="Direct" ok={directReady} text={directReady ? "link ready" : "no link yet"} resolving={resolving} />
+        <Chip channel="social" icon="🖼️" label="Social" ok={socialReady} warn={!socialReady && !resolving} text={socialReady ? "images ready" : "needs approval"} resolving={resolving} />
       </div>
     </section>
   );
@@ -1294,6 +1339,7 @@ export default function ProviderDistribute() {
   const search = useSearch();
   const deepLinkListing = new URLSearchParams(search).get("listing");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeChannel, setActiveChannel] = useState<DistributionChannel>("all");
   const consumedDeepLink = useRef<string | null>(null);
 
   useEffect(() => {
@@ -1360,10 +1406,10 @@ export default function ProviderDistribute() {
         </header>
 
         {/* 1. Storefront (account-level) */}
-        <StorefrontCard services={listings} />
+        {(activeChannel === "all" || activeChannel === "storefront") && <StorefrontCard services={listings} />}
 
         {/* Listing selector — scopes Share kit, Direct link, and Marketplace */}
-        <section style={{ border: `1px solid ${HAIR}`, borderRadius: 9, background: PGE, padding: "13px 16px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const }}>
+        {activeChannel !== "storefront" && <section style={{ border: `1px solid ${HAIR}`, borderRadius: 9, background: PGE, padding: "13px 16px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" as const }}>
           <div>
             <p style={{ ...T.sectionLabel, margin: "0 0 3px" }}>Active listing</p>
             <p style={{ fontSize: 12.5, color: MUT, margin: 0 }}>Choose a listing to manage its direct and social distribution.</p>
@@ -1391,22 +1437,32 @@ export default function ProviderDistribute() {
               ))}
             </select>
           )}
-        </section>
+        </section>}
 
         {/* Channel-state strip (shown when a listing is selected) */}
-        {selectedId && <ChannelStateStrip services={listings} selectedId={selectedId} selectedName={selectedName} />}
+        {selectedId && (
+          <ChannelStateStrip
+            services={listings}
+            selectedId={selectedId}
+            selectedName={selectedName}
+            activeChannel={activeChannel}
+            onChannelChange={setActiveChannel}
+          />
+        )}
 
         {/* Resolve first: marketplace gates publishing, while direct link remains independent. */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(19rem, 1fr))", gap: 16, alignItems: "start" }}>
-          <MarketplaceCard serviceId={selectedId} />
-          <DirectLinkCard serviceId={selectedId} serviceName={selectedName} />
-        </div>
+        {(activeChannel === "all" || activeChannel === "marketplace" || activeChannel === "direct") && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(19rem, 1fr))", gap: 16, alignItems: "start" }}>
+            {(activeChannel === "all" || activeChannel === "marketplace") && <MarketplaceCard serviceId={selectedId} />}
+            {(activeChannel === "all" || activeChannel === "direct") && <DirectLinkCard serviceId={selectedId} serviceName={selectedName} />}
+          </div>
+        )}
 
         {/* 4. Share kit (per-listing) — unlocks once listing is approved + active */}
-        <ShareKitCard service={selectedService} serviceId={selectedId} />
+        {(activeChannel === "all" || activeChannel === "social") && <ShareKitCard service={selectedService} serviceId={selectedId} />}
 
         {/* 5. Promote (account-level) */}
-        <PromoteCard onSelectService={setSelectedId} />
+        {(activeChannel === "all" || activeChannel === "social") && <PromoteCard onSelectService={setSelectedId} />}
 
       </div>
     </ProviderLayout>
