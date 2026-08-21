@@ -31,6 +31,10 @@
  *   • Does NOT check whether the index currently EXISTS on prod — absence is the expected
  *     state (that is the bug being fixed). It checks only that creating it would succeed.
  *   • A table missing from prod entirely is reported as SKIP, not as a pass.
+ *
+ * TravelPulse has an additional post-reconciliation check below. It is deliberately
+ * read-only: it reports the canonical city count, confirms that every city-media row
+ * still has a city parent, and uses the duplicate audit to establish index readiness.
  */
 
 const { Client } = require("pg");
@@ -106,6 +110,43 @@ async function tableExists(client, table) {
   return rows[0]?.present === true;
 }
 
+async function checkTravelPulseReconciliation(client) {
+  console.log("\nTravelPulse city reconciliation checks (read-only):");
+
+  const cityCounts = await client.query(`
+    SELECT
+      count(*)::int AS city_count,
+      count(DISTINCT (lower(city_name), lower(country)))::int AS canonical_city_count
+    FROM travel_pulse_cities
+  `);
+  const counts = cityCounts.rows[0];
+  console.log(`  cities  total=${counts.city_count} canonical=${counts.canonical_city_count}`);
+  if (counts.city_count !== counts.canonical_city_count) {
+    console.log("        FAIL: normalized city/country duplicates remain after reconciliation.");
+    return 1;
+  }
+  console.log("        ok    canonical city count matches stored city rows");
+
+  const mediaReferences = await client.query(`
+    SELECT
+      count(*)::int AS media_count,
+      count(cm.id) FILTER (WHERE c.id IS NOT NULL)::int AS linked_media_count
+    FROM city_media_cache cm
+    LEFT JOIN travel_pulse_cities c ON c.id = cm.city_id
+  `);
+  const media = mediaReferences.rows[0];
+  console.log(`  media   total=${media.media_count} linked=${media.linked_media_count}`);
+  if (media.media_count !== media.linked_media_count) {
+    console.log("        FAIL: one or more city-media references point to a missing city.");
+    return 1;
+  }
+  console.log("        ok    all city-media references are preserved");
+
+  console.log("  index   travel_pulse_cities_city_country_unique");
+  console.log("        ok    no normalized duplicates; unique index is ready to restore");
+  return 0;
+}
+
 async function main() {
   const arg = process.argv[2];
 
@@ -154,6 +195,19 @@ async function main() {
       }
       console.log(`        de-duplicate on prod first, then re-run this check.\n`);
     }
+  }
+
+  if (await tableExists(client, "travel_pulse_cities") &&
+      await tableExists(client, "city_media_cache")) {
+    try {
+      violations += await checkTravelPulseReconciliation(client);
+    } catch (err) {
+      console.log(`  ERROR TravelPulse reconciliation checks\n        ${err.message}`);
+      violations++;
+    }
+  } else {
+    console.log("\nTravelPulse city reconciliation checks: FAIL (required table absent)");
+    violations++;
   }
 
   await client.end();
