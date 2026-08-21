@@ -172,7 +172,8 @@ export const authRateLimiter = createRateLimiter({
 export const strictRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 5,
-  keyGenerator: (req) => `strict:${req.ip || "unknown"}`,
+  keyGenerator: (req) => `strict:${req.ip || "unknown"}:${req.path}`,
+  skip: (req) => (process.env.NODE_ENV !== "production" && isLoopback(req)) || loopbackSkip(req),
 });
 
 export const adminRateLimiter = createRateLimiter({
