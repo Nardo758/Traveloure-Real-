@@ -129,6 +129,15 @@ export interface AffiliateProgramConfig {
   readonly linkBuilderKey: string | null;
 }
 
+/**
+ * Geo-closeness value assigned to an affiliate CATALOG product match whose geo could not be
+ * corroborated (the product feed row carries no coordinate). It is deliberately mid-scale so an
+ * uncorroborated-geo product can never score as high as a fully name-AND-geo-corroborated one, without
+ * dropping the match entirely (a recognized-catalog OTA product matched on a strong name is still a
+ * legitimate, non-mis-booking resolution — it lands on that product page, not a wrong venue).
+ */
+export const AFFILIATE_UNCORROBORATED_GEO_CLOSENESS = 0.5 as const;
+
 export const AFFILIATE_PROGRAMS: Readonly<Record<string, AffiliateProgramConfig>> = {
   viator: { key: "viator", displayName: "Viator", rung: "affiliate_ota", enabled: false, hasCatalog: true, linkBuilderKey: "viator" },
   getyourguide: { key: "getyourguide", displayName: "GetYourGuide", rung: "affiliate_ota", enabled: false, hasCatalog: true, linkBuilderKey: "getyourguide" },
