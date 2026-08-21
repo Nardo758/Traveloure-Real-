@@ -377,6 +377,14 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
   return { serviceCount: rows.length, passed: passedTotal, total: applicableTotal, topGaps };
 }
 
+// Money-realized booking statuses that count toward the earner's benchmark revenue/bookings.
+// Matches the reconciliation job's PAID_EQUIVALENT_STATUSES (server/jobs/stripeReconciliation.ts)
+// verbatim — the codebase's canonical "this is realized money" set — so no new scope is invented
+// here. A `payment_pending`/`pending`/`cancelled`/`refunded` row is NOT realized revenue (§15b),
+// so it is excluded; `deposit_paid` is likewise excluded because its full `totalAmount` is not yet
+// collected (only the deposit is), and counting the full amount would overstate revenue (§13).
+export const BENCHMARK_REVENUE_STATUSES = ["confirmed", "in_progress", "completed", "delivered", "disputed"];
+
 interface BenchmarkFacts {
   activeServiceCount: number;
   totalRevenue: number;
@@ -395,19 +403,30 @@ interface BenchmarkFacts {
  * too noisy to be honest, so `status: "no_data"` with no fabricated fallback (§13), same posture
  * as the source endpoint.
  */
-async function getBenchmarkFacts(userId: string): Promise<BenchmarkFacts> {
+export async function getBenchmarkFacts(userId: string): Promise<BenchmarkFacts> {
   const services = await db
     .select({
       categoryId: providerServices.categoryId,
-      totalRevenue: providerServices.totalRevenue,
-      bookingsCount: providerServices.bookingsCount,
       status: providerServices.status,
     })
     .from(providerServices)
     .where(eq(providerServices.userId, userId));
 
-  const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
-  const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+  // §14 / Locked-Decision-3: revenue is a REAL SUM over the provider's `service_bookings` rows,
+  // NEVER the banned `provider_services.totalRevenue` denorm. Same shape the getLinkStatsFacts
+  // sibling uses (SUM(totalAmount) + count over serviceBookings). Only money-realized statuses
+  // count — an unauthorized `payment_pending` claim (§15b) is not revenue — so an earner with no
+  // paid bookings reports 0 honestly (§13) rather than a stale denorm figure.
+  const bookingRows = await db
+    .select({
+      bookings: sql<number>`count(*)::int`,
+      revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+    })
+    .from(serviceBookings)
+    .where(and(eq(serviceBookings.providerId, userId), inArray(serviceBookings.status, BENCHMARK_REVENUE_STATUSES)));
+
+  const totalRevenue = Number(bookingRows[0]?.revenue ?? 0);
+  const totalBookings = Number(bookingRows[0]?.bookings ?? 0);
 
   const categoryCounts = new Map<string, number>();
   for (const s of services) {
