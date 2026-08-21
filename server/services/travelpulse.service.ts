@@ -1072,7 +1072,7 @@ Return JSON:
         )
         .limit(1);
       if (!existing) {
-        await db.insert(travelPulseCities).values(city);
+        await db.insert(travelPulseCities).values(city).onConflictDoNothing();
       }
     }
 
@@ -1447,8 +1447,26 @@ Return JSON:
         const [inserted] = await db
           .insert(travelPulseCities)
           .values(cityUpdate)
+          .onConflictDoNothing()
           .returning();
-        updatedCity = inserted;
+        if (inserted) {
+          updatedCity = inserted;
+        } else {
+          const [concurrentCity] = await db
+            .select()
+            .from(travelPulseCities)
+            .where(
+              and(
+                eq(travelPulseCities.cityName, cityName),
+                eq(travelPulseCities.country, country),
+              ),
+            )
+            .limit(1);
+          if (!concurrentCity) {
+            throw new Error(`City insert conflicted but canonical row was not found: ${cityName}/${country}`);
+          }
+          updatedCity = concurrentCity;
+        }
       }
 
       // Record metrics history for time-series trend analysis

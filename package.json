@@ -46,7 +46,9 @@
     "test:e2e:staging": "playwright test -c playwright.e2e.config.ts",
     "test:e2e:staging:smoke": "playwright test -c playwright.e2e.config.ts --project=chromium e2e/specs/smoke.spec.ts e2e/specs/login-ui.spec.ts",
     "migrate:dry-run": "tsx server/migrations/dry-run-entry.ts",
-    "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts"
+    "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts",
+    "reconcile:travelpulse-cities": "tsx scripts/reconcile-travelpulse-cities.ts",
+    "test:travelpulse-reconciliation": "tsx scripts/reconcile-travelpulse-cities.ts --self-test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
