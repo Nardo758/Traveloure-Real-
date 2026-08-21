@@ -1,0 +1,17 @@
+# Parallel ledger appends must AUTO-UNION, never conflict.
+#
+# docs/DECISIONS.md is append-only (ruling 26) and is touched by nearly every
+# lane. Two lanes that each append a new row to the end of the table produce a
+# textual merge conflict on the shared tail line under git's default 3-way
+# merge — a class that has hit every parallel-pair (~3x). `merge=union` tells
+# git to keep BOTH sides' added lines instead of conflicting, so parallel
+# appends combine automatically.
+#
+# The ONE failure union-merge can introduce — two lanes independently claiming
+# the SAME row id — is caught by the dup-slug lint in
+# scripts/check-decision-guards.cjs, which runs in CI (build.yml
+# decision-guards-lint job) and fails on a duplicate id of any shape
+# (numeric OR date-slug). Union-merge + dup-slug-lint is the pair: the driver
+# removes the conflict, the lint catches the only bad merge it could produce.
+# Proven by scripts/check-ledger-union-merge.cjs --self-test (ledger-union job).
+docs/DECISIONS.md merge=union

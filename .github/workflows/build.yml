@@ -216,6 +216,25 @@ jobs:
       - name: Ledger lint
         run: node scripts/check-decision-guards.cjs
 
+  ledger-union-merge:
+    name: ledger-union-merge (.gitattributes union driver — Trailhead C1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # docs/DECISIONS.md must carry `merge=union` in .gitattributes so parallel
+      # ledger appends auto-union instead of conflicting; the dup-slug lint in
+      # decision-guards-lint (above) is the safety net for the one bad merge that
+      # can produce (a duplicate id). Node built-ins + git. Predicate fixtures
+      # FIRST (§18d): the self-test exercises a real git union merge and the
+      # dup-slug lint before the config assertion is trusted.
+      - name: Ledger union-merge self-test
+        run: node scripts/check-ledger-union-merge.cjs --self-test
+      - name: Ledger union-merge config guard
+        run: node scripts/check-ledger-union-merge.cjs
+
   matrix-lint:
     name: matrix-lint (coverage matrix — DECISIONS.md ruling 21/27)
     runs-on: ubuntu-latest
