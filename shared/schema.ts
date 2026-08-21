@@ -3404,7 +3404,10 @@ export const travelPulseCities = pgTable("travel_pulse_cities", {
   // Timestamps
   lastUpdated: timestamp("last_updated").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  cityCountryUnique: uniqueIndex("travel_pulse_cities_city_country_unique")
+    .on(sql`lower(${table.cityName})`, sql`lower(${table.country})`),
+}));
 
 // Hidden Gems - Local favorites tourists haven't discovered
 export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {

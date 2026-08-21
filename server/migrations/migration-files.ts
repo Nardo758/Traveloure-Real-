@@ -1238,4 +1238,7 @@ export const MIGRATION_FILES = [
   // normalized lookup writers remain the duplicate-prevention authority until production data
   // is cleaned through an approved path. Idempotent (DROP INDEX IF EXISTS).
   "248_drop_travel_pulse_cities_unique_index.sql",
+  // 249: Restores city/country uniqueness after the approved production
+  // reconciliation operation. Run that operation before publishing this migration.
+  "249_restore_travel_pulse_cities_unique_index.sql",
 ] as const;
