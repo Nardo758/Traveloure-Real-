@@ -177,7 +177,8 @@ export default function ReadyMadeDetailPage() {
     });
     const body = await res.json().catch(() => ({}));
     if (res.status === 409 && body.purchase?.cloneTripId) {
-      navigate(`/trip/${body.purchase.cloneTripId}?tab=itinerary`);
+      // Already purchased → straight to the canonical Trip Slip (matches the confirm redirect).
+      navigate(`/plans/${body.purchase.cloneTripId}`);
       return;
     }
     if (res.status !== 202) {
