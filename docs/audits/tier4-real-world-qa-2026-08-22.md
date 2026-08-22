@@ -259,14 +259,20 @@ pull correctly:
 - explains that the original plan is untouched after a failed optimization; and
 - gives review-mode zero-proposal comparisons an explanation and a retry action.
 
-One follow-up defect remains: the cart's trip-backed `?autoApply=1` path can enter the
-new `autoApplyError === "no_variants"` state, but that banner still renders a hard-coded
-“Back to Cart” action instead of the slip-aware “Back to your plan” exit. This is a
-navigation-copy inconsistency in the pull, not a payment or data-integrity failure.
+The pull's navigation-copy defect was fixed in merged task #1610: the
+`autoApplyError === "no_variants"` banner now uses the slip-aware “Back to your plan”
+exit for trip-backed comparisons while preserving the cart exit for cart-only flows.
 
 Focused verification:
 
 - **J6 trip-backed optimizer contract: PASS** — Chromium, 1/1, 27.3 seconds.
-- **Optimization payment-gate and auto-apply banner suites: BLOCKED before test execution** —
-  Chromium could not launch because the host test runtime lacked `libglib-2.0.so.0`.
-  No application assertion ran, and this does not change the completed Tier 4 booking result.
+- **Tripslip no-variants regression: PASS** — Chromium, 1/1, 9.5 seconds; the action
+  displayed “Back to your plan” and navigated to `/plans/:tripId`.
+- **Legacy auto-apply banner test: OUTDATED EXPECTATION** — the app navigated to the
+  current slip route `/plans/:tripId`, while the test still requires the former
+  `/trip/:id?optimized=1` route. This is test drift from the current Tripslip contract,
+  not a failed navigation.
+- **Optimization payment-gate and the full auto-apply test pair: not fully rerun in the
+  Tier 4 shell** — the earlier direct invocation was blocked by the missing
+  `libglib-2.0.so.0`; the isolated Tripslip regression was subsequently run successfully
+  inside the Tier 4 browser shell.
