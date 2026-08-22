@@ -1,9 +1,9 @@
 {
   "seed": "2026-08-22",
-  "chosenStep": "payment",
-  "engine": "chromium",
-  "project": "chromium",
-  "result": "PASS - booking 359b8b50-63e6-447c-819e-6ad190864429 reached status \"confirmed\"",
+  "chosenStep": "confirmation",
+  "engine": "firefox",
+  "project": "firefox",
+  "result": "PASS - booking f13e64ae-cab0-4e45-ad27-d2ba5ab94a94 reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
   "addToCartMethod": "api",
   "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
@@ -11,20 +11,20 @@
   "serviceName": "Ceremony Highlight Video (Short-form)",
   "servicePrice": 1100,
   "bookingIdsFromCheckout": [
-    "359b8b50-63e6-447c-819e-6ad190864429"
+    "f13e64ae-cab0-4e45-ad27-d2ba5ab94a94"
   ],
-  "primaryBookingId": "359b8b50-63e6-447c-819e-6ad190864429",
+  "primaryBookingId": "f13e64ae-cab0-4e45-ad27-d2ba5ab94a94",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
-    "screenshotRel": "booking-chromium-checkpoint-payment.png",
+    "screenshotRel": "booking-firefox-checkpoint-confirmation.png",
     "viewport": {
       "width": 1280,
       "height": 900
     },
     "documentDimensions": {
       "scrollWidth": 1280,
-      "scrollHeight": 2340,
+      "scrollHeight": 900,
       "innerWidth": 1280,
       "innerHeight": 900
     },
@@ -40,7 +40,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "debug",
@@ -52,7 +52,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "debug",
@@ -64,7 +64,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "warning",
@@ -80,7 +80,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "warning",
@@ -101,27 +101,35 @@
       {
         "type": "warning",
         "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
+      },
+      {
+        "type": "warning",
+        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22628484b3-bc8b-42ce-9747-4c7cb0ea7f2f%22%2C%22assignments%22%3A%7B%22api_fastpath_habanero_v1%22%3A%22control%22%7D%7D&wait=false&rtl=false&controllingElement=paymentElement&elementsInitSource=stripe.elements&elementId=payment-8b466e6c-1eef-4827-b8e0-46993a3edcca&componentName=achBankSearchResults&keyMode=test&a\" line: 0}]"
+      },
+      {
+        "type": "warning",
+        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=0mylsq7xxn4&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccou\" line: 0}]"
       }
     ]
   },
   "supportingScreenshots": {
-    "discover": "booking-chromium-discover.png",
-    "serviceDetail": "booking-chromium-service-detail.png",
-    "cart": "booking-chromium-cart.png",
-    "payment": "booking-chromium-payment.png",
-    "bookings": "booking-chromium-bookings-final.png"
+    "discover": "booking-firefox-discover.png",
+    "serviceDetail": "booking-firefox-service-detail.png",
+    "cart": "booking-firefox-cart.png",
+    "payment": "booking-firefox-payment.png",
+    "bookings": "booking-firefox-bookings-final.png"
   },
   "timings": {
-    "register_ms": 3488,
-    "service_discovery_ms": 124,
-    "discover_load_ms": 3554,
-    "service_detail_load_ms": 2663,
-    "add_to_cart_ms": 45,
-    "cart_load_ms": 3629,
-    "checkout_click_ms": 4340,
-    "stripe_fill_ms": 3224,
-    "payment_submit_ms": 234,
-    "poll_confirmed_ms": 28
+    "register_ms": 3418,
+    "service_discovery_ms": 41,
+    "discover_load_ms": 3390,
+    "service_detail_load_ms": 2709,
+    "add_to_cart_ms": 62,
+    "cart_load_ms": 3905,
+    "checkout_click_ms": 4186,
+    "stripe_fill_ms": 3128,
+    "payment_submit_ms": 1145,
+    "poll_confirmed_ms": 26
   },
   "consoleMessages": [
     {
@@ -134,7 +142,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "debug",
@@ -146,7 +154,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "debug",
@@ -158,7 +166,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "warning",
@@ -174,7 +182,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "warning",
@@ -197,8 +205,12 @@
       "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
     },
     {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      "type": "warning",
+      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22628484b3-bc8b-42ce-9747-4c7cb0ea7f2f%22%2C%22assignments%22%3A%7B%22api_fastpath_habanero_v1%22%3A%22control%22%7D%7D&wait=false&rtl=false&controllingElement=paymentElement&elementsInitSource=stripe.elements&elementId=payment-8b466e6c-1eef-4827-b8e0-46993a3edcca&componentName=achBankSearchResults&keyMode=test&a\" line: 0}]"
+    },
+    {
+      "type": "warning",
+      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=0mylsq7xxn4&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Faccou\" line: 0}]"
     }
   ]
 }
