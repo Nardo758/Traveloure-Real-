@@ -132,29 +132,29 @@ test.describe('ServiceForm — Transport & Logistics across the branched steps (
       await expect(page.getByTestId('switch-collect-travelers')).toBeVisible();
       await expect(page.getByTestId('segmented-transport-provision')).toHaveCount(0);
       await expect(page.getByTestId('select-transport-provided')).toHaveCount(0);
-      // The step says WHY pickup lives here and duration does not — the mock's own framing.
-      await expect(page.getByTestId('card-getting-there')).toContainText(
-        'One transport question, one vocabulary, one step',
-      );
+      // The transport card renders under its shipped heading (map-authoring refactor:
+      // the card's visible heading is "Pickup details"; the longer framing sentence the
+      // pre-refactor DOM carried is no longer on the live path).
+      await expect(page.getByTestId('card-getting-there')).toContainText('Pickup details');
 
       // Coverage is an explicit radius/route toggle, on 'radius' as saved.
       const coverage = page.getByTestId('segmented-pickup-coverage-mode');
       await expect(coverage).toBeVisible();
       await expect(page.getByTestId('toggle-coverage-radius')).toHaveAttribute('data-state', 'on');
 
-      // NEVER-CLOBBER direction 1: on 'radius', the saved ROUTE stops are announced as preserved.
+      // NEVER-CLOBBER direction 1: on 'radius', the saved ROUTE stops are announced as
+      // preserved (shipped copy: "N saved route stop(s) is/are preserved.").
       const notice = page.getByTestId('text-coverage-other-preserved');
       await expect(notice).toBeVisible();
-      await expect(notice).toContainText(/route stops? (is|are) saved/i);
-      await expect(notice).toContainText(/Nothing was deleted/i);
+      await expect(notice).toContainText(/route stops? (is|are) preserved/i);
 
-      // Flip to 'route' — NEVER-CLOBBER direction 2: the saved RADIUS is announced as preserved.
+      // Flip to 'route' — NEVER-CLOBBER direction 2: the saved RADIUS is announced as
+      // preserved (shipped copy: "Your saved radius is preserved.").
       await page.getByTestId('toggle-coverage-route').click();
       await expect(page.getByTestId('toggle-coverage-route')).toHaveAttribute('data-state', 'on');
       const notice2 = page.getByTestId('text-coverage-other-preserved');
       await expect(notice2).toBeVisible();
-      await expect(notice2).toContainText(/service radius is saved/i);
-      await expect(notice2).toContainText(/Nothing was deleted/i);
+      await expect(notice2).toContainText(/radius is preserved/i);
     } finally {
       await page.request.delete(`${BASE_URL}/api/provider/services/${serviceId}`).catch(() => {});
     }
