@@ -16,21 +16,24 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAskExpert } from "@/lib/use-ask-expert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ConciergeBell, Check, Loader2 } from "lucide-react";
+import { ConciergeBell, Check, Loader2, MessageCircle } from "lucide-react";
 
 interface ConciergeEntitlement {
   purchaseId: string;
   status: string;
   revisionStatus: "available" | "requested" | "in_progress" | "delivered";
   revisionRequestedAt: string | null;
+  expertUserId: string | null;
   expertName: string;
   expertHandle: string | null;
 }
 
 export function ConciergeCard({ tripId }: { tripId: string }) {
   const { toast } = useToast();
+  const askExpert = useAskExpert();
   const [note, setNote] = useState("");
 
   const queryKey = [`/api/ready-made/purchases/by-clone/${tripId}`];
@@ -88,15 +91,34 @@ export function ConciergeCard({ tripId }: { tripId: string }) {
               className="mb-2 text-sm"
               data-testid="textarea-revision-note"
             />
-            <Button
-              size="sm"
-              onClick={() => requestMutation.mutate(p.purchaseId)}
-              disabled={requestMutation.isPending}
-              data-testid="button-request-revision"
-            >
-              {requestMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-              Request my revision
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => requestMutation.mutate(p.purchaseId)}
+                disabled={requestMutation.isPending}
+                data-testid="button-request-revision"
+              >
+                {requestMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                Request my revision
+              </Button>
+              {p.expertUserId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    askExpert({
+                      expertId: p.expertUserId!,
+                      subject: `Question about my Ready-Made trip from ${expert}`,
+                      fallbackName: p.expertName,
+                      returnTo: `/plans/${tripId}`,
+                    })
+                  }
+                  data-testid="button-message-expert"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Message {expert}
+                </Button>
+              )}
+            </div>
           </>
         )}
 
