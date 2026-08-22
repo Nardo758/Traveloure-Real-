@@ -54,7 +54,19 @@ const clients = new Map<string, ConnectedClient>();
  * closed (1008 "policy violation") BEFORE ever being added to `clients`.
  */
 export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  // Do not let `ws` own every HTTP upgrade on the shared server. Its built-in
+  // `path` option rejects unmatched upgrades with 400, which prevents Vite's
+  // `/vite-hmr` listener from receiving its own upgrade in development.
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req, socket, head) => {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (pathname !== "/ws") return;
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  });
 
   wss.on("connection", (ws, req: IncomingMessage) => {
     // Real socket peer address (not a spoofable header) — scopes the messaging
