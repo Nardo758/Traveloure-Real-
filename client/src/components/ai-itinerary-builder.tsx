@@ -154,6 +154,10 @@ interface OptimizationResult {
   realTimeIntelligence: RealTimeIntelligence | null;
   variations: OptimizedItinerary[];
   generatedAt: string;
+  /** Stored ai_generated_itineraries row ids, index-aligned with `variations` —
+   *  save-as-trip materializes from the server's stored copy by this id
+   *  (ledger 2026-08-22-ai-slip-defects). */
+  variationIds?: string[];
 }
 
 const INTEREST_OPTIONS = [
@@ -286,20 +290,20 @@ export function AIItineraryBuilder({
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!optimizationResult) throw new Error("No itinerary to save");
-      
-      const selectedItinerary = optimizationResult.variations[selectedVariation];
-      
-      const tripResponse = await apiRequest("POST", "/api/trips", {
-        title: selectedItinerary.title || `${destination} Trip`,
-        destination,
-        startDate: startDate ? format(startDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
-        endDate: endDate ? format(endDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
-        numberOfTravelers: travelers,
-        adults: effectiveAdults,
-        kids: effectiveKids,
-        budget: budget || undefined,
+
+      // ledger 2026-08-22-ai-slip-defects: the old save POSTed /api/trips +
+      // /api/generated-itineraries and NEVER created itinerary items — travelers
+      // landed on an empty PlanCard. Save now materializes the chosen variation
+      // server-side from its stored ai_generated_itineraries row (one call, one
+      // rail — the same canonical snapshot the main generate flow uses).
+      const variationId = optimizationResult.variationIds?.[selectedVariation];
+      if (!variationId) {
+        throw new Error("This generation can't be saved — please regenerate and try again.");
+      }
+
+      const response = await apiRequest("POST", `/api/ai/itineraries/${variationId}/save-as-trip`, {
+        travelers,
         eventType: experienceType || "vacation",
-        status: "planning",
         preferences: {
           interests,
           pacePreference,
@@ -308,20 +312,8 @@ export function AIItineraryBuilder({
           mobilityConsiderations,
         },
       });
-      
-      const trip = await tripResponse.json();
-      
-      await apiRequest("POST", "/api/generated-itineraries", {
-        tripId: trip.id,
-        itineraryData: {
-          ...selectedItinerary,
-          realTimeIntelligence: optimizationResult.realTimeIntelligence,
-          generatedAt: optimizationResult.generatedAt,
-        },
-        status: "generated",
-      });
-      
-      return trip;
+      const saved = await response.json();
+      return { id: saved.tripId };
     },
     onSuccess: (trip) => {
       if (onSave) {
