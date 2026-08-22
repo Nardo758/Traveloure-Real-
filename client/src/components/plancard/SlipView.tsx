@@ -14,7 +14,7 @@
  *    assembler's real unsettled-machine-leg marker) carries "added by optimizer".
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { format, isValid } from "date-fns";
 import {
   Anchor,
@@ -22,7 +22,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Loader2,
   Share2,
+  ShoppingCart,
   Sparkles,
   Undo2,
   Users,
@@ -30,8 +32,23 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import StripeCheckout from "@/components/booking/StripeCheckout";
+import { createComparison } from "@/lib/create-comparison";
+import {
+  confirmOptimizationPayment,
+  requestOptimizationGate,
+  type OptimizationPaymentSheet,
+} from "@/lib/optimization-gate";
+import {
+  countOptimizableItems,
+  runBulkRouteToCheckout,
+  selectBulkCheckoutItems,
+  slipOptimizeDisabledReason,
+  summarizeBulkRoute,
+} from "@/lib/slip-plan-actions";
 import type { TripPlanTransition } from "@shared/trip-plan";
 import { tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
@@ -531,9 +548,136 @@ function TripCardPrimaryBanner({ trip, isOwner }: { trip: SlipTrip; isOwner: boo
 
 // ── SlipActions ────────────────────────────────────────────────────────────────────────
 
-function SlipActions({ trip, isOwner }: { trip: SlipTrip; isOwner: boolean }) {
+function SlipActions({
+  trip,
+  isOwner,
+  activities,
+}: {
+  trip: SlipTrip;
+  isOwner: boolean;
+  activities: PlanCardActivity[];
+}) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const finalizeMutation = useFinalizeMutation(trip.id);
+
+  // ── A1: Optimize this plan — the SAME shared gate sequence cart.tsx runs
+  // (lib/optimization-gate.ts), fed from this trip's real DTO fields. The server reads the
+  // trip's own in_planning + ready_for_checkout items (loadTripOptimizerInputs), so no
+  // cart is required here.
+  const [optimizing, setOptimizing] = useState(false);
+  const [creatingComparison, setCreatingComparison] = useState(false);
+  const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
+
+  const optimizableCount = countOptimizableItems(activities);
+  const optimizeDisabledReason = slipOptimizeDisabledReason({
+    optimizableCount,
+    destination: trip.destination,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+  });
+
+  // Guarded by optimizeDisabledReason: destination/dates are real trip fields here, never
+  // invented (§13) — the action is disabled until they exist.
+  async function runComparison(optimizationPaymentId?: string) {
+    setCreatingComparison(true);
+    try {
+      const comparison = await createComparison({
+        title: trip.title || undefined,
+        destination: trip.destination!,
+        startDate: String(trip.startDate).slice(0, 10),
+        endDate: String(trip.endDate).slice(0, 10),
+        ...(trip.travelers ? { travelers: trip.travelers } : {}),
+        tripId: trip.id,
+        ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
+      });
+      // Same landing as cart.tsx with a tripId: the comparison page auto-applies (G7).
+      setLocation(`/itinerary-comparison/${comparison.id}?autoApply=1`);
+    } finally {
+      setCreatingComparison(false);
+    }
+  }
+
+  async function handleOptimize() {
+    if (optimizing || creatingComparison || optimizeDisabledReason) return;
+    setOptimizing(true);
+    try {
+      const outcome = await requestOptimizationGate({
+        tripId: trip.id,
+        destination: trip.destination || undefined,
+      });
+      if (outcome.kind === "refused") {
+        // Fix #971's pre-flight — surface the server's own reason, never swallowed.
+        toast({
+          title: "Nothing to optimize yet",
+          description:
+            (typeof outcome.body.message === "string" && outcome.body.message) ||
+            "This plan has no items the optimizer can work with.",
+        });
+        return;
+      }
+      if (outcome.kind === "free_rerun") {
+        // 24h free re-run (server-side canRunOptimizer) — nothing to charge.
+        await runComparison();
+        return;
+      }
+      if (outcome.kind === "payment_sheet") {
+        setPaySheet(outcome.payment);
+      }
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't start optimization",
+        description: err?.message || "Please try again",
+      });
+    } finally {
+      setOptimizing(false);
+    }
+  }
+
+  async function handleSheetSuccess(paymentIntentId: string) {
+    setPaySheet(null);
+    try {
+      await confirmOptimizationPayment(paymentIntentId);
+      await runComparison(paymentIntentId);
+    } catch (err: any) {
+      // Payment went through but the comparison didn't build — the server's 24h free
+      // re-run window covers the retry, so say so honestly instead of a dead generic.
+      toast({
+        variant: "destructive",
+        title: "Failed to generate itinerary",
+        description: err?.message || "Your payment is recorded — try Optimize again (free re-run).",
+      });
+    }
+  }
+
+  // ── A2: Add all to checkout — loops the EXISTING per-item routing endpoint over
+  // in_planning items only (client-side filter; with_expert/purchased are never posted),
+  // ONE cache invalidation at the end, per-item failures reported honestly.
+  const [bulkPending, setBulkPending] = useState(false);
+  const bulkTargets = selectBulkCheckoutItems(activities);
+
+  async function handleBulkAddToCheckout() {
+    if (bulkPending) return;
+    setBulkPending(true);
+    try {
+      const result = await runBulkRouteToCheckout({
+        items: activities,
+        postRoute: (itemId) =>
+          apiRequest("POST", `/api/trips/${trip.id}/items/${itemId}/route`, {
+            to: "ready_for_checkout",
+          }),
+        invalidate: () => {
+          // Same two keys RoutingActions invalidates — once for the whole batch.
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${trip.id}/plancard`] });
+          queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        },
+      });
+      toast(summarizeBulkRoute(result));
+    } finally {
+      setBulkPending(false);
+    }
+  }
 
   // Same share affordance the trip pages already use (HeroSection.handleShare):
   // clipboard copy + navigator.share of the itinerary link.
@@ -556,6 +700,66 @@ function SlipActions({ trip, isOwner }: { trip: SlipTrip; isOwner: boolean }) {
           Preview Trip Card
         </Button>
       </Link>
+      {/* A2 — owner-only (the routing endpoint's →ready_for_checkout edge is traveler-only);
+          hidden entirely when no in_planning item exists (nothing it could do — §13). */}
+      {isOwner && bulkTargets.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleBulkAddToCheckout}
+          disabled={bulkPending}
+          data-testid="slip-action-add-all-checkout"
+        >
+          {bulkPending ? (
+            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+          )}
+          Add all to checkout ({bulkTargets.length})
+        </Button>
+      )}
+      {/* A1 — owner-only (the optimization fee charges the signed-in traveler). Disabled
+          with an honest tooltip when the optimizer would have nothing to read. */}
+      {isOwner && (
+        <span title={optimizeDisabledReason ?? undefined} data-testid="slip-action-optimize-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOptimize}
+            disabled={!!optimizeDisabledReason || optimizing || creatingComparison}
+            data-testid="slip-action-optimize"
+          >
+            {optimizing || creatingComparison ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+            )}
+            {creatingComparison ? "Building..." : "Optimize this plan"}
+          </Button>
+        </span>
+      )}
+      {/* A1 payment sheet — the same StripeCheckout surface cart.tsx mounts for this fee,
+          in a dialog. The fee amount shown comes from the server-created PaymentIntent. */}
+      <Dialog open={!!paySheet} onOpenChange={(open) => { if (!open) setPaySheet(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pay optimization fee</DialogTitle>
+          </DialogHeader>
+          {paySheet && (
+            <StripeCheckout
+              paymentIntent={{
+                clientSecret: paySheet.clientSecret,
+                paymentIntentId: paySheet.paymentIntentId,
+                amount: paySheet.feeCents,
+              }}
+              bookingIds={[]}
+              onSuccess={handleSheetSuccess}
+              onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
+              onCancel={() => setPaySheet(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
       {/* Finalize is owner-gated server-side (verifyTripOwnership) — never render it for a
           non-owner viewer. Once finalized, the primary banner (above) owns the finalize/reopen
           affordance — no duplicate control here. */}
@@ -635,7 +839,7 @@ export function SlipView({
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <SlipHeader data={data} hasOptimized={hasOptimized} />
-        {data.trip && <SlipActions trip={data.trip} isOwner={isOwner} />}
+        {data.trip && <SlipActions trip={data.trip} isOwner={isOwner} activities={allActivities} />}
       </div>
 
       <SlipStatusStrip activities={allActivities} />
