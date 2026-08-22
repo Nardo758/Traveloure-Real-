@@ -8680,6 +8680,23 @@ export const serviceRoutePoints = pgTable("service_route_points", {
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
 
+// Ordered collection points for a provider service. These are NOT the places the experience
+// visits (serviceRoutePoints); they describe a provider's pickup route only.
+export const servicePickupRoutePoints = pgTable("service_pickup_route_points", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_pickup_route_points_service_position_unique").on(table.serviceId, table.position),
+  index("service_pickup_route_points_service_idx").on(table.serviceId),
+]);
+export type ServicePickupRoutePoint = typeof servicePickupRoutePoints.$inferSelect;
+
 // Travel-surcharge ZONE tiers for a provider service — DECISIONS.md ruling 81 (lane B1, migration
 // 205). The `zones` mode's ordered surcharge rings, on the service_route_points/service_attestations
 // child-row pattern: ON DELETE CASCADE, composite UNIQUE (service_id, position). Positions are

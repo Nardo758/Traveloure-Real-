@@ -841,6 +841,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [draftRouteStops, setDraftRouteStops] = useState<
     Array<{ name: string; latitude: number | null; longitude: number | null }>
   >([]);
+  const [draftPickupRouteStops, setDraftPickupRouteStops] = useState<
+    Array<{ name: string; latitude: number | null; longitude: number | null }>
+  >([]);
   const [autosaveRestoredAt, setAutosaveRestoredAt] = useState<string | null>(
     initialAutosave.current?.savedAt ?? null,
   );
@@ -1325,7 +1328,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // component scope above — the JSX below reads the same values.
       const isPickupProvision = PICKUP_PROVISIONS.has(formData.transportProvision);
       if (submitAction !== "draft" && isInPerson && !formData.meetingPoint.trim()) {
-        throw new Error("Add a meeting point — in-person services must show travelers where to meet. Save as draft to finish later.");
+        throw new Error("Add meeting details — in-person services must tell travelers where to meet. Save as draft to finish later.");
       }
 
       // Offering-first / tier-required on a NEW create only (submit/publish, not draft) —
@@ -1620,9 +1623,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           routeStopError = err?.message || "unknown error";
         }
       }
-      return { submitAction, service, attestationError, surchargeTierError, routeStopError };
+      let pickupRouteStopError: string | null = null;
+      if (!isEditMode && savedServiceId && draftPickupRouteStops.length > 0) {
+        try {
+          await apiRequest("PUT", `/api/provider/services/${savedServiceId}/pickup-route-points`, {
+            stops: draftPickupRouteStops
+              .filter((stop) => stop.name.trim())
+              .map((stop) => ({
+                name: stop.name.trim(),
+                latitude: stop.latitude,
+                longitude: stop.longitude,
+              })),
+          });
+        } catch (err: any) {
+          pickupRouteStopError = err?.message || "unknown error";
+        }
+      }
+      return { submitAction, service, attestationError, surchargeTierError, routeStopError, pickupRouteStopError };
     },
-    onSuccess: ({ submitAction, service, attestationError, surchargeTierError, routeStopError }) => {
+    onSuccess: ({ submitAction, service, attestationError, surchargeTierError, routeStopError, pickupRouteStopError }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       if (surchargeTierError) {
         toast({
@@ -1646,6 +1665,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         toast({
           title: "Listing saved — route stops were not recorded",
           description: `${routeStopError}. Reopen this listing and add the stops again.`,
+          variant: "destructive",
+        });
+      }
+      if (pickupRouteStopError) {
+        toast({
+          title: "Listing saved — pickup stops were not recorded",
+          description: `${pickupRouteStopError}. Reopen this listing and add the pickup stops again.`,
           variant: "destructive",
         });
       }
@@ -3852,6 +3878,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             preview. Nothing about the write rails changed: one confirm-gated pin, stops as an
             ordered list.
           </p>
+          {showLogisticsCapture && (
+            <div className="space-y-1 pt-1" data-testid="logistics-section-pickup-toggle">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="pickupAvailable" className="flex items-center gap-2">
+                  <Truck className="w-4 h-4" />
+                  I collect travelers and drop them back
+                </Label>
+                <Switch
+                  id="pickupAvailable"
+                  checked={formData.pickupAvailable}
+                  onCheckedChange={(checked) => set("pickupAvailable", checked)}
+                  data-testid="switch-collect-travelers"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Off by default. Pickup is spatial, so it is configured here; transfer timing stays in Scheduling.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -3882,6 +3927,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           savedRouteStopCount={savedRouteStopCount}
           savedRadiusKm={savedRadiusKm}
           onDraftStopsChange={!isEditMode ? setDraftRouteStops : undefined}
+          meetingDetails={formData.meetingPoint}
+          onMeetingDetailsChange={(details) => set("meetingPoint", details)}
+          onPinRemove={() => {
+            setLocationPointTouched(true);
+            setOfficePinPrefilled(false);
+            set("locationPoint", null);
+          }}
+          savedPickupStops={(existingService?.pickupRoutePoints as any) ?? []}
+          onDraftPickupStopsChange={!isEditMode ? setDraftPickupRouteStops : undefined}
         />
       )}
 
@@ -3894,18 +3948,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="meetingPoint">Meeting Point *</Label>
-              <Textarea
-                id="meetingPoint"
-                value={formData.meetingPoint}
-                onChange={(e) => set("meetingPoint", e.target.value)}
-                placeholder="Where will the service take place? (e.g., Hotel lobby, Specific landmark, Street address)"
-                rows={2}
-                className="mt-2"
-              />
-            </div>
-
             {/* ── Gap #13 (ledger 2026-08-16-bring-access) ──────────────────────────────────
                 The ratified mock drew these two rows in the traveler read-out and NEITHER had a
                 field, so the flow never asked and nothing could render them. They live on
@@ -4083,7 +4125,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Truck className="w-5 h-5" />
-              Getting there
+              Pickup details
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -4103,24 +4145,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 that reads `transport_provided` keeps rendering exactly what the provider once
                 said. A control comes back with its consumer, never before it. ── */}
             <div className="space-y-4" data-testid="logistics-section-transport">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="pickupAvailable" className="flex items-center gap-2">
-                  <Truck className="w-4 h-4" />
-                  I collect travelers and drop them back
-                </Label>
-                <Switch
-                  id="pickupAvailable"
-                  checked={formData.pickupAvailable}
-                  onCheckedChange={(checked) => set("pickupAvailable", checked)}
-                  data-testid="switch-collect-travelers"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground -mt-2">
-                Off by default. Pickup is a <strong>spatial</strong> question, so it lives on this
-                step. How long the transfer takes is temporal — that stays in Scheduling. One
-                transport question, one vocabulary, one step.
-              </p>
-
               {formData.pickupAvailable && (
                 <div className="rounded-md border p-3 space-y-4" data-testid="block-pickup-detail">
                   <div>

@@ -2456,8 +2456,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       // Ruling 22: route stops ride the same owner read the edit surfaces already use
-      const routePoints = await storage.getServiceRoutePoints(service.id);
-      res.json({ ...service, neighborhoods, routePoints });
+      const [routePoints, pickupRoutePoints] = await Promise.all([
+        storage.getServiceRoutePoints(service.id),
+        storage.getServicePickupRoutePoints(service.id),
+      ]);
+      res.json({ ...service, neighborhoods, routePoints, pickupRoutePoints });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
     }
@@ -2647,6 +2650,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
+    }
+  });
+
+  // Pickup collection points are deliberately separate from service itinerary stops. Both share
+  // the same validation and owner-only replace-list posture, but never the same table or endpoint.
+  app.put("/api/provider/services/:id/pickup-route-points", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = routeStopsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid pickup stops", errors: parsed.error.flatten() });
+      }
+      const stops: Array<{ name: string; latitude: number | null; longitude: number | null }> = [];
+      for (const stop of parsed.data.stops) {
+        const hasLat = typeof stop.latitude === "number";
+        const hasLng = typeof stop.longitude === "number";
+        if (hasLat !== hasLng) {
+          return res.status(400).json({ message: "A pickup stop must carry both latitude and longitude, or neither" });
+        }
+        stops.push({ name: stop.name, latitude: hasLat ? stop.latitude! : null, longitude: hasLng ? stop.longitude! : null });
+      }
+      const pickupRoutePoints = await storage.replaceServicePickupRoutePoints(service.id, stops);
+      res.json({ pickupRoutePoints });
+    } catch (err: any) {
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Pickup route changed elsewhere — reload and try again" });
+      }
+      console.error("[pickup-route-points] save failed:", err);
+      res.status(500).json({ message: "Failed to save pickup stops" });
     }
   });
 
