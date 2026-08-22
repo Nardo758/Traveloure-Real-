@@ -1,0 +1,124 @@
+{
+  "auditVersion": "tier4-email-auth-v2",
+  "generatedAtUtc": "2026-08-22T18:08:11.359Z",
+  "secrets": {
+    "RESEND_API_KEY_present": true,
+    "EMAIL_FROM_NOREPLY_present": true,
+    "EMAIL_FROM_present": true,
+    "TIER4_AUTHORIZED_TEST_EMAIL_present": false
+  },
+  "senderDomain": "traveloure.com",
+  "provider": {
+    "domainId": "e4da3166-c2b8-44cc-8a64-99df212076d9",
+    "domainName": "traveloure.com",
+    "fallbackUsed": false,
+    "status": "verified",
+    "region": "us-east-1",
+    "capabilities": {
+      "sending": "enabled",
+      "receiving": "disabled"
+    },
+    "openTracking": false,
+    "clickTracking": false,
+    "spfRecords": [
+      {
+        "name": "send",
+        "type": "MX",
+        "status": "verified",
+        "value": "feedback-smtp.us-east-1.amazonses.com"
+      },
+      {
+        "name": "send",
+        "type": "TXT",
+        "status": "verified",
+        "value": "v=spf1 include:amazonses.com ~all"
+      }
+    ],
+    "dkimRecords": [
+      {
+        "name": "resend._domainkey",
+        "type": "TXT",
+        "status": "verified"
+      }
+    ]
+  },
+  "providerErrors": [],
+  "liveDns": {
+    "spf": {
+      "queryName": "traveloure.com",
+      "found": true,
+      "records": [
+        "replit-verify=796e6056-bc9f-472e-ba38-753fa8c7073d",
+        "google-site-verification=EsY47bM1Em5HKpz8nHaaMWKblA_Wi8NxYRjE01pYcAQ",
+        "v=spf1 include:dc-aa8e722993._spfm.traveloure.com ~all"
+      ],
+      "spfPolicies": [
+        "v=spf1 include:dc-aa8e722993._spfm.traveloure.com ~all"
+      ]
+    },
+    "dmarc": {
+      "queryName": "_dmarc.traveloure.com",
+      "found": true,
+      "records": [
+        "v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;"
+      ],
+      "dmarcPolicy": "v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;"
+    },
+    "dkim": [
+      {
+        "selector": "resend",
+        "providerRecordName": "resend._domainkey",
+        "providerRecordType": "TXT",
+        "providerRecordStatus": "verified",
+        "dnsLookupName": "resend._domainkey.traveloure.com",
+        "dnsResult": {
+          "found": true,
+          "type": "TXT",
+          "valuePresent": true,
+          "valueLength": 218,
+          "valueSha256": "7ce1fe34bd04cd251b7232df2d6049037191ceb3102d63cd0c0048b011ef8c46",
+          "valuePrefix": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDQ11Ks9UZqC6RxH+2cdaul9v"
+        }
+      }
+    ],
+    "providerSpf": [
+      {
+        "providerRecordName": "send",
+        "providerRecordType": "MX",
+        "providerRecordStatus": "verified",
+        "providerRecordValue": "feedback-smtp.us-east-1.amazonses.com",
+        "dnsLookupName": "send.traveloure.com",
+        "dnsResult": {
+          "found": true,
+          "type": "MX",
+          "exchanges": [
+            {
+              "priority": 10,
+              "exchange": "feedback-smtp.us-east-1.amazonses.com"
+            }
+          ]
+        }
+      },
+      {
+        "providerRecordName": "send",
+        "providerRecordType": "TXT",
+        "providerRecordStatus": "verified",
+        "providerRecordValue": "v=spf1 include:amazonses.com ~all",
+        "dnsLookupName": "send.traveloure.com",
+        "dnsResult": {
+          "found": true,
+          "type": "TXT",
+          "records": [
+            "v=spf1 include:dc-fd741b8612._spfm.send.traveloure.com ~all"
+          ]
+        }
+      }
+    ]
+  },
+  "dnsErrors": [],
+  "limitations": [],
+  "realDelivery": {
+    "attempted": false,
+    "reason": "No authorized inspectable test inbox configured"
+  }
+}

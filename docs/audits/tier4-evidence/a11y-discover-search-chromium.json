@@ -1,0 +1,115 @@
+{
+  "seed": "2026-08-22",
+  "chosenStep": "discover-search",
+  "engine": "chromium",
+  "project": "chromium",
+  "surface": "discover-search",
+  "url": "http://127.0.0.1:5000/discover",
+  "scannedAt": "2026-08-22T18:17:50.377Z",
+  "result": "2 violation types, 72 affected nodes",
+  "totalViolations": 2,
+  "totalNodes": 72,
+  "violations": {
+    "critical": [
+      {
+        "id": "button-name",
+        "impact": "critical",
+        "description": "Ensure buttons have discernible text",
+        "help": "Buttons must have discernible text",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/button-name?application=playwright",
+        "nodeCount": 5,
+        "nodes": [
+          {
+            "target": [
+              "button[aria-controls=\"radix-:r1f:\"]"
+            ],
+            "html": "<button type=\"button\" role=\"combobox\" aria-controls=\"radix-:r1f:\" aria-expanded=\"false\" aria-autocomplete=\"none\" dir=\"ltr\" data-state=\"closed\" data-replit-metadata=\"client/src/component...\" data-compo",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              ".w-\\[130px\\]"
+            ],
+            "html": "<button type=\"button\" role=\"combobox\" aria-controls=\"radix-:r1g:\" aria-expanded=\"false\" aria-autocomplete=\"none\" dir=\"ltr\" data-state=\"closed\" data-replit-metadata=\"client/src/component...\" data-compo",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              "button[aria-controls=\"radix-:r1h:\"]"
+            ],
+            "html": "<button type=\"button\" role=\"combobox\" aria-controls=\"radix-:r1h:\" aria-expanded=\"false\" aria-autocomplete=\"none\" dir=\"ltr\" data-state=\"closed\" data-replit-metadata=\"client/src/component...\" data-compo",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              "button[data-testid=\"button-prev-page\"]"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/component...\" data-component-name=\"Comp\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-prev-page\">",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              "button[data-testid=\"button-next-page\"]"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/component...\" data-component-name=\"Comp\" class=\"inline-flex items-ce...\" data-testid=\"button-next-page\">",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          }
+        ]
+      }
+    ],
+    "serious": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+        "nodeCount": 67,
+        "nodes": [
+          {
+            "target": [
+              ".bg-primary\\/10"
+            ],
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:490:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "button[data-testid=\"button-sign-in\"]"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/component...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-sign-in\">",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".sm\\:inline.hidden.text-muted-foreground"
+            ],
+            "html": "<span class=\"text-muted-foreground hidden sm:inline\">Browse services and add them to your cart — we assemble &amp; optimize your trip.</span>",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.43 (foreground color: #6b7280, background color: #f6f5f1, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#radix-\\:rf\\:-trigger-services"
+            ],
+            "html": "<button type=\"button\" role=\"tab\" aria-selected=\"true\" aria-controls=\"radix-:rf:-content-s...\" data-state=\"active\" id=\"radix-:rf:-trigger-s...\" data-replit-metadata=\"client/src/component...\" data-compo",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#radix-\\:rf\\:-trigger-services > .sm\\:inline.hidden"
+            ],
+            "html": "<span class=\"hidden sm:inline\">Browse&nbsp;</span>",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ],
+    "moderate": [],
+    "minor": [],
+    "other": []
+  },
+  "incompletes": 2,
+  "passes": 28,
+  "screenshot": "a11y-discover-search-chromium.png",
+  "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars."
+}

@@ -1,0 +1,97 @@
+{
+  "seed": "2026-08-22",
+  "chosenStep": "expert-profile-chromium",
+  "engine": "chromium",
+  "project": "chromium",
+  "surface": "expert-profile-chromium",
+  "url": "http://127.0.0.1:5000/experts/503e86df-dfdf-494d-913f-25aeda48c012",
+  "scannedAt": "2026-08-22T18:18:08.181Z",
+  "result": "2 violation types, 7 affected nodes",
+  "totalViolations": 2,
+  "totalNodes": 7,
+  "violations": {
+    "critical": [
+      {
+        "id": "button-name",
+        "impact": "critical",
+        "description": "Ensure buttons have discernible text",
+        "help": "Buttons must have discernible text",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/button-name?application=playwright",
+        "nodeCount": 2,
+        "nodes": [
+          {
+            "target": [
+              ".h-9.w-9.\\[border-color\\:var\\(--button-outline\\)\\]:nth-child(1)"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/pages/exp...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\">",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              ".h-9.w-9.\\[border-color\\:var\\(--button-outline\\)\\]:nth-child(2)"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/pages/exp...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\">",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          }
+        ]
+      }
+    ],
+    "serious": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+        "nodeCount": 5,
+        "nodes": [
+          {
+            "target": [
+              ".px-2"
+            ],
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:490:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "button[data-testid=\"button-sign-in\"]"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/component...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-sign-in\">",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#radix-\\:r7\\:-trigger-services"
+            ],
+            "html": "<button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"radix-:r7:-content-s...\" data-state=\"inactive\" id=\"radix-:r7:-trigger-s...\" data-replit-metadata=\"client/src/pages/exp...\" data-co",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.39 (foreground color: #6b7280, background color: #f3f4f6, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#radix-\\:r7\\:-trigger-reviews"
+            ],
+            "html": "<button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"radix-:r7:-content-r...\" data-state=\"inactive\" id=\"radix-:r7:-trigger-r...\" data-replit-metadata=\"client/src/pages/exp...\" data-co",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.39 (foreground color: #6b7280, background color: #f3f4f6, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "button[data-testid=\"button-contact-expert\"]"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/pages/exp...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-contact-exper...\">",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ],
+    "moderate": [],
+    "minor": [],
+    "other": []
+  },
+  "incompletes": 1,
+  "passes": 26,
+  "screenshot": "a11y-expert-profile-chromium-chromium.png",
+  "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars.",
+  "expertId": "503e86df-dfdf-494d-913f-25aeda48c012",
+  "expertHref": "/experts/503e86df-dfdf-494d-913f-25aeda48c012",
+  "expertName": "Ahmed"
+}
