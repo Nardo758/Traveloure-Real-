@@ -23,7 +23,8 @@ import {
   Calendar,
   Pencil,
   Check,
-  X
+  X,
+  LifeBuoy
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -90,6 +91,57 @@ export default function AIAssistant() {
       if (selectedConversation) {
         setSelectedConversation(null);
       }
+    },
+  });
+
+  // Lane C / C4 — "Get help from our team": Platform Concierge is a hybrid
+  // (AI starts, a person steps in), so the human handoff is a first-class,
+  // always-visible chat affordance. Creates a tier-'ai' concierge request
+  // server-side (userId from session, conversation id as staff context) and
+  // fires the admin push signal; confirms to the user in-chat.
+  const escalateToTeam = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/concierge/escalations", {
+        ...(selectedConversation ? { conversationId: selectedConversation } : {}),
+      });
+      return res.json() as Promise<{ id: string }>;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Request sent to our team",
+        description: "A member of our team will follow up with you shortly.",
+      });
+      // In-chat confirmation bubble (local echo — the durable confirmation is
+      // the team's actual follow-up).
+      if (selectedConversation) {
+        queryClient.setQueryData<Conversation>(
+          ["/api/conversations", selectedConversation],
+          (old) =>
+            old
+              ? {
+                  ...old,
+                  messages: [
+                    ...(old.messages || []),
+                    {
+                      id: Date.now(),
+                      conversationId: selectedConversation,
+                      role: "assistant" as const,
+                      content:
+                        "Done — I've sent this conversation to our team. A real person will follow up shortly to help with anything I can't handle here.",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ],
+                }
+              : old
+        );
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't reach our team",
+        description: err?.message || "Please try again in a moment.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -284,18 +336,34 @@ export default function AIAssistant() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-primary rounded-lg">
-              <Bot className="w-8 h-8 text-white" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-primary rounded-lg">
+                <Bot className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+                  AI Travel Assistant
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  AI-assisted, human-backed — our team steps in whenever you need a person
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-                AI Travel Assistant
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Your personal travel planning companion
-              </p>
-            </div>
+            {/* C4: first-class, always-visible human handoff (ruled hybrid). */}
+            <Button
+              variant="outline"
+              onClick={() => escalateToTeam.mutate()}
+              disabled={escalateToTeam.isPending}
+              data-testid="button-escalate-to-team"
+            >
+              {escalateToTeam.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <LifeBuoy className="w-4 h-4 mr-2" />
+              )}
+              Get help from our team
+            </Button>
           </div>
         </div>
 

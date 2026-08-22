@@ -446,6 +446,85 @@ router.post("/api/concierge/requests/:id/claim", async (req, res) => {
   }
 });
 
+// ─── POST /api/concierge/escalations (Lane C / C4) ──────────────────────────
+// "Get help from our team" — the human handoff inside the AI chat. Platform
+// Concierge is a ruled HYBRID: the AI starts the conversation, a person steps
+// in for complicated tasks or whenever the user asks for one; this endpoint IS
+// that step-in. Creates a tier-'ai' concierge_requests row (visible on the C2
+// Platform tab) and fires the C3 admin notification.
+//
+//   • Auth required — conversations are per-user, and the escalation belongs
+//     to an account a human can follow up with.
+//   • userId comes from the SESSION (§14), never the body.
+//   • ALLOWLIST body (§19): escalationRequestSchema reads only
+//     conversationId + note; unknown fields are stripped, tier is pinned to
+//     'ai' and status to 'selected' server-side.
+//   • conversationId, when present, must belong to the caller
+//     (chatStorage.getConversation is ownership-scoped) — a planted foreign
+//     conversation id 404s instead of leaking context into the staff queue.
+//   • Rate-limited per user (donor posture: each POST also inserts an
+//     admin_notifications row, so cap how fast one account can enqueue).
+
+const escalationLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyGenerator: (req: any) => `concierge-escalation:${getUserId(req) ?? req.ip ?? "unknown"}`,
+});
+
+router.post("/api/concierge/escalations", isAuthenticated, escalationLimiter, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthenticated", message: "Sign in to contact our team." });
+    }
+
+    const body = escalationRequestSchema.parse(req.body);
+
+    // Ownership check on the conversation context (never trust a raw id).
+    let conversationId: number | undefined;
+    if (body.conversationId !== undefined) {
+      const conversation = await chatStorage.getConversation(body.conversationId, userId);
+      if (!conversation) {
+        return res.status(404).json({ error: "conversation_not_found" });
+      }
+      conversationId = conversation.id;
+    }
+
+    // The conversation reference lives in the request's notes field (intent) —
+    // concierge_requests has no metadata column and this lane adds no schema —
+    // and, structured, in the admin notification's metadata below.
+    const intent =
+      `[AI chat escalation${conversationId !== undefined ? ` — conversation #${conversationId}` : ""}] ` +
+      (body.note?.trim() || "Traveler asked for help from our team.");
+
+    const [row] = await db
+      .insert(conciergeRequests)
+      .values({
+        userId, // session-derived (§14)
+        intent,
+        chosenTier: "ai", // platform-side request — the hybrid's human end
+        status: "selected",
+      })
+      .returning();
+
+    rememberConciergeRequest(req, row.id);
+
+    await notifyAdminsOfConciergeRequest(
+      row,
+      "escalated",
+      conversationId !== undefined ? { conversationId } : {},
+    );
+
+    res.status(201).json({ id: row.id, status: row.status, chosenTier: row.chosenTier });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: "validation_failed", details: err.errors });
+    }
+    console.error("[concierge/escalations] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/concierge/event-packages (CON-A.P8 / N6) ─────────────────────
 // Public read of the Full/DFY catalog. Optional eventType + market filters.
 // status defaults to 'active' so the surface only sees live packages.
