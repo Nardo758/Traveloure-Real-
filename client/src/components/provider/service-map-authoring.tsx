@@ -658,7 +658,7 @@ export function ServiceMapAuthoring({
                     The ring travelers see around your meeting pin.
                   </p>
                   {(savedRouteStopCount ?? 0) > 0 && (
-                    <p className="text-[11px] text-amber-700 mt-2">
+                    <p className="text-[11px] text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                       {savedRouteStopCount} saved route {savedRouteStopCount === 1 ? "stop is" : "stops are"} preserved.
                     </p>
                   )}
@@ -723,7 +723,7 @@ export function ServiceMapAuthoring({
                     </p>
                   )}
                   {(savedRadiusKm ?? 0) > 0 && (
-                    <p className="text-[11px] text-amber-700">Your saved radius is preserved.</p>
+                    <p className="text-[11px] text-amber-700" data-testid="text-coverage-other-preserved">Your saved radius is preserved.</p>
                   )}
                 </div>
               )}
