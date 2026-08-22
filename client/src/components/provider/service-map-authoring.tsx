@@ -573,8 +573,8 @@ export function ServiceMapAuthoring({
 
         {/* The rail gives each spatial concept one home: meeting pin, display layers, itinerary,
             and (when offered) pickup coverage. */}
-        <div className={`grid grid-cols-1 md:grid-cols-3 ${hasPickupRail ? "xl:grid-cols-4" : ""} gap-4 items-start`}>
-          <div className="rounded-lg border p-3 space-y-3" data-testid="card-meeting-pin">
+        <div className={`grid grid-cols-1 ${hasPickupRail ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 items-start`}>
+          <div className="rounded-lg border p-3 md:col-span-2" data-testid="card-meeting-pin">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold flex items-center gap-1.5">
                 <MapPin className="w-4 h-4" /> Meeting pin
@@ -583,37 +583,43 @@ export function ServiceMapAuthoring({
                 {pin ? "Confirmed" : "Not set"}
               </Badge>
             </div>
-            {onMeetingDetailsChange && (
-              <div>
-                <Label htmlFor="meetingDetails" className="text-[12px] font-normal">
-                  Meeting details <span className="text-destructive">*</span>
-                </Label>
-                <Textarea
-                  id="meetingDetails"
-                  value={meetingDetails ?? ""}
-                  onChange={(event) => onMeetingDetailsChange(event.target.value)}
-                  placeholder="e.g. Meet outside the east entrance, beside the taxi rank"
-                  rows={3}
-                  className="mt-1 text-[13px]"
-                  data-testid="input-meeting-details"
-                />
-              </div>
-            )}
-            <p className="text-[11px] text-muted-foreground">
-              These are instructions for travelers, not a second location. The map pin is saved only after you confirm it.
-            </p>
-            {pin && (
-              <>
-                <p className="text-[11px] text-emerald-700">
-                  Confirmed at {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}.
-                </p>
-                {onPinRemove && (
+            <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start">
+              <div className="space-y-2">
+                {pin ? (
+                  <p className="text-[11px] text-emerald-700">
+                    Confirmed at {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Place and confirm the map pin so travelers have a precise meeting location.
+                  </p>
+                )}
+                {pin && onPinRemove && (
                   <Button variant="ghost" size="sm" className="h-7 px-2 text-[12px]" onClick={onPinRemove}>
                     Remove pin
                   </Button>
                 )}
-              </>
-            )}
+              </div>
+              {onMeetingDetailsChange && (
+                <div>
+                  <Label htmlFor="meetingDetails" className="text-[12px] font-normal">
+                    Meeting details <span className="text-destructive">*</span>
+                  </Label>
+                  <Textarea
+                    id="meetingDetails"
+                    value={meetingDetails ?? ""}
+                    onChange={(event) => onMeetingDetailsChange(event.target.value)}
+                    placeholder="e.g. Meet outside the east entrance, beside the taxi rank"
+                    rows={3}
+                    className="mt-1 text-[13px]"
+                    data-testid="input-meeting-details"
+                  />
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    These are instructions for travelers, not a second location. The map pin is saved only after you confirm it.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           {(pickupAvailable || pickupProvisionChosen) && onPickupCoverageModeChange && (
             <div className="rounded-lg border p-3 space-y-3 md:order-4" data-testid="card-pickup-coverage">
