@@ -4460,6 +4460,85 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
       {onStep("review") && (<>
 
+      {/* ── Mock parity: Review & submit is an evidence summary first. The editable
+          controls below remain because lead time, requirements, and attestations still
+          have live write/gate behavior; this summary is read-only and never invents
+          values that have not been authored. ── */}
+      {(() => {
+        const reviewPrice = effectivePriceScalar({
+          priceType: formData.priceType,
+          basePrice: formData.basePrice,
+          pricingTiers: formData.pricingTiers,
+        });
+        const savedStops = Array.isArray(existingService?.routePoints)
+          ? existingService.routePoints.length
+          : 0;
+        const locationLabel = formData.meetingPoint.trim() || "No meeting point added yet";
+        const locationDetail = formData.locationPoint
+          ? "pin confirmed"
+          : "pin not confirmed";
+        const routeLabel = savedStops > 0
+          ? `${savedStops} ${savedStops === 1 ? "stop" : "stops"} saved`
+          : isEditMode
+            ? "No route stops added yet"
+            : "Stops save after the listing is created";
+        return (
+          <Card data-testid="card-review-summary">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between gap-3">
+                <span>Review &amp; submit</span>
+                <Badge variant="outline" className="font-normal">Step {TOTAL_STEPS} of {TOTAL_STEPS}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="divide-y rounded-md border" data-testid="review-summary-rows">
+                {[
+                  {
+                    label: "Offering",
+                    value: selectedCategory?.name ?? selectedProviderOfferingLabel ?? "Not selected",
+                  },
+                  {
+                    label: "Name",
+                    value: formData.name.trim() || "Untitled service",
+                  },
+                  {
+                    label: "Delivery",
+                    value: `${deliveryMethodLabel(formData.deliveryMethod)}${needsMeetingPoint ? " · Place-anchored" : ""}`,
+                  },
+                  {
+                    label: "Price",
+                    value: reviewPrice != null && reviewPrice > 0
+                      ? `$${reviewPrice}${formData.priceType !== "Fixed" ? ` · ${formData.priceType}` : ""}`
+                      : "No price set yet",
+                  },
+                  {
+                    label: "Where",
+                    value: `${locationLabel} · ${locationDetail}`,
+                  },
+                  {
+                    label: "Route stops",
+                    value: routeLabel,
+                  },
+                  {
+                    label: "Cover photo",
+                    value: formData.serviceImage.trim() ? "Added" : "Not added yet",
+                  },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex flex-wrap gap-3 px-4 py-3 text-sm">
+                    <span className="w-36 shrink-0 text-muted-foreground">{label}</span>
+                    <span className="min-w-0 flex-1">{value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/70 p-3 text-xs leading-relaxed text-amber-900" data-testid="review-submit-explanation">
+                <strong>What happens when you submit.</strong> Your listing goes to our team for
+                review before it can go live. Until then it stays a draft and you can keep editing it.
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* ── Booking Terms ── */}
       <Card>
         <CardHeader>
