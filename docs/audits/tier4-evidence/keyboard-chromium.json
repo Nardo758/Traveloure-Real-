@@ -1,0 +1,453 @@
+{
+  "seed": "2026-08-22",
+  "chosenStep": "keyboard-checkout",
+  "engine": "chromium",
+  "project": "chromium",
+  "result": "BLOCKED - 1 keyboard-accessibility blocker(s)",
+  "lastReachedStep": "bookings-page-reached",
+  "limitations": "LIMITATION (not a blocker): add-to-cart was performed via API (page.request), not keyboard UI. Service detail page requires login context that is not yet established via keyboard-only navigation.",
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
+  "serviceName": "Ceremony Highlight Video (Short-form)",
+  "servicePrice": 1100,
+  "addToCartMethod": "api-only",
+  "bookingId": "66dbea8b-7746-4afc-ad40-052961863249",
+  "finalBookingStatus": "confirmed",
+  "confirmedOk": true,
+  "stripeKeyboardMethod": "keyboard-tab",
+  "paymentElementReadiness": {
+    "ready": true
+  },
+  "stripeCardFilled": true,
+  "stripeExpFilled": true,
+  "stripeCvcFilled": true,
+  "stripeZipFilled": true,
+  "stripeTabsUsed": 10,
+  "emptySubmitValidationAudit": {
+    "attempted": true,
+    "payButtonReached": true,
+    "announcements": {
+      "mainPage": {
+        "alerts": [],
+        "statusRegions": [],
+        "liveRegions": [],
+        "invalidFieldDescriptions": []
+      },
+      "stripeFrames": [
+        {
+          "url": "https://js.stripe.com/v3/m-outer-3437aaddcdf6922d623e172c2d6f9278.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://js.stripe.com/v3/controller-with-preconnect-5d3c15d8a17d5dc965abff5f20037420.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://js.stripe.com/v3/elements-inner-loader-ui-d39955e338bdb2a15febf461b25a117b.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://js.stripe.com/v3/elements-inner-accessory-target-ea81a66f718b5efb2a9273900621551c.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://js.stripe.com/v3/universal-link-modal-inner-b21dec15ebf534c2de6415f41994e809.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://js.stripe.com/v3/hcaptcha-invisible-7a0311dd09132a83e326afea15d62c2b.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        },
+        {
+          "url": "https://b.stripecdn.com/stripethirdparty-srv/assets/v33.9/HCaptchaInvisible.html",
+          "alerts": [],
+          "statusRegions": [],
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
+        }
+      ]
+    },
+    "announcementPresent": false,
+    "describedErrorPresent": false,
+    "accessibleValidationPresent": false
+  },
+  "focusOrderCart": [
+    {
+      "tag": "a",
+      "label": "Skip to main content",
+      "testid": null,
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Traveloure home",
+      "testid": "link-logo",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Marketplace",
+      "testid": "button-nav-dropdown-marketplace",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "By Location\nExplore destinations & trending cities",
+      "testid": "link-nav-by-location",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "By Date\nUpcoming events & activities",
+      "testid": "link-nav-by-date",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Ready-Made Trips\nExpert-built trips, ready to buy",
+      "testid": "link-nav-ready-made-trips",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Browse Services\nBook tours, photography, transport & more",
+      "testid": "link-nav-browse-services",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Experts & Services",
+      "testid": "button-nav-dropdown-experts-&-services",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Local Experts\nCity guides & neighbourhood specialists",
+      "testid": "link-nav-local-experts",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Trip Planners\nTrip planners who handle every detail",
+      "testid": "link-nav-trip-planners",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Experiences",
+      "testid": "button-nav-dropdown-experiences",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Travel Planning",
+      "testid": "link-nav-travel-planning",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Romantic Getaways",
+      "testid": "link-nav-romantic-getaways",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Date Night",
+      "testid": "link-nav-date-night",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Retreats",
+      "testid": "link-nav-retreats",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Birthday Party",
+      "testid": "link-nav-birthday-party",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Wedding",
+      "testid": "link-nav-wedding",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Proposal",
+      "testid": "link-nav-proposal",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Engagement Party",
+      "testid": "link-nav-engagement-party",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Baby Shower",
+      "testid": "link-nav-baby-shower",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Anniversary",
+      "testid": "link-nav-anniversary",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Corporate Events",
+      "testid": "link-nav-corporate-events",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Corporate Retreats",
+      "testid": "link-nav-corporate-retreats",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Boys Trip",
+      "testid": "link-nav-boys-trip",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Girls Trip",
+      "testid": "link-nav-girls-trip",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Reunions",
+      "testid": "link-nav-reunions",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Planning Tools",
+      "testid": "button-nav-dropdown-planning-tools",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "AI Plan Planner\nInstant AI-powered itineraries",
+      "testid": "link-nav-ai-plan-planner",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Visa Help\nVisa requirements & expert help",
+      "testid": "link-nav-visa-help",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Live Intel\nReal-time local insights",
+      "testid": "link-nav-live-intel",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Today's Deals\nSpecial offers & discounts",
+      "testid": "link-nav-today's-deals",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "Ways to Earn",
+      "testid": "link-nav-ways-to-earn",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Change language",
+      "testid": "button-language-menu",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Notifications",
+      "testid": "button-notifications",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "User menu for Tier4",
+      "testid": "button-user-menu",
+      "visibleFocus": true
+    },
+    {
+      "tag": "a",
+      "label": "1 · $1,232",
+      "testid": "trip-strip-cart",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Edit ›",
+      "testid": "trip-strip-edit",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Cart",
+      "testid": "step-pill-cart",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Payment",
+      "testid": "step-pill-payment",
+      "visibleFocus": true
+    }
+  ],
+  "focusOrderPayment": [
+    {
+      "tag": "button",
+      "label": "Payment",
+      "testid": "step-pill-payment",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Cart",
+      "testid": "button-back",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Guided Tour\nrecommended for this trip type",
+      "testid": "upsell-candidate-checkout-aff_guided_tour",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Cultural Class\nrecommended for this trip type",
+      "testid": "upsell-candidate-checkout-aff_cultural_class",
+      "visibleFocus": true
+    },
+    {
+      "tag": "button",
+      "label": "Complete Booking",
+      "testid": "button-complete-booking",
+      "visibleFocus": true
+    }
+  ],
+  "formLabelsCart": {
+    "unlabelledInputs": 0,
+    "unlabelledButtons": 2,
+    "details": [
+      "unlabelled button: testid=button-decrease-655d4a72-3978-4008-a1b5-062ab8843271",
+      "unlabelled button: testid=button-increase-655d4a72-3978-4008-a1b5-062ab8843271"
+    ]
+  },
+  "formLabelsPayment": {
+    "unlabelledInputs": 0,
+    "unlabelledButtons": 0,
+    "details": []
+  },
+  "submitted": true,
+  "realBlockers": [
+    "BLOCKER: Empty keyboard submission produced no non-empty role=alert/status, aria-live announcement, or aria-describedby error relationship in the app or Stripe frames."
+  ],
+  "layoutOverflow": true,
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "warning",
+      "text": "You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS."
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] Your Elements integration is using an older API. We recommend migrating to the Checkout Sessions API to reduce code, maintenance, and tokens (for AI agents). Additionally, you can easily turn on advanced features like Adaptive Pricing.\nView migration guide: https://docs.stripe.com/payments/payment-element/migration-ewcs"
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] If you are testing Apple Pay or Google Pay, you must serve this page over HTTPS as it will not work over HTTP. Please read https://stripe.com/docs/stripe-js/elements/payment-request-button#html-js-prerequisites for more details."
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] The following payment method types are not activated:\n\n- link\n- cashapp\n- klarna\n- amazon_pay\n\nThey will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use."
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "timings": {
+    "register_ms": 3159,
+    "tab_to_proceed_ms": 4176,
+    "tab_to_complete_ms": 400,
+    "stripe_keyboard_ms": 5863,
+    "keyboard_submit_ms": 5783
+  },
+  "screenshots": {
+    "cart": "keyboard-cart.png",
+    "postProceed": "keyboard-post-proceed.png",
+    "postComplete": "keyboard-post-complete.png",
+    "stripeKbFilled": "keyboard-stripe-filled.png",
+    "postSubmit": "keyboard-post-submit.png",
+    "bookings": "keyboard-bookings.png"
+  }
+}

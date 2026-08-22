@@ -14,9 +14,10 @@
  * Replaces the static Paris mock at /optimize, which now 301s here per D9.
  */
 import { useState } from "react";
-import { useSearch } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { IntentForm, type IntentSubmission } from "@/components/concierge/IntentForm";
 import { DeliveryOptions, type ConciergeRoute } from "@/components/concierge/DeliveryOptions";
@@ -74,12 +75,15 @@ export default function ConciergePage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Concierge</h1>
           <p className="text-muted-foreground mt-1">
-            One request → priced options across AI, expert, and full-service.
+            One request → priced options across Platform Concierge (powered by our platform),
+            Destination Concierge (powered by local experts), and Full / Done-for-You.
           </p>
           {tierHint === "ai" && !quote && (
             <Card className="mt-3 border-primary/30 bg-primary/5">
               <CardContent className="pt-4 pb-4 text-sm text-muted-foreground">
-                Looking for the AI-only plan? Tell us what you want to plan below and pick the AI tier.
+                Looking for Platform Concierge — powered by our platform? AI-assisted and
+                human-backed: our AI gets you started instantly, and our team steps in for
+                anything complex. Tell us what you want to plan below and pick Platform Concierge.
               </CardContent>
             </Card>
           )}
@@ -101,6 +105,26 @@ export default function ConciergePage() {
             eventType={submitted.eventType}
           />
         )}
+
+        {/* Destination Concierge marketplace teaser — surfaces the concierge_vip-category
+            expert offerings via the EXISTING category-filtered Discover deep-link
+            (?categoryKey=, issue #51 upsell pattern) — deliberately not a new browse surface. */}
+        <Card data-testid="card-concierge-vip-services">
+          <CardContent className="pt-4 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Concierge services by local experts</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                VIP access, skip-the-line fixers, 24/7 personal concierges and more — bookable
+                directly from local experts.
+              </p>
+            </div>
+            <Link href="/discover?categoryKey=concierge_vip">
+              <Button variant="outline" size="sm" data-testid="button-browse-concierge-services">
+                Browse services
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

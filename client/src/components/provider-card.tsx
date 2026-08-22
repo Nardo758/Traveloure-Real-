@@ -2,10 +2,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Star, MapPin, DollarSign, Plus } from "lucide-react";
+import { Link } from "wouter";
 
 interface ProviderCardProps {
   id: string;
   name: string;
+  /** users.handle (migration 136) — the provider's /p/ storefront. Null/absent → the name
+   *  renders as plain text, never a dead link (StorefrontLink rule 1). This card carries no
+   *  other links, so a real <a> is valid here (no nested-anchor constraint). */
+  handle?: string | null;
   type: "hotel" | "activity";
   rating?: string | number;
   reviewCount?: number;
@@ -21,6 +26,7 @@ interface ProviderCardProps {
 export function ProviderCard({
   id,
   name,
+  handle,
   type,
   rating,
   reviewCount,
@@ -45,7 +51,19 @@ export function ProviderCard({
       <CardHeader className="pb-3">
         <div className="space-y-2">
           <div className="flex items-start justify-between gap-2">
-            <CardTitle className="text-base line-clamp-2">{name}</CardTitle>
+            {/* D1 (lane nav-storefront): the provider name links to their storefront when a
+                handle exists; plain text otherwise — never a dead /p/ link. */}
+            {handle ? (
+              <Link
+                href={`/p/${handle}`}
+                className="hover:underline underline-offset-2"
+                data-testid={`link-provider-storefront-${id}`}
+              >
+                <CardTitle className="text-base line-clamp-2">{name}</CardTitle>
+              </Link>
+            ) : (
+              <CardTitle className="text-base line-clamp-2">{name}</CardTitle>
+            )}
             <Badge variant="outline" className="shrink-0">
               {typeLabel}
             </Badge>

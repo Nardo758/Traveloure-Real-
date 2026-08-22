@@ -1,5 +1,7 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
+import { pgTextArray } from "../services/upsell-query.service";
 import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
 import { parsePagination } from '../utils/pagination';
@@ -660,12 +662,15 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   }
 });
 
-// Concierge request queue — the follow-up surface for the concierge Full/Expert tiers.
+// Concierge request queue — the follow-up surface for the concierge tiers.
 // The concierge entry (client/src/pages/concierge) captures a durable concierge_requests
 // row when a traveler picks a tier; the Full ("done-for-you") tier tells the traveler
 // "we'll follow up with a personalized quote". This read-only queue is what makes that
-// promise real — an admin can see incoming human-fulfillment requests (chosen_tier in
-// expert/full) and act on them. Read-only over the existing table; no schema change.
+// promise real. Lane C / C2: the Platform tier ('ai') is a ruled HYBRID (AI starts,
+// a human steps in), so its requests are staff work too — `?tier=` selects the view
+// (human [default: expert+full, unchanged muscle-memory] | ai | expert | full | all)
+// via resolveConciergeTierView; ONE query, tier list as a parameter — never a forked
+// route. Read-only over the existing table; no schema change.
 // (Full white-glove fulfillment/messaging is filed as a separate build.)
 router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
@@ -673,6 +678,7 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+    const tierList = resolveConciergeTierView(req.query.tier);
     // Join the coordination engagement a Full-tier request spun up (Phase 1a wires it via
     // user_request->>'conciergeRequestId'), plus the currently-assigned coordinator, so the admin
     // queue can assign/see the coordinator + fee status inline (Phase 1c).
@@ -700,7 +706,7 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
       LEFT JOIN users u ON u.id = cr.user_id
       LEFT JOIN coordination_states cs ON cs.user_request->>'conciergeRequestId' = cr.id::text
       LEFT JOIN users ce ON ce.id = cs.assigned_expert_id
-      WHERE cr.chosen_tier IN ('expert', 'full')
+      WHERE cr.chosen_tier = ANY(${pgTextArray([...tierList])}::text[])
       ORDER BY cr.created_at DESC NULLS LAST
       LIMIT 200
     `);

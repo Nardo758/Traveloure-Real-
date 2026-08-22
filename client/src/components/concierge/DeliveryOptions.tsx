@@ -232,7 +232,9 @@ export function DeliveryOptions({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="concierge-delivery-options">
-      {/* AI Concierge */}
+      {/* Platform Concierge — powered by our platform (formerly "AI Concierge").
+          Ruled a HYBRID: the AI starts the conversation instantly, a person steps
+          in for anything complex — never describe this tier as AI-only. */}
       <Card
         className={route.recommended === "ai" ? "border-primary" : "border-border"}
         data-testid="card-concierge-ai"
@@ -241,7 +243,7 @@ export function DeliveryOptions({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" />
-              {isEvent ? "AI Planning Tool" : "AI Concierge"}
+              {isEvent ? "Platform Planning Tool" : "Platform Concierge"}
             </CardTitle>
             {route.recommended === "ai" && !isEvent && (
               <Badge variant="default" className="text-xs">Recommended</Badge>
@@ -249,8 +251,8 @@ export function DeliveryOptions({
           </div>
           <CardDescription className="text-xs">
             {isEvent
-              ? "Optimizer for your event coordinator. Fee credited toward coordination."
-              : "Instant AI-optimized plan. Free re-runs within 24h."}
+              ? "Powered by our platform. Optimizer for your event coordinator. Fee credited toward coordination."
+              : "Powered by our platform. AI-assisted, human-backed — our AI gets you started instantly; our team steps in for anything complex. Free re-runs within 24h."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -264,12 +266,13 @@ export function DeliveryOptions({
             data-testid="button-concierge-pick-ai"
           >
             {busy === "ai" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            {route.ai.disabled ? "Disabled" : (isEvent ? "Use AI tool" : "Get plan")}
+            {route.ai.disabled ? "Disabled" : (isEvent ? "Use planning tool" : "Get plan")}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Expert Concierge — Suggest (Trip/Experience) or Add (Event) */}
+      {/* Destination Concierge — powered by local experts (formerly "Expert
+          Concierge"). Suggest (Trip/Experience) or Add (Event). */}
       <Card
         className={route.recommended === "expert" ? "border-primary" : "border-border"}
         data-testid="card-concierge-expert"
@@ -278,7 +281,7 @@ export function DeliveryOptions({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-primary" />
-              {isEvent ? "Event Coordinator" : "Expert Concierge"}
+              {isEvent ? "Event Coordinator" : "Destination Concierge"}
             </CardTitle>
             {route.recommended === "expert" && (
               <Badge variant="default" className="text-xs">
@@ -288,8 +291,8 @@ export function DeliveryOptions({
           </div>
           <CardDescription className="text-xs">
             {isEvent
-              ? "Dedicated coordinator + vendors + RSVP. Mandatory for Events."
-              : "A local/travel expert delivers — human judgment on top of your plan."}
+              ? "Powered by local experts. Dedicated coordinator + vendors + RSVP. Mandatory for Events."
+              : "Powered by local experts. A local/travel expert delivers — human judgment on top of your plan."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

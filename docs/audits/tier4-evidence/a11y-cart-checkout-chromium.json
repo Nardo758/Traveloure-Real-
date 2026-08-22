@@ -1,0 +1,103 @@
+{
+  "seed": "2026-08-22",
+  "chosenStep": "cart-checkout",
+  "engine": "chromium",
+  "project": "chromium",
+  "surface": "cart-checkout",
+  "url": "http://127.0.0.1:5000/cart",
+  "scannedAt": "2026-08-22T18:59:18.518Z",
+  "result": "2 violation types, 11 affected nodes",
+  "totalViolations": 2,
+  "totalNodes": 11,
+  "violations": {
+    "critical": [
+      {
+        "id": "button-name",
+        "impact": "critical",
+        "description": "Ensure buttons have discernible text",
+        "help": "Buttons must have discernible text",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/button-name?application=playwright",
+        "nodeCount": 3,
+        "nodes": [
+          {
+            "target": [
+              ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(1)"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-1f2d...\">",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(3)"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-1f2d...\">",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          },
+          {
+            "target": [
+              ".border-input"
+            ],
+            "html": "<button type=\"button\" role=\"combobox\" aria-controls=\"radix-:ru:\" aria-expanded=\"false\" aria-autocomplete=\"none\" dir=\"ltr\" data-state=\"closed\" data-replit-metadata=\"client/src/pages/car...\" data-compon",
+            "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
+          }
+        ]
+      }
+    ],
+    "serious": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+        "nodeCount": 8,
+        "nodes": [
+          {
+            "target": [
+              ".px-2.bg-primary\\/10.border-primary\\/20"
+            ],
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:491:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".hover\\:underline"
+            ],
+            "html": "<button data-replit-metadata=\"client/src/components/trip/trip-strip.tsx:178:12\" data-component-name=\"button\" type=\"button\" class=\"text-xs font-semibold text-primary hover:underline\" data-testid=\"trip-",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.19 (foreground color: #ff3859, background color: #f9f2f5, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "button[data-testid=\"step-pill-cart\"] > .font-medium[data-component-name=\"span\"]"
+            ],
+            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1524:20\" data-component-name=\"span\" class=\"text-sm font-medium\">Cart</span>",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".gap-x-3 > span[data-component-name=\"span\"]:nth-child(3)"
+            ],
+            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1694:22\" data-component-name=\"span\" class=\"text-muted-foreground\" title=\"Plan score: how tightly scheduled and cost-efficient your current cart is",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.32 (foreground color: #6b7280, background color: #f9f0f3, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".ml-auto.text-primary.font-semibold"
+            ],
+            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1700:22\" data-component-name=\"span\" class=\"ml-auto font-semibold text-primary whitespace-nowrap\">Optimize · $5.99 →</span>",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.15 (foreground color: #ff3859, background color: #f9f0f3, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ],
+    "moderate": [],
+    "minor": [],
+    "other": []
+  },
+  "incompletes": 2,
+  "passes": 23,
+  "screenshot": "a11y-cart-checkout-chromium.png",
+  "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars.",
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
+  "serviceName": "Ceremony Highlight Video (Short-form)"
+}
