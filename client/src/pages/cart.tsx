@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
+import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optimization-gate";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
@@ -1245,6 +1246,9 @@ export default function CartPage() {
   };
 
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
+  // Lane A (A1): the request/branching sequence lives in the SHARED optimization-gate
+  // module now (client/src/lib/optimization-gate.ts) — one implementation for cart and
+  // the slip's "Optimize this plan". This function keeps only cart-specific UI wiring.
   const requestOptimizationPayment = async () => {
     if (!user) {
       openSignInModal();
@@ -1258,31 +1262,23 @@ export default function CartPage() {
       const tripId: string | undefined = ctxAtPayment.tripId;
       const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
 
-      const res = await fetch("/api/optimization-payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ tripId, userExperienceId, comparisonContext: { destination: experienceTitle } }),
+      const outcome = await requestOptimizationGate({
+        tripId,
+        userExperienceId,
+        destination: experienceTitle,
       });
-      // Read the body regardless of status — the refusal is a JSON error payload, not a network failure.
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (handleOptimizationPaymentRefusal(res.status, data)) return;
-        throw new Error(data?.message || "Could not create payment");
+      if (outcome.kind === "refused") {
+        handleOptimizationPaymentRefusal(outcome.status, outcome.body);
+        return;
       }
-
-      if (data.freeRerun) {
+      if (outcome.kind === "free_rerun") {
         // Skip payment for 24h free re-run
         await createComparison();
         return;
       }
-
-      setOptimizationPayment({
-        clientSecret: data.clientSecret,
-        paymentIntentId: data.paymentIntentId,
-        feeCents: data.feeCents,
-        currency: data.currency || "USD",
-      });
+      if (outcome.kind === "payment_sheet") {
+        setOptimizationPayment(outcome.payment);
+      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Payment setup failed", description: err.message });
     } finally {
@@ -1308,41 +1304,28 @@ export default function CartPage() {
       const tripId: string | undefined = ctxAtPayment.tripId;
       const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
 
-      const res = await fetch("/api/optimization-payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          tripId,
-          userExperienceId,
-          comparisonContext: { destination: experienceTitle },
-          useSavedCard: true,
-        }),
+      const outcome = await requestOptimizationGate({
+        tripId,
+        userExperienceId,
+        destination: experienceTitle,
+        useSavedCard: true,
       });
-      // Read the body regardless of status — the refusal is a JSON error payload, not a network failure.
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (handleOptimizationPaymentRefusal(res.status, data)) return;
-        throw new Error(data?.message || "Could not start payment");
+      if (outcome.kind === "refused") {
+        handleOptimizationPaymentRefusal(outcome.status, outcome.body);
+        return;
       }
-
-      if (data.freeRerun) {
+      if (outcome.kind === "free_rerun") {
         await createComparison();
         return;
       }
-      if (data.oneClick && data.status === "succeeded") {
+      if (outcome.kind === "paid") {
         toast({ title: "Payment successful", description: "Building your optimized itinerary..." });
-        await handleOptimizationPaymentSuccess(data.paymentIntentId);
+        await handleOptimizationPaymentSuccess(outcome.paymentIntentId);
         return;
       }
-      if (data.requiresAction) {
+      if (outcome.kind === "payment_sheet") {
         // Bank demands 3DS — fall back to the interactive sheet for this one charge.
-        setOptimizationPayment({
-          clientSecret: data.clientSecret,
-          paymentIntentId: data.paymentIntentId,
-          feeCents: data.feeCents,
-          currency: data.currency || "USD",
-        });
+        setOptimizationPayment(outcome.payment);
         return;
       }
       // No saved method after all (shouldn't happen if hasDefault was true) — fall back to the sheet.
@@ -1356,14 +1339,7 @@ export default function CartPage() {
 
   // Called after optimization payment succeeds
   const handleOptimizationPaymentSuccess = async (paymentIntentId: string) => {
-    try {
-      await fetch("/api/optimization-payments/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ paymentIntentId }),
-      });
-    } catch { /* non-critical */ }
+    await confirmOptimizationPayment(paymentIntentId);
     await createComparison(paymentIntentId);
   };
 
