@@ -17,6 +17,8 @@ export interface MapMarkerProps {
   onDragStart?: () => void;
   onDragEnd?: (e: google.maps.MapMouseEvent) => void;
   title?: string;
+  /** Standard-marker text, used when no Cloud Map ID is configured. */
+  label?: string | google.maps.MarkerLabel;
   /** Custom pin content — only rendered when a Map ID is configured (AdvancedMarker). */
   children?: ReactNode;
 }
@@ -33,6 +35,7 @@ export function MapMarker({
   onDragStart,
   onDragEnd,
   title,
+  label,
   children,
 }: MapMarkerProps) {
   if (GOOGLE_MAPS_MAP_ID) {
@@ -57,6 +60,7 @@ export function MapMarker({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       title={title}
+      label={label}
     />
   );
 }

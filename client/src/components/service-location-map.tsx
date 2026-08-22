@@ -72,6 +72,15 @@ function pinDivIcon(testId: string): L.DivIcon {
   });
 }
 
+function pendingPinDivIcon(testId: string): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div data-testid="${testId}" style="width:30px;height:30px;border-radius:50%;background:${CARD};border:3px dashed ${BRAND};box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:${BRAND};font-size:18px;font-weight:700;">+</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
+}
+
 /** D-5 sibling listing marker — smaller and neutral so the selected listing's pin stays primary. */
 function siblingDivIcon(testId: string): L.DivIcon {
   return L.divIcon({
@@ -218,6 +227,8 @@ function GoogleCircleOverlay({
 
 function GoogleServiceLocationMap({
   pin,
+  pendingPin,
+  initialCenter,
   pinLabel,
   radiusKm,
   surchargeZones,
@@ -233,6 +244,8 @@ function GoogleServiceLocationMap({
   onLoadError,
 }: {
   pin: ServicePinView | null;
+  pendingPin: ServicePinView | null;
+  initialCenter: ServicePinView | null;
   pinLabel?: string | null;
   radiusKm: number | null;
   surchargeZones?: ReadonlyArray<{ radiusKm: number; fee: string | number }> | null;
@@ -247,7 +260,8 @@ function GoogleServiceLocationMap({
   labelPins: boolean;
   onLoadError: () => void;
 }) {
-  const center = pin ?? located[0] ?? siblings[0];
+  const center = pin ?? pendingPin ?? located[0] ?? siblings[0] ?? initialCenter;
+  if (!center) return null;
   return (
     <APIProvider apiKey={GOOGLE_MAPS_KEY} onError={onLoadError}>
       <div
@@ -269,7 +283,7 @@ function GoogleServiceLocationMap({
             if (onCanvasClick && point) onCanvasClick(point.lat, point.lng);
           }}
         >
-          <GoogleFitToContent pin={pin} radiusKm={radiusKm} located={[...located, ...siblings]} />
+          <GoogleFitToContent pin={pin ?? pendingPin} radiusKm={radiusKm} located={[...located, ...siblings]} />
           {pin && radiusKm && radiusKm > 0 && (
             <GoogleCircleOverlay
               center={pin}
@@ -302,6 +316,11 @@ function GoogleServiceLocationMap({
             />
           )}
           {pin && <MapMarker position={pin} title={pinLabel || "Meeting point"} />}
+          {pendingPin && (
+            <MapMarker position={pendingPin} title="Pending meeting point — confirm below" label="?">
+              <div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px dashed #E85D55", background: "#FFFFFF", color: "#E85D55", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 18 }}>+</div>
+            </MapMarker>
+          )}
           {located.map((stop) => (
             <MapMarker
               key={stop.id}
@@ -330,6 +349,8 @@ function GoogleServiceLocationMap({
 
 export function ServiceLocationMap({
   pin,
+  pendingPin = null,
+  initialCenter = null,
   pinLabel,
   radiusKm,
   surchargeZones,
@@ -345,6 +366,10 @@ export function ServiceLocationMap({
 }: {
   /** The service's CONFIRMED meeting pin (migration-129 latitude/longitude), or null. */
   pin: ServicePinView | null;
+  /** A click-proposed pin awaiting explicit confirmation. */
+  pendingPin?: ServicePinView | null;
+  /** A verified address-derived center used only to make the empty authoring canvas usable. */
+  initialCenter?: ServicePinView | null;
   /** Popup label for the pin (e.g. the meeting point text or service name). */
   pinLabel?: string | null;
   /** serviceRadius in km — rendered as a display-only ring around the pin. */
@@ -397,19 +422,25 @@ export function ServiceLocationMap({
   const googleAuthFailed = useGoogleMapsAuthFailed();
 
   // §13: nothing real to draw ⇒ no map at all (the caller shows its own "no location yet" state).
-  if (!pin && located.length === 0 && siblings.length === 0) return null;
+  if (!pin && !pendingPin && !initialCenter && located.length === 0 && siblings.length === 0) return null;
 
   const center: [number, number] = pin
     ? [pin.lat, pin.lng]
+    : pendingPin
+      ? [pendingPin.lat, pendingPin.lng]
     : located.length > 0
       ? [located[0].lat, located[0].lng]
-      : [siblings[0].lat, siblings[0].lng];
+        : siblings.length > 0
+          ? [siblings[0].lat, siblings[0].lng]
+          : [initialCenter!.lat, initialCenter!.lng];
   const showConnector = located.length >= 2;
 
   if (GOOGLE_MAPS_KEY && !googleLoadFailed && !googleAuthFailed) {
     return (
       <GoogleServiceLocationMap
         pin={pin}
+        pendingPin={pendingPin}
+        initialCenter={initialCenter}
         pinLabel={pinLabel}
         radiusKm={radiusKm ?? null}
         surchargeZones={surchargeZones}
@@ -515,6 +546,11 @@ export function ServiceLocationMap({
                 </div>
               </Popup>
             ) : null}
+          </Marker>
+        )}
+        {pendingPin && (
+          <Marker position={[pendingPin.lat, pendingPin.lng]} icon={pendingPinDivIcon(`${testIdPrefix}-pending-pin`)} zIndexOffset={1000}>
+            <Tooltip direction="top" offset={[0, -14]} permanent={false}>Pending meeting pin</Tooltip>
           </Marker>
         )}
         {located.map((s) => (

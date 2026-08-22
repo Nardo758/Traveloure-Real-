@@ -2,6 +2,8 @@
 // Faithful replication of docs/design/provider-console-mockup/mockup.html
 // (flow shell ~988-1086, body_logistics ~2122-2151, map drawing ~4121-4329).
 
+import { useState } from "react";
+
 const INK = "#1A1A18";
 const MUTED = "#7A7A72";
 const HAIR = "#E8E8E2";
@@ -282,8 +284,16 @@ const RADIUS_KM = 8;
 /* ── the frame ───────────────────────────────────────────────────────── */
 
 export default function CreateLogistics() {
+  const [confirmedPin, setConfirmedPin] = useState(PIN);
+  const [pendingPin, setPendingPin] = useState<{ x: number; y: number } | null>(null);
+  const [placingPin, setPlacingPin] = useState(false);
   const located = STOPS.filter((s) => s.x !== null) as { name: string; x: number; y: number }[];
   const radiusPx = 34 + RADIUS_KM * 6.2; // 83.6
+  const displayCoordinates = (point: { x: number; y: number }) => ({
+    lat: (35.0037 + (48 - point.y) * 0.001).toFixed(4),
+    lng: (135.7788 + (point.x - 44) * 0.001).toFixed(4),
+  });
+  const confirmedCoordinates = displayCoordinates(confirmedPin);
 
   const capline: React.CSSProperties = { fontSize: "11.5px", color: MUTED, lineHeight: 1.55, marginTop: 8 };
   const ghostSm: React.CSSProperties = { background: "transparent", color: INK, border: `1px solid ${HAIR}`, padding: "6px 11px", fontSize: "12.5px", borderRadius: 6, cursor: "pointer", fontWeight: 550, whiteSpace: "nowrap", flex: "0 0 auto" };
@@ -334,7 +344,19 @@ export default function CreateLogistics() {
               <div style={{ height: 1, background: HAIR, margin: "2px 0 18px" }} />
               <div className="grid items-start gap-4" style={{ gridTemplateColumns: "minmax(0,1fr)" }}>
                 <div className="min-w-0">
-                  <div className="relative overflow-hidden rounded-[7px]" style={{ border: `1px solid ${HAIR}`, background: "#F1F0EA", height: 520 }}>
+                  <div
+                    className="relative overflow-hidden rounded-[7px]"
+                    style={{ border: `1px solid ${HAIR}`, background: "#F1F0EA", height: 520, cursor: placingPin ? "crosshair" : "default" }}
+                    onClick={(event) => {
+                      if (!placingPin) return;
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      setPendingPin({
+                        x: Math.max(4, Math.min(96, ((event.clientX - bounds.left) / bounds.width) * 100)),
+                        y: Math.max(6, Math.min(93, ((event.clientY - bounds.top) / bounds.height) * 100)),
+                      });
+                      setPlacingPin(false);
+                    }}
+                  >
                     <div className="absolute inset-0"><BaseMapSvg /></div>
 
                     {/* overlay */}
@@ -343,8 +365,8 @@ export default function CreateLogistics() {
                       <div
                         className="absolute rounded-full"
                         style={{
-                          left: `${PIN.x}%`,
-                          top: `${PIN.y}%`,
+                          left: `${confirmedPin.x}%`,
+                          top: `${confirmedPin.y}%`,
                           width: radiusPx,
                           height: radiusPx,
                           transform: "translate(-50%,-50%)",
@@ -366,7 +388,7 @@ export default function CreateLogistics() {
                         </div>
                       ))}
                       {/* the meeting pin (confirmed) */}
-                      <div className="absolute" style={{ left: `${PIN.x}%`, top: `${PIN.y}%`, transform: "translate(-50%,-100%)" }}>
+                      <div className="absolute" style={{ left: `${confirmedPin.x}%`, top: `${confirmedPin.y}%`, transform: "translate(-50%,-100%)" }}>
                         <PinSvg confirmed />
                         <span
                           className="absolute left-1/2 top-full mt-[3px] whitespace-nowrap rounded-full text-[10.5px]"
@@ -375,6 +397,17 @@ export default function CreateLogistics() {
                           Meeting point
                         </span>
                       </div>
+                      {pendingPin && (
+                        <div className="absolute" style={{ left: `${pendingPin.x}%`, top: `${pendingPin.y}%`, transform: "translate(-50%,-100%)" }}>
+                          <PinSvg confirmed={false} />
+                          <span
+                            className="absolute left-1/2 top-full mt-[3px] whitespace-nowrap rounded-full text-[10.5px]"
+                            style={{ transform: "translateX(-50%)", background: "rgba(255,255,255,.95)", border: `1px dashed ${ACCENT}`, padding: "1px 8px", color: ACCENT }}
+                          >
+                            Pending confirmation
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="absolute bottom-[9px] right-[9px] rounded-full text-[11px]" style={{ background: "rgba(255,255,255,.94)", border: `1px solid ${HAIR}`, padding: "3px 10px", color: MUTED }}>
@@ -386,10 +419,22 @@ export default function CreateLogistics() {
                     <div
                       className="absolute flex flex-wrap items-center gap-[10px] rounded-[6px] text-[12.5px]"
                       style={{ left: 12, right: 12, top: 12, background: "rgba(255,255,255,.97)", border: `1px solid ${HAIR}`, padding: "9px 12px", boxShadow: "0 1px 4px rgba(26,26,24,.08)" }}
+                      onClick={(event) => event.stopPropagation()}
                     >
-                      <span className="min-w-[170px] flex-1">Nothing armed. Pick a mode, then click the map.</span>
-                      <button type="button" style={ghostSm}>Move the meeting pin</button>
+                      <span className="min-w-[170px] flex-1">{placingPin ? "Meeting-pin mode armed — click the map." : "Nothing armed. Pick a mode, then click the map."}</span>
+                      <button type="button" style={ghostSm} onClick={() => { setPendingPin(null); setPlacingPin((value) => !value); }}>
+                        {placingPin ? "Cancel placement" : "Place the meeting pin"}
+                      </button>
                       <button type="button" style={ghostSm}>Place a stop</button>
+                      {pendingPin && (
+                        <div className="flex w-full items-center gap-2 rounded-[5px] text-[12px]" style={{ background: ACCENT_SOFT, border: "1px solid #BFD5D0", padding: "7px 9px", color: INK }}>
+                          <span className="flex-1">New meeting pin selected. Confirm it to update the card below.</span>
+                          <button type="button" style={{ ...ghostSm, color: "#fff", background: ACCENT, borderColor: ACCENT, padding: "5px 9px" }} onClick={() => { setConfirmedPin(pendingPin); setPendingPin(null); }}>
+                            Confirm this location
+                          </button>
+                          <button type="button" style={{ ...ghostSm, padding: "5px 9px" }} onClick={() => setPendingPin(null)}>Cancel</button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -404,7 +449,7 @@ export default function CreateLogistics() {
                   <div className="rounded-[7px]" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
                     <div className="flex items-center gap-2" style={{ padding: "11px 14px", borderBottom: `1px solid ${HAIR}` }}>
                       <b className="flex-1 text-[13px] font-semibold">Meeting pin</b>
-                      <span className="inline-block rounded-full text-[11.5px]" style={{ padding: "2px 9px", border: "1px solid #BFD5D0", background: ACCENT_SOFT, color: ACCENT }}>Confirmed</span>
+                      <span className="inline-block rounded-full text-[11.5px]" style={{ padding: "2px 9px", border: "1px solid #BFD5D0", background: ACCENT_SOFT, color: ACCENT }}>{pendingPin ? "Pending change" : "Confirmed"}</span>
                     </div>
                     <div style={{ padding: "12px 14px" }}>
                       <input
@@ -416,7 +461,7 @@ export default function CreateLogistics() {
                       <div style={capline}>
                         A typed address is never a location. The pin is saved only when you press <b style={{ color: INK }}>Confirm this location</b> — the same posture the live picker already uses.
                       </div>
-                      <div className="mt-[10px] text-[12px]" style={{ color: ACCENT }}>Confirmed at 35.0037, 135.7788.</div>
+                      <div className="mt-[10px] text-[12px]" style={{ color: ACCENT }}>Confirmed at {confirmedCoordinates.lat}, {confirmedCoordinates.lng}.</div>
                       <button type="button" style={{ ...ghostSm, marginTop: 8 }}>Remove pin</button>
                     </div>
                   </div>
