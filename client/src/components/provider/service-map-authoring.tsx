@@ -176,9 +176,13 @@ export function ServiceMapAuthoring({
 
   // D-10: the Layers card — display toggles over the canvas's three optional layers. Display
   // state only; toggling draws or hides a layer, it never writes a row.
-  const [showRadius, setShowRadius] = useState(false);
-  const [showStops, setShowStops] = useState(false);
-  const [showZones, setShowZones] = useState(false);
+  // Ratified Lane L default: the three display layers are ON by default so a
+  // saved radius / route stops / zones are visible without hunting for a toggle
+  // (an unratified refactor flipped these off, which also made the canvas render
+  // empty for a pin-less service that has saved stops).
+  const [showRadius, setShowRadius] = useState(true);
+  const [showStops, setShowStops] = useState(true);
+  const [showZones, setShowZones] = useState(true);
   const hasPickupRail = !!pickupAvailable || !!pickupProvisionChosen;
 
   // Re-seed the editable list whenever the saved route arrives/changes — but NEVER over live,
@@ -658,7 +662,7 @@ export function ServiceMapAuthoring({
                     The ring travelers see around your meeting pin.
                   </p>
                   {(savedRouteStopCount ?? 0) > 0 && (
-                    <p className="text-[11px] text-amber-700 mt-2">
+                    <p className="text-[11px] text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                       {savedRouteStopCount} saved route {savedRouteStopCount === 1 ? "stop is" : "stops are"} preserved.
                     </p>
                   )}
@@ -723,7 +727,7 @@ export function ServiceMapAuthoring({
                     </p>
                   )}
                   {(savedRadiusKm ?? 0) > 0 && (
-                    <p className="text-[11px] text-amber-700">Your saved radius is preserved.</p>
+                    <p className="text-[11px] text-amber-700" data-testid="text-coverage-other-preserved">Your saved radius is preserved.</p>
                   )}
                 </div>
               )}
