@@ -10,7 +10,7 @@
   "serviceName": "Ceremony Highlight Video (Short-form)",
   "servicePrice": 1100,
   "addToCartMethod": "api-only",
-  "bookingId": "66dbea8b-7746-4afc-ad40-052961863249",
+  "bookingId": "5d9be65a-8692-46ad-b13a-e9be0da3ad2c",
   "finalBookingStatus": "confirmed",
   "confirmedOk": true,
   "stripeKeyboardMethod": "keyboard-tab",
@@ -367,8 +367,8 @@
     "unlabelledInputs": 0,
     "unlabelledButtons": 2,
     "details": [
-      "unlabelled button: testid=button-decrease-655d4a72-3978-4008-a1b5-062ab8843271",
-      "unlabelled button: testid=button-increase-655d4a72-3978-4008-a1b5-062ab8843271"
+      "unlabelled button: testid=button-decrease-2a7fae34-3cd6-48f5-9395-55a6b7501c6d",
+      "unlabelled button: testid=button-increase-2a7fae34-3cd6-48f5-9395-55a6b7501c6d"
     ]
   },
   "formLabelsPayment": {
@@ -436,11 +436,11 @@
     }
   ],
   "timings": {
-    "register_ms": 3159,
-    "tab_to_proceed_ms": 4176,
-    "tab_to_complete_ms": 400,
-    "stripe_keyboard_ms": 5863,
-    "keyboard_submit_ms": 5783
+    "register_ms": 2956,
+    "tab_to_proceed_ms": 4222,
+    "tab_to_complete_ms": 415,
+    "stripe_keyboard_ms": 6324,
+    "keyboard_submit_ms": 5763
   },
   "screenshots": {
     "cart": "keyboard-cart.png",

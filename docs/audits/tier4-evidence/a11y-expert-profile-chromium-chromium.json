@@ -5,7 +5,7 @@
   "project": "chromium",
   "surface": "expert-profile-chromium",
   "url": "http://127.0.0.1:5000/experts/503e86df-dfdf-494d-913f-25aeda48c012",
-  "scannedAt": "2026-08-22T18:59:26.761Z",
+  "scannedAt": "2026-08-22T20:23:45.853Z",
   "result": "2 violation types, 8 affected nodes",
   "totalViolations": 2,
   "totalNodes": 8,

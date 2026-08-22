@@ -5,7 +5,7 @@
   "project": "chromium",
   "surface": "cart-checkout-payment",
   "url": "http://127.0.0.1:5000/cart",
-  "scannedAt": "2026-08-22T18:59:21.213Z",
+  "scannedAt": "2026-08-22T20:23:40.193Z",
   "result": "1 violation types, 6 affected nodes",
   "totalViolations": 1,
   "totalNodes": 6,
