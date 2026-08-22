@@ -174,6 +174,7 @@ export function ServiceMapAuthoring({
   const [showRadius, setShowRadius] = useState(true);
   const [showStops, setShowStops] = useState(true);
   const [showZones, setShowZones] = useState(true);
+  const hasPickupRail = !!pickupAvailable || !!pickupProvisionChosen;
 
   // Re-seed the editable list whenever the saved route arrives/changes — but NEVER over live,
   // unsaved local edits (the autosave's refetch races a fast next edit otherwise; D-12).
@@ -395,7 +396,7 @@ export function ServiceMapAuthoring({
             : null;
 
   return (
-    <Card data-testid="card-service-map-authoring">
+    <Card className="w-full" data-testid="card-service-map-authoring">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Route className="w-5 h-5" />
@@ -413,7 +414,7 @@ export function ServiceMapAuthoring({
         {/* ── D-11/D-15: the ARM BAR over a full-width canvas — the mock's shape. A bare map
             click does nothing; placing anything needs an explicitly armed mode. ── */}
         <div
-          className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2"
+          className={`grid grid-cols-1 md:grid-cols-3 ${hasPickupRail ? "xl:grid-cols-4" : ""} items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2`}
           data-testid="flow-map-arm-bar"
         >
           <p className="text-[12.5px] text-muted-foreground md:col-span-2 xl:col-span-2" data-testid="text-arm-state">
@@ -453,7 +454,7 @@ export function ServiceMapAuthoring({
         </div>
 
         {/* Canvas — full width (D-15: the canvas is the step's primary surface). */}
-        <div className="space-y-2 min-w-0 xl:-mx-10 xl:w-[calc(100%+5rem)]">
+        <div className="space-y-2 min-w-0 w-full">
           <ServiceLocationMap
             pin={pin}
             pinLabel={pinLabel}
@@ -528,7 +529,7 @@ export function ServiceMapAuthoring({
 
         {/* The rail gives each spatial concept one home: meeting pin, display layers, itinerary,
             and (when offered) pickup coverage. */}
-        <div className={`grid grid-cols-1 md:grid-cols-3 ${pickupAvailable || pickupProvisionChosen ? "xl:grid-cols-4" : ""} gap-4 items-start`}>
+        <div className={`grid grid-cols-1 md:grid-cols-3 ${hasPickupRail ? "xl:grid-cols-4" : ""} gap-4 items-start`}>
           <div className="rounded-lg border p-3 space-y-3" data-testid="card-meeting-pin">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold flex items-center gap-1.5">
