@@ -3,7 +3,7 @@
   "chosenStep": "service-detail",
   "engine": "webkit",
   "project": "webkit",
-  "result": "PASS - booking 81c04931-8350-4a11-8f42-aff821a1ec5c reached status \"confirmed\"",
+  "result": "PASS - booking 81a22641-390f-443c-9d75-075aa574de72 reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
   "addToCartMethod": "api",
   "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
@@ -11,9 +11,9 @@
   "serviceName": "Ceremony Highlight Video (Short-form)",
   "servicePrice": 1100,
   "bookingIdsFromCheckout": [
-    "81c04931-8350-4a11-8f42-aff821a1ec5c"
+    "81a22641-390f-443c-9d75-075aa574de72"
   ],
-  "primaryBookingId": "81c04931-8350-4a11-8f42-aff821a1ec5c",
+  "primaryBookingId": "81a22641-390f-443c-9d75-075aa574de72",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
@@ -64,11 +64,11 @@
       },
       {
         "type": "info",
-        "text": "Successfully preconnected to https://fonts.gstatic.com/"
+        "text": "Successfully preconnected to https://fonts.googleapis.com/"
       },
       {
         "type": "info",
-        "text": "Successfully preconnected to https://fonts.googleapis.com/"
+        "text": "Successfully preconnected to https://fonts.gstatic.com/"
       },
       {
         "type": "debug",
@@ -92,15 +92,15 @@
     "bookings": "booking-webkit-bookings-final.png"
   },
   "timings": {
-    "register_ms": 4573,
-    "service_discovery_ms": 71,
-    "discover_load_ms": 3582,
-    "service_detail_load_ms": 2878,
-    "add_to_cart_ms": 62,
-    "cart_load_ms": 3942,
-    "checkout_click_ms": 4481,
-    "stripe_fill_ms": 9876,
-    "payment_submit_ms": 1820,
+    "register_ms": 4512,
+    "service_discovery_ms": 59,
+    "discover_load_ms": 3437,
+    "service_detail_load_ms": 2963,
+    "add_to_cart_ms": 74,
+    "cart_load_ms": 4000,
+    "checkout_click_ms": 4479,
+    "stripe_fill_ms": 10563,
+    "payment_submit_ms": 1894,
     "poll_confirmed_ms": 32
   },
   "consoleMessages": [
