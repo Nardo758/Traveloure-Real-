@@ -324,9 +324,17 @@ export default function AIAssistant() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="mb-6">
+    // Rendered inside DashboardLayout (sidebar + sticky h-[52px] header; its <main> owns the
+    // scroll) — same shell situation chat.tsx documents. This page used to re-declare its own
+    // viewport frame (min-h-screen + two mismatched h-[calc(100vh-…)] magic numbers), producing
+    // a double scrollbar and misaligned panes. Fix (the chat.tsx pattern): ONE viewport-anchored
+    // frame — lg:h-[calc(100vh-52px)] matching the shell's real 52px header — and every nested
+    // pane derives its height via flex-1/min-h-0, never its own viewport arithmetic. Below lg the
+    // three panes stack at natural height and the shell's <main> scrolls the page (a bounded
+    // frame would crush the stacked panes on a phone).
+    <div className="flex flex-col lg:h-[calc(100vh-52px)] min-h-0 bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col flex-1 min-h-0 w-full px-4 sm:px-6 py-4 lg:py-6">
+        <div className="mb-4 flex-shrink-0">
           <Button
             variant="ghost"
             onClick={() => setLocation("/dashboard")}
@@ -367,9 +375,9 @@ export default function AIAssistant() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-200px)]">
-          <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <CardHeader className="pb-3">
+        <div className="flex flex-col lg:grid lg:grid-cols-5 gap-4 lg:gap-6 flex-1 min-h-0">
+          <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+            <CardHeader className="pb-3 flex-shrink-0">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg">Conversations</CardTitle>
                 <Button
@@ -383,8 +391,8 @@ export default function AIAssistant() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="p-3 pt-0">
-              <ScrollArea className="h-[calc(100vh-340px)]">
+            <CardContent className="p-3 pt-0 flex-1 min-h-0 flex flex-col">
+              <ScrollArea className="flex-1 min-h-0 max-h-64 lg:max-h-none">
                 {loadingConversations ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-600 dark:text-gray-400" />
@@ -487,9 +495,9 @@ export default function AIAssistant() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col">
-            <CardContent className="flex-1 p-4 flex flex-col overflow-hidden">
-              <ScrollArea className="flex-1 pr-4">
+          <Card className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+            <CardContent className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1 min-h-0 pr-4">
                 {selectedConversation && loadingMessages ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
@@ -608,7 +616,7 @@ export default function AIAssistant() {
                 )}
               </ScrollArea>
 
-              <div className="pt-4 border-t border-border mt-4">
+              <div className="pt-4 border-t border-border mt-4 flex-shrink-0">
                 <div className="flex gap-3">
                   <Textarea
                     ref={textareaRef}
@@ -641,7 +649,7 @@ export default function AIAssistant() {
             </CardContent>
           </Card>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-h-0">
             <AiPlannerDraftPanel
               conversationId={selectedConversation}
               extractionTrigger={extractionTrigger}
