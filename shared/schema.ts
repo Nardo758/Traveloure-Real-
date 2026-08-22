@@ -8435,6 +8435,14 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
   status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
+  // Concierge revision entitlement (ledger 2026-08-22-concierge-revision, migration 252).
+  // Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+  // App-enforced vocabulary, NO DB CHECK (publish-trap rule; same posture as `status` above):
+  // NULL = available (never requested), 'requested' = buyer asked, 'in_progress' = expert working,
+  // 'delivered' = revision approved. Additive-nullable → behavior-neutral on apply.
+  revisionStatus: varchar("revision_status", { length: 20 }),
+  revisionRequestNote: text("revision_request_note"),
+  revisionRequestedAt: timestamp("revision_requested_at"),
 }, (table) => ({
   // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
   // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
@@ -8468,7 +8476,15 @@ export const boardItems = pgTable("board_items", {
 export const insertReadyMadeTripSchema = createInsertSchema(readyMadeTrips).omit({ id: true, createdAt: true, updatedAt: true });
 export type ReadyMadeTrip = typeof readyMadeTrips.$inferSelect;
 export type InsertReadyMadeTrip = z.infer<typeof insertReadyMadeTripSchema>;
-export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({ id: true, purchasedAt: true });
+export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({
+  id: true,
+  purchasedAt: true,
+  // Revision entitlement is never set at purchase creation — it is driven only by the
+  // request-revision / deliver endpoints (targeted UPDATEs), never mass-assigned (§19 posture).
+  revisionStatus: true,
+  revisionRequestNote: true,
+  revisionRequestedAt: true,
+});
 export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
 export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;
 export type Board = typeof boards.$inferSelect;
