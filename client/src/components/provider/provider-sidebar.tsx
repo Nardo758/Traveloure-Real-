@@ -31,6 +31,7 @@ import {
   BookOpen,
   Share2,
   Compass,
+  Store,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
@@ -100,6 +101,13 @@ const menuGroups = [
       // now the ONE home for every outward-facing distribution surface (storefront, share kit,
       // promote nudges) — Catalog stays read/manage/triage and points here per listing.
       { title: "Distribute", i18nKey: "nav.distribute", href: "/provider/distribute", icon: Share2 },
+      // Storefront reachability round 2 (Aug 22, 2026 — Leon: "we need a route to Service
+      // Providers Store front"): the public /p/:handle page was reachable only via the Catalog
+      // header's Preview button and Distribute's copy/share tools — no persistent nav route.
+      // This entry goes straight to the owner's live page when a handle exists; with NO handle
+      // it routes to Distribute (where the claim editor lives) — never a dead /p/ link
+      // (StorefrontLink rule 1). The href is resolved at render time below.
+      { title: "My Storefront", i18nKey: "nav.myStorefront", href: "/provider/distribute", icon: Store },
       // C9: "Share & Promote" entry RETIRED — its unique functions now live on Distribute (S6:
       // per-service share kit, storefront tools, posting opportunities); the measurement half
       // (LinkAnalyticsPanel) already renders on the Analytics tab under Performance.
@@ -165,6 +173,11 @@ export function ProviderSidebar() {
   });
   const distributeCount = servicesData?.length ?? 0;
 
+  // "My Storefront" resolves to the real public page only when a handle exists —
+  // otherwise it lands on Distribute, whose storefront card carries the claim editor.
+  const handle = (user as any)?.handle as string | null | undefined;
+  const storefrontHref = handle ? `/p/${handle}` : "/provider/distribute";
+
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
       {/* Logo + user identity card — mock: identity lives at the TOP below the logo */}
@@ -213,11 +226,17 @@ export function ProviderSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
+                  const isStorefront = item.title === "My Storefront";
+                  const href = isStorefront ? storefrontHref : item.href;
+                  // The storefront entry is an exit to the public page (or the claim home) —
+                  // it never renders as the active module, so Distribute keeps sole highlight
+                  // when the two share a target.
                   const isActive =
-                    location === item.href ||
-                    (item.href !== "/provider/dashboard" && location.startsWith(item.href));
+                    !isStorefront &&
+                    (location === item.href ||
+                      (item.href !== "/provider/dashboard" && location.startsWith(item.href)));
 
-                  const isDistribute = item.href === "/provider/distribute";
+                  const isDistribute = !isStorefront && item.href === "/provider/distribute";
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -232,7 +251,7 @@ export function ProviderSidebar() {
                         }
                       >
                         <Link
-                          href={item.href}
+                          href={href}
                           data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                           className="flex items-center gap-2 w-full"
                         >

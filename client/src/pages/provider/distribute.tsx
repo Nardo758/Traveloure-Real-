@@ -310,6 +310,17 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
 
         {/* Action row */}
         <div style={{ padding: "14px 20px", display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+          {/* Storefront reachability round 2 (Aug 22, 2026): the row could copy/share/QR the
+              page but never OPEN it — the one action a provider checking their own storefront
+              actually wants. Same new-tab semantics as the Catalog header's Preview button. */}
+          <button
+            style={T.btn}
+            onClick={() => publicUrl && window.open(publicUrl, "_blank", "noopener,noreferrer")}
+            disabled={!publicUrl}
+            data-testid="button-storefront-view"
+          >
+            View storefront
+          </button>
           <button style={T.btn} onClick={copyLink} disabled={!publicUrl} data-testid="button-storefront-copy-link">
             Copy link
           </button>

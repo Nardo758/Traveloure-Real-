@@ -27,9 +27,10 @@ import {
   LayoutGrid,
   TrendingUp,
   Users,
+  Store,
 } from "lucide-react";
 
-function buildMenuGroups(expertType?: string | null) {
+function buildMenuGroups(expertType?: string | null, handle?: string | null) {
   const isEventPlanner = expertType === "event_planner";
   const isLocalExpert = expertType === "local_expert";
 
@@ -69,6 +70,11 @@ function buildMenuGroups(expertType?: string | null) {
         // Catalog (Backoffice B3): "what I sell" front door — absorbs My Offerings + Store
         // Listings management.
         { title: "Catalog", href: "/expert/catalog", icon: LayoutGrid },
+        // Storefront reachability round 2 (Aug 22, 2026): the public /p/:handle page had no
+        // persistent nav route — only the Catalog header's Preview button. With a handle this
+        // goes straight to the live page; without one it lands on Catalog, whose storefront
+        // header carries the claim link — never a dead /p/ link (StorefrontLink rule 1).
+        { title: "My Storefront", href: handle ? `/p/${handle}` : "/expert/catalog", icon: Store },
         // Console IA C1: "Store Listings" entry RETIRED — /expert/ready-made now redirects to
         // /expert/catalog (list + approval status live in the MyOfferingsTable ready_made lane;
         // editing lives on the build in the Workstation Distribute panel; creation is
@@ -136,7 +142,7 @@ const roleLabel: Record<string, string> = {
 export function ExpertSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const menuGroups = buildMenuGroups(user?.role);
+  const menuGroups = buildMenuGroups(user?.role, (user as any)?.handle as string | null | undefined);
 
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "E";
 
@@ -163,9 +169,12 @@ export function ExpertSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
+                  // "My Storefront" is an exit to the public page (or the Catalog claim home) —
+                  // never the active module, so Catalog keeps sole highlight when they share a target.
                   const isActive =
-                    location === item.href ||
-                    (item.href !== "/expert/today" && location.startsWith(item.href));
+                    item.title !== "My Storefront" &&
+                    (location === item.href ||
+                      (item.href !== "/expert/today" && location.startsWith(item.href)));
 
                   return (
                     <SidebarMenuItem key={item.title}>
