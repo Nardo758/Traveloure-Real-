@@ -11,13 +11,10 @@
  *
  *  - THE MEETING PIN keeps its ONE writer. The confirmed point reaches the row ONLY through the
  *    form save (`extractServiceLocation` on POST/PATCH /api/provider/services — L27-P3 /
- *    CLAUDE.md §22b). The form's confirm-gated `LocationPointPicker` (Meeting Location card
- *    above) stays the primary authoring surface. D-11 adds the mock's "Place the meeting pin"
- *    ARM mode on this canvas as a COORDINATE SOURCE only: an armed click proposes a candidate,
- *    an explicit "Confirm this location" hands it to the SAME form field the picker's own
- *    confirm hands it to (`onPinConfirm` → `set("locationPoint", …)`), and the form save stays
- *    the one writer. Same confirm posture, same rail — one more way to open it, never a second
- *    pin-write path.
+ *    CLAUDE.md §22b). D-11's "Place the meeting pin" ARM mode is the single pin-authoring
+ *    surface: an armed click proposes a candidate, and an explicit "Confirm this location"
+ *    hands it to the form field (`onPinConfirm` → `set("locationPoint", …)`). The form save stays
+ *    the one writer, with no second pin control competing with the canvas.
  *  - ROUTE STOPS keep the ruling-22a owner-gated replace-list
  *    `PUT /api/provider/services/:id/route-points` — positions derived server-side from array
  *    order, unlocated stops preserved as rows and flagged, never guessed onto the map (§13).
@@ -100,7 +97,7 @@ export function ServiceMapAuthoring({
 }: {
   /** The saved row's id — `null` in CREATE mode, where the stop rail has nothing to write to. */
   serviceId: string | null;
-  /** The CONFIRMED pin, owned by the form's LocationPointPicker. Read-only here. */
+  /** The CONFIRMED pin owned by the parent form. Read-only here. */
   pin: LocationPoint | null;
   pinLabel?: string | null;
   /** `serviceRadius` in km — a display-only ring around the confirmed pin (§22c). */
@@ -113,9 +110,9 @@ export function ServiceMapAuthoring({
   savedStops: SavedRoutePoint[];
   /**
    * D-11 (ledger 119): receives a canvas-proposed, EXPLICITLY CONFIRMED meeting-pin candidate.
-   * The parent hands it to the same form field the LocationPointPicker's confirm writes
-   * (`set("locationPoint", …)`) — the form save (`extractServiceLocation`) stays the pin's ONE
-   * writer. Omit to hide the pin arm mode entirely (non-form mounts).
+   * The parent hands it to the form field (`set("locationPoint", …)`) — the form save
+   * (`extractServiceLocation`) stays the pin's ONE writer. Omit to hide the pin arm mode entirely
+   * (non-form mounts).
    */
   onPinConfirm?: (point: LocationPoint) => void;
 }) {
