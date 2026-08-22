@@ -101,8 +101,11 @@ function AddToTripDialog({
         status: "planned",
         estimatedCost: item.price || null,
         currency: "USD",
-        notes: `Source: ${item.source}${item.affiliate_url ? ` | Booking: ${item.affiliate_url}` : ""}`,
-        sourceUrl: item.affiliate_url || null,
+        // §16 (ledger 2026-08-22-ai-slip-defects): the affiliate URL is deliberately NOT
+        // persisted onto the trip item — partner URLs stay server-side; booking rides the
+        // agent rail. (The old code wrote it into `notes` and a `sourceUrl` field that no
+        // column backs — the URL then lived durably on the traveler's plan.)
+        notes: `Source: ${item.source}`,
       });
     },
     onSuccess: (_, tripId) => {
