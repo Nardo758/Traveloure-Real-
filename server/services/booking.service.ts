@@ -328,15 +328,51 @@ class BookingService {
             finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
             console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_items: ${finalPrice}`);
           } else {
-            // Fall back to itinerary variant items (optimizer output)
+            // Fall back to itinerary variant items (optimizer output).
+            // PROVENANCE RULE (ledger 2026-08-22-booking-price-provenance, decision-maker
+            // ratified): `itinerary_variant_items.price` is written VERBATIM from the LLM's
+            // JSON at variant insert — server-side storage, model provenance. It is never a
+            // §14 "server record" for a charge. So this branch re-derives the price from the
+            // variant item's LINKED CATALOG ROW (`provider_service_id` → `provider_services.price`,
+            // a link only ever set for services actually offered to the AI), and REFUSES an
+            // unlinked item outright — a pure AI invention has no priceable record, and
+            // apply-to-cart already skips such items, so nothing legitimate books through here.
             const variantRecord = await db.execute(sql`
-              SELECT price FROM itinerary_variant_items WHERE id = ${item.id} LIMIT 1
+              SELECT price, provider_service_id FROM itinerary_variant_items WHERE id = ${item.id} LIMIT 1
             `);
 
             if (variantRecord.rows && variantRecord.rows.length > 0) {
-              const serverPrice = variantRecord.rows[0].price;
-              finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
-              console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_variant_items: ${finalPrice}`);
+              const linkedServiceId = variantRecord.rows[0].provider_service_id as string | null;
+              const llmPrice = variantRecord.rows[0].price;
+              if (!linkedServiceId) {
+                console.error(
+                  `[BookingService] REFUSED: variant item "${item.title}" (id=${item.id}) has no ` +
+                  `catalog link — its stored price is LLM-authored and cannot back a charge.`
+                );
+                errors.push(`Cannot verify price for "${item.title}" — this AI-proposed item has no catalog listing.`);
+                continue;
+              }
+              const catalogRecord = await db.execute(sql`
+                SELECT price FROM provider_services WHERE id = ${linkedServiceId} LIMIT 1
+              `);
+              const catalogPrice = catalogRecord.rows?.[0]?.price;
+              if (catalogPrice === undefined || catalogPrice === null) {
+                console.error(
+                  `[BookingService] REFUSED: variant item "${item.title}" (id=${item.id}) links to ` +
+                  `catalog row ${linkedServiceId} but that row is missing or unpriced.`
+                );
+                errors.push(`Cannot verify price for "${item.title}" — its listing is no longer available.`);
+                continue;
+              }
+              finalPrice = Number(catalogPrice);
+              // Visibility: how often the stored LLM figure would have differed from the catalog.
+              if (llmPrice !== null && Number(llmPrice) !== finalPrice) {
+                console.warn(
+                  `[BookingService] Variant price provenance: "${item.title}" stored LLM price ` +
+                  `${Number(llmPrice)} != catalog price ${finalPrice} (service ${linkedServiceId}). Using catalog.`
+                );
+              }
+              console.log(`[BookingService] AI-item "${item.title}" price re-derived from catalog row ${linkedServiceId}: ${finalPrice}`);
             } else {
               console.error(
                 `[BookingService] No server price record found for AI item "${item.title}" (id=${item.id}). Rejecting.`
