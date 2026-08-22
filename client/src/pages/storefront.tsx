@@ -429,7 +429,7 @@ export default function StorefrontPage() {
         {/* Lane 3: Ready Made Trips — buy the whole plan (§10/§17 store channel) */}
         {readyMade.length > 0 && (
           <section className="mt-12" data-testid="storefront-lane-readymade">
-            <LaneHeader eyebrow="Buy the whole plan" title="Ready Made Trips" count={readyMade.length} />
+            <LaneHeader eyebrow="Buy the whole plan" title="Ready-Made Trips" count={readyMade.length} />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {readyMade.map((r) => {
                 const chips = [
