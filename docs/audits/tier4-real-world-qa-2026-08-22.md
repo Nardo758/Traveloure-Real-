@@ -247,3 +247,26 @@ The WebKit result is evidence for Playwright's WebKit engine on Linux, not a cla
 - **#1607 — Make every audited control announce its purpose to screen-reader users**
 - **#1608 — Make booking and expert-profile content meet WCAG AA contrast**
 - **#1609 — Announce empty payment errors to keyboard and screen-reader users**
+
+## 9. Tripslip pull review and focused verification
+
+The Tripslip review-copy pull was reviewed at merged commit `c911cec2` (PR #534). The
+pull correctly:
+
+- returns slip-backed comparisons to `/plans/:tripId` after applying a selected variant;
+- explains that optimization has not started when a comparison is still
+  `pending_payment`;
+- explains that the original plan is untouched after a failed optimization; and
+- gives review-mode zero-proposal comparisons an explanation and a retry action.
+
+One follow-up defect remains: the cart's trip-backed `?autoApply=1` path can enter the
+new `autoApplyError === "no_variants"` state, but that banner still renders a hard-coded
+“Back to Cart” action instead of the slip-aware “Back to your plan” exit. This is a
+navigation-copy inconsistency in the pull, not a payment or data-integrity failure.
+
+Focused verification:
+
+- **J6 trip-backed optimizer contract: PASS** — Chromium, 1/1, 27.3 seconds.
+- **Optimization payment-gate and auto-apply banner suites: BLOCKED before test execution** —
+  Chromium could not launch because the host test runtime lacked `libglib-2.0.so.0`.
+  No application assertion ran, and this does not change the completed Tier 4 booking result.
