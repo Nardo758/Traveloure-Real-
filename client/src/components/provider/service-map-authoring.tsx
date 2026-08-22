@@ -104,6 +104,7 @@ export function ServiceMapAuthoring({
   onServiceRadiusChange,
   savedRouteStopCount,
   savedRadiusKm,
+  onDraftStopsChange,
 }: {
   /** The saved row's id — `null` in CREATE mode, where the stop rail has nothing to write to. */
   serviceId: string | null;
@@ -134,6 +135,7 @@ export function ServiceMapAuthoring({
   onServiceRadiusChange?: (radius: number) => void;
   savedRouteStopCount?: number;
   savedRadiusKm?: number;
+  onDraftStopsChange?: (stops: Array<{ name: string; latitude: number | null; longitude: number | null }>) => void;
 }) {
   const { toast } = useToast();
   const [draft, setDraft] = useState<DraftStop[]>([]);
@@ -181,6 +183,12 @@ export function ServiceMapAuthoring({
     [draft],
   );
   const locatedCount = draft.filter((s) => s.lat !== null && s.lng !== null).length;
+
+  useEffect(() => {
+    onDraftStopsChange?.(
+      draft.map((stop) => ({ name: stop.name, latitude: stop.lat, longitude: stop.lng })),
+    );
+  }, [draft, onDraftStopsChange]);
 
   const routeMutation = useMutation({
     mutationFn: async () => {
@@ -298,7 +306,11 @@ export function ServiceMapAuthoring({
   const canvasExists = !!pin || locatedCount > 0;
 
   const routeStatus = !canWriteStops
-    ? null
+    ? draft.length > 0
+      ? dirty
+        ? "Route draft — saves with the listing."
+        : "Route draft ready"
+      : null
     : routeMutation.isPending
       ? "Saving route…"
       : unnamedCount > 0
@@ -575,15 +587,7 @@ export function ServiceMapAuthoring({
               )}
             </h4>
 
-            {!canWriteStops ? (
-              <p className="text-xs text-muted-foreground" data-testid="text-route-stops-after-save">
-                Route stops attach to a saved listing — they unlock right after this listing first
-                saves (when you submit it on <strong>Review &amp; submit</strong>; your work here
-                autosaves in this browser meanwhile). We won&apos;t create a row behind your back
-                just to hold them.
-              </p>
-            ) : (
-              <>
+            <>
                 <div className="flex gap-2">
                   <Input
                     value={newStopName}
@@ -722,10 +726,10 @@ export function ServiceMapAuthoring({
                   </p>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  Drag a numbered pin to adjust it. Stops autosave; the pin saves with the form.
+                  Drag a numbered pin to adjust it. Stops autosave after the listing exists; new
+                  listing routes are saved with the form.
                 </p>
               </>
-            )}
           </div>
         </div>
       </CardContent>
