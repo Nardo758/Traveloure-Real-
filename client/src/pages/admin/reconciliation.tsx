@@ -212,6 +212,50 @@ export default function AdminReconciliation() {
     },
   });
 
+  // Ready-Made concierge disputes (ledger 2026-08-22-concierge-p3): the buyer-concern queue.
+  // Renders FACTS, not a verdict (§13): revision requested-at, the expert's workspace status,
+  // suggestion count, and the earning's recoverability — the admin judges.
+  const { data: rmDisputeData, isLoading: rmDisputesLoading, refetch: refetchRmDisputes } = useQuery<{
+    disputes: Array<{
+      id: string; purchase_status: string; dispute_status: string; dispute_reason: string | null;
+      disputed_at: string | null; price_paid_cents: number; currency: string; purchased_at: string | null;
+      revision_status: string | null; revision_requested_at: string | null; clone_trip_id: string | null;
+      listing_id: string; listing_title: string;
+      buyer_first_name: string | null; buyer_last_name: string | null;
+      author_first_name: string | null; author_last_name: string | null;
+      advisor_workspace_status: string | null; suggestion_count: number;
+      earning_status: string | null; earning_dispute_state: string | null; earning_amount: string | null;
+    }>;
+  }>({ queryKey: ["/api/admin/ready-made/disputes"] });
+
+  const rmRefundMutation = useMutation({
+    mutationFn: (purchaseId: string) =>
+      apiRequest("POST", `/api/admin/ready-made/disputes/${purchaseId}/refund`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/ready-made/disputes"] });
+      refetchRmDisputes();
+      toast({ title: "Buyer refunded", description: "Purchase refunded; the author's earning was reversed. The buyer keeps their trip." });
+    },
+    onError: async (err: any) => {
+      const message = err?.message ?? "Check server logs for details.";
+      toast({ title: "Could not refund", description: message, variant: "destructive" });
+      refetchRmDisputes();
+    },
+  });
+
+  const rmDismissMutation = useMutation({
+    mutationFn: (purchaseId: string) =>
+      apiRequest("POST", `/api/admin/ready-made/disputes/${purchaseId}/dismiss`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/ready-made/disputes"] });
+      refetchRmDisputes();
+      toast({ title: "Concern dismissed", description: "The author's earning resumes its release clock; the buyer was notified." });
+    },
+    onError: () => {
+      toast({ title: "Could not dismiss", description: "Check server logs for details.", variant: "destructive" });
+    },
+  });
+
   const unprocessedCount = webhookData?.count ?? 0;
   const mismatchCount = lastRunResult?.mismatches.length ?? 0;
   const disputeCount = disputeData?.count ?? 0;
@@ -484,6 +528,130 @@ export default function AdminReconciliation() {
             )}
           </CardContent>
         </Card>
+
+        {/* Ready-Made concierge disputes (ledger 2026-08-22-concierge-p3) — buyer concerns after
+            purchase. Sibling of the chargeback queue above: that one is Stripe-initiated on
+            service bookings; this one is buyer-initiated on ready-made purchases, and refund
+            here is the admin escape hatch (the self-serve refund is retired). */}
+        {(rmDisputeData?.disputes?.length ?? 0) > 0 && (
+          <Card className="border-amber-300">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Siren className="h-4 w-4 text-amber-600" />
+                    Ready-Made concierge disputes
+                    <Badge variant="destructive" className="ml-1">{rmDisputeData!.disputes.length} open</Badge>
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Buyers who raised a concern on a Ready-Made purchase. The revision columns show whether
+                    the included entitlement was even used; the earning column shows whether the author's
+                    money is still recoverable (a paid-out earning refuses the refund path server-side).
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => refetchRmDisputes()} disabled={rmDisputesLoading} data-testid="button-refresh-rm-disputes">
+                  <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${rmDisputesLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-amber-200 bg-amber-50">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Buyer & trip</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Expert</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Reason</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Revision</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Earning</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Paid</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-800">Resolve</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rmDisputeData!.disputes.map((d) => {
+                      const stripePending = d.purchase_status === "refunded";
+                      const recoverable = d.earning_status == null || d.earning_status === "held" || d.earning_status === "releasable";
+                      return (
+                        <tr key={d.id} className="border-b border-amber-100 hover:bg-amber-50" data-testid={`row-rm-dispute-${d.id}`}>
+                          <td className="py-2 px-3">
+                            <p className="text-xs font-medium text-gray-800">{[d.buyer_first_name, d.buyer_last_name].filter(Boolean).join(" ") || "—"}</p>
+                            <p className="text-xs text-gray-500 truncate max-w-[140px]">{d.listing_title}</p>
+                            <p className="text-[11px] text-gray-400">
+                              {d.disputed_at ? new Date(d.disputed_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                            </p>
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-600">
+                            {[d.author_first_name, d.author_last_name].filter(Boolean).join(" ") || "—"}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-600 max-w-[180px]">
+                            <p className="line-clamp-3">{d.dispute_reason ?? "—"}</p>
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-600">
+                            {d.revision_requested_at ? (
+                              <>
+                                <p>Requested {new Date(d.revision_requested_at).toLocaleDateString([], { month: "short", day: "numeric" })}</p>
+                                <p className="text-gray-400">workspace: {d.advisor_workspace_status ?? "—"} · {d.suggestion_count} suggestion{d.suggestion_count === 1 ? "" : "s"}</p>
+                              </>
+                            ) : (
+                              <span className="text-amber-700 font-medium">Never requested</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-xs">
+                            {stripePending ? (
+                              <span className="text-red-700 font-medium">Reversal pending — retry refund</span>
+                            ) : recoverable ? (
+                              <span className="text-green-700">{d.earning_status ?? "none"}{d.earning_dispute_state === "open" ? " (frozen)" : ""}</span>
+                            ) : (
+                              <span className="text-red-700 font-medium">{d.earning_status} — not refundable here</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-gray-700 font-medium">
+                            ${(d.price_paid_cents / 100).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline" size="sm"
+                                className="h-7 text-xs border-gray-300 text-gray-700 hover:bg-gray-100"
+                                disabled={rmRefundMutation.isPending || rmDismissMutation.isPending}
+                                onClick={() => {
+                                  if (window.confirm("Dismiss this concern? The purchase stands, the author's earning resumes its release clock, and the buyer is notified.")) {
+                                    rmDismissMutation.mutate(d.id);
+                                  }
+                                }}
+                                data-testid={`button-rm-dismiss-${d.id}`}
+                              >
+                                Dismiss
+                              </Button>
+                              <Button
+                                variant="outline" size="sm"
+                                className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-100"
+                                disabled={rmRefundMutation.isPending || rmDismissMutation.isPending || (!recoverable && !stripePending)}
+                                title={!recoverable && !stripePending ? "The author's earning already paid out — not refundable through this path" : undefined}
+                                onClick={() => {
+                                  if (window.confirm(stripePending
+                                    ? "Retry the payment reversal? The ledger is already refunded; only the Stripe leg re-runs."
+                                    : "Refund this buyer? This reverses the author's earning and platform revenue and refunds the full payment. The buyer keeps their trip. This moves money and cannot be auto-undone.")) {
+                                    rmRefundMutation.mutate(d.id);
+                                  }
+                                }}
+                                data-testid={`button-rm-refund-${d.id}`}
+                              >
+                                {stripePending ? "Retry refund" : "Refund buyer"}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* PERSISTED drift exceptions — the durable surface (reconciliation-detection lane).
             The panel below this one is the EPHEMERAL last-run view; this one survives a reload,

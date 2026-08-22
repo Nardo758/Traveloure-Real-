@@ -8443,6 +8443,17 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   revisionStatus: varchar("revision_status", { length: 20 }),
   revisionRequestNote: text("revision_request_note"),
   revisionRequestedAt: timestamp("revision_requested_at"),
+  // Concierge dispute (ledger 2026-08-22-concierge-p3, migration 253). The buyer's "something
+  // wrong" recourse after self-serve refund removal — a concern reviewed by an admin, never an
+  // automatic refund. App-enforced vocabulary, NO DB CHECK (publish-trap rule): NULL = none,
+  // 'open' = awaiting admin, 'resolved_refunded' | 'resolved_dismissed' = terminal. Transitions
+  // are server-owned atomic conditionals (§15 shape); resolver identity is KEPT (provenance
+  // audit: review identity must be superseded, never erased). Additive-nullable.
+  disputeStatus: varchar("dispute_status", { length: 24 }),
+  disputeReason: text("dispute_reason"),
+  disputedAt: timestamp("disputed_at"),
+  disputeResolvedAt: timestamp("dispute_resolved_at"),
+  disputeResolvedBy: varchar("dispute_resolved_by").references(() => users.id, { onDelete: "set null" }),
 }, (table) => ({
   // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
   // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
@@ -8484,6 +8495,12 @@ export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchas
   revisionStatus: true,
   revisionRequestNote: true,
   revisionRequestedAt: true,
+  // Dispute state is server-owned (concern endpoint + admin resolve only) — same §19 posture.
+  disputeStatus: true,
+  disputeReason: true,
+  disputedAt: true,
+  disputeResolvedAt: true,
+  disputeResolvedBy: true,
 });
 export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
 export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;

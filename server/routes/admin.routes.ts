@@ -50,6 +50,8 @@ import {
   localExpertForms, expertRequests,
   coordinationStates,
   readyMadeTrips,
+  readyMadePurchases,
+  refunds,
   expertTypeEnum,
   bundleComponents,
   serviceCategories,
@@ -1065,6 +1067,222 @@ router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res
   } catch (err: any) {
     console.error("Admin ready-made reject error:", err);
     res.status(500).json({ message: "Failed to reject listing" });
+  }
+});
+
+// ─── Concierge disputes (ledger 2026-08-22-concierge-p3) ────────────────────────────────────
+//
+// The ready-made recourse ladder's top rung: a buyer's concern (POST /api/ready-made/
+// purchases/:id/concern) lands here for an ADMIN decision — refund (the escape hatch) or
+// dismiss. Guarded with our OWN §15 atomic conditionals (the audit found the service-booking
+// dispute routes below check nothing — copying them would copy the hole): every resolution
+// claims `WHERE dispute_status='open'`, so refund-after-dismiss and dismiss-after-refund 409.
+// The queue shows FACTS, not a verdict (A5/§13): revision requested-at, the expert's workspace
+// status, the suggestion count, and the earning's recoverability — the admin judges.
+
+// GET the open concierge-dispute queue (newest concern first).
+router.get("/api/admin/ready-made/disputes", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        rmp.id, rmp.status AS purchase_status, rmp.dispute_status, rmp.dispute_reason,
+        rmp.disputed_at, rmp.price_paid_cents, rmp.currency, rmp.purchased_at,
+        rmp.revision_status, rmp.revision_requested_at, rmp.clone_trip_id,
+        rmt.id AS listing_id, rmt.title AS listing_title,
+        buyer.id AS buyer_id, buyer.first_name AS buyer_first_name, buyer.last_name AS buyer_last_name,
+        author.id AS author_id, author.first_name AS author_first_name, author.last_name AS author_last_name,
+        -- A5 facts (never a fabricated Yes/No): the selling expert's workspace status on the
+        -- buyer's clone + how many suggestions they actually made there.
+        tea.workspace_status AS advisor_workspace_status,
+        (SELECT COUNT(*) FROM trip_suggestions ts WHERE ts.trip_id = rmp.clone_trip_id)::int AS suggestion_count,
+        -- Recoverability: the author's earning state decides whether the refund path is even
+        -- open (Q1 "prevent" — a paid_out earning refuses the refund server-side).
+        ee.status AS earning_status, ee.dispute_state AS earning_dispute_state, ee.amount AS earning_amount
+      FROM ready_made_purchases rmp
+      JOIN ready_made_trips rmt ON rmt.id = rmp.ready_made_trip_id
+      JOIN users buyer ON buyer.id = rmp.buyer_id
+      JOIN users author ON author.id = rmt.author_id
+      LEFT JOIN trip_expert_advisors tea
+        ON tea.trip_id = rmp.clone_trip_id AND tea.local_expert_id = rmt.author_id
+      LEFT JOIN expert_earnings ee
+        ON ee.reference_id = rmp.id AND ee.type = 'ready_made_sale'
+      WHERE rmp.dispute_status = 'open'
+      ORDER BY rmp.disputed_at DESC NULLS LAST
+    `);
+    res.json({ disputes: result.rows ?? [] });
+  } catch (err: any) {
+    console.error("Admin concierge disputes list error:", err);
+    res.status(500).json({ message: "Failed to fetch concierge disputes" });
+  }
+});
+
+// POST refund — the admin escape hatch. Sequence (§15b posture — the money claim is the ledger
+// service's own atomic flip; no state we can't re-enter is written before the leg it depends on):
+// (1) pre-read for message quality; (2) refundReadyMadePurchaseLedger actor:'admin' — enforces
+// the ratified Q1 paid_out-refusal + Q3 90-day bound + Q2 always-soft-revoke and reverses the
+// earning/revenue atomically; (3) Stripe refund with the SAME deterministic key AND byte-identical
+// params as the retired buyer route (A4 — actor/reason live in the audit log, never on the Stripe
+// call, so a cross-actor retry can never idempotency-conflict); (4) refunds audit row (the sibling
+// rail writes one — now this rail does too); (5) dispute terminal flip WHERE 'open'; (6) buyer +
+// author notifications; (7) access-audit row. A Stripe failure leaves the dispute OPEN with the
+// ledger settled — the queue shows "reversal pending", and a retry re-runs only the Stripe leg.
+router.post("/api/admin/ready-made/disputes/:purchaseId/refund", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { purchaseId } = req.params;
+    const [pre] = await db.select().from(readyMadePurchases)
+      .where(eq(readyMadePurchases.id, purchaseId)).limit(1);
+    if (!pre) return res.status(404).json({ message: "Purchase not found" });
+    if (pre.disputeStatus !== "open") {
+      return res.status(409).json({ message: `No open dispute on this purchase (state: ${pre.disputeStatus ?? "none"})` });
+    }
+
+    const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
+    const ledger = await refundReadyMadePurchaseLedger(purchaseId, null, { actor: "admin" });
+    if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
+
+    const Stripe = (await import("stripe")).default;
+    const { getStripeSecretKey } = await import("../utils/stripe-key");
+    const stripeClient = new Stripe(getStripeSecretKey() || "", {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+    let refundId: string | null = null;
+    try {
+      const refund = await stripeClient.refunds.create(
+        { payment_intent: ledger.purchase.stripePaymentIntentId },
+        { idempotencyKey: `rm-refund-${ledger.purchase.id}` },
+      );
+      refundId = refund.id;
+    } catch (stripeErr: any) {
+      console.error("[admin/concierge-disputes] refund Stripe leg failed:", stripeErr?.message);
+      return res.status(502).json({
+        message: "Refund recorded on the ledger but the payment reversal failed — retry this action; only the payment leg re-runs",
+        purchase: ledger.purchase,
+      });
+    }
+
+    // Refunds audit row (A4) — bookingId NULL is the documented ready-made shape (the FK is to
+    // service_bookings; the PI + reason carry the linkage).
+    await db.insert(refunds).values({
+      bookingId: null,
+      stripeRefundId: refundId,
+      stripePaymentIntentId: ledger.purchase.stripePaymentIntentId,
+      amount: (Number(ledger.purchase.pricePaidCents ?? 0) / 100).toFixed(2),
+      currency: (ledger.purchase.currency ?? "usd").toLowerCase(),
+      status: "succeeded",
+      reason: `ready_made_dispute_refund: purchase ${purchaseId}`,
+    } as any).catch((err: any) =>
+      console.error("[admin/concierge-disputes] refunds row insert failed (non-fatal):", err?.message));
+
+    // Terminal flip — atomic, resolver identity KEPT (provenance posture).
+    const [resolved] = await db.update(readyMadePurchases)
+      .set({ disputeStatus: "resolved_refunded", disputeResolvedAt: new Date(), disputeResolvedBy: user.id } as any)
+      .where(and(eq(readyMadePurchases.id, purchaseId), eq(readyMadePurchases.disputeStatus, "open")))
+      .returning();
+    if (!resolved) {
+      console.error(`[admin/concierge-disputes] dispute flip lost a race on ${purchaseId} (refund already settled)`);
+    }
+
+    // A6: both humans hear about it — the buyer their outcome, the author their reversal.
+    await insertNotification({
+      userId: ledger.purchase.buyerId,
+      type: "concierge_dispute_resolved",
+      title: "Your concern was resolved — refund issued",
+      message: "We reviewed your concern and refunded this Ready-Made purchase. Your trip stays in your account.",
+      data: { purchaseId, outcome: "refunded" },
+    }).catch(() => {});
+    const [listingRow] = await db.select({ authorId: readyMadeTrips.authorId, title: readyMadeTrips.title })
+      .from(readyMadeTrips).where(eq(readyMadeTrips.id, ledger.purchase.readyMadeTripId)).limit(1);
+    if (listingRow?.authorId) {
+      await insertNotification({
+        userId: listingRow.authorId,
+        type: "ready_made_sale_reversed",
+        title: "A Ready-Made sale was refunded",
+        message: `An admin resolved a buyer concern on "${listingRow.title}" with a refund — the sale's earning was reversed.`,
+        data: { purchaseId, listingId: ledger.purchase.readyMadeTripId },
+      }).catch(() => {});
+    }
+
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "ready_made_dispute_refunded",
+      resourceType: "ready_made_dispute",
+      resourceId: purchaseId,
+      metadata: {
+        reason: String(pre.disputeReason ?? "").slice(0, 2000),
+        stripeRefundId: refundId,
+        amountCents: ledger.purchase.pricePaidCents,
+        alreadyRefunded: ledger.alreadyRefunded,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/concierge-disputes] audit log failed (non-fatal):", err));
+
+    res.json({ success: true, refundId, purchase: resolved ?? ledger.purchase });
+  } catch (err: any) {
+    console.error("Admin concierge dispute refund error:", err);
+    res.status(500).json({ message: `Failed to refund dispute: ${err.message}` });
+  }
+});
+
+// POST dismiss — the concern is not upheld. Atomic claim WHERE 'open', UN-freeze the author's
+// earning (release resumes on its own clock), tell the buyer, audit-log with identity kept.
+router.post("/api/admin/ready-made/disputes/:purchaseId/dismiss", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { purchaseId } = req.params;
+    const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 2000) : "";
+    const [resolved] = await db.update(readyMadePurchases)
+      .set({ disputeStatus: "resolved_dismissed", disputeResolvedAt: new Date(), disputeResolvedBy: user.id } as any)
+      .where(and(eq(readyMadePurchases.id, purchaseId), eq(readyMadePurchases.disputeStatus, "open")))
+      .returning();
+    if (!resolved) {
+      const [current] = await db.select({ disputeStatus: readyMadePurchases.disputeStatus })
+        .from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseId)).limit(1);
+      if (!current) return res.status(404).json({ message: "Purchase not found" });
+      return res.status(409).json({ message: `No open dispute on this purchase (state: ${current.disputeStatus ?? "none"})` });
+    }
+
+    // Un-freeze (Q1 half 2): the dispute no longer blocks the author's release clock.
+    await storage.setBookingEarningsDispute(purchaseId, false).catch((err: any) =>
+      console.error("[admin/concierge-disputes] earnings un-freeze failed:", err?.message));
+
+    await insertNotification({
+      userId: resolved.buyerId,
+      type: "concierge_dispute_resolved",
+      title: "Your concern was reviewed",
+      message: note
+        ? `We reviewed your concern on this Ready-Made purchase: ${note}`
+        : "We reviewed your concern on this Ready-Made purchase and are keeping the purchase as-is. Your included revision remains available if you haven't used it.",
+      data: { purchaseId, outcome: "dismissed" },
+    }).catch(() => {});
+
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "ready_made_dispute_dismissed",
+      resourceType: "ready_made_dispute",
+      resourceId: purchaseId,
+      metadata: { note: note || null, reason: String(resolved.disputeReason ?? "").slice(0, 2000) },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => console.error("[admin/concierge-disputes] audit log failed (non-fatal):", err));
+
+    res.json({ success: true, purchase: resolved });
+  } catch (err: any) {
+    console.error("Admin concierge dispute dismiss error:", err);
+    res.status(500).json({ message: `Failed to dismiss dispute: ${err.message}` });
   }
 });
 

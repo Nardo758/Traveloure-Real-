@@ -364,30 +364,32 @@ export default function MyBookingsPage() {
     enabled: !!user,
   });
 
-  // Ready-made STORE purchases (cloneable trips) — refundEligible is SERVER-computed on the
-  // D7/escrow clock; the client renders it, never re-derives the window.
+  // Ready-made STORE purchases (cloneable trips). Ledger 2026-08-22-concierge-p3: the self-serve
+  // refund is retired — the row carries the concierge facts (revisionStatus / disputeStatus) and
+  // the recourse is "Something wrong?" → a concern for admin review, never a client-side refund.
   const { data: rmPurchasesData } = useQuery<{ purchases: Array<{
     id: string; status: string; pricePaidCents: number; purchasedAt: string | null;
     cloneTripId: string | null; title: string; market: string; heroImageUrl: string | null;
-    refundEligible: boolean;
+    revisionStatus: string | null; disputeStatus: string | null;
   }> }>({ queryKey: ["/api/ready-made/purchases/mine"], enabled: !!user });
   const rmPurchases = rmPurchasesData?.purchases ?? [];
 
-  const rmRefund = useMutation({
-    mutationFn: async (purchaseId: string) => {
-      const res = await fetch(`/api/ready-made/purchases/${purchaseId}/refund`, {
-        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.message ?? "Refund failed");
-      return body;
+  const [concernFor, setConcernFor] = useState<{ id: string; title: string } | null>(null);
+  const [concernReason, setConcernReason] = useState("");
+  const rmConcern = useMutation({
+    mutationFn: async ({ purchaseId, reason }: { purchaseId: string; reason: string }) => {
+      const res = await apiRequest("POST", `/api/ready-made/purchases/${purchaseId}/concern`, { reason });
+      return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Refund issued", description: "Your payment is being returned; the trip copy has been removed." });
+      setConcernFor(null);
+      setConcernReason("");
+      toast({
+        title: "Concern submitted",
+        description: "Our team reviews concierge concerns within 2 business days. Most are resolved with a revision from your expert.",
+      });
     },
-    onError: (e: Error) => toast({ title: "Refund failed", description: e.message, variant: "destructive" }),
-    // Refetch on EITHER outcome: a 502 means the ledger already flipped to refunded (the server
-    // retries only the Stripe leg), so the list must stop offering the refund button.
+    onError: (e: Error) => toast({ title: "Couldn't submit concern", description: e.message, variant: "destructive" }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/ready-made/purchases/mine"] }),
   });
 
@@ -518,34 +520,66 @@ export default function MyBookingsPage() {
 
             {/* Purchased expert packages — Phase B3 delivery surface */}
             <TabsContent value="packages" className="space-y-4">
-              {/* Ready-made STORE purchases — the buyer's clone + the D7 refund action.
-                  Without this block the refund endpoint had zero callers (backend-without-surface). */}
+              {/* Ready-made STORE purchases — clone access + the concierge recourse ladder
+                  (ledger 2026-08-22-concierge-p3): revision status is the primary affordance;
+                  "Something wrong?" opens a concern for admin review — never a self-serve refund. */}
               {rmPurchases.length > 0 && (
                 <div className="space-y-3 mb-6" data-testid="rm-purchases">
                   <h3 className="font-semibold">Ready Made Trips you bought</h3>
                   {rmPurchases.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 border border-border rounded-xl p-3" data-testid={`rm-purchase-${p.id}`}>
-                      {p.heroImageUrl && <img src={p.heroImageUrl} alt="" className="w-16 h-12 object-cover rounded-lg flex-shrink-0" />}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{p.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {p.market} · ${(p.pricePaidCents / 100).toFixed(2)} ·{" "}
-                          {p.status === "refunded" ? "Refunded" : p.status === "revoked" ? "Revoked" : "Purchased"}
+                    <div key={p.id} className="border border-border rounded-xl p-3" data-testid={`rm-purchase-${p.id}`}>
+                      <div className="flex items-center gap-3">
+                        {p.heroImageUrl && <img src={p.heroImageUrl} alt="" className="w-16 h-12 object-cover rounded-lg flex-shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{p.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {p.market} · ${(p.pricePaidCents / 100).toFixed(2)} ·{" "}
+                            {p.status === "refunded" ? "Refunded" : p.status === "revoked" ? "Revoked" : "Purchased"}
+                          </div>
                         </div>
+                        {(p.status === "paid" || p.status === "cloned") && (
+                          <Badge variant="outline" className="flex-shrink-0 text-primary border-primary/40" data-testid={`badge-revision-${p.id}`}>
+                            {p.revisionStatus === "delivered" ? "Revision delivered"
+                              : p.revisionStatus ? "Revision in progress"
+                              : "1 revision available"}
+                          </Badge>
+                        )}
+                        {p.cloneTripId && p.status !== "refunded" && (
+                          <Button size="sm" variant="outline" asChild data-testid={`button-open-clone-${p.id}`}>
+                            <Link href={`/plans/${p.cloneTripId}`}>Open my trip</Link>
+                          </Button>
+                        )}
                       </div>
-                      {p.cloneTripId && p.status !== "refunded" && (
-                        <Button size="sm" variant="outline" asChild data-testid={`button-open-clone-${p.id}`}>
-                          <Link href={`/trip/${p.cloneTripId}?tab=itinerary`}>Open my trip</Link>
-                        </Button>
+                      {(p.status === "paid" || p.status === "cloned") && (
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-dashed border-border">
+                          <span className="text-xs text-muted-foreground">
+                            Need a change?{" "}
+                            {p.cloneTripId ? (
+                              <Link href={`/plans/${p.cloneTripId}`} className="text-primary font-medium hover:underline">
+                                Request your revision →
+                              </Link>
+                            ) : (
+                              <span>Your included revision is on your Trip Slip.</span>
+                            )}
+                          </span>
+                          {p.disputeStatus === "open" ? (
+                            <span className="text-xs text-muted-foreground" data-testid={`text-concern-open-${p.id}`}>
+                              Concern under review
+                            </span>
+                          ) : p.disputeStatus ? (
+                            <span className="text-xs text-muted-foreground">Concern reviewed</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                              onClick={() => setConcernFor({ id: p.id, title: p.title })}
+                              data-testid={`button-concern-${p.id}`}
+                            >
+                              Something wrong?
+                            </button>
+                          )}
+                        </div>
                       )}
-                      {p.refundEligible ? (
-                        <Button size="sm" variant="ghost" className="text-destructive" disabled={rmRefund.isPending}
-                          onClick={() => rmRefund.mutate(p.id)} data-testid={`button-refund-${p.id}`}>
-                          Request refund
-                        </Button>
-                      ) : (p.status === "paid" || p.status === "cloned") ? (
-                        <span className="text-[11px] text-muted-foreground flex-shrink-0">Refund window closed</span>
-                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -567,6 +601,43 @@ export default function MyBookingsPage() {
         onOpenChange={setReviewDialogOpen}
         booking={selectedBooking}
       />
+
+      {/* Concierge concern (ledger 2026-08-22-concierge-p3): honest copy — a concern is reviewed
+          by our team; it never promises a refund. Revision-first: the primary alternative is the
+          included revision the buyer may not have used yet. */}
+      <Dialog open={!!concernFor} onOpenChange={(open) => { if (!open) setConcernFor(null); }}>
+        <DialogContent data-testid="dialog-rm-concern">
+          <DialogHeader>
+            <DialogTitle>Tell us what went wrong</DialogTitle>
+            <DialogDescription>
+              We'll review your concern about <span className="font-medium text-foreground">{concernFor?.title}</span>.
+              Our team reviews concierge concerns within 2 business days. Most are resolved with a
+              revision from your expert — submitting this doesn't guarantee a refund.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={concernReason}
+            onChange={(e) => setConcernReason(e.target.value)}
+            placeholder="Describe the issue (e.g. my expert hasn't responded to my revision request)…"
+            rows={4}
+            maxLength={2000}
+            data-testid="textarea-rm-concern"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConcernFor(null)} data-testid="button-rm-concern-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => concernFor && rmConcern.mutate({ purchaseId: concernFor.id, reason: concernReason.trim() })}
+              disabled={rmConcern.isPending || concernReason.trim().length === 0}
+              data-testid="button-rm-concern-submit"
+            >
+              {rmConcern.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Submit concern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
