@@ -51,3 +51,19 @@ export const READY_MADE_PLAN_TYPE_KEYS = READY_MADE_PLAN_TYPES.map((t) => t.key)
 export function planTypeLabel(key: string | null | undefined): string | null {
   return READY_MADE_PLAN_TYPES.find((t) => t.key === key)?.label ?? null;
 }
+
+/**
+ * The theme text a traveler sees for a listing: the closed vocabulary's label, or — for the one
+ * escape from it — the author's own free-text theme (`plan_type_custom`). ONE implementation for
+ * every surface that headlines a listing's theme (store shelf, detail page), so the theme a
+ * builder picked is always the theme a traveler sees (L6).
+ */
+export function planTypeDisplay(
+  planType: string | null | undefined,
+  planTypeCustom: string | null | undefined,
+): string {
+  if (isCustomPlanType(planType)) {
+    return planTypeCustom?.trim() || "Trip plan";
+  }
+  return planTypeLabel(planType) ?? "Trip plan";
+}
