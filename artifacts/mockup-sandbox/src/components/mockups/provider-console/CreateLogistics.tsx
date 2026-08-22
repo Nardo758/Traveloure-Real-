@@ -444,19 +444,19 @@ export default function CreateLogistics() {
                 </div>
 
                 {/* rail: three cards */}
-                <aside className="grid items-start gap-3" style={{ gridTemplateColumns: "repeat(3,minmax(0,1fr))" }}>
+                <aside className="grid grid-cols-1 items-start gap-3 md:grid-cols-2">
                   {/* Meeting pin */}
                   <div className="rounded-[7px] md:col-span-2" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
-                    <div className="flex items-center gap-2" style={{ padding: "11px 14px", borderBottom: `1px solid ${HAIR}` }}>
+                    <div className="flex items-center gap-2" style={{ padding: "9px 12px", borderBottom: `1px solid ${HAIR}` }}>
                       <b className="flex-1 text-[13px] font-semibold">Meeting pin</b>
                       <span className="inline-block rounded-full text-[11.5px]" style={{ padding: "2px 9px", border: "1px solid #BFD5D0", background: ACCENT_SOFT, color: ACCENT }}>{pendingPin ? "Pending change" : "Confirmed"}</span>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" style={{ padding: "12px 14px" }}>
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" style={{ padding: "10px 12px" }}>
                       <div>
                         <label className="text-[12px]" style={{ color: INK }}>Meeting details <span style={{ color: "#A23A32" }}>*</span></label>
                         <textarea
                           className="mt-1 w-full resize-none rounded-[6px]"
-                          style={{ minHeight: 72, padding: "9px 11px", border: `1px solid ${HAIR}`, background: PAPER, color: INK, font: "inherit", fontSize: "12.5px" }}
+                          style={{ minHeight: 64, padding: "8px 10px", border: `1px solid ${HAIR}`, background: PAPER, color: INK, font: "inherit", fontSize: "12px" }}
                           defaultValue="Meet outside the east entrance, beside the taxi rank"
                           aria-label="Meeting details"
                         />
@@ -472,36 +472,43 @@ export default function CreateLogistics() {
                   </div>
 
                   {/* Layers */}
-                  <div className="rounded-[7px]" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
-                    <div className="flex items-center gap-2" style={{ padding: "11px 14px", borderBottom: `1px solid ${HAIR}` }}>
+                  <div className="rounded-[7px] md:col-span-2" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
+                    <div className="flex items-center gap-2" style={{ padding: "9px 12px", borderBottom: `1px solid ${HAIR}` }}>
                       <b className="flex-1 text-[13px] font-semibold">Layers</b>
                     </div>
-                    <div className="flex flex-col gap-3" style={{ padding: "12px 14px" }}>
-                      <LayerToggle on label="Service radius" />
+                    <div className="grid gap-3 md:grid-cols-3" style={{ padding: "10px 12px" }}>
                       <div>
-                        <div style={{ marginLeft: 39 }}>
-                          <input type="range" min={0} max={30} defaultValue={RADIUS_KM} aria-label="Service radius" className="w-full" style={{ accentColor: ACCENT }} />
+                        <LayerToggle on={false} label="Service radius" />
+                        <div className="mt-2" style={{ opacity: 0.45 }}>
+                          <input type="range" min={0} max={30} defaultValue={RADIUS_KM} aria-label="Service radius" disabled className="w-full" style={{ accentColor: ACCENT }} />
                         </div>
-                        <div style={{ ...capline, margin: "4px 0 0 39px" }}>
-                          Included free up to <b style={{ color: INK }}>{RADIUS_KM} km</b>. One radius, one label.
+                        <div style={{ ...capline, marginTop: 4 }}>
+                          Included free up to <b style={{ color: INK }}>{RADIUS_KM} km</b>.
                         </div>
                       </div>
-                      <LayerToggle on label="Route stops" />
-                      <LayerToggle on={false} label="Travel-surcharge zones" />
-                      <div style={{ ...capline, marginTop: 0 }}>
-                        Zones are <b style={{ color: INK }}>display only</b> here — the amounts are set in{" "}
-                        <LinkBtn style={{ fontSize: "11.5px" }}>Pricing &amp; fees →</LinkBtn>
+                      <div>
+                        <LayerToggle on={false} label="Route stops" />
+                        <div style={{ ...capline, marginTop: 8 }}>
+                          Show the ordered service itinerary on the map.
+                        </div>
+                      </div>
+                      <div>
+                        <LayerToggle on={false} label="Travel-surcharge zones" />
+                        <div style={{ ...capline, marginTop: 8 }}>
+                          Zones are <b style={{ color: INK }}>display only</b> — amounts are set in{" "}
+                          <LinkBtn style={{ fontSize: "11px" }}>Pricing &amp; fees →</LinkBtn>
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Route stops */}
-                  <div className="rounded-[7px]" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
-                    <div className="flex items-center gap-2" style={{ padding: "11px 14px", borderBottom: `1px solid ${HAIR}` }}>
+                  <div className="rounded-[7px] md:col-span-2" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
+                    <div className="flex items-center gap-2" style={{ padding: "9px 12px", borderBottom: `1px solid ${HAIR}` }}>
                       <b className="flex-1 text-[13px] font-semibold">Route stops</b>
                       <span className="inline-block rounded-full text-[11.5px]" style={{ padding: "2px 9px", border: `1px solid ${HAIR}`, background: GROUND, color: MUTED }}>2 of 3 located</span>
                     </div>
-                    <div style={{ padding: "12px 14px" }}>
+                    <div style={{ padding: "10px 12px" }}>
                       <div>
                         {STOPS.map((s, i) => {
                           const on = s.x !== null;
