@@ -453,14 +453,14 @@ export function ServiceMapAuthoring({
         </div>
 
         {/* Canvas — full width (D-15: the canvas is the step's primary surface). */}
-        <div className="space-y-2 min-w-0">
+        <div className="space-y-2 min-w-0 xl:-mx-10 xl:w-[calc(100%+5rem)]">
           <ServiceLocationMap
             pin={pin}
             pinLabel={pinLabel}
             radiusKm={showRadius ? (radiusKm ?? null) : null}
             surchargeZones={showZones ? (surchargeZones ?? null) : null}
             stops={showStops ? stopsForMap : []}
-            height={480}
+            height={540}
             testIdPrefix="flow-map-canvas"
             onStopDragEnd={canWriteStops && showStops ? handleStopDragEnd : undefined}
             onCanvasClick={placement ? handleCanvasClick : undefined}

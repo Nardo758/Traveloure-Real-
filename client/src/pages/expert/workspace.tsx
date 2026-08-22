@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useSyncExternalStore, Component, type ReactNode, type ErrorInfo } from "react";
+import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { ItemComments } from "@/components/plancard/ItemComments";
 import { useParams, useLocation } from "wouter";
@@ -42,57 +42,13 @@ import { parseApiErrorMessage } from "@/lib/api-error";
 // Add-panel source drawer publishes its own current results here; CanvasMapSection reads the
 // single active publisher. See client/src/lib/map-candidates.ts for the full contract.
 import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/lib/map-candidates";
+import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
 // WORKSTATION_LOCATION_MAP_SPEC Part B — keyless OSM fallback for CanvasMapSection's plan map,
 // rendered instead of the Google block when VITE_GOOGLE_MAPS_API_KEY is unset (see that file's
 // doc comment for the "Google swap point" contract).
 import { LeafletPlanMap } from "@/components/expert/leaflet-plan-map";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-
-/** Runtime Google Maps auth-failure detection — Google calls the global `gm_authFailure` hook
- *  when the JS API loads but the key is rejected (RefererNotAllowedMapError, ExpiredKeyMapError,
- *  BillingNotEnabled…). A build-time `MAPS_KEY` check can't see these, so without this the plan
- *  map dead-ends on Google's "AuthFailure" overlay even though the keyless Leaflet fallback
- *  works. Module-level store + useSyncExternalStore so every map surface reacts at once. */
-let googleMapsAuthFailed = false;
-const gmAuthListeners = new Set<() => void>();
-if (typeof window !== "undefined") {
-  // @vis.gl/react-google-maps assigns its OWN window.gm_authFailure (that's where its
-  // "Error: AuthFailure" overlay comes from), which would clobber a plain assignment made here
-  // at module-eval time. An accessor property survives that: any later assignment lands in
-  // `inner` and our detector stays wrapped around whatever handler is current.
-  const w = window as any;
-  // Idempotent across HMR / repeated module evaluation — install exactly once.
-  if (!w.__gmAuthFailureHooked) {
-    let inner: (() => void) | undefined = typeof w.gm_authFailure === "function" ? w.gm_authFailure : undefined;
-    // ONE stable wrapper (not a fresh closure per get) so `window.gm_authFailure =
-    // window.gm_authFailure` round-trips harmlessly; the setter drops assignments of the
-    // wrapper itself, so it can never end up as its own `inner` (no recursion).
-    const wrapper = () => {
-      googleMapsAuthFailed = true;
-      gmAuthListeners.forEach(l => l());
-      inner?.();
-    };
-    try {
-      Object.defineProperty(w, "gm_authFailure", {
-        configurable: true,
-        get: () => wrapper,
-        set(fn: unknown) { if (fn !== wrapper) inner = typeof fn === "function" ? (fn as () => void) : undefined; },
-      });
-      w.__gmAuthFailureHooked = true;
-    } catch {
-      // Non-configurable pre-existing descriptor — leave the global alone; the map simply
-      // keeps Google's own AuthFailure overlay (the pre-fallback behavior), never a crash.
-    }
-  }
-}
-function useGoogleMapsAuthFailed(): boolean {
-  return useSyncExternalStore(
-    (cb) => { gmAuthListeners.add(cb); return () => gmAuthListeners.delete(cb); },
-    () => googleMapsAuthFailed,
-    () => false,
-  );
-}
 
 // ── Console tokens (§17 two-palettes rule: never raw hex in console pages) ──
 // These resolve against the .console-scope block in client/src/index.css (light + dark),
