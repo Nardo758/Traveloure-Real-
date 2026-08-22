@@ -1412,18 +1412,33 @@ router.get("/api/ready-made/purchases/by-clone/:tripId", isAuthenticated, async 
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+    // P2: the effective revision status is DERIVED from the selling expert's advisor
+    // workspaceStatus on the clone — the SAME deliver state machine (draft→in_review→delivered)
+    // the expert already drives — so the buyer's card reflects real progress with no second
+    // source of truth to drift (§18 derivation discipline). The `revision_status` column stays
+    // the "requested" marker (NULL=available). LEFT JOIN so a purchase with no advisor row yet
+    // still resolves.
     const [row] = await db
       .select({
         purchaseId: readyMadePurchases.id,
         status: readyMadePurchases.status,
         revisionStatus: readyMadePurchases.revisionStatus,
         revisionRequestedAt: readyMadePurchases.revisionRequestedAt,
+        expertUserId: readyMadeTrips.authorId,
         expertFirstName: users.firstName,
         expertHandle: users.handle,
+        advisorWorkspaceStatus: tripExpertAdvisors.workspaceStatus,
       })
       .from(readyMadePurchases)
       .innerJoin(readyMadeTrips, eq(readyMadeTrips.id, readyMadePurchases.readyMadeTripId))
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
+      .leftJoin(
+        tripExpertAdvisors,
+        and(
+          eq(tripExpertAdvisors.tripId, readyMadePurchases.cloneTripId),
+          eq(tripExpertAdvisors.localExpertId, readyMadeTrips.authorId),
+        ),
+      )
       .where(and(
         eq(readyMadePurchases.cloneTripId, req.params.tripId),
         eq(readyMadePurchases.buyerId, userId),
@@ -1431,13 +1446,26 @@ router.get("/api/ready-made/purchases/by-clone/:tripId", isAuthenticated, async 
       .limit(1);
 
     if (!row) return res.json({ purchase: null });
+
+    // NULL revision_status ⇒ available; otherwise derive from the expert's workspace state.
+    let effectiveRevisionStatus: "available" | "requested" | "in_progress" | "delivered";
+    if (!row.revisionStatus) {
+      effectiveRevisionStatus = "available";
+    } else if (row.advisorWorkspaceStatus === "delivered") {
+      effectiveRevisionStatus = "delivered";
+    } else if (row.advisorWorkspaceStatus === "in_review") {
+      effectiveRevisionStatus = "in_progress";
+    } else {
+      effectiveRevisionStatus = "requested";
+    }
+
     res.json({
       purchase: {
         purchaseId: row.purchaseId,
         status: row.status,
-        // NULL revisionStatus surfaces as "available" — the entitlement is unused.
-        revisionStatus: row.revisionStatus ?? "available",
+        revisionStatus: effectiveRevisionStatus,
         revisionRequestedAt: row.revisionRequestedAt,
+        expertUserId: row.expertUserId,
         expertName: row.expertFirstName ?? "your expert",
         expertHandle: row.expertHandle ?? null,
       },
