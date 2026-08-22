@@ -25,6 +25,10 @@
  * belongs on the DETAIL page, which is where a traveler forms the "more from
  * them" intent anyway.
  */
+// React default import: required for the node-side render proofs (tsx --test compiles
+// JSX to React.createElement — the same reason city-feed-card-external-stub.tsx has it).
+// Vite's automatic runtime is unaffected.
+import React from "react";
 import { Link } from "wouter";
 import { Store, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";

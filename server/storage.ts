@@ -473,7 +473,7 @@ export interface IStorage {
     limit?: number;
     offset?: number;
 
-  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null })[]; packages: ExpertTemplate[]; total: number; packagesTotal: number; suggestion: string | null }>;
+  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null })[]; packages: ExpertTemplate[]; total: number; packagesTotal: number; suggestion: string | null }>;
 
   // Cart
 
@@ -3406,12 +3406,14 @@ export class DatabaseStorage implements IStorage {
     // Enrich page results with real provider name, profile image, portfolio-wide avg rating,
     // and businessName from service_provider_forms as a secondary name fallback when the
     // users row has no firstName/lastName set.
-    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null })[] = pageServices;
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null })[] = pageServices;
     if (pageServices.length > 0) {
       const userIds = [...new Set(pageServices.map(s => s.userId))];
       const [userRows, ratingRows, formRows] = await Promise.all([
         db
-          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+          // handle: MP-2 storefront return path — nullable (migration 136); the client
+          // renders no link when null (StorefrontLink rule 1: no dead /p/ links).
+          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, handle: users.handle })
           .from(users)
           .where(inArray(users.id, userIds)),
         db
@@ -3456,6 +3458,7 @@ export class DatabaseStorage implements IStorage {
           providerImageUrl: u?.profileImageUrl ?? null,
           providerRating: avgRating != null ? String(avgRating) : null,
           providerBusinessName,
+          providerHandle: u?.handle ?? null,
         };
       });
     }
