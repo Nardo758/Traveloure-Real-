@@ -55,6 +55,7 @@ import {
   CheckCircle,
   MessageSquare,
   Lightbulb,
+  ConciergeBell,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -105,6 +106,10 @@ interface AssignedTrip {
   status: "pending" | "accepted";
   assigned_at?: string;
   suggestion_count?: number;
+  // Concierge revision (ledger 2026-08-22-concierge-revision-p2): present only when this
+  // assignment is a ready-made revision request — the buyer's note rides on the advisor row.
+  revision_status?: string | null;
+  revision_request_note?: string | null;
 }
 
 const formatDate = (d?: string | null) =>
@@ -1321,7 +1326,27 @@ function AssignmentsSection() {
                           {trip.suggestion_count} sent
                         </span>
                       )}
+                      {/* Concierge revision flag (ledger 2026-08-22-concierge-revision-p2): this
+                          assignment is a paid ready-made revision — the buyer's note shows below. */}
+                      {trip.revision_status && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary flex items-center gap-1"
+                          data-testid={`badge-revision-request-${trip.trip_id}`}
+                        >
+                          <ConciergeBell className="w-2.5 h-2.5" />
+                          Revision requested
+                        </span>
+                      )}
                     </div>
+                    {trip.revision_status && trip.revision_request_note && (
+                      <div
+                        className="mt-2 mb-1 rounded-md border-l-2 border-primary/50 bg-primary/5 px-3 py-2 text-sm text-console-darkest"
+                        data-testid={`text-revision-note-${trip.trip_id}`}
+                      >
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">What they asked for</span>
+                        <p className="mt-0.5 whitespace-pre-wrap">{trip.revision_request_note}</p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-3 text-sm text-console-mid">
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5" />
