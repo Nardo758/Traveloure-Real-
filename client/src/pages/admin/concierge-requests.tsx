@@ -65,12 +65,31 @@ function tierBadge(tier: string | null) {
       </Badge>
     );
   }
+  if (tier === "ai") {
+    return (
+      <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+        <Sparkles className="w-3 h-3 mr-1" /> Platform
+      </Badge>
+    );
+  }
   return (
     <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-      <UserCheck className="w-3 h-3 mr-1" /> Expert
+      <UserCheck className="w-3 h-3 mr-1" /> Destination
     </Badge>
   );
 }
+
+// C2: server-side tier views (resolveConciergeTierView). Default "human"
+// (expert+full) keeps staff muscle-memory; the Platform tab surfaces the
+// hybrid tier's human end.
+const TIER_TABS = [
+  { value: "human", label: "Destination & Full" },
+  { value: "ai", label: "Platform" },
+  { value: "expert", label: "Destination/Expert" },
+  { value: "full", label: "Full" },
+  { value: "all", label: "All" },
+] as const;
+type TierTab = (typeof TIER_TABS)[number]["value"];
 
 function requesterName(r: ConciergeRequest) {
   const full = `${r.user_first_name || ""} ${r.user_last_name || ""}`.trim();
@@ -265,8 +284,9 @@ function CoordinatorAssign({ request, coordinators }: { request: ConciergeReques
 }
 
 export default function AdminConciergeRequests() {
+  const [tierTab, setTierTab] = useState<TierTab>("human");
   const { data, isLoading } = useQuery<{ requests: ConciergeRequest[]; count: number }>({
-    queryKey: ["/api/admin/concierge-requests"],
+    queryKey: ["/api/admin/concierge-requests", { tier: tierTab }],
   });
   const { data: coordinatorData } = useQuery<{ coordinators: Coordinator[] }>({
     queryKey: ["/api/admin/coordinators"],
@@ -295,9 +315,26 @@ export default function AdminConciergeRequests() {
             Concierge Requests
           </h1>
           <p className="text-muted-foreground mt-1">
-            Human-fulfillment concierge leads (Expert &amp; Full / Done-for-You tiers). Full-tier
-            requests spin up a coordination engagement — assign an expert coordinator to it below.
+            Concierge leads across all tiers — Platform (powered by our platform; AI-assisted,
+            human-backed), Destination (powered by local experts) and Full / Done-for-You.
+            Full-tier requests spin up a coordination engagement — assign an expert coordinator
+            to it below. Default view shows the Destination &amp; Full queues; use the Platform
+            tab for hybrid-tier requests and chat escalations.
           </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2" data-testid="concierge-tier-tabs">
+          {TIER_TABS.map((tab) => (
+            <Button
+              key={tab.value}
+              size="sm"
+              variant={tierTab === tab.value ? "default" : "outline"}
+              onClick={() => setTierTab(tab.value)}
+              data-testid={`button-tier-tab-${tab.value}`}
+            >
+              {tab.label}
+            </Button>
+          ))}
         </div>
 
         <Card>
