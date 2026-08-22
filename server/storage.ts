@@ -9,8 +9,9 @@ import { sanitizeText } from "./utils/text-sanitizer";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
-  localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
+  localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints, servicePickupRoutePoints,
   type ServiceRoutePoint,
+  type ServicePickupRoutePoint,
   serviceSurchargeTiers, type ServiceSurchargeTier,
   serviceAvailabilityPatterns, type ServiceAvailabilityPattern,
   serviceDateRanges, type ServiceDateRange,
@@ -281,6 +282,10 @@ export interface IStorage {
   getRoutePointsByServiceIds(serviceIds: string[]): Promise<ServiceRoutePoint[]>;
 
   replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
+
+  getServicePickupRoutePoints(serviceId: string): Promise<ServicePickupRoutePoint[]>;
+
+  replaceServicePickupRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServicePickupRoutePoint[]>;
 
   getServiceSurchargeTiers(serviceId: string): Promise<ServiceSurchargeTier[]>;
 
@@ -1884,6 +1889,32 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(serviceRoutePoints).where(eq(serviceRoutePoints.serviceId, serviceId));
       if (stops.length === 0) return [];
       return await tx.insert(serviceRoutePoints).values(
+        stops.map((stop, i) => ({
+          serviceId,
+          position: i + 1,
+          name: stop.name,
+          latitude: stop.latitude === null ? null : String(stop.latitude),
+          longitude: stop.longitude === null ? null : String(stop.longitude),
+        })),
+      ).returning();
+    });
+  }
+
+  async getServicePickupRoutePoints(serviceId: string): Promise<ServicePickupRoutePoint[]> {
+    return await db.select().from(servicePickupRoutePoints)
+      .where(eq(servicePickupRoutePoints.serviceId, serviceId))
+      .orderBy(servicePickupRoutePoints.position);
+  }
+
+  async replaceServicePickupRoutePoints(
+    serviceId: string,
+    stops: Array<{ name: string; latitude: number | null; longitude: number | null }>,
+  ): Promise<ServicePickupRoutePoint[]> {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(servicePickupRoutePoints).where(eq(servicePickupRoutePoints.serviceId, serviceId));
+      if (stops.length === 0) return [];
+      return await tx.insert(servicePickupRoutePoints).values(
         stops.map((stop, i) => ({
           serviceId,
           position: i + 1,
