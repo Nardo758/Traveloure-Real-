@@ -591,8 +591,13 @@ function SlipActions({
         tripId: trip.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
       });
-      // Same landing as cart.tsx with a tripId: the comparison page auto-applies (G7).
-      setLocation(`/itinerary-comparison/${comparison.id}?autoApply=1`);
+      // REVIEW-FIRST (ledger 2026-08-22-slip-optimize-review-first, decision-maker ratified):
+      // a slip-originated optimization lands as a PROPOSAL the traveler reviews — money saved,
+      // shorter drive time and what's trending/in-season — then confirms by applying a variant.
+      // It does NOT auto-apply, so `?autoApply=1` is deliberately omitted (that flag drives the
+      // cart's own auto-apply path, which is unchanged). The comparison page's default
+      // (autoApply=false) is exactly this review UI.
+      setLocation(`/itinerary-comparison/${comparison.id}`);
     } finally {
       setCreatingComparison(false);
     }
