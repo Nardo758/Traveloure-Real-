@@ -67,6 +67,7 @@ import {
   insertDestinationIntelligenceStrict, insertAiGeneratedItinerary,
   getAiItinerariesForUser, getAiItineraryById,
   insertItineraryComparison, saveGeneratedItinerarySnapshot, updateItineraryComparisonStatus,
+  stampAiGeneratedItineraryTrip,
   getActiveProviderServices, getDestinationEventsByCity,
   getExpertUserIds, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
@@ -4795,8 +4796,12 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
       }
 
+      // ledger 2026-08-22-ai-slip-defects: the stored row ids ride the response so the
+      // client can materialize a chosen variation via save-as-trip — from the SERVER's
+      // stored copy, never from client-round-tripped JSON.
+      const variationIds: string[] = [];
       for (const variation of result.variations) {
-        await insertAiGeneratedItinerary({
+        const savedRow = await insertAiGeneratedItinerary({
           userId,
           tripId: tripId || null,
           destination,
@@ -4812,6 +4817,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           provider: "grok",
           status: "generated",
         });
+        variationIds.push(savedRow.id);
       }
 
       await insertAiInteraction({
@@ -4827,12 +4833,140 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         metadata: { destination, dates, travelers, interests, variationsGenerated: result.variations.length },
       });
 
-      res.json(result);
+      res.json({ ...result, variationIds });
     } catch (error: any) {
       console.error("Error generating optimized itineraries:", error);
       res.status(500).json({ 
         message: error.message || "Failed to generate optimized itineraries. Please try again."
       });
+    }
+  });
+
+  // Materialize a stored AI generation as a real Trip Slip (trip + itinerary_items)
+  // — ledger 2026-08-22-ai-slip-defects. The AIItineraryBuilder's old save path
+  // POSTed /api/trips + /api/generated-itineraries and NEVER inserted items, shipping
+  // travelers to an empty PlanCard. This endpoint materializes from the SERVER's own
+  // stored `ai_generated_itineraries` row (owner-scoped via getAiItineraryById — §14
+  // identity from the session, plan content never trusted from the client), through
+  // the SAME canonical snapshot rail the main generate handler uses (L6). Repeat
+  // saves re-apply into the same trip (the row is stamped with its trip), never
+  // minting duplicates. Body is a §19 ALLOWLIST of non-privileged trip metadata.
+  const saveAiItineraryAsTripSchema = z.object({
+    travelers: z.number().int().min(1).max(50).optional(),
+    eventType: z.string().trim().max(60).optional(),
+    preferences: z.object({
+      interests: z.array(z.string().trim().max(80)).max(20).optional(),
+      pacePreference: z.string().trim().max(40).optional(),
+      mustSeeAttractions: z.array(z.string().trim().max(120)).max(20).optional(),
+      dietaryRestrictions: z.array(z.string().trim().max(80)).max(20).optional(),
+      mobilityConsiderations: z.array(z.string().trim().max(80)).max(20).optional(),
+    }).optional(),
+  });
+
+router.post("/api/ai/itineraries/:id/save-as-trip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const parsed = saveAiItineraryAsTripSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid save request" });
+      }
+      const body = parsed.data;
+
+      const row = await getAiItineraryById(req.params.id, userId);
+      if (!row) {
+        return res.status(404).json({ message: "Itinerary not found" });
+      }
+      if (!row.startDate || !row.endDate || !row.destination) {
+        // §13: a row without real dates/destination cannot honestly become a trip.
+        return res.status(422).json({ message: "This generation is missing its dates or destination and can't be saved as a trip." });
+      }
+
+      const startDate = String(row.startDate).slice(0, 10);
+      const endDate = String(row.endDate).slice(0, 10);
+      const tripDayCount = Math.max(
+        1,
+        Math.floor(
+          (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`))
+            / (24 * 60 * 60 * 1000),
+        ) + 1,
+      );
+
+      // Re-normalize the SERVER-stored plan through the same allow-listing pass the
+      // generate rail uses — the stored blob and the materialized rows can't disagree.
+      const normalizedResult = normalizeGeneratedItineraryPayload(
+        {
+          title: row.title,
+          summary: row.summary,
+          totalEstimatedCost: row.totalEstimatedCost,
+          dailyItinerary: row.itineraryData,
+          accommodationSuggestions: row.accommodationSuggestions,
+          packingList: row.packingList,
+          travelTips: row.travelTips,
+        } as any,
+        tripDayCount,
+      );
+      if (normalizedResult.canonicalItems.length === 0) {
+        return res.status(422).json({ message: "This generation has no activities to save." });
+      }
+
+      const snapshot = await saveGeneratedItinerarySnapshot({
+        userId,
+        // A row already materialized (or generated FOR a trip) re-applies into that
+        // trip — the snapshot rail row-locks and replaces, so no duplicate trips.
+        tripId: row.tripId || null,
+        trip: {
+          title: normalizedResult.title || `${row.destination} Trip`,
+          destination: row.destination,
+          startDate,
+          endDate,
+          numberOfTravelers: body.travelers ?? 1,
+          status: "draft",
+          eventType: body.eventType || "vacation",
+          specialRequests: null,
+        },
+        generatedPlan: {
+          destination: row.destination,
+          startDate,
+          endDate,
+          title: normalizedResult.title,
+          summary: normalizedResult.summary,
+          totalEstimatedCost: normalizedResult.totalEstimatedCost,
+          itineraryData: normalizedResult.dailyItinerary,
+          accommodationSuggestions: normalizedResult.accommodationSuggestions,
+          packingList: normalizedResult.packingList,
+          travelTips: normalizedResult.travelTips,
+          provider: row.provider || "grok",
+          status: "generated",
+        },
+        canonicalItems: normalizedResult.canonicalItems,
+        comparison: {
+          title: `${row.destination} Trip`,
+          destination: row.destination,
+          startDate,
+          endDate,
+          budget: null,
+          travelers: body.travelers ?? 1,
+          status: "generating",
+        },
+      });
+
+      if (!row.tripId) {
+        await stampAiGeneratedItineraryTrip(row.id, snapshot.trip.id);
+      }
+      if (body.preferences && Object.keys(body.preferences).length > 0) {
+        // Owner-authored, non-privileged trip metadata (no amount/identity/rate — §19
+        // strip not required); best-effort outside the snapshot transaction.
+        await storage.updateTrip(snapshot.trip.id, { preferences: body.preferences } as any).catch(() => {});
+      }
+
+      res.json({
+        tripId: snapshot.trip.id,
+        comparisonId: snapshot.comparison?.id ?? null,
+        itemCount: snapshot.insertedItems.length,
+      });
+    } catch (error: any) {
+      console.error("Error saving AI itinerary as trip:", error);
+      res.status(500).json({ message: "Failed to save itinerary as a trip" });
     }
   });
 
