@@ -3850,6 +3850,94 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         />
       )}
 
+      {/* ── D-9: pickup coverage is map geometry, so keep it with the map authoring surface
+          rather than interrupting the transport question in "Getting there". The toggle still
+          controls whether this spatial detail is shown, and both modes preserve their data. ── */}
+      {onSection("map") && needsMeetingPoint && (formData.pickupAvailable || pickupProvisionChosen) && (
+        <div className="rounded-md border p-3 space-y-3" data-testid="block-pickup-coverage">
+          <Label className="flex items-center gap-2">
+            <Radius className="w-4 h-4" />
+            Pickup coverage — a radius or a route?
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Pick how your pickup area is defined. Switching between them never deletes the
+            other one's data — it only changes what travelers see.
+          </p>
+          <ToggleGroup
+            type="single"
+            value={formData.pickupCoverageMode}
+            onValueChange={(v) => set("pickupCoverageMode", v || "")}
+            variant="outline"
+            className="justify-start gap-2"
+            data-testid="segmented-pickup-coverage-mode"
+          >
+            <ToggleGroupItem
+              value="radius"
+              data-testid="toggle-coverage-radius"
+              className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            >
+              <Radius className="w-4 h-4" /> Radius
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="route"
+              data-testid="toggle-coverage-route"
+              className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+            >
+              <Route className="w-4 h-4" /> Route
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <p className="text-xs text-muted-foreground">
+            {formData.pickupCoverageMode === "radius"
+              ? "Radius — a distance around your meeting pin."
+              : formData.pickupCoverageMode === "route"
+                ? "Route — a fixed set of stops you collect from."
+                : "Not specified — pick a radius or a route."}
+          </p>
+
+          {formData.pickupCoverageMode === "radius" && (
+            <div>
+              <Label htmlFor="serviceRadius" className="flex items-center gap-2">
+                <Radius className="w-4 h-4" />
+                Service Radius (km)
+              </Label>
+              <Input
+                id="serviceRadius"
+                type="number"
+                value={formData.serviceRadius}
+                onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1" data-testid="text-coverage-radius-source">
+                This is the ring travelers see around your meeting pin.
+              </p>
+              {savedRouteStopCount > 0 && (
+                <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
+                  {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
+                  not shown while coverage is set to radius. Nothing was deleted; switch to
+                  Route to show them again.
+                </p>
+              )}
+            </div>
+          )}
+
+          {formData.pickupCoverageMode === "route" && (
+            <div>
+              <p className="text-xs text-muted-foreground" data-testid="text-route-coverage-hint">
+                {savedRouteStopCount > 0
+                  ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the map on this step.`
+                  : "No route stops saved yet — add them on the map on this step."}
+              </p>
+              {savedRadiusKm > 0 && (
+                <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
+                  A {savedRadiusKm} km service radius is saved — not shown while coverage is
+                  set to route. Nothing was deleted; switch to Radius to show it again.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {onSection("place") && needsMeetingPoint && (
         <Card>
           <CardHeader>
@@ -4115,99 +4203,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </div>
               )}
             </div>
-
-            {/* ── D-9 (cont.): the coverage choice is the toggle's SPATIAL sub-detail, not a
-                separate question. Gated on the toggle OR a stored pickup provision (a legacy row
-                whose provision said "pickup" still sees its coverage — never-clobber, §13). ── */}
-            {(formData.pickupAvailable || pickupProvisionChosen) && (
-              <div className="rounded-md border p-3 space-y-3" data-testid="block-pickup-coverage">
-                <Label className="flex items-center gap-2">
-                  <Radius className="w-4 h-4" />
-                  Pickup coverage — a radius or a route?
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Pick how your pickup area is defined. Switching between them never deletes the
-                  other one's data — it only changes what travelers see.
-                </p>
-                <ToggleGroup
-                  type="single"
-                  value={formData.pickupCoverageMode}
-                  onValueChange={(v) => set("pickupCoverageMode", v || "")}
-                  variant="outline"
-                  className="justify-start gap-2"
-                  data-testid="segmented-pickup-coverage-mode"
-                >
-                  <ToggleGroupItem
-                    value="radius"
-                    data-testid="toggle-coverage-radius"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                  >
-                    <Radius className="w-4 h-4" /> Radius
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="route"
-                    data-testid="toggle-coverage-route"
-                    className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                  >
-                    <Route className="w-4 h-4" /> Route
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <p className="text-xs text-muted-foreground">
-                  {formData.pickupCoverageMode === "radius"
-                    ? "Radius — a distance around your meeting pin."
-                    : formData.pickupCoverageMode === "route"
-                      ? "Route — a fixed set of stops you collect from."
-                      : "Not specified — pick a radius or a route."}
-                </p>
-
-                {formData.pickupCoverageMode === "radius" && (
-                  <div>
-                    {/* ── D-9: the ONE radius input, asked WHERE the radius is chosen. It writes
-                        `serviceRadius` — the number every consumer reads (the traveler ring in
-                        service-detail.tsx, the Catalog map ring, the flat-surcharge containment
-                        test). FP-2's history stands: `pickupRadiusKm` stays unasked and
-                        round-trips untouched (migration 199 split, nothing reads it). ── */}
-                    <Label htmlFor="serviceRadius" className="flex items-center gap-2">
-                      <Radius className="w-4 h-4" />
-                      Service Radius (km)
-                    </Label>
-                    <Input
-                      id="serviceRadius"
-                      type="number"
-                      value={formData.serviceRadius}
-                      onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
-                      className="mt-2"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1" data-testid="text-coverage-radius-source">
-                      This is the ring travelers see around your meeting pin.
-                    </p>
-                    {savedRouteStopCount > 0 && (
-                      <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
-                        {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
-                        not shown while coverage is set to radius. Nothing was deleted; switch to
-                        Route to show them again.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {formData.pickupCoverageMode === "route" && (
-                  <div>
-                    <p className="text-xs text-muted-foreground" data-testid="text-route-coverage-hint">
-                      {savedRouteStopCount > 0
-                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the map on this step.`
-                        : "No route stops saved yet — add them on the map on this step."}
-                    </p>
-                    {savedRadiusKm > 0 && (
-                      <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
-                        A {savedRadiusKm} km service radius is saved — not shown while coverage is
-                        set to route. Nothing was deleted; switch to Radius to show it again.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ── WAVE 2 / S4 (ledger row 99): the travel-surcharge MODE + AMOUNTS moved off this
                 step into the post-creation "Pricing & fees" drawer (listing home) — moved, not
