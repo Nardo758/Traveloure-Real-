@@ -1341,9 +1341,12 @@ export default function ProviderDistribute() {
   const search = useSearch();
   const deepLinkListing = new URLSearchParams(search).get("listing");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The channel hub opens on the account's storefront. Other channels remain
-  // one click away through the readiness strip.
-  const [activeChannel, setActiveChannel] = useState<DistributionChannel>("storefront");
+  // Ratified default: the channel hub opens on "all" so every channel card
+  // (storefront, marketplace, direct, social) is visible on first paint; the
+  // readiness-strip chips still filter to a single channel. An unratified
+  // refactor flipped this to "storefront", which unmounted the other channels'
+  // cards until a chip was clicked.
+  const [activeChannel, setActiveChannel] = useState<DistributionChannel>("all");
   const consumedDeepLink = useRef<string | null>(null);
 
   useEffect(() => {
