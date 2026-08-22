@@ -1601,6 +1601,17 @@ export default function ItineraryComparisonPage() {
                           </p>
                         </div>
                       )}
+                      {/* Provenance qualifier (ledger 2026-08-22-first-run-prefs, §13): these
+                          signals are AI destination intelligence, not measured bookings — say
+                          so rather than implying a measured figure. Swappable to measured
+                          sources later without touching this block's shape. */}
+                      <p
+                        className="text-[11px] text-muted-foreground/80 pl-6"
+                        title="These highlights come from live AI destination intelligence, not measured bookings."
+                        data-testid="preview-provenance"
+                      >
+                        From AI destination intel
+                      </p>
                     </div>
                   );
                 })()}

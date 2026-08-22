@@ -8550,6 +8550,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return d;
         };
 
+        // First-run personalization (ledger 2026-08-22-first-run-prefs, decision-maker
+        // ratified): a trip-backed FIRST run now reads the trip's own eventType / budget /
+        // travelStyles into TripPreferences — the same block the regenerate path has always
+        // built — so the variant-strategy matrix applies from the first paid optimization
+        // instead of every first run collapsing to the default pair. Server-derived from the
+        // authorized trip row only (§14 posture); guest/inline runs stay undefined.
+        let tripPreferencesForCreate: TripPreferences | undefined;
+        if (tripId) {
+          const tripRowForCreate = await storage.getTrip(tripId);
+          if (tripRowForCreate) {
+            const prefsForCreate = (tripRowForCreate.preferences as Record<string, any>) || {};
+            tripPreferencesForCreate = {
+              eventType: tripRowForCreate.eventType,
+              budget: tripRowForCreate.budget ? parseFloat(tripRowForCreate.budget) : null,
+              travelStyles: Array.isArray(prefsForCreate.travelStyles) ? prefsForCreate.travelStyles : [],
+            };
+          }
+        }
+
         generateOptimizedItineraries(
           comparison.id,
           userId,
@@ -8560,14 +8579,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           formatDate(endDate),
           budget ? parseFloat(budget) : undefined,
           travelers || 1,
-          // tripId / userTransportPrefs / tripPreferences stay UNPASSED here, exactly as before
-          // Lane 5b. Passing `tripId` would newly activate this handler's temporal-anchor and
-          // day-boundary reads — a real behaviour change that belongs to whoever owns that gap,
-          // not to the re-point. `fixedCommitments` is passed directly so the purchased-item
-          // constraint works on both entry points without touching the anchor plumbing.
+          // tripId / userTransportPrefs stay UNPASSED here, exactly as before Lane 5b.
+          // Passing `tripId` would newly activate this handler's temporal-anchor and
+          // day-boundary reads — a real behaviour change that belongs to whoever owns that
+          // gap, not to this lane (the ledger row flags it as still open).
+          // `tripPreferences` IS now passed (first-run personalization, above);
+          // `fixedCommitments` is passed directly so the purchased-item constraint works on
+          // both entry points without touching the anchor plumbing.
           undefined,
           undefined,
-          undefined,
+          tripPreferencesForCreate,
           fixedCommitments
         ).catch((err) => console.error("Background optimization error:", err));
       }
