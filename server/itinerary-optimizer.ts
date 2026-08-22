@@ -179,6 +179,12 @@ export interface ItineraryItem {
    *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
    *  Undefined for an external/AI item with no catalog row (the honest value, §13). */
   providerServiceId?: string;
+  /** Real coordinates only (ledger 2026-08-22-optimizer-catalog-honesty): the trip item's own
+   *  pin or its linked catalog row's — set by the trip-backed loader, undefined for an unlocated
+   *  item (§13, never geocoded here). Carried onto the baseline variant items so transport-leg
+   *  computation has something real to run on. */
+  latitude?: number;
+  longitude?: number;
   /** Lane 6 residue (drop policy a): true for a `ready_for_checkout` trip item — schedule-movable
    *  but NEVER droppable by a variant. A generated variant that omits one is invalid and is
    *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
@@ -742,9 +748,11 @@ function weightTrendingServices(
  * it — a STABLE sort (Node's Array#sort has been stable since V8 7.0) so services already tied
  * on profile fit keep their trending-derived relative order.
  *
- * Read-side reordering ONLY: `availableServices` is already the caller's approved-services query
- * (storage.getActiveProviderServices / equivalent) — this never changes which services are
- * eligible, never touches `price`, and never affects approval gates. Two fit signals, both
+ * Read-side reordering ONLY: `availableServices` comes from `loadOptimizerCatalog`
+ * (optimizer-baseline.service.ts — active + approved + destination-scoped; before ledger
+ * 2026-08-22-optimizer-catalog-honesty this comment claimed an approved query that neither call
+ * site actually ran) — this never changes which services are eligible, never touches `price`,
+ * and never affects approval gates. Two fit signals, both
  * derived from REAL service text/price data, never fabricated:
  *   - dietary: a real keyword match (`matchesDietary`) against the service's own name/type/
  *     description — never a guess when the traveler has no dietary tags set.
@@ -958,6 +966,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           price: item.price?.toString(),
           rating: item.rating?.toString(),
           location: item.location,
+          // Real coordinates from the loader (item pin or linked catalog row) — the field the
+          // transport-leg gate reads; NULL for an unlocated item, never a guess (§13).
+          latitude: item.latitude != null ? item.latitude.toString() : null,
+          longitude: item.longitude != null ? item.longitude.toString() : null,
           duration: item.duration,
           sortOrder: i,
         }))
@@ -1283,6 +1295,19 @@ Respond with valid JSON in this exact format:
       const id = raw.trim();
       return id && offeredServiceIds.has(id) ? id : undefined;
     };
+    // Real coordinates for catalog-linked variant items (ledger
+    // 2026-08-22-optimizer-catalog-honesty): a validated `providerServiceId` copies the catalog
+    // row's own migration-129 coordinates onto the variant item, which is what lets
+    // `calculateTransportLegs` actually run. An AI-invented item with no catalog row stays
+    // NULL/NULL — its location is a string the model wrote, and we never geocode a guess (§13).
+    const serviceCoordsById = new Map(
+      availableServices.map((s) => [
+        String(s.id),
+        { latitude: s.latitude ?? null, longitude: s.longitude ?? null },
+      ]),
+    );
+    const coordsForService = (serviceId: string | null | undefined) =>
+      (serviceId && serviceCoordsById.get(serviceId)) || { latitude: null, longitude: null };
 
     await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
@@ -1420,11 +1445,15 @@ Respond with valid JSON in this exact format:
             const activityNotes = methodologyNotes.filter(
               n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
             );
+            const coords = coordsForService(item.providerServiceId);
             return {
               variantId: newVariant.id,
               // Lane 5a Defect 3: the catalog link, validated above against the services actually
               // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
               providerServiceId: item.providerServiceId ?? null,
+              // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
+              latitude: coords.latitude,
+              longitude: coords.longitude,
               dayNumber: item.dayNumber,
               timeSlot: item.timeSlot,
               startTime: item.startTime,
@@ -1780,6 +1809,9 @@ async function generateUpsellSuggestions(
       .where(
         and(
           eq(providerServices.status, "active"),
+          // F2 read-side gate (ledger 2026-08-22-optimizer-catalog-honesty): upsells are a
+          // traveler-facing surface, so only approved listings may appear here.
+          eq(providerServices.approvalStatus, "approved"),
           or(
             ilike(providerServices.location, `%${cityName}%`),
             ilike(providerServices.location, `%${destination}%`)

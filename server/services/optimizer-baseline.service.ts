@@ -34,7 +34,7 @@
  * four as real columns. Including free-text items is a deliberate improvement, not a side effect:
  * they are part of the plan, so an optimizer that never saw them was optimizing a subset.
  */
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, providerServices } from "@shared/schema";
 import type { FixedCommitment, ItineraryItem as OptimizerBaselineItem } from "../itinerary-optimizer";
@@ -200,6 +200,12 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
       // §13: the service's REAL aggregate or nothing. A free-text item has no rating source.
       rating: service?.averageRating ? toNumber(service.averageRating) : undefined,
       location: item.locationName ?? undefined,
+      // Real coordinates only (ledger 2026-08-22-optimizer-catalog-honesty): the item's own pin,
+      // else the linked catalog row's (migration-129 real columns). Both are real sources; an
+      // unlocated free-text item stays undefined — never geocoded or guessed here (§13). These
+      // flow onto the baseline variant items so `calculateTransportLegs` can actually run.
+      latitude: toNumber(item.latitude ?? service?.latitude ?? null),
+      longitude: toNumber(item.longitude ?? service?.longitude ?? null),
       duration: item.durationMinutes ?? DEFAULT_DURATION_MINUTES,
       // REAL day number — a NOT NULL column. The cart read invented this.
       dayNumber: item.dayNumber,
@@ -215,4 +221,43 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
     fixedCommitments,
     counts: { optimizable: baselineItems.length, purchased: fixedCommitments.length },
   };
+}
+
+/**
+ * The optimizer's service catalog — the ONE query both optimizer entry points use
+ * (ledger 2026-08-22-optimizer-catalog-honesty; L6 — never re-implemented per surface).
+ *
+ * Two rules, both defects in the previous inline pulls (found by the Aug 22 optimizer audit):
+ *  - `approval_status = 'approved'` — the optimizer feeds traveler-facing variants and upsells,
+ *    so it is a public read and gates on approval like every other public `provider_services`
+ *    surface (F2 read-side gate). The old pulls filtered `status='active'` only, so a
+ *    born-`submitted` listing could be offered to the AI and reach a traveler.
+ *  - destination scoping — the old pulls took an arbitrary, unordered 100 rows across ALL
+ *    markets, so a Kyoto trip could be offered mostly (or only) other cities' inventory. The
+ *    filter matches the upsell query's existing precedent (`location ILIKE city|destination`).
+ *    Zero matches ⇒ the AI is offered NO catalog rows and may only propose free-text activities
+ *    (`providerServiceId` NULL) — honest emptiness, never another city's services (§13).
+ */
+export async function loadOptimizerCatalog(destination: string | null | undefined) {
+  // A comparison with no destination (nullable column) gets the unscoped active+approved set —
+  // there is no city to scope to, and inventing one would be a guess (§13).
+  const city = destination?.split(",")[0]?.trim() ?? "";
+  const locationScope =
+    city.length > 0
+      ? or(
+          ilike(providerServices.location, `%${city}%`),
+          ilike(providerServices.location, `%${destination}%`),
+        )
+      : undefined;
+  return db
+    .select()
+    .from(providerServices)
+    .where(
+      and(
+        eq(providerServices.status, "active"),
+        eq(providerServices.approvalStatus, "approved"),
+        ...(locationScope ? [locationScope] : []),
+      ),
+    )
+    .limit(100);
 }
