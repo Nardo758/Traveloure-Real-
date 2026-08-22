@@ -20,8 +20,12 @@
  * stop could ONLY be located by name→geocode, so a stop the geocoder missed could not be pinned
  * by hand at all.
  */
-import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Circle, Polyline, useMap, useMapEvents } from "react-leaflet";
+import { useEffect, useState } from "react";
+import { APIProvider, Map as GoogleMap, useMap as useGoogleMap } from "@vis.gl/react-google-maps";
+import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
+import { Polyline as GooglePolyline } from "@/components/ui/map-polyline";
+import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Circle, Polyline as LeafletPolyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -29,6 +33,7 @@ const BRAND = "var(--console-brand, #E85D55)";
 const CARD = "var(--console-card, #FFFFFF)";
 const INK = "var(--console-ink, #1A1A18)";
 const MID = "var(--console-mid, #7A7A72)";
+const GOOGLE_MAPS_KEY: string = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || "";
 
 export interface ServiceRouteStopView {
   id: string;
@@ -140,6 +145,189 @@ function FitToContent({
   return null;
 }
 
+/** Google Maps equivalent of the Leaflet bounds fitting bridge. */
+function GoogleFitToContent({
+  pin,
+  radiusKm,
+  located,
+}: {
+  pin: ServicePinView | null;
+  radiusKm: number | null;
+  located: Array<{ lat: number; lng: number }>;
+}) {
+  const map = useGoogleMap();
+  const fitKey = `${pin ? `${pin.lat}:${pin.lng}:${radiusKm ?? 0}` : ""}|${located.map((stop) => `${stop.lat}:${stop.lng}`).join(",")}`;
+  useEffect(() => {
+    if (!map || typeof google === "undefined") return;
+    const points = located.slice();
+    if (pin) points.push(pin);
+    if (points.length === 0) return;
+    if (points.length === 1 && !(pin && radiusKm && radiusKm > 0)) {
+      map.setCenter(points[0]);
+      map.setZoom(14);
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    points.forEach((point) => bounds.extend(point));
+    if (pin && radiusKm && radiusKm > 0) {
+      const circle = new google.maps.Circle({ center: pin, radius: radiusKm * 1000 });
+      const circleBounds = circle.getBounds();
+      if (circleBounds) bounds.union(circleBounds);
+    }
+    map.fitBounds(bounds, 40);
+  }, [map, fitKey]);
+  return null;
+}
+
+/** Imperative Google circle overlay; the Maps wrapper exposes no equivalent declarative primitive. */
+function GoogleCircleOverlay({
+  center,
+  radius,
+  strokeColor,
+  strokeOpacity,
+  fillColor,
+  fillOpacity,
+  dashed = false,
+}: {
+  center: ServicePinView;
+  radius: number;
+  strokeColor: string;
+  strokeOpacity: number;
+  fillColor: string;
+  fillOpacity: number;
+  dashed?: boolean;
+}) {
+  const map = useGoogleMap();
+  useEffect(() => {
+    if (!map || typeof google === "undefined") return;
+    const circle = new google.maps.Circle({
+      map,
+      center,
+      radius,
+      strokeColor,
+      strokeOpacity,
+      strokeWeight: 2,
+      fillColor,
+      fillOpacity,
+      ...(dashed ? { strokeWeight: 1.5 } : {}),
+    });
+    return () => circle.setMap(null);
+  }, [map, center.lat, center.lng, radius, strokeColor, strokeOpacity, fillColor, fillOpacity, dashed]);
+  return null;
+}
+
+function GoogleServiceLocationMap({
+  pin,
+  pinLabel,
+  radiusKm,
+  surchargeZones,
+  located,
+  siblings,
+  height,
+  testIdPrefix,
+  onStopDragEnd,
+  onCanvasClick,
+  placementActive,
+  onSiblingPinClick,
+  labelPins,
+  onLoadError,
+}: {
+  pin: ServicePinView | null;
+  pinLabel?: string | null;
+  radiusKm: number | null;
+  surchargeZones?: ReadonlyArray<{ radiusKm: number; fee: string | number }> | null;
+  located: Array<ServiceRouteStopView & { lat: number; lng: number }>;
+  siblings: Array<{ id: string; lat: number; lng: number; label: string }>;
+  height: number | string;
+  testIdPrefix: string;
+  onStopDragEnd?: (stopId: string, lat: number, lng: number) => void;
+  onCanvasClick?: (lat: number, lng: number) => void;
+  placementActive: boolean;
+  onSiblingPinClick?: (id: string) => void;
+  labelPins: boolean;
+  onLoadError: () => void;
+}) {
+  const center = pin ?? located[0] ?? siblings[0];
+  return (
+    <APIProvider apiKey={GOOGLE_MAPS_KEY} onError={onLoadError}>
+      <div
+        className="overflow-hidden rounded-md"
+        style={{ position: "relative", width: "100%", height, cursor: placementActive ? "crosshair" : undefined }}
+        data-testid={testIdPrefix}
+        data-map-provider="google"
+        data-placement-active={placementActive ? "true" : "false"}
+      >
+        <GoogleMap
+          defaultCenter={{ lat: center.lat, lng: center.lng }}
+          defaultZoom={13}
+          mapId={GOOGLE_MAPS_MAP_ID}
+          gestureHandling="cooperative"
+          disableDefaultUI
+          zoomControl
+          onClick={(event) => {
+            const point = event.detail.latLng;
+            if (onCanvasClick && point) onCanvasClick(point.lat, point.lng);
+          }}
+        >
+          <GoogleFitToContent pin={pin} radiusKm={radiusKm} located={[...located, ...siblings]} />
+          {pin && radiusKm && radiusKm > 0 && (
+            <GoogleCircleOverlay
+              center={pin}
+              radius={radiusKm * 1000}
+              strokeColor="#E85D55"
+              strokeOpacity={0.85}
+              fillColor="#E85D55"
+              fillOpacity={0.14}
+            />
+          )}
+          {pin && (surchargeZones ?? []).filter((zone) => Number(zone.radiusKm) > 0).map((zone, index) => (
+            <GoogleCircleOverlay
+              key={`google-zone-${index}`}
+              center={pin}
+              radius={Number(zone.radiusKm) * 1000}
+              strokeColor="#B45309"
+              strokeOpacity={0.78}
+              fillColor="#F59E0B"
+              fillOpacity={0.05}
+              dashed
+            />
+          ))}
+          {located.length >= 2 && (
+            <GooglePolyline
+              path={located.map((stop) => ({ lat: stop.lat, lng: stop.lng }))}
+              strokeColor="#E85D55"
+              strokeOpacity={0.85}
+              strokeWeight={2}
+              icons={[{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "12px" }]}
+            />
+          )}
+          {pin && <MapMarker position={pin} title={pinLabel || "Meeting point"} />}
+          {located.map((stop) => (
+            <MapMarker
+              key={stop.id}
+              position={{ lat: stop.lat, lng: stop.lng }}
+              title={`${stop.position}. ${stop.name}`}
+              draggable={!!onStopDragEnd}
+              onDragEnd={(event) => {
+                const point = event.latLng;
+                if (point && onStopDragEnd) onStopDragEnd(stop.id, point.lat(), point.lng());
+              }}
+            />
+          ))}
+          {siblings.map((sibling) => (
+            <MapMarker
+              key={sibling.id}
+              position={{ lat: sibling.lat, lng: sibling.lng }}
+              title={labelPins ? sibling.label : undefined}
+              onClick={() => onSiblingPinClick?.(sibling.id)}
+            />
+          ))}
+        </GoogleMap>
+      </div>
+    </APIProvider>
+  );
+}
+
 export function ServiceLocationMap({
   pin,
   pinLabel,
@@ -205,6 +393,8 @@ export function ServiceLocationMap({
     .filter((s): s is ServiceRouteStopView & { lat: number; lng: number } => s.lat !== null && s.lng !== null)
     .sort((a, b) => a.position - b.position);
   const siblings = siblingPins ?? [];
+  const [googleLoadFailed, setGoogleLoadFailed] = useState(false);
+  const googleAuthFailed = useGoogleMapsAuthFailed();
 
   // §13: nothing real to draw ⇒ no map at all (the caller shows its own "no location yet" state).
   if (!pin && located.length === 0 && siblings.length === 0) return null;
@@ -215,6 +405,27 @@ export function ServiceLocationMap({
       ? [located[0].lat, located[0].lng]
       : [siblings[0].lat, siblings[0].lng];
   const showConnector = located.length >= 2;
+
+  if (GOOGLE_MAPS_KEY && !googleLoadFailed && !googleAuthFailed) {
+    return (
+      <GoogleServiceLocationMap
+        pin={pin}
+        pinLabel={pinLabel}
+        radiusKm={radiusKm ?? null}
+        surchargeZones={surchargeZones}
+        located={located}
+        siblings={siblings}
+        height={height}
+        testIdPrefix={testIdPrefix}
+        onStopDragEnd={onStopDragEnd}
+        onCanvasClick={onCanvasClick}
+        placementActive={placementActive}
+        onSiblingPinClick={onSiblingPinClick}
+        labelPins={labelPins}
+        onLoadError={() => setGoogleLoadFailed(true)}
+      />
+    );
+  }
 
   return (
     <div
@@ -272,7 +483,7 @@ export function ServiceLocationMap({
               </Circle>
             ))}
         {showConnector && (
-          <Polyline
+          <LeafletPolyline
             positions={located.map((s) => [s.lat, s.lng] as [number, number])}
             pathOptions={{ color: BRAND, weight: 2.5, opacity: 0.7, dashArray: "6 8" }}
           />
