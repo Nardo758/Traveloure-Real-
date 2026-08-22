@@ -27,7 +27,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useExpertVerificationStatus } from "@/hooks/use-expert-verification-status";
 import { LOCAL_EXPERT_TIERS, TRIP_PLANNER_TIERS, isAffiliateCategory } from "@/lib/earn-roles";
 import {
-  LocationPointPicker,
   parseStoredPoint,
   type LocationPoint,
 } from "@/components/backoffice/location-point-picker";
@@ -3808,9 +3807,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           whole), and the travel-surcharge zones. Place-anchored and hybrid only; a remote listing
           never sees this step at all (not disabled, absent — see the step-count line).
 
-          NO NEW WRITE RAILS. The pin is the same `LocationPointPicker` writing through the same
-          form save (`extractServiceLocation` on POST/PATCH /api/provider/services stays the ONE
-          pin writer, L27-P3); the stops are the same owner-gated replace-list
+          NO NEW WRITE RAILS. The pin is confirmed through the map authoring surface and written by
+          the same form save (`extractServiceLocation` on POST/PATCH /api/provider/services stays
+          the ONE pin writer, L27-P3); the stops are the same owner-gated replace-list
           PUT /api/provider/services/:id/route-points (ruling 22a). What changed is WHERE the
           authoring lives — Catalog's map is a traveler preview from this lane on. ── */}
       {/* ── Mock fidelity (Aug 17, Option-3 reconcile): the mock's Logistics step is MAP-FIRST —
@@ -3917,10 +3916,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </p>
             </div>
 
-            {/* L27-P3: place/confirm the precise point behind the free-text meeting point.
-                Additive — the text above stays the required field and is unchanged; a pin
-                is optional, and the picker renders nothing at all when no Maps key is
-                configured (the form then behaves exactly as it did before). */}
             {/* Ruling 85: a NEW listing whose pin was seeded from the provider's saved office
                 location says so, honestly — the coords are provider-confirmed but this service may
                 be offered elsewhere, so the provider is nudged to adjust/remove. */}
@@ -3934,20 +3929,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 Pre-filled from your office location — adjust if this service is offered elsewhere.
               </p>
             )}
-            <LocationPointPicker
-              value={formData.locationPoint}
-              precision={formData.locationPrecision}
-              addressHint={formData.meetingPoint}
-              onChange={(point) => {
-                setLocationPointTouched(true);
-                setOfficePinPrefilled(false);
-                set("locationPoint", point);
-              }}
-              label="Pin this location on the map (optional)"
-              helpText="Confirming a pin shows travelers exactly where to meet and lets this listing appear on planning maps. Without one, only your typed meeting point is shown."
-              idPrefix="service-location"
-            />
-
             {/* FP-2 / Package A item 8 (transport): the "Do you provide transport during this
                 service?" disclosure MOVED from here into the Service-logistics card's "Getting
                 there" block, so both transport questions are asked once, together, in one
