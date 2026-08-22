@@ -37,7 +37,7 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
+import { planTypeDisplay } from "@shared/ready-made-plan-types";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { CalendarDays, Loader2, MapPin, ShoppingBag, Sun } from "lucide-react";
 
@@ -82,16 +82,22 @@ const PLAN_TYPE_EXPERIENCE: Record<string, string> = {
   road_trip_itinerary: "travel",
   city_itinerary: "travel",
   food_culture_itinerary: "travel",
+  // Aug 2026 vocabulary expansion (ledger 2026-08-22-ready-made-themes closed the drift: these
+  // 10 keys existed in the vocabulary but not here, so their listings resolved with a null
+  // experience type). Romance & Honeymoon maps onto the registered "honeymoon" event family;
+  // the rest are travel-shaped itineraries. `custom` stays unmapped by design — free text
+  // carries no resolvable event vocabulary, so it falls through the resolver chain honestly.
+  adventure_outdoors: "travel",
+  romance_honeymoon: "honeymoon",
+  family_trip: "travel",
+  wellness_retreat: "travel",
+  photography_tour: "travel",
+  nightlife_entertainment: "travel",
+  cultural_heritage: "travel",
+  beach_island: "travel",
+  festival_seasonal: "travel",
+  shopping_style: "travel",
 };
-
-/** The headline plan-type text: the closed vocabulary's label, or — for the one escape from it —
- *  the author's own free-text theme (isCustomPlanType, shared/ready-made-plan-types.ts). */
-function planTypeDisplay(listing: Pick<DetailListing, "planType" | "planTypeCustom">): string {
-  if (isCustomPlanType(listing.planType)) {
-    return listing.planTypeCustom?.trim() || "Trip plan";
-  }
-  return planTypeLabel(listing.planType) ?? "Trip plan";
-}
 
 interface CityNeighborhood {
   id: string;
@@ -267,7 +273,7 @@ export default function ReadyMadeDetailPage() {
           data-testid="lead-venue-hero"
         >
           <div className="text-xs font-semibold uppercase tracking-wide text-white/80" data-testid="text-plan-type">
-            {planTypeDisplay(listing)}
+            {planTypeDisplay(listing.planType, listing.planTypeCustom)}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold mt-1" data-testid="text-rm-title">
             {listing.title} — {listing.market}
@@ -281,7 +287,7 @@ export default function ReadyMadeDetailPage() {
         <>
           {/* Type of Plan — the structure's headline */}
           <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground" data-testid="text-plan-type">
-            {planTypeDisplay(listing)}
+            {planTypeDisplay(listing.planType, listing.planTypeCustom)}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-1 mb-3" data-testid="text-rm-title">{listing.title}</h1>
         </>

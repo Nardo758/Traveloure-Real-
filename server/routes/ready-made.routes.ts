@@ -934,6 +934,21 @@ router.get("/api/ready-made", async (req, res) => {
       authorId = rawAuthorId;
     }
 
+    // Optional theme filter (ledger 2026-08-22-ready-made-themes: the shelf reorganizes around
+    // the experience). Validated against the closed vocabulary the submit gate already enforces —
+    // an unknown key is a 400, never a silently-empty shelf. No param ⇒ full feed, unchanged.
+    const rawPlanType = req.query.planType;
+    let planType: ReadyMadePlanTypeKey | undefined;
+    if (rawPlanType !== undefined) {
+      if (
+        typeof rawPlanType !== "string" ||
+        !(READY_MADE_PLAN_TYPE_KEYS as readonly string[]).includes(rawPlanType)
+      ) {
+        return res.status(400).json({ message: "Invalid planType" });
+      }
+      planType = rawPlanType as ReadyMadePlanTypeKey;
+    }
+
     const rows = await db
       .select({
         id: readyMadeTrips.id,
@@ -961,9 +976,10 @@ router.get("/api/ready-made", async (req, res) => {
       .where(and(
         eq(readyMadeTrips.status, "approved"),
         eq(readyMadeTrips.active, true),
-        // Same approved+active gate with or without the filter — the author scope narrows
+        // Same approved+active gate with or without the filters — author/theme scope narrows
         // the feed, never widens what an unapproved listing can leak (F2/§10 read-gate).
         ...(authorId ? [eq(readyMadeTrips.authorId, authorId)] : []),
+        ...(planType ? [eq(readyMadeTrips.planType, planType)] : []),
       ))
       // CURATION ORDER (MP-3): badged listings lead, then most-recently-approved.
       //

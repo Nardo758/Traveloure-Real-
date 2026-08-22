@@ -58,6 +58,14 @@ import {
   Zap,
   Trophy,
   CheckCircle,
+  Mountain,
+  Cake,
+  Gem,
+  Flower2,
+  Music,
+  Landmark,
+  Umbrella,
+  ShoppingBag,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -68,11 +76,117 @@ import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
-import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { planTypeLabel, planTypeDisplay } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
 import type { CatalogItem } from "@/types/catalog";
+
+// Ready-Made shelf DTO (GET /api/ready-made) — teaser fields only; the itinerary stays behind
+// the purchase→clone gate.
+type ReadyMadeShelfListing = {
+  id: string;
+  title: string;
+  planType: string | null;
+  planTypeCustom: string | null;
+  market: string;
+  durationDays: number;
+  pricingMode: string;
+  priceCents: number | null;
+  heroImageUrl: string | null;
+  authorName: string;
+  authorHandle: string | null;
+  section: "trips_by_locals" | "advisor";
+};
+
+// Theme chip/shelf ICONS only — presentational metadata. Labels always come from the shared
+// vocabulary (planTypeLabel/planTypeDisplay, shared/ready-made-plan-types.ts), never restated
+// here, so a vocabulary change can't drift this file's text.
+const READY_MADE_THEME_ICONS: Record<string, typeof Award> = {
+  hiking_itinerary: Mountain,
+  road_trip_itinerary: Car,
+  city_itinerary: Building2,
+  food_culture_itinerary: UtensilsCrossed,
+  birthday_plan: Cake,
+  wedding_plan: Heart,
+  proposal_plan: Gem,
+  corporate_retreat_plan: Briefcase,
+  adventure_outdoors: Compass,
+  romance_honeymoon: Heart,
+  family_trip: Users,
+  wellness_retreat: Flower2,
+  photography_tour: Camera,
+  nightlife_entertainment: Music,
+  cultural_heritage: Landmark,
+  beach_island: Umbrella,
+  festival_seasonal: PartyPopper,
+  shopping_style: ShoppingBag,
+  custom: Sparkles,
+};
+
+/** Chip/shelf heading for a theme KEY (aggregate label — per-listing custom text stays on the
+ *  card via planTypeDisplay). `custom` aggregates as "Custom themes"; untyped grandfathers as
+ *  "More trips". */
+function readyMadeThemeHeading(key: string): string {
+  if (key === "custom") return "Custom themes";
+  return planTypeLabel(key) ?? "More trips";
+}
+
+/**
+ * Ready-Made shelf card, theme-first: the theme is the eyebrow (per-listing custom text via
+ * planTypeDisplay), the author type is a badge. The author row lives OUTSIDE the detail-page
+ * link so the storefront link is a real, un-nested anchor — StorefrontLink's Discover-card
+ * constraint solved by structure. No handle → plain text, never a dead /p/ link (rule 1).
+ */
+function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
+  return (
+    <Card
+      className="overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col"
+      data-testid={`rm-shelf-card-${l.id}`}
+    >
+      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer">
+        {/* D3: h-40 aligns the card image height with the Itinerary Templates grid below. */}
+        {l.heroImageUrl && (
+          <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
+        )}
+        <CardContent className="p-4 pb-2">
+          <div className="text-[11px] uppercase tracking-wide text-primary font-semibold">
+            {planTypeDisplay(l.planType, l.planTypeCustom)}
+          </div>
+          <div className="font-semibold truncate">{l.title}</div>
+          <div className="text-sm text-muted-foreground">
+            {l.market} · {l.durationDays} days
+          </div>
+          <div className="mt-2 font-bold">
+            {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
+            {l.pricingMode === "per_traveler" && (
+              <span className="text-xs font-normal text-muted-foreground"> /traveler</span>
+            )}
+          </div>
+        </CardContent>
+      </Link>
+      <div className="px-4 pb-3 pt-1 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+        <span className="truncate">
+          by{" "}
+          {l.authorHandle ? (
+            <Link
+              href={`/p/${l.authorHandle}`}
+              className="font-medium text-primary hover:underline"
+              data-testid={`link-rm-author-${l.id}`}
+            >
+              {l.authorName}
+            </Link>
+          ) : (
+            l.authorName
+          )}
+        </span>
+        <Badge variant="secondary" className="shrink-0 text-[10px] uppercase tracking-wide">
+          {l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner"}
+        </Badge>
+      </div>
+    </Card>
+  );
+}
 
 type ServiceCategory = {
   id: string;
@@ -687,12 +801,43 @@ export default function DiscoverPage() {
 
   // Expert Templates Query
   // Phase-4 shelf: approved cloneable store listings (server-gated teaser feed).
-  const { data: readyMadeShelfData } = useQuery<{ listings: Array<{
-    id: string; title: string; planType: string | null; market: string; durationDays: number;
-    pricingMode: string; priceCents: number | null; heroImageUrl: string | null;
-    authorName: string; section: "trips_by_locals" | "advisor";
-  }> }>({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
+  // Theme-first redesign (ledger 2026-08-22-ready-made-themes): the shelf organizes around the
+  // listing's declared theme (plan_type — required at submit, closed vocabulary); the author
+  // type demotes to a card badge. This unfiltered feed stays mounted as the source of the chip
+  // rail's REAL per-theme counts.
+  const { data: readyMadeShelfData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+    queryKey: ["/api/ready-made"],
+    staleTime: 60_000,
+  });
   const readyMadeShelf = readyMadeShelfData?.listings;
+
+  // One theme selected → the server-validated filter (GET /api/ready-made?planType=…). While it
+  // loads, the client-side subset of the already-fetched feed renders instantly — same rows by
+  // construction (same read-gate, same predicate), so there is no flash of wrong content.
+  const [selectedTheme, setSelectedTheme] = useState<string>("all");
+  const { data: readyMadeThemeData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+    queryKey: [`/api/ready-made?planType=${encodeURIComponent(selectedTheme)}`],
+    enabled: selectedTheme !== "all",
+    staleTime: 60_000,
+  });
+
+  // Themes present in the live feed, in feed order (badge-first, then approval recency), with
+  // real counts — chips render only for themes that actually have stock (§13: no empty aisles,
+  // never the full 20-key vocabulary as decoration). Untyped rows (pre-vocabulary grandfathers,
+  // if any) group under a chip-less trailing shelf rather than being dropped.
+  const readyMadeThemes = useMemo(() => {
+    const order: string[] = [];
+    const byTheme = new Map<string, ReadyMadeShelfListing[]>();
+    for (const l of readyMadeShelf ?? []) {
+      const key = l.planType ?? "__untyped__";
+      if (!byTheme.has(key)) {
+        byTheme.set(key, []);
+        order.push(key);
+      }
+      byTheme.get(key)!.push(l);
+    }
+    return { order, byTheme };
+  }, [readyMadeShelf]);
 
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
@@ -1476,57 +1621,114 @@ export default function DiscoverPage() {
                     "Itinerary Templates", the storefront vocabulary). */}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
-                    <div className="mb-6">
+                    <div className="mb-4">
                       <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Award className="w-5 h-5 text-primary" />
                         Ready-Made Trips
                       </h2>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Buy a complete trip built by a vetted expert — it becomes your own editable plan
+                        Buy a complete trip built around an experience — it becomes your own editable plan
                       </p>
                     </div>
-                    {(["trips_by_locals", "advisor"] as const).map((section) => {
-                      const rows = readyMadeShelf.filter((l) => l.section === section);
-                      if (rows.length === 0) return null;
-                      return (
-                        <div key={section} className="mb-8">
-                          <h3 className="text-lg font-semibold mb-1">
-                            {section === "trips_by_locals" ? "Trips by Locals" : "Trips by Trip Planners"}
-                          </h3>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            {section === "trips_by_locals"
-                              ? "Complete trips built by vetted local experts — buy one and it becomes your own editable plan"
-                              : "Complete trips built by travel advisors — yours to edit after purchase"}
-                          </p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {rows.map((l) => (
-                              <Link key={l.id} href={`/ready-made/${l.id}`}>
-                                <Card className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow h-full" data-testid={`rm-shelf-card-${l.id}`}>
-                                  {/* D3: h-40 aligns the card image height with the Itinerary
-                                      Templates grid below — one visual rhythm for the tab. */}
-                                  {l.heroImageUrl && (
-                                    <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
-                                  )}
-                                  <CardContent className="p-4">
-                                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                      {planTypeLabel(l.planType) ?? "Trip plan"}
-                                    </div>
-                                    <div className="font-semibold truncate">{l.title}</div>
-                                    <div className="text-sm text-muted-foreground">
-                                      {l.market} · {l.durationDays} days · by {l.authorName}
-                                    </div>
-                                    <div className="mt-2 font-bold">
-                                      {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
-                                      {l.pricingMode === "per_traveler" && <span className="text-xs font-normal text-muted-foreground"> /traveler</span>}
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              </Link>
-                            ))}
+
+                    {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
+                        live stock render, with real counts — never the full 20-key vocabulary
+                        as empty aisles (§13). Order follows the feed (badge-first, recency). */}
+                    <div className="flex flex-wrap gap-2 mb-6" data-testid="rail-ready-made-themes">
+                      <Button
+                        variant={selectedTheme === "all" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSelectedTheme("all")}
+                        data-testid="button-theme-chip-all"
+                      >
+                        All experiences
+                      </Button>
+                      {readyMadeThemes.order
+                        .filter((key) => key !== "__untyped__")
+                        .map((key) => {
+                          const Icon = READY_MADE_THEME_ICONS[key] ?? Award;
+                          const count = readyMadeThemes.byTheme.get(key)?.length ?? 0;
+                          return (
+                            <Button
+                              key={key}
+                              variant={selectedTheme === key ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setSelectedTheme(key)}
+                              data-testid={`button-theme-chip-${key}`}
+                            >
+                              <Icon className="w-3.5 h-3.5 mr-1.5" />
+                              {readyMadeThemeHeading(key)}
+                              <span className="ml-1.5 text-xs opacity-70">{count}</span>
+                            </Button>
+                          );
+                        })}
+                    </div>
+
+                    {selectedTheme === "all" ? (
+                      // Theme shelves — the experience is the organizing idea; author type is a
+                      // badge on the card (the old "Trips by Locals"/"Trips by Trip Planners"
+                      // sections demoted, not lost).
+                      readyMadeThemes.order.map((key) => {
+                        const rows = readyMadeThemes.byTheme.get(key) ?? [];
+                        if (rows.length === 0) return null;
+                        return (
+                          <div key={key} className="mb-8" data-testid={`section-theme-${key}`}>
+                            <div className="flex items-baseline gap-3 mb-3">
+                              <h3 className="text-lg font-semibold">{readyMadeThemeHeading(key)}</h3>
+                              {rows.length > 3 && (
+                                <button
+                                  type="button"
+                                  className="ml-auto text-sm font-medium text-primary hover:underline"
+                                  onClick={() => setSelectedTheme(key)}
+                                  data-testid={`button-theme-see-all-${key}`}
+                                >
+                                  See all {rows.length} →
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {rows.slice(0, 3).map((l) => (
+                                <ReadyMadeThemeCard key={l.id} listing={l} />
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      (() => {
+                        // Server-filtered rows once loaded; the client-side subset of the same
+                        // gated feed renders instantly meanwhile (same predicate by construction).
+                        const filteredRows =
+                          readyMadeThemeData?.listings ??
+                          (readyMadeShelf ?? []).filter((l) => l.planType === selectedTheme);
+                        return (
+                          <>
+                            <div
+                              className="flex items-center gap-3 flex-wrap rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 mb-4 text-sm"
+                              data-testid="bar-theme-filter"
+                            >
+                              <span>
+                                Showing <strong>{filteredRows.length}</strong>{" "}
+                                {readyMadeThemeHeading(selectedTheme)} trip{filteredRows.length === 1 ? "" : "s"}
+                              </span>
+                              <button
+                                type="button"
+                                className="ml-auto font-medium text-primary underline"
+                                onClick={() => setSelectedTheme("all")}
+                                data-testid="button-theme-clear"
+                              >
+                                Show all experiences
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {filteredRows.map((l) => (
+                                <ReadyMadeThemeCard key={l.id} listing={l} />
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()
+                    )}
                   </div>
                 )}
 
