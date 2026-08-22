@@ -27,7 +27,7 @@
  *   seating             → data-testid="select-seating"                          4449
  *   logistics framing   → text "One card, one vocabulary."                      3825
  *   map area (canvas)   → data-testid="card-service-map-authoring"  service-map-authoring:297
- *   meeting point       → #meetingPoint                                         3869
+ *   meeting details     → data-testid="input-meeting-details"  service-map-authoring:615
  *
  * What it covers (intent unchanged):
  *   Basics    — the offering field and the name input share one two-column grid
@@ -275,11 +275,16 @@ test.describe('Create-service wizard layout', () => {
       const mapArea = page.getByTestId('card-service-map-authoring');
       await expect(mapArea).toBeVisible({ timeout: 10_000 });
 
-      // 3. Meeting-point input is visible (label renders "Meeting Point *").
-      const meetingInput = page.locator('#meetingPoint');
+      // 3. Meeting free-text input is visible (label renders "Meeting details *").
+      //    Post map-authoring refactor this is the meetingDetails textarea rendered
+      //    INSIDE the map-authoring card (durable testid input-meeting-details),
+      //    replacing the removed standalone #meetingPoint field.
+      const meetingInput = page.getByTestId('input-meeting-details');
       await expect(meetingInput).toBeVisible();
 
-      // 4. DOM order (Y-axis): framing note → map area → meeting-point input.
+      // 4. DOM order (Y-axis): framing note → map card → meeting input. The meeting
+      //    input now lives inside the map-authoring card (the card's canvas precedes
+      //    its own inner meeting textarea), so the card top is still above the input.
       const noteBox = await framingNote.boundingBox();
       const mapBox = await mapArea.boundingBox();
       const inputBox = await meetingInput.boundingBox();
@@ -287,14 +292,14 @@ test.describe('Create-service wizard layout', () => {
       if (!noteBox || !mapBox || !inputBox) {
         throw new Error(
           '[create-service-layout] Could not obtain bounding boxes for ' +
-          'framing note, map area, or meeting-point input — at least one ' +
+          'framing note, map area, or meeting input — at least one ' +
           'element is not rendered.',
         );
       }
 
-      // Framing note is above the map.
+      // Framing note is above the map card.
       expect(noteBox.y).toBeLessThan(mapBox.y);
-      // Map area is above the meeting-point input.
+      // Map card (its canvas) is above the meeting input nested within it.
       expect(mapBox.y).toBeLessThan(inputBox.y);
     } finally {
       // ── Draft cleanup ────────────────────────────────────────────────────────
