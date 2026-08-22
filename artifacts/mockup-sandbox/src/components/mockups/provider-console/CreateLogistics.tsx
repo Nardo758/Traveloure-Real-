@@ -446,23 +446,28 @@ export default function CreateLogistics() {
                 {/* rail: three cards */}
                 <aside className="grid items-start gap-3" style={{ gridTemplateColumns: "repeat(3,minmax(0,1fr))" }}>
                   {/* Meeting pin */}
-                  <div className="rounded-[7px]" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
+                  <div className="rounded-[7px] md:col-span-2" style={{ background: PAPER, border: `1px solid ${HAIR}` }}>
                     <div className="flex items-center gap-2" style={{ padding: "11px 14px", borderBottom: `1px solid ${HAIR}` }}>
                       <b className="flex-1 text-[13px] font-semibold">Meeting pin</b>
                       <span className="inline-block rounded-full text-[11.5px]" style={{ padding: "2px 9px", border: "1px solid #BFD5D0", background: ACCENT_SOFT, color: ACCENT }}>{pendingPin ? "Pending change" : "Confirmed"}</span>
                     </div>
-                    <div style={{ padding: "12px 14px" }}>
-                      <input
-                        className="w-full rounded-[6px]"
-                        style={{ padding: "9px 11px", border: `1px solid ${HAIR}`, background: PAPER, color: INK, font: "inherit", fontSize: "12.5px" }}
-                        defaultValue="Hanamikoji-dori, Gion, Higashiyama-ku, Kyoto"
-                        aria-label="Meeting point address"
-                      />
-                      <div style={capline}>
-                        A typed address is never a location. The pin is saved only when you press <b style={{ color: INK }}>Confirm this location</b> — the same posture the live picker already uses.
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]" style={{ padding: "12px 14px" }}>
+                      <div>
+                        <label className="text-[12px]" style={{ color: INK }}>Meeting details <span style={{ color: "#A23A32" }}>*</span></label>
+                        <textarea
+                          className="mt-1 w-full resize-none rounded-[6px]"
+                          style={{ minHeight: 72, padding: "9px 11px", border: `1px solid ${HAIR}`, background: PAPER, color: INK, font: "inherit", fontSize: "12.5px" }}
+                          defaultValue="Meet outside the east entrance, beside the taxi rank"
+                          aria-label="Meeting details"
+                        />
+                        <div style={capline}>
+                          These are traveler instructions, not a second location. The map pin is saved only when you press <b style={{ color: INK }}>Confirm this location</b>.
+                        </div>
                       </div>
-                      <div className="mt-[10px] text-[12px]" style={{ color: ACCENT }}>Confirmed at {confirmedCoordinates.lat}, {confirmedCoordinates.lng}.</div>
-                      <button type="button" style={{ ...ghostSm, marginTop: 8 }}>Remove pin</button>
+                      <div>
+                        <div className="text-[12px]" style={{ color: ACCENT }}>Confirmed at {confirmedCoordinates.lat}, {confirmedCoordinates.lng}.</div>
+                        <button type="button" style={{ ...ghostSm, marginTop: 8 }}>Remove pin</button>
+                      </div>
                     </div>
                   </div>
 
