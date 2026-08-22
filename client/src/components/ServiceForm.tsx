@@ -2478,7 +2478,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   };
 
   return (
-    <div className="p-6 max-w-5xl space-y-6">
+    <div className={`w-full p-6 space-y-6 ${role === "provider" ? "max-w-6xl" : "max-w-5xl"}`}>
 
       {/* ── Breadcrumb / Back ── */}
       <div className="flex items-center gap-2 text-sm">

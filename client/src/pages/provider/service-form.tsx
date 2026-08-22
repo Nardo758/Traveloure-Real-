@@ -6,7 +6,7 @@ export default function ProviderServiceFormPage() {
   const params = useParams<{ id: string }>();
 
   return (
-    <ProviderLayout title={params?.id ? "Edit Service" : "New Service"}>
+    <ProviderLayout title={params?.id ? "Edit Service" : "New Service"} width="full">
       <ServiceForm role="provider" id={params?.id} />
     </ProviderLayout>
   );
