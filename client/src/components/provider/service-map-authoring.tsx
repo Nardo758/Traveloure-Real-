@@ -413,17 +413,17 @@ export function ServiceMapAuthoring({
         {/* ── D-11/D-15: the ARM BAR over a full-width canvas — the mock's shape. A bare map
             click does nothing; placing anything needs an explicitly armed mode. ── */}
         <div
-          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2"
+          className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2"
           data-testid="flow-map-arm-bar"
         >
-          <p className="text-[12.5px] text-muted-foreground" data-testid="text-arm-state">
+          <p className="text-[12.5px] text-muted-foreground md:col-span-2 xl:col-span-2" data-testid="text-arm-state">
             {placement
               ? placement.kind === "pin"
                 ? "Meeting-pin mode armed — click the map."
                 : "Stop mode armed — click the map."
               : "Nothing armed. Pick a mode, then click the map."}
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-start md:col-span-1 xl:col-span-2 xl:justify-end gap-2">
             {onPinConfirm && (
               <Button
                 size="sm"
