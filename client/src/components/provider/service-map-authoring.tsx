@@ -168,6 +168,11 @@ export function ServiceMapAuthoring({
   const [namingKey, setNamingKey] = useState<string | null>(null);
   /** D-11: a canvas-proposed pin candidate awaiting its explicit confirm (L27-P3). */
   const [pendingPin, setPendingPin] = useState<LocationPoint | null>(null);
+  /** A verified geocode result that gives first-time pin placement a map canvas without inventing
+      a city-centre fallback. It is never saved as the meeting pin until the user clicks the map
+      and explicitly confirms the proposed point. */
+  const [mapSeed, setMapSeed] = useState<LocationPoint | null>(null);
+  const [findingMapSeed, setFindingMapSeed] = useState(false);
 
   // D-10: the Layers card — display toggles over the canvas's three optional layers. Display
   // state only; toggling draws or hides a layer, it never writes a row.
@@ -339,6 +344,45 @@ export function ServiceMapAuthoring({
     setPlacement(null);
   }
 
+  async function togglePinPlacement() {
+    if (placement?.kind === "pin") {
+      setPlacement(null);
+      return;
+    }
+
+    setPendingPin(null);
+    if (canvasExists) {
+      setPlacement({ kind: "pin" });
+      return;
+    }
+
+    const address = addressHint?.trim();
+    if (!address) {
+      toast({
+        title: "Add meeting details first",
+        description: "Enter a recognizable meeting address or landmark so we can open the map without guessing a location.",
+      });
+      return;
+    }
+
+    setFindingMapSeed(true);
+    try {
+      const response = await apiRequest("POST", "/api/geocode", { address });
+      const result = await response.json();
+      if (typeof result?.lat !== "number" || typeof result?.lng !== "number") {
+        toast({ title: "Could not find that meeting area", description: "Refine the address or landmark, then try again." });
+        return;
+      }
+      setMapSeed({ lat: result.lat, lng: result.lng });
+      setPlacement({ kind: "pin" });
+      toast({ title: "Map ready", description: "Click the map to propose the exact meeting pin." });
+    } catch {
+      toast({ title: "Could not find that meeting area", description: "Check the meeting address and try again." });
+    } finally {
+      setFindingMapSeed(false);
+    }
+  }
+
   function renameStop(key: string, name: string) {
     setDraft((prev) => prev.map((s) => (s.key === key ? { ...s, name } : s)));
     setDirtyBoth(true);
@@ -377,7 +421,7 @@ export function ServiceMapAuthoring({
 
   // §13: click-to-place needs a canvas, and this map renders NOTHING when the listing has no
   // confirmed pin and no located stop — there is no city-center fallback to click on.
-  const canvasExists = !!pin || locatedCount > 0;
+  const canvasExists = !!pin || !!mapSeed || locatedCount > 0;
 
   const routeStatus = !canWriteStops
     ? draft.length > 0
@@ -429,15 +473,12 @@ export function ServiceMapAuthoring({
               <Button
                 size="sm"
                 variant={placement?.kind === "pin" ? "default" : "outline"}
-                disabled={!canvasExists}
-                onClick={() => {
-                  setPendingPin(null);
-                  setPlacement(placement?.kind === "pin" ? null : { kind: "pin" });
-                }}
+                disabled={findingMapSeed}
+                onClick={togglePinPlacement}
                 data-testid="button-place-pin-mode"
               >
                 <MapPin className="w-3.5 h-3.5 mr-1.5" />
-                {placement?.kind === "pin" ? "Click the map…" : "Place the meeting pin"}
+                {findingMapSeed ? "Finding the map…" : placement?.kind === "pin" ? "Click the map…" : "Place the meeting pin"}
               </Button>
             )}
             <Button
@@ -457,6 +498,8 @@ export function ServiceMapAuthoring({
         <div className="space-y-2 min-w-0 w-full">
           <ServiceLocationMap
             pin={pin}
+            pendingPin={pendingPin}
+            initialCenter={pin ? null : mapSeed}
             pinLabel={pinLabel}
             radiusKm={showRadius ? (radiusKm ?? null) : null}
             surchargeZones={showZones ? (surchargeZones ?? null) : null}
@@ -499,6 +542,7 @@ export function ServiceMapAuthoring({
                   onClick={() => {
                     onPinConfirm(pendingPin);
                     setPendingPin(null);
+                      setMapSeed(null);
                     toast({ title: "Meeting pin set", description: "It saves with the rest of the form." });
                   }}
                   data-testid="button-confirm-canvas-pin"
