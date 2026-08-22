@@ -1,0 +1,228 @@
+{
+  "seed": "2026-08-22",
+  "chosenStep": "service-detail",
+  "engine": "webkit",
+  "project": "webkit",
+  "result": "PASS - booking 81c04931-8350-4a11-8f42-aff821a1ec5c reached status \"confirmed\"",
+  "lastReachedStep": "booking-confirmed-confirmed",
+  "addToCartMethod": "api",
+  "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
+  "serviceName": "Ceremony Highlight Video (Short-form)",
+  "servicePrice": 1100,
+  "bookingIdsFromCheckout": [
+    "81c04931-8350-4a11-8f42-aff821a1ec5c"
+  ],
+  "primaryBookingId": "81c04931-8350-4a11-8f42-aff821a1ec5c",
+  "finalBookingStatus": "confirmed",
+  "stripeCardFilled": true,
+  "checkpointData": {
+    "screenshotRel": "booking-webkit-checkpoint-service-detail.png",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "documentDimensions": {
+      "scrollWidth": 1280,
+      "scrollHeight": 2423,
+      "innerWidth": 1280,
+      "innerHeight": 900
+    },
+    "noHorizontalOverflow": true,
+    "consoleSnapshot": [
+      {
+        "type": "info",
+        "text": "Successfully preconnected to https://fonts.gstatic.com/"
+      },
+      {
+        "type": "info",
+        "text": "Successfully preconnected to https://fonts.googleapis.com/"
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connecting..."
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected."
+      },
+      {
+        "type": "info",
+        "text": "Successfully preconnected to https://fonts.googleapis.com/"
+      },
+      {
+        "type": "info",
+        "text": "Successfully preconnected to https://fonts.gstatic.com/"
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connecting..."
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected."
+      },
+      {
+        "type": "info",
+        "text": "Successfully preconnected to https://fonts.gstatic.com/"
+      },
+      {
+        "type": "info",
+        "text": "Successfully preconnected to https://fonts.googleapis.com/"
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connecting..."
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected."
+      },
+      {
+        "type": "warning",
+        "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
+      }
+    ]
+  },
+  "supportingScreenshots": {
+    "discover": "booking-webkit-discover.png",
+    "serviceDetail": "booking-webkit-service-detail.png",
+    "cart": "booking-webkit-cart.png",
+    "payment": "booking-webkit-payment.png",
+    "bookings": "booking-webkit-bookings-final.png"
+  },
+  "timings": {
+    "register_ms": 4573,
+    "service_discovery_ms": 71,
+    "discover_load_ms": 3582,
+    "service_detail_load_ms": 2878,
+    "add_to_cart_ms": 62,
+    "cart_load_ms": 3942,
+    "checkout_click_ms": 4481,
+    "stripe_fill_ms": 9876,
+    "payment_submit_ms": 1820,
+    "poll_confirmed_ms": 32
+  },
+  "consoleMessages": [
+    {
+      "type": "info",
+      "text": "Successfully preconnected to https://api.stripe.com/"
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] Your Elements integration is using an older API. We recommend migrating to the Checkout Sessions API to reduce code, maintenance, and tokens (for AI agents). Additionally, you can easily turn on advanced features like Adaptive Pricing.\nView migration guide: https://docs.stripe.com/payments/payment-element/migration-ewcs"
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] If you are testing Apple Pay or Google Pay, you must serve this page over HTTPS as it will not work over HTTP. Please read https://stripe.com/docs/stripe-js/elements/payment-request-button#html-js-prerequisites for more details."
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] The following payment method types are not activated:\n\n- link\n- cashapp\n- klarna\n- amazon_pay\n\nThey will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use."
+    },
+    {
+      "type": "warning",
+      "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    },
+    {
+      "type": "error",
+      "text": "[Report Only] Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy."
+    }
+  ]
+}

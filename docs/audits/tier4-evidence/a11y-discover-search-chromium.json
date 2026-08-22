@@ -5,7 +5,7 @@
   "project": "chromium",
   "surface": "discover-search",
   "url": "http://127.0.0.1:5000/discover",
-  "scannedAt": "2026-08-22T18:17:50.377Z",
+  "scannedAt": "2026-08-22T18:59:09.882Z",
   "result": "2 violation types, 72 affected nodes",
   "totalViolations": 2,
   "totalNodes": 72,
@@ -70,7 +70,7 @@
             "target": [
               ".bg-primary\\/10"
             ],
-            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:490:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:491:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
