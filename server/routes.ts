@@ -572,7 +572,7 @@ async function verifyOptimizationPayment(params: {
       return {
         ok: false,
         status: 402,
-        body: { error: "ai_concierge_disabled", message: "AI Concierge is currently disabled for this experience type." },
+        body: { error: "ai_concierge_disabled", message: "Platform Concierge is currently disabled for this experience type." },
       };
     }
     if (pi.amount !== requiredCents) {

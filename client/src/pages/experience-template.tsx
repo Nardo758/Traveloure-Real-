@@ -645,10 +645,11 @@ function AIOptimizationTab({
             <Sparkles className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-2">
               <div>
-                <p className="font-semibold text-sm">Want the full AI-optimized plan?</p>
+                <p className="font-semibold text-sm">Want the full optimized plan?</p>
                 <p className="text-xs text-muted-foreground">
-                  Heuristic preview shown above. The full AI Concierge plan rearranges your
-                  itinerary, adds recommendations, and is delivered through the Concierge surface.
+                  Heuristic preview shown above. The full Platform Concierge plan — powered by
+                  our platform — rearranges your itinerary, adds recommendations, and is
+                  delivered through the Concierge surface.
                 </p>
               </div>
               <Link
