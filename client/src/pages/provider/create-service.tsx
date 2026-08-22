@@ -1597,6 +1597,7 @@ function StepReview({ draft, set, serviceId, onSubmit, submitting, onBack, onSav
   ) : (
     <span style={{ color: "#B07400" }}>Not added yet</span>
   );
+  const artifactBlocked = draft.deliveryMethod === "pdf_guide" && !draft.fileUploaded;
 
   return (
     <div style={{ padding: "20px 22px" }}>
@@ -1695,19 +1696,30 @@ function StepReview({ draft, set, serviceId, onSubmit, submitting, onBack, onSav
         You can keep editing while it waits.
       </WarnNote>
 
+      {artifactBlocked && (
+        <div style={{
+          background: WBG, border: `1px solid ${WLN}`, borderRadius: 6,
+          padding: "11px 14px", fontSize: 12.5, color: WINK, lineHeight: 1.5, marginBottom: 16,
+        }} role="alert">
+          <b style={{ fontWeight: 650 }}>Upload the PDF before requesting review.</b>{" "}
+          This listing can remain a draft, but it cannot promise a traveler a guide until a
+          protected deliverable is on file.
+        </div>
+      )}
+
       {/* Actions */}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 18 }}>
         <button
           type="button"
-          disabled={submitting}
+          disabled={submitting || artifactBlocked}
           onClick={onSubmit}
           style={{
             background: ACC, border: `1px solid ${ACC}`,
             color: "#fff", padding: "12px 24px", borderRadius: 6,
-            cursor: submitting ? "not-allowed" : "pointer",
+            cursor: submitting || artifactBlocked ? "not-allowed" : "pointer",
             fontSize: 14.5, fontWeight: 600, font: "inherit",
             display: "flex", alignItems: "center", gap: 9,
-            opacity: submitting ? 0.7 : 1,
+            opacity: submitting || artifactBlocked ? 0.55 : 1,
           }}
         >
           {submitting ? "Submitting…" : (
@@ -1817,6 +1829,7 @@ export default function CreateServiceWizard() {
       joinLink: svc.joinLink ?? prev.joinLink,
       responseWindowHours: svc.responseWindowHours ? String(svc.responseWindowHours) : prev.responseWindowHours,
       scopeStatement: svc.scopeStatement ?? prev.scopeStatement,
+      fileUploaded: !!svc.serviceFile || prev.fileUploaded,
       // The storage layer normalizes `covers:${key}` → `/api/services/:id/cover-image`
       // before the row reaches the client, so svc.serviceImage is already a renderable URL
       // (the proxy path or a legacy external HTTP URL). Use it directly; treat null/empty as absent.
