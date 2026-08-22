@@ -250,7 +250,7 @@ function GoogleServiceLocationMap({
   radiusKm: number | null;
   surchargeZones?: ReadonlyArray<{ radiusKm: number; fee: string | number }> | null;
   located: Array<ServiceRouteStopView & { lat: number; lng: number }>;
-  siblings: Array<{ id: string; lat: number; lng: number; label: string }>;
+  siblings: ReadonlyArray<{ id: string; lat: number; lng: number; label: string }>;
   height: number | string;
   testIdPrefix: string;
   onStopDragEnd?: (stopId: string, lat: number, lng: number) => void;
