@@ -36,7 +36,12 @@ export const READY_MADE_PLAN_TYPES = [
   { key: "beach_island", label: "Beach & Island" },
   { key: "festival_seasonal", label: "Festival & Seasonal" },
   { key: "shopping_style", label: "Shopping & Style" },
-  { key: "custom", label: "Custom…" },
+  // Expert-minted themes (ledger 2026-08-22-expert-minted-themes, decision-maker directed):
+  // this key is the creativity escape — the expert's own free-text label (plan_type_custom)
+  // IS a first-class browsable category on the store shelf (own chip, shelf, and filter).
+  // The closed list above is the curated starter set + validation backbone; a minted theme
+  // that recurs across experts gets PROMOTED into it here, in one place.
+  { key: "custom", label: "Create your own…" },
 ] as const;
 
 /** True when this key requires the separate free-text theme label. */

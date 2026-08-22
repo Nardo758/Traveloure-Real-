@@ -949,6 +949,30 @@ router.get("/api/ready-made", async (req, res) => {
       planType = rawPlanType as ReadyMadePlanTypeKey;
     }
 
+    // Expert-minted theme filter (ledger 2026-08-22-expert-minted-themes, decision-maker
+    // directed: "give the experts the ability to add new categories — we shouldn't stifle
+    // creativity"). A `custom` listing's free-text label IS its category on the browse surface,
+    // so it needs a filter of its own. The label matches STORED author-typed data
+    // (case/whitespace-insensitive) under the same custom-key discipline — free text still
+    // never enters the validated plan_type column. Shape-validated only (a label that matches
+    // nothing returns an honestly-empty list, not a 400 — the UI offers only labels with
+    // stock, so empty here means the listing was since unpublished).
+    const rawCustomLabel = req.query.customLabel;
+    let customLabel: string | undefined;
+    if (rawCustomLabel !== undefined) {
+      if (
+        typeof rawCustomLabel !== "string" ||
+        rawCustomLabel.trim().length === 0 ||
+        rawCustomLabel.length > 120
+      ) {
+        return res.status(400).json({ message: "Invalid customLabel" });
+      }
+      if (planType !== undefined && planType !== "custom") {
+        return res.status(400).json({ message: "customLabel only applies to planType=custom" });
+      }
+      customLabel = rawCustomLabel.trim().toLowerCase();
+    }
+
     const rows = await db
       .select({
         id: readyMadeTrips.id,
@@ -980,6 +1004,12 @@ router.get("/api/ready-made", async (req, res) => {
         // the feed, never widens what an unapproved listing can leak (F2/§10 read-gate).
         ...(authorId ? [eq(readyMadeTrips.authorId, authorId)] : []),
         ...(planType ? [eq(readyMadeTrips.planType, planType)] : []),
+        ...(customLabel
+          ? [
+              eq(readyMadeTrips.planType, "custom" as ReadyMadePlanTypeKey),
+              sql`LOWER(TRIM(${readyMadeTrips.planTypeCustom})) = ${customLabel}`,
+            ]
+          : []),
       ))
       // CURATION ORDER (MP-3): badged listings lead, then most-recently-approved.
       //
