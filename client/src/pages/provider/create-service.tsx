@@ -1271,7 +1271,68 @@ function StepAsync({ draft, set }: { draft: DraftState; set: (p: Partial<DraftSt
 }
 
 // ─── step 2D: artifact / pdf guide ────────────────────────────────────────────
-function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<DraftState>) => void }) {
+function StepArtifact({ draft, set, serviceId }: {
+  draft: DraftState;
+  set: (p: Partial<DraftState>) => void;
+  serviceId: string;
+}) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  async function uploadFile(file: File) {
+    if (file.type !== "application/pdf") {
+      toast({ title: "Unsupported format", description: "Deliverables must be PDF files.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: "File too large", description: "The deliverable must be 20 MB or smaller.", variant: "destructive" });
+      return;
+    }
+    if (!serviceId) {
+      toast({ title: "Save the draft first", description: "Complete Basics before uploading the deliverable.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await fetch(`/api/provider/services/${serviceId}/deliverable-file`, {
+        method: "POST",
+        headers: { "Content-Type": "application/pdf" },
+        body: await file.arrayBuffer(),
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as any).message ?? "Upload failed");
+      setFileName(file.name);
+      set({ fileUploaded: true });
+      toast({ title: "Deliverable uploaded", description: "Travelers will receive the current PDF after purchase." });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function removeFile() {
+    if (!serviceId) return;
+    setRemoving(true);
+    try {
+      const res = await apiRequest("PATCH", `/api/provider/services/${serviceId}`, { serviceFile: null });
+      if (!res.ok) throw new Error("Could not remove the deliverable");
+      setFileName("");
+      set({ fileUploaded: false });
+      toast({ title: "Deliverable removed", description: "The listing stays a draft until a new PDF is uploaded." });
+    } catch (err: any) {
+      toast({ title: "Could not remove deliverable", description: err.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   return (
     <div style={{ padding: "20px 22px" }}>
       <InfoNote>
@@ -1299,14 +1360,44 @@ function StepArtifact({ draft, set }: { draft: DraftState; set: (p: Partial<Draf
 
       <div style={{ marginBottom: 16 }}>
         <Label>Upload the file</Label>
-        <div style={{ border: `1px dashed ${HAIR}`, borderRadius: 6, padding: 18,
-          textAlign: "center", background: GRD }}>
-          <div style={{ fontSize: 13, color: MUT, marginBottom: 4 }}>
-            No file yet — travelers cannot receive anything until there is one.
-          </div>
-          <div style={{ fontSize: 12, color: MUT, lineHeight: 1.5 }}>
-            Save this draft first, then upload the guide from your{" "}
-            <b style={{ color: INK }}>Listing</b> page (Listing → Edit → What they get).
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          hidden
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) void uploadFile(file);
+          }}
+        />
+        <div style={{
+          border: `1px ${draft.fileUploaded ? "solid" : "dashed"} ${draft.fileUploaded ? ACC : HAIR}`,
+          borderRadius: 6, padding: 16, background: draft.fileUploaded ? ACCS : GRD,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 13, color: INK, fontWeight: 600, marginBottom: 4 }}>
+                {uploading ? "Uploading…" : draft.fileUploaded ? (fileName || "PDF deliverable on file") : "No file yet"}
+              </div>
+              <div style={{ fontSize: 12, color: MUT, lineHeight: 1.5 }}>
+                {draft.fileUploaded
+                  ? "Protected upload · travelers receive the current file after purchase."
+                  : "PDF only · up to 20 MB. Travelers cannot receive anything until there is one."}
+              </div>
+            </div>
+            <button type="button" disabled={uploading || removing} onClick={() => fileInputRef.current?.click()}
+              style={{ background: draft.fileUploaded ? "transparent" : ACC, color: draft.fileUploaded ? INK : "#fff",
+                border: `1px solid ${draft.fileUploaded ? HAIR : ACC}`, borderRadius: 5, padding: "8px 13px",
+                cursor: uploading || removing ? "not-allowed" : "pointer", font: "inherit", fontSize: 13, opacity: uploading ? .7 : 1 }}>
+              {uploading ? "Uploading…" : draft.fileUploaded ? "Replace PDF" : "Choose PDF"}
+            </button>
+            {draft.fileUploaded && (
+              <button type="button" disabled={uploading || removing} onClick={() => void removeFile()}
+                style={{ background: "transparent", color: WINK, border: `1px solid ${WLN}`, borderRadius: 5,
+                  padding: "8px 13px", cursor: removing ? "not-allowed" : "pointer", font: "inherit", fontSize: 13 }}>
+                {removing ? "Removing…" : "Remove"}
+              </button>
+            )}
           </div>
         </div>
         <Help>
@@ -1939,7 +2030,7 @@ export default function CreateServiceWizard() {
     if (stepName === "Async details")
       return <StepAsync draft={draft} set={set} />;
     if (stepName === "What they get")
-      return <StepArtifact draft={draft} set={set} />;
+      return <StepArtifact draft={draft} set={set} serviceId={serviceId} />;
     if (isReview)
       return (
         <StepReview
