@@ -67,7 +67,7 @@ const { sql, eq, and, ne } = await import("drizzle-orm");
 const {
   users, serviceBookings, refunds: refundsTable,
   coordinationStates, coordinationFeeCredits, platformRevenue,
-  readyMadeTrips, readyMadePurchases, trips, expertEarnings,
+  readyMadeTrips, readyMadePurchases, trips, expertEarnings, itineraryItems,
 } = await import("../../shared/schema");
 
 after(async () => {
@@ -208,6 +208,85 @@ test("#876 site 2 — ready-made refund: Stripe throw-then-succeed converges, no
     await db.delete(trips).where(eq(trips.id, tripId)).catch(() => {});
     await db.delete(users).where(eq(users.id, buyerId)).catch(() => {});
     await db.delete(users).where(eq(users.id, authorId)).catch(() => {});
+  }
+});
+
+// ───────── Site 2b: ready-made refund never destroys buyer additions / orphans paid bookings ─────────
+//
+// Audit finding (post-purchase clone hardening): the refund path deleted the clone
+// unconditionally, cascade-destroying the buyer's own items and orphaning a live paid
+// service_booking. The guard now preserves the clone when it carries paid history (a purchased
+// item or a booking), mirroring the build-delete invariant. These two cases prove both arms.
+async function seedClonedPurchase() {
+  const buyerId = await createUser("traveler");
+  const authorId = await createUser("expert");
+  const sourceTripId = crypto.randomUUID();
+  await db.insert(trips).values({
+    id: sourceTripId, userId: authorId, startDate: "2026-01-01", endDate: "2026-01-05", destination: "Kyoto",
+  } as any);
+  const rmTripId = crypto.randomUUID();
+  await db.insert(readyMadeTrips).values({
+    id: rmTripId, authorId, sourceTripId, market: "Kyoto", title: "Test trip",
+    durationDays: 4, priceCents: 5000, status: "approved",
+  } as any);
+  const cloneTripId = crypto.randomUUID();
+  await db.insert(trips).values({
+    id: cloneTripId, userId: buyerId, startDate: "2026-02-01", endDate: "2026-02-05", destination: "Kyoto", status: "draft",
+  } as any);
+  const purchaseId = crypto.randomUUID();
+  await db.insert(readyMadePurchases).values({
+    id: purchaseId, buyerId, readyMadeTripId: rmTripId, pricePaidCents: 5000,
+    stripePaymentIntentId: `pi_test_${crypto.randomUUID().slice(0, 8)}`,
+    status: "cloned", cloneTripId, purchasedAt: new Date(),
+  } as any);
+  return { buyerId, authorId, sourceTripId, rmTripId, cloneTripId, purchaseId };
+}
+
+async function cleanupClonedPurchase(s: Awaited<ReturnType<typeof seedClonedPurchase>>) {
+  await db.delete(itineraryItems).where(eq(itineraryItems.tripId, s.cloneTripId)).catch(() => {});
+  await db.delete(readyMadePurchases).where(eq(readyMadePurchases.id, s.purchaseId)).catch(() => {});
+  await db.delete(readyMadeTrips).where(eq(readyMadeTrips.id, s.rmTripId)).catch(() => {});
+  await db.delete(trips).where(eq(trips.id, s.cloneTripId)).catch(() => {});
+  await db.delete(trips).where(eq(trips.id, s.sourceTripId)).catch(() => {});
+  await db.delete(users).where(eq(users.id, s.buyerId)).catch(() => {});
+  await db.delete(users).where(eq(users.id, s.authorId)).catch(() => {});
+}
+
+test("ready-made refund PRESERVES the clone when it carries paid history (purchased item / booking)", async () => {
+  const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
+  const s = await seedClonedPurchase();
+  // Buyer booked a real platform service onto the clone within the escrow window.
+  await db.insert(itineraryItems).values({
+    tripId: s.cloneTripId, dayNumber: 1, title: "Booked tour", routingStatus: "purchased",
+  } as any);
+  try {
+    const res = await refundReadyMadePurchaseLedger(s.purchaseId, s.buyerId);
+    assert.equal(res.ok, true, "refund ledger succeeds");
+    const [afterTrip] = await db.select().from(trips).where(eq(trips.id, s.cloneTripId));
+    assert.ok(afterTrip, "the clone trip must be PRESERVED — deleting it would destroy buyer additions and orphan the live paid booking");
+    const items = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, s.cloneTripId));
+    assert.equal(items.length, 1, "the buyer's purchased item survives the refund");
+    const [p] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, s.purchaseId));
+    assert.equal(p.status, "refunded", "the ready-made charge is still refunded — only the destructive delete is withheld");
+  } finally {
+    await cleanupClonedPurchase(s);
+  }
+});
+
+test("ready-made refund DELETES the clone when it has no paid history (original revoke behavior)", async () => {
+  const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
+  const s = await seedClonedPurchase();
+  // A plain cloned item, never booked — the ordinary refund-and-revoke case.
+  await db.insert(itineraryItems).values({
+    tripId: s.cloneTripId, dayNumber: 1, title: "Unbooked activity", routingStatus: "in_planning",
+  } as any);
+  try {
+    const res = await refundReadyMadePurchaseLedger(s.purchaseId, s.buyerId);
+    assert.equal(res.ok, true, "refund ledger succeeds");
+    const [afterTrip] = await db.select().from(trips).where(eq(trips.id, s.cloneTripId));
+    assert.equal(afterTrip, undefined, "with no paid history the clone is revoked (deleted) as before");
+  } finally {
+    await cleanupClonedPurchase(s);
   }
 });
 
