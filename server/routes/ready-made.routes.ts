@@ -918,8 +918,22 @@ router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, re
 //
 // Ordering is honest recency of approval — no sales/rating signals exist for this product yet,
 // so nothing is fabricated to rank by (§13).
-router.get("/api/ready-made", async (_req, res) => {
+router.get("/api/ready-made", async (req, res) => {
   try {
+    // Optional author filter (lane nav-storefront D2 — the expert-profile Ready-Made lane).
+    // Mirrors GET /api/expert-templates' ?expertId= posture (destructure off req.query),
+    // hardened to a plain-id shape: users.id is a UUID or a numeric auth id, so anything
+    // outside [A-Za-z0-9_-] is rejected outright rather than passed into the query.
+    // No param ⇒ the full approved feed, unchanged.
+    const rawAuthorId = req.query.authorId;
+    let authorId: string | undefined;
+    if (rawAuthorId !== undefined) {
+      if (typeof rawAuthorId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(rawAuthorId)) {
+        return res.status(400).json({ message: "Invalid authorId" });
+      }
+      authorId = rawAuthorId;
+    }
+
     const rows = await db
       .select({
         id: readyMadeTrips.id,
@@ -944,7 +958,13 @@ router.get("/api/ready-made", async (_req, res) => {
       })
       .from(readyMadeTrips)
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
-      .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true)))
+      .where(and(
+        eq(readyMadeTrips.status, "approved"),
+        eq(readyMadeTrips.active, true),
+        // Same approved+active gate with or without the filter — the author scope narrows
+        // the feed, never widens what an unapproved listing can leak (F2/§10 read-gate).
+        ...(authorId ? [eq(readyMadeTrips.authorId, authorId)] : []),
+      ))
       // CURATION ORDER (MP-3): badged listings lead, then most-recently-approved.
       //
       // Note this lane does NOT use the featured-sort bounded-boost primitive that the
