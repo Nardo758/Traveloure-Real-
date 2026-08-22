@@ -6,6 +6,7 @@ import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Brie
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
+import { StorefrontLink } from "@/components/marketplace/storefront-link";
 
 const ROLE_BADGE: Record<string, { label: string; className: string; Icon: React.ElementType }> = {
   local_expert:  { label: "Local Expert",   className: "bg-emerald-500 text-white", Icon: MapPin },
@@ -17,6 +18,9 @@ interface ExpertCardProps {
   expert: {
     id: string;
     role?: string;
+    /** users.handle (migration 136) — null/absent when the expert has no /p/ storefront page.
+     *  The card renders NO storefront affordance in that case (StorefrontLink rule 1). */
+    handle?: string | null;
     firstName?: string;
     lastName?: string;
     profileImageUrl?: string;
@@ -309,6 +313,22 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
                 {totalSales} sold
               </span>
             )}
+          </div>
+        )}
+
+        {/* D1 (lane nav-storefront): direct storefront affordance. The card's main CTA stays
+            /experts/:id (which itself redirects handled experts to /p/:handle), so this is a
+            shortcut, not a second source of truth. This card is NOT wrapped in a <Link>, so
+            the inline anchor variant is valid here (no nested anchors). StorefrontLink renders
+            nothing when handle is null; the outer guard just avoids an empty spacer div. */}
+        {expert.handle && (
+          <div className="mt-2">
+            <StorefrontLink
+              handle={expert.handle}
+              name={expert.firstName || undefined}
+              variant="inline"
+              data-testid={`link-expert-storefront-${expert.id}`}
+            />
           </div>
         )}
 

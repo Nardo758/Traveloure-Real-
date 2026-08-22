@@ -105,6 +105,8 @@ type Service = {
   providerImageUrl?: string | null;
   providerRating?: string | null;
   providerBusinessName?: string | null;
+  /** MP-2 storefront return path — null when the owner has no claimed handle (no /p/ page). */
+  providerHandle?: string | null;
 };
 
 type DiscoverResult = {
@@ -186,6 +188,12 @@ function ServiceCard({
   isAddingToCart?: boolean;
   isAdded?: boolean;
 }) {
+  // D1c (lane nav-storefront): programmatic navigation for the provider-name deep link.
+  // The whole image header is wrapped in a <Link> (below), so the storefront affordance
+  // must NOT be an <a> — nested anchors are invalid HTML (the StorefrontLink doc rule).
+  // Pattern precedent: expert-card.tsx neighbourhood chips (preventDefault + stopPropagation
+  // on a non-anchor child inside a clickable parent).
+  const [, navigateTo] = useLocation();
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
@@ -347,7 +355,35 @@ function ServiceCard({
                   {service.serviceName}
                 </h3>
                 <div className="flex items-center gap-2 text-white/90 text-sm">
-                  <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  {/* Storefront deep link (D1) — only when the owner has a claimed handle
+                      (StorefrontLink rule 1: never a dead /p/ link). Rendered as a
+                      keyboard-operable span, not an <a>: this block sits inside the card's
+                      <Link>, and nesting anchors is invalid HTML. */}
+                  {service.providerHandle ? (
+                    <span
+                      role="link"
+                      tabIndex={0}
+                      className="font-medium underline-offset-2 hover:underline cursor-pointer"
+                      title={`See everything @${service.providerHandle} offers`}
+                      data-testid={`link-provider-storefront-${service.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        navigateTo(`/p/${service.providerHandle}`);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigateTo(`/p/${service.providerHandle}`);
+                        }
+                      }}
+                    >
+                      {providerName}
+                    </span>
+                  ) : (
+                    <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  )}
                   {service.providerRating && parseFloat(service.providerRating) > 0 && (
                     <>
                       <span className="text-white/60">•</span>
