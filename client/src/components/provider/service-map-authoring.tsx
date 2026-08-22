@@ -38,6 +38,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   ArrowDown,
   ArrowUp,
@@ -47,6 +48,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  Radius,
   Route,
   Trash2,
 } from "lucide-react";
@@ -94,6 +96,14 @@ export function ServiceMapAuthoring({
   addressHint,
   savedStops,
   onPinConfirm,
+  pickupAvailable,
+  pickupProvisionChosen,
+  pickupCoverageMode,
+  onPickupCoverageModeChange,
+  serviceRadius,
+  onServiceRadiusChange,
+  savedRouteStopCount,
+  savedRadiusKm,
 }: {
   /** The saved row's id — `null` in CREATE mode, where the stop rail has nothing to write to. */
   serviceId: string | null;
@@ -115,6 +125,15 @@ export function ServiceMapAuthoring({
    * (non-form mounts).
    */
   onPinConfirm?: (point: LocationPoint) => void;
+  /** Pickup coverage is spatial authoring and lives in this map rail. */
+  pickupAvailable?: boolean;
+  pickupProvisionChosen?: boolean;
+  pickupCoverageMode?: string;
+  onPickupCoverageModeChange?: (mode: string) => void;
+  serviceRadius?: number;
+  onServiceRadiusChange?: (radius: number) => void;
+  savedRouteStopCount?: number;
+  savedRadiusKm?: number;
 }) {
   const { toast } = useToast();
   const [draft, setDraft] = useState<DraftStop[]>([]);
@@ -423,7 +442,63 @@ export function ServiceMapAuthoring({
         </div>
 
         {/* ── The rail: Layers + Route stops, beside each other under the canvas (D-15). ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className={`grid grid-cols-1 ${pickupAvailable || pickupProvisionChosen ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4 items-start`}>
+          {(pickupAvailable || pickupProvisionChosen) && onPickupCoverageModeChange && (
+            <div className="rounded-lg border p-3 space-y-3" data-testid="card-pickup-coverage">
+              <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                <Radius className="w-4 h-4" /> Pickup coverage
+              </h4>
+              <p className="text-[11px] text-muted-foreground">
+                Choose how your pickup area is defined. Switching modes preserves the other mode&apos;s data.
+              </p>
+              <ToggleGroup
+                type="single"
+                value={pickupCoverageMode}
+                onValueChange={(value) => onPickupCoverageModeChange(value || "")}
+                variant="outline"
+                className="w-full justify-start gap-1"
+                data-testid="segmented-pickup-coverage-mode"
+              >
+                <ToggleGroupItem value="radius" className="flex-1 px-2" data-testid="toggle-coverage-radius">
+                  <Radius className="w-3.5 h-3.5 mr-1" /> Radius
+                </ToggleGroupItem>
+                <ToggleGroupItem value="route" className="flex-1 px-2" data-testid="toggle-coverage-route">
+                  <Route className="w-3.5 h-3.5 mr-1" /> Route
+                </ToggleGroupItem>
+              </ToggleGroup>
+              {pickupCoverageMode === "radius" && onServiceRadiusChange && (
+                <div>
+                  <Label htmlFor="serviceRadius" className="text-[12px] font-normal">Service radius (km)</Label>
+                  <Input
+                    id="serviceRadius"
+                    type="number"
+                    value={serviceRadius ?? 0}
+                    onChange={(event) => onServiceRadiusChange(parseInt(event.target.value) || 0)}
+                    className="mt-1 h-8 text-[13px]"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    The ring travelers see around your meeting pin.
+                  </p>
+                  {(savedRouteStopCount ?? 0) > 0 && (
+                    <p className="text-[11px] text-amber-700 mt-2">
+                      {savedRouteStopCount} saved route {savedRouteStopCount === 1 ? "stop is" : "stops are"} preserved.
+                    </p>
+                  )}
+                </div>
+              )}
+              {pickupCoverageMode === "route" && (
+                <p className="text-[11px] text-muted-foreground">
+                  {(savedRouteStopCount ?? 0) > 0
+                    ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved — edit them here.`
+                    : "Add route stops here on the map."}
+                  {(savedRadiusKm ?? 0) > 0 && " Your saved radius is preserved."}
+                </p>
+              )}
+              {!pickupCoverageMode && (
+                <p className="text-[11px] text-muted-foreground">Pick Radius or Route to define the pickup area.</p>
+              )}
+            </div>
+          )}
           {/* D-10: Layers — display toggles only; no layer toggle writes anything. */}
           <div className="rounded-lg border p-3 space-y-3" data-testid="card-map-layers">
             <h4 className="text-sm font-semibold flex items-center gap-1.5">
