@@ -262,7 +262,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     if (isDisabled) {
       return res.status(400).json({
         error: "ai_concierge_disabled",
-        message: "AI Concierge is currently disabled for this experience type.",
+        message: "Platform Concierge is currently disabled for this experience type.",
       });
     }
 

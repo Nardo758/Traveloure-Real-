@@ -2075,7 +2075,10 @@ export default function CartPage() {
                       </div>
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span className="text-muted-foreground">
+                            Destination Concierge booking fee
+                            <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                          </span>
                           <span data-testid="text-concierge-fee">{formatPrice(conciergeFee)}</span>
                         </div>
                       )}
@@ -2561,7 +2564,10 @@ export default function CartPage() {
                       </div>
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span className="text-muted-foreground">
+                            Destination Concierge booking fee
+                            <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                          </span>
                           <span>{formatPrice(conciergeFee)}</span>
                         </div>
                       )}
@@ -2761,7 +2767,10 @@ export default function CartPage() {
                       </div>
                       {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee) > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Booking Concierge fee</span>
+                          <span className="text-muted-foreground">
+                            Destination Concierge booking fee
+                            <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                          </span>
                           <span data-testid="text-concierge-fee-payment">
                             {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee)}
                           </span>

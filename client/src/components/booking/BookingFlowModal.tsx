@@ -479,7 +479,10 @@ export default function BookingFlowModal({
                   </div>
                   {conciergeFee > 0 && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Booking Concierge fee</span>
+                      <span>
+                        Destination Concierge booking fee
+                        <span className="block text-[11px] text-muted-foreground">powered by local experts</span>
+                      </span>
                       <span>${conciergeFee.toFixed(2)}</span>
                     </div>
                   )}
