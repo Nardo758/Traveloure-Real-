@@ -1246,4 +1246,7 @@ export const MIGRATION_FILES = [
   // development schema index-free until an approved production data operation is complete.
   // Idempotent (DROP INDEX IF EXISTS).
   "250_defer_travel_pulse_cities_unique_index.sql",
+  // 251: Pickup-route stops are separate from an experience's ordered itinerary stops so
+  // providers can describe collection points without relabeling places the service visits.
+  "251_service_pickup_route_points.sql",
 ] as const;

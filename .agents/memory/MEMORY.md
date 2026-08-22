@@ -43,3 +43,4 @@
 - [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.
 - [Calendar-date boundaries](calendar-date-boundaries.md) — date-only trip values and exported wall-clock events must never pass through viewer/server timezone conversion.
 - [TravelPulse city index publish compatibility](travelpulse-city-index-publish.md) — production duplicate city pairs block the normalized unique index; keep enforcement in lookup paths until approved cleanup.
+- [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
