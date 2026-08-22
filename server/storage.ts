@@ -4321,7 +4321,13 @@ export class DatabaseStorage implements IStorage {
     const [offering] = await db.select().from(expertServiceOfferings)
       .where(eq(expertServiceOfferings.id, serviceOfferingId));
     if (!offering) return null;
-    const [created] = await db.insert(providerServices).values({
+    // Provenance defect fix (ledger 2026-08-22-provenance-defects): this path previously raw-inserted
+    // a born-'approved'/'active' row with a hardcoded revenueShareRate — bypassing the F2 born-submitted
+    // clamp (migration 111), the §18 rate derivation, the tracking number, and the content registry.
+    // Delegating to createProviderService restores all four; the listing now enters the review queue
+    // like every other create. status:'active' is the owner-console visibility state — public reads
+    // still gate on approval_status='approved' (F2 read-side gate).
+    return await this.createProviderService({
       userId: expertId,
       serviceName: offering.name,
       description: offering.description ?? undefined,
@@ -4329,11 +4335,8 @@ export class DatabaseStorage implements IStorage {
       price: customPrice || offering.price || '0',
       priceType: 'fixed',
       deliveryMethod: 'async_messaging',
-      approvalStatus: 'approved',
       status: 'active',
-      revenueShareRate: '0.75',
-    }).returning();
-    return created;
+    } as any);
   }
 
   async removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void> {

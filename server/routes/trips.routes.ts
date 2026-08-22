@@ -511,6 +511,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             locationName: activity.locationName || destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
+            // §12 origin stamp (ledger 2026-08-22-provenance-defects): this rebuild is the AI
+            // generator's output — without the stamp a whole AI-built plan landed origin-NULL,
+            // which the schema defines as permanently ambiguous. Server-derived, never from a body.
+            origin: "ai",
           });
         }
       }
