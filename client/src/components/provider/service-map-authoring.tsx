@@ -176,9 +176,9 @@ export function ServiceMapAuthoring({
 
   // D-10: the Layers card — display toggles over the canvas's three optional layers. Display
   // state only; toggling draws or hides a layer, it never writes a row.
-  const [showRadius, setShowRadius] = useState(true);
-  const [showStops, setShowStops] = useState(true);
-  const [showZones, setShowZones] = useState(true);
+  const [showRadius, setShowRadius] = useState(false);
+  const [showStops, setShowStops] = useState(false);
+  const [showZones, setShowZones] = useState(false);
   const hasPickupRail = !!pickupAvailable || !!pickupProvisionChosen;
 
   // Re-seed the editable list whenever the saved route arrives/changes — but NEVER over live,
@@ -573,8 +573,8 @@ export function ServiceMapAuthoring({
 
         {/* The rail gives each spatial concept one home: meeting pin, display layers, itinerary,
             and (when offered) pickup coverage. */}
-        <div className={`grid grid-cols-1 ${hasPickupRail ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 items-start`}>
-          <div className="rounded-lg border p-3 md:col-span-2" data-testid="card-meeting-pin">
+        <div className="grid grid-cols-1 gap-3 items-start md:grid-cols-2">
+          <div className="rounded-lg border p-2.5 md:order-1 md:col-span-full" data-testid="card-meeting-pin">
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold flex items-center gap-1.5">
                 <MapPin className="w-4 h-4" /> Meeting pin
@@ -583,8 +583,8 @@ export function ServiceMapAuthoring({
                 {pin ? "Confirmed" : "Not set"}
               </Badge>
             </div>
-            <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start">
-              <div className="space-y-2">
+            <div className="mt-2.5 grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start">
+              <div className="space-y-1.5">
                 {pin ? (
                   <p className="text-[11px] text-emerald-700">
                     Confirmed at {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}.
@@ -611,10 +611,10 @@ export function ServiceMapAuthoring({
                     onChange={(event) => onMeetingDetailsChange(event.target.value)}
                     placeholder="e.g. Meet outside the east entrance, beside the taxi rank"
                     rows={3}
-                    className="mt-1 text-[13px]"
+                    className="mt-1 text-[12px]"
                     data-testid="input-meeting-details"
                   />
-                  <p className="mt-2 text-[11px] text-muted-foreground">
+                  <p className="mt-1.5 text-[10px] text-muted-foreground">
                     These are instructions for travelers, not a second location. The map pin is saved only after you confirm it.
                   </p>
                 </div>
@@ -622,7 +622,7 @@ export function ServiceMapAuthoring({
             </div>
           </div>
           {(pickupAvailable || pickupProvisionChosen) && onPickupCoverageModeChange && (
-            <div className="rounded-lg border p-3 space-y-3 md:order-4" data-testid="card-pickup-coverage">
+            <div className="rounded-lg border p-2.5 space-y-2.5 md:order-3" data-testid="card-pickup-coverage">
               <h4 className="text-sm font-semibold flex items-center gap-1.5">
                 <Radius className="w-4 h-4" /> Pickup coverage
               </h4>
@@ -733,14 +733,14 @@ export function ServiceMapAuthoring({
             </div>
           )}
           {/* D-10: Layers — display toggles only; no layer toggle writes anything. */}
-          <div className="rounded-lg border p-3 space-y-3" data-testid="card-map-layers">
+          <div className="rounded-lg border p-2.5 md:order-2 md:col-span-full" data-testid="card-map-layers">
             <h4 className="text-sm font-semibold flex items-center gap-1.5">
               <Layers className="w-4 h-4" /> Layers
             </h4>
-            <div className="space-y-3">
+            <div className="mt-2.5 grid gap-3 md:grid-cols-3 md:items-start">
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="layer-radius" className="text-[13px] font-normal">
+                  <Label htmlFor="layer-radius" className="text-[12px] font-normal">
                     Service radius
                   </Label>
                   <Switch
@@ -752,20 +752,20 @@ export function ServiceMapAuthoring({
                   />
                 </div>
                 {!pin && (
-                  <p className="text-[11px] text-muted-foreground mt-1" data-testid="text-layer-radius-gate">
+                    <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-layer-radius-gate">
                     Needs a confirmed pin — a radius has no centre without one.
                   </p>
                 )}
               </div>
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="layer-stops" className="text-[13px] font-normal">
+                <Label htmlFor="layer-stops" className="text-[12px] font-normal">
                   Route stops
                 </Label>
                 <Switch id="layer-stops" checked={showStops} onCheckedChange={setShowStops} data-testid="switch-layer-stops" />
               </div>
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="layer-zones" className="text-[13px] font-normal">
+                  <Label htmlFor="layer-zones" className="text-[12px] font-normal">
                     Travel-surcharge zones
                   </Label>
                   <Switch
@@ -776,7 +776,7 @@ export function ServiceMapAuthoring({
                     data-testid="switch-layer-zones"
                   />
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1" data-testid="text-layer-zones-note">
+                <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-layer-zones-note">
                   Zones are <strong>display only</strong> here — the amounts are set in{" "}
                   {serviceId ? (
                     // The listing HOME (where the Pricing & fees drawer mounts) is the edit
@@ -797,7 +797,7 @@ export function ServiceMapAuthoring({
           </div>
 
           {/* Service itinerary — ordered places the experience visits, never pickup locations. */}
-          <div className="rounded-lg border p-3 space-y-3" data-testid="card-route-stops">
+          <div className={`rounded-lg border p-2.5 space-y-2.5 md:col-span-1 ${hasPickupRail ? "md:order-4" : "md:order-3"}`} data-testid="card-route-stops">
             <h4 className="text-sm font-semibold flex items-center justify-between gap-2">
               <span>Service itinerary</span>
               {draft.length > 0 && (
