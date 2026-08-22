@@ -20,6 +20,13 @@ import {
   Users, Route, CalendarClock, Circle, ChevronRight,
 } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -2705,32 +2712,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           (enforced in createMutation + the Publish button, not here). ── */}
       {role === "provider" && (() => {
         // Mock fidelity (Aug 17): the mock draws the offering as a COMPACT field paired with
-        // "Name it" in the Basics top row, with the full searchable catalog opening on demand —
-        // not as a full-page card that dominates the fresh-create screen. Ruling 114's intent
-        // ("one card; the offering is primary; one place to change it") is preserved: the offering
-        // still sets the category and still has a single Change path — only its PRESENTATION moves
-        // from a card header to the mock's paired dropdown-style field. The full picker below is
-        // now strictly on-demand (opened from that field), never the default surface.
-        const expanded = offeringPickerOpen;
-        if (!expanded) return null;
+        // "Name it" in the Basics top row, with the full searchable catalog opening on demand.
+        // Keep the catalog out of the page flow: reopening it must not push the form down or
+        // make the provider scroll away from the field that launched it.
         return (
-        <Card data-testid="provider-offering-picker">
-          <CardHeader className="flex flex-row items-start justify-between gap-3">
-            <CardTitle>What are you offering? *</CardTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setOfferingPickerOpen(false);
-                setOfferingSearchQuery("");
-              }}
-              data-testid="button-close-offering-picker"
-            >
-              Close
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <Dialog
+          open={offeringPickerOpen}
+          onOpenChange={(open) => {
+            setOfferingPickerOpen(open);
+            if (!open) setOfferingSearchQuery("");
+          }}
+        >
+          <DialogContent
+            className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"
+            data-testid="provider-offering-picker"
+          >
+            <DialogHeader className="pr-8">
+              <DialogTitle>What are you offering?</DialogTitle>
+              <DialogDescription>
+                Pick the offering that best matches what you provide. This sets your category and
+                links the listing to the /earn catalog.
+              </DialogDescription>
+            </DialogHeader>
             {providerOfferingTypesRaw.length === 0 ? (
               <p className="text-xs text-muted-foreground">Loading offerings…</p>
             ) : (
@@ -2788,14 +2791,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Pick the offering that matches what you provide — this sets your category below and links
-                  your listing to the /earn catalog. Required before publishing; you can save as a draft
-                  without one and finish later.
+                  Required before publishing; you can save as a draft without one and finish later.
                 </p>
               </>
             )}
-          </CardContent>
-        </Card>
+          </DialogContent>
+        </Dialog>
         );
       })()}
 
