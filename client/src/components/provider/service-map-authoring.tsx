@@ -34,6 +34,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -105,6 +106,11 @@ export function ServiceMapAuthoring({
   savedRouteStopCount,
   savedRadiusKm,
   onDraftStopsChange,
+  meetingDetails,
+  onMeetingDetailsChange,
+  onPinRemove,
+  savedPickupStops,
+  onDraftPickupStopsChange,
 }: {
   /** The saved row's id — `null` in CREATE mode, where the stop rail has nothing to write to. */
   serviceId: string | null;
@@ -136,16 +142,25 @@ export function ServiceMapAuthoring({
   savedRouteStopCount?: number;
   savedRadiusKm?: number;
   onDraftStopsChange?: (stops: Array<{ name: string; latitude: number | null; longitude: number | null }>) => void;
+  /** Human-facing meeting instructions. The map pin remains the sole spatial location. */
+  meetingDetails?: string;
+  onMeetingDetailsChange?: (details: string) => void;
+  onPinRemove?: () => void;
+  savedPickupStops?: SavedRoutePoint[];
+  onDraftPickupStopsChange?: (stops: Array<{ name: string; latitude: number | null; longitude: number | null }>) => void;
 }) {
   const { toast } = useToast();
   const [draft, setDraft] = useState<DraftStop[]>([]);
+  const [pickupDraft, setPickupDraft] = useState<DraftStop[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [pickupDirty, setPickupDirty] = useState(false);
   const dirtyRef = useRef(false);
   const setDirtyBoth = (v: boolean) => {
     dirtyRef.current = v;
     setDirty(v);
   };
   const [newStopName, setNewStopName] = useState("");
+  const [newPickupStopName, setNewPickupStopName] = useState("");
   const [locatingKey, setLocatingKey] = useState<string | null>(null);
   /** The ARMED click-to-place mode. `null` = disarmed (a bare canvas click does nothing). */
   const [placement, setPlacement] = useState<PlacementMode>(null);
@@ -178,6 +193,21 @@ export function ServiceMapAuthoring({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedSignature]);
 
+  const savedPickupSignature = (savedPickupStops ?? [])
+    .map((r) => `${r.id}:${r.position}:${r.name}:${r.latitude}:${r.longitude}`)
+    .join("|");
+  useEffect(() => {
+    if (pickupDirty) return;
+    setPickupDraft(
+      (savedPickupStops ?? [])
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((r) => ({ key: r.id, name: r.name, lat: toNum(r.latitude), lng: toNum(r.longitude) })),
+    );
+  // Pickup stops have their own write rail and should never reset a service-itinerary edit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedPickupSignature]);
+
   const stopsForMap: ServiceRouteStopView[] = useMemo(
     () => draft.map((s, i) => ({ id: s.key, position: i + 1, name: s.name, lat: s.lat, lng: s.lng })),
     [draft],
@@ -189,6 +219,12 @@ export function ServiceMapAuthoring({
       draft.map((stop) => ({ name: stop.name, latitude: stop.lat, longitude: stop.lng })),
     );
   }, [draft, onDraftStopsChange]);
+
+  useEffect(() => {
+    onDraftPickupStopsChange?.(
+      pickupDraft.map((stop) => ({ name: stop.name, latitude: stop.lat, longitude: stop.lng })),
+    );
+  }, [pickupDraft, onDraftPickupStopsChange]);
 
   const routeMutation = useMutation({
     mutationFn: async () => {
@@ -210,8 +246,32 @@ export function ServiceMapAuthoring({
     onError: () => toast({ title: "Could not save the route", description: "Your edits are still here — it will retry on your next change.", variant: "destructive" }),
   });
 
+  const pickupRouteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", `/api/provider/services/${serviceId}/pickup-route-points`, {
+        stops: pickupDraft.map((stop) => ({
+          name: stop.name,
+          latitude: stop.lat === null ? null : stop.lat,
+          longitude: stop.lng === null ? null : stop.lng,
+        })),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setPickupDirty(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/provider/services/${serviceId}`] });
+    },
+    onError: () => toast({ title: "Could not save pickup stops", description: "Your edits are still here — try again shortly.", variant: "destructive" }),
+  });
+
   const unnamedCount = draft.filter((s) => !s.name.trim()).length;
   const canWriteStops = !!serviceId;
+
+  useEffect(() => {
+    if (!pickupDirty || !canWriteStops || pickupRouteMutation.isPending) return;
+    const timer = window.setTimeout(() => pickupRouteMutation.mutate(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [pickupDirty, canWriteStops, pickupRouteMutation]);
 
   // ── D-12 (ratified, ledger 119): STOPS AUTOSAVE. The replace-list PUT (rail unchanged) now
   // fires on settle — 1.2s after the last edit — instead of on a button. Holds while a stop is
@@ -301,6 +361,19 @@ export function ServiceMapAuthoring({
     setDirtyBoth(true);
   }
 
+  function addPickupStop() {
+    const name = newPickupStopName.trim();
+    if (!name) return;
+    setPickupDraft((current) => [...current, { key: nextDraftKey(), name, lat: null, lng: null }]);
+    setNewPickupStopName("");
+    setPickupDirty(true);
+  }
+
+  function removePickupStop(key: string) {
+    setPickupDraft((current) => current.filter((stop) => stop.key !== key));
+    setPickupDirty(true);
+  }
+
   // §13: click-to-place needs a canvas, and this map renders NOTHING when the listing has no
   // confirmed pin and no located stop — there is no city-center fallback to click on.
   const canvasExists = !!pin || locatedCount > 0;
@@ -369,7 +442,7 @@ export function ServiceMapAuthoring({
             <Button
               size="sm"
               variant={placement?.kind === "new" ? "default" : "outline"}
-              disabled={!canvasExists || !canWriteStops}
+                disabled={!canvasExists}
               onClick={() => setPlacement(placement?.kind === "new" ? null : { kind: "new" })}
               data-testid="button-place-stop-mode"
             >
@@ -453,10 +526,52 @@ export function ServiceMapAuthoring({
           )}
         </div>
 
-        {/* ── The rail: Layers + Route stops, beside each other under the canvas (D-15). ── */}
-        <div className={`grid grid-cols-1 ${pickupAvailable || pickupProvisionChosen ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4 items-start`}>
+        {/* The rail gives each spatial concept one home: meeting pin, display layers, itinerary,
+            and (when offered) pickup coverage. */}
+        <div className={`grid grid-cols-1 md:grid-cols-3 ${pickupAvailable || pickupProvisionChosen ? "xl:grid-cols-4" : ""} gap-4 items-start`}>
+          <div className="rounded-lg border p-3 space-y-3" data-testid="card-meeting-pin">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                <MapPin className="w-4 h-4" /> Meeting pin
+              </h4>
+              <Badge variant="outline" className="text-[10px] font-normal">
+                {pin ? "Confirmed" : "Not set"}
+              </Badge>
+            </div>
+            {onMeetingDetailsChange && (
+              <div>
+                <Label htmlFor="meetingDetails" className="text-[12px] font-normal">
+                  Meeting details <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="meetingDetails"
+                  value={meetingDetails ?? ""}
+                  onChange={(event) => onMeetingDetailsChange(event.target.value)}
+                  placeholder="e.g. Meet outside the east entrance, beside the taxi rank"
+                  rows={3}
+                  className="mt-1 text-[13px]"
+                  data-testid="input-meeting-details"
+                />
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              These are instructions for travelers, not a second location. The map pin is saved only after you confirm it.
+            </p>
+            {pin && (
+              <>
+                <p className="text-[11px] text-emerald-700">
+                  Confirmed at {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}.
+                </p>
+                {onPinRemove && (
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-[12px]" onClick={onPinRemove}>
+                    Remove pin
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
           {(pickupAvailable || pickupProvisionChosen) && onPickupCoverageModeChange && (
-            <div className="rounded-lg border p-3 space-y-3" data-testid="card-pickup-coverage">
+            <div className="rounded-lg border p-3 space-y-3 md:order-4" data-testid="card-pickup-coverage">
               <h4 className="text-sm font-semibold flex items-center gap-1.5">
                 <Radius className="w-4 h-4" /> Pickup coverage
               </h4>
@@ -499,12 +614,67 @@ export function ServiceMapAuthoring({
                 </div>
               )}
               {pickupCoverageMode === "route" && (
-                <p className="text-[11px] text-muted-foreground">
-                  {(savedRouteStopCount ?? 0) > 0
-                    ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved — edit them here.`
-                    : "Add route stops here on the map."}
-                  {(savedRadiusKm ?? 0) > 0 && " Your saved radius is preserved."}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    Pickup stops are separate from the service itinerary. Add the collection points in order.
+                  </p>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={newPickupStopName}
+                      onChange={(event) => setNewPickupStopName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addPickupStop();
+                        }
+                      }}
+                      placeholder="Add pickup stop"
+                      className="h-8 text-[12px]"
+                      data-testid="input-new-pickup-stop"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={addPickupStop}
+                      disabled={!newPickupStopName.trim()}
+                      data-testid="button-add-pickup-stop"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  {pickupDraft.length > 0 ? (
+                    <ol className="space-y-1">
+                      {pickupDraft.map((stop, index) => (
+                        <li key={stop.key} className="flex items-center gap-1.5 rounded border px-1.5 py-1 text-[12px]">
+                          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px]">
+                            {index + 1}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{stop.name}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => removePickupStop(stop.key)}
+                            aria-label={`Remove pickup stop ${stop.name}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">No pickup stops yet.</p>
+                  )}
+                  {pickupDirty && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {canWriteStops ? "Saving pickup route…" : "Pickup route saves with the listing."}
+                    </p>
+                  )}
+                  {(savedRadiusKm ?? 0) > 0 && (
+                    <p className="text-[11px] text-amber-700">Your saved radius is preserved.</p>
+                  )}
+                </div>
               )}
               {!pickupCoverageMode && (
                 <p className="text-[11px] text-muted-foreground">Pick Radius or Route to define the pickup area.</p>
@@ -575,12 +745,11 @@ export function ServiceMapAuthoring({
             </div>
           </div>
 
-          {/* Route stops — D-13: the located pill; per-stop Move/Remove/Place-on-map (already
-              present) now verified with data; D-12: no Save button, the autosave line instead. */}
+          {/* Service itinerary — ordered places the experience visits, never pickup locations. */}
           <div className="rounded-lg border p-3 space-y-3" data-testid="card-route-stops">
             <h4 className="text-sm font-semibold flex items-center justify-between gap-2">
-              <span>Route stops</span>
-              {canWriteStops && draft.length > 0 && (
+              <span>Service itinerary</span>
+              {draft.length > 0 && (
                 <Badge variant="outline" className="text-[10px] font-normal" data-testid="badge-stops-located">
                   {locatedCount} of {draft.length} located
                 </Badge>
@@ -598,7 +767,7 @@ export function ServiceMapAuthoring({
                         addStop();
                       }
                     }}
-                    placeholder="Add a stop (e.g. Nishiki Market)"
+                    placeholder="Add a place visited (e.g. Nishiki Market)"
                     className="text-[13px]"
                     data-testid="input-new-stop"
                   />
@@ -615,7 +784,7 @@ export function ServiceMapAuthoring({
 
                 {draft.length === 0 ? (
                   <p className="text-[12px] text-muted-foreground">
-                    No stops yet. Add the places this service visits, in order.
+                    No itinerary stops yet. Add the places this service visits, in order.
                   </p>
                 ) : (
                   <ol className="space-y-1.5">
@@ -726,8 +895,8 @@ export function ServiceMapAuthoring({
                   </p>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  Drag a numbered pin to adjust it. Stops autosave after the listing exists; new
-                  listing routes are saved with the form.
+                  These are places travelers visit, not pickup locations. Drag a numbered pin to
+                  adjust it. Stops autosave after the listing exists; new listing routes are saved with the form.
                 </p>
               </>
           </div>
