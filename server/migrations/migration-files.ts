@@ -1254,4 +1254,9 @@ export const MIGRATION_FILES = [
   // revision_request_note / revision_requested_at), app-enforced vocabulary, no CHECK
   // (publish-trap rule); all declared in shared/schema.ts. Behavior-neutral on apply.
   "252_concierge_revision_entitlement.sql",
+  // 253: Concierge dispute columns on ready_made_purchases — buyer concern → admin review
+  // (refund = escape hatch). Additive-nullable (dispute_status / dispute_reason / disputed_at /
+  // dispute_resolved_at / dispute_resolved_by), app-enforced vocabulary, no CHECK (publish-trap
+  // rule); all declared in shared/schema.ts. Behavior-neutral on apply.
+  "253_concierge_dispute.sql",
 ] as const;
