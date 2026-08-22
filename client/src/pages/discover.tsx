@@ -811,33 +811,64 @@ export default function DiscoverPage() {
   });
   const readyMadeShelf = readyMadeShelfData?.listings;
 
-  // One theme selected → the server-validated filter (GET /api/ready-made?planType=…). While it
-  // loads, the client-side subset of the already-fetched feed renders instantly — same rows by
-  // construction (same read-gate, same predicate), so there is no flash of wrong content.
+  // One theme selected → the server-validated filter. Vocabulary keys ride ?planType=; an
+  // expert-minted theme (ledger 2026-08-22-expert-minted-themes) rides ?customLabel= — the
+  // author's own label is the category, matched against stored data server-side. While the
+  // filtered fetch loads, the client-side subset of the already-fetched feed renders instantly —
+  // same rows by construction (same read-gate, same predicate), so there is no flash of wrong
+  // content. Group-key shapes: "all" | <vocab key> | "custom:<normalized label>" | "custom"
+  // (label-less custom rows) | "__untyped__".
   const [selectedTheme, setSelectedTheme] = useState<string>("all");
+  const selectedCustomLabel = selectedTheme.startsWith("custom:")
+    ? selectedTheme.slice("custom:".length)
+    : null;
+  const readyMadeThemeUrl = selectedCustomLabel
+    ? `/api/ready-made?customLabel=${encodeURIComponent(selectedCustomLabel)}`
+    : `/api/ready-made?planType=${encodeURIComponent(selectedTheme)}`;
   const { data: readyMadeThemeData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
-    queryKey: [`/api/ready-made?planType=${encodeURIComponent(selectedTheme)}`],
-    enabled: selectedTheme !== "all",
+    queryKey: [readyMadeThemeUrl],
+    // The plain "custom" group (label-less rows) filters client-side only: ?planType=custom
+    // would also return every LABELED custom listing — a different set than the shelf shows.
+    enabled: selectedTheme !== "all" && selectedTheme !== "custom",
     staleTime: 60_000,
   });
 
   // Themes present in the live feed, in feed order (badge-first, then approval recency), with
   // real counts — chips render only for themes that actually have stock (§13: no empty aisles,
-  // never the full 20-key vocabulary as decoration). Untyped rows (pre-vocabulary grandfathers,
-  // if any) group under a chip-less trailing shelf rather than being dropped.
+  // never the full 20-key vocabulary as decoration). Expert-minted themes are FIRST-CLASS:
+  // each distinct custom label is its own group (key "custom:<normalized>", display label =
+  // the author's casing at first occurrence) — an expert who types a new theme has created a
+  // browsable category, not a card in a generic bucket. Label-less custom rows keep the plain
+  // "custom" group; untyped grandfathers group under a chip-less trailing shelf.
   const readyMadeThemes = useMemo(() => {
     const order: string[] = [];
     const byTheme = new Map<string, ReadyMadeShelfListing[]>();
+    const customLabels = new Map<string, string>();
     for (const l of readyMadeShelf ?? []) {
-      const key = l.planType ?? "__untyped__";
+      let key: string;
+      if (l.planType === "custom") {
+        const label = (l.planTypeCustom ?? "").trim();
+        if (label) {
+          key = `custom:${label.toLowerCase()}`;
+          if (!customLabels.has(key)) customLabels.set(key, label);
+        } else {
+          key = "custom";
+        }
+      } else {
+        key = l.planType ?? "__untyped__";
+      }
       if (!byTheme.has(key)) {
         byTheme.set(key, []);
         order.push(key);
       }
       byTheme.get(key)!.push(l);
     }
-    return { order, byTheme };
+    return { order, byTheme, customLabels };
   }, [readyMadeShelf]);
+
+  // One display-name resolution for group keys, vocab and expert-minted alike.
+  const themeHeadingFor = (key: string): string =>
+    readyMadeThemes.customLabels.get(key) ?? readyMadeThemeHeading(key);
 
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
@@ -1646,7 +1677,15 @@ export default function DiscoverPage() {
                       {readyMadeThemes.order
                         .filter((key) => key !== "__untyped__")
                         .map((key) => {
-                          const Icon = READY_MADE_THEME_ICONS[key] ?? Award;
+                          // Expert-minted groups ("custom:<label>") wear the Sparkles mark;
+                          // their testid is slugified since author labels aren't DOM-safe.
+                          const isMinted = key.startsWith("custom:");
+                          const Icon = isMinted
+                            ? Sparkles
+                            : READY_MADE_THEME_ICONS[key] ?? Award;
+                          const testKey = isMinted
+                            ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
+                            : key;
                           const count = readyMadeThemes.byTheme.get(key)?.length ?? 0;
                           return (
                             <Button
@@ -1654,10 +1693,10 @@ export default function DiscoverPage() {
                               variant={selectedTheme === key ? "default" : "outline"}
                               size="sm"
                               onClick={() => setSelectedTheme(key)}
-                              data-testid={`button-theme-chip-${key}`}
+                              data-testid={`button-theme-chip-${testKey}`}
                             >
                               <Icon className="w-3.5 h-3.5 mr-1.5" />
-                              {readyMadeThemeHeading(key)}
+                              {themeHeadingFor(key)}
                               <span className="ml-1.5 text-xs opacity-70">{count}</span>
                             </Button>
                           );
@@ -1671,16 +1710,19 @@ export default function DiscoverPage() {
                       readyMadeThemes.order.map((key) => {
                         const rows = readyMadeThemes.byTheme.get(key) ?? [];
                         if (rows.length === 0) return null;
+                        const sectionKey = key.startsWith("custom:")
+                          ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
+                          : key;
                         return (
-                          <div key={key} className="mb-8" data-testid={`section-theme-${key}`}>
+                          <div key={key} className="mb-8" data-testid={`section-theme-${sectionKey}`}>
                             <div className="flex items-baseline gap-3 mb-3">
-                              <h3 className="text-lg font-semibold">{readyMadeThemeHeading(key)}</h3>
+                              <h3 className="text-lg font-semibold">{themeHeadingFor(key)}</h3>
                               {rows.length > 3 && (
                                 <button
                                   type="button"
                                   className="ml-auto text-sm font-medium text-primary hover:underline"
                                   onClick={() => setSelectedTheme(key)}
-                                  data-testid={`button-theme-see-all-${key}`}
+                                  data-testid={`button-theme-see-all-${sectionKey}`}
                                 >
                                   See all {rows.length} →
                                 </button>
@@ -1698,9 +1740,18 @@ export default function DiscoverPage() {
                       (() => {
                         // Server-filtered rows once loaded; the client-side subset of the same
                         // gated feed renders instantly meanwhile (same predicate by construction).
+                        // Expert-minted keys match on the normalized author label; the plain
+                        // "custom" group (label-less rows) is client-side only by design.
                         const filteredRows =
                           readyMadeThemeData?.listings ??
-                          (readyMadeShelf ?? []).filter((l) => l.planType === selectedTheme);
+                          (readyMadeShelf ?? []).filter((l) =>
+                            selectedCustomLabel !== null
+                              ? l.planType === "custom" &&
+                                (l.planTypeCustom ?? "").trim().toLowerCase() === selectedCustomLabel
+                              : selectedTheme === "custom"
+                                ? l.planType === "custom" && !(l.planTypeCustom ?? "").trim()
+                                : l.planType === selectedTheme,
+                          );
                         return (
                           <>
                             <div
@@ -1709,7 +1760,7 @@ export default function DiscoverPage() {
                             >
                               <span>
                                 Showing <strong>{filteredRows.length}</strong>{" "}
-                                {readyMadeThemeHeading(selectedTheme)} trip{filteredRows.length === 1 ? "" : "s"}
+                                {themeHeadingFor(selectedTheme)} trip{filteredRows.length === 1 ? "" : "s"}
                               </span>
                               <button
                                 type="button"
