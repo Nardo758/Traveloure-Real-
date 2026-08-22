@@ -1342,8 +1342,12 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
       purchase: result.purchase,
       cloneTripId: result.cloneTripId,
       alreadyFulfilled: result.alreadyFulfilled,
-      // The buyer's next stop: their own editable copy.
-      redirect: result.cloneTripId ? `/trip/${result.cloneTripId}?tab=itinerary` : null,
+      // The buyer's next stop: their own editable copy, delivered to the canonical Trip Slip
+      // (/plans/:id, the SlipView) — the ONE plan surface the rest of the app funnels to, where
+      // "Optimize this plan", "Add all to cart" (book the plan's services), and the expert note
+      // live. Landing a purchase on the older /trip/ detail page was an inconsistency (ledger
+      // 2026-08-22-readymade-slip-delivery).
+      redirect: result.cloneTripId ? `/plans/${result.cloneTripId}` : null,
     });
   } catch (err: any) {
     console.error("[ready-made] purchase confirm error:", err);

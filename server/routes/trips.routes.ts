@@ -1436,7 +1436,12 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
       }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const item = await storage.createItineraryItem(parsed.data as any);
+      // §12: itinerary_items.origin is stamped server-side from the ACTOR's role, never trusted
+      // from req.body (the insert schema omits it; the PATCH path already strips it). An owner's
+      // manual add is 'traveler'; an assigned advisor/expert's is 'expert'. This is the provenance
+      // a cloned ready-made trip's buyer-added items were previously missing (audit finding).
+      const origin = tripRole === "expert" ? "expert" : "traveler";
+      const item = await storage.createItineraryItem({ ...parsed.data, origin } as any);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", tripRole!, item.id);
       res.status(201).json(item);
     } catch (error) {

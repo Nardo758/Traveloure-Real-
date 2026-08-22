@@ -13,7 +13,7 @@
 import { db } from "../db";
 import { storage } from "../storage";
 import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators } from "@shared/schema";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 
@@ -66,6 +66,16 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   const end = new Date(start.getTime() + Math.max(0, listing.durationDays - 1) * 24 * 60 * 60 * 1000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
+  // The trip-level "Note from your expert" (§21, expertTravelerNote) is part of what the buyer
+  // paid for — it renders atop the delivered plan. It lives on the SOURCE trip (not the listing
+  // row), so read it from there and carry it onto the clone. The PRIVATE build-notes field
+  // (trips.expertNotes, §21) is deliberately NOT read — it must never reach a traveler surface.
+  const [sourceTrip] = await db
+    .select({ expertTravelerNote: trips.expertTravelerNote })
+    .from(trips)
+    .where(eq(trips.id, listing.sourceTripId))
+    .limit(1);
+
   // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
   const trackingNumber = await storage.generateTrackingNumber("TRV");
   const [cloneTrip] = await db
@@ -76,6 +86,8 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       title: listing.title,
       destination: listing.market,
       trackingNumber,
+      // §21: the traveler-facing expert note travels with the plan (private expertNotes does not).
+      expertTravelerNote: sourceTrip?.expertTravelerNote ?? null,
       // Placeholder window sized to the plan; the buyer re-dates it in their own planner.
       startDate: fmt(start),
       endDate: fmt(end),
@@ -188,8 +200,10 @@ export type RefundLedgerResult =
  * Effects, §15-ordered: atomic cloned|paid → refunded claim (a duplicate refund matches 0 rows
  * and returns alreadyRefunded so the route can still retry the idempotent Stripe leg), reverse
  * the author's held/releasable earning (paid_out is never auto-clawed-back — unreachable inside
- * the window by construction), and REVOKE the product: the clone trip is deleted. A refunded
- * buyer does not keep the itinerary they were refunded for.
+ * the window by construction), and REVOKE the product: the clone trip is deleted — UNLESS the
+ * buyer has already booked/purchased on it, in which case the clone is preserved (soft-revoke)
+ * so the refund can never destroy the buyer's own work or orphan a live paid charge (see the
+ * guard at the delete site). A refunded buyer with no paid history does not keep the itinerary.
  */
 export async function refundReadyMadePurchaseLedger(
   purchaseId: string,
@@ -278,9 +292,31 @@ export async function refundReadyMadePurchaseLedger(
     console.error(`Failed to reverse platform revenue for ready-made purchase ${purchaseId}:`, err);
   }
 
-  // Revoke the product: the clone (and its items, by cascade) goes with the refund.
+  // Revoke the product: the clone (and its items, by cascade) goes with the refund —
+  // EXCEPT when the buyer has invested in the clone during the escrow window. A buyer can add
+  // their own items and book real platform services onto the clone before refunding; an
+  // unconditional delete then (a) cascade-destroys the buyer's own itinerary_items
+  // (trip_id ON DELETE CASCADE) and (b) orphans a live, separately-paid service_booking
+  // (trip_id ON DELETE SET NULL) that this refund never touches — a live un-refunded charge
+  // pointing at a deleted trip, and the bookings-have-purchased-items invariant broken.
+  // Mirror the defensive invariant the build-delete path already enforces
+  // (ready-made.routes.ts): never delete a trip carrying paid itinerary history. When paid
+  // history exists we PRESERVE the clone (soft-revoke) — the ready-made charge is still
+  // refunded and the author's earning still reversed above; the buyer simply keeps the trip
+  // their own bookings live on. (This also anticipates the ratified "concierge revision instead
+  // of refund" model, under which the clone is never destroyed.)
   if (claimed.cloneTripId) {
-    await db.delete(trips).where(eq(trips.id, claimed.cloneTripId));
+    const [paidItem] = await db
+      .select({ id: itineraryItems.id })
+      .from(itineraryItems)
+      .where(and(
+        eq(itineraryItems.tripId, claimed.cloneTripId),
+        sql`(${itineraryItems.routingStatus} = 'purchased' OR ${itineraryItems.bookingId} IS NOT NULL)`,
+      ))
+      .limit(1);
+    if (!paidItem) {
+      await db.delete(trips).where(eq(trips.id, claimed.cloneTripId));
+    }
   }
 
   return { ok: true, purchase: claimed, alreadyRefunded: false };
