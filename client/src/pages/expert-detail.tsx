@@ -29,6 +29,7 @@ import {
   Home,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
+import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
@@ -86,6 +87,33 @@ export default function ExpertDetailPage() {
     },
     enabled: !!expertId,
   });
+
+  // This expert's Ready-Made Trips (lane nav-storefront D2) — the OTHER purchasable
+  // catalog (ready_made_trips, NOT expert_templates; the two are never merged).
+  // Server-gated: GET /api/ready-made?authorId= returns only approved+active listings
+  // by this author. Mirrors the storefront's Ready-Made lane; the tab renders only
+  // when non-empty (§13 — no empty shelf).
+  const { data: readyMadeData } = useQuery<{
+    listings: Array<{
+      id: string;
+      title: string;
+      heroImageUrl: string | null;
+      priceCents: number | null;
+      pricingMode: string;
+      durationDays: number | null;
+      market: string;
+      insideCounts: { items?: number } | null;
+    }>;
+  }>({
+    queryKey: ["/api/ready-made", { authorId: expertId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/ready-made?authorId=${encodeURIComponent(expertId!)}`);
+      if (!res.ok) return { listings: [] };
+      return res.json();
+    },
+    enabled: !!expertId,
+  });
+  const readyMade = readyMadeData?.listings ?? [];
 
   const handleContactExpert = () => {
     if (!isAuthenticated) {
@@ -387,9 +415,17 @@ export default function ExpertDetailPage() {
                   <TabsList className="mb-6">
                     <TabsTrigger value="about">About</TabsTrigger>
                     <TabsTrigger value="services">Services</TabsTrigger>
+                    {/* D3 naming: expert_templates = "Itinerary Templates" (the storefront
+                        vocabulary); ready_made_trips = "Ready-Made Trips". Two catalogs,
+                        two tabs — never merged. Each renders only when non-empty (§13). */}
                     {packages.length > 0 && (
                       <TabsTrigger value="packages" data-testid="tab-expert-packages">
-                        Trips ({packages.length})
+                        Itinerary Templates ({packages.length})
+                      </TabsTrigger>
+                    )}
+                    {readyMade.length > 0 && (
+                      <TabsTrigger value="ready-made" data-testid="tab-expert-ready-made">
+                        Ready-Made Trips ({readyMade.length})
                       </TabsTrigger>
                     )}
                     <TabsTrigger value="reviews">Reviews ({totalReviews})</TabsTrigger>
@@ -434,6 +470,35 @@ export default function ExpertDetailPage() {
                             </Card>
                           </Link>
                         ))}
+                      </div>
+                    </TabsContent>
+                  )}
+
+                  {/* Ready-Made Trips Tab (D2) — mirrors the storefront's Ready-Made lane
+                      (storefront.tsx lane 3): same OfferingCard, same chips, same honest
+                      pricing. Ready-Made Trips have no review mechanism yet (§13) — no
+                      rating line, never a perpetual fake "New" badge. */}
+                  {readyMade.length > 0 && (
+                    <TabsContent value="ready-made">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="expert-ready-made-lane">
+                        {readyMade.map((r) => {
+                          const chips = [
+                            ...(r.durationDays ? [`${r.durationDays} day${r.durationDays === 1 ? "" : "s"}`] : []),
+                            ...(r.insideCounts?.items ? [`${r.insideCounts.items} stops`] : []),
+                          ];
+                          return (
+                            <OfferingCard
+                              key={r.id}
+                              href={`/ready-made/${r.id}`}
+                              testId={`expert-ready-made-${r.id}`}
+                              image={r.heroImageUrl}
+                              title={r.title}
+                              chips={chips}
+                              price={typeof r.priceCents === "number" ? `$${(r.priceCents / 100).toFixed(0)}` : "Contact for price"}
+                              cta="Preview trip →"
+                            />
+                          );
+                        })}
                       </div>
                     </TabsContent>
                   )}

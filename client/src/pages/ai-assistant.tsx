@@ -23,7 +23,8 @@ import {
   Calendar,
   Pencil,
   Check,
-  X
+  X,
+  LifeBuoy
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -90,6 +91,57 @@ export default function AIAssistant() {
       if (selectedConversation) {
         setSelectedConversation(null);
       }
+    },
+  });
+
+  // Lane C / C4 — "Get help from our team": Platform Concierge is a hybrid
+  // (AI starts, a person steps in), so the human handoff is a first-class,
+  // always-visible chat affordance. Creates a tier-'ai' concierge request
+  // server-side (userId from session, conversation id as staff context) and
+  // fires the admin push signal; confirms to the user in-chat.
+  const escalateToTeam = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/concierge/escalations", {
+        ...(selectedConversation ? { conversationId: selectedConversation } : {}),
+      });
+      return res.json() as Promise<{ id: string }>;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Request sent to our team",
+        description: "A member of our team will follow up with you shortly.",
+      });
+      // In-chat confirmation bubble (local echo — the durable confirmation is
+      // the team's actual follow-up).
+      if (selectedConversation) {
+        queryClient.setQueryData<Conversation>(
+          ["/api/conversations", selectedConversation],
+          (old) =>
+            old
+              ? {
+                  ...old,
+                  messages: [
+                    ...(old.messages || []),
+                    {
+                      id: Date.now(),
+                      conversationId: selectedConversation,
+                      role: "assistant" as const,
+                      content:
+                        "Done — I've sent this conversation to our team. A real person will follow up shortly to help with anything I can't handle here.",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ],
+                }
+              : old
+        );
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't reach our team",
+        description: err?.message || "Please try again in a moment.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -272,9 +324,17 @@ export default function AIAssistant() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="mb-6">
+    // Rendered inside DashboardLayout (sidebar + sticky h-[52px] header; its <main> owns the
+    // scroll) — same shell situation chat.tsx documents. This page used to re-declare its own
+    // viewport frame (min-h-screen + two mismatched h-[calc(100vh-…)] magic numbers), producing
+    // a double scrollbar and misaligned panes. Fix (the chat.tsx pattern): ONE viewport-anchored
+    // frame — lg:h-[calc(100vh-52px)] matching the shell's real 52px header — and every nested
+    // pane derives its height via flex-1/min-h-0, never its own viewport arithmetic. Below lg the
+    // three panes stack at natural height and the shell's <main> scrolls the page (a bounded
+    // frame would crush the stacked panes on a phone).
+    <div className="flex flex-col lg:h-[calc(100vh-52px)] min-h-0 bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col flex-1 min-h-0 w-full px-4 sm:px-6 py-4 lg:py-6">
+        <div className="mb-4 flex-shrink-0">
           <Button
             variant="ghost"
             onClick={() => setLocation("/dashboard")}
@@ -284,24 +344,40 @@ export default function AIAssistant() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-primary rounded-lg">
-              <Bot className="w-8 h-8 text-white" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-primary rounded-lg">
+                <Bot className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+                  AI Travel Assistant
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  AI-assisted, human-backed — our team steps in whenever you need a person
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-                AI Travel Assistant
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Your personal travel planning companion
-              </p>
-            </div>
+            {/* C4: first-class, always-visible human handoff (ruled hybrid). */}
+            <Button
+              variant="outline"
+              onClick={() => escalateToTeam.mutate()}
+              disabled={escalateToTeam.isPending}
+              data-testid="button-escalate-to-team"
+            >
+              {escalateToTeam.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <LifeBuoy className="w-4 h-4 mr-2" />
+              )}
+              Get help from our team
+            </Button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-200px)]">
-          <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <CardHeader className="pb-3">
+        <div className="flex flex-col lg:grid lg:grid-cols-5 gap-4 lg:gap-6 flex-1 min-h-0">
+          <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+            <CardHeader className="pb-3 flex-shrink-0">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg">Conversations</CardTitle>
                 <Button
@@ -315,8 +391,8 @@ export default function AIAssistant() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="p-3 pt-0">
-              <ScrollArea className="h-[calc(100vh-340px)]">
+            <CardContent className="p-3 pt-0 flex-1 min-h-0 flex flex-col">
+              <ScrollArea className="flex-1 min-h-0 max-h-64 lg:max-h-none">
                 {loadingConversations ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-600 dark:text-gray-400" />
@@ -419,9 +495,9 @@ export default function AIAssistant() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col">
-            <CardContent className="flex-1 p-4 flex flex-col overflow-hidden">
-              <ScrollArea className="flex-1 pr-4">
+          <Card className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+            <CardContent className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1 min-h-0 pr-4">
                 {selectedConversation && loadingMessages ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
@@ -540,7 +616,7 @@ export default function AIAssistant() {
                 )}
               </ScrollArea>
 
-              <div className="pt-4 border-t border-border mt-4">
+              <div className="pt-4 border-t border-border mt-4 flex-shrink-0">
                 <div className="flex gap-3">
                   <Textarea
                     ref={textareaRef}
@@ -573,7 +649,7 @@ export default function AIAssistant() {
             </CardContent>
           </Card>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-h-0">
             <AiPlannerDraftPanel
               conversationId={selectedConversation}
               extractionTrigger={extractionTrigger}

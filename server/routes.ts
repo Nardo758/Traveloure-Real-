@@ -98,7 +98,7 @@ import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnsw
 import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
-import { loadTripOptimizerInputs } from "./services/optimizer-baseline.service";
+import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -572,7 +572,7 @@ async function verifyOptimizationPayment(params: {
       return {
         ok: false,
         status: 402,
-        body: { error: "ai_concierge_disabled", message: "AI Concierge is currently disabled for this experience type." },
+        body: { error: "ai_concierge_disabled", message: "Platform Concierge is currently disabled for this experience type." },
       };
     }
     if (pi.amount !== requiredCents) {
@@ -8538,11 +8538,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Trigger AI optimization in background only when authorized (payment verified or free re-run)
       if (canRunOptimizer && baselineItems.length > 0) {
-        const availableServices = await db
-          .select()
-          .from(providerServices)
-          .where(eq(providerServices.status, "active"))
-          .limit(100);
+        // ONE shared catalog query (L6, ledger 2026-08-22-optimizer-catalog-honesty):
+        // active + APPROVED + destination-scoped. The previous inline pull filtered
+        // status only — no approval gate, no market scoping.
+        const availableServices = await loadOptimizerCatalog(destination);
 
         // Ensure dates are in YYYY-MM-DD format
         const formatDate = (d: string | undefined | null) => {
@@ -8550,6 +8549,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (d.includes('T')) return d.split('T')[0];
           return d;
         };
+
+        // First-run personalization (ledger 2026-08-22-first-run-prefs, decision-maker
+        // ratified): a trip-backed FIRST run now reads the trip's own eventType / budget /
+        // travelStyles into TripPreferences — the same block the regenerate path has always
+        // built — so the variant-strategy matrix applies from the first paid optimization
+        // instead of every first run collapsing to the default pair. Server-derived from the
+        // authorized trip row only (§14 posture); guest/inline runs stay undefined.
+        let tripPreferencesForCreate: TripPreferences | undefined;
+        if (tripId) {
+          const tripRowForCreate = await storage.getTrip(tripId);
+          if (tripRowForCreate) {
+            const prefsForCreate = (tripRowForCreate.preferences as Record<string, any>) || {};
+            tripPreferencesForCreate = {
+              eventType: tripRowForCreate.eventType,
+              budget: tripRowForCreate.budget ? parseFloat(tripRowForCreate.budget) : null,
+              travelStyles: Array.isArray(prefsForCreate.travelStyles) ? prefsForCreate.travelStyles : [],
+            };
+          }
+        }
 
         generateOptimizedItineraries(
           comparison.id,
@@ -8561,14 +8579,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           formatDate(endDate),
           budget ? parseFloat(budget) : undefined,
           travelers || 1,
-          // tripId / userTransportPrefs / tripPreferences stay UNPASSED here, exactly as before
-          // Lane 5b. Passing `tripId` would newly activate this handler's temporal-anchor and
-          // day-boundary reads — a real behaviour change that belongs to whoever owns that gap,
-          // not to the re-point. `fixedCommitments` is passed directly so the purchased-item
-          // constraint works on both entry points without touching the anchor plumbing.
+          // tripId / userTransportPrefs stay UNPASSED here, exactly as before Lane 5b.
+          // Passing `tripId` would newly activate this handler's temporal-anchor and
+          // day-boundary reads — a real behaviour change that belongs to whoever owns that
+          // gap, not to this lane (the ledger row flags it as still open).
+          // `tripPreferences` IS now passed (first-run personalization, above);
+          // `fixedCommitments` is passed directly so the purchased-item constraint works on
+          // both entry points without touching the anchor plumbing.
           undefined,
           undefined,
-          undefined,
+          tripPreferencesForCreate,
           fixedCommitments
         ).catch((err) => console.error("Background optimization error:", err));
       }
@@ -8860,11 +8880,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const availableServices = await db
-        .select()
-        .from(providerServices)
-        .where(eq(providerServices.status, "active"))
-        .limit(100);
+      // Same shared catalog query as the create path (L6, ledger
+      // 2026-08-22-optimizer-catalog-honesty): active + APPROVED + destination-scoped.
+      const availableServices = await loadOptimizerCatalog(comparison.destination);
 
       res.json({ message: "Optimization started", status: "generating" });
 
