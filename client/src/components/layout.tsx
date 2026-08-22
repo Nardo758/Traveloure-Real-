@@ -75,10 +75,11 @@ const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "Local Experts":     MapPin,
   "Trip Planners":     User,
   // MP-1: the services tab is role-agnostic (experts sell there too), so the
-  // leaf is "Browse Services", not "Service Providers". "Ready Made Trips" uses
-  // Award to match the tab trigger's own icon in discover.tsx.
+  // leaf is "Browse Services", not "Service Providers". "Ready-Made Trips" uses
+  // Award to match the tab trigger's own icon in discover.tsx. (Hyphenated per
+  // the lane-D naming scheme; this key must track nav-config.ts's `name`.)
   "Browse Services":   Building2,
-  "Ready Made Trips":  Award,
+  "Ready-Made Trips":  Award,
   "Travel Planning":   Plane,
   "Romantic Getaways": Sparkles,
   "Date Night":        Wine,

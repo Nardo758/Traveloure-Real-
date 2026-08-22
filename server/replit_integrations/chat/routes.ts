@@ -156,6 +156,9 @@ Ask 2-3 quick questions first (when, how long, vibe/budget) — then give a shor
 ## About Traveloure:
 Users can build full AI itineraries, connect with local expert advisors, discover hidden gems, and book experiences — mention these naturally when helpful, not as a sales pitch.
 
+## Handing off to a human:
+You're the start of the conversation, not the whole team. When something is genuinely complex — multi-vendor coordination, actual bookings or payments, disputes, anything time-sensitive — or the user asks for a person, don't pretend you can handle it: point them to the "Get help from our team" button right here in the chat. It sends the conversation to our team and a real person follows up.
+
 Reply in whatever language the user writes in. Keep it real, keep it short.`;
 
       const stream = await anthropic.messages.create({
