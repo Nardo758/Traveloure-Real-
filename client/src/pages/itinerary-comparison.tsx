@@ -1110,9 +1110,29 @@ export default function ItineraryComparisonPage() {
 
   const isGenerating = data?.comparison?.status === "generating";
   const hasFailed = data?.comparison?.status === "failed";
+  const isPendingPayment = data?.comparison?.status === "pending_payment";
   const hasVariants = data?.variants && data.variants.length > 0;
   const userVariant = data?.variants?.find((v) => v.source === "user");
   const aiVariants = data?.variants?.filter((v) => v.source === "ai_optimized") || [];
+
+  // Slip-aware exit (ledger 2026-08-22-slip-review-copy): a trip-backed comparison's escape
+  // hatch goes back to the SLIP (/plans/:tripId) — a slip traveler never came from the cart,
+  // so "Back to Cart" was the wrong door on every error/empty state after the review-first
+  // change made those states traveler-visible. Cart-originated comparisons (no tripId) keep
+  // the cart CTA unchanged.
+  const backExit = slipTripId
+    ? { label: "Back to your plan", to: `/plans/${slipTripId}` }
+    : { label: "Back to Cart", to: "/cart" };
+
+  // Review-mode zero-proposal state (design-assessment gap 1): generation finished but
+  // produced no AI variants. The old banner only armed on the autoApply path, so in review
+  // mode the traveler saw their own plan labeled "1 proposal" with no explanation and no
+  // retry. autoApply keeps its own error banner; this renders only for the review flow.
+  const generationProducedNoProposals =
+    !autoApply &&
+    data?.comparison?.status === "generated" &&
+    hasVariants &&
+    aiVariants.length === 0;
 
   // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
   const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
@@ -1285,15 +1305,16 @@ export default function ItineraryComparisonPage() {
               <h3 className="text-lg font-semibold mb-2">Generation failed</h3>
               <p className="text-muted-foreground mb-6">
                 Something went wrong while optimizing your itinerary. Please try again.
+                {slipTripId ? " Your plan is untouched." : ""}
               </p>
               <div className="flex justify-center gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => setLocation("/cart")}
+                  onClick={() => setLocation(backExit.to)}
                   data-testid="button-back-to-cart"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Cart
+                  {backExit.label}
                 </Button>
                 <Button
                   onClick={() => retryMutation.mutate()}
@@ -1349,21 +1370,78 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
+        {/* Review-mode zero-proposal notice (ledger 2026-08-22-slip-review-copy): generation
+            finished with no AI proposals — say so and offer the re-run, instead of silently
+            showing the traveler their own plan as "1 proposal". The autoApply flow keeps its
+            own banner above; this one renders only for the review flow. */}
+        {generationProducedNoProposals && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-no-proposals-review">
+            <CardContent className="p-6 text-center">
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-amber-500" />
+              <h3 className="text-lg font-semibold mb-2">The optimizer didn't find any alternatives</h3>
+              <p className="text-muted-foreground mb-5 max-w-xl mx-auto">
+                The run completed but produced no alternative plans — this can happen when the plan
+                is already well-organized or the AI timed out. Your plan is untouched. You can re-run
+                the optimizer{slipTripId ? "" : " or go back to your cart"}.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(backExit.to)}
+                  data-testid="button-back-no-proposals"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {backExit.label}
+                </Button>
+                <Button
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry-no-proposals"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Re-run optimization
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-semibold mb-2">No itinerary data found</h3>
-              <p className="text-muted-foreground mb-6">
-                It looks like the comparison is empty. Please go back to your cart and try again.
-              </p>
+              {isPendingPayment ? (
+                <>
+                  {/* Stale-refresh honesty (ledger 2026-08-22-slip-review-copy): an unpaid
+                      comparison reached in review mode (bookmark/refresh) states its real
+                      status instead of "comparison is empty… go back to your cart". */}
+                  <h3 className="text-lg font-semibold mb-2">This optimization hasn't started yet</h3>
+                  <p className="text-muted-foreground mb-6">
+                    The optimization fee for this run wasn't completed, so no proposals were
+                    generated{slipTripId ? ' — start it again from "Optimize this plan" on your plan'
+                      : " — start it again from your cart"}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold mb-2">No itinerary data found</h3>
+                  <p className="text-muted-foreground mb-6">
+                    It looks like the comparison is empty.
+                    {slipTripId ? " Head back to your plan and try again." : " Please go back to your cart and try again."}
+                  </p>
+                </>
+              )}
               <Button
                 variant="outline"
-                onClick={() => setLocation("/cart")}
+                onClick={() => setLocation(backExit.to)}
                 data-testid="button-back-to-cart"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Cart
+                {backExit.label}
               </Button>
             </CardContent>
           </Card>
