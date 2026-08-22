@@ -44,3 +44,4 @@
 - [Calendar-date boundaries](calendar-date-boundaries.md) — date-only trip values and exported wall-clock events must never pass through viewer/server timezone conversion.
 - [TravelPulse city index publish compatibility](travelpulse-city-index-publish.md) — production duplicate city pairs block the normalized unique index; keep enforcement in lookup paths until approved cleanup.
 - [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
+- [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
