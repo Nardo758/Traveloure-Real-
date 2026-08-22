@@ -838,6 +838,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       ? { ...buildEmptyForm(role), ...initialAutosave.current.formData }
       : buildEmptyForm(role),
   );
+  const [draftRouteStops, setDraftRouteStops] = useState<
+    Array<{ name: string; latitude: number | null; longitude: number | null }>
+  >([]);
   const [autosaveRestoredAt, setAutosaveRestoredAt] = useState<string | null>(
     initialAutosave.current?.savedAt ?? null,
   );
@@ -1601,9 +1604,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           surchargeTierError = err?.message || "unknown error";
         }
       }
-      return { submitAction, service, attestationError, surchargeTierError };
+      let routeStopError: string | null = null;
+      if (!isEditMode && savedServiceId && draftRouteStops.length > 0) {
+        try {
+          await apiRequest("PUT", `/api/provider/services/${savedServiceId}/route-points`, {
+            stops: draftRouteStops
+              .filter((stop) => stop.name.trim())
+              .map((stop) => ({
+                name: stop.name.trim(),
+                latitude: stop.latitude,
+                longitude: stop.longitude,
+              })),
+          });
+        } catch (err: any) {
+          routeStopError = err?.message || "unknown error";
+        }
+      }
+      return { submitAction, service, attestationError, surchargeTierError, routeStopError };
     },
-    onSuccess: ({ submitAction, service, attestationError, surchargeTierError }) => {
+    onSuccess: ({ submitAction, service, attestationError, surchargeTierError, routeStopError }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       if (surchargeTierError) {
         toast({
@@ -1620,6 +1639,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         toast({
           title: "Listing saved — confirmations were not recorded",
           description: `${attestationError}. Reopen this listing and confirm them.`,
+          variant: "destructive",
+        });
+      }
+      if (routeStopError) {
+        toast({
+          title: "Listing saved — route stops were not recorded",
+          description: `${routeStopError}. Reopen this listing and add the stops again.`,
           variant: "destructive",
         });
       }
@@ -3855,6 +3881,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           onServiceRadiusChange={(radius) => set("serviceRadius", radius)}
           savedRouteStopCount={savedRouteStopCount}
           savedRadiusKm={savedRadiusKm}
+          onDraftStopsChange={!isEditMode ? setDraftRouteStops : undefined}
         />
       )}
 
