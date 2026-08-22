@@ -1249,4 +1249,9 @@ export const MIGRATION_FILES = [
   // 251: Pickup-route stops are separate from an experience's ordered itinerary stops so
   // providers can describe collection points without relabeling places the service visits.
   "251_service_pickup_route_points.sql",
+  // 252: Concierge revision entitlement on ready_made_purchases — every purchase includes one
+  // consultation + one revision from the selling expert. Additive-nullable (revision_status /
+  // revision_request_note / revision_requested_at), app-enforced vocabulary, no CHECK
+  // (publish-trap rule); all declared in shared/schema.ts. Behavior-neutral on apply.
+  "252_concierge_revision_entitlement.sql",
 ] as const;
