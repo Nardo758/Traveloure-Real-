@@ -303,6 +303,16 @@ export async function insertAiGeneratedItinerary(values: Record<string, any>): P
   return saved;
 }
 
+/** Stamp the trip a stored generation was materialized into, so a repeated save
+ *  re-applies to the SAME trip instead of minting duplicates
+ *  (ledger 2026-08-22-ai-slip-defects; owner-scoped reads go through getAiItineraryById). */
+export async function stampAiGeneratedItineraryTrip(id: string, tripId: string): Promise<void> {
+  await db
+    .update(aiGeneratedItineraries)
+    .set({ tripId } as any)
+    .where(eq(aiGeneratedItineraries.id, id));
+}
+
 export interface SaveGeneratedItinerarySnapshotInput {
   userId: string;
   tripId?: string | null;
