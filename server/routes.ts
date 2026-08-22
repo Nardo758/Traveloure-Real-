@@ -98,7 +98,7 @@ import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnsw
 import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
-import { loadTripOptimizerInputs } from "./services/optimizer-baseline.service";
+import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -8538,11 +8538,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Trigger AI optimization in background only when authorized (payment verified or free re-run)
       if (canRunOptimizer && baselineItems.length > 0) {
-        const availableServices = await db
-          .select()
-          .from(providerServices)
-          .where(eq(providerServices.status, "active"))
-          .limit(100);
+        // ONE shared catalog query (L6, ledger 2026-08-22-optimizer-catalog-honesty):
+        // active + APPROVED + destination-scoped. The previous inline pull filtered
+        // status only — no approval gate, no market scoping.
+        const availableServices = await loadOptimizerCatalog(destination);
 
         // Ensure dates are in YYYY-MM-DD format
         const formatDate = (d: string | undefined | null) => {
@@ -8860,11 +8859,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const availableServices = await db
-        .select()
-        .from(providerServices)
-        .where(eq(providerServices.status, "active"))
-        .limit(100);
+      // Same shared catalog query as the create path (L6, ledger
+      // 2026-08-22-optimizer-catalog-honesty): active + APPROVED + destination-scoped.
+      const availableServices = await loadOptimizerCatalog(comparison.destination);
 
       res.json({ message: "Optimization started", status: "generating" });
 
