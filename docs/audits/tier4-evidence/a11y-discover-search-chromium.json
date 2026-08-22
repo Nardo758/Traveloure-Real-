@@ -5,7 +5,7 @@
   "project": "chromium",
   "surface": "discover-search",
   "url": "http://127.0.0.1:5000/discover",
-  "scannedAt": "2026-08-22T18:59:09.882Z",
+  "scannedAt": "2026-08-22T20:23:28.618Z",
   "result": "2 violation types, 72 affected nodes",
   "totalViolations": 2,
   "totalNodes": 72,

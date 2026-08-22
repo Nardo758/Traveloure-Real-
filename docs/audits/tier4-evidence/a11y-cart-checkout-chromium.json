@@ -5,7 +5,7 @@
   "project": "chromium",
   "surface": "cart-checkout",
   "url": "http://127.0.0.1:5000/cart",
-  "scannedAt": "2026-08-22T18:59:18.518Z",
+  "scannedAt": "2026-08-22T20:23:37.413Z",
   "result": "2 violation types, 11 affected nodes",
   "totalViolations": 2,
   "totalNodes": 11,
@@ -23,14 +23,14 @@
             "target": [
               ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(1)"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-1f2d...\">",
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-57a7...\">",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           },
           {
             "target": [
               ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(3)"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-1f2d...\">",
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-57a7...\">",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           },
           {
