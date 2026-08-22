@@ -918,7 +918,7 @@ export default function DiscoverPage() {
               className="text-center mb-5"
             >
               <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
-                Explore Services & Ready Made Trips
+                Explore Services & Ready-Made Trips
               </h1>
               <p className="text-[15px] text-[color:var(--earn-muted)] mt-1.5">
                 Expert services, ready-made trips, and AI-powered recommendations.
@@ -975,7 +975,7 @@ export default function DiscoverPage() {
                     data-testid="tab-packages"
                   >
                     <Award className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Ready&nbsp;Made&nbsp;</span>Trips
+                    <span className="hidden sm:inline">Ready-Made&nbsp;</span>Trips
                   </TabsTrigger>
                   <TabsTrigger
                     value="events"
@@ -1461,20 +1461,38 @@ export default function DiscoverPage() {
 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
+                {/* D3 (lane nav-storefront): the tab's content is width-aligned to the hero
+                    band (max-w-6xl) — the surrounding shared container is max-w-[1400px]
+                    for the other tabs, which left this tab visibly wider than its own
+                    header. Scoped here so the services tab keeps its wide grid. */}
+                <div className="max-w-6xl mx-auto">
                 {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
                     sectioned by author type per the ratified store model. Surfaced now that the buy
                     loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
-                    the shelf is empty — never an empty aisle. */}
+                    the shelf is empty — never an empty aisle.
+                    D3 naming: ready_made_trips = "Ready-Made Trips" (the purchasable ready-made
+                    products); the author-type sections become subheadings under that one banner,
+                    ending the heading collision with the expert_templates section below (now
+                    "Itinerary Templates", the storefront vocabulary). */}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
+                    <div className="mb-6">
+                      <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Award className="w-5 h-5 text-primary" />
+                        Ready-Made Trips
+                      </h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Buy a complete trip built by a vetted expert — it becomes your own editable plan
+                      </p>
+                    </div>
                     {(["trips_by_locals", "advisor"] as const).map((section) => {
                       const rows = readyMadeShelf.filter((l) => l.section === section);
                       if (rows.length === 0) return null;
                       return (
                         <div key={section} className="mb-8">
-                          <h2 className="text-xl font-semibold mb-1">
+                          <h3 className="text-lg font-semibold mb-1">
                             {section === "trips_by_locals" ? "Trips by Locals" : "Trips by Trip Planners"}
-                          </h2>
+                          </h3>
                           <p className="text-sm text-muted-foreground mb-4">
                             {section === "trips_by_locals"
                               ? "Complete trips built by vetted local experts — buy one and it becomes your own editable plan"
@@ -1484,8 +1502,10 @@ export default function DiscoverPage() {
                             {rows.map((l) => (
                               <Link key={l.id} href={`/ready-made/${l.id}`}>
                                 <Card className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow h-full" data-testid={`rm-shelf-card-${l.id}`}>
+                                  {/* D3: h-40 aligns the card image height with the Itinerary
+                                      Templates grid below — one visual rhythm for the tab. */}
                                   {l.heroImageUrl && (
-                                    <img src={l.heroImageUrl} alt={l.title} className="w-full h-36 object-cover" />
+                                    <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
                                   )}
                                   <CardContent className="p-4">
                                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -1510,16 +1530,18 @@ export default function DiscoverPage() {
                   </div>
                 )}
 
-                {/* Ready Made Trips Section (traveler-facing label = "Ready Made Trips"; seller console keeps "templates") */}
+                {/* Itinerary Templates Section — expert_templates (D3 naming: matches the
+                    storefront's "Itinerary Templates" lane; "Ready-Made Trips" is the
+                    ready_made_trips shelf above, a different product). */}
                 <div className="mb-10">
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <Award className="w-5 h-5 text-primary" />
-                        Ready Made Trips
+                        <BookOpen className="w-5 h-5 text-primary" />
+                        Itinerary Templates
                       </h2>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Buy a complete, ready-made trip crafted by verified local experts
+                        Guided itineraries crafted by verified experts — buy the plan and travel it your way
                       </p>
                     </div>
                     {expertTemplates && expertTemplates.length > 0 && (
@@ -1532,9 +1554,9 @@ export default function DiscoverPage() {
                   {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
                     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
                       <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <h3 className="font-semibold text-gray-700 mb-1">No ready-made trips published yet</h3>
+                      <h3 className="font-semibold text-gray-700 mb-1">No itinerary templates published yet</h3>
                       <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-                        Verified experts can publish ready-made trips here for travelers to purchase.
+                        Verified experts can publish itinerary templates here for travelers to purchase.
                       </p>
                       {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
                         <Link href="/expert/workspace">
@@ -1555,7 +1577,9 @@ export default function DiscoverPage() {
 
                   {(expertTemplates && expertTemplates.length > 0) && (
                     <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* D3: breakpoints + gap aligned with the Ready-Made shelf grid above
+                        (sm:2 / lg:3, gap-4) — the tab's two grids now share one rhythm. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {(showAllPackages ? expertTemplates : expertTemplates.slice(0, 6)).map((template, idx) => (
                         <motion.div
                           key={template.id}
@@ -1667,7 +1691,7 @@ export default function DiscoverPage() {
                             <>Show fewer</>
                           ) : (
                             <>
-                              View all {expertTemplates.length} trips
+                              View all {expertTemplates.length} templates
                               <ArrowRight className="w-4 h-4 ml-2" />
                             </>
                           )}
@@ -1682,13 +1706,14 @@ export default function DiscoverPage() {
                 {templatesLoading && (
                   <div className="mb-10">
                     <Skeleton className="h-6 w-48 mb-6" />
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {[1, 2, 3].map((i) => (
                         <Skeleton key={i} className="h-72 rounded-lg" />
                       ))}
                     </div>
                   </div>
                 )}
+                </div>
 
               </TabsContent>
 
