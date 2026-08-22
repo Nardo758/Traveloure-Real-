@@ -26,11 +26,38 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { and, eq, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../db";
-import { conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages, coordinationStates } from "@shared/schema";
+import { adminNotifications, conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages, coordinationStates } from "@shared/schema";
 import { routeConcierge } from "../services/concierge-router.service";
 import { storage } from "../storage";
+import { isAuthenticated } from "../replit_integrations/auth";
+import { chatStorage } from "../replit_integrations/chat/storage";
+import { createRateLimiter } from "../infrastructure/rate-limiter";
+import {
+  buildConciergeAdminNotification,
+  escalationRequestSchema,
+  type ConciergeNotifyEvent,
+  type ConciergeRequestLike,
+} from "../utils/concierge-admin-notification";
 
 const router = Router();
+
+// ─── Admin push signal (Lane C / C3) ────────────────────────────────────────
+// Every concierge request creation, tier selection and chat escalation lands an
+// admin_notifications row (ALL tiers — the Platform tier is a ruled hybrid, so
+// its requests are staff work too). Non-fatal, the donor posture
+// (service-requests.routes.ts): the traveler-facing operation is the important
+// part; the notification is a surfacing aid.
+async function notifyAdminsOfConciergeRequest(
+  row: ConciergeRequestLike,
+  event: ConciergeNotifyEvent,
+  extraMetadata: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await db.insert(adminNotifications).values(buildConciergeAdminNotification(row, event, extraMetadata));
+  } catch (notifErr: any) {
+    console.warn("[concierge] admin_notifications insert failed (non-fatal):", notifErr?.message);
+  }
+}
 
 function makeClaimToken(requestId: string): string {
   const secret = process.env.SESSION_SECRET || "dev-fallback-secret";
@@ -134,6 +161,9 @@ router.post("/api/concierge/requests", async (req, res) => {
     // (PATCH is possession-gated). Guests included — that is the point.
     rememberConciergeRequest(req, row.id);
 
+    // C3: push signal into the admin queue on creation, all tiers.
+    await notifyAdminsOfConciergeRequest(row, "created");
+
     // Guests additionally get the HMAC possession token (the /claim proof) so a
     // client that persists it can mutate/claim after a session loss. Owners don't
     // need it — they authorize by ownership.
@@ -190,6 +220,12 @@ router.post("/api/concierge/quote", async (req, res) => {
     // the live client actually uses before PATCHing a tier, so the guest funnel
     // depends on it.
     rememberConciergeRequest(req, row.id);
+
+    // C3: push signal on creation (this is the create path the live client uses).
+    await notifyAdminsOfConciergeRequest(
+      { id: row.id, intent: body.intent, eventType: body.eventType ?? null, userId, chosenTier: null },
+      "created",
+    );
 
     res.json({
       requestId: row.id,
@@ -311,6 +347,12 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
         } as any);
         return state.id;
       });
+    }
+
+    // C3: push signal on tier selection (the PATCH), all tiers — including the
+    // Platform tier, whose requests were previously invisible to staff.
+    if (body.chosenTier !== undefined) {
+      await notifyAdminsOfConciergeRequest(row, "tier_selected");
     }
 
     // For guests (no coordinationId), return a signed claim token they can use after sign-in.
