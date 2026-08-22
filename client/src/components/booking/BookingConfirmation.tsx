@@ -155,7 +155,10 @@ export default function BookingConfirmation({
           )}
           {(conciergeFee ?? bookings.reduce((sum, b) => sum + (b.conciergeFee ?? 0), 0)) > 0 && (
             <div className="flex justify-between text-sm" data-testid="text-concierge-fee-confirmation">
-              <span className="text-gray-600">Booking Concierge fee</span>
+              <span className="text-gray-600">
+                Destination Concierge booking fee
+                <span className="block text-[11px] text-gray-500">powered by local experts</span>
+              </span>
               <span className="text-gray-900 font-medium">
                 ${(conciergeFee ?? bookings.reduce((sum, b) => sum + (b.conciergeFee ?? 0), 0)).toFixed(2)}
               </span>

@@ -1848,7 +1848,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
           return res.status(503).json({
             error: "concierge_fee_unconfigured",
             message:
-              "The Booking Concierge fee isn't configured right now, so we can't show an accurate total. " +
+              "The Destination Concierge booking fee isn't configured right now, so we can't show an accurate total. " +
               "Please try again shortly or contact support — checkout is paused for concierge items until this is fixed.",
             retryable: true,
           });

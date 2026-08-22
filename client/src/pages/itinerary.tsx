@@ -755,7 +755,7 @@ export default function ItineraryPage() {
                           >
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                             <p className="text-xs text-amber-700 dark:text-amber-300">
-                              The Booking Concierge fee can't be calculated right now, so we can't show an
+                              The Destination Concierge booking fee can't be calculated right now, so we can't show an
                               accurate total. Please try again shortly or contact support before checking out.
                             </p>
                           </div>
@@ -768,7 +768,10 @@ export default function ItineraryPage() {
                             </div>
                             {conciergeFeeAmount !== null && (
                               <div className="flex items-center justify-between">
-                                <span className="text-sm text-muted-foreground">Booking Concierge fee</span>
+                                <span className="text-sm text-muted-foreground">
+                                  Destination Concierge booking fee
+                                  <span className="block text-[11px] text-muted-foreground/80">powered by local experts</span>
+                                </span>
                                 <span className="text-sm font-semibold text-foreground" data-testid="text-concierge-fee">${conciergeFeeAmount.toFixed(2)}</span>
                               </div>
                             )}
