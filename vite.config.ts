@@ -20,6 +20,10 @@ export default defineConfig({
       : []),
   ],
   resolve: {
+    // Keep lazy-loaded console pages and React Query on the same React runtime. Without
+    // this, Vite can prebundle a second React entry during HMR and React Query hooks
+    // fail with "Invalid hook call" only after navigating into a code-split route.
+    dedupe: ["react", "react-dom", "@tanstack/react-query"],
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
