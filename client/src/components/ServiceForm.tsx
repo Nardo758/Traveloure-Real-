@@ -2851,25 +2851,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <div>
                 <Label>What are you offering? *</Label>
                 {formData.serviceOfferingTypeId && selectedProviderOffering ? (
-                  <div
-                    className="mt-2 flex items-center justify-between gap-3 rounded-md border bg-secondary/40 px-3 py-2.5"
-                    data-testid="offering-identity-header"
-                  >
-                    <span className="text-sm font-medium truncate">{selectedProviderOffering.display_name}</span>
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0"
+                      variant="outline"
+                      className="mt-2 w-full justify-between font-normal"
                       onClick={() => {
                         setRequestOfferingConfirmedName(null);
                         setOfferingPickerOpen(true);
                       }}
                       data-testid="button-reopen-offering-picker"
+                      aria-label={`Change offering from ${selectedProviderOffering.display_name}`}
                     >
-                      Change
+                      <span className="truncate">{selectedProviderOffering.display_name}</span>
+                      <ChevronRight className="ml-2 h-4 w-4 shrink-0 rotate-90 text-muted-foreground" aria-hidden="true" />
                     </Button>
-                  </div>
                 ) : (
                   <Button
                     type="button"
