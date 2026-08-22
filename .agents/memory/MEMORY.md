@@ -45,3 +45,4 @@
 - [TravelPulse city index publish compatibility](travelpulse-city-index-publish.md) — production duplicate city pairs block the normalized unique index; keep enforcement in lookup paths until approved cleanup.
 - [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
 - [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
+- [Vite development logger resilience](vite-dev-logger-resilience.md) — Vite/client diagnostics must log without terminating the dev server and dropping the preview.
