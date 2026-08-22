@@ -1396,4 +1396,130 @@ router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req,
   }
 });
 
+// ─── Concierge revision (ledger 2026-08-22-concierge-revision) ──────────────────────────────
+//
+// Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+// P1 = the entitlement spine: the buyer's slip reads the entitlement by clone trip, and the
+// buyer requests the revision — which grants the selling expert WRITE access to the buyer's own
+// clone (§12 advisor write-status) so they can make the changes (P2 wires the Suggest→approve
+// delivery + the consult chat + the escrow SLA).
+
+// GET the entitlement for the buyer's cloned trip — the Concierge card's data source. Owner-scoped
+// (the purchase's buyerId must be the session). Returns null when this trip is not a ready-made
+// clone the caller owns, so the card renders nothing (never a card on a non-purchased trip).
+router.get("/api/ready-made/purchases/by-clone/:tripId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const [row] = await db
+      .select({
+        purchaseId: readyMadePurchases.id,
+        status: readyMadePurchases.status,
+        revisionStatus: readyMadePurchases.revisionStatus,
+        revisionRequestedAt: readyMadePurchases.revisionRequestedAt,
+        expertFirstName: users.firstName,
+        expertHandle: users.handle,
+      })
+      .from(readyMadePurchases)
+      .innerJoin(readyMadeTrips, eq(readyMadeTrips.id, readyMadePurchases.readyMadeTripId))
+      .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
+      .where(and(
+        eq(readyMadePurchases.cloneTripId, req.params.tripId),
+        eq(readyMadePurchases.buyerId, userId),
+      ))
+      .limit(1);
+
+    if (!row) return res.json({ purchase: null });
+    res.json({
+      purchase: {
+        purchaseId: row.purchaseId,
+        status: row.status,
+        // NULL revisionStatus surfaces as "available" — the entitlement is unused.
+        revisionStatus: row.revisionStatus ?? "available",
+        revisionRequestedAt: row.revisionRequestedAt,
+        expertName: row.expertFirstName ?? "your expert",
+        expertHandle: row.expertHandle ?? null,
+      },
+    });
+  } catch (err: any) {
+    console.error("[ready-made] entitlement lookup error:", err);
+    res.status(500).json({ message: "Failed to load concierge entitlement" });
+  }
+});
+
+// Buyer requests their included revision. Idempotent by construction: the status transition is an
+// atomic conditional (WHERE revision_status IS NULL), so a double-click can only claim once. On the
+// winning claim it grants the SELLING EXPERT write access to the buyer's clone (§12 advisor
+// write-status 'accepted'), carrying the buyer's note. §14: the acting user is the session, never
+// the body; the body is a strict allowlist (note only).
+const requestRevisionSchema = z.object({
+  note: z.string().trim().max(1000).optional(),
+});
+router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const parsed = requestRevisionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+    const note = parsed.data.note ?? null;
+
+    // Load + ownership check (404 for not-yours too — don't leak other buyers' purchase ids).
+    const [purchase] = await db
+      .select()
+      .from(readyMadePurchases)
+      .where(eq(readyMadePurchases.id, req.params.id))
+      .limit(1);
+    if (!purchase || purchase.buyerId !== userId) {
+      return res.status(404).json({ message: "Purchase not found" });
+    }
+    if (purchase.status !== "cloned" || !purchase.cloneTripId) {
+      return res.status(409).json({ message: "This trip isn't ready for a revision yet." });
+    }
+
+    // Atomic claim: only an unused entitlement (revision_status IS NULL) transitions to 'requested'.
+    const [claimed] = await db
+      .update(readyMadePurchases)
+      .set({ revisionStatus: "requested", revisionRequestNote: note, revisionRequestedAt: new Date() } as any)
+      .where(and(
+        eq(readyMadePurchases.id, purchase.id),
+        eq(readyMadePurchases.buyerId, userId),
+        isNull(readyMadePurchases.revisionStatus),
+      ))
+      .returning();
+    if (!claimed) {
+      return res.status(409).json({ message: "Your included revision has already been requested." });
+    }
+
+    // Grant the selling expert WRITE access to the buyer's clone so they can make the changes.
+    // status='accepted' is a §12 write-access status; the note rides as the assignment message.
+    // Upsert: if a row already exists (e.g. re-grant), (re)assert write access.
+    const [listing] = await db
+      .select({ authorId: readyMadeTrips.authorId })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, purchase.readyMadeTripId))
+      .limit(1);
+    if (listing?.authorId) {
+      await db
+        .insert(tripExpertAdvisors)
+        .values({
+          tripId: purchase.cloneTripId,
+          localExpertId: listing.authorId,
+          status: "accepted",
+          message: note ?? "Concierge revision requested by the buyer.",
+        } as any)
+        .onConflictDoUpdate({
+          target: [tripExpertAdvisors.tripId, tripExpertAdvisors.localExpertId],
+          set: { status: "accepted" },
+        });
+    }
+
+    res.json({ purchase: { purchaseId: claimed.id, revisionStatus: claimed.revisionStatus, revisionRequestedAt: claimed.revisionRequestedAt } });
+  } catch (err: any) {
+    console.error("[ready-made] request-revision error:", err);
+    res.status(500).json({ message: "Failed to request revision" });
+  }
+});
+
 export default router;

@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
+import { ConciergeCard } from "@/components/marketplace/concierge-card";
 
 export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -42,7 +43,10 @@ export default function SlipViewPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="p-4 sm:p-6 space-y-4">
+      {/* Concierge support — renders only when this trip is a ready-made clone the caller owns
+          (ledger 2026-08-22-concierge-revision). Self-gating: null on any other trip. */}
+      <ConciergeCard tripId={tripId!} />
       <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} />
     </div>
   );
