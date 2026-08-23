@@ -493,7 +493,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </Link>
 
-              <div className="hidden lg:ml-8 lg:flex lg:items-center gap-1">
+              <div className="hidden min-[960px]:ml-4 min-[960px]:flex min-[960px]:items-center min-[1200px]:ml-8 gap-0 min-[1200px]:gap-1">
                 {navItems.map((item) => (
                   <DesktopDropdown key={item.name} item={item} isActive={item.href === location} />
                 ))}
@@ -562,7 +562,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
-              <div className="flex items-center lg:hidden">
+              <div className="flex items-center min-[960px]:hidden">
                 <button
                   ref={hamburgerRef}
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -596,7 +596,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-modal="true"
               aria-label={t("navigationMenu")}
               {...slideMotion}
-              className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
+              className="min-[960px]:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
             >
               {/* Mobile Nav */}
               <div className="pt-2 pb-3 space-y-1 px-4">
