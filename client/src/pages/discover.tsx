@@ -1074,9 +1074,9 @@ export default function DiscoverPage() {
 
         {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
             title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
-            row beneath. py-9 = the ratified middle between the old compact py-6
-            single-row and the /experts py-12 masthead. Change the pattern in BOTH
-            places or not at all. */}
+            row beneath. py-5 = compacted (decision-maker Aug 23: the py-9 masthead
+            pushed page content too far down). Change the pattern in BOTH places or not
+            at all — /experts carries the identical band. */}
         {/* Funnel PR1: the whole header region (hero + tab bar) lives inside ONE Tabs
             root so the tab bar renders INSIDE the hero band (Radix TabsList needs the
             Tabs context). The sections between the hero and the TabsContents are
@@ -1086,12 +1086,12 @@ export default function DiscoverPage() {
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
+        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-5"
+              className="text-center mb-4"
             >
               <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
                 Explore Services & Ready-Made Trips
@@ -1135,7 +1135,7 @@ export default function DiscoverPage() {
                 </span>
               </button>
               {/* Tab bar — inside the hero band (merged header) */}
-              <div className="relative mt-4">
+              <div className="relative mt-3">
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <TabsTrigger
                     value="travelpulse"
