@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Storefront Discovery</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Archivo:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --page:#FAFAF8; --card:#FFFFFF; --ink:#1A1A18; --mut:#7A7A72; --hair:#E8E8E2;
+    --accent:#E85D55; --accent-soft:rgba(232,93,85,0.09);
+    --teal:#35605A; --teal-soft:rgba(53,96,90,0.10);
+    --shadow:0 1px 3px rgba(26,26,24,0.07), 0 8px 24px rgba(26,26,24,0.05);
+  }
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+    --page:#161614; --card:#211F1C; --ink:#F0EEE8; --mut:#9C9A90; --hair:#37342F;
+    --accent:#F07A72; --accent-soft:rgba(240,122,114,0.14);
+    --teal:#7FB5AD; --teal-soft:rgba(127,181,173,0.14);
+    --shadow:0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  }}
+  :root[data-theme="dark"]{
+    --page:#161614; --card:#211F1C; --ink:#F0EEE8; --mut:#9C9A90; --hair:#37342F;
+    --accent:#F07A72; --accent-soft:rgba(240,122,114,0.14);
+    --teal:#7FB5AD; --teal-soft:rgba(127,181,173,0.14);
+    --shadow:0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--page);color:var(--ink);font-family:"Archivo","Helvetica Neue",Arial,sans-serif;margin:0;padding:40px 20px 80px;line-height:1.5;}
+  .wrap{max-width:1000px;margin:0 auto;}
+  .doc-head{margin-bottom:8px;}
+  .doc-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent);margin-bottom:10px;}
+  h1{font-family:"Fraunces",Georgia,serif;font-size:clamp(30px,5vw,44px);font-weight:600;line-height:1.1;margin:0 0 12px;text-wrap:balance;}
+  .doc-sub{color:var(--mut);font-size:15px;max-width:70ch;margin:0;}
+  .doc-sub strong{color:var(--ink);font-weight:600;}
+
+  .flowbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:26px 0 10px;font-size:12.5px;}
+  .flowstep{display:inline-flex;align-items:center;gap:7px;font-weight:600;border:1px solid var(--hair);border-radius:999px;padding:6px 13px;background:var(--card);}
+  .flowstep .n{width:18px;height:18px;border-radius:999px;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:11px;}
+  .flowarrow{color:var(--mut);}
+
+  .screen-label{display:flex;align-items:baseline;gap:10px;margin:42px 0 14px;}
+  .screen-label .num{font-family:"Fraunces",Georgia,serif;font-size:22px;font-weight:700;color:var(--accent);}
+  .screen-label h2{font-size:16px;font-weight:700;margin:0;}
+  .screen-label p{font-size:13px;color:var(--mut);margin:0;}
+
+  .screen{background:var(--card);border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;}
+  .chrome{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--hair);}
+  .chrome .dot{width:9px;height:9px;border-radius:999px;background:var(--hair);}
+  .chrome .url{flex:1;font-size:11.5px;color:var(--mut);background:var(--page);border:1px solid var(--hair);border-radius:6px;padding:4px 10px;font-family:ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .screen-body{padding:22px 24px 26px;}
+
+  /* discover tabs */
+  .hero-search{display:flex;gap:8px;margin-bottom:16px;}
+  .hero-search .inp{flex:1;border:1px solid var(--hair);border-radius:8px;background:var(--page);color:var(--mut);font-size:13px;padding:10px 12px;}
+  .hero-search .go{background:var(--accent);color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;padding:0 18px;font-family:inherit;}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--hair);margin-bottom:18px;flex-wrap:wrap;}
+  .tab{font-size:13px;font-weight:600;color:var(--mut);padding:9px 14px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;}
+  .tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+
+  .grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:14px;}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;}
+  .card .hero{height:96px;}
+  .card-body{padding:11px 13px;display:flex;flex-direction:column;gap:3px;flex:1;}
+  .eyebrow{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent);}
+  .c-title{font-size:13.5px;font-weight:600;line-height:1.3;}
+  .c-meta{font-size:12px;color:var(--mut);}
+  .c-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:8px;border-top:1px solid var(--hair);}
+  .price{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .addbtn{font-size:11.5px;font-weight:600;border:1px solid var(--hair);border-radius:6px;background:var(--card);color:var(--ink);padding:5px 10px;font-family:inherit;}
+  /* the NEW wire: provider row OUTSIDE the card's detail link → a real storefront anchor */
+  .prov-row{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);padding:8px 13px 11px;border-top:1px solid var(--hair);}
+  .prov-link{color:var(--teal);font-weight:600;text-decoration:none;}
+  .prov-link:hover{text-decoration:underline;}
+  .prov-badge{margin-left:auto;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;background:var(--teal-soft);color:var(--teal);border-radius:4px;padding:2px 6px;}
+  .newpin{position:relative;}
+  .newpin::after{content:"SHIPPED · D1";position:absolute;top:-9px;right:8px;font-size:8.5px;font-weight:800;letter-spacing:0.5px;background:var(--accent);color:#fff;border-radius:4px;padding:2px 6px;}
+
+  /* storefront page */
+  .sf-cover{height:96px;background:linear-gradient(120deg,#35605A,#1E3A5F);position:relative;border-radius:10px 10px 0 0;}
+  .sf-hero{padding:0 20px 16px;display:flex;gap:16px;margin-top:-34px;}
+  .sf-avatar{width:72px;height:72px;border-radius:16px;border:3px solid var(--card);background:linear-gradient(135deg,#E85D55,#1E3A5F);color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;flex-shrink:0;}
+  .sf-idcol{padding-top:40px;min-width:0;flex:1;}
+  .sf-name{font-family:"Fraunces",Georgia,serif;font-size:24px;font-weight:700;margin:0;}
+  .sf-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin-top:3px;}
+  .verified{display:inline-flex;align-items:center;gap:3px;color:var(--teal);font-weight:700;font-size:12px;}
+  .sf-actions{display:flex;gap:8px;padding-top:40px;flex-shrink:0;}
+  .btn{font-family:inherit;font-size:13px;font-weight:600;border-radius:8px;padding:8px 15px;cursor:pointer;border:1px solid var(--hair);background:var(--card);color:var(--ink);}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .sf-facts{display:flex;gap:32px;border:1px solid var(--hair);border-radius:12px;padding:14px 22px;margin:6px 20px 0;}
+  .fact .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .fact .l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:0.4px;}
+  .lane{padding:0 20px;margin-top:22px;}
+  .lane-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;}
+  .lane-eyebrow{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--teal);}
+  .lane-title{font-family:"Fraunces",Georgia,serif;font-size:18px;font-weight:600;}
+  .lane-count{font-size:12px;color:var(--mut);}
+
+  .note{background:var(--card);border:1px dashed var(--hair);border-radius:8px;padding:11px 14px;font-size:12.5px;color:var(--mut);line-height:1.55;margin-top:16px;}
+  .note b{color:var(--ink);}
+
+  /* convergence */
+  .conv{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;}
+  @media(max-width:720px){.conv{grid-template-columns:1fr;}}
+  .conv-col{display:flex;flex-direction:column;gap:8px;}
+  .conv-src{border:1px solid var(--hair);border-radius:8px;padding:9px 12px;font-size:12.5px;background:var(--card);}
+  .conv-src .k{font-weight:700;color:var(--ink);}
+  .conv-hub{background:var(--teal-soft);border:1px solid var(--teal);border-radius:10px;padding:14px 16px;text-align:center;}
+  .conv-hub .big{font-family:"Fraunces",Georgia,serif;font-size:16px;font-weight:700;color:var(--teal);}
+  .conv-hub .u{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--mut);margin-top:3px;}
+  .parked{border:1px dashed var(--accent);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--mut);margin-top:8px;}
+  .parked b{color:var(--accent);}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;}}
+</style>
+
+<div class="wrap">
+  <header class="doc-head">
+    <div class="doc-eyebrow">Mockup for sign-off · Discover → provider storefront</div>
+    <h1>Surfacing service-provider storefronts</h1>
+    <p class="doc-sub">A traveler discovers a provider <strong>through what they sell</strong>, and the storefront is the "everything from this seller" destination behind it. No standalone directory yet — that stays parked until a market has enough live storefronts to fill it honestly (§13, no empty aisles). This flow starts where the traveler starts: clicking <strong>Discover</strong>.</p>
+  </header>
+
+  <div class="flowbar">
+    <span class="flowstep"><span class="n">1</span> Click Discover</span>
+    <span class="flowarrow">→</span>
+    <span class="flowstep"><span class="n">2</span> Browse Services</span>
+    <span class="flowarrow">→</span>
+    <span class="flowstep"><span class="n">3</span> Tap the provider's name</span>
+    <span class="flowarrow">→</span>
+    <span class="flowstep"><span class="n">4</span> Their storefront</span>
+  </div>
+
+  <!-- Screen 1: Discover landing -->
+  <div class="screen-label"><span class="num">1</span><div><h2>Discover — the landing</h2><p>Default tab is TravelPulse; the traveler moves to Browse Services.</p></div></div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/discover</span></div>
+    <div class="screen-body">
+      <div class="hero-search"><div class="inp">Search a destination — e.g. Kyoto</div><button class="go">Search</button></div>
+      <div class="tabs">
+        <span class="tab on">By Location</span>
+        <span class="tab">Ready-Made Trips</span>
+        <span class="tab">By Date</span>
+        <span class="tab">Browse Services</span>
+      </div>
+      <div class="note" style="margin-top:0"><b>Entry point.</b> Sellers surface under <b>Browse Services</b> (their live listings) and <b>Ready-Made Trips</b> (as authors of the trips). Both tabs already exist; this flow adds the link from a listing to that seller's storefront.</div>
+    </div>
+  </div>
+
+  <!-- Screen 2: Browse Services -->
+  <div class="screen-label"><span class="num">2</span><div><h2>Browse Services — seller links to their storefront (already shipped)</h2><p>Audit correction: this link EXISTS in production (D1, PR #528) — a handle-gated, keyboard-operable affordance on the provider name, with providerHandle served by the discover API. Production places it as avatar + name overlaid on the card image; this frame draws it as an explicit row — a placement decision to ratify, not a missing feature.</p></div></div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/discover?tab=services&amp;location=Kyoto</span></div>
+    <div class="screen-body">
+      <div class="tabs">
+        <span class="tab">By Location</span>
+        <span class="tab">Ready-Made Trips</span>
+        <span class="tab">By Date</span>
+        <span class="tab on">Browse Services</span>
+      </div>
+      <div class="grid3">
+        <div class="card newpin">
+          <div class="hero" style="background:linear-gradient(135deg,#C99A4B,#7A5B23)"></div>
+          <div class="card-body">
+            <span class="eyebrow">Food &amp; Culinary</span>
+            <span class="c-title">Nishiki Market food walk</span>
+            <span class="c-meta">Kyoto · 3 hrs</span>
+            <div class="c-foot"><span class="price">$89</span><button class="addbtn">Add</button></div>
+          </div>
+          <!-- seller row OUTSIDE the detail link → storefront anchor (handle-gated).
+               Copy matches the shipped StorefrontLink return path: "More from {seller}". -->
+          <div class="prov-row">🏪 <a href="#" class="prov-link">More from @kyoto-eats</a></div>
+        </div>
+        <div class="card">
+          <div class="hero" style="background:linear-gradient(135deg,#5B8A72,#2E4A3C)"></div>
+          <div class="card-body">
+            <span class="eyebrow">Transport</span>
+            <span class="c-title">Private car — temples day</span>
+            <span class="c-meta">Kyoto · full day</span>
+            <div class="c-foot"><span class="price">$210</span><button class="addbtn">Add</button></div>
+          </div>
+          <div class="prov-row">🏪 <a href="#" class="prov-link">More from @mk-kyoto</a></div>
+        </div>
+        <div class="card">
+          <div class="hero" style="background:linear-gradient(135deg,#8A6FA8,#4A3A66)"></div>
+          <div class="card-body">
+            <span class="eyebrow">Photography</span>
+            <span class="c-title">Golden-hour portrait session</span>
+            <span class="c-meta">Kyoto · 90 min</span>
+            <div class="c-foot"><span class="price">$150</span><button class="addbtn">Add</button></div>
+          </div>
+          <!-- seller with NO claimed handle → plain text, never a dead /p/ link -->
+          <div class="prov-row"><span style="color:var(--ink);font-weight:600">Aya S.</span></div>
+        </div>
+      </div>
+      <div class="note"><b>Honest gating.</b> A seller who has claimed a handle gets the "More from …" link to <code>/p/@handle</code> (the same copy the storefront return path already uses on detail pages); one who hasn't (Aya S.) renders as plain text — never a dead link (StorefrontLink rule 1). The card's image/title still opens the <b>service</b>; only the seller row goes to the storefront.</div>
+    </div>
+  </div>
+
+  <!-- Screen 3: Storefront -->
+  <div class="screen-label"><span class="num">3</span><div><h2>The provider storefront — /p/:handle</h2><p>"Everything this provider offers" — the real identity-hero page, reached from any of their listings.</p></div></div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/p/kyoto-eats</span></div>
+    <div style="padding:0 0 22px">
+      <div class="sf-cover"></div>
+      <div class="sf-hero">
+        <div class="sf-avatar">K</div>
+        <div class="sf-idcol">
+          <h1 class="sf-name">Kyoto Eats Collective</h1>
+          <div class="sf-sub">
+            <span>@kyoto-eats</span>
+            <span class="verified">✓ Verified</span>
+            <span>· Kyoto, Japan</span>
+            <span>· ★ 4.9 (128)</span>
+          </div>
+        </div>
+        <div class="sf-actions">
+          <button class="btn primary">Message @kyoto-eats</button>
+          <button class="btn">Share</button>
+        </div>
+      </div>
+      <div class="sf-facts">
+        <div class="fact"><div class="v">6</div><div class="l">Offerings</div></div>
+        <div class="fact"><div class="v">128</div><div class="l">Reviews</div></div>
+        <div class="fact"><div class="v">2024</div><div class="l">On Traveloure since</div></div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-head"><span class="lane-eyebrow">Book directly</span><span class="lane-title">Services</span><span class="lane-count">· 4</span></div>
+        <div class="grid3">
+          <div class="card"><div class="hero" style="background:linear-gradient(135deg,#C99A4B,#7A5B23)"></div><div class="card-body"><span class="c-title">Nishiki Market food walk</span><span class="c-meta">3 hrs</span><div class="c-foot"><span class="price">$89</span><button class="addbtn">Book</button></div></div></div>
+          <div class="card"><div class="hero" style="background:linear-gradient(135deg,#B0764A,#5E3A22)"></div><div class="card-body"><span class="c-title">Sake brewery tasting</span><span class="c-meta">2 hrs</span><div class="c-foot"><span class="price">$65</span><button class="addbtn">Book</button></div></div></div>
+          <div class="card"><div class="hero" style="background:linear-gradient(135deg,#7BA05B,#3F5D33)"></div><div class="card-body"><span class="c-title">Tea &amp; sweets in Uji</span><span class="c-meta">half day</span><div class="c-foot"><span class="price">$120</span><button class="addbtn">Book</button></div></div></div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-head"><span class="lane-eyebrow">Guided itineraries</span><span class="lane-title">Itinerary Templates</span><span class="lane-count">· 2</span></div>
+        <div class="grid3">
+          <div class="card"><div class="hero" style="background:linear-gradient(135deg,#6F8FA8,#32485E)"></div><div class="card-body"><span class="c-title">3-Day Kyoto for first-timers</span><span class="c-meta">guided plan</span><div class="c-foot"><span class="price">$29</span><button class="addbtn">View</button></div></div></div>
+          <div class="card"><div class="hero" style="background:linear-gradient(135deg,#9A7BA8,#4A3A66)"></div><div class="card-body"><span class="c-title">Rainy-day Kyoto</span><span class="c-meta">guided plan</span><div class="c-foot"><span class="price">$19</span><button class="addbtn">View</button></div></div></div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-head"><span class="lane-eyebrow">Buy the whole plan</span><span class="lane-title">Ready-Made Trips</span><span class="lane-count">· 1</span></div>
+        <div class="grid3">
+          <div class="card"><div class="hero" style="background:linear-gradient(135deg,#C97B63,#6E3B44)"></div><div class="card-body"><span class="eyebrow">Food &amp; Culture</span><span class="c-title">7-Day Kyoto Food Pilgrimage</span><span class="c-meta">7 days</span><div class="c-foot"><span class="price">$129</span><button class="addbtn">View</button></div></div></div>
+        </div>
+      </div>
+      <div class="note" style="margin:16px 20px 0"><b>Already built.</b> This identity-hero storefront page (`/p/:handle`) ships today — cover, avatar, verified badge, rating, facts row, and the Services / Ready-Made lanes. What this lane adds is the <b>way in</b> from a provider's listings on Discover; the destination already exists.</div>
+    </div>
+  </div>
+
+  <!-- Screen 4: every path leads here + parked directory -->
+  <div class="screen-label"><span class="num">4</span><div><h2>Every path leads to the storefront</h2><p>Storefronts surface through what a provider sells, not a standalone directory.</p></div></div>
+  <div class="screen">
+    <div class="screen-body">
+      <div class="conv">
+        <div class="conv-col">
+          <div class="conv-src"><span class="k">Browse Services card</span><br>provider name → storefront <span style="color:var(--teal);font-weight:700">(shipped, D1 #528)</span></div>
+          <div class="conv-src"><span class="k">Ready-Made Trips card</span><br>trip author → storefront <span style="color:var(--teal);font-weight:700">(shipped)</span></div>
+          <div class="conv-src"><span class="k">Service / expert detail page</span><br>"More from {seller}" → storefront <span style="color:var(--teal);font-weight:700">(shipped)</span></div>
+          <div class="conv-src"><span class="k">Owner console</span><br>"My Storefront" nav → own page <span style="color:var(--teal);font-weight:700">(shipped)</span></div>
+        </div>
+        <div class="flowarrow" style="text-align:center;font-size:22px">→</div>
+        <div>
+          <div class="conv-hub">
+            <div class="big">🏪 The storefront</div>
+            <div class="u">/p/:handle</div>
+            <div style="font-size:11.5px;color:var(--mut);margin-top:6px">Everything this provider offers</div>
+          </div>
+          <div class="parked"><b>Parked:</b> a browsable <code>/providers</code> directory. Stands up only when a market has ≥10 live storefronts, so it never renders as an empty aisle (standing ruling).</div>
+        </div>
+      </div>
+      <div class="note" style="border-color:var(--accent)"><b>Audit findings (what's actually left to build).</b> ① The Browse Services link is SHIPPED — the open call is placement: keep the shipped image-overlay affordance, or adopt this mock's explicit row. ② Partner/affiliate cards ("via Partners", curated content) must NEVER carry a storefront affordance — there is no storefront behind them (§13). ③ The real bottleneck is HANDLE ADOPTION: every link is gated on a claimed handle (nullable, no backfill), and the provider setup checklist has no "claim your handle" item — the highest-leverage build is that nudge. ④ Directory stays parked (≥10 live storefronts/market).</div>
+      <div class="note"><b>Why this shape.</b> It matches how the platform already works: a seller is found through the thing they sell, and the storefront is the "more from them" destination. Shipping the Discover-services link now closes the last gap where a provider's own listings couldn't reach their storefront — the directory waits for supply density rather than launching empty.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
