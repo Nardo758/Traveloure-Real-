@@ -298,14 +298,15 @@ export default function ExpertsPage() {
       />
       {/* Hero — UNIFIED header band, shared pattern with /discover: centered navy
           title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
-          row beneath (here: the role switcher). py-9 = the ratified middle size.
-          Change the pattern in BOTH places or not at all. */}
-      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-9">
+          row beneath (here: the role switcher). py-5 = compacted (decision-maker
+          Aug 23: the taller masthead pushed page content too far down).
+          Change the pattern in BOTH places or not at all — /discover matches. */}
+      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
         <div className="container mx-auto px-4 max-w-6xl">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-5"
+            className="text-center mb-4"
           >
             <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-1.5">
               {selectedRole === "travel_expert"
