@@ -1521,6 +1521,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           currency: "USD",
           origin: "ai" as const,
           providerServiceId: null as string | null,
+          affiliateProductId: null as string | null,
           dmoExtractedPlaceId: null as string | null,
           latitude: null as string | null,
           longitude: null as string | null,
