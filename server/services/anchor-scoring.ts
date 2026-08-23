@@ -49,6 +49,10 @@ export interface AnchorScore {
   anchorId: string;
   type: AnchorType;
   name: string;
+  /** The anchor's own coordinates (carried through from the candidate) so a chosen anchor can be
+   *  persisted and rendered. Always real — the candidate had them by construction. */
+  lat: number;
+  lng: number;
   /** How many of the trip's stops could actually be scored (had coordinates). */
   locatedStops: number;
   totalStops: number;
@@ -83,6 +87,8 @@ export function scoreAnchor(anchor: AnchorCandidate, stops: StopPoint[]): Anchor
     anchorId: anchor.id,
     type: anchor.type,
     name: anchor.name,
+    lat: anchor.lat,
+    lng: anchor.lng,
     locatedStops: located.length,
     totalStops: stops.length,
     medianMeters,

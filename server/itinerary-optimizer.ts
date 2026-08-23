@@ -47,6 +47,9 @@ import {
   type EffectiveTravelerProfile,
 } from "./services/traveler-profile.service";
 import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
+import { loadRankedAnchors } from "./services/anchor-candidates";
+import { pickAutoAnchors } from "./services/anchor-candidates-map";
+import type { AnchorScore } from "./services/anchor-scoring";
 
 // grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
 // grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
@@ -918,6 +921,42 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
     const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
 
+    // ── "Build around a location" anchors (ledger 2026-08-23-optimizer-anchors) ─────────
+    // Each of the three versions is built around a real anchor — a hotel, a neighborhood, or the
+    // trip's own centrepiece activity — scored by straight-line fit to the trip's LOCATED stops
+    // (server/services/anchor-scoring.ts). Fail-open: a lookup miss degrades to "no anchor label"
+    // (chosenAnchors stays empty and every anchor prompt line / persisted column below is omitted),
+    // never a failed optimization. §13 — an anchor is only ever a real scored candidate or absent,
+    // never fabricated; a thin catalog simply yields fewer than three anchored versions.
+    let chosenAnchors: AnchorScore[] = [];
+    try {
+      const anchorStops = baselineItems.map((it) => {
+        const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
+        const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
+        return {
+          id: String(it.id),
+          name: (it as any).title ?? (it as any).name ?? "Stop",
+          lat: Number.isFinite(lat) ? lat : null,
+          lng: Number.isFinite(lng) ? lng : null,
+        };
+      });
+      const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
+      chosenAnchors = pickAutoAnchors(ranked, 3);
+    } catch (err) {
+      console.warn("[Optimizer] anchor scoring failed (non-critical):", (err as Error).message);
+    }
+    // A per-version prompt line — omitted (empty string) when there is no anchor for that slot, so
+    // the AI is only ever told about a real, scored location and never invents one.
+    const anchorLine = (i: number): string => {
+      const a = chosenAnchors[i];
+      if (!a) return "";
+      const kind = a.type === "hotel" ? "hotel" : a.type === "neighborhood" ? "neighborhood" : "central activity";
+      const fit = a.medianMeters != null
+        ? ` (typical straight-line distance to the trip's located stops ≈ ${(a.medianMeters / 1000).toFixed(1)} km; estimate, not routed)`
+        : "";
+      return `\nBUILD THIS VERSION AROUND a ${kind}: "${a.name}"${fit}. Cluster each day so travel radiates from this anchor; keep the trip's fixed commitments intact.`;
+    };
+
     // ── Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) ─────────────────
     // Profile-aware platform selection: (1) a prompt section like cityIntelligenceSection above,
     // conditional on real signal existing (§13 — never a fabricated placeholder); (2) merged into
@@ -1255,17 +1294,17 @@ Generate EXACTLY 3 alternative itineraries. They MUST be meaningfully different 
 VARIANT 1 — "${variantA.name}":
 - Goal: ${variantA.goal}
 - Strategy: ${variantA.strategy}
-- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
+- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS${anchorLine(0)}
 
 VARIANT 2 — "${variantB.name}":
 - Goal: ${variantB.goal}
 - Strategy: ${variantB.strategy}
-- Keep: the same trip duration and any PROTECTED ITEMS
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(1)}
 
 VARIANT 3 — "${variantC.name}":
 - Goal: ${variantC.goal}
 - Strategy: ${variantC.strategy}
-- Keep: the same trip duration and any PROTECTED ITEMS
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(2)}
 
 Rules for all three variants:
 1. The three variants must each differ from one another in at least 40% of their line items
@@ -1497,6 +1536,14 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
           optimizationScore: combinedOptimizationScore,
           aiReasoning: enhancedReasoning,
           sortOrder: v + 1,
+          // "Build around a location" — the anchor this version was built around, by slot (§13:
+          // absent when there was no scorable anchor for this slot, never a fabricated one).
+          anchorType: chosenAnchors[v]?.type ?? null,
+          anchorName: chosenAnchors[v]?.name ?? null,
+          anchorLat: chosenAnchors[v]?.lat != null ? chosenAnchors[v].lat.toString() : null,
+          anchorLng: chosenAnchors[v]?.lng != null ? chosenAnchors[v].lng.toString() : null,
+          anchorMedianMeters:
+            chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
         })
         .returning();
 
