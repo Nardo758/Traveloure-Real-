@@ -150,7 +150,6 @@ const StorefrontPage = lazy(() => import("@/pages/storefront"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
-const CreateServiceWizard = lazy(() => import("@/pages/provider/create-service"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 // C9: SharePromote lazy import dropped — the page is retired (both console routes redirect
 // into their Catalogs; the sharing primitives live in components/backoffice/share-tools.tsx).
