@@ -203,7 +203,7 @@ export default function MyTrips() {
                     View
                   </Button>
                 </Link>
-                <Link href="/chat" onClick={(e) => e.stopPropagation()}>
+                <Link href={`/chat?tripId=${encodeURIComponent(trip.id)}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-chat-${trip.id}`}>
                     Chat
                   </Button>
