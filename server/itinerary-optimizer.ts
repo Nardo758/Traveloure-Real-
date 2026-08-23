@@ -432,6 +432,45 @@ export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescript
   ];
 }
 
+/**
+ * The slip shows the baseline plan + THREE AI variants (decision-maker 2026-08-23; see
+ * `docs/design/optimized-slip-review-mock.html`). `selectVariantStrategy` picks the two
+ * preference-driven primaries; this appends a genuinely-distinct THIRD from a standing pool —
+ * the first pool entry whose name differs from both primaries — so the three named strategies are
+ * always different regardless of which branch produced the pair. Deterministic (no randomness),
+ * and the branch matrix above is left untouched.
+ */
+const THIRD_STRATEGY_POOL: VariantDescriptor[] = [
+  {
+    name: "Balanced Refresh",
+    goal: "Keep the plan's overall shape but upgrade its weakest links",
+    strategy: "Leave the day-by-day structure and all protected items intact; replace only the lowest-rated or most over-priced stops with better-fitting alternatives; tighten transitions where the route backtracks — a lighter-touch third option beside the other two.",
+  },
+  {
+    name: "Local Character",
+    goal: "Trade generic stops for distinctive local experiences",
+    strategy: "Replace generic or tourist-heavy items with distinctive local alternatives matched to the traveler's stated styles, add one standout cultural or culinary experience per day, and favour venues locals actually frequent",
+  },
+  {
+    name: "Relaxed Pace",
+    goal: "Slow the itinerary down so each day breathes",
+    strategy: "Cap activities at three per day, group them by neighbourhood to cut transit, add afternoon rest windows, prefer later starts, and protect at least one fully unscheduled evening",
+  },
+  {
+    name: "Experience Enhancer",
+    goal: "Maximise the variety and quality of experiences across the itinerary",
+    strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+  },
+];
+
+export function selectThirdVariantStrategy(
+  a: VariantDescriptor,
+  b: VariantDescriptor,
+): VariantDescriptor {
+  const taken = new Set([a.name, b.name]);
+  return THIRD_STRATEGY_POOL.find((d) => !taken.has(d.name)) ?? THIRD_STRATEGY_POOL[0];
+}
+
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -910,6 +949,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
 
     // ── Adaptive variant strategy (style-matched) ─────────────────────────────
     const [variantA, variantB] = selectVariantStrategy(tripPreferences);
+    const variantC = selectThirdVariantStrategy(variantA, variantB);
 
     // Stamp updatedAt on every transition INTO "generating" (not just create-time insert) so the
     // stale-generating sweep (server/services/itinerary-generation-sweep-scheduler.service.ts)
@@ -1200,7 +1240,7 @@ For each empty day, add activities that match the user's experience style (infer
       }
     }
 
-    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
+    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
 
 DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
 
@@ -1210,7 +1250,7 @@ ${compactBaseline}
 AVAILABLE SERVICES (id|name|type|price|rating|location):
 ${compactServicesList}
 
-Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
+Generate EXACTLY 3 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
 
 VARIANT 1 — "${variantA.name}":
 - Goal: ${variantA.goal}
@@ -1222,8 +1262,13 @@ VARIANT 2 — "${variantB.name}":
 - Strategy: ${variantB.strategy}
 - Keep: the same trip duration and any PROTECTED ITEMS
 
-Rules for both variants:
-1. The two variants must differ from each other in at least 40% of their line items
+VARIANT 3 — "${variantC.name}":
+- Goal: ${variantC.goal}
+- Strategy: ${variantC.strategy}
+- Keep: the same trip duration and any PROTECTED ITEMS
+
+Rules for all three variants:
+1. The three variants must each differ from one another in at least 40% of their line items
 2. Include metrics showing WHY each variant is better than the user's plan
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
@@ -1265,7 +1310,9 @@ Respond with valid JSON in this exact format:
       }
     }
   ]
-}`;
+}
+
+The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, in this order: "${variantA.name}", "${variantB.name}", "${variantC.name}".`;
 
     const content = await callAI(
       "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
@@ -1282,6 +1329,21 @@ Respond with valid JSON in this exact format:
     } catch (parseError) {
       console.error("Failed to parse AI response:", content);
       throw new Error("Failed to parse AI response");
+    }
+
+    // Ratified contract (decision-maker 2026-08-23; docs/design/optimized-slip-review-mock.html —
+    // "Three ways to sharpen your plan", columns v1/v2/v3, "the other two are discarded"): the slip
+    // shows the baseline plan plus EXACTLY THREE AI variants. The prompt asks for three (mapped to
+    // the named strategy descriptors variantA/variantB/variantC), but a model can over-produce — an
+    // audit observed Grok returning 8, and the persist loop below saved every one, so extra,
+    // undifferentiated variants reached travelers. Cap to the first three here: they correspond to
+    // the three requested strategies, in order. The floor case (<3 returned) and the ≥40%
+    // line-item distinctness enforcement are tracked separately (Task #1621).
+    if (Array.isArray(aiResponse.variants) && aiResponse.variants.length > 3) {
+      console.warn(
+        `[optimizer] model returned ${aiResponse.variants.length} variants; capping to 3 per ratified contract`,
+      );
+      aiResponse.variants = aiResponse.variants.slice(0, 3);
     }
 
     // Lane 5a Defect 3: the AI is asked for `originalServiceId` but the value was discarded, so
