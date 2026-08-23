@@ -23,12 +23,10 @@
  * untouched, and the author's preview-as-buyer renders the same branch automatically.
  */
 import { useState } from "react";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -245,19 +243,7 @@ export default function ReadyMadeDetailPage() {
   const teaserMapUrl = `/api/ready-made/${id}/teaser-map.svg`;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6">
-      {/* ── Branded page header — the quality structure's frame ── */}
-      <div className="flex items-center justify-between border-b border-border pb-3 mb-5">
-        <Link href="/" className="flex items-center" data-testid="link-rm-logo">
-          <TraveloureLogo />
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-widest text-muted-foreground">Ready Made Trips</span>
-          {/* Ruling 116 (distribution-language audit P2): a link/QR recipient can switch the UI
-              language here like on every other landing — same ONE selector (ruling 60 (b)). */}
-          <LanguageMenu />
-        </div>
-      </div>
+    <div className="ready-made-detail-page">
 
       {isPreview && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800" data-testid="banner-preview">
@@ -273,10 +259,10 @@ export default function ReadyMadeDetailPage() {
           className="rounded-2xl p-6 sm:p-8 mb-4 text-white bg-gradient-to-br from-[#7A2E3B] to-[#B4434F]"
           data-testid="lead-venue-hero"
         >
-          <div className="text-xs font-semibold uppercase tracking-wide text-white/80" data-testid="text-plan-type">
+          <div className="rm-detail-kicker text-white/80" data-testid="text-plan-type">
             {planTypeDisplay(listing.planType, listing.planTypeCustom)}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold mt-1" data-testid="text-rm-title">
+          <h1 className="rm-detail-title text-white mt-1" data-testid="text-rm-title">
             {listing.title} — {listing.market}
           </h1>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white/90 mt-3">
@@ -287,14 +273,14 @@ export default function ReadyMadeDetailPage() {
       ) : (
         <>
           {/* Type of Plan — the structure's headline */}
-          <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground" data-testid="text-plan-type">
+          <div className="rm-detail-kicker" data-testid="text-plan-type">
             {planTypeDisplay(listing.planType, listing.planTypeCustom)}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-1 mb-3" data-testid="text-rm-title">{listing.title}</h1>
+          <h1 className="rm-detail-title" data-testid="text-rm-title">{listing.title}</h1>
         </>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
+      <div className="rm-detail-meta">
         {/* The venue hero already carries market/duration/season — don't repeat them below it. */}
         {lead !== "venue-hero" && (
           <>
@@ -303,9 +289,9 @@ export default function ReadyMadeDetailPage() {
             {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Best in {listing.bestSeason}</span>}
           </>
         )}
-        <Badge variant="secondary" data-testid="badge-rm-section">
+        <span className="rm-detail-author-badge" data-testid="badge-rm-section">
           {listing.section === "trips_by_locals" ? `Trip by a Local — ${listing.authorName}` : `By Trip Planner ${listing.authorName}`}
-        </Badge>
+        </span>
         {listing.badge && <Badge>{listing.badge}</Badge>}
       </div>
 
@@ -314,7 +300,9 @@ export default function ReadyMadeDetailPage() {
 
       {listing.heroImageUrl && (
         <div className="mb-5">
-          <img src={listing.heroImageUrl} alt={listing.title} className="w-full h-64 sm:h-80 object-cover rounded-2xl" data-testid="img-rm-hero" />
+          <div className="rm-detail-hero">
+            <img src={listing.heroImageUrl} alt={listing.title} data-testid="img-rm-hero" />
+          </div>
           {listing.heroImageMeta?.photographer && (
             <div className="text-[11px] text-muted-foreground mt-1">
               Photo by <a className="underline" href={listing.heroImageMeta.profileUrl} target="_blank" rel="noreferrer">{listing.heroImageMeta.photographer}</a> on Unsplash
@@ -328,7 +316,7 @@ export default function ReadyMadeDetailPage() {
           the whole section (a broken-image block must never ship on a listing page, §13/§17). */}
       {!teaserMapFailed && (
         <div className="mb-5" data-testid="section-route-teaser">
-          <div className="relative overflow-hidden rounded-2xl border border-border">
+          <div className="rm-detail-teaser relative">
             <img
               src={teaserMapUrl}
               alt="Route preview"
@@ -347,9 +335,9 @@ export default function ReadyMadeDetailPage() {
       )}
 
       {/* What's inside — the approval-time snapshot; honest empty state if none. */}
-      <Card className="mb-5">
+      <Card className="rm-detail-card mb-5">
         <CardContent className="p-4">
-          <h2 className="font-semibold mb-2">What's inside</h2>
+          <h2 className="rm-detail-section-title">What's inside</h2>
           {inside?.days ? (
             <div className="flex flex-wrap gap-2" data-testid="inside-counts">
               <Badge variant="outline">{inside.days} planned days</Badge>
@@ -381,15 +369,15 @@ export default function ReadyMadeDetailPage() {
       </Card>
 
       {/* Price + buy */}
-      <div className="flex items-center justify-between rounded-xl border border-border p-4 mb-8">
+      <div className="rm-detail-price-panel mb-8">
         <div>
-          <div className="text-2xl font-bold" data-testid="text-rm-price">
+          <div className="rm-detail-price" data-testid="text-rm-price">
             {price === null ? "—" : `$${price}`}
             {listing.pricingMode === "per_traveler" && <span className="text-sm font-normal text-muted-foreground"> / traveler</span>}
           </div>
           <div className="text-xs text-muted-foreground">One-time purchase · yours to edit</div>
         </div>
-        <Button size="lg" onClick={startPurchase} disabled={isPreview || price === null} data-testid="button-buy-rm" className="gap-2">
+        <Button size="lg" onClick={startPurchase} disabled={isPreview || price === null} data-testid="button-buy-rm" className="rm-detail-buy gap-2">
           <ShoppingBag className="w-4 h-4" />
           {isPreview ? "Preview only" : "Get this trip"}
         </Button>
