@@ -39,10 +39,10 @@
     "explore": "見つける"
   },
   "links": {
-    "byLocation": "エリアからさがす",
-    "byDate": "日付からさがす",
+    "byLocation": "目的地",
+    "byDate": "イベント",
     "readyMadeTrips": "できあいの旅プラン",
-    "browseServices": "サービスをさがす",
+    "browseServices": "サービス",
     "localExperts": "ローカルエキスパート",
     "tripPlanners": "トリッププランナー",
     "travelPlanning": "旅行のプランニング",
@@ -80,7 +80,7 @@
       "howItWorks": "ご利用の流れ",
       "pricing": "料金",
       "features": "機能",
-      "globalCalendar": "グローバルカレンダー",
+      "globalCalendar": "イベント",
       "executiveAssistant": "エグゼクティブアシスタント",
       "aboutUs": "私たちについて",
       "waysToEarn": "収入を得る方法",

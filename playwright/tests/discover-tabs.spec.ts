@@ -396,26 +396,28 @@ test.describe('/discover — expert handoff banner', () => {
 //
 // Source analysis (discover.tsx, TabsList):
 //
-//   tab-travelpulse  TrendingUp icon  +  <span class="hidden sm:inline">By </span>Location
-//   tab-packages     Award icon       +  <span class="hidden sm:inline">Ready Made </span>Trips
-//   tab-events       Calendar icon    +  "By Date"          ← full label, NO hidden span
-//   tab-services     Building2 icon   +  <span class="hidden sm:inline">Browse </span>Services
+//   Canonical NOUN vocabulary (decision-maker ratified Aug 23; ledger
+//   2026-08-23-discover-vocabulary): the four tabs name what each surface IS.
+//   tab-travelpulse  TrendingUp icon  +  "Destinations"     (no hidden span)
+//   tab-packages     Award icon       +  <span class="hidden sm:inline">Ready-Made </span>Trips
+//   tab-events       Calendar icon    +  "Events"           (no hidden span)
+//   tab-services     Building2 icon   +  "Services"         (no hidden span)
 //
-//   The `sm` breakpoint fires at 640 px.  At 375 px and 320 px (both < 640 px)
-//   the hidden spans are collapsed, leaving the following visible labels:
-//     travelpulse → icon + "Location"
+//   The `sm` breakpoint fires at 640 px.  Only tab-packages still carries a
+//   hidden span, so at 375 px and 320 px the visible labels are:
+//     travelpulse → icon + "Destinations"
 //     packages    → icon + "Trips"
-//     events      → icon + "By Date"
+//     events      → icon + "Events"
 //     services    → icon + "Services"
 //
 // UX verdict (recorded as a passing test assertion so regression is detectable):
-//   The tabs are NOT icon-only.  Each has an icon AND a short text label.
-//   All four labels are distinct and self-explanatory:
-//     "Location" (trending icon)  — immediately communicates place-based discovery ✓
-//     "Trips"    (award icon)     — clearly implies curated packages ✓
-//     "By Date"  (calendar icon)  — the only full-length label; unambiguous ✓
-//     "Services" (building icon)  — plain English, no ambiguity ✓
-//   ⚠ Flag: "Trips" alone (without "Ready Made") could be confused with
+//   The tabs are NOT icon-only.  Each has an icon AND a text label.
+//   All four labels are distinct nouns and self-explanatory:
+//     "Destinations" (trending icon)  — place-based discovery ✓
+//     "Trips"        (award icon)     — curated Ready-Made packages ✓
+//     "Events"       (calendar icon)  — dated events / calendar ✓
+//     "Services"     (building icon)  — plain English, no ambiguity ✓
+//   ⚠ Flag: "Trips" alone (without "Ready-Made") could be confused with
 //     My Trips / dashboard trips by a first-time visitor.  The Award icon
 //     helps distinguish it, but a tooltip or ARIA description on the trigger
 //     would remove the ambiguity entirely.
@@ -426,10 +428,10 @@ test.describe('/discover — mobile viewport tab tappability (375 px & 320 px)',
 
   /** The four discover tab testids and their expected visible short labels. */
   const TABS = [
-    { testId: 'tab-travelpulse', shortLabel: 'Location' },
-    { testId: 'tab-packages',    shortLabel: 'Trips'    },
-    { testId: 'tab-events',      shortLabel: 'By Date'  },
-    { testId: 'tab-services',    shortLabel: 'Services' },
+    { testId: 'tab-travelpulse', shortLabel: 'Destinations' },
+    { testId: 'tab-packages',    shortLabel: 'Trips'        },
+    { testId: 'tab-events',      shortLabel: 'Events'       },
+    { testId: 'tab-services',    shortLabel: 'Services'     },
   ] as const;
 
   async function gotoDiscoverAt(
