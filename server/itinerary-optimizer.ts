@@ -1764,8 +1764,18 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         });
       }
 
-      // Batch-insert all metrics in one round-trip
-      await db.insert(itineraryVariantMetrics).values(metricsToInsert);
+      // Metrics are supplementary review metadata. A legacy development database can still have
+      // narrower numeric constraints than the current schema (for example, relaxation minutes
+      // over 999.99), so a metrics write must never turn an otherwise usable generated variant
+      // into a failed optimization. Core variant/item persistence above remains fail-closed.
+      try {
+        await db.insert(itineraryVariantMetrics).values(metricsToInsert);
+      } catch (metricsErr) {
+        console.warn(
+          `[Optimizer] metrics persistence skipped for variant ${newVariant.id}:`,
+          metricsErr instanceof Error ? metricsErr.message : metricsErr,
+        );
+      }
 
       // Transport legs — only for items with real coordinates
       try {

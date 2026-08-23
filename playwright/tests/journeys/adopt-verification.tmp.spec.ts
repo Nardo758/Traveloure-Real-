@@ -13,10 +13,14 @@ import {
 
 test.setTimeout(360_000);
 
-async function pay(ctx: any, tripId: string): Promise<string> {
+async function pay(ctx: any, tripId: string): Promise<string | undefined> {
   const payment = await ctx.post(`${BASE_URL}/api/optimization-payments`, { data: { tripId } });
   expect(payment.status(), await payment.text()).toBe(200);
   const body = await payment.json();
+  if (body.freeRerun) {
+    expect(body.feeCents).toBe(0);
+    return undefined;
+  }
   expect(body.paymentIntentId).toBeTruthy();
   expect(await confirmPaymentIntentTestMode(body.paymentIntentId)).toBe("succeeded");
   return body.paymentIntentId;
@@ -66,7 +70,7 @@ async function runCase(
 
   const generateRes = await ctx.post(
     `${BASE_URL}/api/itinerary-comparisons/${comparisonId}/generate`,
-    { data: { optimizationPaymentId: paymentIntentId, ...(pin ? { pinnedAnchor: pin } : {}) } },
+    { data: { ...(paymentIntentId ? { optimizationPaymentId: paymentIntentId } : {}), ...(pin ? { pinnedAnchor: pin } : {}) } },
   );
   expect(generateRes.status(), `${label}: ${await generateRes.text()}`).toBe(200);
   const result = await waitForVariants(comparisonId);
@@ -141,7 +145,7 @@ test("Adopt optimization B2-B4 live contract", async () => {
     estimatedCost: "20",
   });
   const customResult = await runCase(ctx, "B3 custom neighborhood", customTripId, {
-    type: "custom",
+    type: "neighborhood",
     name: "Custom Higashiyama pin",
     lat: 35.0037,
     lng: 135.7788,
