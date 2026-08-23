@@ -156,7 +156,10 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "EXPLORE",
         i18nKey: "sections.explore",
         items: [
-          { name: "Live Intel", i18nKey: "links.liveIntel", href: "/discover", description: "Real-time local insights" },
+          // "Live Intel" was merged into the TravelPulse (Destinations) tab (decision-maker
+          // Aug 23), so a separate nav entry pointing at /discover just duplicated Destinations —
+          // removed per the no-aliases vocabulary rule (ledger 2026-08-23-discover-vocabulary).
+          // The `links.liveIntel` locale key is left in place (unused, en/ja parity intact).
           { name: "Today's Deals", i18nKey: "links.todaysDeals", href: "/deals", description: "Special offers & discounts" },
         ],
       },

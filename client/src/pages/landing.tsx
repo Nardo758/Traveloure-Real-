@@ -131,7 +131,7 @@ const experienceTemplates = [
 const keyFeatures = [
   { icon: Bot, label: "AI Trip Planner", description: "Instant personalized itineraries powered by AI", href: "/ai-assistant", gradient: "from-[#FF385C] to-[#FF8E53]" },
   { icon: UserCheck, label: "Expert Matching", description: "Connect with local specialists who know every hidden gem", href: "/experts", gradient: "from-emerald-500 to-teal-500" },
-  { icon: Zap, label: "Live Intel", description: "Real-time local insights and spontaneous opportunities", href: "/spontaneous", gradient: "from-violet-500 to-purple-500" },
+  { icon: Zap, label: "Live Intel", description: "Real-time local insights and spontaneous opportunities", href: "/discover?tab=travelpulse", gradient: "from-violet-500 to-purple-500" },
   { icon: Globe, label: "Discover", description: "Browse curated experiences from around the world", href: "/discover", gradient: "from-ocean-500 to-ocean-600" },
 ];
 
