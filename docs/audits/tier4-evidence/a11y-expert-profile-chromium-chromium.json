@@ -1,11 +1,11 @@
 {
-  "seed": "2026-08-22",
+  "seed": "2026-08-23",
   "chosenStep": "expert-profile-chromium",
   "engine": "chromium",
   "project": "chromium",
   "surface": "expert-profile-chromium",
-  "url": "http://127.0.0.1:5000/experts/503e86df-dfdf-494d-913f-25aeda48c012",
-  "scannedAt": "2026-08-22T18:18:08.181Z",
+  "url": "http://127.0.0.1:5000/experts/615d813b-f3da-4247-8ee4-d3b888a077c0",
+  "scannedAt": "2026-08-23T06:30:04.695Z",
   "result": "2 violation types, 7 affected nodes",
   "totalViolations": 2,
   "totalNodes": 7,
@@ -49,7 +49,7 @@
             "target": [
               ".px-2"
             ],
-            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:490:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:491:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
@@ -91,7 +91,7 @@
   "passes": 26,
   "screenshot": "a11y-expert-profile-chromium-chromium.png",
   "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars.",
-  "expertId": "503e86df-dfdf-494d-913f-25aeda48c012",
-  "expertHref": "/experts/503e86df-dfdf-494d-913f-25aeda48c012",
-  "expertName": "Ahmed"
+  "expertId": "615d813b-f3da-4247-8ee4-d3b888a077c0",
+  "expertHref": "/experts/615d813b-f3da-4247-8ee4-d3b888a077c0",
+  "expertName": "Raj"
 }

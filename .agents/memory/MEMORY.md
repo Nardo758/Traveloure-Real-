@@ -46,3 +46,4 @@
 - [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
 - [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
 - [Vite development logger resilience](vite-dev-logger-resilience.md) — Vite/client diagnostics must log without terminating the dev server and dropping the preview.
+- [Tier 4 WebKit runtime](tier4-webkit-runtime.md) — current Replit Nix shell runs Chromium/Firefox but WebKit remains blocked by GLES2/GStreamer runtime resolution; report it as unable.
