@@ -1259,4 +1259,8 @@ export const MIGRATION_FILES = [
   // dispute_resolved_at / dispute_resolved_by), app-enforced vocabulary, no CHECK (publish-trap
   // rule); all declared in shared/schema.ts. Behavior-neutral on apply.
   "253_concierge_dispute.sql",
+  // 254: Creation provenance on provider_services — created_via / source_ref (which rail created
+  // a listing). Additive-nullable, app-enforced vocabulary, no CHECK (publish-trap rule); declared
+  // in shared/schema.ts. No backfill — NULL = honest unknown. Behavior-neutral on apply.
+  "254_service_creation_provenance.sql",
 ] as const;

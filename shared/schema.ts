@@ -1058,6 +1058,17 @@ export const providerServices = pgTable("provider_services", {
   // captured) — never fabricate a backfill.
   serviceOfferingTypeId: uuid("service_offering_type_id"),
 
+  // Creation provenance (ledger 2026-08-23-provenance-creation, migration 254). WHICH rail
+  // created this row — the #1 gap the provenance audit named: a wizard-authored, template-seeded,
+  // catalog-cloned, bundle/property/room, and legacy-consolidation row were byte-identical.
+  // App-enforced vocabulary, NO DB CHECK (publish-trap rule; additive-nullable):
+  //   'wizard' | 'catalog' | 'template' | 'bundle' | 'property' | 'property_room' | 'listing'
+  //   | 'admin' | 'seed' | 'migration'. NULL = created before this column (never fabricate a
+  // backfill — an honest unknown, §13). `source_ref` is the free-text origin id when one exists
+  // (the offering/template id a clone came from, the seed name, the migration file).
+  createdVia: varchar("created_via", { length: 24 }),
+  sourceRef: varchar("source_ref", { length: 128 }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -2071,7 +2082,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never

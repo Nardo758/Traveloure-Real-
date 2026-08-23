@@ -2160,7 +2160,7 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
+  async createProviderService(service: InsertProviderService & { userId: string; createdVia?: string; sourceRef?: string | null }): Promise<ProviderService> {
     // EX-2 layer 2 (docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price never reaches a row —
     // the schema floor is layer 1, but this backstop lives here so every caller is covered (the
     // same placement rationale as the approval-lifecycle clamp below). Zero stays legal at the
@@ -2200,7 +2200,13 @@ export class DatabaseStorage implements IStorage {
       (service as any).categoryId ?? null,
     );
     // Ruling 112 Q8 (§19): the edit-split rail's own state can never be born from a client body.
-    const { revenueShareRate: _clientRate, pendingChanges: _pcCreate, editReviewStatus: _ersCreate, ...serviceWithoutRate } = service as Record<string, unknown>;
+    // Creation provenance (2026-08-23-provenance-creation): created_via/source_ref are stamped
+    // EXPLICITLY below (omitted from the insert schema — never client-set), defaulting to 'wizard'
+    // (this is the ServiceForm's create path; other rails pass their own via the opts).
+    const {
+      revenueShareRate: _clientRate, pendingChanges: _pcCreate, editReviewStatus: _ersCreate,
+      createdVia: _cvOpt, sourceRef: _srOpt, ...serviceWithoutRate
+    } = service as Record<string, unknown>;
 
     const [newService] = await db.insert(providerServices)
       .values({
@@ -2208,6 +2214,8 @@ export class DatabaseStorage implements IStorage {
         approvalStatus: bornApprovalStatus,
         serviceOfferingTypeId,
         trackingNumber,
+        createdVia: (service.createdVia as string | undefined) ?? "wizard",
+        sourceRef: (service.sourceRef as string | null | undefined) ?? null,
         // null ⇒ the resolver was unreachable; leave the column to its DB default rather than
         // invent a rate. `safeParseRate` at checkout then falls through to the live band anyway.
         ...(derivedShareRate === null ? {} : { revenueShareRate: String(derivedShareRate) }),
@@ -2745,6 +2753,11 @@ export class DatabaseStorage implements IStorage {
       totalRevenue: "0",
       averageRating: null,
       reviewCount: 0,
+      // Creation provenance (2026-08-23): a duplicate is a fresh owner authoring action — it must
+      // NOT inherit the original's rail (spreading serviceData carried it over). sourceRef keeps the
+      // lineage to the row it was copied from.
+      createdVia: "wizard",
+      sourceRef: `duplicate:${original.id}`,
     }).returning();
     // PB (§17 bundles, migration 151): a bundle's identity includes its components —
     // copying only the provider_services row would create a component-less bundle
@@ -4336,6 +4349,8 @@ export class DatabaseStorage implements IStorage {
       priceType: 'fixed',
       deliveryMethod: 'async_messaging',
       status: 'active',
+      createdVia: 'catalog',
+      sourceRef: serviceOfferingId,
     } as any);
   }
 
@@ -4563,6 +4578,7 @@ export class DatabaseStorage implements IStorage {
       approvalStatus: "draft",
       status: "draft",
       trackingNumber,
+      createdVia: "listing", // Creation provenance (2026-08-23): the expert service-listings rail.
     }).returning();
 
     await this.registerContent({
