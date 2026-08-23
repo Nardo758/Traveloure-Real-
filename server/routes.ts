@@ -99,6 +99,7 @@ import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
+import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -1498,23 +1499,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ),
       );
 
-      for (const day of itineraryData.days || []) {
-        for (const activity of day.activities || []) {
-          await db.insert(itineraryItems).values({
-            tripId: trip.id,
-            title: activity.title || "Activity",
-            description: activity.description || "",
-            itemType: activity.type || "activity",
-            status: "planned",
-            dayNumber: day.day,
-            startTime: activity.time || "",
-            durationMinutes: activity.durationMinutes || 60,
-            locationName: activity.locationName || destination,
-            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
-            currency: "USD",
-            origin: "ai",
-          });
-        }
+      // Item 2 Phase 1 (ledger 2026-08-23-item2-grounding): build the item set, then run ONE
+      // fail-closed grounding pass before writing — a confident match links the item to a bookable
+      // catalog service (providerServiceId, which the cart projection already turns into an
+      // add-to-cart affordance — Q2 mark-bookable-never-auto-cart) or a recognized DMO place
+      // (dmoExtractedPlaceId, informational — Q3), copying the matched entity's REAL coords so the
+      // item pins with no client change. No confident match ⇒ the item stays an honest AI suggestion
+      // (Q4 fail-closed, §13). Grounding never blocks the build — a failure degrades to ungrounded.
+      const builtItems = (itineraryData.days || []).flatMap((day: any) =>
+        (day.activities || []).map((activity: any) => ({
+          tripId: trip.id,
+          title: activity.title || "Activity",
+          description: activity.description || "",
+          itemType: activity.type || "activity",
+          status: "planned" as const,
+          dayNumber: day.day,
+          startTime: activity.time || "",
+          durationMinutes: activity.durationMinutes || 60,
+          locationName: activity.locationName || destination,
+          estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+          currency: "USD",
+          origin: "ai" as const,
+          providerServiceId: null as string | null,
+          dmoExtractedPlaceId: null as string | null,
+          latitude: null as string | null,
+          longitude: null as string | null,
+        })),
+      );
+      const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
+      for (const item of groundedItems) {
+        await db.insert(itineraryItems).values(item as any);
       }
 
       res.status(201).json(itinerary);
