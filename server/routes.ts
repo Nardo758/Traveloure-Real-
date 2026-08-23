@@ -5879,6 +5879,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         requirements,
         whatIncluded,
         status: "draft",
+        // Creation provenance (2026-08-23): a template-seeded listing is now distinguishable, and
+        // the template id it came from is retained (the audit's "create-from-template drops the link").
+        createdVia: "template",
+        sourceRef: templateId,
       };
 
       const service = await storage.createProviderService(serviceData as any);
