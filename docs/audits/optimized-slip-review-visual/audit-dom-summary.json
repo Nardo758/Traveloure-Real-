@@ -1,0 +1,415 @@
+{
+  "light": {
+    "url": "http://127.0.0.1:5000/itinerary-comparison/0924f013-499e-418b-aae4-ac17a0b6b364",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "htmlClass": "",
+    "computed": {
+      "background": "rgb(249, 250, 251)",
+      "foreground": "rgb(17, 24, 39)"
+    },
+    "header": "Osaka, Japan Trip",
+    "headerSubline": "Osaka, Japan - 1 traveler(s)",
+    "columns": [
+      {
+        "testid": "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Your PlanYour original itinerary selectionDay 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Apply Your Plan"
+      },
+      {
+        "testid": "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Your PlanYour original itinerary selectionDay 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Apply Your Plan"
+      },
+      {
+        "testid": "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Saves $15 (25% less)Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Costs $50 moreRecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      },
+      {
+        "testid": "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "RecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      }
+    ],
+    "recommended": [
+      {
+        "testid": null,
+        "text": "Recommended"
+      },
+      {
+        "testid": "proposal-recommended-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Recommended"
+      }
+    ],
+    "money": [
+      {
+        "testid": "proposal-preview-money-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Saves $15 (25% less)"
+      },
+      {
+        "testid": "proposal-preview-money-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Costs $50 more"
+      }
+    ],
+    "drive": [],
+    "previewContext": null,
+    "trending": null,
+    "seasonal": null,
+    "keepOriginal": [
+      {
+        "testid": "button-keep-original",
+        "text": "Keep my original plan"
+      }
+    ],
+    "footer": "Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.",
+    "applyButtons": [
+      {
+        "testid": "button-apply-variant-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Apply Your Plan"
+      },
+      {
+        "testid": "button-apply-variant-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Apply Budget Optimizer"
+      },
+      {
+        "testid": "button-apply-variant-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Apply Experience Enhancer"
+      }
+    ],
+    "allTestIds": [
+      "link-sidebar-logo",
+      "link-sidebar-home",
+      "link-sidebar-my-plans",
+      "link-sidebar-ai-planner",
+      "link-sidebar-discover",
+      "link-sidebar-experts",
+      "link-sidebar-bookings",
+      "link-sidebar-my-events",
+      "link-sidebar-trip-cart",
+      "link-sidebar-inbox",
+      "badge-sidebar-inbox-unread",
+      "link-sidebar-profile",
+      "button-sidebar-logout",
+      "button-dashboard-sidebar-toggle",
+      "link-logo",
+      "button-notifications",
+      "badge-unread-count",
+      "button-user-menu",
+      "user-avatar-fallback",
+      "button-back",
+      "banner-segmentation-recommendation",
+      "text-segmentation-rationale",
+      "text-segmentation-summary",
+      "text-segmentation-apply-note",
+      "compare-header",
+      "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+      "proposal-row-variant-e676ad4c-5ef6-4b87-9c4c-c4e2faf113dd",
+      "proposal-row-variant-83b75890-49fa-4720-a8e4-084e5b54458b",
+      "proposal-row-variant-165889b2-2c2a-4534-a595-7ede8595ca44",
+      "proposal-row-variant-98f07781-9138-4b3b-95a1-4113e3eb06c6",
+      "button-apply-variant-16eda327-5f33-4825-ad24-03fcdf01dea5",
+      "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-preview-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-preview-money-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-row-variant-bc74f37b-92a5-4cb8-8d7e-fdc945a36ee2",
+      "proposal-row-variant-3034501b-02c2-46eb-b54c-e305428acbad",
+      "proposal-row-variant-2a9b0217-9269-41bb-a054-460aee185662",
+      "button-apply-variant-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-preview-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-preview-money-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-recommended-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-row-variant-631ed3b5-a488-495a-a1c5-cf6456fea424",
+      "proposal-row-variant-2e45faf1-79d7-4379-943b-d454624834c1",
+      "proposal-row-variant-48f4d469-f8fe-4c09-a298-748f63ef4d2e",
+      "button-apply-variant-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "compare-footer",
+      "dislike-loop-panel",
+      "feedback-chip-too_expensive",
+      "feedback-chip-too_packed",
+      "feedback-chip-wrong_areas",
+      "feedback-chip-wrong_vibe",
+      "button-rerun-with-feedback",
+      "button-dislike-expert",
+      "button-keep-original"
+    ]
+  },
+  "dark": {
+    "url": "http://127.0.0.1:5000/itinerary-comparison/0924f013-499e-418b-aae4-ac17a0b6b364",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "htmlClass": "",
+    "computed": {
+      "background": "rgb(249, 250, 251)",
+      "foreground": "rgb(17, 24, 39)"
+    },
+    "header": "Osaka, Japan Trip",
+    "headerSubline": "Osaka, Japan - 1 traveler(s)",
+    "columns": [
+      {
+        "testid": "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Your PlanYour original itinerary selectionDay 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Apply Your Plan"
+      },
+      {
+        "testid": "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Your PlanYour original itinerary selectionDay 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Apply Your Plan"
+      },
+      {
+        "testid": "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Saves $15 (25% less)Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Costs $50 moreRecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      },
+      {
+        "testid": "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "RecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      }
+    ],
+    "recommended": [
+      {
+        "testid": null,
+        "text": "Recommended"
+      },
+      {
+        "testid": "proposal-recommended-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Recommended"
+      }
+    ],
+    "money": [
+      {
+        "testid": "proposal-preview-money-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Saves $15 (25% less)"
+      },
+      {
+        "testid": "proposal-preview-money-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Costs $50 more"
+      }
+    ],
+    "drive": [],
+    "previewContext": null,
+    "trending": null,
+    "seasonal": null,
+    "keepOriginal": [
+      {
+        "testid": "button-keep-original",
+        "text": "Keep my original plan"
+      }
+    ],
+    "footer": "Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.",
+    "applyButtons": [
+      {
+        "testid": "button-apply-variant-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Apply Your Plan"
+      },
+      {
+        "testid": "button-apply-variant-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Apply Budget Optimizer"
+      },
+      {
+        "testid": "button-apply-variant-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Apply Experience Enhancer"
+      }
+    ],
+    "allTestIds": [
+      "link-sidebar-logo",
+      "link-sidebar-home",
+      "link-sidebar-my-plans",
+      "link-sidebar-ai-planner",
+      "link-sidebar-discover",
+      "link-sidebar-experts",
+      "link-sidebar-bookings",
+      "link-sidebar-my-events",
+      "link-sidebar-trip-cart",
+      "link-sidebar-inbox",
+      "badge-sidebar-inbox-unread",
+      "link-sidebar-profile",
+      "button-sidebar-logout",
+      "button-dashboard-sidebar-toggle",
+      "link-logo",
+      "button-notifications",
+      "badge-unread-count",
+      "button-user-menu",
+      "user-avatar-fallback",
+      "button-back",
+      "banner-segmentation-recommendation",
+      "text-segmentation-rationale",
+      "text-segmentation-summary",
+      "text-segmentation-apply-note",
+      "compare-header",
+      "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+      "proposal-row-variant-e676ad4c-5ef6-4b87-9c4c-c4e2faf113dd",
+      "proposal-row-variant-83b75890-49fa-4720-a8e4-084e5b54458b",
+      "proposal-row-variant-165889b2-2c2a-4534-a595-7ede8595ca44",
+      "proposal-row-variant-98f07781-9138-4b3b-95a1-4113e3eb06c6",
+      "button-apply-variant-16eda327-5f33-4825-ad24-03fcdf01dea5",
+      "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-preview-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-preview-money-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-row-variant-bc74f37b-92a5-4cb8-8d7e-fdc945a36ee2",
+      "proposal-row-variant-3034501b-02c2-46eb-b54c-e305428acbad",
+      "proposal-row-variant-2a9b0217-9269-41bb-a054-460aee185662",
+      "button-apply-variant-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-preview-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-preview-money-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-recommended-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-row-variant-631ed3b5-a488-495a-a1c5-cf6456fea424",
+      "proposal-row-variant-2e45faf1-79d7-4379-943b-d454624834c1",
+      "proposal-row-variant-48f4d469-f8fe-4c09-a298-748f63ef4d2e",
+      "button-apply-variant-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "compare-footer",
+      "dislike-loop-panel",
+      "feedback-chip-too_expensive",
+      "feedback-chip-too_packed",
+      "feedback-chip-wrong_areas",
+      "feedback-chip-wrong_vibe",
+      "button-rerun-with-feedback",
+      "button-dislike-expert",
+      "button-keep-original"
+    ]
+  },
+  "mobile": {
+    "url": "http://127.0.0.1:5000/itinerary-comparison/0924f013-499e-418b-aae4-ac17a0b6b364",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "htmlClass": "",
+    "computed": {
+      "background": "rgb(249, 250, 251)",
+      "foreground": "rgb(17, 24, 39)"
+    },
+    "header": "Osaka, Japan Trip",
+    "headerSubline": "Osaka, Japan - 1 traveler(s)",
+    "columns": [
+      {
+        "testid": "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Your PlanYour original itinerary selectionDay 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Apply Your Plan"
+      },
+      {
+        "testid": "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Your PlanYour original itinerary selectionDay 1evening大阪城訪問$10evening道頓堀散策$20Day 2evening中之島近代建築散策evening黒門市場街食$30Apply Your Plan"
+      },
+      {
+        "testid": "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Saves $15 (25% less)Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Budget OptimizerCuts costs via free alternatives and consolidated walks in Osaka.Day 108:00Osaka Castle Park Free View10:30Dotonbori Stroll$15Day 217:00Nakanoshima WalkApply Budget Optimizer"
+      },
+      {
+        "testid": "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Costs $50 moreRecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      },
+      {
+        "testid": "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "RecommendedExperience EnhancerAdds cultural tours and higher-rated spots for richer Osaka visit.Day 108:00Osaka Castle Cultural Tour$2511:00Dotonbori Neon Food Tour$40Day 217:00Kuromon Market Tasting$45Apply Experience Enhancer"
+      }
+    ],
+    "recommended": [
+      {
+        "testid": null,
+        "text": "Recommended"
+      },
+      {
+        "testid": "proposal-recommended-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Recommended"
+      }
+    ],
+    "money": [
+      {
+        "testid": "proposal-preview-money-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Saves $15 (25% less)"
+      },
+      {
+        "testid": "proposal-preview-money-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Costs $50 more"
+      }
+    ],
+    "drive": [],
+    "previewContext": null,
+    "trending": null,
+    "seasonal": null,
+    "keepOriginal": [
+      {
+        "testid": "button-keep-original",
+        "text": "Keep my original plan"
+      }
+    ],
+    "footer": "Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.",
+    "applyButtons": [
+      {
+        "testid": "button-apply-variant-16eda327-5f33-4825-ad24-03fcdf01dea5",
+        "text": "Apply Your Plan"
+      },
+      {
+        "testid": "button-apply-variant-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+        "text": "Apply Budget Optimizer"
+      },
+      {
+        "testid": "button-apply-variant-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+        "text": "Apply Experience Enhancer"
+      }
+    ],
+    "allTestIds": [
+      "button-dashboard-sidebar-toggle",
+      "link-logo",
+      "button-notifications",
+      "badge-unread-count",
+      "button-user-menu",
+      "user-avatar-fallback",
+      "button-back",
+      "banner-segmentation-recommendation",
+      "text-segmentation-rationale",
+      "text-segmentation-summary",
+      "text-segmentation-apply-note",
+      "compare-header",
+      "proposal-column-16eda327-5f33-4825-ad24-03fcdf01dea5",
+      "proposal-row-variant-e676ad4c-5ef6-4b87-9c4c-c4e2faf113dd",
+      "proposal-row-variant-83b75890-49fa-4720-a8e4-084e5b54458b",
+      "proposal-row-variant-165889b2-2c2a-4534-a595-7ede8595ca44",
+      "proposal-row-variant-98f07781-9138-4b3b-95a1-4113e3eb06c6",
+      "button-apply-variant-16eda327-5f33-4825-ad24-03fcdf01dea5",
+      "proposal-column-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-preview-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-preview-money-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-row-variant-bc74f37b-92a5-4cb8-8d7e-fdc945a36ee2",
+      "proposal-row-variant-3034501b-02c2-46eb-b54c-e305428acbad",
+      "proposal-row-variant-2a9b0217-9269-41bb-a054-460aee185662",
+      "button-apply-variant-52f0b231-ad2b-4c78-8fa4-e065dfcf1d40",
+      "proposal-column-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-preview-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-preview-money-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-recommended-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "proposal-row-variant-631ed3b5-a488-495a-a1c5-cf6456fea424",
+      "proposal-row-variant-2e45faf1-79d7-4379-943b-d454624834c1",
+      "proposal-row-variant-48f4d469-f8fe-4c09-a298-748f63ef4d2e",
+      "button-apply-variant-a2ea85cc-72ec-4bb9-bf94-1b1fa3f64cab",
+      "compare-footer",
+      "dislike-loop-panel",
+      "feedback-chip-too_expensive",
+      "feedback-chip-too_packed",
+      "feedback-chip-wrong_areas",
+      "feedback-chip-wrong_vibe",
+      "button-rerun-with-feedback",
+      "button-dislike-expert",
+      "button-keep-original"
+    ]
+  }
+}
