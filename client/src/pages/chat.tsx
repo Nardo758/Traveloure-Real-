@@ -881,12 +881,12 @@ export default function Chat() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2 pr-4">
+                  <div className="space-y-2 pl-1.5 pr-4">
                     {filteredExperts.map((expert, index) => renderExpertCard(expert, index))}
                   </div>
                 )
               ) : (
-                <div className="space-y-5 pr-4">
+                <div className="space-y-5 pl-1.5 pr-4">
                   {/* Your conversations — real threads first (W1-B) */}
                   <div>
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-2">
