@@ -378,12 +378,13 @@ export default function AIAssistant() {
 
         <div className="flex flex-col lg:grid lg:grid-cols-5 gap-3 lg:gap-4 flex-1 min-h-0">
           <Card className="lg:col-span-1 bg-card rounded-2xl shadow-card border-border flex flex-col min-h-0">
-            <CardHeader className="p-4 pb-2 flex-shrink-0">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">Conversations</CardTitle>
+            <CardHeader className="min-w-0 p-3 sm:p-4 pb-2 flex-shrink-0">
+              <div className="flex items-center justify-between gap-1.5 min-w-0">
+                <CardTitle className="text-sm sm:text-base truncate min-w-0">Conversations</CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
+                  className="shrink-0 px-2 whitespace-nowrap"
                   onClick={handleNewChat}
                   data-testid="button-new-chat"
                 >
@@ -408,8 +409,8 @@ export default function AIAssistant() {
                     {conversations.map((conv) => (
                       <div
                         key={conv.id}
-                        className={cn(
-                           "p-2.5 rounded-xl transition-all group flex items-center justify-between gap-2",
+                         className={cn(
+                            "relative p-2.5 rounded-xl transition-all group flex items-center justify-between gap-2",
                           renamingId === conv.id
                             ? "bg-muted"
                             : selectedConversation === conv.id
@@ -464,7 +465,7 @@ export default function AIAssistant() {
                           )}
                         </div>
                         {renamingId !== conv.id && (
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                           <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-lg bg-card/95 pl-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 shadow-sm">
                             <Button
                               size="icon"
                               variant="ghost"
