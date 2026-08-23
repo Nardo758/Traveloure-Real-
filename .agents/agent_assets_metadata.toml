@@ -19,3 +19,24 @@ uri = "file://preview/provider-console-preview.html"
 type = "text"
 title = "Provider Console — Sidebar + Catalog preview"
 description = "Visual verification of the three UI changes: user identity card moved to sidebar header, active nav color changed to teal #35605A, Distribute badge added, and health bar repositioned to top of listing right column."
+
+[[outputs]]
+id = "1oG_vxhEKbK7-ioYbqNGS"
+uri = "file://docs/audits/optimized-slip-review-visual/light-desktop.png"
+type = "image"
+title = "Optimized Slip Review — light desktop"
+description = "Authenticated review page at 1440×1000."
+
+[[outputs]]
+id = "9PPjb36Vvmj4ADM3AGwXC"
+uri = "file://docs/audits/optimized-slip-review-visual/dark-desktop.png"
+type = "image"
+title = "Optimized Slip Review — dark desktop"
+description = "Authenticated review page with dark-color preference at 1440×1000."
+
+[[outputs]]
+id = "OZnI7yqJDa8XfBnBA5Bwi"
+uri = "file://docs/audits/optimized-slip-review-visual/light-mobile.png"
+type = "image"
+title = "Optimized Slip Review — light mobile"
+description = "Authenticated review page at 390×844."

@@ -264,6 +264,25 @@
   .btn:hover { filter: brightness(1.06); }
   .btn:active { transform: translateY(1px); }
   .btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
+  .confirm-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 5;
+    align-items: center; justify-content: center; padding: 20px;
+    background: rgb(15 23 42 / .55);
+  }
+  .confirm-backdrop.open { display: flex; }
+  .confirm-dialog {
+    width: min(100%, 440px); background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 16px; padding: 22px; box-shadow: 0 20px 60px rgb(15 23 42 / .25);
+  }
+  .confirm-dialog h2 { font: 700 20px/1.2 var(--display); margin: 0 0 8px; }
+  .confirm-dialog p { color: var(--muted); margin: 0; line-height: 1.5; }
+  .confirm-dialog strong { color: var(--ink); }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  @media (max-width: 560px) {
+    .confirm-dialog { align-self: flex-end; border-radius: 16px 16px 0 0; }
+    .confirm-actions { flex-direction: column-reverse; }
+    .confirm-actions .btn { width: 100%; }
+  }
 
   .foot-note {
     text-align: center; color: var(--muted); font-size: 13px;
@@ -448,7 +467,7 @@
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
         </ul>
         <div class="card-foot">
-          <button class="btn accent">Apply Calm Mornings</button>
+          <button class="btn accent apply-trigger" data-proposal="Calm Mornings">Apply Calm Mornings</button>
         </div>
       </div>
     </div>
@@ -474,7 +493,7 @@
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
         </ul>
         <div class="card-foot">
-          <button class="btn primary">Apply Riverside Focus</button>
+          <button class="btn primary apply-trigger" data-proposal="Riverside Focus">Apply Riverside Focus</button>
         </div>
       </div>
     </div>
@@ -501,7 +520,7 @@
           <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
         </ul>
         <div class="card-foot">
-          <button class="btn primary">Apply Fewer Hops</button>
+          <button class="btn primary apply-trigger" data-proposal="Fewer Hops">Apply Fewer Hops</button>
         </div>
       </div>
     </div>
@@ -509,6 +528,19 @@
   </div>
 
   <p class="foot-note" data-testid="compare-footer">Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.</p>
+
+  <div class="confirm-backdrop" id="apply-confirmation" role="presentation">
+    <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"
+      aria-describedby="confirm-copy" tabindex="-1">
+      <h2 id="confirm-title">Apply <span id="confirm-proposal">this proposal</span> to your plan?</h2>
+      <p id="confirm-copy">This replaces the items still in planning. The other proposals will be discarded.
+        Purchased items stay pinned, and nothing is purchased by applying.</p>
+      <div class="confirm-actions">
+        <button class="btn ghost" id="confirm-cancel">Cancel</button>
+        <button class="btn accent" id="confirm-apply">Confirm and apply</button>
+      </div>
+    </section>
+  </div>
 
   <!-- honesty legend -->
   <div class="legend">
@@ -545,6 +577,39 @@
   <p class="mock-note">Static design mockup of the review-first optimized slip (PR #532). Reflects the shipped chips, context strip, and confirm-to-apply flow.</p>
 
 </div>
+
+<script>
+  (() => {
+    const backdrop = document.getElementById("apply-confirmation");
+    const dialog = backdrop.querySelector(".confirm-dialog");
+    const proposal = document.getElementById("confirm-proposal");
+    const cancel = document.getElementById("confirm-cancel");
+    let lastTrigger = null;
+    const close = () => {
+      backdrop.classList.remove("open");
+      if (lastTrigger) lastTrigger.focus();
+    };
+    document.querySelectorAll(".apply-trigger").forEach((trigger) => trigger.addEventListener("click", () => {
+      lastTrigger = trigger;
+      proposal.textContent = trigger.dataset.proposal;
+      backdrop.classList.add("open");
+      dialog.focus();
+    }));
+    cancel.addEventListener("click", close);
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close(); });
+    document.addEventListener("keydown", (event) => {
+      if (!backdrop.classList.contains("open")) return;
+      if (event.key === "Escape") { event.preventDefault(); close(); }
+      if (event.key === "Tab") {
+        const focusable = [cancel, document.getElementById("confirm-apply")];
+        const index = focusable.indexOf(document.activeElement);
+        if (event.shiftKey && index <= 0) { event.preventDefault(); focusable[1].focus(); }
+        else if (!event.shiftKey && index === focusable.length - 1) { event.preventDefault(); focusable[0].focus(); }
+      }
+    });
+    document.getElementById("confirm-apply").addEventListener("click", close);
+  })();
+</script>
 
 </body>
 </html>

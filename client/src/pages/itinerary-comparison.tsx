@@ -12,6 +12,16 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -234,6 +244,38 @@ interface TransportLegApiResponse {
   fromLng: number | null;
   toLat: number | null;
   toLng: number | null;
+}
+
+/**
+ * The TravelPulse API exposes seasonal highlights from a JSONB column. Older
+ * records may contain a free-text summary, while current records are monthly
+ * objects. Keep the review context optional when the shape is unknown rather
+ * than allowing destination intelligence to crash the entire slip.
+ */
+function seasonalHighlightForTrip(raw: unknown, startDate?: string): string | null {
+  if (typeof raw === "string") {
+    return raw.trim() || null;
+  }
+
+  if (!Array.isArray(raw) || !startDate) {
+    return null;
+  }
+
+  const tripMonth = Number(startDate.slice(5, 7));
+  if (!Number.isInteger(tripMonth) || tripMonth < 1 || tripMonth > 12) {
+    return null;
+  }
+
+  const monthName = new Intl.DateTimeFormat("en", { month: "long" })
+    .format(new Date(Date.UTC(2024, tripMonth - 1, 1)))
+    .toLowerCase();
+  const matchedEntry = raw.find((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const month = (entry as { month?: unknown }).month;
+    return month === tripMonth || (typeof month === "string" && month.toLowerCase() === monthName);
+  }) as { highlight?: unknown } | undefined;
+
+  return typeof matchedEntry?.highlight === "string" ? matchedEntry.highlight.trim() || null : null;
 }
 
 /**
@@ -485,6 +527,7 @@ function ProposalColumnContainer({
   baselineTotalUsd,
   baselineDriveMinutes,
   isBaselineColumn,
+  boardId,
 }: {
   variant: Variant;
   comparison: Comparison;
@@ -498,6 +541,7 @@ function ProposalColumnContainer({
   baselineDriveMinutes: number | null;
   /** This column IS the user's current plan — it has no delta against itself, so no strip. */
   isBaselineColumn: boolean;
+  boardId: string;
 }) {
   const { data: legs } = useQuery<TransportLegApiResponse[]>({
     queryKey: ["/api/itinerary-variants", variant.id, "transport-legs"],
@@ -538,8 +582,8 @@ function ProposalColumnContainer({
   const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
 
   return (
-    <div className="flex flex-col gap-2" data-testid={`proposal-column-${variant.id}`}>
-      {showPreview && <ProposalPreviewStrip preview={preview} variantId={variant.id} />}
+    <div className="flex flex-col gap-2">
+      {showPreview && <ProposalPreviewStrip preview={preview} variantId={boardId} />}
     <PlanCard
       stage="proposal"
       trip={{
@@ -549,9 +593,17 @@ function ProposalColumnContainer({
       }}
       proposal={{
         variantId: variant.id,
+         testId: boardId,
         name: variant.name,
-        tagline: variant.description || null,
+         eyebrow: isBaselineColumn ? "Your current plan" : undefined,
+         displayName: isBaselineColumn ? "As you built it" : undefined,
+         tagline: isBaselineColumn ? "The order you planned, unchanged." : (variant.description || null),
+         isBaseline: isBaselineColumn,
         recommended,
+         totalCostUsd: parseTotal(variant.totalCost),
+         perPersonTotal: parseTotal(variant.totalCost) != null && comparison.travelers > 1
+           ? `$${Math.round(parseTotal(variant.totalCost)! / comparison.travelers).toLocaleString()}`
+           : null,
         anchoredItems,
         items: variant.items.map((it) => ({
           id: it.id,
@@ -561,7 +613,7 @@ function ProposalColumnContainer({
           price: it.price ?? null,
         })),
         legsSummary,
-        applyLabel: `Apply ${variant.name}`,
+         applyLabel: isBaselineColumn ? "Keep this plan" : `Apply ${variant.name}`,
         onApply,
         applying,
       }}
@@ -834,6 +886,9 @@ export default function ItineraryComparisonPage() {
   // Apply = the EXISTING endpoints: select the variant, then the atomic apply-to-trip, then
   // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
   const [applyingVariantId, setApplyingVariantId] = useState<string | null>(null);
+  const [pendingApplyVariant, setPendingApplyVariant] = useState<Variant | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [failedApplyVariant, setFailedApplyVariant] = useState<Variant | null>(null);
   const applyVariantMutation = useMutation({
     mutationFn: async (variantId: string) => {
       await apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
@@ -842,12 +897,16 @@ export default function ItineraryComparisonPage() {
       return { tripId: result.tripId as string };
     },
     onSuccess: (r) => {
+      setApplyError(null);
+      setFailedApplyVariant(null);
       toast({ title: "Variant applied", description: "Your slip has been updated in place." });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
       setLocation(`/plans/${r.tripId}`);
     },
-    onError: () => {
+    onError: (_error, variantId) => {
+      setFailedApplyVariant(data?.variants.find((variant) => variant.id === variantId) || null);
+      setApplyError("We couldn't apply this proposal. Your plan is unchanged. Try again.");
       toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
     },
     onSettled: () => setApplyingVariantId(null),
@@ -869,7 +928,7 @@ export default function ItineraryComparisonPage() {
       trendingScore?: number;
       crowdLevel?: string;
       weatherScore?: number;
-      aiSeasonalHighlights?: string;
+      aiSeasonalHighlights?: unknown;
       aiUpcomingEvents?: string;
       aiTravelTips?: string;
       aiLocalInsights?: string;
@@ -1092,7 +1151,7 @@ export default function ItineraryComparisonPage() {
 
   if (authLoading) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
         <Skeleton className="h-8 w-64 mb-6" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
@@ -1202,15 +1261,20 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{data?.comparison?.title || "Itinerary Comparison"}</h1>
-            <p className="text-muted-foreground">
-              {data?.comparison?.destination} - {data?.comparison?.travelers || 1} traveler(s)
+            {slipTripId && <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary mb-1">Optimization · Review before applying</p>}
+            <h1 className="text-2xl md:text-3xl font-bold" data-testid={slipTripId ? "review-title" : undefined}>
+              {slipTripId ? `Three ways to sharpen your ${primaryCity || data?.comparison?.destination || "trip"} plan` : (data?.comparison?.title || "Itinerary Comparison")}
+            </h1>
+            <p className="text-muted-foreground max-w-2xl" data-testid={slipTripId ? "review-intro" : undefined}>
+              {slipTripId
+                ? "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is."
+                : `${data?.comparison?.destination} - ${data?.comparison?.travelers || 1} traveler(s)`}
             </p>
           </div>
         </div>
@@ -1449,7 +1513,7 @@ export default function ItineraryComparisonPage() {
 
         {hasVariants && (
           <>
-            {destination && (
+            {destination && !slipTripId && (
               <Card className="mb-4 border-purple-200/50 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/10 dark:to-indigo-950/10 dark:border-purple-800/50">
                 <CardContent className="py-3 px-4">
                   <div className="flex items-center gap-2">
@@ -1540,7 +1604,7 @@ export default function ItineraryComparisonPage() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4" data-testid="compare-header">
                   <p className="font-mono text-sm text-muted-foreground">
                     {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
-                    {specColumns.length} proposal{specColumns.length === 1 ? "" : "s"}
+                    {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
                     {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
                   </p>
                   {(anchoredItems.length > 0 || withExpertRows.length > 0) && (
@@ -1574,7 +1638,10 @@ export default function ItineraryComparisonPage() {
                   const trending = (trendingData?.experiences ?? [])
                     .filter((e) => e?.name)
                     .slice(0, 3);
-                  const seasonal = travelPulseData?.city?.aiSeasonalHighlights?.trim() || null;
+                  const seasonal = seasonalHighlightForTrip(
+                    travelPulseData?.city?.aiSeasonalHighlights,
+                    data?.comparison?.startDate,
+                  );
                   if (trending.length === 0 && !seasonal) return null;
                   return (
                     <div
@@ -1616,8 +1683,8 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-4">
-                  {specColumns.map((variant) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                  {specColumns.slice(0, 4).map((variant, index) => (
                     <ProposalColumnContainer
                       key={variant.id}
                       variant={variant}
@@ -1628,14 +1695,14 @@ export default function ItineraryComparisonPage() {
                       baselineTotalUsd={baselineTotalUsd}
                       baselineDriveMinutes={baselineDriveMinutes}
                       isBaselineColumn={variant.source === "user"}
+                      boardId={variant.source === "user" ? "baseline" : `v${aiVariants.findIndex((v) => v.id === variant.id) + 1}`}
                       onApply={() => {
-                        setApplyingVariantId(variant.id);
-                        applyVariantMutation.mutate(variant.id);
+                        setPendingApplyVariant(variant);
                       }}
                     />
                   ))}
                   {isGenerating &&
-                    Array.from({ length: Math.max(0, 3 - specColumns.length) }).map((_, idx) => (
+                    Array.from({ length: Math.max(0, 4 - specColumns.length) }).map((_, idx) => (
                       <Card key={`proposal-skeleton-${idx}`} className="border-dashed opacity-80">
                         <CardHeader className="pt-6">
                           <Skeleton className="h-5 w-32" />
@@ -1656,6 +1723,76 @@ export default function ItineraryComparisonPage() {
                   Applying a variant updates the slip in place — the other two are discarded.
                   Nothing is purchased by applying.
                 </p>
+                {applyError && (
+                  <div
+                    className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"
+                    role="alert"
+                    data-testid="apply-error"
+                  >
+                    <p className="text-sm text-destructive">{applyError}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-apply-retry"
+                      onClick={() => {
+                        setApplyError(null);
+                        if (failedApplyVariant) setPendingApplyVariant(failedApplyVariant);
+                      }}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                <AlertDialog
+                  open={!!pendingApplyVariant}
+                  onOpenChange={(open) => {
+                    if (!open && !applyVariantMutation.isPending) {
+                      setPendingApplyVariant(null);
+                    }
+                  }}
+                >
+                  <AlertDialogContent data-testid="dialog-apply-confirm">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Apply {pendingApplyVariant?.name} to your plan?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will replace the items still in planning with{" "}
+                        <span className="font-medium text-foreground">
+                          {pendingApplyVariant?.name}
+                        </span>
+                        . The other proposals will be discarded. Your purchased items stay
+                        pinned, and nothing is purchased by applying.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        data-testid="button-apply-cancel"
+                        disabled={applyVariantMutation.isPending}
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        data-testid="button-apply-confirm"
+                        disabled={applyVariantMutation.isPending}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (!pendingApplyVariant || applyVariantMutation.isPending) return;
+                          setApplyError(null);
+                          setApplyingVariantId(pendingApplyVariant.id);
+                          applyVariantMutation.mutate(pendingApplyVariant.id, {
+                            onSettled: () => setPendingApplyVariant(null),
+                          });
+                        }}
+                      >
+                        {applyVariantMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Confirm and apply
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </>
             )}
 
@@ -1776,7 +1913,7 @@ export default function ItineraryComparisonPage() {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -1784,7 +1921,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
@@ -2018,14 +2155,14 @@ export default function ItineraryComparisonPage() {
                                       {item.name}
                                     </span>
                                     {item.isReplacement && (
-                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 shrink-0">
+                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 shrink-0">
                                         New
                                       </Badge>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -2033,7 +2170,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
@@ -2461,7 +2598,7 @@ export default function ItineraryComparisonPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <h4 className="font-medium">{item.name}</h4>
                                       {item.isReplacement && (
-                                        <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
+                                        <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                           New
                                         </Badge>
                                       )}
@@ -2473,7 +2610,7 @@ export default function ItineraryComparisonPage() {
                                   <div className="flex flex-col items-end gap-1 shrink-0">
                                     <span className="font-semibold">${parseFloat(item.price || "0")}</span>
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -2481,7 +2618,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                         <Check className="h-2.5 w-2.5 mr-1" />Book on Traveloure
                                       </Badge>
                                     )}
