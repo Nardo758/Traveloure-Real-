@@ -1129,25 +1129,35 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
+            {/* Surface masthead = the ratified Ready-Made-by-Theme band (decision-maker
+                Aug 23): left-aligned title + one-line sub, content immediately. NO search
+                bar except on Services (the only surface whose query it actually feeds) and
+                NO instructional-ad banner (removed per the same ruling — the pitch was
+                funnel copy, not surface content). The legacy tabbed shell keeps its old
+                centered masthead + search + ad; it is reachable only through the /discover
+                redirect and renders for no one. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-4"
+              className={surface ? "text-left" : "text-center mb-4"}
             >
-              <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
+              <h1 className={surface
+                ? "text-2xl md:text-[26px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
+                : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"} data-testid="text-page-title">
                 {surface ? SURFACE_META[surface].title : "Explore Services & Ready-Made Trips"}
               </h1>
-              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1.5">
+              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1">
                 {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
               </p>
             </motion.div>
+            {(!surface || surface === "services") && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="max-w-3xl mx-auto"
+              className={surface ? "mt-3" : "max-w-3xl mx-auto"}
             >
-              <div className="relative">
+              <div className={surface ? "relative max-w-xl" : "relative"}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search services, destinations..."
@@ -1157,10 +1167,11 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   data-testid="input-search"
                 />
               </div>
-              {/* The instructional ad — tells users what to DO (the funnel's one pitch) */}
+              {/* The instructional ad — legacy tabbed shell only (funnel's one pitch). */}
+              {!surface && (
               <button
                 type="button"
-                onClick={() => (surface ? setLocation("/services") : setActiveTab("services"))}
+                onClick={() => setActiveTab("services")}
                 className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 data-testid="cta-how-it-works"
               >
@@ -1175,6 +1186,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   Browse services <ArrowRight className="w-4 h-4" />
                 </span>
               </button>
+              )}
               {/* Tab bar — legacy tabbed shell ONLY. A surface page renders NO tab bar
                   (the grouped header is the thing the un-group removes); navigation
                   between surfaces is the nav dropdown. */}
@@ -1218,6 +1230,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
               </div>
               )}
             </motion.div>
+            )}
           </div>
         </section>
 

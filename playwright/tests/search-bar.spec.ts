@@ -346,11 +346,12 @@ test.describe('T13 — Navigate away while search is pending', () => {
 // ── Test 14 — Search while logged out ────────────────────────────────────────
 
 test.describe('T14 — Search while logged out (guest)', () => {
-  test('/discover search works for public content without authentication', async ({ browser }) => {
-    // Use a fresh context with no cookies (guaranteed logged-out state)
+  test('/services search works for public content without authentication', async ({ browser }) => {
+    // Use a fresh context with no cookies (guaranteed logged-out state).
+    // Marketplace un-group: the search bar lives on /services (the surface its query feeds).
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${BASE_URL}/discover`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(`${BASE_URL}/services`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForTimeout(2_000);
 
     const input = page.getByTestId('input-search');
