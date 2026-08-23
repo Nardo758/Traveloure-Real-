@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the Optimizer Sees</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --ground: #FAFAF8;
+    --surface: #FFFFFF;
+    --surface-2: #F4F3EF;
+    --ink: #1A1A18;
+    --muted: #7A7A72;
+    --hairline: #E8E8E2;
+    --hairline-strong: #DAD9D1;
+    --accent: #5B4B8A;
+    --accent-bg: #EEEAF6;
+    --accent-br: #D8CFEE;
+    --good: #1E7A52;
+    --good-bg: #E7F3EC;
+    --warn: #8A5E12;
+    --warn-bg: #F6EDD8;
+    --crit: #A33B2E;
+    --crit-bg: #F7E7E4;
+    --sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+    --display: "Bricolage Grotesque", var(--sans);
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground:#14140F; --surface:#1D1D18; --surface-2:#24241E;
+      --ink:#EDECE4; --muted:#9A9A8F; --hairline:#2E2E27; --hairline-strong:#3A3A31;
+      --accent:#B7A9E6; --accent-bg:#221E33; --accent-br:#3A3358;
+      --good:#6FD79E; --good-bg:#16281F; --warn:#E7B85E; --warn-bg:#2A2314;
+      --crit:#E58A7C; --crit-bg:#331B17;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#14140F; --surface:#1D1D18; --surface-2:#24241E;
+    --ink:#EDECE4; --muted:#9A9A8F; --hairline:#2E2E27; --hairline-strong:#3A3A31;
+    --accent:#B7A9E6; --accent-bg:#221E33; --accent-br:#3A3358;
+    --good:#6FD79E; --good-bg:#16281F; --warn:#E7B85E; --warn-bg:#2A2314;
+    --crit:#E58A7C; --crit-bg:#331B17;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 44px 22px 90px; }
+
+  .eyebrow { font-size:12px; letter-spacing:.13em; text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 10px; }
+  h1 { font-family:var(--display); font-weight:700; letter-spacing:-.02em; font-size:clamp(1.8rem,1.2rem+2.2vw,2.6rem); line-height:1.06; margin:0 0 10px; text-wrap:balance; }
+  .lede { color:var(--muted); margin:0 0 8px; max-width:64ch; }
+  .meta { font-family:var(--mono); font-size:12px; color:var(--muted); margin:14px 0 0; }
+
+  h2 { font-family:var(--display); font-weight:600; letter-spacing:-.01em; font-size:1.28rem; margin:52px 0 6px; text-wrap:balance; }
+  h2 .no { color:var(--accent); font-family:var(--mono); font-size:.85em; font-weight:500; margin-right:8px; }
+  h3 { font-size:.95rem; font-weight:600; margin:24px 0 6px; }
+  p { margin:10px 0; max-width:70ch; }
+  .sub { color:var(--muted); font-size:13.5px; margin:0 0 14px; max-width:70ch; }
+
+  code { font-family:var(--mono); font-size:.85em; background:var(--surface-2); border:1px solid var(--hairline); padding:1px 5px; border-radius:4px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13.5px; margin:14px 0; }
+  .tblwrap { overflow-x:auto; border:1px solid var(--hairline); border-radius:10px; background:var(--surface); }
+  .tblwrap table { margin:0; }
+  th { text-align:left; font-size:11.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:10px 14px; border-bottom:1px solid var(--hairline-strong); }
+  td { padding:9px 14px; border-bottom:1px solid var(--hairline); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  td:first-child { font-weight:500; white-space:nowrap; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .pill { display:inline-block; font-size:11px; font-weight:600; letter-spacing:.04em; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .pill.read { color:var(--good); background:var(--good-bg); }
+  .pill.constraint { color:var(--accent); background:var(--accent-bg); }
+  .pill.blind { color:var(--muted); background:var(--surface-2); border:1px solid var(--hairline-strong); }
+  .pill.llm { color:var(--warn); background:var(--warn-bg); }
+  .pill.real { color:var(--good); background:var(--good-bg); }
+
+  .card { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; padding:16px 18px; margin:14px 0; }
+  .flow { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:13px; margin:16px 0; }
+  .flow .step { background:var(--surface); border:1px solid var(--hairline-strong); border-radius:8px; padding:6px 11px; font-weight:500; }
+  .flow .arrow { color:var(--muted); }
+
+  ul { margin:8px 0; padding-left:22px; }
+  li { margin:5px 0; max-width:68ch; }
+
+  .finding { border-left:3px solid var(--hairline-strong); background:var(--surface); border-radius:0 10px 10px 0; border-top:1px solid var(--hairline); border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); padding:14px 16px; margin:14px 0; }
+  .finding.crit { border-left-color:var(--crit); }
+  .finding.warn { border-left-color:var(--warn); }
+  .finding.note { border-left-color:var(--accent); }
+  .finding h3 { margin:0 0 4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .finding .sev { font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:4px; }
+  .sev.c { color:var(--crit); background:var(--crit-bg); }
+  .sev.w { color:var(--warn); background:var(--warn-bg); }
+  .sev.n { color:var(--accent); background:var(--accent-bg); }
+  .finding p { font-size:13.5px; margin:6px 0 0; color:var(--muted); }
+  .finding p b { color:var(--ink); }
+
+  .summary { background:var(--accent-bg); border:1px solid var(--accent-br); border-radius:12px; padding:20px 22px; margin:20px 0; }
+  .summary p { font-size:14.5px; margin:8px 0; max-width:none; }
+
+  .foot { margin-top:56px; padding-top:16px; border-top:1px solid var(--hairline); font-size:12px; color:var(--muted); font-style:italic; }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">Codebase audit · AI slip optimization</p>
+  <h1>What the Optimizer Sees</h1>
+  <p class="lede">A file-and-line audit of every data source the AI trip optimizer reads when it optimizes a slip — the trip inputs, the traveler profiling built from selections, the service catalog it draws from, the city intelligence, the LLM call itself, and the boundaries it never crosses.</p>
+  <p class="meta">Audited 2026-08-22 at main 22a015bb · sources: server/itinerary-optimizer.ts · optimizer-baseline.service.ts · traveler-profile.service.ts · routes.ts §8406–8909 · transport-leg-calculator.ts · smart-sequencing.service.ts · travelpulse.service.ts · optimization-fee.service.ts</p>
+
+  <div class="summary">
+    <p><b>In one paragraph:</b> the optimizer reads a deliberately narrow slice — seven basics per still-planned item, paid items as "plan around this" constraints, expert-held items invisible. It ranks a flat 100-row pull of active services (no destination or approval filter) by an LLM-written trending list plus a profile inferred from the traveler's own selections, shows the AI the top 20, and asks Grok-3 (Claude Sonnet 4.5 fallback) for exactly two alternative plans chosen from a fixed strategy matrix. The server then re-sequences the days with a hand-written wellness rulebook and scores 60% AI self-score / 40% sequencing. It never touches money — the fee is resolved and gated before the AI is ever called.</p>
+  </div>
+
+  <h2><span class="no">01</span>The run, end to end</h2>
+  <div class="flow">
+    <span class="step">Slip: ✨ Optimize this plan</span><span class="arrow">→</span>
+    <span class="step">Fee gate (pay / free 24h re-run)</span><span class="arrow">→</span>
+    <span class="step">Read trip + profile + catalog + city intel</span><span class="arrow">→</span>
+    <span class="step">LLM: 2 variants</span><span class="arrow">→</span>
+    <span class="step">Strip echoes · re-sequence · score</span><span class="arrow">→</span>
+    <span class="step">Review board (you confirm)</span>
+  </div>
+  <p class="sub">Generation is fire-and-forget background work — the page polls every 2s until the variants land. A first run and a re-run are <b>not the same optimizer</b>: the create path passes no trip preferences, no anchors, no day boundaries, so <b>every first optimization runs the default strategy pair</b>. Only re-runs see event type, budget, travel styles, and dislike chips.</p>
+
+  <h2><span class="no">02</span>Trip inputs — what it reads from your slip</h2>
+  <div class="tblwrap"><table>
+    <tr><th>Routing status</th><th>Treatment</th><th>Meaning</th></tr>
+    <tr><td>in_planning</td><td><span class="pill read">optimizable</span></td><td>The AI may replace, move, or drop these.</td></tr>
+    <tr><td>ready_for_checkout</td><td><span class="pill read">optimizable</span> <span class="pill constraint">must-retain</span></td><td>May be moved but never dropped — a variant that omits one is rejected server-side, fail-closed.</td></tr>
+    <tr><td>purchased</td><td><span class="pill constraint">constraint</span></td><td>Injected as "ALREADY BOOKED — plan AROUND them"; any AI echo of one is stripped before it can double-count.</td></tr>
+    <tr><td>with_expert</td><td><span class="pill blind">invisible</span></td><td>Never read. What your expert is holding, the AI cannot touch or even see.</td></tr>
+  </table></div>
+  <p class="sub">Per item, exactly seven things reach the AI: <code>Day · time slot · name · $price · duration · location name</code> (+ type). No coordinates, no ratings, no descriptions of your items, no expert notes. Marquee items (helicopter / private / yacht / VIP keywords, or any non-commodity item ≥ $300) join a PROTECTED block the AI must keep verbatim. Empty trip days get an explicit "fill this day" instruction.</p>
+
+  <h2><span class="no">03</span>Traveler profiling — learned from selections</h2>
+  <p class="sub">The layer that personalizes optimization. Stored on <code>users.preferences.travelerProfile</code>; <b>explicit answers always beat inferred signals</b>, and nothing is fabricated when neither exists.</p>
+  <div class="tblwrap"><table>
+    <tr><th>Profile field</th><th>Values</th><th>Where it comes from</th></tr>
+    <tr><td>transportPreference</td><td>time · cost · comfort · scenic</td><td>Explicit, or <b>inferred from your booked transport modes</b> (confirmed transport bookings, counted by mode)</td></tr>
+    <tr><td>pace</td><td>relaxed · moderate · packed</td><td>Explicit, or <b>inferred after 2+ "Too packed" dislike chips</b> (durable counters kept per user)</td></tr>
+    <tr><td>budgetBand</td><td>budget · moderate · luxury</td><td>Explicit only</td></tr>
+    <tr><td>dietary</td><td>7 tags</td><td>Explicit only</td></tr>
+    <tr><td>mobility</td><td>standard · limited · wheelchair</td><td>Explicit only — account-level, not per-trip</td></tr>
+  </table></div>
+  <p class="sub">Three steering channels: (1) a prompt section describing you to the AI (with an instruction to never change prices); (2) transport scoring knobs — mobility "limited/wheelchair" forces accessible modes and ≤5-min walks; (3) catalog re-ranking — dietary keyword match +2, budget-band price-tercile match +1. Dislike chips also steer the re-run directly: <code>too_expensive → Budget Optimizer</code>, <code>too_packed → Relaxed Pace</code>, <code>wrong_areas → Neighbourhood Regroup</code>, <code>wrong_vibe → Local Character</code> — chips outrank every other strategy signal.</p>
+
+  <h2><span class="no">04</span>Catalog access — the inventory it can offer</h2>
+  <p class="sub">One query: the first 100 <code>provider_services</code> rows where <code>status='active'</code> — <b>no destination filter, no approval-status filter, no availability check, no ordering</b>. The list is re-ranked (trending first, then profile fit) and the top 20 are shown to the AI as <code>id|name|type|$price|rating★|location</code>. Service-ID validation accepts any of the 100.</p>
+
+  <h2><span class="no">05</span>City intelligence — provenance matters</h2>
+  <div class="tblwrap"><table>
+    <tr><th>Signal</th><th>Table</th><th>Provenance</th></tr>
+    <tr><td>Trending spots (top 5)</td><td>travel_pulse_trending</td><td><span class="pill llm">LLM-written</span> Grok-generated rows incl. trend score &amp; crowd forecast, 30-min cache</td></tr>
+    <tr><td>Local events in range (5)</td><td>travel_pulse_calendar_events</td><td><span class="pill llm">LLM-written</span> Grok generator <b>+</b> <span class="pill real">real</span> committed festival registry &amp; Nager.Date public holidays (Kyoto/Edinburgh)</td></tr>
+    <tr><td>Seasonal snapshot</td><td>destination_seasons</td><td><span class="pill llm">mixed</span> seeded or AI-merged (sourceType "ai")</td></tr>
+  </table></div>
+  <p class="sub">These become prompt guidance: peak-crowd hours to avoid, events with crowd impact, seasonal weather. <b>No live weather, no live crowds, no live pricing, no availability APIs are in the path.</b> The review page's "Trending now / Popular around your dates" strip draws from the same family of signals.</p>
+
+  <h2><span class="no">06</span>The LLM call</h2>
+  <ul>
+    <li><b>Grok-3 first</b> (temperature 0.7, JSON mode, 8K tokens) → <b>Claude Sonnet 4.5 fallback</b> (16K tokens). Truncated Grok responses fail over.</li>
+    <li>Always <b>exactly two AI variants</b> + your plan persisted as the baseline variant.</li>
+    <li>Strategy matrix, priority order: dislike chips → event type (romance/corporate) → budget ≥ $8,000 → travel style (culinary / adventure / wellness) → default <i>Budget Optimizer + Experience Enhancer</i>.</li>
+    <li>Rules given to the model: differ in ≥40% of line items, preserve PROTECTED items exactly, respond in strict JSON.</li>
+    <li>Cost tracking: only the Anthropic fallback writes <code>ai_cost_tracking</code> — <b>Grok runs are never cost-tracked</b>, and rows carry no user id.</li>
+  </ul>
+
+  <h2><span class="no">07</span>After the AI — deterministic post-processing</h2>
+  <ul>
+    <li><b>Echo strip:</b> any variant item matching a purchased commitment is deleted before metrics.</li>
+    <li><b>Must-retain enforcement:</b> a variant missing a checkout-bound item is rejected outright.</li>
+    <li><b>Smart sequencing:</b> a hand-written rulebook reorders each day (spa after adventure, no swimming right after meals, culture in mornings, golden hour, nightlife last…). Final score = <b>60% AI self-score + 40% sequencing score</b>.</li>
+    <li><b>Metrics:</b> balance / wellness / pace / diversity computed from category minutes; assumes a 14-hour waking day and 4–6 activities as optimal pace.</li>
+    <li><b>Upsells:</b> computed on read — active services in the city matching event/style keywords, best-rated, max 3. Same missing approval filter.</li>
+    <li><b>Segmentation proposal:</b> recommendation-only, derived from item locations and dates.</li>
+  </ul>
+
+  <h2><span class="no">08</span>What it does NOT see</h2>
+  <ul>
+    <li><b>Expert domain:</b> with_expert items, per-item Expert Notes, trip-level expert notes.</li>
+    <li><b>Party data:</b> trip participants, and their <code>accessibility_needs</code> / <code>mobility_level</code> — the only accessibility signal is the account owner's own profile setting, which is a different person's answer.</li>
+    <li><b>Item richness it could use but doesn't:</b> coordinates, energy level, weather-dependence, flexibility flags, conflicts, participant limits.</li>
+    <li><b>Supply truth:</b> vendor availability slots, lead times, concurrent-booking caps, pricing tiers, meeting points, cancellation policy — the AI can schedule a service at a time it cannot actually be delivered.</li>
+    <li><b>Anything live:</b> weather, crowds, prices, flight/hotel inventory.</li>
+  </ul>
+
+  <h2><span class="no">09</span>Findings that need a decision</h2>
+
+  <div class="finding crit">
+    <h3><span class="sev c">Defect</span>Unapproved listings can reach travelers through optimization</h3>
+    <p>The catalog pull filters <code>status='active'</code> only — <b>never <code>approval_status='approved'</code></b> — unlike every other public read (the canonical gate checks both). Since listings are born <i>submitted</i>, an unapproved service can be offered to the AI, placed in a variant, and surfaced by upsells. The in-code comment claiming the list is pre-approved is wrong at both call sites. One-line filter fix, both endpoints + upsells.</p>
+  </div>
+
+  <div class="finding crit">
+    <h3><span class="sev c">Defect</span>AI-authored prices can be read back as trusted server prices</h3>
+    <p>Variant item prices are written <b>verbatim from the model's JSON</b> — never cross-checked against the catalog row even when the service link resolves. Apply-to-cart is safe (it re-derives from the catalog and skips unlinked items), but <code>booking.service.ts</code> has a fallback that reads <code>itinerary_variant_items.price</code> as the server-side price under a §14 comment — true against the client, but the value's <i>origin is the LLM</i>. Money-provenance review recommended.</p>
+  </div>
+
+  <div class="finding warn">
+    <h3><span class="sev w">Inert feature</span>The transport-leg engine never runs — travel times are LLM guesses</h3>
+    <p>Leg computation is real (haversine ×1.3, per-city mode profiles, accessibility filtering) but gated on variant items having coordinates — <b>and nothing ever writes coordinates onto variant items</b>. So legs are never computed and every "travel time" figure is the model's self-reported number. <b>Direct consequence for the review-first slip we just shipped: the "shorter drive time" preview chip will honestly omit (§13) on every proposal until coordinates are wired</b> — the money chip and trending/seasonal strip are unaffected. Fix: carry lat/lng from the catalog row / itinerary item onto variant items.</p>
+  </div>
+
+  <div class="finding warn">
+    <h3><span class="sev w">Gap</span>No destination filter on the catalog pull</h3>
+    <p>An arbitrary 100 rows, any market — a Kyoto trip can be offered Edinburgh inventory, and popular markets can crowd each other out of the 100. Trending/profile re-ranking operates on whatever happened to arrive.</p>
+  </div>
+
+  <div class="finding warn">
+    <h3><span class="sev w">Gap</span>First runs ignore every preference signal</h3>
+    <p>The create path passes no trip preferences — event type, budget, travel styles, and chips only reach the strategy matrix on re-runs. Every traveler's first paid optimization is the same default pair.</p>
+  </div>
+
+  <div class="finding note">
+    <h3><span class="sev n">Note</span>Grok costs untracked · participant accessibility unused · availability unchecked</h3>
+    <p>Grok-first means most successful runs log $0 AI cost. Participant-level accessibility answers exist but never steer optimization. No availability check means variants can propose undeliverable time slots — surfaced honestly at booking time, not at proposal time.</p>
+  </div>
+
+  <h2><span class="no">10</span>Money boundary — clean</h2>
+  <p class="sub">The optimizer imports no fee logic and makes no charge decisions. The optimization fee is resolved by <code>optimization-fee.service.ts</code> (event-type row → tier default, deterministic, fail-safe) and enforced by the payment gates in the route handlers — free 24h re-run window, verified PaymentIntent with server-side fee recompute, atomic single-spend claim — all <b>before</b> any AI call. The one caveat is the AI-price read-back path flagged above.</p>
+
+  <p class="foot">Prepared from a full read of the optimizer path at main 22a015bb (post PR #532, review-first slip optimization). Line-level citations available in the session transcript.</p>
+
+</div>
+
+</body>
+</html>
