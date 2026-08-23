@@ -141,37 +141,37 @@ function readyMadeThemeHeading(key: string): string {
 function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
   return (
     <Card
-      className="overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col"
+      className="rm-theme-card h-full flex flex-col"
       data-testid={`rm-shelf-card-${l.id}`}
     >
       <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer">
-        {/* D3: h-40 aligns the card image height with the Itinerary Templates grid below. */}
-        {l.heroImageUrl && (
-          <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
-        )}
-        <CardContent className="p-4 pb-2">
-          <div className="text-[11px] uppercase tracking-wide text-primary font-semibold">
+        <div className="rm-theme-card-hero">
+          {l.heroImageUrl && <img src={l.heroImageUrl} alt="" className="rm-theme-card-image" />}
+          <span className="rm-theme-card-market">{l.market.split(",")[0].trim()}</span>
+        </div>
+        <CardContent className="rm-theme-card-body">
+          <div className="rm-theme-card-eyebrow">
             {planTypeDisplay(l.planType, l.planTypeCustom)}
           </div>
-          <div className="font-semibold truncate">{l.title}</div>
-          <div className="text-sm text-muted-foreground">
+          <div className="rm-theme-card-title">{l.title}</div>
+          <div className="rm-theme-card-meta">
             {l.market} · {l.durationDays} days
           </div>
-          <div className="mt-2 font-bold">
+          <div className="rm-theme-card-price">
             {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
             {l.pricingMode === "per_traveler" && (
-              <span className="text-xs font-normal text-muted-foreground"> /traveler</span>
+              <span className="rm-theme-card-price-note"> /traveler</span>
             )}
           </div>
         </CardContent>
       </Link>
-      <div className="px-4 pb-3 pt-1 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+      <div className="rm-theme-card-foot">
         <span className="truncate">
           by{" "}
           {l.authorHandle ? (
             <Link
               href={`/p/${l.authorHandle}`}
-              className="font-medium text-primary hover:underline"
+              className="rm-theme-card-author"
               data-testid={`link-rm-author-${l.id}`}
             >
               {l.authorName}
@@ -180,9 +180,9 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
             l.authorName
           )}
         </span>
-        <Badge variant="secondary" className="shrink-0 text-[10px] uppercase tracking-wide">
+        <span className="rm-theme-card-badge">
           {l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner"}
-        </Badge>
+        </span>
       </div>
     </Card>
   );
@@ -1651,13 +1651,13 @@ export default function DiscoverPage() {
                     ending the heading collision with the expert_templates section below (now
                     "Itinerary Templates", the storefront vocabulary). */}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
-                  <div className="mb-10">
-                    <div className="mb-4">
-                      <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <div className="rm-ready-made-surface mb-10">
+                    <div className="rm-ready-made-heading">
+                      <h2 className="rm-ready-made-title">
                         <Award className="w-5 h-5 text-primary" />
                         Ready-Made Trips
                       </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <p className="rm-ready-made-subtitle">
                         Buy a complete trip built around an experience — it becomes your own editable plan
                       </p>
                     </div>
@@ -1665,10 +1665,11 @@ export default function DiscoverPage() {
                     {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
                         live stock render, with real counts — never the full 20-key vocabulary
                         as empty aisles (§13). Order follows the feed (badge-first, recency). */}
-                    <div className="flex flex-wrap gap-2 mb-6" data-testid="rail-ready-made-themes">
+                    <div className="rm-theme-rail" data-testid="rail-ready-made-themes">
                       <Button
-                        variant={selectedTheme === "all" ? "default" : "outline"}
+                        variant="ghost"
                         size="sm"
+                        className={cn("rm-theme-chip", selectedTheme === "all" && "rm-theme-chip-active")}
                         onClick={() => setSelectedTheme("all")}
                         data-testid="button-theme-chip-all"
                       >
@@ -1690,8 +1691,9 @@ export default function DiscoverPage() {
                           return (
                             <Button
                               key={key}
-                              variant={selectedTheme === key ? "default" : "outline"}
+                              variant="ghost"
                               size="sm"
+                              className={cn("rm-theme-chip", selectedTheme === key && "rm-theme-chip-active")}
                               onClick={() => setSelectedTheme(key)}
                               data-testid={`button-theme-chip-${testKey}`}
                             >
@@ -1714,13 +1716,13 @@ export default function DiscoverPage() {
                           ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
                           : key;
                         return (
-                          <div key={key} className="mb-8" data-testid={`section-theme-${sectionKey}`}>
-                            <div className="flex items-baseline gap-3 mb-3">
-                              <h3 className="text-lg font-semibold">{themeHeadingFor(key)}</h3>
+                          <div key={key} className="rm-theme-shelf" data-testid={`section-theme-${sectionKey}`}>
+                            <div className="rm-theme-shelf-head">
+                              <h3>{themeHeadingFor(key)}</h3>
                               {rows.length > 3 && (
                                 <button
                                   type="button"
-                                  className="ml-auto text-sm font-medium text-primary hover:underline"
+                                  className="rm-theme-see-all"
                                   onClick={() => setSelectedTheme(key)}
                                   data-testid={`button-theme-see-all-${sectionKey}`}
                                 >
@@ -1728,7 +1730,7 @@ export default function DiscoverPage() {
                                 </button>
                               )}
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="rm-theme-grid">
                               {rows.slice(0, 3).map((l) => (
                                 <ReadyMadeThemeCard key={l.id} listing={l} />
                               ))}
@@ -1755,23 +1757,23 @@ export default function DiscoverPage() {
                         return (
                           <>
                             <div
-                              className="flex items-center gap-3 flex-wrap rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 mb-4 text-sm"
+                              className="rm-theme-filter-bar"
                               data-testid="bar-theme-filter"
                             >
                               <span>
                                 Showing <strong>{filteredRows.length}</strong>{" "}
                                 {themeHeadingFor(selectedTheme)} trip{filteredRows.length === 1 ? "" : "s"}
                               </span>
-                              <button
+                               <button
                                 type="button"
-                                className="ml-auto font-medium text-primary underline"
+                                 className="rm-theme-see-all"
                                 onClick={() => setSelectedTheme("all")}
                                 data-testid="button-theme-clear"
                               >
                                 Show all experiences
                               </button>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                             <div className="rm-theme-grid">
                               {filteredRows.map((l) => (
                                 <ReadyMadeThemeCard key={l.id} listing={l} />
                               ))}
