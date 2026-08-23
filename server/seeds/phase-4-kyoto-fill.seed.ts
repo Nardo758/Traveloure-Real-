@@ -298,6 +298,7 @@ export async function seedPhase4KyotoFill(): Promise<{
 
     await db.insert(providerServices).values({
       userId: DEMO_PROVIDER_USER_ID,
+      createdVia: "seed", // provenance stamp (Move 2) — demo seeder origin.
       serviceName: service.serviceName,
       shortDescription: service.description.substring(0, 150),
       description: service.description,

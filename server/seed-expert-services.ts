@@ -677,6 +677,7 @@ export async function seedProviderServices() {
 
     await db.insert(providerServices).values({
       userId: providerId,
+      createdVia: "seed", // provenance stamp (Move 2) — demo seeder origin.
       serviceName: service.serviceName,
       shortDescription: service.shortDescription,
       description: service.description,
