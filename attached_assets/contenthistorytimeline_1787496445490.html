@@ -1,0 +1,231 @@
+<title>Content History Timeline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #FAFAF8;
+    --surface: #FFFFFF;
+    --ink: #1A1A18;
+    --muted: #7A7A72;
+    --line: #E8E8E2;
+    --accent: #35544D;
+    --accent-soft: #EAF1EF;
+    /* change-type hues — mirror CHANGE_TYPE_STYLE in content-history-dialog.tsx exactly */
+    --created-bg:#D1FADF;  --created-ink:#065F46;
+    --updated-bg:#DBEAFE;  --updated-ink:#1E40AF;
+    --status-bg:#FEF3C7;   --status-ink:#92400E;
+    --mod-bg:#EDE9FE;      --mod-ink:#5B21B6;
+    --shadow: 0 1px 2px rgba(26,26,24,.04), 0 8px 24px -12px rgba(26,26,24,.14);
+    --radius: 14px;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground:#14140F; --surface:#1E1E1A; --ink:#ECE9E1; --muted:#9C9A8E; --line:#33322B;
+      --accent:#7FB7AA; --accent-soft:#1F2B28;
+      --created-bg:#0C2E1D; --created-ink:#6EE7A8;
+      --updated-bg:#14243F; --updated-ink:#93B4F5;
+      --status-bg:#332611; --status-ink:#F0C264;
+      --mod-bg:#251B3D;    --mod-ink:#C3A9F0;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#14140F; --surface:#1E1E1A; --ink:#ECE9E1; --muted:#9C9A8E; --line:#33322B;
+    --accent:#7FB7AA; --accent-soft:#1F2B28;
+    --created-bg:#0C2E1D; --created-ink:#6EE7A8;
+    --updated-bg:#14243F; --updated-ink:#93B4F5;
+    --status-bg:#332611; --status-ink:#F0C264;
+    --mod-bg:#251B3D;    --mod-ink:#C3A9F0;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: "Instrument Sans", system-ui, sans-serif; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: clamp(28px,5vw,64px) clamp(20px,4vw,40px) 96px; }
+  .eyebrow { font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 14px; }
+  h1 { font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:clamp(30px,5vw,46px); line-height:1.05; margin:0 0 14px; text-wrap:balance; letter-spacing:-.01em; }
+  .lede { font-size:17px; color:var(--muted); max-width:64ch; margin:0; }
+  .meta-row { display:flex; flex-wrap:wrap; gap:10px 22px; margin-top:22px; font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--muted); }
+  .meta-row b { color:var(--ink); font-weight:500; }
+  hr.rule { border:0; border-top:1px solid var(--line); margin:40px 0; }
+  h2 { font-family:"Fraunces",Georgia,serif; font-weight:500; font-size:22px; margin:0 0 6px; letter-spacing:-.01em; }
+  .section-note { color:var(--muted); font-size:14px; margin:0 0 24px; max-width:64ch; }
+  .inline-code { font-family:"JetBrains Mono",monospace; font-size:12px; background:var(--accent-soft); color:var(--ink); padding:1px 5px; border-radius:5px; }
+
+  .split { display:grid; grid-template-columns:minmax(0,400px) 1fr; gap:40px; align-items:start; }
+  @media (max-width:820px){ .split{ grid-template-columns:1fr; gap:28px; } }
+
+  /* ===== the dialog (faithful render) ===== */
+  .dialog {
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden; position:sticky; top:24px;
+  }
+  .dlg-head { padding:18px 20px 14px; border-bottom:1px solid var(--line); }
+  .dlg-title { display:flex; align-items:center; gap:8px; font-weight:600; font-size:16px; }
+  .dlg-title svg { width:16px; height:16px; color:var(--muted); }
+  .dlg-sub { margin-top:5px; font-size:12px; color:var(--muted); }
+  .dlg-sub .tn { font-family:"JetBrains Mono",monospace; }
+  .dlg-body { padding:18px 20px 22px; }
+
+  /* timeline: left border + dots, exactly like the shipped <ol> */
+  .timeline { list-style:none; margin:0; padding:2px 0 2px 18px; border-left:1px solid var(--line); display:flex; flex-direction:column; gap:18px; position:relative; }
+  .tl-item { position:relative; }
+  .tl-dot { position:absolute; left:-23px; top:5px; width:10px; height:10px; border-radius:999px; background:var(--accent); }
+  .tl-line1 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tl-v { font-size:12px; font-weight:700; }
+  .badge {
+    font-family:"Instrument Sans",sans-serif; font-size:10px; font-weight:600;
+    padding:2px 8px; border-radius:999px; border:1px solid transparent; text-transform:capitalize;
+  }
+  .badge.created { background:var(--created-bg); color:var(--created-ink); }
+  .badge.updated { background:var(--updated-bg); color:var(--updated-ink); }
+  .badge.status_change { background:var(--status-bg); color:var(--status-ink); }
+  .badge.moderation { background:var(--mod-bg); color:var(--mod-ink); }
+  .tl-time { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .tl-actor { font-size:11px; color:var(--muted); margin:2px 0 0; }
+  .tl-actor .id { font-family:"JetBrains Mono",monospace; }
+  .tl-reason { font-size:12.5px; margin:4px 0 0; }
+  .tl-changed { font-size:11px; color:var(--muted); margin:4px 0 0; }
+  .tl-changed .keys { font-family:"JetBrains Mono",monospace; }
+
+  /* ===== spec side ===== */
+  .legend { display:grid; gap:10px; }
+  .legend .item { display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:start; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
+  .legend .item p { margin:0; font-size:13px; color:var(--muted); }
+  .legend .item b { color:var(--ink); font-weight:600; }
+
+  .rules { display:grid; gap:12px; margin-top:8px; }
+  .rule-item { display:grid; grid-template-columns:26px 1fr; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .rule-item .tag { font-family:"JetBrains Mono",monospace; font-size:10px; font-weight:500; color:var(--accent); padding-top:2px; }
+  .rule-item p { margin:0; font-size:13.5px; }
+  .rule-item p .muted { color:var(--muted); }
+  .rule-item p b { font-weight:600; }
+
+  .empty-demo { margin-top:10px; border:1px dashed var(--line); border-radius:12px; padding:28px; text-align:center; color:var(--muted); font-size:13px; background:var(--surface); }
+
+  .callout { background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 22%,transparent); border-radius:12px; padding:16px 18px; margin-top:8px; font-size:13.5px; }
+  .callout b { font-weight:600; }
+  footer { margin-top:56px; padding-top:24px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); font-family:"JetBrains Mono",monospace; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Provenance spine · Move&nbsp;3 · Admin</p>
+  <h1>Content History Timeline</h1>
+  <p class="lede">Every TRV-tracked content row has recorded a version on each create and update since <span class="inline-code">registerContent</span> shipped — but nothing ever read it. This dialog is that reader: the append-only change timeline for one content row, surfaced honestly, with no new write path.</p>
+  <div class="meta-row">
+    <span>status&nbsp; <b>shipped · main @6509fa2b</b></span>
+    <span>ledger&nbsp; <b>2026-08-23-provenance-move3</b></span>
+    <span>reads&nbsp; <b>GET /api/admin/content/:trackingNumber</b></span>
+  </div>
+
+  <hr class="rule">
+
+  <div class="split">
+    <!-- ============ DIALOG ============ -->
+    <div>
+      <div class="dialog" role="dialog" aria-label="Change history">
+        <div class="dlg-head">
+          <div class="dlg-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+            Change history
+          </div>
+          <div class="dlg-sub"><span class="tn">TRV-2026-08-KYT-0042</span> · Kyoto autumn city guide</div>
+        </div>
+        <div class="dlg-body">
+          <ol class="timeline">
+            <li class="tl-item">
+              <span class="tl-dot"></span>
+              <div class="tl-line1">
+                <span class="tl-v">v4</span>
+                <span class="badge moderation">moderation</span>
+                <span class="tl-time">Aug 21, 2026, 2:14 PM</span>
+              </div>
+              <p class="tl-actor">by <span class="id">u_9f3c…a1</span></p>
+              <p class="tl-reason">Approved after affiliate-link review.</p>
+              <p class="tl-changed">Changed: <span class="keys">moderationStatus, reviewedBy</span></p>
+            </li>
+            <li class="tl-item">
+              <span class="tl-dot"></span>
+              <div class="tl-line1">
+                <span class="tl-v">v3</span>
+                <span class="badge status_change">status change</span>
+                <span class="tl-time">Aug 20, 2026, 9:02 AM</span>
+              </div>
+              <p class="tl-actor">by <span class="id">u_2b7e…44</span></p>
+              <p class="tl-changed">Changed: <span class="keys">status</span></p>
+            </li>
+            <li class="tl-item">
+              <span class="tl-dot"></span>
+              <div class="tl-line1">
+                <span class="tl-v">v2</span>
+                <span class="badge updated">updated</span>
+                <span class="tl-time">Aug 19, 2026, 4:41 PM</span>
+              </div>
+              <p class="tl-reason">Refreshed hero copy and two place blurbs.</p>
+              <p class="tl-changed">Changed: <span class="keys">title, body, heroImageUrl</span></p>
+            </li>
+            <li class="tl-item">
+              <span class="tl-dot"></span>
+              <div class="tl-line1">
+                <span class="tl-v">v1</span>
+                <span class="badge created">created</span>
+                <span class="tl-time">Aug 18, 2026, 11:20 AM</span>
+              </div>
+              <p class="tl-actor">by <span class="id">u_2b7e…44</span></p>
+              <!-- no "Changed:" line on v1 — a create has no previous to diff (§13) -->
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SPEC ============ -->
+    <div>
+      <h2>Change types</h2>
+      <p class="section-note">Four badge styles, keyed off the row's <span class="inline-code">changeType</span>. An unknown type falls back to a plain outline badge — never a crash, never a mislabel.</p>
+      <div class="legend">
+        <div class="item"><span class="badge created">created</span><p><b>First version.</b> The row was registered. No diff is shown — there is no previous snapshot.</p></div>
+        <div class="item"><span class="badge updated">updated</span><p><b>Content edit.</b> One or more fields changed; the changed keys are listed.</p></div>
+        <div class="item"><span class="badge status_change">status change</span><p><b>Lifecycle move.</b> e.g. draft&nbsp;→&nbsp;published. The underscore is rendered as a space.</p></div>
+        <div class="item"><span class="badge moderation">moderation</span><p><b>Review action.</b> Approve / reject / flag by a moderator.</p></div>
+      </div>
+
+      <div style="height:32px"></div>
+
+      <h2>Honesty rules</h2>
+      <div class="rules">
+        <div class="rule-item">
+          <span class="tag">§13</span>
+          <p><b>No fake "no changes."</b> <span class="muted">The changed-keys line renders <em>only</em> when a real diff exists. A v1 <span class="inline-code">created</span> row shows no diff line at all — it never claims "no changes" for an event that legitimately has no previous.</span></p>
+        </div>
+        <div class="rule-item">
+          <span class="tag">§13</span>
+          <p><b>Real actor id only.</b> <span class="muted">"by …" appears only when <span class="inline-code">changedBy</span> is a real id. No placeholder, no "system" guess when the field is null.</span></p>
+        </div>
+        <div class="rule-item">
+          <span class="tag">L6</span>
+          <p><b>Reader only — zero new writes.</b> <span class="muted">No schema change, no write path. The data was already accumulating in <span class="inline-code">content_versions</span>; this dialog is the first consumer of the <span class="inline-code">versions</span> array the endpoint already returned.</span></p>
+        </div>
+        <div class="rule-item">
+          <span class="tag">state</span>
+          <p><b>Every state is drawn.</b> <span class="muted">Loading, error ("Couldn't load history"), and the empty case each have an explicit, honest render — the fetch only fires once the dialog opens for a real tracking number.</span></p>
+        </div>
+      </div>
+
+      <div class="empty-demo" data-testid="text-no-history">No recorded changes yet.</div>
+    </div>
+  </div>
+
+  <hr class="rule">
+  <div class="callout">
+    <b>How to read this page.</b> The dialog on the left is the ratified design. The dispatch shipping beside this file lists the source path and grep assertions Replit can run to confirm the built dialog matches — the four change-type styles, the v1-has-no-diff rule, the real-actor-only guard, and the reader-only (no new write) posture.
+  </div>
+
+  <footer>Traveloure design handoff · Content History Timeline · verify against main @6509fa2b</footer>
+</div>
