@@ -9,6 +9,17 @@
 import { db } from "../db";
 import { affiliateProducts } from "@shared/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
+import { sharedCache } from "./shared-cache.service";
+
+// Lane 2b — best-effort live-feed reconcile freshness window. A city ingested within this window is
+// treated as fresh (registry current), so at most one reconcile per city per window regardless of
+// how many travelers generate itineraries for it. 6h sits well inside the 24h TP feed cache.
+const RECONCILE_FRESHNESS_MS = 6 * 60 * 60 * 1000;
+const RECONCILE_NS = "affiliate-market-reconcile";
+// How long the build will WAIT for a reconcile before proceeding registry-only. The ingest keeps
+// running past this (it is not cancelled) so the NEXT build for the city benefits; this build simply
+// does not block on a cold/slow feed (§13 — never blocks, never guesses).
+const RECONCILE_WAIT_MS = 3000;
 
 /** The subset of an affiliate_products row the resolver + plancard DTO need. `affiliateUrl` stays
  *  SERVER-SIDE — it is read only when minting a vault token, never emitted to a client (§16). */
@@ -75,6 +86,49 @@ export async function getAffiliateProductsForMarket(
         affiliateUrl: r.affiliateUrl ?? null,
       };
     });
+}
+
+/**
+ * Lane 2b (ledger 2026-08-23-item2-affiliate-reconcile): best-effort live-feed reconcile for a
+ * MARKET — fold live Travelpayouts inventory into the persisted `affiliate_products` registry so the
+ * rung-02 matcher (which reads the registry) can also match live results. This is the "both" of
+ * ratified Q2: the LIVE match is MATERIALIZED into the registry (by the existing catalog-ingest
+ * upsert, keyed on external_id) BEFORE anything links to it, so the item's link + §16 token always
+ * point at a real persisted row — no second rail.
+ *
+ * Contract (all three matter):
+ *   1. FRESHNESS-GUARDED — a city ingested within RECONCILE_FRESHNESS_MS is skipped (the marker is
+ *      set BEFORE the ingest so concurrent generates don't stampede the feeds).
+ *   2. FAIL-CLOSED — any error is swallowed; the caller proceeds registry-only. `ingestAllNetworks`
+ *      is itself key-gated (no TP token ⇒ zero writes) and per-network try/caught.
+ *   3. NEVER BLOCKS — the build waits at most RECONCILE_WAIT_MS; a slower ingest keeps running past
+ *      the wait (not awaited, not cancelled) so the NEXT build for the city sees the fresh rows.
+ * Returns true if this call performed (or waited on) a reconcile, false if it was skipped as fresh
+ * or short-circuited — for observability only; the caller ignores the value.
+ */
+export async function reconcileAffiliateMarket(destination: string | null | undefined): Promise<boolean> {
+  const city = destination?.split(",")[0]?.trim() ?? "";
+  if (!city) return false;
+  try {
+    const marker = await sharedCache.get<number>(RECONCILE_NS, city.toLowerCase());
+    if (marker) return false; // ingested within the freshness window — registry is current.
+    // Claim the window FIRST (stampede guard): a concurrent generate for the same city now skips.
+    await sharedCache.set(RECONCILE_NS, city.toLowerCase(), Date.now(), RECONCILE_FRESHNESS_MS);
+
+    const { ingestAllNetworks } = await import("./catalog-ingest.service");
+    // Fire the ingest; race it against a wait cap. The ingest promise is NOT cancelled on timeout —
+    // it runs to completion in the background so the next build sees its rows. Swallow a late
+    // rejection so an unhandled promise can't crash the process.
+    const ingest = ingestAllNetworks(city).catch((err) => {
+      console.warn("[affiliate-reconcile] ingest failed (non-fatal):", (err as any)?.message);
+    });
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, RECONCILE_WAIT_MS));
+    await Promise.race([ingest, timeout]);
+    return true;
+  } catch (err) {
+    console.warn("[affiliate-reconcile] skipped (non-fatal):", (err as any)?.message);
+    return false;
+  }
 }
 
 /** One affiliate product by id — the plancard DTO reads this to mint a vault token for a grounded
