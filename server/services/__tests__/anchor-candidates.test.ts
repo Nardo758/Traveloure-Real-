@@ -4,8 +4,10 @@ import {
   neighborhoodRowsToCandidates,
   stopsToActivityCandidates,
   rankActivityAnchors,
+  pickAutoAnchors,
   type NamedStop,
 } from "../anchor-candidates-map";
+import { rankAnchors } from "../anchor-scoring";
 
 const STOPS: NamedStop[] = [
   { id: "s1", name: "Gion tea ceremony", lat: 35.0037, lng: 135.7788 },
@@ -59,5 +61,35 @@ describe("anchor-candidates — activity ranking", () => {
 
   it("respects the limit", () => {
     expect(rankActivityAnchors(STOPS, 2)).toHaveLength(2);
+  });
+});
+
+describe("anchor-candidates — pickAutoAnchors", () => {
+  const ranked = {
+    hotel: rankAnchors(
+      hotelRowsToCandidates([{ hotelId: "h1", name: "Hotel Kanra", latitude: "35.0016", longitude: "135.7770" }]),
+      STOPS,
+    ),
+    neighborhood: rankAnchors(
+      neighborhoodRowsToCandidates([{ slug: "higashiyama", name: "Higashiyama", centroidLat: "35.0000", centroidLng: "135.7800" }]),
+      STOPS,
+    ),
+    activity: rankActivityAnchors(STOPS, 5),
+  };
+
+  it("takes one of each type first, so the three versions have different bases", () => {
+    const picked = pickAutoAnchors(ranked, 3);
+    expect(picked).toHaveLength(3);
+    expect(picked.map((p) => p.type)).toEqual(["hotel", "neighborhood", "activity"]);
+    // each carries real coordinates for persistence
+    expect(picked.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))).toBe(true);
+  });
+
+  it("returns fewer than n when inventory is thin — never a fabricated anchor (§13)", () => {
+    const thin = { hotel: [], neighborhood: [], activity: rankActivityAnchors(STOPS, 5) };
+    const picked = pickAutoAnchors(thin, 3);
+    expect(picked.length).toBeGreaterThan(0);
+    expect(picked.length).toBeLessThanOrEqual(3);
+    expect(picked.every((p) => p.type === "activity")).toBe(true);
   });
 });

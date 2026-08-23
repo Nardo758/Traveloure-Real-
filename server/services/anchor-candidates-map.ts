@@ -11,6 +11,7 @@ import {
   scoreAnchor,
   type AnchorCandidate,
   type AnchorScore,
+  type AnchorType,
   type StopPoint,
 } from "./anchor-scoring";
 
@@ -58,6 +59,42 @@ export function stopsToActivityCandidates(stops: NamedStop[]): AnchorCandidate[]
     out.push({ id: s.id, type: "activity", name: s.name, lat: s.lat, lng: s.lng });
   }
   return out;
+}
+
+/**
+ * Choose up to `n` anchors for the optimizer's versions — one of each kind first (best hotel, best
+ * neighborhood, best activity), so the three versions read as genuinely different bases (matching
+ * the mock), then top up from the combined pool by best fit. Deduped by type+name; only scorable
+ * anchors (real median) are eligible. Returns fewer than `n` when inventory is thin — honest (§13),
+ * the optimizer then simply builds that many anchor-labelled versions.
+ */
+export function pickAutoAnchors(
+  ranked: { hotel: AnchorScore[]; neighborhood: AnchorScore[]; activity: AnchorScore[] },
+  n = 3,
+): AnchorScore[] {
+  const chosen: AnchorScore[] = [];
+  const seen = new Set<string>();
+  const key = (a: AnchorScore) => a.type + "|" + a.name;
+  const types: AnchorType[] = ["hotel", "neighborhood", "activity"];
+  for (const t of types) {
+    const top = ranked[t].find((a) => a.medianMeters != null);
+    if (top && !seen.has(key(top))) {
+      chosen.push(top);
+      seen.add(key(top));
+    }
+    if (chosen.length >= n) return chosen.slice(0, n);
+  }
+  const pool = [...ranked.hotel, ...ranked.neighborhood, ...ranked.activity]
+    .filter((a) => a.medianMeters != null)
+    .sort((a, b) => (a.medianMeters as number) - (b.medianMeters as number));
+  for (const a of pool) {
+    if (chosen.length >= n) break;
+    if (!seen.has(key(a))) {
+      chosen.push(a);
+      seen.add(key(a));
+    }
+  }
+  return chosen.slice(0, n);
 }
 
 /**
