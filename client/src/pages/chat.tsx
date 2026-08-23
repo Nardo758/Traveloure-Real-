@@ -731,15 +731,15 @@ export default function Chat() {
         }}
         data-testid={`card-expert-${expert.id}`}
       >
-        <CardContent className={expert.isConversationPartner ? "px-3 py-2.5" : "p-4"}>
-          <div className={expert.isConversationPartner ? "flex items-start gap-2.5" : "flex items-start gap-3"}>
-            <Avatar className={expert.isConversationPartner ? "w-9 h-9" : "w-12 h-12"}>
+        <CardContent className="px-3 py-2.5">
+          <div className="flex items-start gap-2.5">
+            <Avatar className="w-9 h-9">
               <AvatarImage src={expert.avatar} alt={expert.name} />
               <AvatarFallback>{expert.name[0]}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className={`${expert.isConversationPartner ? "text-sm" : ""} font-semibold text-slate-900 dark:text-white truncate`}>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                   {expert.name}
                 </h3>
                 {/* W5-E: per-thread unread indicator — real count from useConversationThreads
@@ -770,7 +770,7 @@ export default function Chat() {
                 <>
                   <div className="flex items-center justify-between gap-2">
                     {expert.rating !== null ? (
-                      <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
+                      <div className="flex items-center gap-1 text-amber-500 text-xs shrink-0">
                         <Star className="w-3 h-3 fill-current" />
                         {expert.rating.toFixed(1)}
                       </div>
@@ -778,13 +778,13 @@ export default function Chat() {
                       <span className="text-xs text-muted-foreground shrink-0">New</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                     <MapPin className="w-3 h-3" />
                     {expert.location}
                   </div>
-                  <div className="flex flex-wrap gap-1 mt-2">
+                  <div className="flex flex-wrap gap-1 mt-1">
                     {expert.specialties.slice(0, 2).map(spec => (
-                      <Badge key={spec} variant="secondary" className="text-xs">
+                      <Badge key={spec} variant="secondary" className="h-5 px-1.5 text-[11px]">
                         {spec}
                       </Badge>
                     ))}
@@ -881,7 +881,7 @@ export default function Chat() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-3 pr-4">
+                  <div className="space-y-2 pr-4">
                     {filteredExperts.map((expert, index) => renderExpertCard(expert, index))}
                   </div>
                 )
@@ -902,7 +902,7 @@ export default function Chat() {
                     ) : filteredConversations.length === 0 ? (
                       <p className="text-sm text-muted-foreground px-1">No conversations match your search.</p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {filteredConversations.map((expert, index) => renderExpertCard(expert, index))}
                       </div>
                     )}
@@ -916,7 +916,7 @@ export default function Chat() {
                     {filteredDirectory.length === 0 ? (
                       <p className="text-sm text-muted-foreground px-1">No experts match your search.</p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {filteredDirectory.map((expert, index) => renderExpertCard(expert, index))}
                       </div>
                     )}
