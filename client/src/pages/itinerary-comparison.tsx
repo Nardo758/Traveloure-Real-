@@ -12,6 +12,16 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -834,6 +844,7 @@ export default function ItineraryComparisonPage() {
   // Apply = the EXISTING endpoints: select the variant, then the atomic apply-to-trip, then
   // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
   const [applyingVariantId, setApplyingVariantId] = useState<string | null>(null);
+  const [pendingApplyVariant, setPendingApplyVariant] = useState<Variant | null>(null);
   const applyVariantMutation = useMutation({
     mutationFn: async (variantId: string) => {
       await apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
@@ -1629,8 +1640,7 @@ export default function ItineraryComparisonPage() {
                       baselineDriveMinutes={baselineDriveMinutes}
                       isBaselineColumn={variant.source === "user"}
                       onApply={() => {
-                        setApplyingVariantId(variant.id);
-                        applyVariantMutation.mutate(variant.id);
+                        setPendingApplyVariant(variant);
                       }}
                     />
                   ))}
@@ -1656,6 +1666,55 @@ export default function ItineraryComparisonPage() {
                   Applying a variant updates the slip in place — the other two are discarded.
                   Nothing is purchased by applying.
                 </p>
+                <AlertDialog
+                  open={!!pendingApplyVariant}
+                  onOpenChange={(open) => {
+                    if (!open && !applyVariantMutation.isPending) {
+                      setPendingApplyVariant(null);
+                    }
+                  }}
+                >
+                  <AlertDialogContent data-testid="dialog-apply-confirm">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Apply {pendingApplyVariant?.name} to your plan?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will replace the items still in planning with{" "}
+                        <span className="font-medium text-foreground">
+                          {pendingApplyVariant?.name}
+                        </span>
+                        . The other proposals will be discarded. Your purchased items stay
+                        pinned, and nothing is purchased by applying.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        data-testid="button-apply-cancel"
+                        disabled={applyVariantMutation.isPending}
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        data-testid="button-apply-confirm"
+                        disabled={applyVariantMutation.isPending}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (!pendingApplyVariant || applyVariantMutation.isPending) return;
+                          setApplyingVariantId(pendingApplyVariant.id);
+                          applyVariantMutation.mutate(pendingApplyVariant.id, {
+                            onSettled: () => setPendingApplyVariant(null),
+                          });
+                        }}
+                      >
+                        {applyVariantMutation.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Confirm and apply
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </>
             )}
 
