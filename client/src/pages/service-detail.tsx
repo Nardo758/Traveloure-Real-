@@ -628,7 +628,7 @@ export default function ServiceDetailPage() {
           <h1 className="text-2xl font-bold mb-2">Service Not Found</h1>
           <p className="text-muted-foreground mb-6">The service you're looking for doesn't exist</p>
           <Button asChild data-testid="button-back-discover">
-            <Link href="/discover">Browse Services</Link>
+            <Link href="/services">Browse Services</Link>
           </Button>
         </div>
       </Layout>

@@ -27,9 +27,9 @@ test.describe("Surface retirement redirects", () => {
     expect(body).not.toMatch(/404|page not found/i);
   });
 
-  test("/spontaneous redirects to /discover", async ({ page }) => {
+  test("/spontaneous redirects to /destinations", async ({ page }) => {
     await page.goto(`${BASE_URL}/spontaneous`, { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/discover($|\?|#)/);
+    await expect(page).toHaveURL(/\/destinations($|\?|#)/);
     const body = await page.textContent("body");
     expect(body).not.toMatch(/404|page not found/i);
   });

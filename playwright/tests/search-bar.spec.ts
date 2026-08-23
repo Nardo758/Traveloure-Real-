@@ -32,9 +32,9 @@ const SETTLE_MS   = 600;   // debounce + one render cycle
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function gotoDiscover(page: Page) {
-  // Navigate directly to the Services tab via URL param — avoids a post-load
-  // tab click that can race with React hydration under parallel worker load.
-  await page.goto(`${BASE_URL}/discover?tab=services`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  // Marketplace un-group (Aug 23): the Services surface is its own page — no tab
+  // bar exists any more, so navigate straight to /services.
+  await page.goto(`${BASE_URL}/services`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await page.waitForTimeout(2_500);
 }
 
@@ -67,8 +67,9 @@ test.describe('T01 — Valid destination search', () => {
 
     await typeAndWait(page, 'input-search', 'Tokyo');
 
-    // No crash — page still renders its main structure
-    await expect(page.getByTestId('tab-services')).toBeVisible();
+    // No crash — page still renders its main structure (the services filter bar
+    // is the surface's structural anchor now that the tab bar is retired)
+    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
     // The no-results block should NOT be present (Tokyo is a seeded destination)
     const noResults = page.getByTestId('services-no-results');
     const noResultsVisible = await noResults.isVisible().catch(() => false);
@@ -145,7 +146,7 @@ test.describe('T05 — Very long string (500 chars)', () => {
     await typeAndWait(page, 'input-search', longInput);
 
     // Page structure intact
-    await expect(page.getByTestId('tab-services')).toBeVisible();
+    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
     await expect(page.getByText(/Something went wrong|Application error/i)).toHaveCount(0);
 
     // No JS runtime errors

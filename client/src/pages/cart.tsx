@@ -1657,7 +1657,7 @@ export default function CartPage() {
               <h2 className="text-xl font-semibold mb-2">Your cart is empty</h2>
               <p className="text-muted-foreground mb-6">Browse our services and add something you like</p>
               <Button asChild data-testid="button-browse-services">
-                <Link href="/discover">Browse Services</Link>
+                <Link href="/services">Browse Services</Link>
               </Button>
             </CardContent>
           </Card>
