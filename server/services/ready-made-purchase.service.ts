@@ -185,6 +185,13 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false };
 }
 
+/**
+ * Q3 (ledger 2026-08-22-concierge-p3): server-side outer bound on the ADMIN refund path — safely
+ * inside Stripe's ~120–180-day refund floor so the Stripe leg can never fail after the ledger
+ * flip. Not a fee/rate (§8-exempt): it is a recoverability window, like holdWindowDays.
+ */
+const ADMIN_REFUND_OUTER_BOUND_DAYS = 90;
+
 export type RefundLedgerResult =
   | { ok: true; purchase: typeof readyMadePurchases.$inferSelect; alreadyRefunded: boolean }
   | { ok: false; status: number; message: string };
@@ -207,15 +214,26 @@ export type RefundLedgerResult =
  */
 export async function refundReadyMadePurchaseLedger(
   purchaseId: string,
-  buyerId: string,
+  buyerId: string | null,
+  opts: { actor?: "buyer" | "admin" } = {},
 ): Promise<RefundLedgerResult> {
+  // Ledger 2026-08-22-concierge-p3: ONE refund implementation, TWO actors (L6 — the §15c
+  // "one promotion, two callers" shape applied to refunds). actor:'buyer' (the default; the
+  // 2-arg legacy form) keeps the original behavior verbatim. actor:'admin' is the dispute
+  // escape hatch: buyer-identity gate skipped (admin proven by session role at the route),
+  // the 7-day window replaced by a 90-day outer bound (ratified Q3 — safely inside Stripe's
+  // ~120-180-day refund floor so the Stripe leg can't fail AFTER the ledger flip), the clone
+  // ALWAYS soft-revoked (ratified Q2 — weeks later the buyer may have invested heavily), and
+  // a paid-out author earning REFUSES the refund (ratified Q1 "prevent that from happening":
+  // the escape hatch only works while the money is still recoverable — never pay both sides).
+  const actor = opts.actor ?? "buyer";
   const [purchase] = await db
     .select()
     .from(readyMadePurchases)
     .where(eq(readyMadePurchases.id, purchaseId))
     .limit(1);
   // 404 for not-yours too — don't leak other buyers' purchase ids.
-  if (!purchase || purchase.buyerId !== buyerId) {
+  if (!purchase || (actor === "buyer" && purchase.buyerId !== buyerId)) {
     return { ok: false, status: 404, message: "Purchase not found" };
   }
   if (purchase.status === "refunded") {
@@ -226,13 +244,44 @@ export async function refundReadyMadePurchaseLedger(
   }
 
   const purchasedAt = purchase.purchasedAt ? new Date(purchase.purchasedAt) : null;
-  const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
-  if (!purchasedAt || Date.now() > purchasedAt.getTime() + windowMs) {
-    return {
-      ok: false,
-      status: 409,
-      message: `refund_window_closed: refunds are available for ${holdWindowDays("ready_made_sale")} days after purchase`,
-    };
+  if (actor === "buyer") {
+    const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
+    if (!purchasedAt || Date.now() > purchasedAt.getTime() + windowMs) {
+      return {
+        ok: false,
+        status: 409,
+        message: `refund_window_closed: refunds are available for ${holdWindowDays("ready_made_sale")} days after purchase`,
+      };
+    }
+  } else {
+    // Q3: 90-day server-side outer bound on the admin path — older cases are manual ops by
+    // construction rather than a Stripe failure after the ledger already flipped.
+    const adminWindowMs = ADMIN_REFUND_OUTER_BOUND_DAYS * 24 * 60 * 60 * 1000;
+    if (!purchasedAt || Date.now() > purchasedAt.getTime() + adminWindowMs) {
+      return {
+        ok: false,
+        status: 409,
+        message: `admin_refund_window_closed: admin refunds are available for ${ADMIN_REFUND_OUTER_BOUND_DAYS} days after purchase`,
+      };
+    }
+    // Q1 "prevent": if the author's earning already left the platform, this refund would pay
+    // both sides — refuse instead of silently under-reversing (the skippedPaidOut lesson).
+    const [paidOut] = await db
+      .select({ id: expertEarnings.id })
+      .from(expertEarnings)
+      .where(and(
+        eq(expertEarnings.referenceId, purchaseId),
+        eq(expertEarnings.type, "ready_made_sale"),
+        eq(expertEarnings.status, "paid_out"),
+      ))
+      .limit(1);
+    if (paidOut) {
+      return {
+        ok: false,
+        status: 409,
+        message: "author_paid_out: the author's earning was already paid out — not refundable through this path; dismiss the dispute or handle manually",
+      };
+    }
   }
 
   const [claimed] = await db

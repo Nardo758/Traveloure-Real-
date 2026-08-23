@@ -39,7 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeDisplay } from "@shared/ready-made-plan-types";
 import { resolveFormat } from "@/lib/build-formats/registry";
-import { CalendarDays, Loader2, MapPin, ShoppingBag, Sun } from "lucide-react";
+import { CalendarDays, ConciergeBell, Loader2, MapPin, ShoppingBag, Sun } from "lucide-react";
 
 interface DetailListing {
   id: string;
@@ -363,8 +363,20 @@ export default function ReadyMadeDetailPage() {
           )}
           <p className="text-sm text-muted-foreground mt-3">
             Buying this trip copies the full day-by-day plan into your own trips — every item editable,
-            re-dateable, and bookable. Refundable for 7 days.
+            re-dateable, and bookable.
           </p>
+          {/* Ledger 2026-08-22-concierge-p3: the refund line is replaced by the concierge promise —
+              static copy, since every ready-made purchase carries the same entitlement (§13: promise
+              only what is true for all). */}
+          <div className="flex items-start gap-2.5 mt-3 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2.5" data-testid="text-concierge-promise">
+            <ConciergeBell className="w-4 h-4 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-sm">
+              <span className="font-medium">Includes 1 consultation + 1 revision</span>{" "}
+              <span className="text-muted-foreground">
+                with the expert who built it — request anytime from your Trip Slip after purchase.
+              </span>
+            </p>
+          </div>
         </CardContent>
       </Card>
 

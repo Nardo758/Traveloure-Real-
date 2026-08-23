@@ -20,7 +20,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users } from "@shared/schema";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users, adminNotifications } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
@@ -771,6 +771,8 @@ router.get("/api/ready-made/purchases/mine", isAuthenticated, async (req, res) =
         currency: readyMadePurchases.currency,
         purchasedAt: readyMadePurchases.purchasedAt,
         cloneTripId: readyMadePurchases.cloneTripId,
+        revisionStatus: readyMadePurchases.revisionStatus,
+        disputeStatus: readyMadePurchases.disputeStatus,
         listingId: readyMadeTrips.id,
         title: readyMadeTrips.title,
         planType: readyMadeTrips.planType,
@@ -782,17 +784,10 @@ router.get("/api/ready-made/purchases/mine", isAuthenticated, async (req, res) =
       .where(eq(readyMadePurchases.buyerId, userId))
       .orderBy(desc(readyMadePurchases.purchasedAt));
 
-    const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
-    res.json({
-      purchases: rows.map((r) => ({
-        ...r,
-        // Server-authoritative refund eligibility — the client renders it, never computes it.
-        refundEligible:
-          (r.status === "paid" || r.status === "cloned") &&
-          !!r.purchasedAt &&
-          Date.now() <= new Date(r.purchasedAt).getTime() + windowMs,
-      })),
-    });
+    // Ledger 2026-08-22-concierge-p3: `refundEligible` is RETIRED with the self-serve refund —
+    // the row now carries the concierge facts instead (revisionStatus / disputeStatus), and the
+    // client renders the revision + "something wrong" affordances from them.
+    res.json({ purchases: rows });
   } catch (err: any) {
     console.error("[ready-made] purchases mine error:", err);
     res.status(500).json({ message: "Failed to load purchases" });
@@ -1355,44 +1350,77 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
   }
 });
 
-// ─── D7 refund — buyer-initiated, inside the escrow window only ──────────────
+// ─── Concierge concern — the buyer's recourse after the self-serve refund removal ───────────
 //
-// Ledger-first, Stripe-second (the dispute-uphold posture): the atomic status claim + earning
-// reversal + clone revocation run first; the Stripe refund uses a DETERMINISTIC idempotencyKey
-// (`rm-refund-<purchaseId>`), so if Stripe fails the buyer can retry — the ledger half returns
-// alreadyRefunded and the Stripe leg re-runs idempotently until it succeeds. §14: the refund
-// amount is the full PaymentIntent (Stripe derives it from the PI — no client amount).
-router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req, res) => {
+// Ledger 2026-08-22-concierge-p3: the D7 self-serve refund route that lived here is RETIRED —
+// ratified model: no self-serve refunds; every purchase includes 1 consult + 1 revision, and a
+// buyer who is still unhappy opens a CONCERN for admin review (refund = the admin escape hatch,
+// /api/admin/ready-made/disputes). The buyer-actor branch of refundReadyMadePurchaseLedger is
+// intentionally kept (proven by verify-ready-made-phase2) — it simply has no route anymore.
+//
+// Shape: §14 actor from session; allowlist body ({reason} only); §15 atomic conditional claim —
+// `WHERE buyer_id=? AND status IN ('paid','cloned') AND dispute_status IS NULL` kills double-open
+// and concerns on refunded/revoked rows in one predicate. On the winning claim: the author's
+// escrowed earning is FROZEN (dispute_state='open', the same mechanism the release job and the
+// payable-balance summary already honor) so it cannot release/pay out while the dispute is
+// pending — the ratified Q1 "prevent" rule's first half — and admins are notified.
+router.post("/api/ready-made/purchases/:id/concern", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
-    const ledger = await refundReadyMadePurchaseLedger(req.params.id, userId);
-    if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 2000) : "";
+    if (!reason) return res.status(400).json({ message: "Tell us what went wrong so we can review it" });
 
-    const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(getStripeSecretKey() || "", {
-      apiVersion: "2024-12-18.acacia" as any,
-    });
-    try {
-      const refund = await stripeClient.refunds.create(
-        { payment_intent: ledger.purchase.stripePaymentIntentId },
-        { idempotencyKey: `rm-refund-${ledger.purchase.id}` },
-      );
-      return res.json({ success: true, refundId: refund.id, purchase: ledger.purchase });
-    } catch (stripeErr: any) {
-      // Ledger is settled; the money leg failed. Say so honestly — a retry of this endpoint
-      // re-runs ONLY the idempotent Stripe refund (ledger returns alreadyRefunded).
-      console.error("[ready-made] refund Stripe leg failed:", stripeErr?.message);
-      return res.status(502).json({
-        message: "Refund recorded but the payment reversal failed — please retry",
-        purchase: ledger.purchase,
+    const [claimed] = await db
+      .update(readyMadePurchases)
+      .set({ disputeStatus: "open", disputeReason: reason, disputedAt: new Date() } as any)
+      .where(and(
+        eq(readyMadePurchases.id, req.params.id),
+        eq(readyMadePurchases.buyerId, userId),
+        inArray(readyMadePurchases.status, ["paid", "cloned"]),
+        isNull(readyMadePurchases.disputeStatus),
+      ))
+      .returning();
+    if (!claimed) {
+      // Lost claim: not yours (404-shape kept vague — no purchase-id oracle), already
+      // disputed, or refunded/revoked. One honest 409 covers the reachable owner cases.
+      const [current] = await db.select().from(readyMadePurchases)
+        .where(and(eq(readyMadePurchases.id, req.params.id), eq(readyMadePurchases.buyerId, userId)))
+        .limit(1);
+      if (!current) return res.status(404).json({ message: "Purchase not found" });
+      return res.status(409).json({
+        message: current.disputeStatus
+          ? "A concern is already on file for this purchase"
+          : "This purchase is not eligible for a concern",
+        disputeStatus: current.disputeStatus ?? null,
       });
     }
+
+    // Freeze the author's escrowed earning while the dispute is open (Q1 "prevent", half 1).
+    // reference_id IS the purchase id on this surface — setBookingEarningsDispute reuses as-is (L6).
+    await storage.setBookingEarningsDispute(claimed.id, true).catch((err: any) => {
+      console.error("[ready-made] concern earnings-freeze failed (dispute still open):", err?.message);
+    });
+
+    // Surface to admins: notification row + the queue reads open disputes directly.
+    try {
+      const [listing] = await db.select({ title: readyMadeTrips.title })
+        .from(readyMadeTrips).where(eq(readyMadeTrips.id, claimed.readyMadeTripId)).limit(1);
+      await db.insert(adminNotifications).values({
+        type: "concierge_dispute_created",
+        message: `Ready-Made concern opened on "${listing?.title ?? claimed.readyMadeTripId}"`,
+        reason: reason.slice(0, 500),
+        metadata: { purchaseId: claimed.id, readyMadeTripId: claimed.readyMadeTripId },
+      } as any);
+    } catch (err: any) {
+      console.error("[ready-made] concern admin-notification failed:", err?.message);
+    }
+
+    return res.json({ success: true, disputeStatus: "open" });
   } catch (err: any) {
-    console.error("[ready-made] refund error:", err);
-    res.status(500).json({ message: "Failed to refund purchase" });
+    console.error("[ready-made] concern error:", err);
+    res.status(500).json({ message: "Failed to submit concern" });
   }
 });
 
@@ -1442,6 +1470,9 @@ router.get("/api/ready-made/purchases/by-clone/:tripId", isAuthenticated, async 
       .where(and(
         eq(readyMadePurchases.cloneTripId, req.params.tripId),
         eq(readyMadePurchases.buyerId, userId),
+        // P3: a refunded (soft-revoked) purchase keeps the clone but loses the entitlement —
+        // the card renders nothing rather than offering a revision that would 409.
+        inArray(readyMadePurchases.status, ["paid", "cloned"]),
       ))
       .limit(1);
 
