@@ -2875,3 +2875,57 @@ root-caused and fixed in the same session:
   the duplicate inner picker is gone (the drawer's one picker is the mock's design; the add form
   already posted `selectedServiceId`). Re-verified live both ways; tsc baseline unchanged; no
   spec referenced the removed pieces.
+
+
+## Optimizer "build around a location" + adopt flow — follow-ups (filed Aug 23, 2026)
+
+The decision-maker's paid-optimization redesign: keep the original plan + deliver the optimized plan
+as NEW, built AROUND a location (hotel / neighborhood / activity), and let the traveler ADOPT any
+portion (whole plan / per-day / per-stop) of a variation. Design reference:
+`docs/design/adopt-optimization-mock.html` (ratified). Ledger rows: `2026-08-23-optimizer-anchors`
+(Phases 0/1/1b), `2026-08-23-optimizer-pinned-anchor` (1c), `2026-08-23-optimizer-three-variants`.
+
+**LANDED (merged to main):**
+- ~~Phase 0 — pure anchor scorer (`shared/geo.ts`, `server/services/anchor-scoring.ts`)~~ (#566)
+- ~~Phase 1 — hotel/neighborhood/activity candidate loading (`anchor-candidates*.ts`)~~ (#566)
+- ~~Phase 1b — optimizer builds each of the 3 versions around a scored anchor; persisted per variant
+  (migration 257)~~ (#566)
+- ~~Phase 1c — traveler pins the anchor from the Optimize popup: `GET .../anchor-candidates` +
+  allowlisted `pinnedAnchor` on `.../generate`~~ (#567)
+- ~~The ratified adopt mock committed to `docs/design/`~~ (#568)
+
+**OPEN — build items (in sequence):**
+
+- **Phase 2 — availability gap-fill (SERP API / Tavily).** When the catalog can't fill a slot the
+  optimizer needs, query SERP/Tavily for a real candidate; §13-labelled as external + fetched-at,
+  routed through the §16 booking-agent rail (affiliate/outbound never client-side, no `window.open`),
+  cost-tracked into `ai_cost_tracking`. Keys confirmed available. Fail-open: a miss leaves the gap
+  honestly empty, never a fabricated fill. Next in sequence.
+- **Phase 3 — adopt endpoints + accept/reject feedback + lifecycle.**
+  - Adopt endpoints: whole-plan / per-day / per-stop, deltas recomputed against the ACTUAL anchor
+    (not the variant's original deltas — see the [DM] delta-rule call below).
+  - Accept/reject tracking: append-only log of accepted AND rejected plans AND single items →
+    feeds the feedback loop + analytics (new additive table, declared in `shared/schema.ts`,
+    no CHECK per the publish-trap rule; §14/§19 — no client-writable privileged fields).
+  - Lifecycle: keep the original, retain the comparison + variants, opt-in promote-to-trip
+    ("keep original + deliver optimized as new").
+  - Hotel change on adopt → the §16 booking-agent rail (never a raw outbound booking).
+- **Phases 4/5 — the adopt UI (matches `adopt-optimization-mock.html`).**
+  - Optimize popup wired to the 1c `anchor-candidates` + `pinnedAnchor` endpoints (Build-around:
+    type tiles + custom-location field).
+  - Per-stop `+` adopt ticks, per-day / whole-plan adopt CTAs ("Apply calm mornings" card CTA),
+    keep-full-plan footer.
+  - Finalize modal — four options: book it myself / send to booking agent / expert / concierge
+    (incl. "send to booking agent if that's all they need").
+
+**OPEN — decision-maker call [DM] (blocks Phase 3):**
+- **Portion-adopt delta recomputation.** When a traveler adopts only PART of a variant (e.g. Day 2
+  of version C) onto their original plan, do the deltas (cost/time/anchor-fit) recompute against the
+  MERGED plan and its actual anchor, or show the variant's original whole-plan deltas? Recommended:
+  recompute against the merged plan (honest — the shown delta is the delta the traveler actually
+  gets), but it is a genuine design call and Phase 3's adopt endpoints depend on it.
+
+**Verification (filed for the Replit agent, Aug 23):** render the mock; exercise
+`GET/POST .../anchor-candidates` + `/generate` with a pinned hotel, a custom placement, and no pin;
+confirm 3 variants each persist the pinned `anchor_*`; report the delta between the mock and the
+current live optimize/slip UI (that delta IS the Phases 4/5 scope).

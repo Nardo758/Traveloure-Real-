@@ -35,6 +35,26 @@ export interface PinnedAnchorInput {
 }
 
 /**
+ * Allowlist a client-supplied "build around THIS" pin (§19 posture — ONLY these five fields are ever
+ * read off a request body; nothing else, and no money/identity field). Returns undefined for a
+ * missing/malformed pin so the caller falls back to auto anchors. Pure + shared so every route that
+ * accepts a pin parses it ONE way (the two-authors-two-ways drift §18 warns about).
+ */
+const PIN_ANCHOR_TYPES = new Set<AnchorType>(["hotel", "neighborhood", "activity"]);
+export function parsePinnedAnchorInput(raw: any): PinnedAnchorInput | undefined {
+  if (!raw || typeof raw !== "object" || !PIN_ANCHOR_TYPES.has(raw.type)) return undefined;
+  const asNum = (v: unknown): number | undefined =>
+    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? parseFloat(v) : undefined;
+  return {
+    type: raw.type,
+    id: typeof raw.id === "string" ? raw.id.slice(0, 200) : undefined,
+    name: typeof raw.name === "string" ? raw.name.slice(0, 200) : undefined,
+    lat: asNum(raw.lat),
+    lng: asNum(raw.lng),
+  };
+}
+
+/**
  * PURE half of pinned-anchor resolution — the two paths that need no DB: matching an `activity` pin
  * to one of the trip's own located stops, and accepting an explicitly-placed custom location. Hotel
  * and neighborhood ids are resolved by the DB loader (`anchor-candidates.ts`), which falls back here.
