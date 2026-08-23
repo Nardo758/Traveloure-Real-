@@ -19,9 +19,9 @@
  * chat pane. Accept/decline booking requests is an earner action that already lives on the
  * expert/provider Inbox Queue tabs (never duplicated here — this is a traveler surface).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, Redirect, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
 import { useUnreadMessageCount } from "@/hooks/use-message-read";
@@ -443,20 +443,20 @@ const INBOX_TABS = ["messages", "updates"];
 
 export default function InboxPage() {
   const search = useSearch();
+  const [, setLocation] = useLocation();
   const tabParam = new URLSearchParams(search).get("tab") ?? "messages";
   const initialTab = INBOX_TABS.includes(tabParam) ? tabParam : "messages";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // W5-E: real per-tab unread counts — messages from the new GET /api/messages/unread/count,
   // updates from the same GET /api/notifications the Updates tab itself renders (no fabrication).
   const { data: unreadMessages } = useUnreadMessageCount();
   const { data: notifications } = useQuery<{ isRead: boolean }[]>({ queryKey: ["/api/notifications"] });
   const unreadUpdatesCount = (notifications ?? []).filter((n) => !n.isRead).length;
-
-  // Messages have one canonical home: the full Chat surface. Keeping a second thread-card
-  // implementation here made Inbox → Messages visually diverge from My Plans → Chat.
-  if (initialTab === "messages") {
-    return <Redirect to="/chat" />;
-  }
 
   return (
     <DashboardLayout>
@@ -473,7 +473,15 @@ export default function InboxPage() {
           </div>
         </div>
 
-        <Tabs defaultValue={initialTab} className="space-y-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(nextTab) => {
+            const tab = INBOX_TABS.includes(nextTab) ? nextTab : "messages";
+            setActiveTab(tab);
+            setLocation(tab === "updates" ? "/inbox?tab=updates" : "/inbox");
+          }}
+          className="space-y-4"
+        >
           <TabsList>
             <TabsTrigger value="messages" data-testid="tab-inbox-messages">
               Messages
