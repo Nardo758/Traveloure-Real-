@@ -18,7 +18,7 @@ function sql(query: string) {
 }
 
 test.describe("live optimized slip apply confirmation", () => {
-  test("cancel keeps the slip unchanged and confirmation applies once", async ({ page }) => {
+  test("cancel keeps the slip unchanged and a failed apply can be retried", async ({ page }) => {
     const email = `e2e-slip-${uid()}@example.com`;
     const password = "TestPassword123!";
     let userId: string | undefined;
@@ -135,16 +135,43 @@ test.describe("live optimized slip apply confirmation", () => {
       expect(slipAfterCancel.status()).toBe(200);
       expect((await slipAfterCancel.json()).comparison.selectedVariantId).toBeNull();
 
+      let failedApply = true;
+      await page.route(
+        `${BASE_URL}/api/itinerary-comparisons/${comparisonId}/apply-to-trip`,
+        async (route) => {
+          if (failedApply) {
+            failedApply = false;
+            await route.fulfill({
+              status: 500,
+              contentType: "application/json",
+              body: JSON.stringify({ message: "simulated apply failure" }),
+            });
+            return;
+          }
+          await route.continue();
+        },
+      );
+
       await applyProposal.click();
       await expect(dialog).toBeVisible();
       await page.getByTestId("button-apply-confirm").click();
 
+      await expect(dialog).toBeHidden();
+      await expect(page.getByTestId("apply-error")).toContainText(
+        "We couldn't apply this proposal",
+      );
+      await expect(page).toHaveURL(
+        new RegExp(`/itinerary-comparison/${comparisonId}$`),
+      );
+      await page.getByTestId("button-apply-retry").click();
+      await expect(dialog).toBeVisible();
+      await page.getByTestId("button-apply-confirm").click();
       await page.waitForURL(
         (url) => url.pathname === `/plans/${tripId}`,
         { timeout: 15_000 },
       );
-      expect(selectRequests).toHaveLength(1);
-      expect(applyRequests).toHaveLength(1);
+      expect(selectRequests).toHaveLength(2);
+      expect(applyRequests).toHaveLength(2);
     } finally {
       // The comparison is disposable; deleting the user cascades through the trip and
       // comparison fixture so repeated journey runs do not accumulate test data.
