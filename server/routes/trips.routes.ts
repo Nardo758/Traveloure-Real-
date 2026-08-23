@@ -67,8 +67,9 @@ import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
 // §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
 import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
-// Phase 1c — "build around a location": resolve/rank the traveler's anchor choice.
-import { loadRankedAnchors, resolvePinnedAnchor, type NamedStop, type PinnedAnchorInput } from "../services/anchor-candidates";
+// Phase 1c — "build around a location": rank anchor candidates for the Optimize popup (the read
+// rail). The pinned-anchor WRITE is resolved on the live POST /generate handler in server/routes.ts.
+import { loadRankedAnchors, type NamedStop } from "../services/anchor-candidates";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
@@ -683,23 +684,6 @@ async function buildAnchorStops(
   }
 }
 
-// Phase 1c: allowlist a client-supplied "build around THIS" pin (§19 posture — only these five
-// fields are ever read off the body, and none is a money/identity field). Returns undefined for a
-// missing/malformed pin so the optimizer falls back to auto anchors.
-const PIN_ANCHOR_TYPES = new Set(["hotel", "neighborhood", "activity"]);
-function parsePinnedAnchor(raw: any): PinnedAnchorInput | undefined {
-  if (!raw || typeof raw !== "object" || !PIN_ANCHOR_TYPES.has(raw.type)) return undefined;
-  const asNum = (v: unknown): number | undefined =>
-    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? parseFloat(v) : undefined;
-  return {
-    type: raw.type,
-    id: typeof raw.id === "string" ? raw.id.slice(0, 200) : undefined,
-    name: typeof raw.name === "string" ? raw.name.slice(0, 200) : undefined,
-    lat: asNum(raw.lat),
-    lng: asNum(raw.lng),
-  };
-}
-
 // Phase 1c: rank real anchor candidates (hotel / neighborhood / activity) for the Optimize popup.
 router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, async (req, res) => {
     try {
@@ -727,144 +711,6 @@ router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, 
       res.status(500).json({ message: "Failed to load anchor candidates" });
     }
   });
-
-
-router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, pinnedAnchor: rawPinnedAnchor } = req.body;
-
-      // Sprint-1 dislike loop: whitelisted "what to fix" chips from a re-run.
-      // They flow into TripPreferences.feedback, where selectVariantStrategy
-      // gives them top priority over inferred preferences.
-      const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
-      const dislikeFeedback: string[] = Array.isArray(rawFeedback)
-        ? rawFeedback.filter((f: unknown): f is string => typeof f === "string" && FEEDBACK_CHIPS.has(f)).slice(0, 4)
-        : [];
-
-      const comparison = await storage.getItineraryComparison(comparisonId);
-
-      if (!comparison) {
-        return res.status(404).json({ message: "Comparison not found" });
-      }
-
-      if (comparison.userId !== userId) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: "external",
-          price: parseFloat(item.price || "0"),
-          // §13: no fabricated fallback rating — unknown stays unknown.
-          rating: typeof item.rating === "number" ? item.rating : undefined,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else if (comparison.userExperienceId) {
-        const items = await storage.getUserExperienceItems(comparison.userExperienceId);
-
-        baselineItems = items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          serviceType: item.providerServiceId ? "provider" : "external",
-          price: parseFloat(item.price || "0"),
-          // §13: user-experience items have no rating source — omit, don't invent.
-          location: item.location,
-          duration: 120,
-          dayNumber: 1,
-          timeSlot: item.scheduledTime || "morning",
-        }));
-      } else {
-        const cartItemsData = await storage.getCartItemsWithServices(userId);
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
-          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-        }));
-      }
-
-      if (baselineItems.length === 0) {
-        return res.status(400).json({ message: "No items to optimize. Add services to your cart or experience first." });
-      }
-
-      const availableServices = await storage.getActiveProviderServices(100);
-
-      res.json({ message: "Optimization started", status: "generating" });
-
-      // Build trip preferences for adaptive variant strategy. Dislike feedback
-      // applies even without a trip row (it's an explicit instruction, not an
-      // inferred preference).
-      let tripPreferencesForGen: TripPreferences | undefined =
-        dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : undefined;
-      if (comparison.tripId) {
-        const tripRowForGen = await storage.getTrip(comparison.tripId);
-        if (tripRowForGen) {
-          const prefsForGen = (tripRowForGen.preferences as Record<string, any>) || {};
-          tripPreferencesForGen = {
-            eventType: tripRowForGen.eventType,
-            budget: tripRowForGen.budget ? parseFloat(tripRowForGen.budget) : null,
-            travelStyles: Array.isArray(prefsForGen.travelStyles) ? prefsForGen.travelStyles : [],
-            ...(dislikeFeedback.length > 0 ? { feedback: dislikeFeedback } : {}),
-          };
-        }
-      }
-
-      // 1c: resolve the traveler's "build around THIS" pin (if any) against real coordinates before
-      // handing it to the optimizer. Unresolvable ⇒ undefined ⇒ auto anchors (§13). Response was
-      // already sent above; this runs as part of the background optimization work.
-      const pinnedAnchorInput = parsePinnedAnchor(rawPinnedAnchor);
-      let resolvedPinnedAnchor:
-        | NonNullable<Awaited<ReturnType<typeof resolvePinnedAnchor>>>
-        | undefined;
-      if (pinnedAnchorInput) {
-        const anchorStops = await buildAnchorStops(comparison);
-        resolvedPinnedAnchor = (await resolvePinnedAnchor(pinnedAnchorInput, anchorStops)) ?? undefined;
-      }
-
-      generateOptimizedItineraries(
-        comparisonId,
-        userId,
-        baselineItems,
-        availableServices,
-        comparison.destination || "Unknown",
-        comparison.startDate || new Date().toISOString(),
-        comparison.endDate || new Date().toISOString(),
-        comparison.budget ? parseFloat(comparison.budget) : undefined,
-        comparison.travelers || 1,
-        comparison.tripId || undefined,
-        undefined,
-        tripPreferencesForGen,
-        [],
-        resolvedPinnedAnchor
-      ).catch((err) => console.error("Background optimization error:", err));
-
-    } catch (error) {
-      console.error("Error starting optimization:", error);
-      res.status(500).json({ message: "Failed to start optimization" });
-    }
-  });
-
 
 router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
     try {
