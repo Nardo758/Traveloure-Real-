@@ -5,7 +5,7 @@
 //
 // §16: books through POST /api/affiliate-booking-requests with the opaque server-minted
 // `bookingToken` only. The affiliate URL is never held by the client; the booking agent resolves it
-// server-side, preserving commission and keeping the traveler on-platform. No window.open, ever.
+// server-side, preserving commission and keeping the traveler on-platform. No client-side redirect.
 import { useMutation } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
