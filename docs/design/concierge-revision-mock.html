@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concierge Revision</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Archivo:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --page: #FAFAF8;
+    --card: #FFFFFF;
+    --ink: #1A1A18;
+    --mut: #7A7A72;
+    --hair: #E8E8E2;
+    --accent: #E85D55;
+    --accent-soft: rgba(232, 93, 85, 0.09);
+    --teal: #35605A;
+    --teal-soft: rgba(53, 96, 90, 0.10);
+    --amber-bg: #FFF9EE;
+    --amber-border: #EAD9B0;
+    --amber-ink: #6B5620;
+    --shadow: 0 1px 3px rgba(26,26,24,0.07), 0 8px 24px rgba(26,26,24,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #161614; --card: #211F1C; --ink: #F0EEE8; --mut: #9C9A90; --hair: #37342F;
+      --accent: #F07A72; --accent-soft: rgba(240,122,114,0.14);
+      --teal: #7FB5AD; --teal-soft: rgba(127,181,173,0.14);
+      --amber-bg: #2A2415; --amber-border: #55482A; --amber-ink: #D8C48E;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #161614; --card: #211F1C; --ink: #F0EEE8; --mut: #9C9A90; --hair: #37342F;
+    --accent: #F07A72; --accent-soft: rgba(240,122,114,0.14);
+    --teal: #7FB5AD; --teal-soft: rgba(127,181,173,0.14);
+    --amber-bg: #2A2415; --amber-border: #55482A; --amber-ink: #D8C48E;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--page); color: var(--ink);
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    margin: 0; padding: 40px 20px 80px; line-height: 1.5;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  .doc-head { margin-bottom: 12px; }
+  .doc-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  h1 { font-family: "Fraunces", Georgia, serif; font-size: clamp(30px,5vw,44px); font-weight: 600; line-height: 1.1; margin: 0 0 12px; text-wrap: balance; }
+  .doc-sub { color: var(--mut); font-size: 15px; max-width: 68ch; margin: 0; }
+  .doc-sub strong { color: var(--ink); font-weight: 600; }
+
+  /* lifecycle strip */
+  .lifecycle { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 26px 0 8px; }
+  .stage { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; border: 1px solid var(--hair); border-radius: 999px; padding: 6px 13px; background: var(--card); }
+  .stage .n { width: 18px; height: 18px; border-radius: 999px; background: var(--teal-soft); color: var(--teal); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
+  .stage.done { border-color: var(--teal); color: var(--teal); background: var(--teal-soft); }
+  .stage-arrow { color: var(--mut); font-size: 13px; }
+  .lifecycle-note { font-size: 11.5px; color: var(--mut); margin: 0 0 20px; }
+
+  .screen-label { display: flex; align-items: baseline; gap: 10px; margin: 40px 0 14px; }
+  .screen-label .num { font-family: "Fraunces", Georgia, serif; font-size: 22px; font-weight: 700; color: var(--accent); }
+  .screen-label h2 { font-size: 16px; font-weight: 700; margin: 0; }
+  .screen-label p { font-size: 13px; color: var(--mut); margin: 0; }
+
+  .screen { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .chrome { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--hair); }
+  .chrome .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--hair); }
+  .chrome .url { flex: 1; font-size: 11.5px; color: var(--mut); background: var(--page); border: 1px solid var(--hair); border-radius: 6px; padding: 4px 10px; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chrome .who { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 3px 9px; border-radius: 5px; }
+  .who.buyer { background: var(--teal-soft); color: var(--teal); }
+  .who.expert { background: var(--accent-soft); color: var(--accent); }
+  .who.admin { background: var(--amber-bg); color: var(--amber-ink); border: 1px solid var(--amber-border); }
+  .screen-body { padding: 22px 24px 26px; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+
+  .panel-title { font-family: "Fraunces", Georgia, serif; font-size: 19px; font-weight: 600; margin: 0 0 3px; }
+  .panel-sub { font-size: 13px; color: var(--mut); margin: 0 0 14px; }
+
+  /* concierge card (buyer) */
+  .concierge { border: 1px solid var(--teal); border-radius: 10px; overflow: hidden; }
+  .concierge-head { background: var(--teal-soft); padding: 13px 16px; display: flex; align-items: center; gap: 10px; }
+  .concierge-head .bell { font-size: 20px; }
+  .concierge-head .t { font-weight: 700; font-size: 14px; }
+  .concierge-head .s { font-size: 12px; color: var(--mut); }
+  .concierge-body { padding: 14px 16px; }
+  .entitlement { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 7px 0; }
+  .entitlement .chk { color: var(--teal); font-weight: 700; }
+  .entitlement.used { color: var(--mut); }
+  .entitlement.used .chk { color: var(--mut); }
+  .entitlement.sm { font-size: 12px; padding: 3px 0; }
+
+  /* compact concierge (top-right of the frozen slip header) */
+  .concierge.compact { border-radius: 9px; }
+  .concierge.compact .concierge-head { padding: 9px 12px; gap: 8px; }
+  .concierge.compact .concierge-head .bell { font-size: 16px; }
+  .concierge.compact .concierge-head .t { font-size: 12.5px; }
+  .concierge.compact .concierge-head .s { font-size: 11px; }
+  .concierge.compact .concierge-body { padding: 9px 12px; }
+  .concierge.compact .btn-row { margin-top: 8px; gap: 6px; }
+  .btn.sm { font-size: 11.5px; padding: 6px 10px; border-radius: 6px; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; font-family: inherit; font-size: 13px; font-weight: 600; border-radius: 7px; padding: 9px 15px; cursor: pointer; border: 1px solid var(--hair); background: var(--card); color: var(--ink); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.teal { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .btn.ghost { background: transparent; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  .field { margin-top: 12px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--mut); margin-bottom: 5px; }
+  .field .box { border: 1px solid var(--hair); border-radius: 7px; background: var(--page); padding: 10px 12px; font-size: 13px; color: var(--ink); min-height: 62px; }
+  .field .box.ph { color: var(--mut); }
+
+  /* inbox queue row (expert) */
+  .queue-row { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--hair); border-radius: 9px; padding: 13px 15px; }
+  .queue-row.hot { border-color: var(--accent); background: var(--accent-soft); }
+  .queue-av { width: 38px; height: 38px; border-radius: 999px; background: var(--teal); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .queue-main { flex: 1; min-width: 0; }
+  .queue-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--accent); }
+  .queue-title { font-weight: 600; font-size: 14px; }
+  .queue-note { font-size: 12.5px; color: var(--mut); margin-top: 3px; }
+  .sla { font-size: 11.5px; font-weight: 700; color: var(--amber-ink); background: var(--amber-bg); border: 1px solid var(--amber-border); border-radius: 5px; padding: 3px 8px; white-space: nowrap; }
+
+  /* chat */
+  .chat { border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; }
+  .chat-head { padding: 9px 14px; border-bottom: 1px solid var(--hair); font-size: 12px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: 0.6px; }
+  .chat-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; background: var(--page); }
+  .bubble { max-width: 80%; font-size: 13px; padding: 9px 12px; border-radius: 12px; line-height: 1.45; }
+  .bubble.them { align-self: flex-start; background: var(--card); border: 1px solid var(--hair); border-bottom-left-radius: 3px; }
+  .bubble.me { align-self: flex-end; background: var(--teal); color: #fff; border-bottom-right-radius: 3px; }
+
+  /* suggest / approve */
+  .suggest { border: 1px dashed var(--accent); border-radius: 9px; padding: 13px 15px; background: var(--accent-soft); }
+  .suggest .lead { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent); margin-bottom: 8px; }
+  .diff { font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+  .diff .old { color: var(--mut); text-decoration: line-through; }
+  .diff .new { color: var(--ink); font-weight: 600; }
+
+  .note { background: var(--amber-bg); border: 1px solid var(--amber-border); border-radius: 8px; color: var(--amber-ink); font-size: 12.5px; padding: 11px 14px; margin-top: 18px; line-height: 1.55; }
+  .note b { font-weight: 700; }
+
+  .wiring { margin-top: 48px; }
+  .wiring h2 { font-family: "Fraunces", Georgia, serif; font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  .wiring > p { color: var(--mut); font-size: 13.5px; margin: 0 0 18px; max-width: 70ch; }
+  .wire-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+  .wire { background: var(--card); border: 1px solid var(--hair); border-radius: 10px; padding: 15px 17px; }
+  .wire .tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; border-radius: 4px; padding: 3px 8px; margin-bottom: 8px; }
+  .tag.exists { background: var(--teal-soft); color: var(--teal); }
+  .tag.new { background: var(--accent-soft); color: var(--accent); }
+  .wire h3 { font-size: 14px; font-weight: 700; margin: 0 0 6px; }
+  .wire p { font-size: 12.5px; color: var(--mut); margin: 0; line-height: 1.55; }
+  .wire code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--page); border: 1px solid var(--hair); border-radius: 4px; padding: 1px 5px; }
+  /* faithful Trip Slip surface — frozen top + scrolling contents */
+  .slip-scroll { max-height: 560px; overflow-y: auto; position: relative; }
+  .slip-frozen {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--card); border-bottom: 1px solid var(--hair);
+    padding: 16px 24px 10px;
+    box-shadow: 0 6px 14px -10px rgba(26,26,24,0.35);
+  }
+  .frozen-grid { display: grid; grid-template-columns: 1fr minmax(220px, 260px); gap: 18px; align-items: start; }
+  @media (max-width: 720px) { .frozen-grid { grid-template-columns: 1fr; } }
+  .frozen-left { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .slip-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .frozen-hint { font-size: 10.5px; color: var(--mut); text-align: center; margin-top: 9px; letter-spacing: 0.3px; }
+
+  .slip-contents { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .slip-meta-line { font-size: 13px; color: var(--mut); }
+
+  .slip-refline { display: flex; align-items: center; gap: 8px; }
+  .slip-ref { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--mut); }
+  .slip-phase { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--mut); border: 1px solid var(--hair); border-radius: 4px; padding: 2px 7px; }
+  .slip-title { font-family: "Fraunces", Georgia, serif; font-size: 24px; font-weight: 700; color: var(--ink); }
+  .slip-meta { font-size: 13px; color: var(--mut); }
+  .slip-status { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 2px; }
+  .slip-count { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .slip-count .lbl { font-weight: 500; color: var(--mut); font-size: 12px; margin-left: 2px; }
+  .slip-dot { color: var(--hair); }
+
+  .expert-note { border-left: 3px solid var(--teal); background: var(--teal-soft); border-radius: 0 8px 8px 0; padding: 10px 14px; }
+  .en-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--teal); margin-bottom: 3px; }
+  .en-body { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+
+  .slip-day { border-top: 1px solid var(--hair); padding-top: 10px; }
+  .day-h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--mut); margin-bottom: 8px; }
+  .slip-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+  .slip-item .pill { font-size: 10.5px; font-weight: 700; border-radius: 5px; padding: 2px 8px; white-space: nowrap; }
+  .pill.planning { background: var(--hair); color: var(--mut); }
+  .pill.ready { background: var(--accent-soft); color: var(--accent); }
+  .it-title { font-size: 13.5px; color: var(--ink); flex: 1; }
+  .it-price { font-size: 13px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* transport leg (LogisticsRow) — indented, muted, between items */
+  .slip-logistics { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 14px; color: var(--mut); }
+  .log-icon { font-size: 13px; flex-shrink: 0; opacity: 0.8; }
+  .log-main { flex: 1; min-width: 0; }
+  .log-line { font-size: 12px; }
+  .log-attr { font-size: 10.5px; font-style: italic; opacity: 0.85; }
+  .log-pill { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid var(--hair); color: var(--mut); border-radius: 5px; padding: 2px 6px; flex-shrink: 0; }
+
+  /* platform-provider transport leg — bookable, distinct from the muted optimizer leg */
+  .slip-logistics.provider { border-left: 2px solid var(--teal); background: var(--teal-soft); border-radius: 0 7px 7px 0; padding: 8px 10px 8px 12px; }
+  .log-provider { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 3px; }
+  .src-badge { font-size: 9.5px; font-weight: 700; border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+  .src-badge.platform { background: rgba(53,96,90,0.16); color: var(--teal); }
+  .prov-name { font-size: 11.5px; color: var(--mut); }
+
+  .mock-anno { background: var(--card); border: 1px dashed var(--hair); border-radius: 8px; padding: 11px 14px; font-size: 12px; color: var(--mut); line-height: 1.55; }
+  .mock-anno b { color: var(--ink); }
+
+  /* List | Map toggle + map view */
+  .viewtoggle { display: inline-flex; border: 1px solid var(--hair); border-radius: 7px; overflow: hidden; }
+  .vt { font-size: 12px; font-weight: 700; padding: 7px 13px; color: var(--mut); cursor: pointer; }
+  .vt.on { background: var(--teal); color: #fff; }
+  .mapwrap { position: relative; height: 260px; border-radius: 10px; border: 1px solid var(--hair); overflow: hidden;
+    background: linear-gradient(115deg, #E7EDE4 0%, #DCE7E2 40%, #E9E4D8 100%); }
+  :root[data-theme="dark"] .mapwrap, .mapwrap { background-blend-mode: normal; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mapwrap { background: linear-gradient(115deg, #232B26 0%, #1F2A28 40%, #2A2921 100%); } }
+  :root[data-theme="dark"] .mapwrap { background: linear-gradient(115deg, #232B26 0%, #1F2A28 40%, #2A2921 100%); }
+  .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 999px 999px 999px 3px; transform: rotate(-45deg);
+    background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+  .pin > * , .pin { text-align: center; }
+  .pin { line-height: 1; }
+  .pin::after { content: ""; }
+  .pin { transform: rotate(0deg); border-radius: 999px; }
+  .pin.booked { background: var(--teal); }
+  .mapcall { position: absolute; display: flex; align-items: center; background: var(--card); border: 1px solid var(--teal); border-radius: 8px;
+    padding: 6px 10px; font-size: 11.5px; font-weight: 600; color: var(--ink); box-shadow: var(--shadow); white-space: nowrap; }
+  .mapattr { position: absolute; right: 8px; bottom: 6px; font-size: 9.5px; color: var(--mut); }
+  .maplegend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--mut); margin-top: 10px; align-items: center; }
+  .maplegend span { display: inline-flex; align-items: center; gap: 6px; }
+  .lg-pin { width: 12px; height: 12px; border-radius: 999px; background: var(--accent); display: inline-block; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="doc-head">
+    <div class="doc-eyebrow">Mockup for sign-off · Ready-Made purchase support</div>
+    <h1>Concierge Revision — recourse without a destructive refund</h1>
+    <p class="doc-sub">Ratified model: a Ready-Made purchase carries <strong>no self-serve refund</strong>. Instead every purchase includes <strong>one consultation and one revision</strong> from the expert who built it. The 7-day escrow window becomes the expert's <strong>service deadline</strong>, and an <strong>admin-mediated refund stays available</strong> for genuine disputes. This replaces the old "refund deletes the trip" path — which destroyed the buyer's own additions and orphaned live paid bookings (fixed separately in the hardening PR).</p>
+  </header>
+
+  <div class="lifecycle">
+    <span class="stage done"><span class="n">✓</span> Purchased</span>
+    <span class="stage-arrow">→</span>
+    <span class="stage"><span class="n">1</span> Revision available</span>
+    <span class="stage-arrow">→</span>
+    <span class="stage"><span class="n">2</span> Requested</span>
+    <span class="stage-arrow">→</span>
+    <span class="stage"><span class="n">3</span> In progress</span>
+    <span class="stage-arrow">→</span>
+    <span class="stage"><span class="n">4</span> Delivered</span>
+  </div>
+  <p class="lifecycle-note">State lives on the purchase row (<code>readyMadePurchases.revision_status</code>, additive-nullable) — one entitlement per purchase. Escrow releases the expert's earning only after Delivered, or on the admin dispute path.</p>
+
+  <!-- Screen 1: delivery lands on the Trip Slip, Concierge card in context -->
+  <div class="screen-label">
+    <span class="num">1</span>
+    <div><h2>Delivery — the purchase lands on the buyer's Trip Slip</h2><p>Right after payment the buyer is dropped on <code>/plans/:id</code> (the Slip). The Concierge card sits inside the real slip, under the expert note, above the plan days.</p></div>
+  </div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/plans/kyoto-honeymoon-9f14</span><span class="who buyer">Buyer view · Trip Slip</span></div>
+    <div class="slip-scroll">
+      <!-- ── FROZEN top section (sticky: stays put as the plan scrolls) ── -->
+      <div class="slip-frozen">
+        <div class="frozen-grid">
+          <!-- left: header + primary action bar (moved ABOVE the plan) -->
+          <div class="frozen-left">
+            <div class="slip-refline">
+              <span class="slip-ref">Slip TRV-8ULN-6L</span>
+              <span class="slip-phase">Draft</span>
+            </div>
+            <div class="slip-title">Kyoto Honeymoon</div>
+            <div class="slip-status">
+              <span class="slip-count">7 <span class="lbl">in planning</span></span>
+              <span class="slip-dot">·</span>
+              <span class="slip-count">2 <span class="lbl">ready to book</span></span>
+            </div>
+            <div class="slip-actions">
+              <span class="viewtoggle"><span class="vt on">List</span><span class="vt">Map</span></span>
+              <button class="btn primary">✨ Optimize this plan</button>
+              <button class="btn teal">Add all to checkout (2)</button>
+              <button class="btn ghost">Share</button>
+              <button class="btn ghost">Trip Card</button>
+            </div>
+          </div>
+          <!-- right: Concierge support, top-right -->
+          <div class="concierge compact">
+            <div class="concierge-head">
+              <span class="bell">🛎️</span>
+              <div><div class="t">Concierge support</div><div class="s">Included · built by @yuki</div></div>
+            </div>
+            <div class="concierge-body">
+              <div class="entitlement sm"><span class="chk">✓</span> 1 consultation</div>
+              <div class="entitlement sm"><span class="chk">✓</span> 1 revision</div>
+              <div class="btn-row">
+                <button class="btn teal sm">Message @yuki</button>
+                <button class="btn primary sm">Request revision</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="frozen-hint">▲ This section stays fixed — the plan below scrolls under it</div>
+      </div>
+
+      <!-- ── SCROLLING plan contents ── -->
+      <div class="slip-contents">
+        <div class="slip-meta-line">Kyoto, Japan · 6 days · just added to your plans — every day is editable</div>
+
+        <!-- trip-level expert note (cloned with the purchase, PR #541) -->
+        <div class="expert-note">
+          <div class="en-label">Note from Yuki</div>
+          <div class="en-body">Welcome — congratulations! This plan leans into quiet mornings and one standout dinner. Message me your dates and I'll fine-tune the hanami timing for you.</div>
+        </div>
+
+        <div class="slip-day">
+          <div class="day-h">Day 1 · Arrival &amp; Gion</div>
+          <div class="slip-item"><span class="pill planning">In planning</span><span class="it-title">Evening walk through Gion</span></div>
+          <!-- transport leg (LogisticsRow): mode icon · from → to · min · cost · "added by optimizer" · logistics pill -->
+          <div class="slip-logistics">
+            <span class="log-icon">🚶</span>
+            <div class="log-main">
+              <div class="log-line">Gion → Kikunoi · 8 min</div>
+              <div class="log-attr">added by optimizer</div>
+            </div>
+            <span class="log-pill">logistics</span>
+          </div>
+          <div class="slip-item"><span class="pill ready">Ready to book</span><span class="it-title">Kaiseki dinner — Kikunoi</span><span class="it-price">$210</span></div>
+        </div>
+        <div class="slip-day">
+          <div class="day-h">Day 2 · Arashiyama</div>
+          <div class="slip-item"><span class="pill planning">In planning</span><span class="it-title">Bamboo grove at dawn</span></div>
+          <div class="slip-logistics">
+            <span class="log-icon">🚕</span>
+            <div class="log-main">
+              <div class="log-line">Bamboo grove → Hozu river · 15 min · $18</div>
+              <div class="log-attr">added by optimizer</div>
+            </div>
+            <span class="log-pill">logistics</span>
+          </div>
+          <div class="slip-item"><span class="pill ready">Ready to book</span><span class="it-title">Private boat on the Hozu river</span><span class="it-price">$140</span></div>
+        </div>
+        <div class="slip-day">
+          <div class="day-h">Day 3 · Temples</div>
+          <div class="slip-item"><span class="pill planning">In planning</span><span class="it-title">Kiyomizu-dera morning</span></div>
+          <!-- PLATFORM-PROVIDER transport leg (bookingSource="platform"): green "Book on Traveloure"
+               badge + real provider + a Book CTA — actionable, unlike the muted optimizer leg above -->
+          <div class="slip-logistics provider">
+            <span class="log-icon">🚐</span>
+            <div class="log-main">
+              <div class="log-line"><strong style="color:var(--ink)">Kiyomizu-dera → Nanzen-ji · 20 min</strong></div>
+              <div class="log-provider">
+                <span class="src-badge platform">✓ Book on Traveloure</span>
+                <span class="prov-name">Kyoto MK private car · pickup 12:30</span>
+              </div>
+            </div>
+            <button class="btn teal sm">Book · $32</button>
+          </div>
+          <div class="slip-item"><span class="pill planning">In planning</span><span class="it-title">Tofu lunch in Nanzen-ji</span></div>
+        </div>
+        <div class="mock-anno">
+          <b>Two kinds of leg, on purpose.</b> The muted grey rows above (🚶/🚕 · "added by optimizer" · "logistics" pill) are the optimizer's honest estimates — context, never actionable. This 🚐 leg is a <b>platform service provider's</b> transport: it carries a green "✓ Book on Traveloure" badge, the real provider + pickup, and a <b>Book</b> CTA at the catalog price. An affiliate leg would instead read "via {partner}" and book through the travel-agent rail (§16 — never a raw link). <b>Current state:</b> this rich provider rendering ships on the full PlanCard's TransportSection today; the Slip's LogisticsRow does <b>not</b> render it yet (documented KNOWN GAP — the fields aren't populated server-side). Surfacing it on the Slip is the design-forward piece this frame illustrates, so provider transport can be booked from the same place as everything else.
+        </div>
+      </div>
+    </div>
+    <div class="screen-body" style="padding-top:16px">
+      <div class="note"><b>Layout:</b> the command bar (Optimize · Add all to checkout · Share · Trip Card) and the Concierge card are pinned in a <b>frozen top section</b> — they stay put while the plan days scroll beneath. Concierge sits top-right so "have my expert adjust it" is always one click away, right beside the self-serve verbs. Honest framing (§13): the card promises only the one consult + one revision the expert committed to — never unlimited edits or a money-back guarantee.</div>
+    </div>
+  </div>
+
+  <!-- Screen 1b: the slip's contents on a MAP (List | Map toggle) -->
+  <div class="screen-label">
+    <span class="num">1b</span>
+    <div><h2>Map view — the same slip, on a map</h2><p>The frozen bar's List | Map toggle. Same plancard data the slip already fetches; the existing trip map (MapControlCenter) mounts below the frozen section.</p></div>
+  </div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/plans/kyoto-honeymoon-9f14</span><span class="who buyer">Buyer view · Map</span></div>
+    <div style="padding:16px 24px 22px">
+      <div class="slip-actions" style="margin-bottom:12px">
+        <span class="viewtoggle"><span class="vt">List</span><span class="vt on">Map</span></span>
+        <button class="btn primary">✨ Optimize this plan</button>
+        <button class="btn teal">Add all to checkout (2)</button>
+        <span style="margin-left:auto;font-size:12px;color:var(--mut);align-self:center" ><b style="color:var(--ink)">6 of 9</b> stops located</span>
+      </div>
+
+      <!-- stylized map canvas -->
+      <div class="mapwrap">
+        <!-- transport polylines -->
+        <svg viewBox="0 0 600 260" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+          <path d="M105 190 L235 120" stroke="#22c55e" stroke-width="3" stroke-dasharray="2 10" fill="none"/>
+          <path d="M235 120 L390 85" stroke="#35605A" stroke-width="4" fill="none"/>
+          <path d="M390 85 L505 165" stroke="#9C9A90" stroke-width="3" stroke-dasharray="7 6" fill="none"/>
+        </svg>
+        <div class="pin" style="left:15%;top:68%">1</div>
+        <div class="pin" style="left:37%;top:41%">2</div>
+        <div class="pin booked" style="left:63%;top:27%">3</div>
+        <div class="pin" style="left:82%;top:59%">4</div>
+        <!-- provider transport callout on the teal leg -->
+        <div class="mapcall" style="left:44%;top:20%">
+          🚐 Kyoto MK private car · 20 min
+          <button class="btn teal sm" style="margin-left:8px">Book · $32</button>
+        </div>
+        <div class="mapattr">Map data © Google</div>
+      </div>
+
+      <!-- legend + unlocated -->
+      <div class="maplegend">
+        <span><span class="lg-pin"></span> located stop</span>
+        <span><span class="lg-pin" style="background:var(--teal)"></span> booked</span>
+        <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#35605A" stroke-width="4"/></svg> provider transport (bookable)</span>
+        <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#9C9A90" stroke-width="3" stroke-dasharray="6 5"/></svg> optimizer estimate</span>
+        <span><svg width="26" height="6"><line x1="0" y1="3" x2="26" y2="3" stroke="#22c55e" stroke-width="3" stroke-dasharray="2 6"/></svg> walk</span>
+      </div>
+      <div class="note" style="margin-top:10px"><b>Honesty rules (§13/§22):</b> only located items are pinned — the 3 unpinned items are listed below the map ("Not on the map yet: Tofu lunch · Ryokan check-in · Airport transfer"), never guessed onto it. Zero located items ⇒ no map renders at all (never a city-center fallback). Provider transport legs draw solid with a Book action; optimizer estimates stay dashed and labeled. The map is the SAME MapControlCenter the PlanCard already uses — one implementation, one more mount.</div>
+    </div>
+  </div>
+
+  <!-- Screen 2: expert inbox + consult -->
+  <div class="screen-label">
+    <span class="num">2</span>
+    <div><h2>Expert's Inbox — the request lands as work</h2><p>Same Assigned-Trips queue experts already use. The request carries the buyer's note and a deadline tied to the escrow window.</p></div>
+  </div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/expert/inbox?tab=assignments</span><span class="who expert">Expert view</span></div>
+    <div class="screen-body">
+      <div class="two">
+        <div>
+          <div class="panel-title">Assigned Trips</div>
+          <div class="panel-sub">A revision request grants you edit access to the buyer's trip.</div>
+          <div class="queue-row hot">
+            <div class="queue-av">M</div>
+            <div class="queue-main">
+              <div class="queue-tag">Revision request · Ready-Made sale</div>
+              <div class="queue-title">Kyoto Honeymoon — for Maya R.</div>
+              <div class="queue-note">"Going in March not autumn; swap the temple day for a food tour — can you rework days 3–4?"</div>
+            </div>
+            <span class="sla">Due in 6 days</span>
+          </div>
+          <div class="btn-row"><button class="btn teal">Open trip &amp; revise</button><button class="btn ghost">Reply first</button></div>
+        </div>
+        <div>
+          <div class="panel-title">Consultation</div>
+          <div class="panel-sub">The included consult is a normal chat thread, scoped to this sale.</div>
+          <div class="chat">
+            <div class="chat-head">Maya R. · Kyoto Honeymoon</div>
+            <div class="chat-body">
+              <div class="bubble them">Hi! We loved the plan but our dates moved to March. Cherry blossoms possible?</div>
+              <div class="bubble me">Congrats! March is early for Kyoto blossoms — I'll shift the hanami day and add a plum-garden alternative. Reworking days 3–4 now.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screen 3: revise via Suggest -> buyer approves -->
+  <div class="screen-label">
+    <span class="num">3</span>
+    <div><h2>The revision — expert proposes, buyer approves</h2><p>It's the buyer's own trip now, so changes ride the existing Suggest→approve flow — the buyer stays in control.</p></div>
+  </div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/trip/kyoto-honeymoon-9f14</span><span class="who buyer">Buyer view</span></div>
+    <div class="screen-body">
+      <div class="suggest">
+        <div class="lead">✎ @yuki suggested changes to your plan</div>
+        <div class="diff">
+          <span class="old">Day 3 — Kiyomizu-dera temple morning</span>
+          <span class="new">Day 3 — Nishiki Market food tour + sake tasting (from your request)</span>
+          <span class="old">Day 4 — Autumn foliage at Tofuku-ji</span>
+          <span class="new">Day 4 — Plum garden at Kitano Tenmangu (March bloom)</span>
+        </div>
+        <div class="btn-row"><button class="btn primary">Approve changes</button><button class="btn ghost">Ask for tweaks</button></div>
+      </div>
+      <div class="note"><b>Why Suggest, not silent edit:</b> the clone is the buyer's own trip. The expert holds temporary advisor <b>write</b> access, but material changes surface as suggestions the buyer approves — so nobody's plan changes under them, and "1 revision" has a clear done-line (approved = Delivered).</div>
+    </div>
+  </div>
+
+  <!-- Screen 4: admin dispute hatch -->
+  <div class="screen-label">
+    <span class="num">4</span>
+    <div><h2>Dispute escape hatch — admin only</h2><p>If the expert goes unresponsive or the plan is fundamentally not as described, an admin can still refund. This is the guarded path, never the old unconditional delete.</p></div>
+  </div>
+  <div class="screen">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">traveloure.com/admin/ready-made/disputes</span><span class="who admin">Admin only · §2 guard</span></div>
+    <div class="screen-body">
+      <div class="queue-row">
+        <div class="queue-av" style="background: var(--amber-ink)">!</div>
+        <div class="queue-main">
+          <div class="queue-tag" style="color: var(--amber-ink)">Dispute · expert unresponsive</div>
+          <div class="queue-title">Osaka Food Week — buyer requested revision 7 days ago, no expert reply</div>
+          <div class="queue-note">SLA breached · escrow still held (not released to expert) · buyer eligible for refund</div>
+        </div>
+        <span class="sla">Escrow held</span>
+      </div>
+      <div class="btn-row"><button class="btn primary">Refund buyer</button><button class="btn ghost">Nudge expert</button><button class="btn ghost">Reassign to another expert</button></div>
+      <div class="note"><b>Refund here is safe:</b> it runs the same ledger reversal, but the clone-delete honors the hardening guard — a buyer who has since booked real services keeps their trip and those bookings; only the ready-made charge is returned. The admin decides; the system never auto-destroys.</div>
+    </div>
+  </div>
+
+  <!-- Wiring -->
+  <div class="wiring">
+    <h2>What this reuses vs. what's new</h2>
+    <p>Almost all the machinery exists — an expert editing a traveler's trip is a solved problem (advisor access + the Suggest flow). The new surface is thin: an entitlement state, a request action, and the admin dispute view.</p>
+    <div class="wire-grid">
+      <div class="wire"><span class="tag exists">Reuses</span><h3>Expert edit access</h3><p><code>tripExpertAdvisors</code> with a WRITE-access status (§12) grants the selling expert temporary edit rights on the buyer's clone — the same grant assigned advisors already hold.</p></div>
+      <div class="wire"><span class="tag exists">Reuses</span><h3>Inbox → Assigned Trips</h3><p>The request appears in the queue experts already work; no new expert surface.</p></div>
+      <div class="wire"><span class="tag exists">Reuses</span><h3>Suggest → approve</h3><p><code>POST /api/trips/:id/suggestions</code> — the expert proposes, the buyer approves. The buyer stays in control of their own trip.</p></div>
+      <div class="wire"><span class="tag exists">Reuses</span><h3>Consultation = chat</h3><p>The existing <code>/chat</code> thread system, scoped to the purchase. No new messaging.</p></div>
+      <div class="wire"><span class="tag exists">Reuses</span><h3>Escrow as SLA</h3><p>The <code>ready_made_sale</code> hold already exists; its meaning shifts from "refund window" to "expert must engage before earning releases."</p></div>
+      <div class="wire"><span class="tag new">New</span><h3>Entitlement state</h3><p><code>readyMadePurchases.revision_status</code> + request note (additive-nullable, declared in <code>shared/schema.ts</code>, no CHECK — publish-trap rule). One revision per purchase.</p></div>
+      <div class="wire"><span class="tag new">New</span><h3>Request + admin dispute</h3><p>Buyer "Request my revision" action; admin dispute list under the §2 blanket guard, refunding via the existing ledger + the hardening delete-guard.</p></div>
+      <div class="wire"><span class="tag new">New</span><h3>Listing promise</h3><p>Ready-Made cards/detail state "includes 1 consult + 1 revision" so buyers know before they buy — and it becomes a real selling point.</p></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
