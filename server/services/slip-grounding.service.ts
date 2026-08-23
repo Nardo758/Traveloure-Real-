@@ -18,6 +18,7 @@
 
 import { loadOptimizerCatalog } from "./optimizer-baseline.service";
 import { getExtractedPlacesForMarket } from "./dmo-extracted-places.service";
+import { getAffiliateProductsForMarket } from "./affiliate-grounding.service";
 import { similarity, MATCH_THRESHOLD } from "./slip-grounding-match";
 
 // The pure matcher lives in slip-grounding-match.ts (no DB import — unit-testable). Re-exported here
@@ -30,6 +31,7 @@ export interface GroundableItem {
   locationName?: string | null;
   itemType?: string | null;
   providerServiceId?: string | null;
+  affiliateProductId?: string | null;
   dmoExtractedPlaceId?: string | null;
   latitude?: string | null;
   longitude?: string | null;
@@ -43,6 +45,7 @@ function itemName(item: GroundableItem): string {
 export interface GroundingResult {
   items: GroundableItem[];
   groundedToCatalog: number;
+  groundedToAffiliate: number;
   groundedToDmo: number;
 }
 
@@ -57,19 +60,23 @@ export async function groundAiItems(
   destination: string | null | undefined,
 ): Promise<GroundingResult> {
   let groundedToCatalog = 0;
+  let groundedToAffiliate = 0;
   let groundedToDmo = 0;
-  if (items.length === 0) return { items, groundedToCatalog, groundedToDmo };
+  const empty = () => ({ items, groundedToCatalog, groundedToAffiliate, groundedToDmo });
+  if (items.length === 0) return empty();
 
   let catalog: Awaited<ReturnType<typeof loadOptimizerCatalog>> = [];
+  let affiliates: Awaited<ReturnType<typeof getAffiliateProductsForMarket>> = [];
   let places: Awaited<ReturnType<typeof getExtractedPlacesForMarket>> = [];
   try {
-    [catalog, places] = await Promise.all([
+    [catalog, affiliates, places] = await Promise.all([
       loadOptimizerCatalog(destination),
+      getAffiliateProductsForMarket(destination),
       getExtractedPlacesForMarket(destination),
     ]);
   } catch (err) {
     console.error("[slip-grounding] load failed — items stay ungrounded:", (err as any)?.message);
-    return { items, groundedToCatalog, groundedToDmo };
+    return empty();
   }
 
   for (const item of items) {
@@ -93,10 +100,31 @@ export async function groundAiItems(
         item.longitude = bestSvc.lng;
       }
       groundedToCatalog++;
-      continue; // catalog and DMO links are mutually exclusive.
+      continue; // the three rungs are mutually exclusive.
     }
 
-    // 2) DMO place (informational — pin + official/ticketing link, never a platform booking, Q3).
+    // 2) AFFILIATE product (partner inventory — bookable via the agent rail, §16). Catalog-first
+    // (rung 01) already missed, so a confident affiliate match is the next-strongest outcome.
+    // The item stores only the product id; the booking CTA (and whether one shows at all — Q3's
+    // bookingType split) is server-derived at plancard-assembly time, never here.
+    let bestAff: { id: string; lat: string | null; lng: string | null; score: number } | null = null;
+    for (const p of affiliates) {
+      const score = similarity(name, p.name ?? "");
+      if (score >= MATCH_THRESHOLD && (!bestAff || score > bestAff.score)) {
+        bestAff = { id: p.id, lat: p.latitude ?? null, lng: p.longitude ?? null, score };
+      }
+    }
+    if (bestAff) {
+      item.affiliateProductId = bestAff.id;
+      if (bestAff.lat != null && bestAff.lng != null && item.latitude == null && item.longitude == null) {
+        item.latitude = bestAff.lat;
+        item.longitude = bestAff.lng;
+      }
+      groundedToAffiliate++;
+      continue; // the three rungs are mutually exclusive.
+    }
+
+    // 3) DMO place (informational — pin + official/ticketing link, never a platform booking, Q3).
     let bestPlace: { id: string; lat: string | null; lng: string | null; score: number } | null = null;
     for (const p of places) {
       const score = similarity(name, p.name ?? "");
@@ -115,5 +143,5 @@ export async function groundAiItems(
     // else: no confident match — item stays an honest AI suggestion (fail-closed).
   }
 
-  return { items, groundedToCatalog, groundedToDmo };
+  return { items, groundedToCatalog, groundedToAffiliate, groundedToDmo };
 }
