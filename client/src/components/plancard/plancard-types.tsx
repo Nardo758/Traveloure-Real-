@@ -6,7 +6,11 @@ import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import type { RoutingStatus } from "@shared/schema";
 import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
+import type { AffiliateBookingInfo } from "./affiliate-booking";
 import { parseCalendarDate } from "@/lib/calendar-date";
+
+// Re-exported so plancard consumers can name the affiliate-booking contract without a second import.
+export type { AffiliateBookingInfo };
 
 // Re-exported so plancard consumers can name the routing-status union without a second import.
 export type { RoutingStatus };
@@ -203,6 +207,14 @@ export interface PlanCardActivity {
    * PlanCardActivity stays a self-contained client contract.
    */
   booking?: TripPlanBooking;
+  /**
+   * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): present ONLY when the build-time slip
+   * resolver grounded this item to an affiliate product bookable via the agent rail (§16). Carries
+   * an opaque server-minted `bookingToken` — never the affiliate URL. Presence-guarded like the
+   * transport `book_ride` branch: the "Book via your Traveloure agent" CTA stays inert until the
+   * server lane (Phase 2b) stamps this. Absent on every non-affiliate item.
+   */
+  affiliateBooking?: AffiliateBookingInfo | null;
 }
 
 export interface PlanCardTransport {
