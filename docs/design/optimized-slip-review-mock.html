@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimized Slip Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #FAFAF8;
+    --surface: #FFFFFF;
+    --surface-2: #F4F3EF;
+    --ink: #1A1A18;
+    --muted: #7A7A72;
+    --hairline: #E8E8E2;
+    --hairline-strong: #DAD9D1;
+
+    --save-fg: #1E7A52;
+    --save-bg: #E7F3EC;
+    --save-br: #C4E4D1;
+    --caution-fg: #8A5E12;
+    --caution-bg: #F6EDD8;
+    --caution-br: #E8D6AF;
+
+    --accent-fg: #5B4B8A;
+    --accent-bg: #EEEAF6;
+    --accent-br: #D8CFEE;
+
+    --trend-fg: #1E7A52;
+    --season-fg: #5B4B8A;
+
+    --shadow: 0 1px 2px rgba(26,26,24,.04), 0 8px 24px rgba(26,26,24,.05);
+    --shadow-lift: 0 2px 4px rgba(26,26,24,.05), 0 14px 40px rgba(26,26,24,.09);
+
+    --sans: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --display: "Bricolage Grotesque", var(--sans);
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground: #14140F;
+      --surface: #1D1D18;
+      --surface-2: #24241E;
+      --ink: #EDECE4;
+      --muted: #9A9A8F;
+      --hairline: #2E2E27;
+      --hairline-strong: #3A3A31;
+
+      --save-fg: #6FD79E;
+      --save-bg: #16281F;
+      --save-br: #244A36;
+      --caution-fg: #E7B85E;
+      --caution-bg: #2A2314;
+      --caution-br: #4A3D1E;
+
+      --accent-fg: #B7A9E6;
+      --accent-bg: #221E33;
+      --accent-br: #3A3358;
+
+      --trend-fg: #6FD79E;
+      --season-fg: #B7A9E6;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --shadow-lift: 0 2px 4px rgba(0,0,0,.35), 0 14px 40px rgba(0,0,0,.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #14140F;
+    --surface: #1D1D18;
+    --surface-2: #24241E;
+    --ink: #EDECE4;
+    --muted: #9A9A8F;
+    --hairline: #2E2E27;
+    --hairline-strong: #3A3A31;
+
+    --save-fg: #6FD79E;
+    --save-bg: #16281F;
+    --save-br: #244A36;
+    --caution-fg: #E7B85E;
+    --caution-bg: #2A2314;
+    --caution-br: #4A3D1E;
+
+    --accent-fg: #B7A9E6;
+    --accent-bg: #221E33;
+    --accent-br: #3A3358;
+
+    --trend-fg: #6FD79E;
+    --season-fg: #B7A9E6;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --shadow-lift: 0 2px 4px rgba(0,0,0,.35), 0 14px 40px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 72px; }
+
+  /* App shell bar */
+  .shell {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; margin-bottom: 26px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .shell .mark {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent-fg), #8879C6);
+    display: grid; place-items: center; color: #fff; flex: none;
+  }
+  .shell .mark svg { width: 15px; height: 15px; }
+  .shell .brand { font-family: var(--display); font-weight: 600; letter-spacing: -.01em; }
+  .shell .crumb { color: var(--muted); font-size: 13px; }
+  .shell .crumb b { color: var(--ink); font-weight: 600; }
+  .shell .spacer { flex: 1; }
+  .shell .who {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+  }
+  .shell .avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex: none;
+    background: var(--surface-2); border: 1px solid var(--hairline-strong);
+    display: grid; place-items: center; font-weight: 600; color: var(--ink); font-size: 12px;
+  }
+
+  /* Page heading */
+  .eyebrow {
+    font-size: 12px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--accent-fg); font-weight: 600; margin: 0 0 8px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700; letter-spacing: -.02em;
+    font-size: clamp(1.6rem, 1.1rem + 1.9vw, 2.35rem);
+    line-height: 1.08; margin: 0 0 6px; text-wrap: balance;
+  }
+  .sub { color: var(--muted); margin: 0; max-width: 62ch; }
+
+  /* Review header row */
+  .review-head {
+    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+    gap: 14px; margin: 26px 0 14px;
+  }
+  .slip-line { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .slip-line b { color: var(--ink); font-weight: 600; }
+  .exclusions { font-size: 13px; color: var(--muted); text-align: right; }
+  .exclusions p { margin: 0 0 3px; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .exclusions svg { width: 13px; height: 13px; opacity: .7; }
+
+  /* Context strip: trending + seasonal */
+  .context {
+    display: grid; gap: 10px; margin: 4px 0 22px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .context-row { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
+  .context-row svg { width: 16px; height: 16px; margin-top: 2px; flex: none; }
+  .context-row .icn-trend { color: var(--trend-fg); }
+  .context-row .icn-season { color: var(--season-fg); }
+  .context-row .lbl { font-weight: 600; }
+  .context-row .val { color: var(--muted); }
+
+  /* Columns */
+  .board {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  @media (max-width: 1000px) { .board { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  @media (max-width: 560px)  { .board { grid-template-columns: 1fr; } }
+
+  .col {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  /* Preview chip strip (sits above a proposal card) */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px;
+    border: 1px solid transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip svg { width: 12px; height: 12px; }
+  .chip.save { color: var(--save-fg); background: var(--save-bg); border-color: var(--save-br); }
+  .chip.caution { color: var(--caution-fg); background: var(--caution-bg); border-color: var(--caution-br); }
+
+  /* PlanCard proposal */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+  }
+  .card.recommended { border-color: var(--accent-br); box-shadow: var(--shadow-lift); }
+  .card.current { background: var(--surface-2); border-style: dashed; border-color: var(--hairline-strong); }
+
+  .card-head { padding: 14px 15px 10px; border-bottom: 1px solid var(--hairline); }
+  .card.current .card-head { border-bottom-color: var(--hairline-strong); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .tag.rec { color: var(--accent-fg); background: var(--accent-bg); border: 1px solid var(--accent-br); }
+  .tag.cur { color: var(--muted); background: transparent; border: 1px solid var(--hairline-strong); }
+  .tag svg { width: 12px; height: 12px; }
+  .card-name { font-family: var(--display); font-weight: 600; font-size: 1.06rem; letter-spacing: -.01em; margin: 0 0 2px; }
+  .card-tagline { font-size: 12.5px; color: var(--muted); margin: 0; }
+
+  .card-total { padding: 10px 15px 6px; display: flex; align-items: baseline; gap: 8px; }
+  .card-total .amt { font-family: var(--mono); font-weight: 600; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .card-total .per { font-size: 12px; color: var(--muted); }
+
+  .items { list-style: none; margin: 0; padding: 4px 15px 12px; display: flex; flex-direction: column; gap: 0; }
+  .items li {
+    display: grid; grid-template-columns: 46px 1fr auto; align-items: baseline; gap: 8px;
+    padding: 7px 0; border-top: 1px solid var(--hairline);
+    font-size: 13px;
+  }
+  .card.current .items li { border-top-color: var(--hairline-strong); }
+  .items li:first-child { border-top: none; }
+  .items .t { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .items .n { color: var(--ink); }
+  .items .n .new { color: var(--accent-fg); font-weight: 600; }
+  .items .p { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .items .anchor { color: var(--muted); }
+  .items .anchor svg { width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; opacity: .7; }
+
+  .card-foot { margin-top: auto; padding: 12px 15px 15px; }
+  .btn {
+    width: 100%; border: none; cursor: pointer;
+    font-family: var(--sans); font-weight: 600; font-size: 13.5px;
+    padding: 10px 12px; border-radius: 9px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    transition: transform .08s ease, filter .15s ease;
+  }
+  .btn svg { width: 14px; height: 14px; }
+  .btn.primary { background: var(--ink); color: var(--ground); }
+  .btn.accent { background: var(--accent-fg); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--hairline-strong); }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
+
+  .foot-note {
+    text-align: center; color: var(--muted); font-size: 13px;
+    margin: 22px auto 0; max-width: 60ch; text-wrap: balance;
+  }
+
+  /* Honesty legend */
+  .legend {
+    margin-top: 40px; padding: 20px 22px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 14px; box-shadow: var(--shadow);
+  }
+  .legend h2 {
+    font-family: var(--display); font-size: 1rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em;
+  }
+  .legend .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 16px; max-width: 70ch; }
+  .legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px 22px; }
+  .legend-item { display: flex; gap: 11px; }
+  .legend-item .dot {
+    width: 9px; height: 9px; border-radius: 3px; margin-top: 5px; flex: none;
+  }
+  .dot.save { background: var(--save-fg); }
+  .dot.caution { background: var(--caution-fg); }
+  .dot.accent { background: var(--accent-fg); }
+  .dot.omit { background: var(--hairline-strong); }
+  .legend-item h3 { font-size: 13px; margin: 0 0 2px; font-weight: 600; }
+  .legend-item p { font-size: 12.5px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .legend code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  .mock-note {
+    margin-top: 26px; font-size: 12px; color: var(--muted); text-align: center;
+    font-style: italic;
+  }
+
+  /* Step framing + slip action toolbar (the entry point) */
+  .step-tag {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+  }
+  .slip-panel {
+    margin: 24px 0 6px; padding: 16px 18px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .slip-panel .cap { font-size: 13px; color: var(--muted); margin: 12px 0 0; max-width: 76ch; line-height: 1.55; }
+  .slip-panel .cap b { color: var(--accent-fg); font-weight: 600; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 11px; }
+  .tbtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 500; padding: 6px 11px;
+    border-radius: 8px; border: 1px solid var(--hairline-strong);
+    background: var(--surface); color: var(--ink);
+  }
+  .tbtn svg { width: 13px; height: 13px; opacity: .7; }
+  .tbtn.solid { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .tbtn.solid svg { opacity: 1; }
+  .tbtn.optimize {
+    border-color: var(--accent-br); background: var(--accent-bg);
+    color: var(--accent-fg); font-weight: 600;
+    box-shadow: 0 0 0 3px var(--accent-br);
+  }
+  .tbtn.optimize svg { opacity: 1; }
+  .startpin {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; color: var(--accent-fg);
+  }
+  .startpin svg { width: 13px; height: 13px; }
+  .flow {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 10px; color: var(--muted); font-size: 13px; margin: 16px 0 6px;
+  }
+  .flow svg { width: 16px; height: 16px; color: var(--accent-fg); flex: none; }
+  .flow b { color: var(--ink); font-weight: 600; }
+</style>
+
+<div class="wrap">
+
+  <!-- app shell -->
+  <div class="shell">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 4l2.5 5.5L21 12l-5.5 2.5L13 20l-2.5-5.5L5 12l5.5-2.5L13 4z"/></svg>
+    </span>
+    <span class="brand">Traveloure</span>
+    <span class="crumb">Plans&nbsp;/&nbsp;<b>Kyoto, 5 days</b>&nbsp;/&nbsp;Optimize</span>
+    <span class="spacer"></span>
+    <span class="who"><span class="avatar">MK</span>Mika&nbsp;K.</span>
+  </div>
+
+  <p class="eyebrow">Optimization · Review before applying</p>
+  <h1>Three ways to sharpen your Kyoto plan</h1>
+  <p class="sub">Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is.</p>
+
+  <!-- STEP 1: the slip's own action row — where the journey starts -->
+  <div class="slip-panel">
+    <span class="step-tag">Step 1 · On your slip</span>
+    <div class="toolbar">
+      <span class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</span>
+      <span class="tbtn">Preview Trip Card</span>
+      <span class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Add all to checkout (3)</span>
+      <span class="tbtn optimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M19 14v4M21 16h-4M5 4v3M6.5 5.5h-3"/></svg>Optimize this plan</span>
+      <span class="tbtn solid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4L12 14.01l-3-3"/></svg>Finalize plan</span>
+      <span class="startpin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 7v10H7"/></svg>start here</span>
+    </div>
+    <p class="cap">The <b>✨ Optimize this plan</b> button sits in your slip's action row — owner-only, and greyed out with a reason when there's nothing to optimize. Tapping it charges the optimization fee, builds the proposals, and lands you on the review below. It no longer changes your plan on its own.</p>
+  </div>
+
+  <!-- flow connector -->
+  <div class="flow">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/></svg>
+    <span>Tap <b>Optimize this plan</b></span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    <span><b>Step 2 · Review the proposals</b> — nothing is applied until you choose</span>
+  </div>
+
+  <!-- review header -->
+  <div class="review-head">
+    <p class="slip-line">Slip <b>TRV-4821</b> · 3 proposals for your remaining <b>6 items</b></p>
+    <div class="exclusions">
+      <p><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></svg>2 purchased items pinned in all</p>
+      <p>1 item excluded (with Kenji, your expert)</p>
+    </div>
+  </div>
+
+  <!-- trending + seasonal context -->
+  <div class="context" data-testid="slip-optimize-preview-context">
+    <div class="context-row" data-testid="preview-trending-now">
+      <svg class="icn-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>
+      <span><span class="lbl">Trending now in Kyoto:&nbsp;</span><span class="val">Fushimi Inari night hike · Nishiki Market food crawl · Arashiyama bamboo grove</span></span>
+    </div>
+    <div class="context-row" data-testid="preview-seasonal">
+      <svg class="icn-season" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      <span><span class="lbl">Popular around your travel dates:&nbsp;</span><span class="val">late-summer Kamo-gawa riverside dining, evening temple illuminations, and the Gion Matsuri afterglow.</span></span>
+    </div>
+  </div>
+
+  <!-- board: current plan + 3 proposals -->
+  <div class="board">
+
+    <!-- current plan (baseline) — no preview chips -->
+    <div class="col">
+      <div class="chips" aria-hidden="true"></div>
+      <div class="card current" data-testid="proposal-column-baseline">
+        <div class="card-head">
+          <span class="tag cur">Your current plan</span>
+          <p class="card-name">As you built it</p>
+          <p class="card-tagline">The order you planned, unchanged.</p>
+        </div>
+        <div class="card-total"><span class="amt">$1,240</span><span class="per">· $620/person</span></div>
+        <ul class="items">
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">13:00</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
+          <li><span class="t">16:30</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">10:00</span><span class="n">Arashiyama bamboo</span><span class="p">$0</span></li>
+          <li><span class="t">12:30</span><span class="n">Sagano boat ride</span><span class="p">$110</span></li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn ghost">Keep this plan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- proposal 1: recommended — money + drive-time -->
+    <div class="col">
+      <div class="chips">
+        <span class="chip save" data-testid="proposal-preview-money"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Saves $185 (15% less)</span>
+        <span class="chip save" data-testid="proposal-preview-drivetime"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>40 min less travel</span>
+      </div>
+      <div class="card recommended" data-testid="proposal-column-v1">
+        <div class="card-head">
+          <span class="tag rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg>Recommended</span>
+          <p class="card-name">Calm Mornings</p>
+          <p class="card-tagline">Clusters west-side stops so you backtrack less.</p>
+        </div>
+        <div class="card-total"><span class="amt">$1,055</span><span class="per">· $528/person</span></div>
+        <ul class="items">
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">11:00</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">13:30</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
+          <li><span class="t">10:00</span><span class="n"><span class="new">Arashiyama at dawn</span></span><span class="p">$0</span></li>
+          <li><span class="t">11:30</span><span class="n">Sagano boat ride</span><span class="p">$110</span></li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn accent">Apply Calm Mornings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- proposal 2: money only (drive-time honestly omitted) -->
+    <div class="col">
+      <div class="chips">
+        <span class="chip save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Saves $95 (8% less)</span>
+      </div>
+      <div class="card" data-testid="proposal-column-v2">
+        <div class="card-head">
+          <span class="tag cur" style="visibility:hidden">·</span>
+          <p class="card-name">Riverside Focus</p>
+          <p class="card-tagline">Swaps two paid stops for local favorites.</p>
+        </div>
+        <div class="card-total"><span class="amt">$1,145</span><span class="per">· $573/person</span></div>
+        <ul class="items">
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">12:00</span><span class="n"><span class="new">Nishiki Market crawl</span></span><span class="p">$40</span></li>
+          <li><span class="t">15:00</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">18:30</span><span class="n"><span class="new">Pontocho supper</span></span><span class="p">$0</span></li>
+          <li><span class="t">10:00</span><span class="n">Arashiyama bamboo</span><span class="p">$0</span></li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn primary">Apply Riverside Focus</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- proposal 3: honest cost increase + drive-time saving -->
+    <div class="col">
+      <div class="chips">
+        <span class="chip caution"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Costs $40 more</span>
+        <span class="chip save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>55 min less travel</span>
+      </div>
+      <div class="card" data-testid="proposal-column-v3">
+        <div class="card-head">
+          <span class="tag cur" style="visibility:hidden">·</span>
+          <p class="card-name">Fewer Hops</p>
+          <p class="card-tagline">One district a day — a private transfer trims transit.</p>
+        </div>
+        <div class="card-total"><span class="amt">$1,280</span><span class="per">· $640/person</span></div>
+        <ul class="items">
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">11:30</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">14:00</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
+          <li><span class="t">09:30</span><span class="n"><span class="new">Private transfer</span></span><span class="p">$150</span></li>
+          <li><span class="t">11:00</span><span class="n">Arashiyama + boat</span><span class="p">$110</span></li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn primary">Apply Fewer Hops</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="foot-note" data-testid="compare-footer">Applying a variant updates the slip in place — the other two are discarded. Nothing is purchased by applying.</p>
+
+  <!-- honesty legend -->
+  <div class="legend">
+    <h2>How the preview stays honest</h2>
+    <p class="lead">Every figure is derived server-side from the plan itself, and any claim without a real baseline is left off rather than guessed (CLAUDE.md §13). What you see on each proposal is exactly what the data supports — no filler zeros.</p>
+    <div class="legend-grid">
+      <div class="legend-item">
+        <span class="dot save"></span>
+        <div><h3>Money saved</h3><p>Baseline total vs. proposal total, both from the optimizer. Shown only when there's a real positive baseline to beat.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot caution"></span>
+        <div><h3>Costs more, said plainly</h3><p>A pricier proposal never hides it — <em>Fewer Hops</em> shows “Costs $40 more” beside its time saving.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot save"></span>
+        <div><h3>Shorter drive time</h3><p>Sum of located transport-leg minutes, both plans. Time only — distance is never a headline claim (§21 L3).</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot omit"></span>
+        <div><h3>Omitted when unknown</h3><p><em>Riverside Focus</em> shows no travel chip — a stop wasn’t located, so no drive-time delta is claimed. The current plan shows no chips at all.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot accent"></span>
+        <div><h3>Trending &amp; in season</h3><p>Pulled from live destination signals for Kyoto and your travel dates; each line disappears when there's nothing real to show.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot accent"></span>
+        <div><h3>You confirm — nothing auto-applies</h3><p>Applying is one deliberate click via <code>apply-to-trip</code>; the slip updates in place and nothing is charged.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="mock-note">Static design mockup of the review-first optimized slip (PR #532). Reflects the shipped chips, context strip, and confirm-to-apply flow.</p>
+
+</div>
+
+</body>
+</html>
