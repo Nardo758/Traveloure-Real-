@@ -290,6 +290,29 @@ test("ready-made refund DELETES the clone when it has no paid history (original 
   }
 });
 
+test("ready-made ADMIN refund PRESERVES the clone even with NO paid history (ratified Q2 — buyer keeps the trip)", async () => {
+  const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
+  const s = await seedClonedPurchase();
+  // An unbooked clone — the COMMON concierge-dispute case (most buyers just hold the cloned
+  // itinerary without booking a separate platform service). The BUYER path deletes it (test
+  // above), but that route is retired; the ADMIN escape hatch must ALWAYS preserve the clone
+  // (ledger 2026-08-22-concierge-p3, Q2 "always soft-revoke"), matching the "the buyer keeps
+  // their trip" promise on every admin-refund surface. Pre-fix this deleted the trip.
+  await db.insert(itineraryItems).values({
+    tripId: s.cloneTripId, dayNumber: 1, title: "Unbooked activity", routingStatus: "in_planning",
+  } as any);
+  try {
+    const res = await refundReadyMadePurchaseLedger(s.purchaseId, null, { actor: "admin" });
+    assert.equal(res.ok, true, "admin refund ledger succeeds");
+    const [afterTrip] = await db.select().from(trips).where(eq(trips.id, s.cloneTripId));
+    assert.ok(afterTrip, "the clone MUST be preserved on the admin path — Q2 always soft-revoke; the buyer keeps the trip");
+    const [p] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, s.purchaseId));
+    assert.equal(p.status, "refunded", "the ready-made charge is still refunded — only the destructive delete is withheld");
+  } finally {
+    await cleanupClonedPurchase(s);
+  }
+});
+
 // ───────────────────────── Site 3: coordination-fee refund ─────────────────────────
 
 /** Reproduces routes.ts's coordination-fee refund handler verbatim (Stripe-first, ledger-second),
