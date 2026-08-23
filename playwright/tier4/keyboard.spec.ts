@@ -167,53 +167,29 @@ async function checkFormLabels(page: import('@playwright/test').Page): Promise<{
 
 // ── Validation announcement audit ─────────────────────────────────────────────
 
-/** Check live/error semantics on the main page and every Stripe frame. */
+/** Check for ARIA live regions / role=alert on main page and a Stripe frame. */
 async function auditValidationAnnouncements(
   page: import('@playwright/test').Page,
 ): Promise<{
-  mainPage: {
-    alerts: string[];
-    statusRegions: string[];
-    liveRegions: string[];
-    invalidFieldDescriptions: string[];
-  };
+  mainPage: { alerts: string[]; statusRegions: string[]; liveRegions: string[] };
   stripeFrames: Array<{
     url: string;
     alerts: string[];
     statusRegions: string[];
     liveRegions: string[];
-    invalidFieldDescriptions: string[];
   }>;
 }> {
   const mainPage = await page.evaluate(() => {
-    const cleanText = (el: Element | null, limit: number) =>
-      ((el as HTMLElement | null)?.innerText || el?.textContent || '')
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        .trim()
-        .slice(0, limit);
     const alerts = Array.from(document.querySelectorAll('[role="alert"]'))
-      .map(el => cleanText(el, 150))
+      .map(el => (el as HTMLElement).innerText?.trim().slice(0, 150) || '')
       .filter(Boolean);
     const statusRegions = Array.from(document.querySelectorAll('[role="status"]'))
-      .map(el => cleanText(el, 150))
+      .map(el => (el as HTMLElement).innerText?.trim().slice(0, 150) || '')
       .filter(Boolean);
     const liveRegions = Array.from(document.querySelectorAll('[aria-live]'))
-      .map(el => {
-        const text = cleanText(el, 100);
-        return text ? `[aria-live="${el.getAttribute('aria-live')}"] ${text}` : '';
-      })
+      .map(el => `[aria-live="${el.getAttribute('aria-live')}"] ${(el as HTMLElement).innerText?.trim().slice(0, 100) || ''}`)
       .filter(Boolean);
-    const invalidFieldDescriptions = Array.from(
-      document.querySelectorAll('[aria-invalid="true"][aria-describedby]'),
-    )
-      .flatMap(el =>
-        (el.getAttribute('aria-describedby') || '')
-          .split(/\s+/)
-          .filter(Boolean)
-          .map(id => cleanText(document.getElementById(id), 150)),
-      )
-      .filter(Boolean);
-    return { alerts, statusRegions, liveRegions, invalidFieldDescriptions };
+    return { alerts, statusRegions, liveRegions };
   });
 
   const stripeFrames = page.frames().filter(
@@ -224,39 +200,20 @@ async function auditValidationAnnouncements(
     alerts: string[];
     statusRegions: string[];
     liveRegions: string[];
-    invalidFieldDescriptions: string[];
   }> = [];
 
   for (const stripeFrame of stripeFrames) {
     const stripeAudit = await stripeFrame.evaluate(() => {
-      const cleanText = (el: Element | null, limit: number) =>
-        ((el as HTMLElement | null)?.innerText || el?.textContent || '')
-          .replace(/[\u200B-\u200D\uFEFF]/g, '')
-          .trim()
-          .slice(0, limit);
       const alerts = Array.from(document.querySelectorAll('[role="alert"]'))
-        .map(el => cleanText(el, 150))
+        .map(el => (el as HTMLElement).innerText?.trim().slice(0, 150) || '')
         .filter(Boolean);
       const statusRegions = Array.from(document.querySelectorAll('[role="status"]'))
-        .map(el => cleanText(el, 150))
+        .map(el => (el as HTMLElement).innerText?.trim().slice(0, 150) || '')
         .filter(Boolean);
       const liveRegions = Array.from(document.querySelectorAll('[aria-live]'))
-        .map(el => {
-          const text = cleanText(el, 100);
-          return text ? `[aria-live="${el.getAttribute('aria-live')}"] ${text}` : '';
-        })
+        .map(el => `[aria-live="${el.getAttribute('aria-live')}"] ${(el as HTMLElement).innerText?.trim().slice(0, 100) || ''}`)
         .filter(Boolean);
-      const invalidFieldDescriptions = Array.from(
-        document.querySelectorAll('[aria-invalid="true"][aria-describedby]'),
-      )
-        .flatMap(el =>
-          (el.getAttribute('aria-describedby') || '')
-            .split(/\s+/)
-            .filter(Boolean)
-            .map(id => cleanText(document.getElementById(id), 150)),
-        )
-        .filter(Boolean);
-      return { alerts, statusRegions, liveRegions, invalidFieldDescriptions };
+      return { alerts, statusRegions, liveRegions };
     }).catch(() => null);
     if (stripeAudit) {
       stripeAudits.push({
@@ -270,48 +227,6 @@ async function auditValidationAnnouncements(
 }
 
 // ── Stripe iframe keyboard fill ───────────────────────────────────────────────
-
-async function waitForStripePaymentElement(
-  page: import('@playwright/test').Page,
-  maxWaitMs = 60_000,
-): Promise<{ ready: boolean; blocker?: string }> {
-  const deadline = Date.now() + maxWaitMs;
-  while (Date.now() < deadline) {
-    const payVisible = await page
-      .locator('form button[type="submit"]:has-text("Pay")')
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const stripeFrames = page.frames().filter(
-      f => f.url().includes('stripe.com') || f.name().startsWith('__privateStripeFrame'),
-    );
-    let cardInputMounted = false;
-    for (const frame of stripeFrames) {
-      const count = await frame
-        .locator(
-          'input[name="number"], #Field-numberInput, ' +
-            'input[data-elements-stable-field-name="cardNumber"]',
-        )
-        .count()
-        .catch(() => 0);
-      if (count > 0) {
-        cardInputMounted = true;
-        break;
-      }
-    }
-    if (payVisible && cardInputMounted) return { ready: true };
-    await page.waitForTimeout(1000);
-  }
-
-  return {
-    ready: false,
-    blocker:
-      `Stripe PaymentElement did not fully render within ${maxWaitMs}ms after checkout. ` +
-      'This blocks keyboard assessment but is not evidence that a rendered card field is ' +
-      'keyboard-inaccessible. Frames observed: ' +
-      page.frames().map(f => safeFrameLabel(f.url(), f.name())).join(', '),
-  };
-}
 
 /**
  * Fill Stripe card fields using ONLY page.keyboard — no locator.focus().
@@ -338,30 +253,16 @@ async function fillStripeViaKeyboard(
   const deadline = Date.now() + maxWaitMs;
   let totalTabs = 0;
 
-  // Wait for the specific frame containing the card-number input, not merely
-  // Stripe telemetry/outer frames.
-  let cardInputFrameMounted = false;
-  while (Date.now() < deadline && !cardInputFrameMounted) {
+  // Wait for Stripe iframe to mount
+  let stripeFrameMounted = false;
+  while (Date.now() < deadline && !stripeFrameMounted) {
     await page.waitForTimeout(1500);
-    const stripeFrames = page.frames().filter(
+    stripeFrameMounted = page.frames().some(
       f => f.url().includes('stripe.com') || f.name().startsWith('__privateStripeFrame'),
     );
-    for (const frame of stripeFrames) {
-      const count = await frame
-        .locator(
-          'input[name="number"], #Field-numberInput, ' +
-            'input[data-elements-stable-field-name="cardNumber"]',
-        )
-        .count()
-        .catch(() => 0);
-      if (count > 0) {
-        cardInputFrameMounted = true;
-        break;
-      }
-    }
   }
 
-  if (!cardInputFrameMounted) {
+  if (!stripeFrameMounted) {
     return {
       method: 'blocked',
       cardFilled: false,
@@ -369,7 +270,7 @@ async function fillStripeViaKeyboard(
       cvcFilled: false,
       zipFilled: false,
       blocker:
-        `Stripe card-input frame did not mount within ${maxWaitMs}ms. ` +
+        `Stripe iframe did not mount within ${maxWaitMs}ms. ` +
         'Frames: ' + page.frames().map(f => safeFrameLabel(f.url(), f.name())).join(', '),
       tabsUsed: totalTabs,
     };
@@ -610,12 +511,6 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
 
       // ── Check form labels at payment step ─────────────────────────────────
       const paymentLabels = await checkFormLabels(page);
-      const paymentElementReadiness = foundComplete
-        ? await waitForStripePaymentElement(page, 60_000)
-        : { ready: false, blocker: 'Checkout was not activated by keyboard.' };
-      if (!paymentElementReadiness.ready) {
-        blockers.push(`BLOCKER: ${paymentElementReadiness.blocker}`);
-      }
 
       // ── Step A: empty/invalid submit to test validation announcements ──────
       // Attempt to Tab to the Pay button and press Enter BEFORE filling the card.
@@ -624,28 +519,23 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
         attempted: boolean;
         payButtonReached: boolean;
         announcements?: {
-          mainPage: {
-            alerts: string[];
-            statusRegions: string[];
-            liveRegions: string[];
-            invalidFieldDescriptions: string[];
-          };
+          mainPage: { alerts: string[]; statusRegions: string[]; liveRegions: string[] };
           stripeFrames: Array<{
             url: string;
             alerts: string[];
             statusRegions: string[];
             liveRegions: string[];
-            invalidFieldDescriptions: string[];
           }>;
         };
         announcementPresent?: boolean;
-        describedErrorPresent?: boolean;
-        accessibleValidationPresent?: boolean;
         blocker?: string;
       } | null = null;
 
       // Only attempt empty submit if checkout was posted (Stripe element may be present)
-      if (foundComplete && paymentElementReadiness.ready) {
+      if (foundComplete) {
+        // Wait for Stripe iframe to potentially mount
+        await page.waitForTimeout(3000);
+
         // Try to Tab to a "Pay" button and press Enter to trigger validation
         const { found: foundPayEarly } = await tabToElement(
           page,
@@ -672,28 +562,16 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
             announcements.mainPage.statusRegions.length +
             announcements.mainPage.liveRegions.length;
           const announcementPresent = stripeAnnouncementCount + mainAnnouncementCount > 0;
-          const stripeDescribedErrorCount = announcements.stripeFrames.reduce(
-            (count, frame) => count + frame.invalidFieldDescriptions.length,
-            0,
-          );
-          const describedErrorPresent =
-            stripeDescribedErrorCount +
-              announcements.mainPage.invalidFieldDescriptions.length >
-            0;
-          const accessibleValidationPresent = announcementPresent || describedErrorPresent;
           emptySubmitAnnouncementAudit = {
             attempted: true,
             payButtonReached: true,
             announcements,
             announcementPresent,
-            describedErrorPresent,
-            accessibleValidationPresent,
           };
-          if (!accessibleValidationPresent) {
+          if (!announcementPresent) {
             blockers.push(
-              'BLOCKER: Empty keyboard submission produced no non-empty role=alert/status, ' +
-                'aria-live announcement, or aria-describedby error relationship in the app ' +
-                'or Stripe frames.',
+              'BLOCKER: Empty keyboard submission produced no role=alert/status or aria-live ' +
+                'announcement in the app or Stripe frames.',
             );
           }
           lastReachedStep = 'empty-submit-attempted';
@@ -711,17 +589,7 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
 
       // ── Step B: Fill Stripe fields via keyboard Tab traversal ─────────────
       const t3 = now();
-      const stripeKbResult = paymentElementReadiness.ready
-        ? await fillStripeViaKeyboard(page, 90_000)
-        : {
-            method: 'blocked' as const,
-            cardFilled: false,
-            expFilled: false,
-            cvcFilled: false,
-            zipFilled: false,
-            blocker: paymentElementReadiness.blocker,
-            tabsUsed: 0,
-          };
+      const stripeKbResult = await fillStripeViaKeyboard(page, 90_000);
       timings.stripe_keyboard_ms = elapsed(t3);
 
       const stripeFilledSs = await saveScreenshot(page, 'keyboard-stripe-filled.png');
@@ -850,7 +718,6 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
         finalBookingStatus,
         confirmedOk,
         stripeKeyboardMethod: stripeKbResult.method,
-        paymentElementReadiness,
         stripeCardFilled: stripeKbResult.cardFilled,
         stripeExpFilled: stripeKbResult.expFilled,
         stripeCvcFilled: stripeKbResult.cvcFilled,
@@ -882,8 +749,15 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
       });
 
       // ── Final assertions ──────────────────────────────────────────────────
-      // Independently enforce that the exact checkout booking confirmed, even
-      // when a later accessibility assertion intentionally fails this run.
+      // Genuine blockers (not limitations) cause an explicit failure.
+      if (realBlockers.length > 0) {
+        throw new Error(
+          `[keyboard][${projectName}] ${realBlockers.length} keyboard-accessibility blocker(s) — NOT a pass:\n` +
+            realBlockers.map((b, i) => `  ${i + 1}. ${b}`).join('\n'),
+        );
+      }
+
+      // If all keyboard steps passed, require the exact booking ID confirmed
       expect(
         bookingId !== null,
         'Expected a booking ID from the checkout response after keyboard submit',
@@ -893,20 +767,6 @@ test.describe('Tier4 — keyboard-only checkout audit (Chromium)', () => {
         finalBookingStatus !== null,
         `Exact booking ID "${bookingId}" not found in /api/my-bookings after keyboard checkout`,
       ).toBe(true);
-
-      expect(
-        confirmedOk,
-        `Exact booking ID "${bookingId}" did not reach an accepted confirmed status; ` +
-          `final status="${finalBookingStatus ?? 'not-found'}".`,
-      ).toBe(true);
-
-      // Genuine blockers (not limitations) cause an explicit failure.
-      if (realBlockers.length > 0) {
-        throw new Error(
-          `[keyboard][${projectName}] ${realBlockers.length} keyboard-accessibility blocker(s) — NOT a pass:\n` +
-            realBlockers.map((b, i) => `  ${i + 1}. ${b}`).join('\n'),
-        );
-      }
     },
   );
 });

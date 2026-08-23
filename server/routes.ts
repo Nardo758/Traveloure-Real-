@@ -99,6 +99,7 @@ import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
+import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -1498,23 +1499,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ),
       );
 
-      for (const day of itineraryData.days || []) {
-        for (const activity of day.activities || []) {
-          await db.insert(itineraryItems).values({
-            tripId: trip.id,
-            title: activity.title || "Activity",
-            description: activity.description || "",
-            itemType: activity.type || "activity",
-            status: "planned",
-            dayNumber: day.day,
-            startTime: activity.time || "",
-            durationMinutes: activity.durationMinutes || 60,
-            locationName: activity.locationName || destination,
-            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
-            currency: "USD",
-            origin: "ai",
-          });
-        }
+      // Item 2 Phase 1 (ledger 2026-08-23-item2-grounding): build the item set, then run ONE
+      // fail-closed grounding pass before writing — a confident match links the item to a bookable
+      // catalog service (providerServiceId, which the cart projection already turns into an
+      // add-to-cart affordance — Q2 mark-bookable-never-auto-cart) or a recognized DMO place
+      // (dmoExtractedPlaceId, informational — Q3), copying the matched entity's REAL coords so the
+      // item pins with no client change. No confident match ⇒ the item stays an honest AI suggestion
+      // (Q4 fail-closed, §13). Grounding never blocks the build — a failure degrades to ungrounded.
+      const builtItems = (itineraryData.days || []).flatMap((day: any) =>
+        (day.activities || []).map((activity: any) => ({
+          tripId: trip.id,
+          title: activity.title || "Activity",
+          description: activity.description || "",
+          itemType: activity.type || "activity",
+          status: "planned" as const,
+          dayNumber: day.day,
+          startTime: activity.time || "",
+          durationMinutes: activity.durationMinutes || 60,
+          locationName: activity.locationName || destination,
+          estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+          currency: "USD",
+          origin: "ai" as const,
+          providerServiceId: null as string | null,
+          dmoExtractedPlaceId: null as string | null,
+          latitude: null as string | null,
+          longitude: null as string | null,
+        })),
+      );
+      const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
+      for (const item of groundedItems) {
+        await db.insert(itineraryItems).values(item as any);
       }
 
       res.status(201).json(itinerary);
@@ -5879,6 +5893,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         requirements,
         whatIncluded,
         status: "draft",
+        // Creation provenance (2026-08-23): a template-seeded listing is now distinguishable, and
+        // the template id it came from is retained (the audit's "create-from-template drops the link").
+        createdVia: "template",
+        sourceRef: templateId,
       };
 
       const service = await storage.createProviderService(serviceData as any);
@@ -6301,6 +6319,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("Deliverable fetch error:", err);
       res.status(500).json({ message: "Failed to fetch deliverable" });
+    }
+  });
+
+  // Deliverables-surfacing lane (ledger 2026-08-23-deliverables-surfacing): the METADATA probe.
+  // The GET above STREAMS the PDF (objstore) — so the client could not use it to decide whether to
+  // render a download button without (a) parsing bytes as JSON (it did — `.json()` threw, the catch
+  // hid the deliverable, and the button NEVER rendered for the protected path) and (b) logging a
+  // `deliverable_downloads` row on every page view, arming the artifact_timer completion clock on a
+  // mere render, not a real download. This probe answers "is there a deliverable, and what kind"
+  // with NO byte download and NO download-log write; the actual download stays the GET above, now
+  // hit only on the user's click — so the log becomes a real download record. Same four gates.
+  app.get("/api/service-bookings/:id/deliverable/meta", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId || booking.status !== "confirmed" || !booking.serviceId) {
+        return res.json({ available: false });
+      }
+      const service = await storage.getProviderServiceById(booking.serviceId);
+      if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
+        return res.json({ available: false });
+      }
+      const fileValue = (service.serviceFile ?? "").trim();
+      if (!fileValue) {
+        // §13 honest absence: qualifies, but nothing uploaded yet — distinguishable from "not a
+        // deliverable booking" so the client can say "your expert hasn't uploaded it yet".
+        return res.json({ available: false, code: "NO_DELIVERABLE_UPLOADED", deliveryMethod: service.deliveryMethod });
+      }
+      const isProtected = fileValue.startsWith(DELIVERABLE_OBJSTORE_PREFIX);
+      // A protected file is fetched by-id on click (never expose the objstore key); a legacy
+      // pasted URL is the provider's own external link and is safe to hand the client directly.
+      return res.json({
+        available: true,
+        protected: isProtected,
+        deliveryMethod: service.deliveryMethod,
+        ...(isProtected ? {} : { fileUrl: fileValue }),
+      });
+    } catch (err) {
+      console.error("Deliverable meta error:", err);
+      res.status(500).json({ message: "Failed to check deliverable" });
     }
   });
 

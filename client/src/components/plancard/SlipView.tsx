@@ -22,7 +22,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  List as ListIcon,
   Loader2,
+  Map as MapIcon,
   Share2,
   ShoppingCart,
   Sparkles,
@@ -61,6 +63,7 @@ import {
 import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
+import { MapControlCenter } from "./MapControlCenter";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -84,6 +87,8 @@ export interface SlipTrip {
   planVersion?: number;
   /** R-F: set once by POST .../finalize, cleared by POST .../reopen. NULL = never finalized. */
   finalizedAt?: string | null;
+  /** §21 traveler-facing trip-level note — same DTO field PlanCard passes to the map's notes layer. */
+  expertTravelerNote?: string | null;
 }
 
 export interface SlipData extends PlanCardData {
@@ -810,6 +815,28 @@ export function SlipView({
     [allActivities],
   );
 
+  // ── List | Map view toggle (ledger 2026-08-22-slip-map-view) ──────────────────────────
+  // The map is the SAME MapControlCenter the PlanCard mounts (L6 — one implementation, one
+  // more mount) over the SAME plancard DTO this slip already fetched. §13/§22 honesty: only
+  // located items (lat+lng present) are pinned — the count line below matches the map's own
+  // filter exactly; unlocated items are named under the map, never guessed onto it; and at
+  // ZERO located items the Map view is not offered at all (disabled control with the true
+  // reason — the same title-reason pattern the Optimize button uses).
+  const [slipView, setSlipView] = useState<"list" | "map">("list");
+  const [mapDay, setMapDay] = useState(0);
+  const locatedActivities = useMemo(
+    () => allActivities.filter((a) => a.lat != null && a.lng != null),
+    [allActivities],
+  );
+  const unlocatedActivities = useMemo(
+    () => allActivities.filter((a) => a.lat == null || a.lng == null),
+    [allActivities],
+  );
+  const mapDisabledReason =
+    locatedActivities.length === 0
+      ? "No stops are located yet — items need map locations before they can be shown on a map"
+      : null;
+
   // ?item=<itemId>: scroll to + briefly highlight that row on mount.
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [highlighted, setHighlighted] = useState<string | null>(null);
@@ -849,6 +876,58 @@ export function SlipView({
 
       <SlipStatusStrip activities={allActivities} />
 
+      {/* List | Map toggle — map offered only when at least one stop is genuinely located. */}
+      {allActivities.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap" data-testid="slip-view-toggle">
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            <button
+              type="button"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setSlipView("list")}
+              data-testid="button-slip-view-list"
+            >
+              <ListIcon className="w-3.5 h-3.5" /> List
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              onClick={() => setSlipView("map")}
+              disabled={!!mapDisabledReason}
+              title={mapDisabledReason ?? undefined}
+              data-testid="button-slip-view-map"
+            >
+              <MapIcon className="w-3.5 h-3.5" /> Map
+            </button>
+          </div>
+          {slipView === "map" && (
+            <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
+              <span className="font-semibold text-foreground">
+                {locatedActivities.length} of {allActivities.length}
+              </span>{" "}
+              stop{allActivities.length === 1 ? "" : "s"} located
+            </span>
+          )}
+        </div>
+      )}
+
+      {slipView === "map" && data.trip ? (
+        <div className="space-y-3" data-testid="slip-map-view">
+          <MapControlCenter
+            tripId={tripId}
+            tripDestination={data.trip.destination ?? ""}
+            days={sortedDays}
+            selectedDay={Math.min(mapDay, Math.max(0, sortedDays.length - 1))}
+            onSelectDay={setMapDay}
+            expertTravelerNote={data.trip.expertTravelerNote}
+          />
+          {/* §13: unlocated items are NAMED, never guessed onto the map. */}
+          {unlocatedActivities.length > 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="text-slip-map-unlocated">
+              Not on the map yet: {unlocatedActivities.map((a) => a.name).join(" · ")}
+            </p>
+          )}
+        </div>
+      ) : (
       <Card>
         <CardContent className="p-2 sm:p-3 divide-y divide-border">
           {sortedDays.length === 0 && (
@@ -885,6 +964,7 @@ export function SlipView({
           })}
         </CardContent>
       </Card>
+      )}
 
       <TransitionLogFooter
         transitions={transitions}

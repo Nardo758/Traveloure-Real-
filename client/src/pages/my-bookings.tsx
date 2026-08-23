@@ -49,6 +49,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
 
 interface VisaBookingMetadata {
   passportNationality?: string;
@@ -364,30 +365,32 @@ export default function MyBookingsPage() {
     enabled: !!user,
   });
 
-  // Ready-made STORE purchases (cloneable trips) — refundEligible is SERVER-computed on the
-  // D7/escrow clock; the client renders it, never re-derives the window.
+  // Ready-made STORE purchases (cloneable trips). Ledger 2026-08-22-concierge-p3: the self-serve
+  // refund is retired — the row carries the concierge facts (revisionStatus / disputeStatus) and
+  // the recourse is "Something wrong?" → a concern for admin review, never a client-side refund.
   const { data: rmPurchasesData } = useQuery<{ purchases: Array<{
     id: string; status: string; pricePaidCents: number; purchasedAt: string | null;
     cloneTripId: string | null; title: string; market: string; heroImageUrl: string | null;
-    refundEligible: boolean;
+    revisionStatus: string | null; disputeStatus: string | null;
   }> }>({ queryKey: ["/api/ready-made/purchases/mine"], enabled: !!user });
   const rmPurchases = rmPurchasesData?.purchases ?? [];
 
-  const rmRefund = useMutation({
-    mutationFn: async (purchaseId: string) => {
-      const res = await fetch(`/api/ready-made/purchases/${purchaseId}/refund`, {
-        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.message ?? "Refund failed");
-      return body;
+  const [concernFor, setConcernFor] = useState<{ id: string; title: string } | null>(null);
+  const [concernReason, setConcernReason] = useState("");
+  const rmConcern = useMutation({
+    mutationFn: async ({ purchaseId, reason }: { purchaseId: string; reason: string }) => {
+      const res = await apiRequest("POST", `/api/ready-made/purchases/${purchaseId}/concern`, { reason });
+      return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Refund issued", description: "Your payment is being returned; the trip copy has been removed." });
+      setConcernFor(null);
+      setConcernReason("");
+      toast({
+        title: "Concern submitted",
+        description: "Our team reviews concierge concerns within 2 business days. Most are resolved with a revision from your expert.",
+      });
     },
-    onError: (e: Error) => toast({ title: "Refund failed", description: e.message, variant: "destructive" }),
-    // Refetch on EITHER outcome: a 502 means the ledger already flipped to refunded (the server
-    // retries only the Stripe leg), so the list must stop offering the refund button.
+    onError: (e: Error) => toast({ title: "Couldn't submit concern", description: e.message, variant: "destructive" }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/ready-made/purchases/mine"] }),
   });
 
@@ -518,34 +521,66 @@ export default function MyBookingsPage() {
 
             {/* Purchased expert packages — Phase B3 delivery surface */}
             <TabsContent value="packages" className="space-y-4">
-              {/* Ready-made STORE purchases — the buyer's clone + the D7 refund action.
-                  Without this block the refund endpoint had zero callers (backend-without-surface). */}
+              {/* Ready-made STORE purchases — clone access + the concierge recourse ladder
+                  (ledger 2026-08-22-concierge-p3): revision status is the primary affordance;
+                  "Something wrong?" opens a concern for admin review — never a self-serve refund. */}
               {rmPurchases.length > 0 && (
                 <div className="space-y-3 mb-6" data-testid="rm-purchases">
                   <h3 className="font-semibold">Ready Made Trips you bought</h3>
                   {rmPurchases.map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 border border-border rounded-xl p-3" data-testid={`rm-purchase-${p.id}`}>
-                      {p.heroImageUrl && <img src={p.heroImageUrl} alt="" className="w-16 h-12 object-cover rounded-lg flex-shrink-0" />}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{p.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {p.market} · ${(p.pricePaidCents / 100).toFixed(2)} ·{" "}
-                          {p.status === "refunded" ? "Refunded" : p.status === "revoked" ? "Revoked" : "Purchased"}
+                    <div key={p.id} className="border border-border rounded-xl p-3" data-testid={`rm-purchase-${p.id}`}>
+                      <div className="flex items-center gap-3">
+                        {p.heroImageUrl && <img src={p.heroImageUrl} alt="" className="w-16 h-12 object-cover rounded-lg flex-shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{p.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {p.market} · ${(p.pricePaidCents / 100).toFixed(2)} ·{" "}
+                            {p.status === "refunded" ? "Refunded" : p.status === "revoked" ? "Revoked" : "Purchased"}
+                          </div>
                         </div>
+                        {(p.status === "paid" || p.status === "cloned") && (
+                          <Badge variant="outline" className="flex-shrink-0 text-primary border-primary/40" data-testid={`badge-revision-${p.id}`}>
+                            {p.revisionStatus === "delivered" ? "Revision delivered"
+                              : p.revisionStatus ? "Revision in progress"
+                              : "1 revision available"}
+                          </Badge>
+                        )}
+                        {p.cloneTripId && p.status !== "refunded" && (
+                          <Button size="sm" variant="outline" asChild data-testid={`button-open-clone-${p.id}`}>
+                            <Link href={`/plans/${p.cloneTripId}`}>Open my trip</Link>
+                          </Button>
+                        )}
                       </div>
-                      {p.cloneTripId && p.status !== "refunded" && (
-                        <Button size="sm" variant="outline" asChild data-testid={`button-open-clone-${p.id}`}>
-                          <Link href={`/trip/${p.cloneTripId}?tab=itinerary`}>Open my trip</Link>
-                        </Button>
+                      {(p.status === "paid" || p.status === "cloned") && (
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-dashed border-border">
+                          <span className="text-xs text-muted-foreground">
+                            Need a change?{" "}
+                            {p.cloneTripId ? (
+                              <Link href={`/plans/${p.cloneTripId}`} className="text-primary font-medium hover:underline">
+                                Request your revision →
+                              </Link>
+                            ) : (
+                              <span>Your included revision is on your Trip Slip.</span>
+                            )}
+                          </span>
+                          {p.disputeStatus === "open" ? (
+                            <span className="text-xs text-muted-foreground" data-testid={`text-concern-open-${p.id}`}>
+                              Concern under review
+                            </span>
+                          ) : p.disputeStatus ? (
+                            <span className="text-xs text-muted-foreground">Concern reviewed</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                              onClick={() => setConcernFor({ id: p.id, title: p.title })}
+                              data-testid={`button-concern-${p.id}`}
+                            >
+                              Something wrong?
+                            </button>
+                          )}
+                        </div>
                       )}
-                      {p.refundEligible ? (
-                        <Button size="sm" variant="ghost" className="text-destructive" disabled={rmRefund.isPending}
-                          onClick={() => rmRefund.mutate(p.id)} data-testid={`button-refund-${p.id}`}>
-                          Request refund
-                        </Button>
-                      ) : (p.status === "paid" || p.status === "cloned") ? (
-                        <span className="text-[11px] text-muted-foreground flex-shrink-0">Refund window closed</span>
-                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -567,6 +602,43 @@ export default function MyBookingsPage() {
         onOpenChange={setReviewDialogOpen}
         booking={selectedBooking}
       />
+
+      {/* Concierge concern (ledger 2026-08-22-concierge-p3): honest copy — a concern is reviewed
+          by our team; it never promises a refund. Revision-first: the primary alternative is the
+          included revision the buyer may not have used yet. */}
+      <Dialog open={!!concernFor} onOpenChange={(open) => { if (!open) setConcernFor(null); }}>
+        <DialogContent data-testid="dialog-rm-concern">
+          <DialogHeader>
+            <DialogTitle>Tell us what went wrong</DialogTitle>
+            <DialogDescription>
+              We'll review your concern about <span className="font-medium text-foreground">{concernFor?.title}</span>.
+              Our team reviews concierge concerns within 2 business days. Most are resolved with a
+              revision from your expert — submitting this doesn't guarantee a refund.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={concernReason}
+            onChange={(e) => setConcernReason(e.target.value)}
+            placeholder="Describe the issue (e.g. my expert hasn't responded to my revision request)…"
+            rows={4}
+            maxLength={2000}
+            data-testid="textarea-rm-concern"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConcernFor(null)} data-testid="button-rm-concern-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => concernFor && rmConcern.mutate({ purchaseId: concernFor.id, reason: concernReason.trim() })}
+              disabled={rmConcern.isPending || concernReason.trim().length === 0}
+              data-testid="button-rm-concern-submit"
+            >
+              {rmConcern.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Submit concern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
@@ -690,11 +762,20 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // the server granted, never re-derives eligibility. A 404 (not artifact delivery, no file
   // yet, or not confirmed) is the common, expected case for most bookings, so it's swallowed
   // quietly rather than surfaced as an error.
-  const { data: deliverable } = useQuery<{ fileUrl: string; deliveryMethod: string } | null>({
-    queryKey: [`/api/service-bookings/${booking.id}/deliverable`],
+  // Deliverables-surfacing lane (ledger 2026-08-23-deliverables-surfacing): probe the side-effect-
+  // free META endpoint, NOT the byte-streaming GET. The old query hit the streaming GET and did
+  // `res.json()` on it — for a protected (objstore) PDF that returned raw bytes, so `.json()` threw,
+  // the catch returned null, and the download button NEVER rendered for the protected path (only the
+  // legacy pasted-URL shape ever showed a button). The meta probe also writes NO download-log row, so
+  // merely opening this page no longer arms the artifact_timer completion clock (that now fires only
+  // on a real download click below). The server stays the sole authority on eligibility.
+  const { data: deliverable } = useQuery<{
+    available: boolean; protected?: boolean; fileUrl?: string; deliveryMethod?: string; code?: string;
+  } | null>({
+    queryKey: [`/api/service-bookings/${booking.id}/deliverable/meta`],
     queryFn: async () => {
       try {
-        const res = await apiRequest("GET", `/api/service-bookings/${booking.id}/deliverable`);
+        const res = await apiRequest("GET", `/api/service-bookings/${booking.id}/deliverable/meta`);
         return await res.json();
       } catch {
         return null;
@@ -703,6 +784,26 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     enabled: booking.status === "confirmed",
     staleTime: 5 * 60 * 1000,
   });
+
+  // The real download runs on the user's CLICK: fetch the streaming GET (which logs the download —
+  // now a true download record), then hand the browser a blob URL. Legacy pasted URLs open directly.
+  const [downloadingDeliverable, setDownloadingDeliverable] = useState(false);
+  const downloadDeliverable = async () => {
+    if (downloadingDeliverable) return;
+    setDownloadingDeliverable(true);
+    try {
+      const res = await apiRequest("GET", `/api/service-bookings/${booking.id}/deliverable`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      // Revoke after the tab has had time to load the blob.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      toast({ title: "Couldn't open your deliverable", description: e?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setDownloadingDeliverable(false);
+    }
+  };
 
   // S9 (docs/DECISIONS.md ledger row 102): the session join link — same reveal posture as the
   // deliverable above (confirmed bookings only), but riding the EXISTING GET /api/service-bookings
@@ -716,7 +817,48 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     enabled: booking.status === "confirmed",
     staleTime: 60 * 1000,
   });
-  const joinLink = bookingsWithLinks?.find((b) => b.id === booking.id)?.service?.joinLink ?? null;
+  const bookingService = bookingsWithLinks?.find((b) => b.id === booking.id)?.service ?? null;
+  const joinLink = bookingService?.joinLink ?? null;
+
+  // Deliverables-surfacing lane (ledger 2026-08-23-deliverables-surfacing): the operational
+  // "Good to know" facts, surfaced AFTER purchase (they previously rendered only on the pre-purchase
+  // /services/:id page — the buyer lost them the moment they paid). This is a purposeful
+  // post-purchase SUBSET — meeting point, getting there, what to bring, access, start window,
+  // changes-until — the facts a buyer needs to actually attend, composed from the SAME
+  // `service-good-to-know` formatters the traveler page uses (§18 — wording source of truth, never
+  // re-implemented). §13: a fact the provider never answered is OMITTED, never defaulted into a
+  // claim. Read live from the enriched booking's service; operational facts are better shown current
+  // than snapshotted (a moved meeting point should update) — the per-booking snapshot the audit
+  // filed governs price/deliverable, not these.
+  const goodToKnow: { key: string; label: string; value: string }[] = [];
+  if (bookingService && booking.status === "confirmed") {
+    const push = (key: string, label: string, value: string | null | undefined) => {
+      if (value) goodToKnow.push({ key, label, value });
+    };
+    push("meeting", "Meeting point", bookingService.meetingPoint);
+    push("transport", "Getting there", formatTransportProvision(bookingService.transportProvision));
+    push(
+      "startwindow",
+      "Start window",
+      formatStartWindow(bookingService.earliestStartTime, bookingService.latestStartTime, bookingService.serviceTimezone),
+    );
+    push(
+      "changes",
+      "Changes until",
+      typeof bookingService.changeCutoffHours === "number" && bookingService.changeCutoffHours > 0
+        ? `Changes accepted up to ${formatHours(bookingService.changeCutoffHours)} before the start`
+        : null,
+    );
+    push(
+      "duration",
+      "Duration",
+      typeof bookingService.durationMinutes === "number" && bookingService.durationMinutes > 0
+        ? formatMinutes(bookingService.durationMinutes)
+        : null,
+    );
+    push("bring", "What to bring", bookingService.whatToBring);
+    push("access", "Access", bookingService.accessNotes);
+  }
 
   const disputeMutation = useMutation({
     mutationFn: (reason: string) => apiRequest("POST", `/api/bookings/${booking.id}/dispute`, { reason }),
@@ -790,14 +932,32 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               </div>
             )}
             
-            {deliverable?.fileUrl && (
+            {deliverable?.available && (
               <div className="mb-2 flex items-center gap-2 flex-wrap" data-testid={`deliverable-${booking.id}`}>
-                <Button variant="outline" size="sm" asChild data-testid={`button-download-deliverable-${booking.id}`}>
-                  <a href={deliverable.fileUrl} target="_blank" rel="noopener noreferrer">
-                    <FileText className="w-4 h-4 mr-1" />
+                {deliverable.protected ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={downloadDeliverable}
+                    disabled={downloadingDeliverable}
+                    data-testid={`button-download-deliverable-${booking.id}`}
+                  >
+                    {downloadingDeliverable ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <FileText className="w-4 h-4 mr-1" />}
                     Your deliverable
-                  </a>
-                </Button>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" asChild data-testid={`button-download-deliverable-${booking.id}`}>
+                    <a href={deliverable.fileUrl} target="_blank" rel="noopener noreferrer">
+                      <FileText className="w-4 h-4 mr-1" />
+                      Your deliverable
+                    </a>
+                  </Button>
+                )}
+              </div>
+            )}
+            {deliverable?.code === "NO_DELIVERABLE_UPLOADED" && (
+              <div className="mb-2 text-xs text-muted-foreground" data-testid={`deliverable-pending-${booking.id}`}>
+                Your expert hasn't uploaded your deliverable yet — you'll be able to download it here once they do.
               </div>
             )}
 
@@ -814,6 +974,20 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                     Join session
                   </a>
                 </Button>
+              </div>
+            )}
+
+            {goodToKnow.length > 0 && (
+              <div className="mb-2 rounded-lg border border-border p-3" data-testid={`good-to-know-${booking.id}`}>
+                <div className="text-xs font-semibold text-foreground mb-1.5">Good to know</div>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                  {goodToKnow.map((f) => (
+                    <div key={f.key} className="text-xs" data-testid={`gtk-${f.key}-${booking.id}`}>
+                      <dt className="text-muted-foreground inline">{f.label}: </dt>
+                      <dd className="text-foreground inline">{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
 

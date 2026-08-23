@@ -5,10 +5,10 @@
   "project": "chromium",
   "surface": "expert-profile-chromium",
   "url": "http://127.0.0.1:5000/experts/503e86df-dfdf-494d-913f-25aeda48c012",
-  "scannedAt": "2026-08-22T20:23:45.853Z",
-  "result": "2 violation types, 8 affected nodes",
+  "scannedAt": "2026-08-22T18:18:08.181Z",
+  "result": "2 violation types, 7 affected nodes",
   "totalViolations": 2,
-  "totalNodes": 8,
+  "totalNodes": 7,
   "violations": {
     "critical": [
       {
@@ -43,13 +43,13 @@
         "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
         "help": "Elements must meet minimum color contrast ratio thresholds",
         "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
-        "nodeCount": 6,
+        "nodeCount": 5,
         "nodes": [
           {
             "target": [
               ".px-2"
             ],
-            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:491:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:490:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
@@ -68,17 +68,17 @@
           },
           {
             "target": [
-              "#radix-\\:r7\\:-trigger-ready-made"
+              "#radix-\\:r7\\:-trigger-reviews"
             ],
             "html": "<button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"radix-:r7:-content-r...\" data-state=\"inactive\" id=\"radix-:r7:-trigger-r...\" data-replit-metadata=\"client/src/pages/exp...\" data-co",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.39 (foreground color: #6b7280, background color: #f3f4f6, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
             "target": [
-              "#radix-\\:r7\\:-trigger-reviews"
+              "button[data-testid=\"button-contact-expert\"]"
             ],
-            "html": "<button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"radix-:r7:-content-r...\" data-state=\"inactive\" id=\"radix-:r7:-trigger-r...\" data-replit-metadata=\"client/src/pages/exp...\" data-co",
-            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.39 (foreground color: #6b7280, background color: #f3f4f6, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            "html": "<button data-replit-metadata=\"client/src/pages/exp...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-contact-exper...\">",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           }
         ]
       }

@@ -46,4 +46,3 @@
 - [Logistics route semantics](logistics-route-semantics.md) — service itineraries and pickup collection routes are different concepts with separate write paths.
 - [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
 - [Vite development logger resilience](vite-dev-logger-resilience.md) — Vite/client diagnostics must log without terminating the dev server and dropping the preview.
-- [Playwright WebKit on Nix](webkit-playwright-nix-runtime.md) — bundled WPE can launch yet hang on EGL; use GTK under Xvfb and preserve the external library path.

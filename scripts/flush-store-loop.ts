@@ -1,4 +1,10 @@
 /**
+ * ⚠ STALE SECTION (ledger 2026-08-22-concierge-p3): the buyer refund steps below drive
+ * POST /api/ready-made/purchases/:id/refund, which is RETIRED — self-serve refunds are replaced
+ * by the concierge concern → admin dispute flow (/concern + /api/admin/ready-made/disputes).
+ * `refundEligible` no longer appears on purchases/mine. This is a MANUAL ops script (not CI);
+ * update the refund section to the concern flow before the next run.
+ *
  * flush-store-loop.ts — ONE continuous end-to-end journey through the Ready-Made store,
  * over real HTTP at every step that has an HTTP surface (the gate script proves sections;
  * this proves the SEAMS between them):

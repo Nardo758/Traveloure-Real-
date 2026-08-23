@@ -1344,11 +1344,11 @@ export default function ItineraryComparisonPage() {
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   variant="outline"
-                  onClick={() => setLocation(backExit.to)}
+                  onClick={() => setLocation("/cart")}
                   data-testid="button-back-to-cart-error"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  {backExit.label}
+                  Back to Cart
                 </Button>
                 <Button
                   onClick={() => {

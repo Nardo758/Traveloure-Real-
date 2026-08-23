@@ -3,20 +3,17 @@
   "chosenStep": "keyboard-checkout",
   "engine": "chromium",
   "project": "chromium",
-  "result": "BLOCKED - 1 keyboard-accessibility blocker(s)",
+  "result": "BLOCKED - keyboard submit not reached",
   "lastReachedStep": "bookings-page-reached",
   "limitations": "LIMITATION (not a blocker): add-to-cart was performed via API (page.request), not keyboard UI. Service detail page requires login context that is not yet established via keyboard-only navigation.",
-  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
-  "serviceName": "Ceremony Highlight Video (Short-form)",
-  "servicePrice": 1100,
+  "serviceId": "9fc1ed3b-3f1a-46a7-8b55-a9dd28792865",
+  "serviceName": "Koto Ceremony Performance",
+  "servicePrice": 650,
   "addToCartMethod": "api-only",
-  "bookingId": "5d9be65a-8692-46ad-b13a-e9be0da3ad2c",
-  "finalBookingStatus": "confirmed",
-  "confirmedOk": true,
+  "bookingId": null,
+  "finalBookingStatus": null,
+  "confirmedOk": false,
   "stripeKeyboardMethod": "keyboard-tab",
-  "paymentElementReadiness": {
-    "ready": true
-  },
   "stripeCardFilled": true,
   "stripeExpFilled": true,
   "stripeCvcFilled": true,
@@ -29,71 +26,66 @@
       "mainPage": {
         "alerts": [],
         "statusRegions": [],
-        "liveRegions": [],
-        "invalidFieldDescriptions": []
+        "liveRegions": []
       },
       "stripeFrames": [
         {
-          "url": "https://js.stripe.com/v3/m-outer-3437aaddcdf6922d623e172c2d6f9278.html",
+          "url": "https://js.stripe.com/v3/m-outer-3437aaddcdf6922d623e172c2d6f9278.html#url=http%3A%2F%2F127.0.0.1%3A5000%2Fcart&title=Traveloure%20%E2%80%94%20AI-Powered%20Travel%20Planning%20with%20Local%20Experts&referrer=&muid=NA&sid=NA&version=6&preview=false&__shared_params__[version]=v3",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         },
         {
-          "url": "https://js.stripe.com/v3/controller-with-preconnect-5d3c15d8a17d5dc965abff5f20037420.html",
+          "url": "https://js.stripe.com/v3/controller-with-preconnect-5d3c15d8a17d5dc965abff5f20037420.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22fed90db0-0064-4be5-904a-e695c000bb50%22%2C%22assignments%22%3A%7B%22api_fastpath_habanero_v1%22%3A%22control%22%7D%7D&apiKey=pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt&stripeJsId=fed90db0-0064-4be5-904a-e695c000bb50&stripeObjId=sobj-665fdcdb-751b-4cb9-aadc-ed0dc4c5b5df&firstStripeInstanceCreatedLatency=10323&controllerCount=1&isCheckout=false&stripeJsLoadTime=1787422829436.5&manualBrowserDeprecationRollout=false&mids[guid]=a4c5d0ed-390c-4360-bd1a-3e262272145fe2b4e1&mids[muid]=10fc1a65-b442-4bcf-8846-09c7d2a4086a651784&mids[sid]=74ce1902-10d6-40b8-9611-b6d5b819df24261559&referrer=http%3A%2F%2F127.0.0.1%3A5000%2Fcart&controllerId=__privateStripeController4331",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         },
         {
-          "url": "https://js.stripe.com/v3/elements-inner-loader-ui-d39955e338bdb2a15febf461b25a117b.html",
+          "url": "https://js.stripe.com/v3/elements-inner-loader-ui-d39955e338bdb2a15febf461b25a117b.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22fed90db0-0064-4be5-904a-e695c000bb50%22%2C%22assignments%22%3A%7B%22api_fastpath_habanero_v1%22%3A%22control%22%7D%7D&referrer=http%3A%2F%2F127.0.0.1%3A5000%2Fcart&controllerId=__privateStripeController4331",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         },
         {
-          "url": "https://js.stripe.com/v3/elements-inner-accessory-target-ea81a66f718b5efb2a9273900621551c.html",
+          "url": "https://js.stripe.com/v3/elements-inner-accessory-target-ea81a66f718b5efb2a9273900621551c.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22fed90db0-0064-4be5-904a-e695c000bb50%22%2C%22assignments%22%3A%7B%22api_fastpath_habanero_v1%22%3A%22control%22%7D%7D&wait=false&rtl=false&elementsInitSource=stripe.elements&elementId=payment-c4c6a08b-d34f-4335-8797-6a6d302e0ec0&componentName=payment&keyMode=test&apiKey=pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt&frameMessagingStrategy=direct&cryptoWalletDetected=false&accessoryCssUrl=https%3A%2F%2Fjs.stripe.com%2Fv3%2Ffingerprinted%2Fcss%2Felements-inner-payment-9afc85b0bc41e69b81f3d89d0dfa5fb0.css&referrer=http%3A%2F%2F127.0.0.1%3A5000%2Fcart&controllerId=__privateStripeController4331",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": [
+            "[aria-live=\"polite\"] ​",
+            "[aria-live=\"polite\"] ​",
+            "[aria-live=\"polite\"] ​",
+            "[aria-live=\"polite\"] ​",
+            "[aria-live=\"polite\"] ​"
+          ]
         },
         {
-          "url": "https://js.stripe.com/v3/universal-link-modal-inner-b21dec15ebf534c2de6415f41994e809.html",
+          "url": "https://js.stripe.com/v3/universal-link-modal-inner-b21dec15ebf534c2de6415f41994e809.html#apiKey=pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt&stripeJsId=fed90db0-0064-4be5-904a-e695c000bb50&mids[guid]=a4c5d0ed-390c-4360-bd1a-3e262272145fe2b4e1&mids[muid]=10fc1a65-b442-4bcf-8846-09c7d2a4086a651784&mids[sid]=74ce1902-10d6-40b8-9611-b6d5b819df24261559&locale=en&loggerMetadata[linkMode]=LINK_PAYMENT_METHOD&openerFrameId=__privateStripeFrame4334&surface=web_payment_element&referrer=http%3A%2F%2F127.0.0.1%3A5000%2Fcart&controllerId=__privateStripeController4331",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         },
         {
-          "url": "https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html",
+          "url": "https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22fed90db0-0064-4be5-904a-e695c000bb50%22%2C%22assignments%22%3A%7B%22api_fastpath_habanero_v1%22%3A%22control%22%7D%7D&wait=false&rtl=false&controllingElement=paymentElement&elementsInitSource=stripe.elements&elementId=payment-c4c6a08b-d34f-4335-8797-6a6d302e0ec0&componentName=achBankSearchResults&keyMode=test&apiKey=pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt&frameMessagingStrategy=postMessage&referrer=http%3A%2F%2F127.0.0.1%3A5000%2Fcart&controllerId=__privateStripeController4331",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         },
         {
-          "url": "https://js.stripe.com/v3/hcaptcha-invisible-7a0311dd09132a83e326afea15d62c2b.html",
+          "url": "https://js.stripe.com/v3/hcaptcha-invisible-7a0311dd09132a83e326afea15d62c2b.html#debugMode=false&parentOrigin=http%3A%2F%2F127.0.0.1%3A5000",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         },
         {
-          "url": "https://b.stripecdn.com/stripethirdparty-srv/assets/v33.9/HCaptchaInvisible.html",
+          "url": "https://b.stripecdn.com/stripethirdparty-srv/assets/v33.9/HCaptchaInvisible.html?id=24d1f591-82d9-4920-96af-4f6807a58fc4&origin=https%3A%2F%2Fjs.stripe.com",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [],
-          "invalidFieldDescriptions": []
+          "liveRegions": []
         }
       ]
     },
-    "announcementPresent": false,
-    "describedErrorPresent": false,
-    "accessibleValidationPresent": false
+    "announcementPresent": true
   },
   "focusOrderCart": [
     {
@@ -128,7 +120,7 @@
     },
     {
       "tag": "a",
-      "label": "Ready-Made Trips\nExpert-built trips, ready to buy",
+      "label": "Ready Made Trips\nExpert-built trips, ready to buy",
       "testid": "link-nav-ready-made-trips",
       "visibleFocus": true
     },
@@ -308,7 +300,7 @@
     },
     {
       "tag": "a",
-      "label": "1 · $1,232",
+      "label": "1 · $702",
       "testid": "trip-strip-cart",
       "visibleFocus": true
     },
@@ -367,8 +359,8 @@
     "unlabelledInputs": 0,
     "unlabelledButtons": 2,
     "details": [
-      "unlabelled button: testid=button-decrease-2a7fae34-3cd6-48f5-9395-55a6b7501c6d",
-      "unlabelled button: testid=button-increase-2a7fae34-3cd6-48f5-9395-55a6b7501c6d"
+      "unlabelled button: testid=button-decrease-0ca330f6-e54a-4ea4-a3ef-461d70015f25",
+      "unlabelled button: testid=button-increase-0ca330f6-e54a-4ea4-a3ef-461d70015f25"
     ]
   },
   "formLabelsPayment": {
@@ -377,9 +369,7 @@
     "details": []
   },
   "submitted": true,
-  "realBlockers": [
-    "BLOCKER: Empty keyboard submission produced no non-empty role=alert/status, aria-live announcement, or aria-describedby error relationship in the app or Stripe frames."
-  ],
+  "realBlockers": [],
   "layoutOverflow": true,
   "viewport": {
     "width": 1280,
@@ -436,11 +426,11 @@
     }
   ],
   "timings": {
-    "register_ms": 2956,
-    "tab_to_proceed_ms": 4222,
+    "register_ms": 3315,
+    "tab_to_proceed_ms": 4229,
     "tab_to_complete_ms": 415,
-    "stripe_keyboard_ms": 6324,
-    "keyboard_submit_ms": 5763
+    "stripe_keyboard_ms": 6378,
+    "keyboard_submit_ms": 5987
   },
   "screenshots": {
     "cart": "keyboard-cart.png",

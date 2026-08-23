@@ -24,6 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { PageHeader, EmptyState } from "@/components/backoffice/primitives";
+import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -584,6 +585,15 @@ export default function ExpertToday() {
     <ExpertLayout title="Today">
       <div className="p-6 max-w-4xl mx-auto space-y-6">
         <PageHeader title="Today" subtitle={todaySubtitle} icon={Home} testId="text-today-title" />
+
+        {/* "Open your business" activation checklist (ledger 2026-08-22-handle-claim-nudge):
+            the card's own docstring says it renders on BOTH earner dashboards, and its
+            /api/me/business-setup endpoint already serves consoleFamily="expert" — but only the
+            provider dashboard ever mounted it, so experts never saw the handle-claim step and
+            every expert-side storefront link (ready-made author links, "More from" cards)
+            stayed gated on a handle nobody prompted them to claim. Self-gating: renders
+            nothing once dismissed or when the server says not eligible/complete. */}
+        <SetupChecklistCard />
 
         <TodayScheduleSection />
         <NeedsResponseSection />

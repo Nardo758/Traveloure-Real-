@@ -80,6 +80,56 @@ export async function getRoleChangeAuditLogs(opts: {
   };
 }
 
+/**
+ * Provenance spine move 5 (ledger 2026-08-23-provenance-audit-read): read the audit trail for ONE
+ * resource. The audit log was "write-only in practice" — every approve/reject/edit-review/refund/
+ * dispute row the platform writes (via insertAccessAuditLog) was reachable only by direct SQL; the
+ * sole read endpoint filtered to role-changes. This is the general per-resource timeline: "who did
+ * what to this service / this ready-made listing / this dispute, and when." Admin-gated at the route.
+ */
+export async function getAuditLogsForResource(opts: {
+  resourceType: string;
+  resourceId: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const { resourceType, resourceId, limit = 50, offset = 0 } = opts;
+
+  const rows = await db.execute(sql`
+    SELECT
+      aal.id,
+      aal.created_at,
+      aal.action,
+      aal.actor_id,
+      aal.actor_role,
+      aal.resource_type,
+      aal.resource_id,
+      aal.target_user_id,
+      aal.metadata,
+      actor.first_name AS actor_first_name,
+      actor.last_name  AS actor_last_name,
+      actor.email      AS actor_email
+    FROM access_audit_logs aal
+    LEFT JOIN users actor ON actor.id = aal.actor_id
+    WHERE aal.resource_type = ${resourceType}
+      AND aal.resource_id = ${resourceId}
+    ORDER BY aal.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+
+  const countResult = await db.execute(sql`
+    SELECT count(*)::int AS total
+    FROM access_audit_logs aal
+    WHERE aal.resource_type = ${resourceType}
+      AND aal.resource_id = ${resourceId}
+  `);
+
+  return {
+    logs: rows.rows as any[],
+    total: (countResult.rows[0] as any)?.total ?? 0,
+  };
+}
+
 export async function insertAccessAuditLog(values: {
   actorId: string;
   actorRole: string;

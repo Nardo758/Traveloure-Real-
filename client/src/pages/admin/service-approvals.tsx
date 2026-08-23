@@ -20,7 +20,61 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, XCircle, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, History } from "lucide-react";
+
+/**
+ * Provenance spine move 5 (ledger 2026-08-23-provenance-audit-read): the per-listing audit timeline.
+ * Lazy-reads GET /api/admin/audit-logs?resourceType=provider_service&resourceId=<id> — the
+ * approve/reject/edit-review rows the platform already writes, now readable. Collapsed by default;
+ * fetches only when opened. §13: an empty history says so plainly (a fresh submission has none yet).
+ */
+function AuditHistory({ serviceId }: { serviceId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery<{ logs: any[]; total: number }>({
+    queryKey: [`/api/admin/audit-logs?resourceType=provider_service&resourceId=${serviceId}`],
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const logs = data?.logs ?? [];
+  return (
+    <div className="text-sm" data-testid={`audit-history-${serviceId}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+        data-testid={`button-audit-history-${serviceId}`}
+      >
+        <History className="w-3.5 h-3.5" />
+        {open ? "Hide review history" : "Review history"}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-md border border-border p-3">
+          {isLoading ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : logs.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No recorded actions yet — this listing hasn't been reviewed or edited.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {logs.map((l) => (
+                <li key={l.id} className="flex items-baseline justify-between gap-3 text-xs">
+                  <span>
+                    <span className="font-medium text-foreground">{String(l.action).replace(/_/g, " ")}</span>
+                    {(l.actor_first_name || l.actor_email) && (
+                      <span className="text-muted-foreground"> · by {l.actor_first_name ? `${l.actor_first_name} ${l.actor_last_name ?? ""}`.trim() : l.actor_email}</span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums whitespace-nowrap">
+                    {l.created_at ? new Date(l.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface PendingService {
   id: string;
@@ -137,6 +191,7 @@ export default function ServiceApprovals() {
                     </ul>
                   </div>
                 )}
+                <AuditHistory serviceId={s.id} />
                 <Textarea
                   placeholder="Rejection reason (required to reject)"
                   value={reasons[s.id] ?? ""}

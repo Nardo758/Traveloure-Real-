@@ -1249,4 +1249,21 @@ export const MIGRATION_FILES = [
   // 251: Pickup-route stops are separate from an experience's ordered itinerary stops so
   // providers can describe collection points without relabeling places the service visits.
   "251_service_pickup_route_points.sql",
+  // 252: Concierge revision entitlement on ready_made_purchases — every purchase includes one
+  // consultation + one revision from the selling expert. Additive-nullable (revision_status /
+  // revision_request_note / revision_requested_at), app-enforced vocabulary, no CHECK
+  // (publish-trap rule); all declared in shared/schema.ts. Behavior-neutral on apply.
+  "252_concierge_revision_entitlement.sql",
+  // 253: Concierge dispute columns on ready_made_purchases — buyer concern → admin review
+  // (refund = escape hatch). Additive-nullable (dispute_status / dispute_reason / disputed_at /
+  // dispute_resolved_at / dispute_resolved_by), app-enforced vocabulary, no CHECK (publish-trap
+  // rule); all declared in shared/schema.ts. Behavior-neutral on apply.
+  "253_concierge_dispute.sql",
+  // 254: Creation provenance on provider_services — created_via / source_ref (which rail created
+  // a listing). Additive-nullable, app-enforced vocabulary, no CHECK (publish-trap rule); declared
+  // in shared/schema.ts. No backfill — NULL = honest unknown. Behavior-neutral on apply.
+  "254_service_creation_provenance.sql",
+  // 255: DMO grounding link on itinerary_items — dmo_extracted_place_id (soft ref, additive-nullable,
+  // no CHECK). Set by the build-time slip-grounding resolver; declared in shared/schema.ts.
+  "255_itinerary_item_dmo_grounding.sql",
 ] as const;

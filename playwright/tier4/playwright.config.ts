@@ -17,15 +17,6 @@ const _filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
 
 const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:5000';
-const webkitGtkExecutable = process.env.TIER4_WEBKIT_GTK_EXECUTABLE;
-const webkitGtkRoot = webkitGtkExecutable
-  ? path.dirname(path.dirname(webkitGtkExecutable))
-  : null;
-const inheritedEnv = Object.fromEntries(
-  Object.entries(process.env).filter((entry): entry is [string, string] => {
-    return typeof entry[1] === 'string';
-  }),
-);
 
 export default defineConfig({
   testDir: _dirname,
@@ -81,26 +72,6 @@ export default defineConfig({
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 900 },
-        ...(webkitGtkExecutable && webkitGtkRoot
-          ? {
-              headless: false,
-              launchOptions: {
-                executablePath: webkitGtkExecutable,
-                env: {
-                  ...inheritedEnv,
-                  WEBKIT_EXEC_PATH: path.join(webkitGtkRoot, 'bin'),
-                  WEBKIT_INJECTED_BUNDLE_PATH: path.join(webkitGtkRoot, 'lib'),
-                  LD_LIBRARY_PATH: [
-                    path.join(webkitGtkRoot, 'lib'),
-                    process.env.LD_LIBRARY_PATH,
-                    path.join(webkitGtkRoot, 'sys/lib'),
-                  ]
-                    .filter(Boolean)
-                    .join(':'),
-                },
-              },
-            }
-          : {}),
       },
     },
   ],

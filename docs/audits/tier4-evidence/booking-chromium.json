@@ -3,17 +3,17 @@
   "chosenStep": "payment",
   "engine": "chromium",
   "project": "chromium",
-  "result": "PASS - booking cddce4dd-73b5-4262-8f37-896be2e9d669 reached status \"confirmed\"",
+  "result": "PASS - booking 378f9b49-aae9-4c16-b519-6e8f27e16bb4 reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
   "addToCartMethod": "api",
-  "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
-  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
-  "serviceName": "Ceremony Highlight Video (Short-form)",
-  "servicePrice": 1100,
+  "addToCartLimitation": "[data-testid=\"button-add-to-cart-6d35558f-2f33-4fad-8a74-5ebc1e189e92\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
+  "serviceId": "6d35558f-2f33-4fad-8a74-5ebc1e189e92",
+  "serviceName": "Full-Day Wedding Photography",
+  "servicePrice": 2200,
   "bookingIdsFromCheckout": [
-    "cddce4dd-73b5-4262-8f37-896be2e9d669"
+    "378f9b49-aae9-4c16-b519-6e8f27e16bb4"
   ],
-  "primaryBookingId": "cddce4dd-73b5-4262-8f37-896be2e9d669",
+  "primaryBookingId": "378f9b49-aae9-4c16-b519-6e8f27e16bb4",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
@@ -24,7 +24,7 @@
     },
     "documentDimensions": {
       "scrollWidth": 1280,
-      "scrollHeight": 2313,
+      "scrollHeight": 2363,
       "innerWidth": 1280,
       "innerHeight": 900
     },
@@ -112,16 +112,16 @@
     "bookings": "booking-chromium-bookings-final.png"
   },
   "timings": {
-    "register_ms": 4022,
-    "service_discovery_ms": 84,
-    "discover_load_ms": 3461,
-    "service_detail_load_ms": 2797,
-    "add_to_cart_ms": 205,
-    "cart_load_ms": 3909,
-    "checkout_click_ms": 4061,
-    "stripe_fill_ms": 3011,
-    "payment_submit_ms": 971,
-    "poll_confirmed_ms": 44
+    "register_ms": 3020,
+    "service_discovery_ms": 93,
+    "discover_load_ms": 3656,
+    "service_detail_load_ms": 2809,
+    "add_to_cart_ms": 45,
+    "cart_load_ms": 3793,
+    "checkout_click_ms": 4068,
+    "stripe_fill_ms": 2878,
+    "payment_submit_ms": 214,
+    "poll_confirmed_ms": 30
   },
   "consoleMessages": [
     {

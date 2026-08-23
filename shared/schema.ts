@@ -1058,6 +1058,17 @@ export const providerServices = pgTable("provider_services", {
   // captured) — never fabricate a backfill.
   serviceOfferingTypeId: uuid("service_offering_type_id"),
 
+  // Creation provenance (ledger 2026-08-23-provenance-creation, migration 254). WHICH rail
+  // created this row — the #1 gap the provenance audit named: a wizard-authored, template-seeded,
+  // catalog-cloned, bundle/property/room, and legacy-consolidation row were byte-identical.
+  // App-enforced vocabulary, NO DB CHECK (publish-trap rule; additive-nullable):
+  //   'wizard' | 'catalog' | 'template' | 'bundle' | 'property' | 'property_room' | 'listing'
+  //   | 'admin' | 'seed' | 'migration'. NULL = created before this column (never fabricate a
+  // backfill — an honest unknown, §13). `source_ref` is the free-text origin id when one exists
+  // (the offering/template id a clone came from, the seed name, the migration file).
+  createdVia: varchar("created_via", { length: 24 }),
+  sourceRef: varchar("source_ref", { length: 128 }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -2071,7 +2082,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
 // completion event, and mint a held earning, on a booking whose deliverable never existed. The
 // storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -4031,6 +4042,14 @@ export const itineraryItems = pgTable("itinerary_items", {
   // itinerary from the Workstation service catalog. Nullable — free-text/place items have none.
   // ON DELETE SET NULL so removing the underlying service doesn't cascade-delete the plan item.
   providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  // Item 2 Phase 1 (ledger 2026-08-23-item2-grounding, migration 255): the DMO grounding link — set
+  // when the build-time resolver matches a free-text AI item to a recognized DMO extracted place
+  // (informational: a real pin + official/ticketing link, NOT platform-bookable — that stays
+  // providerServiceId's job). Soft ref (no FK — dmo_extracted_places are replace-by-position child
+  // rows that a re-extract can renumber; a hard FK would cascade-null on every refresh). Nullable;
+  // NULL = not grounded to a DMO place. The matched place's real coords are copied onto this item's
+  // latitude/longitude so it pins with no client change — never a guessed/city-center pin (§13/§22).
+  dmoExtractedPlaceId: varchar("dmo_extracted_place_id"),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
   // The item↔booking key (migration 159; master brief §5 item 2). Stamped by the checkout confirm
@@ -4414,7 +4433,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
 // never client-settable via this schema. Every create route strips whatever the client sent and
 // re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -8435,6 +8454,25 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
   status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
+  // Concierge revision entitlement (ledger 2026-08-22-concierge-revision, migration 252).
+  // Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+  // App-enforced vocabulary, NO DB CHECK (publish-trap rule; same posture as `status` above):
+  // NULL = available (never requested), 'requested' = buyer asked, 'in_progress' = expert working,
+  // 'delivered' = revision approved. Additive-nullable → behavior-neutral on apply.
+  revisionStatus: varchar("revision_status", { length: 20 }),
+  revisionRequestNote: text("revision_request_note"),
+  revisionRequestedAt: timestamp("revision_requested_at"),
+  // Concierge dispute (ledger 2026-08-22-concierge-p3, migration 253). The buyer's "something
+  // wrong" recourse after self-serve refund removal — a concern reviewed by an admin, never an
+  // automatic refund. App-enforced vocabulary, NO DB CHECK (publish-trap rule): NULL = none,
+  // 'open' = awaiting admin, 'resolved_refunded' | 'resolved_dismissed' = terminal. Transitions
+  // are server-owned atomic conditionals (§15 shape); resolver identity is KEPT (provenance
+  // audit: review identity must be superseded, never erased). Additive-nullable.
+  disputeStatus: varchar("dispute_status", { length: 24 }),
+  disputeReason: text("dispute_reason"),
+  disputedAt: timestamp("disputed_at"),
+  disputeResolvedAt: timestamp("dispute_resolved_at"),
+  disputeResolvedBy: varchar("dispute_resolved_by").references(() => users.id, { onDelete: "set null" }),
 }, (table) => ({
   // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
   // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
@@ -8468,7 +8506,21 @@ export const boardItems = pgTable("board_items", {
 export const insertReadyMadeTripSchema = createInsertSchema(readyMadeTrips).omit({ id: true, createdAt: true, updatedAt: true });
 export type ReadyMadeTrip = typeof readyMadeTrips.$inferSelect;
 export type InsertReadyMadeTrip = z.infer<typeof insertReadyMadeTripSchema>;
-export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({ id: true, purchasedAt: true });
+export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({
+  id: true,
+  purchasedAt: true,
+  // Revision entitlement is never set at purchase creation — it is driven only by the
+  // request-revision / deliver endpoints (targeted UPDATEs), never mass-assigned (§19 posture).
+  revisionStatus: true,
+  revisionRequestNote: true,
+  revisionRequestedAt: true,
+  // Dispute state is server-owned (concern endpoint + admin resolve only) — same §19 posture.
+  disputeStatus: true,
+  disputeReason: true,
+  disputedAt: true,
+  disputeResolvedAt: true,
+  disputeResolvedBy: true,
+});
 export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
 export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;
 export type Board = typeof boards.$inferSelect;

@@ -20,7 +20,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users } from "@shared/schema";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users, adminNotifications } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
@@ -771,6 +771,8 @@ router.get("/api/ready-made/purchases/mine", isAuthenticated, async (req, res) =
         currency: readyMadePurchases.currency,
         purchasedAt: readyMadePurchases.purchasedAt,
         cloneTripId: readyMadePurchases.cloneTripId,
+        revisionStatus: readyMadePurchases.revisionStatus,
+        disputeStatus: readyMadePurchases.disputeStatus,
         listingId: readyMadeTrips.id,
         title: readyMadeTrips.title,
         planType: readyMadeTrips.planType,
@@ -782,17 +784,10 @@ router.get("/api/ready-made/purchases/mine", isAuthenticated, async (req, res) =
       .where(eq(readyMadePurchases.buyerId, userId))
       .orderBy(desc(readyMadePurchases.purchasedAt));
 
-    const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
-    res.json({
-      purchases: rows.map((r) => ({
-        ...r,
-        // Server-authoritative refund eligibility — the client renders it, never computes it.
-        refundEligible:
-          (r.status === "paid" || r.status === "cloned") &&
-          !!r.purchasedAt &&
-          Date.now() <= new Date(r.purchasedAt).getTime() + windowMs,
-      })),
-    });
+    // Ledger 2026-08-22-concierge-p3: `refundEligible` is RETIRED with the self-serve refund —
+    // the row now carries the concierge facts instead (revisionStatus / disputeStatus), and the
+    // client renders the revision + "something wrong" affordances from them.
+    res.json({ purchases: rows });
   } catch (err: any) {
     console.error("[ready-made] purchases mine error:", err);
     res.status(500).json({ message: "Failed to load purchases" });
@@ -934,6 +929,45 @@ router.get("/api/ready-made", async (req, res) => {
       authorId = rawAuthorId;
     }
 
+    // Optional theme filter (ledger 2026-08-22-ready-made-themes: the shelf reorganizes around
+    // the experience). Validated against the closed vocabulary the submit gate already enforces —
+    // an unknown key is a 400, never a silently-empty shelf. No param ⇒ full feed, unchanged.
+    const rawPlanType = req.query.planType;
+    let planType: ReadyMadePlanTypeKey | undefined;
+    if (rawPlanType !== undefined) {
+      if (
+        typeof rawPlanType !== "string" ||
+        !(READY_MADE_PLAN_TYPE_KEYS as readonly string[]).includes(rawPlanType)
+      ) {
+        return res.status(400).json({ message: "Invalid planType" });
+      }
+      planType = rawPlanType as ReadyMadePlanTypeKey;
+    }
+
+    // Expert-minted theme filter (ledger 2026-08-22-expert-minted-themes, decision-maker
+    // directed: "give the experts the ability to add new categories — we shouldn't stifle
+    // creativity"). A `custom` listing's free-text label IS its category on the browse surface,
+    // so it needs a filter of its own. The label matches STORED author-typed data
+    // (case/whitespace-insensitive) under the same custom-key discipline — free text still
+    // never enters the validated plan_type column. Shape-validated only (a label that matches
+    // nothing returns an honestly-empty list, not a 400 — the UI offers only labels with
+    // stock, so empty here means the listing was since unpublished).
+    const rawCustomLabel = req.query.customLabel;
+    let customLabel: string | undefined;
+    if (rawCustomLabel !== undefined) {
+      if (
+        typeof rawCustomLabel !== "string" ||
+        rawCustomLabel.trim().length === 0 ||
+        rawCustomLabel.length > 120
+      ) {
+        return res.status(400).json({ message: "Invalid customLabel" });
+      }
+      if (planType !== undefined && planType !== "custom") {
+        return res.status(400).json({ message: "customLabel only applies to planType=custom" });
+      }
+      customLabel = rawCustomLabel.trim().toLowerCase();
+    }
+
     const rows = await db
       .select({
         id: readyMadeTrips.id,
@@ -961,9 +995,16 @@ router.get("/api/ready-made", async (req, res) => {
       .where(and(
         eq(readyMadeTrips.status, "approved"),
         eq(readyMadeTrips.active, true),
-        // Same approved+active gate with or without the filter — the author scope narrows
+        // Same approved+active gate with or without the filters — author/theme scope narrows
         // the feed, never widens what an unapproved listing can leak (F2/§10 read-gate).
         ...(authorId ? [eq(readyMadeTrips.authorId, authorId)] : []),
+        ...(planType ? [eq(readyMadeTrips.planType, planType)] : []),
+        ...(customLabel
+          ? [
+              eq(readyMadeTrips.planType, "custom" as ReadyMadePlanTypeKey),
+              sql`LOWER(TRIM(${readyMadeTrips.planTypeCustom})) = ${customLabel}`,
+            ]
+          : []),
       ))
       // CURATION ORDER (MP-3): badged listings lead, then most-recently-approved.
       //
@@ -1296,8 +1337,12 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
       purchase: result.purchase,
       cloneTripId: result.cloneTripId,
       alreadyFulfilled: result.alreadyFulfilled,
-      // The buyer's next stop: their own editable copy.
-      redirect: result.cloneTripId ? `/trip/${result.cloneTripId}?tab=itinerary` : null,
+      // The buyer's next stop: their own editable copy, delivered to the canonical Trip Slip
+      // (/plans/:id, the SlipView) — the ONE plan surface the rest of the app funnels to, where
+      // "Optimize this plan", "Add all to cart" (book the plan's services), and the expert note
+      // live. Landing a purchase on the older /trip/ detail page was an inconsistency (ledger
+      // 2026-08-22-readymade-slip-delivery).
+      redirect: result.cloneTripId ? `/plans/${result.cloneTripId}` : null,
     });
   } catch (err: any) {
     console.error("[ready-made] purchase confirm error:", err);
@@ -1305,44 +1350,234 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
   }
 });
 
-// ─── D7 refund — buyer-initiated, inside the escrow window only ──────────────
+// ─── Concierge concern — the buyer's recourse after the self-serve refund removal ───────────
 //
-// Ledger-first, Stripe-second (the dispute-uphold posture): the atomic status claim + earning
-// reversal + clone revocation run first; the Stripe refund uses a DETERMINISTIC idempotencyKey
-// (`rm-refund-<purchaseId>`), so if Stripe fails the buyer can retry — the ledger half returns
-// alreadyRefunded and the Stripe leg re-runs idempotently until it succeeds. §14: the refund
-// amount is the full PaymentIntent (Stripe derives it from the PI — no client amount).
-router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req, res) => {
+// Ledger 2026-08-22-concierge-p3: the D7 self-serve refund route that lived here is RETIRED —
+// ratified model: no self-serve refunds; every purchase includes 1 consult + 1 revision, and a
+// buyer who is still unhappy opens a CONCERN for admin review (refund = the admin escape hatch,
+// /api/admin/ready-made/disputes). The buyer-actor branch of refundReadyMadePurchaseLedger is
+// intentionally kept (proven by verify-ready-made-phase2) — it simply has no route anymore.
+//
+// Shape: §14 actor from session; allowlist body ({reason} only); §15 atomic conditional claim —
+// `WHERE buyer_id=? AND status IN ('paid','cloned') AND dispute_status IS NULL` kills double-open
+// and concerns on refunded/revoked rows in one predicate. On the winning claim: the author's
+// escrowed earning is FROZEN (dispute_state='open', the same mechanism the release job and the
+// payable-balance summary already honor) so it cannot release/pay out while the dispute is
+// pending — the ratified Q1 "prevent" rule's first half — and admins are notified.
+router.post("/api/ready-made/purchases/:id/concern", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
-    const ledger = await refundReadyMadePurchaseLedger(req.params.id, userId);
-    if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 2000) : "";
+    if (!reason) return res.status(400).json({ message: "Tell us what went wrong so we can review it" });
 
-    const Stripe = (await import("stripe")).default;
-    const stripeClient = new Stripe(getStripeSecretKey() || "", {
-      apiVersion: "2024-12-18.acacia" as any,
-    });
-    try {
-      const refund = await stripeClient.refunds.create(
-        { payment_intent: ledger.purchase.stripePaymentIntentId },
-        { idempotencyKey: `rm-refund-${ledger.purchase.id}` },
-      );
-      return res.json({ success: true, refundId: refund.id, purchase: ledger.purchase });
-    } catch (stripeErr: any) {
-      // Ledger is settled; the money leg failed. Say so honestly — a retry of this endpoint
-      // re-runs ONLY the idempotent Stripe refund (ledger returns alreadyRefunded).
-      console.error("[ready-made] refund Stripe leg failed:", stripeErr?.message);
-      return res.status(502).json({
-        message: "Refund recorded but the payment reversal failed — please retry",
-        purchase: ledger.purchase,
+    const [claimed] = await db
+      .update(readyMadePurchases)
+      .set({ disputeStatus: "open", disputeReason: reason, disputedAt: new Date() } as any)
+      .where(and(
+        eq(readyMadePurchases.id, req.params.id),
+        eq(readyMadePurchases.buyerId, userId),
+        inArray(readyMadePurchases.status, ["paid", "cloned"]),
+        isNull(readyMadePurchases.disputeStatus),
+      ))
+      .returning();
+    if (!claimed) {
+      // Lost claim: not yours (404-shape kept vague — no purchase-id oracle), already
+      // disputed, or refunded/revoked. One honest 409 covers the reachable owner cases.
+      const [current] = await db.select().from(readyMadePurchases)
+        .where(and(eq(readyMadePurchases.id, req.params.id), eq(readyMadePurchases.buyerId, userId)))
+        .limit(1);
+      if (!current) return res.status(404).json({ message: "Purchase not found" });
+      return res.status(409).json({
+        message: current.disputeStatus
+          ? "A concern is already on file for this purchase"
+          : "This purchase is not eligible for a concern",
+        disputeStatus: current.disputeStatus ?? null,
       });
     }
+
+    // Freeze the author's escrowed earning while the dispute is open (Q1 "prevent", half 1).
+    // reference_id IS the purchase id on this surface — setBookingEarningsDispute reuses as-is (L6).
+    await storage.setBookingEarningsDispute(claimed.id, true).catch((err: any) => {
+      console.error("[ready-made] concern earnings-freeze failed (dispute still open):", err?.message);
+    });
+
+    // Surface to admins: notification row + the queue reads open disputes directly.
+    try {
+      const [listing] = await db.select({ title: readyMadeTrips.title })
+        .from(readyMadeTrips).where(eq(readyMadeTrips.id, claimed.readyMadeTripId)).limit(1);
+      await db.insert(adminNotifications).values({
+        type: "concierge_dispute_created",
+        message: `Ready-Made concern opened on "${listing?.title ?? claimed.readyMadeTripId}"`,
+        reason: reason.slice(0, 500),
+        metadata: { purchaseId: claimed.id, readyMadeTripId: claimed.readyMadeTripId },
+      } as any);
+    } catch (err: any) {
+      console.error("[ready-made] concern admin-notification failed:", err?.message);
+    }
+
+    return res.json({ success: true, disputeStatus: "open" });
   } catch (err: any) {
-    console.error("[ready-made] refund error:", err);
-    res.status(500).json({ message: "Failed to refund purchase" });
+    console.error("[ready-made] concern error:", err);
+    res.status(500).json({ message: "Failed to submit concern" });
+  }
+});
+
+// ─── Concierge revision (ledger 2026-08-22-concierge-revision) ──────────────────────────────
+//
+// Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+// P1 = the entitlement spine: the buyer's slip reads the entitlement by clone trip, and the
+// buyer requests the revision — which grants the selling expert WRITE access to the buyer's own
+// clone (§12 advisor write-status) so they can make the changes (P2 wires the Suggest→approve
+// delivery + the consult chat + the escrow SLA).
+
+// GET the entitlement for the buyer's cloned trip — the Concierge card's data source. Owner-scoped
+// (the purchase's buyerId must be the session). Returns null when this trip is not a ready-made
+// clone the caller owns, so the card renders nothing (never a card on a non-purchased trip).
+router.get("/api/ready-made/purchases/by-clone/:tripId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // P2: the effective revision status is DERIVED from the selling expert's advisor
+    // workspaceStatus on the clone — the SAME deliver state machine (draft→in_review→delivered)
+    // the expert already drives — so the buyer's card reflects real progress with no second
+    // source of truth to drift (§18 derivation discipline). The `revision_status` column stays
+    // the "requested" marker (NULL=available). LEFT JOIN so a purchase with no advisor row yet
+    // still resolves.
+    const [row] = await db
+      .select({
+        purchaseId: readyMadePurchases.id,
+        status: readyMadePurchases.status,
+        revisionStatus: readyMadePurchases.revisionStatus,
+        revisionRequestedAt: readyMadePurchases.revisionRequestedAt,
+        expertUserId: readyMadeTrips.authorId,
+        expertFirstName: users.firstName,
+        expertHandle: users.handle,
+        advisorWorkspaceStatus: tripExpertAdvisors.workspaceStatus,
+      })
+      .from(readyMadePurchases)
+      .innerJoin(readyMadeTrips, eq(readyMadeTrips.id, readyMadePurchases.readyMadeTripId))
+      .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
+      .leftJoin(
+        tripExpertAdvisors,
+        and(
+          eq(tripExpertAdvisors.tripId, readyMadePurchases.cloneTripId),
+          eq(tripExpertAdvisors.localExpertId, readyMadeTrips.authorId),
+        ),
+      )
+      .where(and(
+        eq(readyMadePurchases.cloneTripId, req.params.tripId),
+        eq(readyMadePurchases.buyerId, userId),
+        // P3: a refunded (soft-revoked) purchase keeps the clone but loses the entitlement —
+        // the card renders nothing rather than offering a revision that would 409.
+        inArray(readyMadePurchases.status, ["paid", "cloned"]),
+      ))
+      .limit(1);
+
+    if (!row) return res.json({ purchase: null });
+
+    // NULL revision_status ⇒ available; otherwise derive from the expert's workspace state.
+    let effectiveRevisionStatus: "available" | "requested" | "in_progress" | "delivered";
+    if (!row.revisionStatus) {
+      effectiveRevisionStatus = "available";
+    } else if (row.advisorWorkspaceStatus === "delivered") {
+      effectiveRevisionStatus = "delivered";
+    } else if (row.advisorWorkspaceStatus === "in_review") {
+      effectiveRevisionStatus = "in_progress";
+    } else {
+      effectiveRevisionStatus = "requested";
+    }
+
+    res.json({
+      purchase: {
+        purchaseId: row.purchaseId,
+        status: row.status,
+        revisionStatus: effectiveRevisionStatus,
+        revisionRequestedAt: row.revisionRequestedAt,
+        expertUserId: row.expertUserId,
+        expertName: row.expertFirstName ?? "your expert",
+        expertHandle: row.expertHandle ?? null,
+      },
+    });
+  } catch (err: any) {
+    console.error("[ready-made] entitlement lookup error:", err);
+    res.status(500).json({ message: "Failed to load concierge entitlement" });
+  }
+});
+
+// Buyer requests their included revision. Idempotent by construction: the status transition is an
+// atomic conditional (WHERE revision_status IS NULL), so a double-click can only claim once. On the
+// winning claim it grants the SELLING EXPERT write access to the buyer's clone (§12 advisor
+// write-status 'accepted'), carrying the buyer's note. §14: the acting user is the session, never
+// the body; the body is a strict allowlist (note only).
+const requestRevisionSchema = z.object({
+  note: z.string().trim().max(1000).optional(),
+});
+router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const parsed = requestRevisionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+    const note = parsed.data.note ?? null;
+
+    // Load + ownership check (404 for not-yours too — don't leak other buyers' purchase ids).
+    const [purchase] = await db
+      .select()
+      .from(readyMadePurchases)
+      .where(eq(readyMadePurchases.id, req.params.id))
+      .limit(1);
+    if (!purchase || purchase.buyerId !== userId) {
+      return res.status(404).json({ message: "Purchase not found" });
+    }
+    if (purchase.status !== "cloned" || !purchase.cloneTripId) {
+      return res.status(409).json({ message: "This trip isn't ready for a revision yet." });
+    }
+
+    // Atomic claim: only an unused entitlement (revision_status IS NULL) transitions to 'requested'.
+    const [claimed] = await db
+      .update(readyMadePurchases)
+      .set({ revisionStatus: "requested", revisionRequestNote: note, revisionRequestedAt: new Date() } as any)
+      .where(and(
+        eq(readyMadePurchases.id, purchase.id),
+        eq(readyMadePurchases.buyerId, userId),
+        isNull(readyMadePurchases.revisionStatus),
+      ))
+      .returning();
+    if (!claimed) {
+      return res.status(409).json({ message: "Your included revision has already been requested." });
+    }
+
+    // Grant the selling expert WRITE access to the buyer's clone so they can make the changes.
+    // status='accepted' is a §12 write-access status; the note rides as the assignment message.
+    // Upsert: if a row already exists (e.g. re-grant), (re)assert write access.
+    const [listing] = await db
+      .select({ authorId: readyMadeTrips.authorId })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, purchase.readyMadeTripId))
+      .limit(1);
+    if (listing?.authorId) {
+      await db
+        .insert(tripExpertAdvisors)
+        .values({
+          tripId: purchase.cloneTripId,
+          localExpertId: listing.authorId,
+          status: "accepted",
+          message: note ?? "Concierge revision requested by the buyer.",
+        } as any)
+        .onConflictDoUpdate({
+          target: [tripExpertAdvisors.tripId, tripExpertAdvisors.localExpertId],
+          set: { status: "accepted" },
+        });
+    }
+
+    res.json({ purchase: { purchaseId: claimed.id, revisionStatus: claimed.revisionStatus, revisionRequestedAt: claimed.revisionRequestedAt } });
+  } catch (err: any) {
+    console.error("[ready-made] request-revision error:", err);
+    res.status(500).json({ message: "Failed to request revision" });
   }
 });
 

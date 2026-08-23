@@ -166,31 +166,6 @@ function extractSenderDomain(fromEnv: string): string | null {
   return addr.split("@")[1].toLowerCase().trim();
 }
 
-/** Remove mailbox addresses from any public evidence string. */
-function redactMailboxData(text: string): string {
-  return text
-    .replace(/mailto:[^,;\s]+/gi, "mailto:[redacted]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]");
-}
-
-/** Defense in depth: scrub every string before serializing the evidence object. */
-function sanitizeEvidenceValue<T>(value: T): T {
-  if (typeof value === "string") return redactMailboxData(value) as T;
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeEvidenceValue(item)) as T;
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, sanitizeEvidenceValue(item)])
-    ) as T;
-  }
-  return value;
-}
-
-function getDmarcDisposition(policy: string | null): string {
-  return policy?.match(/(?:^|;)\s*p=([^;]+)/i)?.[1]?.trim().toLowerCase() ?? "none";
-}
-
 /**
  * Returns a concise, non-secret summary of a DKIM public-key value.
  * Stores presence, length, sha256 of the raw value, and a 64-char prefix.
@@ -560,7 +535,7 @@ async function main(): Promise<void> {
       liveDns.dmarc = await queryDmarc(auditDomain);
       console.log(
         `[audit] DMARC found=${liveDns.dmarc.found} ` +
-          `policy=${getDmarcDisposition(liveDns.dmarc.dmarcPolicy)}`
+          `policy=${liveDns.dmarc.dmarcPolicy?.slice(0, 60) ?? "none"}`
       );
     } catch (err: unknown) {
       dnsErrors.push(`DMARC query failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -663,8 +638,7 @@ async function main(): Promise<void> {
   const outDir = path.resolve("docs/audits/tier4-evidence");
   await fs.mkdir(outDir, { recursive: true });
   const outFile = path.join(outDir, "email-auth.json");
-  const sanitizedReport = sanitizeEvidenceValue(report);
-  await fs.writeFile(outFile, JSON.stringify(sanitizedReport, null, 2) + "\n", "utf-8");
+  await fs.writeFile(outFile, JSON.stringify(report, null, 2) + "\n", "utf-8");
 
   // ── Console summary (public evidence only) ────────────────────────────────
   console.log(`\n[audit] Report written to: ${outFile}`);
