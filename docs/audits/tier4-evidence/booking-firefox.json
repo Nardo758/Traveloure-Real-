@@ -1,9 +1,9 @@
 {
   "seed": "2026-08-22",
-  "chosenStep": "payment",
-  "engine": "chromium",
-  "project": "chromium",
-  "result": "PASS - booking cddce4dd-73b5-4262-8f37-896be2e9d669 reached status \"confirmed\"",
+  "chosenStep": "confirmation",
+  "engine": "firefox",
+  "project": "firefox",
+  "result": "PASS - booking 233e2f0b-107c-442d-803a-e052dd95886b reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
   "addToCartMethod": "api",
   "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
@@ -11,20 +11,20 @@
   "serviceName": "Ceremony Highlight Video (Short-form)",
   "servicePrice": 1100,
   "bookingIdsFromCheckout": [
-    "cddce4dd-73b5-4262-8f37-896be2e9d669"
+    "233e2f0b-107c-442d-803a-e052dd95886b"
   ],
-  "primaryBookingId": "cddce4dd-73b5-4262-8f37-896be2e9d669",
+  "primaryBookingId": "233e2f0b-107c-442d-803a-e052dd95886b",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
-    "screenshotRel": "booking-chromium-checkpoint-payment.png",
+    "screenshotRel": "booking-firefox-checkpoint-confirmation.png",
     "viewport": {
       "width": 1280,
       "height": 900
     },
     "documentDimensions": {
       "scrollWidth": 1280,
-      "scrollHeight": 2313,
+      "scrollHeight": 900,
       "innerWidth": 1280,
       "innerHeight": 900
     },
@@ -40,7 +40,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "debug",
@@ -52,7 +52,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "debug",
@@ -64,7 +64,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "warning",
@@ -80,7 +80,7 @@
       },
       {
         "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
         "type": "warning",
@@ -101,27 +101,31 @@
       {
         "type": "warning",
         "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
+      },
+      {
+        "type": "warning",
+        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=06c6n21v1i12&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Facco\" line: 0}]"
       }
     ]
   },
   "supportingScreenshots": {
-    "discover": "booking-chromium-discover.png",
-    "serviceDetail": "booking-chromium-service-detail.png",
-    "cart": "booking-chromium-cart.png",
-    "payment": "booking-chromium-payment.png",
-    "bookings": "booking-chromium-bookings-final.png"
+    "discover": "booking-firefox-discover.png",
+    "serviceDetail": "booking-firefox-service-detail.png",
+    "cart": "booking-firefox-cart.png",
+    "payment": "booking-firefox-payment.png",
+    "bookings": "booking-firefox-bookings-final.png"
   },
   "timings": {
-    "register_ms": 4022,
-    "service_discovery_ms": 84,
-    "discover_load_ms": 3461,
-    "service_detail_load_ms": 2797,
-    "add_to_cart_ms": 205,
-    "cart_load_ms": 3909,
-    "checkout_click_ms": 4061,
-    "stripe_fill_ms": 3011,
-    "payment_submit_ms": 971,
-    "poll_confirmed_ms": 44
+    "register_ms": 4262,
+    "service_discovery_ms": 87,
+    "discover_load_ms": 4040,
+    "service_detail_load_ms": 2964,
+    "add_to_cart_ms": 116,
+    "cart_load_ms": 3826,
+    "checkout_click_ms": 4104,
+    "stripe_fill_ms": 3134,
+    "payment_submit_ms": 1148,
+    "poll_confirmed_ms": 29
   },
   "consoleMessages": [
     {
@@ -134,7 +138,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "debug",
@@ -146,7 +150,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "debug",
@@ -158,7 +162,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "warning",
@@ -174,7 +178,7 @@
     },
     {
       "type": "info",
-      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
       "type": "warning",
@@ -197,8 +201,8 @@
       "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
     },
     {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      "type": "warning",
+      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=06c6n21v1i12&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Facco\" line: 0}]"
     }
   ]
 }

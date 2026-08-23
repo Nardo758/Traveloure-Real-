@@ -5,7 +5,7 @@
   "project": "chromium",
   "surface": "cart-checkout",
   "url": "http://127.0.0.1:5000/cart",
-  "scannedAt": "2026-08-22T18:17:59.437Z",
+  "scannedAt": "2026-08-22T20:23:37.413Z",
   "result": "2 violation types, 11 affected nodes",
   "totalViolations": 2,
   "totalNodes": 11,
@@ -23,14 +23,14 @@
             "target": [
               ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(1)"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-768c...\">",
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-57a7...\">",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           },
           {
             "target": [
               ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(3)"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-768c...\">",
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-57a7...\">",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           },
           {
@@ -56,7 +56,7 @@
             "target": [
               ".px-2.bg-primary\\/10.border-primary\\/20"
             ],
-            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:490:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
+            "html": "<span data-replit-metadata=\"client/src/components/layout.tsx:491:16\" data-component-name=\"span\" class=\"px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/2",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.05 (foreground color: #ff3859, background color: #feeaee, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
@@ -70,21 +70,21 @@
             "target": [
               "button[data-testid=\"step-pill-cart\"] > .font-medium[data-component-name=\"span\"]"
             ],
-            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1548:20\" data-component-name=\"span\" class=\"text-sm font-medium\">Cart</span>",
+            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1524:20\" data-component-name=\"span\" class=\"text-sm font-medium\">Cart</span>",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
             "target": [
               ".gap-x-3 > span[data-component-name=\"span\"]:nth-child(3)"
             ],
-            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1718:22\" data-component-name=\"span\" class=\"text-muted-foreground\" title=\"Plan score: how tightly scheduled and cost-efficient your current cart is",
+            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1694:22\" data-component-name=\"span\" class=\"text-muted-foreground\" title=\"Plan score: how tightly scheduled and cost-efficient your current cart is",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.32 (foreground color: #6b7280, background color: #f9f0f3, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
             "target": [
               ".ml-auto.text-primary.font-semibold"
             ],
-            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1724:22\" data-component-name=\"span\" class=\"ml-auto font-semibold text-primary whitespace-nowrap\">Optimize · $5.99 →</span>",
+            "html": "<span data-replit-metadata=\"client/src/pages/cart.tsx:1700:22\" data-component-name=\"span\" class=\"ml-auto font-semibold text-primary whitespace-nowrap\">Optimize · $5.99 →</span>",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.15 (foreground color: #ff3859, background color: #f9f0f3, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           }
         ]

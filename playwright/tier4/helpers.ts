@@ -8,7 +8,7 @@
  * - Console message collector
  * - Account registration helper (always uses page.request)
  * - Stripe iframe card-fill helper
- * - Non-production assertion (fail-closed; .replit.app/.repl.co are NOT auto-allowed)
+ * - Local-only assertion for any test that can create data or submit payment
  */
 
 import { type Page, expect } from '@playwright/test';
@@ -144,60 +144,22 @@ export async function getDocumentDimensions(page: Page): Promise<{
   }));
 }
 
-// ── Non-production assertion ───────────────────────────────────────────────────
+// ── Local-only assertion ────────────────────────────────────────────────────────
 
 /**
- * Asserts the running server is NOT a production instance. Fail-closed.
- *
- * Auto-allow ONLY: localhost, 127.0.0.1, ::1, *.replit.dev
- * Everything else — including *.replit.app and *.repl.co (which are published
- * deployment URLs) — must explicitly pass /api/ready returning
- * { environment: "development" } or { env: "development" }. Any other response
- * or an unreachable endpoint causes an immediate hard failure.
+ * Allows only loopback targets. This deliberately duplicates the launcher guard
+ * so direct Playwright invocation cannot create users, bookings, or test payments
+ * against a preview, deployment, custom domain, or other remote development host.
  */
-export async function assertNotProduction(page: Page): Promise<void> {
+export async function assertNotProduction(_page: Page): Promise<void> {
   const url = new URL(BASE_URL);
   const h = url.hostname;
+  if (h === '127.0.0.1' || h === 'localhost' || h === '::1') return;
 
-  const definitelySafe =
-    h === '127.0.0.1' ||
-    h === 'localhost' ||
-    h === '::1' ||
-    h.endsWith('.replit.dev'); // preview deployments (non-production)
-
-  if (definitelySafe) return;
-
-  // For everything else — including *.replit.app, *.repl.co, any custom domain —
-  // require /api/ready to explicitly confirm development mode.
-  let body: Record<string, unknown> = {};
-  let reachable = false;
-
-  try {
-    const res = await page.request.get(`${BASE_URL}/api/ready`);
-    if (res.ok()) {
-      body = await res.json().catch(() => ({}));
-      reachable = true;
-    }
-  } catch {
-    // not reachable
-  }
-
-  if (!reachable) {
-    throw new Error(
-      `TIER4 assertNotProduction: BASE_URL "${BASE_URL}" is not a trusted local address ` +
-        'and /api/ready is unreachable. Failing closed to protect data. ' +
-        'Set BASE_URL=http://127.0.0.1:5000 to target the local dev server.',
-    );
-  }
-
-  const env = (body.environment ?? body.env ?? '') as string;
-  if (env !== 'development') {
-    throw new Error(
-      `TIER4 assertNotProduction: /api/ready returned environment="${env}" for BASE_URL "${BASE_URL}". ` +
-        'Refusing to run destructive tests. Expected environment="development". ' +
-        'Note: *.replit.app and *.repl.co are treated as published/production URLs.',
-    );
-  }
+  throw new Error(
+    `TIER4 local-only guard: refusing BASE_URL "${BASE_URL}". ` +
+      'Set BASE_URL=http://127.0.0.1:5000 or http://localhost:5000.',
+  );
 }
 
 // ── Fresh account registration (always uses page.request) ─────────────────────
