@@ -1644,6 +1644,16 @@ export const itineraryVariants = pgTable("itinerary_variants", {
   optimizationScore: integer("optimization_score"),
   aiReasoning: text("ai_reasoning"),
   sortOrder: integer("sort_order").default(0),
+  // Anchor this variant was built around ("build around a location", ledger
+  // 2026-08-23-optimizer-anchors; migration 257). Additive-nullable, no CHECK (publish-trap rule):
+  // NULL on legacy/Auto-unlabelled variants. anchorType ∈ {hotel,neighborhood,activity} app-enforced.
+  // anchorMedianMeters is the phase-0 fit score (median metres to the trip's located stops) — a
+  // real figure or NULL, never a fabricated 0 (§13).
+  anchorType: varchar("anchor_type", { length: 20 }),
+  anchorName: varchar("anchor_name", { length: 200 }),
+  anchorLat: decimal("anchor_lat", { precision: 10, scale: 7 }),
+  anchorLng: decimal("anchor_lng", { precision: 10, scale: 7 }),
+  anchorMedianMeters: integer("anchor_median_meters"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

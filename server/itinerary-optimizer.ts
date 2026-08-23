@@ -47,6 +47,9 @@ import {
   type EffectiveTravelerProfile,
 } from "./services/traveler-profile.service";
 import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
+import { loadRankedAnchors } from "./services/anchor-candidates";
+import { pickAutoAnchors } from "./services/anchor-candidates-map";
+import type { AnchorScore } from "./services/anchor-scoring";
 
 // grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
 // grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
@@ -430,6 +433,45 @@ export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescript
       strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
     },
   ];
+}
+
+/**
+ * The slip shows the baseline plan + THREE AI variants (decision-maker 2026-08-23; see
+ * `docs/design/optimized-slip-review-mock.html`). `selectVariantStrategy` picks the two
+ * preference-driven primaries; this appends a genuinely-distinct THIRD from a standing pool —
+ * the first pool entry whose name differs from both primaries — so the three named strategies are
+ * always different regardless of which branch produced the pair. Deterministic (no randomness),
+ * and the branch matrix above is left untouched.
+ */
+const THIRD_STRATEGY_POOL: VariantDescriptor[] = [
+  {
+    name: "Balanced Refresh",
+    goal: "Keep the plan's overall shape but upgrade its weakest links",
+    strategy: "Leave the day-by-day structure and all protected items intact; replace only the lowest-rated or most over-priced stops with better-fitting alternatives; tighten transitions where the route backtracks — a lighter-touch third option beside the other two.",
+  },
+  {
+    name: "Local Character",
+    goal: "Trade generic stops for distinctive local experiences",
+    strategy: "Replace generic or tourist-heavy items with distinctive local alternatives matched to the traveler's stated styles, add one standout cultural or culinary experience per day, and favour venues locals actually frequent",
+  },
+  {
+    name: "Relaxed Pace",
+    goal: "Slow the itinerary down so each day breathes",
+    strategy: "Cap activities at three per day, group them by neighbourhood to cut transit, add afternoon rest windows, prefer later starts, and protect at least one fully unscheduled evening",
+  },
+  {
+    name: "Experience Enhancer",
+    goal: "Maximise the variety and quality of experiences across the itinerary",
+    strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+  },
+];
+
+export function selectThirdVariantStrategy(
+  a: VariantDescriptor,
+  b: VariantDescriptor,
+): VariantDescriptor {
+  const taken = new Set([a.name, b.name]);
+  return THIRD_STRATEGY_POOL.find((d) => !taken.has(d.name)) ?? THIRD_STRATEGY_POOL[0];
 }
 
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
@@ -826,7 +868,12 @@ export async function generateOptimizedItineraries(
    *  `tripId`, because the create route deliberately does NOT pass `tripId` today and activating
    *  its anchor/day-boundary reads as a side effect of this lane would be an unrelated behaviour
    *  change. Empty array / omitted ⇒ every code path below is a no-op. */
-  fixedCommitments: FixedCommitment[] = []
+  fixedCommitments: FixedCommitment[] = [],
+  /** Phase 1c: the traveler's explicit "build around THIS" choice, already resolved + scored by the
+   *  route against real coordinates. When present, ALL THREE versions are built around it (they
+   *  still differ by strategy); when omitted, anchors are auto-picked (one hotel / neighborhood /
+   *  activity). Undefined ⇒ unchanged auto behaviour. */
+  pinnedAnchor?: AnchorScore
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -879,6 +926,49 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
     const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
 
+    // ── "Build around a location" anchors (ledger 2026-08-23-optimizer-anchors) ─────────
+    // Each of the three versions is built around a real anchor — a hotel, a neighborhood, or the
+    // trip's own centrepiece activity — scored by straight-line fit to the trip's LOCATED stops
+    // (server/services/anchor-scoring.ts). Fail-open: a lookup miss degrades to "no anchor label"
+    // (chosenAnchors stays empty and every anchor prompt line / persisted column below is omitted),
+    // never a failed optimization. §13 — an anchor is only ever a real scored candidate or absent,
+    // never fabricated; a thin catalog simply yields fewer than three anchored versions.
+    let chosenAnchors: AnchorScore[] = [];
+    if (pinnedAnchor) {
+      // 1c: the traveler explicitly chose a location to build around — every version builds around
+      // it (they still differ by strategy). Already resolved + scored by the route against real
+      // coordinates, so it is used as-is; the route dropped it if it couldn't resolve (§13).
+      chosenAnchors = [pinnedAnchor, pinnedAnchor, pinnedAnchor];
+    } else {
+      try {
+        const anchorStops = baselineItems.map((it) => {
+          const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
+          const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
+          return {
+            id: String(it.id),
+            name: (it as any).title ?? (it as any).name ?? "Stop",
+            lat: Number.isFinite(lat) ? lat : null,
+            lng: Number.isFinite(lng) ? lng : null,
+          };
+        });
+        const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
+        chosenAnchors = pickAutoAnchors(ranked, 3);
+      } catch (err) {
+        console.warn("[Optimizer] anchor scoring failed (non-critical):", (err as Error).message);
+      }
+    }
+    // A per-version prompt line — omitted (empty string) when there is no anchor for that slot, so
+    // the AI is only ever told about a real, scored location and never invents one.
+    const anchorLine = (i: number): string => {
+      const a = chosenAnchors[i];
+      if (!a) return "";
+      const kind = a.type === "hotel" ? "hotel" : a.type === "neighborhood" ? "neighborhood" : "central activity";
+      const fit = a.medianMeters != null
+        ? ` (typical straight-line distance to the trip's located stops ≈ ${(a.medianMeters / 1000).toFixed(1)} km; estimate, not routed)`
+        : "";
+      return `\nBUILD THIS VERSION AROUND a ${kind}: "${a.name}"${fit}. Cluster each day so travel radiates from this anchor; keep the trip's fixed commitments intact.`;
+    };
+
     // ── Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) ─────────────────
     // Profile-aware platform selection: (1) a prompt section like cityIntelligenceSection above,
     // conditional on real signal existing (§13 — never a fabricated placeholder); (2) merged into
@@ -910,6 +1000,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
 
     // ── Adaptive variant strategy (style-matched) ─────────────────────────────
     const [variantA, variantB] = selectVariantStrategy(tripPreferences);
+    const variantC = selectThirdVariantStrategy(variantA, variantB);
 
     // Stamp updatedAt on every transition INTO "generating" (not just create-time insert) so the
     // stale-generating sweep (server/services/itinerary-generation-sweep-scheduler.service.ts)
@@ -1200,7 +1291,7 @@ For each empty day, add activities that match the user's experience style (infer
       }
     }
 
-    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
+    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
 
 DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
 
@@ -1210,20 +1301,25 @@ ${compactBaseline}
 AVAILABLE SERVICES (id|name|type|price|rating|location):
 ${compactServicesList}
 
-Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
+Generate EXACTLY 3 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
 
 VARIANT 1 — "${variantA.name}":
 - Goal: ${variantA.goal}
 - Strategy: ${variantA.strategy}
-- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
+- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS${anchorLine(0)}
 
 VARIANT 2 — "${variantB.name}":
 - Goal: ${variantB.goal}
 - Strategy: ${variantB.strategy}
-- Keep: the same trip duration and any PROTECTED ITEMS
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(1)}
 
-Rules for both variants:
-1. The two variants must differ from each other in at least 40% of their line items
+VARIANT 3 — "${variantC.name}":
+- Goal: ${variantC.goal}
+- Strategy: ${variantC.strategy}
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(2)}
+
+Rules for all three variants:
+1. The three variants must each differ from one another in at least 40% of their line items
 2. Include metrics showing WHY each variant is better than the user's plan
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
@@ -1265,7 +1361,9 @@ Respond with valid JSON in this exact format:
       }
     }
   ]
-}`;
+}
+
+The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, in this order: "${variantA.name}", "${variantB.name}", "${variantC.name}".`;
 
     const content = await callAI(
       "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
@@ -1282,6 +1380,21 @@ Respond with valid JSON in this exact format:
     } catch (parseError) {
       console.error("Failed to parse AI response:", content);
       throw new Error("Failed to parse AI response");
+    }
+
+    // Ratified contract (decision-maker 2026-08-23; docs/design/optimized-slip-review-mock.html —
+    // "Three ways to sharpen your plan", columns v1/v2/v3, "the other two are discarded"): the slip
+    // shows the baseline plan plus EXACTLY THREE AI variants. The prompt asks for three (mapped to
+    // the named strategy descriptors variantA/variantB/variantC), but a model can over-produce — an
+    // audit observed Grok returning 8, and the persist loop below saved every one, so extra,
+    // undifferentiated variants reached travelers. Cap to the first three here: they correspond to
+    // the three requested strategies, in order. The floor case (<3 returned) and the ≥40%
+    // line-item distinctness enforcement are tracked separately (Task #1621).
+    if (Array.isArray(aiResponse.variants) && aiResponse.variants.length > 3) {
+      console.warn(
+        `[optimizer] model returned ${aiResponse.variants.length} variants; capping to 3 per ratified contract`,
+      );
+      aiResponse.variants = aiResponse.variants.slice(0, 3);
     }
 
     // Lane 5a Defect 3: the AI is asked for `originalServiceId` but the value was discarded, so
@@ -1435,6 +1548,14 @@ Respond with valid JSON in this exact format:
           optimizationScore: combinedOptimizationScore,
           aiReasoning: enhancedReasoning,
           sortOrder: v + 1,
+          // "Build around a location" — the anchor this version was built around, by slot (§13:
+          // absent when there was no scorable anchor for this slot, never a fabricated one).
+          anchorType: chosenAnchors[v]?.type ?? null,
+          anchorName: chosenAnchors[v]?.name ?? null,
+          anchorLat: chosenAnchors[v]?.lat != null ? chosenAnchors[v].lat.toString() : null,
+          anchorLng: chosenAnchors[v]?.lng != null ? chosenAnchors[v].lng.toString() : null,
+          anchorMedianMeters:
+            chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
         })
         .returning();
 

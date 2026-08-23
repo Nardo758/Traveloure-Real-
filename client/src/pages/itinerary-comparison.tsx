@@ -1799,7 +1799,7 @@ export default function ItineraryComparisonPage() {
             {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
                 slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
             {!slipTripId && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
               {/* Skeleton for user variant if still loading */}
               {isGenerating && !userVariant && (
                 <Card className="border-dashed opacity-80">
@@ -1959,9 +1959,9 @@ export default function ItineraryComparisonPage() {
               )}
 
               {/* Show skeleton placeholders for pending AI variants */}
-              {isGenerating && aiVariants.length < 2 && (
+              {isGenerating && aiVariants.length < 3 && (
                 <>
-                  {Array.from({ length: 2 - aiVariants.length }).map((_, idx) => (
+                  {Array.from({ length: 3 - aiVariants.length }).map((_, idx) => (
                     <Card key={`skeleton-ai-${idx}`} className="border-dashed opacity-80">
                       <CardHeader className="pt-6">
                         <div className="flex items-center justify-between">

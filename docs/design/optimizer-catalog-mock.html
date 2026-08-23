@@ -114,7 +114,7 @@
   <p class="meta">Audited 2026-08-22 at main 22a015bb · sources: server/itinerary-optimizer.ts · optimizer-baseline.service.ts · traveler-profile.service.ts · routes.ts §8406–8909 · transport-leg-calculator.ts · smart-sequencing.service.ts · travelpulse.service.ts · optimization-fee.service.ts</p>
 
   <div class="summary">
-    <p><b>In one paragraph:</b> the optimizer reads a deliberately narrow slice — seven basics per still-planned item, paid items as "plan around this" constraints, expert-held items invisible. It ranks a flat 100-row pull of active services (no destination or approval filter) by an LLM-written trending list plus a profile inferred from the traveler's own selections, shows the AI the top 20, and asks Grok-3 (Claude Sonnet 4.5 fallback) for exactly two alternative plans chosen from a fixed strategy matrix. The server then re-sequences the days with a hand-written wellness rulebook and scores 60% AI self-score / 40% sequencing. It never touches money — the fee is resolved and gated before the AI is ever called.</p>
+    <p><b>In one paragraph:</b> the optimizer reads a deliberately narrow slice — seven basics per still-planned item, paid items as "plan around this" constraints, expert-held items invisible. It ranks a flat 100-row pull of active services (no destination or approval filter) by an LLM-written trending list plus a profile inferred from the traveler's own selections, shows the AI the top 20, and asks Grok-3 (Claude Sonnet 4.5 fallback) for exactly three alternative plans chosen from a fixed strategy matrix. The server then re-sequences the days with a hand-written wellness rulebook and scores 60% AI self-score / 40% sequencing. It never touches money — the fee is resolved and gated before the AI is ever called.</p>
   </div>
 
   <h2><span class="no">01</span>The run, end to end</h2>
@@ -165,7 +165,7 @@
   <h2><span class="no">06</span>The LLM call</h2>
   <ul>
     <li><b>Grok-3 first</b> (temperature 0.7, JSON mode, 8K tokens) → <b>Claude Sonnet 4.5 fallback</b> (16K tokens). Truncated Grok responses fail over.</li>
-    <li>Always <b>exactly two AI variants</b> + your plan persisted as the baseline variant.</li>
+    <li>Always <b>exactly three AI variants</b> + your plan persisted as the baseline variant.</li>
     <li>Strategy matrix, priority order: dislike chips → event type (romance/corporate) → budget ≥ $8,000 → travel style (culinary / adventure / wellness) → default <i>Budget Optimizer + Experience Enhancer</i>.</li>
     <li>Rules given to the model: differ in ≥40% of line items, preserve PROTECTED items exactly, respond in strict JSON.</li>
     <li>Cost tracking: only the Anthropic fallback writes <code>ai_cost_tracking</code> — <b>Grok runs are never cost-tracked</b>, and rows carry no user id.</li>
@@ -212,9 +212,10 @@
     <p>An arbitrary 100 rows, any market — a Kyoto trip can be offered Edinburgh inventory, and popular markets can crowd each other out of the 100. Trending/profile re-ranking operates on whatever happened to arrive.</p>
   </div>
 
-  <div class="finding warn">
-    <h3><span class="sev w">Gap</span>First runs ignore every preference signal</h3>
-    <p>The create path passes no trip preferences — event type, budget, travel styles, and chips only reach the strategy matrix on re-runs. Every traveler's first paid optimization is the same default pair.</p>
+  <div class="finding note">
+    <h3><span class="sev n">Resolved</span>First runs ignore every preference signal</h3>
+    <p><s>The create path passes no trip preferences — event type, budget, travel styles, and chips only reach the strategy matrix on re-runs. Every traveler's first paid optimization is the same default pair.</s></p>
+    <p><b>Closed (decision-maker ratified 2026-08-23):</b> the create path now passes first-run trip preferences (<code>server/routes.ts</code>) and the traveler profile is loaded on every run, so a traveler's first optimization is personalized. The gap is fixed; personalization on first run is the intended behavior.</p>
   </div>
 
   <div class="finding note">

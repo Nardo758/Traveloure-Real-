@@ -1,0 +1,17 @@
+ Dispatch for the Replit agent
+Task: Verify the "Adopt the Optimization" mock against the build, and confirm the build-around-a-location process lands.
+
+Context. We shipped the server foundation for "build the optimized plan around a location" (Phases 0/1/1b) plus the traveler-pin contract (1c). The ratified design is docs/design/adopt-optimization-mock.html. The interactive popup + adopt UI in the mock is NOT built yet (Phases 4/5) — your job is to confirm (a) the mock renders correctly, (b) the underlying process works end-to-end, and (c) report the exact delta between the mock and the current live optimize UI so we know what Phases 4/5 must build. Do not write feature code; this is a verification pass.
+
+A. Render the mock. Open docs/design/adopt-optimization-mock.html in the preview. Confirm it renders in both light and dark, and that these elements are present and interactive: the slip-review board (baseline + 3 versions), the Build-around popup (hotel / neighborhood / activity tiles that swap the scored list below when clicked), the custom-location field (type a place/coords), the per-stop + adopt ticks, and the side-by-side Optimize + Finalize modal showcases (Finalize offers: book it myself / booking agent / expert / concierge). Screenshot each.
+
+B. Confirm the process lands (server contract, live on main):
+
+GET /api/itinerary-comparisons/:id/anchor-candidates (as the comparison's owner) returns three ranked lists — hotel, neighborhood, activity — each candidate carrying real lat/lng/name and a medianMeters fit score (or null when unscorable — that's honest, §13, not a bug).
+POST /api/itinerary-comparisons/:id/generate with body { "pinnedAnchor": { "type":"hotel", "id":"<a hotel id from step 1>" } } runs the optimize and produces exactly 3 variants, each row in itinerary_variants carrying anchor_type/anchor_name/anchor_lat/anchor_lng/anchor_median_meters set to the pinned location (all three share it; they differ by strategy).
+Repeat with { "pinnedAnchor": { "type":"neighborhood", "name":"My spot", "lat":35.01, "lng":135.77 } } (custom placement) — confirm the three variants persist that anchor.
+Omit pinnedAnchor entirely — confirm it still works and auto-picks anchors (one hotel / neighborhood / activity where inventory allows), never erroring.
+Relevant code if you need to trace: server/routes/trips.routes.ts (both endpoints), server/services/anchor-candidates*.ts, server/services/anchor-scoring.ts, server/itinerary-optimizer.ts.
+C. Report the delta. List, concretely, what the mock shows that the current live optimize/slip UI does NOT yet render (this is the Phases 4/5 scope): the Optimize→Build-around popup, the per-stop/day/whole adopt CTAs, and the Finalize 4-option modal. For each, name the live file it would attach to.
+
+Output: a short report — mock renders (Y/N + screenshots), each of B.1–B.4 (pass/fail with the observed variant anchor_* values), and the C delta list. Flag anything where the process did NOT land.
