@@ -18,7 +18,7 @@
 
 import { loadOptimizerCatalog } from "./optimizer-baseline.service";
 import { getExtractedPlacesForMarket } from "./dmo-extracted-places.service";
-import { getAffiliateProductsForMarket } from "./affiliate-grounding.service";
+import { getAffiliateProductsForMarket, reconcileAffiliateMarket } from "./affiliate-grounding.service";
 import { similarity, MATCH_THRESHOLD } from "./slip-grounding-match";
 
 // The pure matcher lives in slip-grounding-match.ts (no DB import — unit-testable). Re-exported here
@@ -64,6 +64,12 @@ export async function groundAiItems(
   let groundedToDmo = 0;
   const empty = () => ({ items, groundedToCatalog, groundedToAffiliate, groundedToDmo });
   if (items.length === 0) return empty();
+
+  // Lane 2b: best-effort live-feed reconcile — folds fresh Travelpayouts inventory into the
+  // affiliate_products registry (freshness-guarded, time-boxed, fail-closed) so the affiliate load
+  // below can also match live results. Never throws; a cold/slow feed just means this build grounds
+  // against the registry as it stands and the next build sees the freshly-ingested rows.
+  await reconcileAffiliateMarket(destination);
 
   let catalog: Awaited<ReturnType<typeof loadOptimizerCatalog>> = [];
   let affiliates: Awaited<ReturnType<typeof getAffiliateProductsForMarket>> = [];
