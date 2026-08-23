@@ -19,6 +19,7 @@ All features below are merged to `main` (HEAD at authoring: `6509fa2b`).
 | `storefront-discovery-mock.html` | Storefront reachability round 2 + partner-card rule | storefront routes + `unified-result-card` |
 | `concierge-revision-mock.html` | Concierge revision flow (sign-off mock) | concierge entitlement spine + slip card |
 | `concierge-revision-p3-mock.html` | Concierge revision P3 — admin dispute + no-self-serve-refund + listing promise | `server/routes` admin dispute path, `ready-made-purchase.service.ts` |
+| `adopt-optimization-mock.html` | "Build around a location" + adopt flow (`2026-08-23-optimizer-anchors` / `-pinned-anchor`; Phases 2–5 in progress) | `server/services/anchor-scoring.ts`, `anchor-candidates*.ts`, `server/itinerary-optimizer.ts`, `GET/POST /api/itinerary-comparisons/:id/anchor-candidates` + `/generate` |
 
 ## Verifying a mock against the build
 
