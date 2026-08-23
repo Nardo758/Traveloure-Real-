@@ -1092,7 +1092,7 @@ export default function ItineraryComparisonPage() {
 
   if (authLoading) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
         <Skeleton className="h-8 w-64 mb-6" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
@@ -1202,7 +1202,7 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="itinerary-comparison-page max-w-7xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
@@ -1776,7 +1776,7 @@ export default function ItineraryComparisonPage() {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -1784,7 +1784,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
@@ -2018,14 +2018,14 @@ export default function ItineraryComparisonPage() {
                                       {item.name}
                                     </span>
                                     {item.isReplacement && (
-                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 shrink-0">
+                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 shrink-0">
                                         New
                                       </Badge>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs shrink-0">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -2033,7 +2033,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs shrink-0">
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
@@ -2461,7 +2461,7 @@ export default function ItineraryComparisonPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <h4 className="font-medium">{item.name}</h4>
                                       {item.isReplacement && (
-                                        <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
+                                        <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                           New
                                         </Badge>
                                       )}
@@ -2473,7 +2473,7 @@ export default function ItineraryComparisonPage() {
                                   <div className="flex flex-col items-end gap-1 shrink-0">
                                     <span className="font-semibold">${parseFloat(item.price || "0")}</span>
                                     {bookingType === "partner" ? (
-                                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (
                                           <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
                                         ) : (
@@ -2481,7 +2481,7 @@ export default function ItineraryComparisonPage() {
                                         )}
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-green-100 text-green-700 text-xs">
+                                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                         <Check className="h-2.5 w-2.5 mr-1" />Book on Traveloure
                                       </Badge>
                                     )}
