@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ContentHistoryDialog } from "@/components/admin/content-history-dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -145,6 +146,9 @@ export default function ContentTracking() {
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [selectedContent, setSelectedContent] = useState<ContentRegistry | null>(null);
   const [moderationDialogOpen, setModerationDialogOpen] = useState(false);
+  // Provenance spine Move 3: per-row change-history viewer.
+  const [historyTracking, setHistoryTracking] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [moderationAction, setModerationAction] = useState<"approve" | "suspend" | "delete">("approve");
   const [moderationNotes, setModerationNotes] = useState("");
 
@@ -422,6 +426,18 @@ export default function ContentTracking() {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  setHistoryTracking(item.trackingNumber);
+                                  setHistoryOpen(true);
+                                }}
+                                title="Change history"
+                                data-testid={`button-history-${item.trackingNumber}`}
+                              >
+                                <History className="w-4 h-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -692,6 +708,13 @@ export default function ContentTracking() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Provenance spine Move 3 — the append-only change history for one content row. */}
+        <ContentHistoryDialog
+          trackingNumber={historyTracking}
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+        />
       </div>
     </AdminLayout>
   );
