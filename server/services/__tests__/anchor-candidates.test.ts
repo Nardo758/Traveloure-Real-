@@ -5,9 +5,10 @@ import {
   stopsToActivityCandidates,
   rankActivityAnchors,
   pickAutoAnchors,
+  buildPinnedCandidateFromCoords,
   type NamedStop,
 } from "../anchor-candidates-map";
-import { rankAnchors } from "../anchor-scoring";
+import { rankAnchors, scoreAnchor } from "../anchor-scoring";
 
 const STOPS: NamedStop[] = [
   { id: "s1", name: "Gion tea ceremony", lat: 35.0037, lng: 135.7788 },
@@ -91,5 +92,46 @@ describe("anchor-candidates — pickAutoAnchors", () => {
     expect(picked.length).toBeGreaterThan(0);
     expect(picked.length).toBeLessThanOrEqual(3);
     expect(picked.every((p) => p.type === "activity")).toBe(true);
+  });
+});
+
+describe("anchor-candidates — buildPinnedCandidateFromCoords (Phase 1c, pure paths)", () => {
+  it("resolves an activity pin to the trip's own stop using that stop's real coordinates", () => {
+    const c = buildPinnedCandidateFromCoords({ type: "activity", id: "s2" }, STOPS);
+    expect(c).not.toBeNull();
+    expect(c).toMatchObject({ type: "activity", name: "Kiyomizu-dera" });
+    expect(c!.lat).toBeCloseTo(34.9948, 4);
+    // scoring against the other stops yields a real median (self is one of the STOPS but the
+    // route scores against the full stop list; the point is the pin carries real coordinates)
+    const score = scoreAnchor(c!, STOPS);
+    expect(score.medianMeters).not.toBeNull();
+  });
+
+  it("ignores client coordinates for an activity pin — the stop's own coords win", () => {
+    const c = buildPinnedCandidateFromCoords(
+      { type: "activity", id: "s1", lat: 0, lng: 0 },
+      STOPS,
+    );
+    expect(c!.lat).toBeCloseTo(35.0037, 4); // Gion's real lat, not the client's 0
+    expect(c!.lng).toBeCloseTo(135.7788, 4);
+  });
+
+  it("accepts an explicitly placed custom location as the traveler's own coordinates (§22)", () => {
+    const c = buildPinnedCandidateFromCoords(
+      { type: "neighborhood", name: "My spot", lat: 35.01, lng: 135.77 },
+      STOPS,
+    );
+    expect(c).toMatchObject({ type: "neighborhood", name: "My spot" });
+    expect(c!.lat).toBeCloseTo(35.01, 4);
+    expect(c!.id).toContain("custom:");
+  });
+
+  it("rejects an unresolvable pin — no coords, no matching stop ⇒ null, never fabricated (§13)", () => {
+    expect(buildPinnedCandidateFromCoords({ type: "activity", id: "missing" }, STOPS)).toBeNull();
+    expect(buildPinnedCandidateFromCoords({ type: "hotel", id: "h-unknown" }, STOPS)).toBeNull();
+    // out-of-range coordinates are not a real placement
+    expect(
+      buildPinnedCandidateFromCoords({ type: "hotel", lat: 999, lng: 999 }, STOPS),
+    ).toBeNull();
   });
 });

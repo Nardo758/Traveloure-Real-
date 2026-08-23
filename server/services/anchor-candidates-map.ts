@@ -20,6 +20,54 @@ export interface NamedStop extends StopPoint {
   name: string;
 }
 
+/**
+ * A traveler's explicit "build around THIS" choice from the Optimize popup (Phase 1c). `type` is one
+ * of the three ratified anchor kinds; `id` identifies a catalog hotel / neighborhood / trip stop, and
+ * `lat`/`lng` carry an explicitly-placed custom location (the "enter a location or coordinates"
+ * field). Coordinates are trusted ONLY as a user's own placement (§22), never invented server-side.
+ */
+export interface PinnedAnchorInput {
+  type: AnchorType;
+  id?: string | null;
+  name?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+}
+
+/**
+ * PURE half of pinned-anchor resolution — the two paths that need no DB: matching an `activity` pin
+ * to one of the trip's own located stops, and accepting an explicitly-placed custom location. Hotel
+ * and neighborhood ids are resolved by the DB loader (`anchor-candidates.ts`), which falls back here.
+ * Returns null when nothing real can be built (§13 — an unresolvable pin becomes NO anchor, never a
+ * fabricated one).
+ */
+export function buildPinnedCandidateFromCoords(
+  input: PinnedAnchorInput,
+  stops: NamedStop[],
+): AnchorCandidate | null {
+  // An activity pin IS one of the trip's stops — use that stop's own real coordinates, never the
+  // client's (server-derived, §14 posture even though this is display-only).
+  if (input.type === "activity" && input.id) {
+    const stop = stops.find((s) => s.id === String(input.id));
+    if (stop && stop.lat != null && stop.lng != null) {
+      return { id: stop.id, type: "activity", name: stop.name, lat: stop.lat, lng: stop.lng };
+    }
+  }
+  // A custom location the traveler placed/typed: their coordinates ARE the source of truth (§22).
+  const lat = num(input.lat);
+  const lng = num(input.lng);
+  if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    return {
+      id: input.id ? String(input.id) : `custom:${(input.name ?? "location").slice(0, 100)}`,
+      type: input.type,
+      name: (input.name ?? "Chosen location").slice(0, 200),
+      lat,
+      lng,
+    };
+  }
+  return null;
+}
+
 function num(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : parseFloat(String(v));
