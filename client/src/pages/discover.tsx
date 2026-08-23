@@ -649,26 +649,33 @@ function ServiceCard({
  */
 export type MarketplaceSurface = "travelpulse" | "packages" | "events" | "services";
 
-const SURFACE_META: Record<MarketplaceSurface, { title: string; subtitle: string; url: string; seoTitle: string }> = {
+// Each surface masthead follows the ratified Ready-Made-by-Theme band (artifact
+// 5c827895): a Fraunces serif title with a leading emoji + a muted one-line sub.
+// `emoji` is the band-title glyph (🏅 is the one the mock itself draws).
+const SURFACE_META: Record<MarketplaceSurface, { emoji: string; title: string; subtitle: string; url: string; seoTitle: string }> = {
   travelpulse: {
+    emoji: "📍",
     title: "Destinations",
     subtitle: "Explore destinations & trending cities.",
     url: "/destinations",
     seoTitle: "Destinations — Trending Cities & Travel Intel",
   },
   packages: {
+    emoji: "🏅",
     title: "Ready-Made Trips",
     subtitle: "Buy a complete trip built around an experience — it becomes your own editable plan.",
     url: "/ready-made",
     seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
   },
   events: {
+    emoji: "📅",
     title: "Events",
     subtitle: "Upcoming events & activities around the world.",
     url: "/events",
     seoTitle: "Events — Festivals & Travel Calendar",
   },
   services: {
+    emoji: "🛎️",
     title: "Services",
     subtitle: "Book tours, photography, transport & more — we assemble & optimize your trip.",
     url: "/services",
@@ -1129,24 +1136,40 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
-            {/* Surface masthead = the ratified Ready-Made-by-Theme band (decision-maker
-                Aug 23): left-aligned title + one-line sub, content immediately. NO search
-                bar except on Services (the only surface whose query it actually feeds) and
-                NO instructional-ad banner (removed per the same ruling — the pitch was
-                funnel copy, not surface content). The legacy tabbed shell keeps its old
-                centered masthead + search + ad; it is reachable only through the /discover
-                redirect and renders for no one. */}
+            {/* Surface masthead = the ratified Ready-Made-by-Theme band (artifact
+                5c827895, decision-maker Aug 23): a Fraunces serif title with a leading
+                emoji + a muted one-line sub, left-aligned, content immediately below. NO
+                search bar except on Services (the only surface whose query it actually
+                feeds) and NO instructional-ad banner (removed per the same ruling — the
+                pitch was funnel copy, not surface content). Fraunces is applied inline
+                (loaded in index.html) because --font-serif is a runtime theme token, not a
+                static one. The legacy tabbed shell keeps its old centered sans masthead +
+                search + ad; it is reachable only through the /discover redirect. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={surface ? "text-left" : "text-center mb-4"}
             >
-              <h1 className={surface
-                ? "text-2xl md:text-[26px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
-                : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"} data-testid="text-page-title">
-                {surface ? SURFACE_META[surface].title : "Explore Services & Ready-Made Trips"}
+              <h1
+                className={surface
+                  ? "flex items-center gap-2.5 flex-wrap text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)]"
+                  : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
+                style={surface ? { fontFamily: "'Fraunces', Georgia, serif" } : undefined}
+              >
+                {surface ? (
+                  <>
+                    <span aria-hidden="true">{SURFACE_META[surface].emoji}</span>
+                    {/* testid lives on the text span (not the h1) so masthead
+                        assertions stay an exact match — the emoji is decorative. */}
+                    <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
+                  </>
+                ) : (
+                  <span data-testid="text-page-title">Explore Services &amp; Ready-Made Trips</span>
+                )}
               </h1>
-              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1">
+              <p className={surface
+                ? "text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]"
+                : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
                 {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
               </p>
             </motion.div>
