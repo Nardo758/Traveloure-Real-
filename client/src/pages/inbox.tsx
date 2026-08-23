@@ -21,7 +21,7 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useSearch } from "wouter";
+import { Link, Redirect, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
 import { useUnreadMessageCount } from "@/hooks/use-message-read";
@@ -451,6 +451,12 @@ export default function InboxPage() {
   const { data: unreadMessages } = useUnreadMessageCount();
   const { data: notifications } = useQuery<{ isRead: boolean }[]>({ queryKey: ["/api/notifications"] });
   const unreadUpdatesCount = (notifications ?? []).filter((n) => !n.isRead).length;
+
+  // Messages have one canonical home: the full Chat surface. Keeping a second thread-card
+  // implementation here made Inbox → Messages visually diverge from My Plans → Chat.
+  if (initialTab === "messages") {
+    return <Redirect to="/chat" />;
+  }
 
   return (
     <DashboardLayout>
