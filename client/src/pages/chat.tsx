@@ -731,15 +731,15 @@ export default function Chat() {
         }}
         data-testid={`card-expert-${expert.id}`}
       >
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <Avatar className="w-12 h-12">
+        <CardContent className={expert.isConversationPartner ? "px-3 py-2.5" : "p-4"}>
+          <div className={expert.isConversationPartner ? "flex items-start gap-2.5" : "flex items-start gap-3"}>
+            <Avatar className={expert.isConversationPartner ? "w-9 h-9" : "w-12 h-12"}>
               <AvatarImage src={expert.avatar} alt={expert.name} />
               <AvatarFallback>{expert.name[0]}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-slate-900 dark:text-white truncate">
+                <h3 className={`${expert.isConversationPartner ? "text-sm" : ""} font-semibold text-slate-900 dark:text-white truncate`}>
                   {expert.name}
                 </h3>
                 {/* W5-E: per-thread unread indicator — real count from useConversationThreads
@@ -756,12 +756,12 @@ export default function Chat() {
               {expert.isConversationPartner ? (
                 <>
                   {expert.lastMessage && (
-                    <p className="text-sm text-muted-foreground truncate mt-1">
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
                       {expert.lastMessage}
                     </p>
                   )}
                   {expert.lastMessageAt && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-[11px] leading-4 text-muted-foreground mt-0.5">
                       {formatDistanceToNow(new Date(expert.lastMessageAt), { addSuffix: true })}
                     </p>
                   )}
