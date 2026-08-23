@@ -1,30 +1,30 @@
 {
-  "seed": "2026-08-22",
-  "chosenStep": "payment",
+  "seed": "2026-08-23",
+  "chosenStep": "discovery",
   "engine": "chromium",
   "project": "chromium",
-  "result": "PASS - booking 378f9b49-aae9-4c16-b519-6e8f27e16bb4 reached status \"confirmed\"",
+  "result": "PASS - booking e3970a9d-ddee-4665-8fec-6315f379acd4 reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
   "addToCartMethod": "api",
-  "addToCartLimitation": "[data-testid=\"button-add-to-cart-6d35558f-2f33-4fad-8a74-5ebc1e189e92\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
-  "serviceId": "6d35558f-2f33-4fad-8a74-5ebc1e189e92",
-  "serviceName": "Full-Day Wedding Photography",
-  "servicePrice": 2200,
+  "addToCartLimitation": "[data-testid=\"button-add-to-cart-ps-a01\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
+  "serviceId": "ps-a01",
+  "serviceName": "Private Louvre Tour",
+  "servicePrice": 280,
   "bookingIdsFromCheckout": [
-    "378f9b49-aae9-4c16-b519-6e8f27e16bb4"
+    "e3970a9d-ddee-4665-8fec-6315f379acd4"
   ],
-  "primaryBookingId": "378f9b49-aae9-4c16-b519-6e8f27e16bb4",
+  "primaryBookingId": "e3970a9d-ddee-4665-8fec-6315f379acd4",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
-    "screenshotRel": "booking-chromium-checkpoint-payment.png",
+    "screenshotRel": "booking-chromium-checkpoint-discovery.png",
     "viewport": {
       "width": 1280,
       "height": 900
     },
     "documentDimensions": {
       "scrollWidth": 1280,
-      "scrollHeight": 2363,
+      "scrollHeight": 3350,
       "innerWidth": 1280,
       "innerHeight": 900
     },
@@ -53,54 +53,6 @@
       {
         "type": "info",
         "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
-      },
-      {
-        "type": "debug",
-        "text": "[vite] connecting..."
-      },
-      {
-        "type": "debug",
-        "text": "[vite] connected."
-      },
-      {
-        "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
-      },
-      {
-        "type": "warning",
-        "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
-      },
-      {
-        "type": "debug",
-        "text": "[vite] connecting..."
-      },
-      {
-        "type": "debug",
-        "text": "[vite] connected."
-      },
-      {
-        "type": "info",
-        "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
-      },
-      {
-        "type": "warning",
-        "text": "You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS."
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] Your Elements integration is using an older API. We recommend migrating to the Checkout Sessions API to reduce code, maintenance, and tokens (for AI agents). Additionally, you can easily turn on advanced features like Adaptive Pricing.\nView migration guide: https://docs.stripe.com/payments/payment-element/migration-ewcs"
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] If you are testing Apple Pay or Google Pay, you must serve this page over HTTPS as it will not work over HTTP. Please read https://stripe.com/docs/stripe-js/elements/payment-request-button#html-js-prerequisites for more details."
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] The following payment method types are not activated:\n\n- link\n- cashapp\n- klarna\n- amazon_pay\n\nThey will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use."
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
       }
     ]
   },
@@ -112,16 +64,16 @@
     "bookings": "booking-chromium-bookings-final.png"
   },
   "timings": {
-    "register_ms": 3020,
-    "service_discovery_ms": 93,
-    "discover_load_ms": 3656,
-    "service_detail_load_ms": 2809,
-    "add_to_cart_ms": 45,
-    "cart_load_ms": 3793,
-    "checkout_click_ms": 4068,
-    "stripe_fill_ms": 2878,
-    "payment_submit_ms": 214,
-    "poll_confirmed_ms": 30
+    "register_ms": 3637,
+    "service_discovery_ms": 39,
+    "discover_load_ms": 3041,
+    "service_detail_load_ms": 2708,
+    "add_to_cart_ms": 354,
+    "cart_load_ms": 3531,
+    "checkout_click_ms": 4059,
+    "stripe_fill_ms": 2739,
+    "payment_submit_ms": 1020,
+    "poll_confirmed_ms": 23
   },
   "consoleMessages": [
     {
@@ -161,10 +113,6 @@
       "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
     },
     {
-      "type": "warning",
-      "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
-    },
-    {
       "type": "debug",
       "text": "[vite] connecting..."
     },
@@ -195,10 +143,6 @@
     {
       "type": "warning",
       "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
-    },
-    {
-      "type": "error",
-      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
     }
   ]
 }

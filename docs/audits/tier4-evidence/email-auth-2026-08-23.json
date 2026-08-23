@@ -1,0 +1,53 @@
+{
+  "auditVersion": "tier4-email-auth-v3",
+  "generatedAtUtc": "2026-08-23T06:40:42.000Z",
+  "senderDomain": "traveloure.com",
+  "provider": {
+    "name": "traveloure.com",
+    "status": "verified",
+    "region": "us-east-1",
+    "capabilities": {
+      "sending": "enabled",
+      "receiving": "disabled"
+    }
+  },
+  "authentication": {
+    "spf": {
+      "providerMailFromTxtStatus": "verified",
+      "providerMailFromMxStatus": "verified",
+      "liveProviderMailFromTxtFound": true,
+      "liveProviderMailFromMxFound": true,
+      "liveApexPolicyFound": true
+    },
+    "dkim": {
+      "selector": "resend",
+      "providerStatus": "verified",
+      "liveTxtFound": true
+    },
+    "dmarc": {
+      "livePolicyFound": true,
+      "policy": "reject"
+    }
+  },
+  "realDelivery": {
+    "attempted": true,
+    "providerAccepted": true,
+    "providerMessageId": "fae63ac4-2f27-4de4-ba01-2d045105408e",
+    "lastProviderEvent": "delivered",
+    "pollCount": 1,
+    "recipientRedacted": true,
+    "mailboxPlacement": "human verification required",
+    "mailboxPlacementOptions": [
+      "Inbox",
+      "Promotions",
+      "Spam",
+      "Other"
+    ]
+  },
+  "limitations": [
+    "Provider delivered status proves handoff to the recipient mail system, not Inbox placement.",
+    "The audit had no authorized mailbox-reading integration, so it did not inspect the recipient mailbox.",
+    "Outlook/Microsoft and Apple/iCloud delivery were not tested.",
+    "Email rendering, links, images, dark mode, reply handling, bounce, complaint, suppression, and retry behavior require separate human or provider-environment verification."
+  ]
+}
