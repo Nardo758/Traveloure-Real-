@@ -208,7 +208,7 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
       { label: 'How It Works', i18nKey: 'footer.links.howItWorks',           href: '/how-it-works' },
       { label: 'Pricing', i18nKey: 'footer.links.pricing',                href: '/pricing' },
       { label: 'Features', i18nKey: 'footer.links.features',               href: '/features' },
-      { label: 'Global Calendar', i18nKey: 'footer.links.globalCalendar',        href: '/global-calendar' },
+      { label: 'Global Calendar', i18nKey: 'footer.links.globalCalendar',        href: '/discover?tab=events' },
       { label: 'Executive Assistant', i18nKey: 'footer.links.executiveAssistant',    href: '/executive-assistant' },
     ],
   },
