@@ -361,6 +361,7 @@ export default function AIAssistant() {
             {/* C4: first-class, always-visible human handoff (ruled hybrid). */}
             <Button
               variant="outline"
+              size="sm"
               onClick={() => escalateToTeam.mutate()}
               disabled={escalateToTeam.isPending}
               data-testid="button-escalate-to-team"
@@ -375,7 +376,7 @@ export default function AIAssistant() {
           </div>
         </div>
 
-        <div className="flex flex-col lg:grid lg:grid-cols-5 gap-4 lg:gap-6 flex-1 min-h-0">
+        <div className="flex flex-col lg:grid lg:grid-cols-5 gap-3 lg:gap-4 flex-1 min-h-0">
           <Card className="lg:col-span-1 bg-card rounded-2xl shadow-card border-border flex flex-col min-h-0">
             <CardHeader className="p-4 pb-2 flex-shrink-0">
               <div className="flex items-center justify-between gap-2">
@@ -395,7 +396,7 @@ export default function AIAssistant() {
               <ScrollArea className="flex-1 min-h-0 max-h-64 lg:max-h-none [&>div>div]:!block [&>div>div]:!w-full [&>div>div]:!min-w-0">
                 {loadingConversations ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-gray-600 dark:text-gray-400" />
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : conversations.length === 0 ? (
                   <div className="text-center py-6 text-muted-foreground">
@@ -437,7 +438,7 @@ export default function AIAssistant() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-6 w-6 flex-shrink-0 text-green-600 hover:text-green-700"
+                                className="h-8 w-8 flex-shrink-0 text-green-600 hover:text-green-700"
                                 onMouseDown={(e) => { e.preventDefault(); commitRename(conv.id); }}
                                 data-testid={`button-confirm-rename-${conv.id}`}
                               >
@@ -446,7 +447,7 @@ export default function AIAssistant() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-6 w-6 flex-shrink-0"
+                                className="h-8 w-8 flex-shrink-0"
                                 onMouseDown={(e) => { e.preventDefault(); cancelRename(); }}
                                 data-testid={`button-cancel-rename-${conv.id}`}
                               >
@@ -456,7 +457,7 @@ export default function AIAssistant() {
                           ) : (
                             <>
                               <p className="text-sm font-medium truncate">{conv.title}</p>
-                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                              <p className="text-xs text-muted-foreground">
                                 {new Date(conv.createdAt).toLocaleDateString()}
                               </p>
                             </>
@@ -467,7 +468,7 @@ export default function AIAssistant() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7"
+                              className="h-9 w-9"
                               onClick={(e) => startRename(conv, e)}
                               data-testid={`button-rename-conversation-${conv.id}`}
                             >
@@ -476,7 +477,7 @@ export default function AIAssistant() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7"
+                              className="h-9 w-9"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 deleteConversation.mutate(conv.id);
@@ -495,40 +496,40 @@ export default function AIAssistant() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
-            <CardContent className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
-              <ScrollArea className="flex-1 min-h-0 pr-4">
+          <Card className="lg:col-span-3 bg-card rounded-2xl shadow-card border-border flex flex-col min-h-0">
+            <CardContent className="flex-1 min-h-0 p-3 sm:p-4 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1 min-h-0 pl-1 pr-3 [&>div>div]:!block [&>div>div]:!w-full [&>div>div]:!min-w-0">
                 {selectedConversation && loadingMessages ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
                   </div>
                 ) : messages.length === 0 && !streamingMessage && !selectedConversation ? (
-                  <div className="h-full flex flex-col items-center justify-center py-12">
-                    <div className="text-center mb-8">
-                      <Sparkles className="w-16 h-16 mx-auto text-primary mb-4" />
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  <div className="h-full flex flex-col items-center justify-center py-8">
+                    <div className="text-center mb-6">
+                      <Sparkles className="w-12 h-12 mx-auto text-primary mb-3" />
+                      <h2 className="text-xl font-bold text-foreground mb-2">
                         How can I help you today?
                       </h2>
-                      <p className="text-gray-600 dark:text-gray-400 max-w-md">
+                      <p className="text-sm text-muted-foreground max-w-md">
                         I can help you plan trips, find destinations, create itineraries, and more!
                       </p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-2xl">
                       {suggestedPrompts.map((prompt, index) => (
                         <button
                           key={index}
                           onClick={() => setInputMessage(prompt.text)}
-                          className="p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 text-left transition-all flex items-center gap-3 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md"
+                          className="p-3 rounded-xl border border-border text-left transition-all flex items-center gap-3 hover:border-primary/40 hover:shadow-sm"
                           data-testid={`button-suggestion-${index}`}
                         >
                           <prompt.icon className="w-5 h-5 text-primary flex-shrink-0" />
-                          <span className="text-sm text-gray-700 dark:text-gray-300">{prompt.text}</span>
+                          <span className="text-sm text-foreground">{prompt.text}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-4 py-4">
+                  <div className="space-y-3 py-3">
                     <AnimatePresence mode="popLayout">
                       {messages.map((message) => (
                         <motion.div
@@ -542,12 +543,12 @@ export default function AIAssistant() {
                         >
                           {message.role === "assistant" && (
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
-                              <Bot className="w-4 h-4 text-white" />
+                              <Bot className="w-4 h-4 text-primary-foreground" />
                             </div>
                           )}
                           <div
                             className={cn(
-                              "max-w-[80%] p-4 rounded-2xl text-sm",
+                              "max-w-[80%] p-3 rounded-2xl text-sm",
                               message.role === "user"
                                 ? "bg-primary text-primary-foreground"
                                 : "bg-muted"
@@ -562,7 +563,7 @@ export default function AIAssistant() {
                             )}
                           </div>
                           {message.role === "user" && (
-                            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center flex-shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
                               <User className="w-4 h-4" />
                             </div>
                           )}
@@ -579,9 +580,9 @@ export default function AIAssistant() {
                         data-testid="typing-indicator"
                       >
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-white" />
+                          <Bot className="w-4 h-4 text-primary-foreground" />
                         </div>
-                        <div className="p-4 rounded-2xl bg-muted flex items-center gap-1.5">
+                        <div className="p-3 rounded-2xl bg-muted flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground mr-1">Thinking</span>
                           {[0, 1, 2].map((i) => (
                             <span
@@ -601,9 +602,9 @@ export default function AIAssistant() {
                         className="flex gap-3 justify-start"
                       >
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-white" />
+                          <Bot className="w-4 h-4 text-primary-foreground" />
                         </div>
-                        <div className="max-w-[80%] p-4 rounded-2xl bg-muted text-sm">
+                        <div className="max-w-[80%] p-3 rounded-2xl bg-muted text-sm">
                           <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:font-semibold">
                             <ReactMarkdown>{streamingMessage}</ReactMarkdown>
                           </div>
@@ -616,15 +617,15 @@ export default function AIAssistant() {
                 )}
               </ScrollArea>
 
-              <div className="pt-4 border-t border-border mt-4 flex-shrink-0">
-                <div className="flex gap-3">
+              <div className="pt-3 border-t border-border mt-3 flex-shrink-0">
+                <div className="flex gap-2">
                   <Textarea
                     ref={textareaRef}
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Ask me about your travel plans..."
-                    className="resize-none min-h-[60px] max-h-[120px]"
+                    className="resize-none min-h-[52px] max-h-[112px]"
                     disabled={isStreaming}
                     data-testid="input-message"
                   />
@@ -632,7 +633,7 @@ export default function AIAssistant() {
                     size="lg"
                     onClick={handleSendMessage}
                     disabled={!inputMessage.trim() || isStreaming}
-                    className="px-6"
+                    className="px-5"
                     data-testid="button-send-message"
                   >
                     {isStreaming ? (
@@ -642,7 +643,7 @@ export default function AIAssistant() {
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">
+                <p className="text-xs text-muted-foreground mt-2 text-center">
                   AI assistant powered by Claude. Responses are for planning purposes only.
                 </p>
               </div>
