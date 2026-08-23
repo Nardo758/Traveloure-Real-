@@ -25,6 +25,7 @@ export {
   stopsToActivityCandidates,
   rankActivityAnchors,
   buildPinnedCandidateFromCoords,
+  parsePinnedAnchorInput,
 } from "./anchor-candidates-map";
 
 export interface RankedAnchors {
