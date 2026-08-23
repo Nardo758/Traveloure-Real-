@@ -868,7 +868,12 @@ export async function generateOptimizedItineraries(
    *  `tripId`, because the create route deliberately does NOT pass `tripId` today and activating
    *  its anchor/day-boundary reads as a side effect of this lane would be an unrelated behaviour
    *  change. Empty array / omitted ⇒ every code path below is a no-op. */
-  fixedCommitments: FixedCommitment[] = []
+  fixedCommitments: FixedCommitment[] = [],
+  /** Phase 1c: the traveler's explicit "build around THIS" choice, already resolved + scored by the
+   *  route against real coordinates. When present, ALL THREE versions are built around it (they
+   *  still differ by strategy); when omitted, anchors are auto-picked (one hotel / neighborhood /
+   *  activity). Undefined ⇒ unchanged auto behaviour. */
+  pinnedAnchor?: AnchorScore
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -929,21 +934,28 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // never a failed optimization. §13 — an anchor is only ever a real scored candidate or absent,
     // never fabricated; a thin catalog simply yields fewer than three anchored versions.
     let chosenAnchors: AnchorScore[] = [];
-    try {
-      const anchorStops = baselineItems.map((it) => {
-        const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
-        const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
-        return {
-          id: String(it.id),
-          name: (it as any).title ?? (it as any).name ?? "Stop",
-          lat: Number.isFinite(lat) ? lat : null,
-          lng: Number.isFinite(lng) ? lng : null,
-        };
-      });
-      const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
-      chosenAnchors = pickAutoAnchors(ranked, 3);
-    } catch (err) {
-      console.warn("[Optimizer] anchor scoring failed (non-critical):", (err as Error).message);
+    if (pinnedAnchor) {
+      // 1c: the traveler explicitly chose a location to build around — every version builds around
+      // it (they still differ by strategy). Already resolved + scored by the route against real
+      // coordinates, so it is used as-is; the route dropped it if it couldn't resolve (§13).
+      chosenAnchors = [pinnedAnchor, pinnedAnchor, pinnedAnchor];
+    } else {
+      try {
+        const anchorStops = baselineItems.map((it) => {
+          const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
+          const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
+          return {
+            id: String(it.id),
+            name: (it as any).title ?? (it as any).name ?? "Stop",
+            lat: Number.isFinite(lat) ? lat : null,
+            lng: Number.isFinite(lng) ? lng : null,
+          };
+        });
+        const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
+        chosenAnchors = pickAutoAnchors(ranked, 3);
+      } catch (err) {
+        console.warn("[Optimizer] anchor scoring failed (non-critical):", (err as Error).message);
+      }
     }
     // A per-version prompt line — omitted (empty string) when there is no anchor for that slot, so
     // the AI is only ever told about a real, scored location and never invents one.

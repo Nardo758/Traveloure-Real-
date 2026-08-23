@@ -67,6 +67,9 @@ import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
 // §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
 import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
+// Phase 1c — "build around a location": resolve/rank the traveler's anchor choice.
+import { loadRankedAnchors, resolvePinnedAnchor, type NamedStop, type PinnedAnchorInput } from "../services/anchor-candidates";
+import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
 import { viatorService } from "../services/viator.service";
@@ -659,11 +662,78 @@ router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) =
   });
 
 
+// Phase 1c: the located stops an anchor is scored against. Prefer the trip-backed loader (real
+// item/catalog coordinates) when the comparison has a trip; otherwise there is no coordinate source
+// on this path and anchors are scored against nothing — honest, not fabricated (§13). Never throws.
+async function buildAnchorStops(
+  comparison: { tripId?: string | null },
+): Promise<NamedStop[]> {
+  if (!comparison.tripId) return [];
+  try {
+    const inputs = await loadTripOptimizerInputs(comparison.tripId);
+    return inputs.baselineItems.map((b: any) => ({
+      id: String(b.id),
+      name: b.name ?? "Stop",
+      lat: b.latitude != null ? b.latitude : null,
+      lng: b.longitude != null ? b.longitude : null,
+    }));
+  } catch (err) {
+    console.warn("[anchor-stops] trip load failed (non-critical):", (err as Error).message);
+    return [];
+  }
+}
+
+// Phase 1c: allowlist a client-supplied "build around THIS" pin (§19 posture — only these five
+// fields are ever read off the body, and none is a money/identity field). Returns undefined for a
+// missing/malformed pin so the optimizer falls back to auto anchors.
+const PIN_ANCHOR_TYPES = new Set(["hotel", "neighborhood", "activity"]);
+function parsePinnedAnchor(raw: any): PinnedAnchorInput | undefined {
+  if (!raw || typeof raw !== "object" || !PIN_ANCHOR_TYPES.has(raw.type)) return undefined;
+  const asNum = (v: unknown): number | undefined =>
+    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? parseFloat(v) : undefined;
+  return {
+    type: raw.type,
+    id: typeof raw.id === "string" ? raw.id.slice(0, 200) : undefined,
+    name: typeof raw.name === "string" ? raw.name.slice(0, 200) : undefined,
+    lat: asNum(raw.lat),
+    lng: asNum(raw.lng),
+  };
+}
+
+// Phase 1c: rank real anchor candidates (hotel / neighborhood / activity) for the Optimize popup.
+router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const comparison = await storage.getItineraryComparison(req.params.id);
+      if (!comparison) {
+        return res.status(404).json({ message: "Comparison not found" });
+      }
+      if (comparison.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      // Defensive: only load trip inputs for a trip the same user owns (loadTripOptimizerInputs
+      // authorizes nothing itself).
+      if (comparison.tripId) {
+        const trip = await storage.getTrip(comparison.tripId);
+        if (trip && trip.userId !== userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+      }
+      const stops = await buildAnchorStops(comparison);
+      const ranked = await loadRankedAnchors(comparison.destination, stops, { limit: 8 });
+      res.json(ranked);
+    } catch (error) {
+      console.error("Error loading anchor candidates:", error);
+      res.status(500).json({ message: "Failed to load anchor candidates" });
+    }
+  });
+
+
 router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, pinnedAnchor: rawPinnedAnchor } = req.body;
 
       // Sprint-1 dislike loop: whitelisted "what to fix" chips from a re-run.
       // They flow into TripPreferences.feedback, where selectVariantStrategy
@@ -760,6 +830,18 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
         }
       }
 
+      // 1c: resolve the traveler's "build around THIS" pin (if any) against real coordinates before
+      // handing it to the optimizer. Unresolvable ⇒ undefined ⇒ auto anchors (§13). Response was
+      // already sent above; this runs as part of the background optimization work.
+      const pinnedAnchorInput = parsePinnedAnchor(rawPinnedAnchor);
+      let resolvedPinnedAnchor:
+        | NonNullable<Awaited<ReturnType<typeof resolvePinnedAnchor>>>
+        | undefined;
+      if (pinnedAnchorInput) {
+        const anchorStops = await buildAnchorStops(comparison);
+        resolvedPinnedAnchor = (await resolvePinnedAnchor(pinnedAnchorInput, anchorStops)) ?? undefined;
+      }
+
       generateOptimizedItineraries(
         comparisonId,
         userId,
@@ -772,7 +854,9 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
         comparison.travelers || 1,
         comparison.tripId || undefined,
         undefined,
-        tripPreferencesForGen
+        tripPreferencesForGen,
+        [],
+        resolvedPinnedAnchor
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
