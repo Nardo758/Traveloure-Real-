@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Adopt the Optimization</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground: #FAFAF8;
+    --surface: #FFFFFF;
+    --surface-2: #F4F3EF;
+    --ink: #1A1A18;
+    --muted: #7A7A72;
+    --hairline: #E8E8E2;
+    --hairline-strong: #DAD9D1;
+
+    --save-fg: #1E7A52;
+    --save-bg: #E7F3EC;
+    --save-br: #C4E4D1;
+    --caution-fg: #8A5E12;
+    --caution-bg: #F6EDD8;
+    --caution-br: #E8D6AF;
+
+    --accent-fg: #5B4B8A;
+    --accent-bg: #EEEAF6;
+    --accent-br: #D8CFEE;
+
+    --trend-fg: #1E7A52;
+    --season-fg: #5B4B8A;
+
+    --shadow: 0 1px 2px rgba(26,26,24,.04), 0 8px 24px rgba(26,26,24,.05);
+    --shadow-lift: 0 2px 4px rgba(26,26,24,.05), 0 14px 40px rgba(26,26,24,.09);
+
+    --sans: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --display: "Bricolage Grotesque", var(--sans);
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground: #14140F;
+      --surface: #1D1D18;
+      --surface-2: #24241E;
+      --ink: #EDECE4;
+      --muted: #9A9A8F;
+      --hairline: #2E2E27;
+      --hairline-strong: #3A3A31;
+
+      --save-fg: #6FD79E;
+      --save-bg: #16281F;
+      --save-br: #244A36;
+      --caution-fg: #E7B85E;
+      --caution-bg: #2A2314;
+      --caution-br: #4A3D1E;
+
+      --accent-fg: #B7A9E6;
+      --accent-bg: #221E33;
+      --accent-br: #3A3358;
+
+      --trend-fg: #6FD79E;
+      --season-fg: #B7A9E6;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --shadow-lift: 0 2px 4px rgba(0,0,0,.35), 0 14px 40px rgba(0,0,0,.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #14140F;
+    --surface: #1D1D18;
+    --surface-2: #24241E;
+    --ink: #EDECE4;
+    --muted: #9A9A8F;
+    --hairline: #2E2E27;
+    --hairline-strong: #3A3A31;
+
+    --save-fg: #6FD79E;
+    --save-bg: #16281F;
+    --save-br: #244A36;
+    --caution-fg: #E7B85E;
+    --caution-bg: #2A2314;
+    --caution-br: #4A3D1E;
+
+    --accent-fg: #B7A9E6;
+    --accent-bg: #221E33;
+    --accent-br: #3A3358;
+
+    --trend-fg: #6FD79E;
+    --season-fg: #B7A9E6;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --shadow-lift: 0 2px 4px rgba(0,0,0,.35), 0 14px 40px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 72px; }
+
+  /* App shell bar */
+  .shell {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; margin-bottom: 26px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .shell .mark {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent-fg), #8879C6);
+    display: grid; place-items: center; color: #fff; flex: none;
+  }
+  .shell .mark svg { width: 15px; height: 15px; }
+  .shell .brand { font-family: var(--display); font-weight: 600; letter-spacing: -.01em; }
+  .shell .crumb { color: var(--muted); font-size: 13px; }
+  .shell .crumb b { color: var(--ink); font-weight: 600; }
+  .shell .spacer { flex: 1; }
+  .shell .who {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+  }
+  .shell .avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex: none;
+    background: var(--surface-2); border: 1px solid var(--hairline-strong);
+    display: grid; place-items: center; font-weight: 600; color: var(--ink); font-size: 12px;
+  }
+
+  /* Page heading */
+  .eyebrow {
+    font-size: 12px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--accent-fg); font-weight: 600; margin: 0 0 8px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700; letter-spacing: -.02em;
+    font-size: clamp(1.6rem, 1.1rem + 1.9vw, 2.35rem);
+    line-height: 1.08; margin: 0 0 6px; text-wrap: balance;
+  }
+  .sub { color: var(--muted); margin: 0; max-width: 62ch; }
+
+  /* Review header row */
+  .review-head {
+    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+    gap: 14px; margin: 26px 0 14px;
+  }
+  .slip-line { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .slip-line b { color: var(--ink); font-weight: 600; }
+  .exclusions { font-size: 13px; color: var(--muted); text-align: right; }
+  .exclusions p { margin: 0 0 3px; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .exclusions svg { width: 13px; height: 13px; opacity: .7; }
+
+  /* Context strip: trending + seasonal */
+  .context {
+    display: grid; gap: 10px; margin: 4px 0 22px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .context-row { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; }
+  .context-row svg { width: 16px; height: 16px; margin-top: 2px; flex: none; }
+  .context-row .icn-trend { color: var(--trend-fg); }
+  .context-row .icn-season { color: var(--season-fg); }
+  .context-row .lbl { font-weight: 600; }
+  .context-row .val { color: var(--muted); }
+
+  /* Columns */
+  .board {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  @media (max-width: 1000px) { .board { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  @media (max-width: 560px)  { .board { grid-template-columns: 1fr; } }
+
+  .col {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  /* Preview chip strip (sits above a proposal card) */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px;
+    border: 1px solid transparent;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip svg { width: 12px; height: 12px; }
+  .chip.save { color: var(--save-fg); background: var(--save-bg); border-color: var(--save-br); }
+  .chip.caution { color: var(--caution-fg); background: var(--caution-bg); border-color: var(--caution-br); }
+
+  /* PlanCard proposal */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+  }
+  .card.recommended { border-color: var(--accent-br); box-shadow: var(--shadow-lift); }
+  .card.current { background: var(--surface-2); border-style: dashed; border-color: var(--hairline-strong); }
+
+  .card-head { padding: 14px 15px 10px; border-bottom: 1px solid var(--hairline); }
+  .card.current .card-head { border-bottom-color: var(--hairline-strong); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .tag.rec { color: var(--accent-fg); background: var(--accent-bg); border: 1px solid var(--accent-br); }
+  .tag.cur { color: var(--muted); background: transparent; border: 1px solid var(--hairline-strong); }
+  .tag svg { width: 12px; height: 12px; }
+  .card-name { font-family: var(--display); font-weight: 600; font-size: 1.06rem; letter-spacing: -.01em; margin: 0 0 2px; }
+  .card-tagline { font-size: 12.5px; color: var(--muted); margin: 0; }
+
+  .card-total { padding: 10px 15px 6px; display: flex; align-items: baseline; gap: 8px; }
+  .card-total .amt { font-family: var(--mono); font-weight: 600; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .card-total .per { font-size: 12px; color: var(--muted); }
+
+  .items { list-style: none; margin: 0; padding: 4px 15px 12px; display: flex; flex-direction: column; gap: 0; }
+  .items li {
+    display: grid; grid-template-columns: 46px 1fr auto; align-items: baseline; gap: 8px;
+    padding: 7px 0; border-top: 1px solid var(--hairline);
+    font-size: 13px;
+  }
+  .card.current .items li { border-top-color: var(--hairline-strong); }
+  .items li:first-child { border-top: none; }
+  .items .t { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .items .n { color: var(--ink); }
+  .items .n .new { color: var(--accent-fg); font-weight: 600; }
+  .items .p { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .items .anchor { color: var(--muted); }
+  .items .anchor svg { width: 11px; height: 11px; vertical-align: -1px; margin-right: 3px; opacity: .7; }
+
+  .card-foot { margin-top: auto; padding: 12px 15px 15px; }
+  .btn {
+    width: 100%; border: none; cursor: pointer;
+    font-family: var(--sans); font-weight: 600; font-size: 13.5px;
+    padding: 10px 12px; border-radius: 9px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    transition: transform .08s ease, filter .15s ease;
+  }
+  .btn svg { width: 14px; height: 14px; }
+  .btn.primary { background: var(--ink); color: var(--ground); }
+  .btn.accent { background: var(--accent-fg); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--hairline-strong); }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
+
+  .foot-note {
+    text-align: center; color: var(--muted); font-size: 13px;
+    margin: 22px auto 0; max-width: 60ch; text-wrap: balance;
+  }
+
+  /* Honesty legend */
+  .legend {
+    margin-top: 40px; padding: 20px 22px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 14px; box-shadow: var(--shadow);
+  }
+  .legend h2 {
+    font-family: var(--display); font-size: 1rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em;
+  }
+  .legend .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 16px; max-width: 70ch; }
+  .legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px 22px; }
+  .legend-item { display: flex; gap: 11px; }
+  .legend-item .dot {
+    width: 9px; height: 9px; border-radius: 3px; margin-top: 5px; flex: none;
+  }
+  .dot.save { background: var(--save-fg); }
+  .dot.caution { background: var(--caution-fg); }
+  .dot.accent { background: var(--accent-fg); }
+  .dot.omit { background: var(--hairline-strong); }
+  .legend-item h3 { font-size: 13px; margin: 0 0 2px; font-weight: 600; }
+  .legend-item p { font-size: 12.5px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .legend code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  .mock-note {
+    margin-top: 26px; font-size: 12px; color: var(--muted); text-align: center;
+    font-style: italic;
+  }
+
+  /* Step framing + slip action toolbar (the entry point) */
+  .step-tag {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+  }
+  .slip-panel {
+    margin: 24px 0 6px; padding: 16px 18px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .slip-panel .cap { font-size: 13px; color: var(--muted); margin: 12px 0 0; max-width: 76ch; line-height: 1.55; }
+  .slip-panel .cap b { color: var(--accent-fg); font-weight: 600; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 11px; }
+  .tbtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 500; padding: 6px 11px;
+    border-radius: 8px; border: 1px solid var(--hairline-strong);
+    background: var(--surface); color: var(--ink);
+  }
+  .tbtn svg { width: 13px; height: 13px; opacity: .7; }
+  .tbtn.solid { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .tbtn.solid svg { opacity: 1; }
+  .tbtn.optimize {
+    border-color: var(--accent-br); background: var(--accent-bg);
+    color: var(--accent-fg); font-weight: 600;
+    box-shadow: 0 0 0 3px var(--accent-br);
+  }
+  .tbtn.optimize svg { opacity: 1; }
+  .startpin {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; color: var(--accent-fg);
+  }
+  .startpin svg { width: 13px; height: 13px; }
+  .flow {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 10px; color: var(--muted); font-size: 13px; margin: 16px 0 6px;
+  }
+  .flow svg { width: 16px; height: 16px; color: var(--accent-fg); flex: none; }
+  .flow b { color: var(--ink); font-weight: 600; }
+</style>
+
+<div class="wrap">
+
+  <!-- app shell -->
+  <div class="shell">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 4l2.5 5.5L21 12l-5.5 2.5L13 20l-2.5-5.5L5 12l5.5-2.5L13 4z"/></svg>
+    </span>
+    <span class="brand">Traveloure</span>
+    <span class="crumb">Plans&nbsp;/&nbsp;<b>Kyoto, 5 days</b>&nbsp;/&nbsp;Optimize</span>
+    <span class="spacer"></span>
+    <span class="who"><span class="avatar">MK</span>Mika&nbsp;K.</span>
+  </div>
+
+  <p class="eyebrow">Optimization · Review before applying</p>
+  <h1>Three ways to sharpen your Kyoto plan</h1>
+  <p class="sub">Each version is a <b>complete plan rebuilt around one location</b> — a hotel, a neighborhood, or a keystone activity. That anchor is the trip’s common denominator, so the days radiate from it. Your plan stays untouched: every version is saved as its own trip, and you can adopt one outright or pull single stops across with the <b>+</b> ticks.</p>
+
+  <!-- STEP 1: the slip's own action row — where the journey starts -->
+  <div class="slip-panel">
+    <span class="step-tag">Step 1 · On your slip</span>
+    <div class="toolbar">
+      <span class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</span>
+      <span class="tbtn">Preview Trip Card</span>
+      <span class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Add all to checkout (3)</span>
+      <span class="tbtn optimize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M19 14v4M21 16h-4M5 4v3M6.5 5.5h-3"/></svg>Optimize this plan</span>
+      <span class="tbtn solid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4L12 14.01l-3-3"/></svg>Finalize plan</span>
+      <span class="startpin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 7v10H7"/></svg>start here</span>
+    </div>
+    <p class="cap">The <b>✨ Optimize this plan</b> button sits in your slip's action row — owner-only, and greyed out with a reason when there's nothing to optimize. Tapping it charges the optimization fee, builds the proposals, and lands you on the review below. It no longer changes your plan on its own.</p>
+  </div>
+
+  <!-- flow connector -->
+  <div class="flow">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/></svg>
+    <span>Tap <b>Optimize this plan</b></span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    <span><b>Step 2 · Review the proposals</b> — nothing is applied until you choose</span>
+  </div>
+
+  <!-- review header -->
+  <div class="review-head">
+    <p class="slip-line">Slip <b>TRV-4821</b> · 3 proposals for your remaining <b>6 items</b></p>
+    <div class="exclusions">
+      <p><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></svg>2 purchased items pinned in all</p>
+      <p>1 item excluded (with Kenji, your expert)</p>
+    </div>
+  </div>
+
+  <!-- trending + seasonal context -->
+  <div class="context" data-testid="slip-optimize-preview-context">
+    <div class="context-row" data-testid="preview-trending-now">
+      <svg class="icn-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>
+      <span><span class="lbl">Trending now in Kyoto:&nbsp;</span><span class="val">Fushimi Inari night hike · Nishiki Market food crawl · Arashiyama bamboo grove</span></span>
+    </div>
+    <div class="context-row" data-testid="preview-seasonal">
+      <svg class="icn-season" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      <span><span class="lbl">Popular around your travel dates:&nbsp;</span><span class="val">late-summer Kamo-gawa riverside dining, evening temple illuminations, and the Gion Matsuri afterglow.</span></span>
+    </div>
+  </div>
+
+  <!-- board: current plan + 3 proposals (anchor is chosen in the Build-around popup below) -->
+  <div class="board">
+
+    <!-- current plan (baseline) — no preview chips -->
+    <div class="col">
+      <div class="chips" aria-hidden="true"></div>
+      <div class="card current" data-testid="proposal-column-baseline">
+        <div class="card-head">
+          <span class="tag cur">Your current plan</span>
+          <p class="card-name">As you built it</p>
+          <p class="card-tagline">The order you planned, unchanged.</p>
+          <div class="card-base t-hotel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg><span class="ak">Hotel</span><span class="an">Airport Grand</span><span class="bm">· 28 min median to your stops</span></div>
+        </div>
+        <div class="card-total"><span class="amt">$1,240</span><span class="per">· $620/person</span></div>
+        <ul class="items">
+          <li class="day-sep">Day 1 · from the base</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">13:00</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
+          <li><span class="t">16:30</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li class="day-sep">Day 2 · Arashiyama</li>
+          <li><span class="t">10:00</span><span class="n">Arashiyama bamboo</span><span class="p">$0</span></li>
+          <li><span class="t">12:30</span><span class="n">Sagano boat ride</span><span class="p">$110</span></li>
+          <li class="day-sep">Day 3 · Evening</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn ghost">Keep this plan</button>
+          <div class="tray" data-testid="adopt-tray"><b>Your plan is the landing spot.</b> Stops you pick with <b>+</b> land here for one confirm.<span class="hint">Desktop: you can also drag a stop onto this card.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- proposal 1: recommended — money + drive-time -->
+    <div class="col">
+      <div class="chips">
+        <span class="chip save" data-testid="proposal-preview-money"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Saves $185 (15% less)</span>
+        <span class="chip save" data-testid="proposal-preview-drivetime"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>40 min less travel</span>
+      </div>
+      <div class="card recommended" data-testid="proposal-column-v1">
+        <div class="card-head">
+          <span class="tag rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg>Recommended</span>
+          <p class="card-name">Calm Mornings</p>
+          <p class="card-tagline">Clusters west-side stops so you backtrack less.</p>
+          <div class="card-base t-hotel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg><span class="ak">Hotel</span><span class="an">Hotel Kanra</span><span class="bm">· 9 min median · 14/17 stops ≤ 15 min</span></div>
+        </div>
+        <div class="card-total"><span class="amt">$1,055</span><span class="per">· $528/person</span></div>
+        <ul class="items">
+          <li class="day-sep">Day 1 · from the base</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">11:00</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">13:30</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
+          <li class="day-sep">Day 2 · Arashiyama</li>
+          <li><span class="t">10:00</span><span class="n"><span class="new">Arashiyama at dawn</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$0</span></li>
+          <li><span class="t">11:30</span><span class="n">Sagano boat ride</span><span class="p">$110</span></li>
+          <li class="day-sep">Day 3 · Evening</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn adopt">Select this plan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- proposal 2: money only (drive-time honestly omitted) -->
+    <div class="col">
+      <div class="chips">
+        <span class="chip save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Saves $95 (8% less)</span>
+      </div>
+      <div class="card" data-testid="proposal-column-v2">
+        <div class="card-head">
+          <span class="tag cur" style="visibility:hidden">·</span>
+          <p class="card-name">Riverside Focus</p>
+          <p class="card-tagline">Swaps two paid stops for local favorites.</p>
+          <div class="card-base t-nbhd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3z"/><path d="M9 3v15M15 6v15"/></svg><span class="ak">Neighborhood</span><span class="an">Pontocho &amp; Kamogawa riverside</span><span class="bm">· 11 min median · stay anywhere in-area</span></div>
+        </div>
+        <div class="card-total"><span class="amt">$1,145</span><span class="per">· $573/person</span></div>
+        <ul class="items">
+          <li class="day-sep">Day 1 · from the base</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">12:00</span><span class="n"><span class="new">Nishiki Market crawl</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$40</span></li>
+          <li><span class="t">15:00</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">18:30</span><span class="n"><span class="new">Pontocho supper</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$0</span></li>
+          <li class="day-sep">Day 2 · Arashiyama</li>
+          <li><span class="t">10:00</span><span class="n">Arashiyama bamboo</span><span class="p">$0</span></li>
+          <li class="day-sep">Day 3 · Evening</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn adopt">Select this plan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- proposal 3: honest cost increase + drive-time saving -->
+    <div class="col">
+      <div class="chips">
+        <span class="chip caution"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Costs $40 more</span>
+        <span class="chip save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>55 min less travel</span>
+      </div>
+      <div class="card" data-testid="proposal-column-v3">
+        <div class="card-head">
+          <span class="tag cur" style="visibility:hidden">·</span>
+          <p class="card-name">Fewer Hops</p>
+          <p class="card-tagline">One district a day — a private transfer trims transit.</p>
+          <div class="card-base t-act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6L21 9.3l-4.5 4.2 1.1 6.2L12 16.9 6.4 19.7l1.1-6.2L3 9.3l6.4-.7z"/></svg><span class="ak">Activity</span><span class="an">Built around your Gion tea ceremony</span><span class="bm">· 14 min median · the day pivots on it</span></div>
+        </div>
+        <div class="card-total"><span class="amt">$1,280</span><span class="per">· $640/person</span></div>
+        <ul class="items">
+          <li class="day-sep">Day 1 · from the base</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>09:00</span><span class="n">Fushimi Inari shrine</span><span class="p">—</span></li>
+          <li><span class="t">11:30</span><span class="n">Kiyomizu-dera</span><span class="p">$0</span></li>
+          <li><span class="t">14:00</span><span class="n">Gion tea ceremony</span><span class="p">$85</span></li>
+          <li class="day-sep">Day 2 · Arashiyama</li>
+          <li><span class="t">09:30</span><span class="n"><span class="new">Private transfer</span><button class="adopt-tick" title="Pull just this stop into your plan">+</button></span><span class="p">$150</span></li>
+          <li><span class="t">11:00</span><span class="n">Arashiyama + boat</span><span class="p">$110</span></li>
+          <li class="day-sep">Day 3 · Evening</li>
+          <li><span class="t anchor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V8"/><circle cx="12" cy="5" r="3"/></svg>19:00</span><span class="n">Kaiseki dinner</span><span class="p">—</span></li>
+        </ul>
+        <div class="card-foot">
+          <button class="btn adopt">Select this plan</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== FINALIZE MODAL — pops when the user clicks "Finalize plan" ===== -->
+  <p class="modal-caption">▼ The two popups in this flow — <b>Optimize this plan</b> (left) and <b>Finalize plan</b> (right)</p>
+  <div class="modal-showcase">
+
+    <!-- LEFT: static snapshot of the Optimize (Build-around) modal (no JS testids — the live one is the popup) -->
+    <div class="modal-demo">
+      <div class="modal" role="dialog" aria-label="Build around (preview)">
+        <div class="modal-head">
+          <h3>Build around a location</h3>
+          <button class="modal-x" aria-label="Close">✕</button>
+        </div>
+        <p class="modal-sub">Let the AI pick the three best anchors, or pin your own — choose a type and its list opens right here. We then generate three complete plans.</p>
+        <button class="opt-row">
+          <span class="opt-ic">✦</span>
+          <span class="opt-body"><span class="opt-t">Auto — recommended</span><span class="opt-d">The AI scores hotels, neighborhoods &amp; activities against your stops and picks the 3 strongest anchors.</span></span>
+          <span class="opt-check">✓</span>
+        </button>
+        <p class="opt-or">or pin your own anchor</p>
+        <div class="opt-grid three">
+          <button class="opt-pin on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg><span>Hotel</span><em>Stay somewhere specific</em></button>
+          <button class="opt-pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3z"/><path d="M9 3v15M15 6v15"/></svg><span>Neighborhood</span><em>Base in one area</em></button>
+          <button class="opt-pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6L21 9.3l-4.5 4.2 1.1 6.2L12 16.9 6.4 19.7l1.1-6.2L3 9.3l6.4-.7z"/></svg><span>Activity</span><em>Build around a must-do</em></button>
+        </div>
+        <p class="as-label-inline">Hotels near your stops — pick one</p>
+        <div class="as-list scrollable">
+          <button class="as-opt on"><span class="as-radio on"></span><span class="as-main"><b>Hotel Kanra Kyoto</b><em>4.7★ · Shimogyo</em></span><span class="fit good">9 min median <span class="rec">best fit</span></span><span class="as-tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+          <button class="as-opt"><span class="as-radio"></span><span class="as-main"><b>Gion Hatanaka</b><em>4.8★ · Higashiyama</em></span><span class="fit good">7 min median</span></button>
+          <button class="as-opt"><span class="as-radio"></span><span class="as-main"><b>The Ritz-Carlton Kyoto</b><em>4.9★ · Kamogawa</em></span><span class="fit good">8 min median</span></button>
+          <button class="as-opt"><span class="as-radio"></span><span class="as-main"><b>Nazuna Kyoto Gosho</b><em>4.6★ · Nishijin</em></span><span class="fit">11 min median</span></button>
+          <button class="as-opt"><span class="as-radio"></span><span class="as-main"><b>The Thousand Kyoto</b><em>4.6★ · Station</em></span><span class="fit">14 min median</span></button>
+        </div>
+        <div class="as-custom">
+          <label class="as-custom-label">Not listed? Build around a custom location</label>
+          <div class="as-custom-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.4-7-11a7 7 0 0 1 14 0c0 5.6-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg><input type="text" placeholder="Type an address, place name, or 35.0036, 135.7752" aria-label="Custom location (preview)" /></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn ghost">Cancel</button>
+          <button class="btn primary">Generate 3 versions around Hotel Kanra</button>
+        </div>
+        <p class="modal-note">Optimization is a paid step — you confirm here before anything runs or is charged.</p>
+      </div>
+    </div>
+
+    <!-- RIGHT: the Finalize modal -->
+    <div class="modal-demo">
+    <div class="modal" role="dialog" aria-label="Finalize your plan" data-testid="finalize-modal">
+      <div class="modal-head">
+        <h3>You're set — how do you want to book it?</h3>
+        <button class="modal-x" aria-label="Close">✕</button>
+      </div>
+      <p class="modal-sub">Your finalized plan is locked in. Choose how the bookings get made — do it yourself, or hand it to someone. Either way your plan stays yours.</p>
+
+      <button class="opt-row on" data-testid="finalize-self">
+        <span class="opt-ic diy">☑</span>
+        <span class="opt-body"><span class="opt-t">Book it myself</span><span class="opt-d">Book each stop in-platform at your own pace — add to cart and check out when ready. Nothing handed off.</span></span>
+        <span class="opt-check">✓</span>
+      </button>
+
+      <p class="opt-or">or have someone book it for you</p>
+      <div class="opt-grid three">
+        <button class="opt-pin" data-testid="finalize-booking-agent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zM9 5h6v2H9z"/></svg><span>Booking agent</span><em>Books it as-is</em></button>
+        <button class="opt-pin" data-testid="finalize-expert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Travel expert</span><em>Refines, then books</em></button>
+        <button class="opt-pin" data-testid="finalize-concierge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg><span>Concierge</span><em>Handles end-to-end</em></button>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn ghost">Back</button>
+        <button class="btn primary" data-testid="button-finalize-confirm">Continue</button>
+      </div>
+      <p class="modal-note">Choosing a person hands them a copy — your plan is never edited out from under you, and nothing is charged until you or they confirm a booking.</p>
+    </div>
+    </div>
+  </div>
+
+  <p class="foot-note" data-testid="compare-footer">Each version works best taken <b>whole</b> — it is a complete plan balanced around its base hotel. Select a whole version with its card button, or use the <b>+</b> ticks to pull single stops into your plan and rearrange them — pick a plan, or build from the pieces. Either way your original is preserved, every version stays saved as its own trip, and nothing is purchased by applying.</p>
+
+  <!-- honesty legend -->
+  <div class="legend">
+    <h2>How the preview stays honest</h2>
+    <p class="lead">Every figure is derived server-side from the plan itself, and any claim without a real baseline is left off rather than guessed (CLAUDE.md §13). What you see on each proposal is exactly what the data supports — no filler zeros.</p>
+    <div class="legend-grid">
+      <div class="legend-item">
+        <span class="dot save"></span>
+        <div><h3>Money saved</h3><p>Baseline total vs. proposal total, both from the optimizer. Shown only when there's a real positive baseline to beat.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot caution"></span>
+        <div><h3>Costs more, said plainly</h3><p>A pricier proposal never hides it — <em>Fewer Hops</em> shows “Costs $40 more” beside its time saving.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot save"></span>
+        <div><h3>Shorter drive time</h3><p>Sum of located transport-leg minutes, both plans. Time only — distance is never a headline claim (§21 L3).</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot omit"></span>
+        <div><h3>Omitted when unknown</h3><p><em>Riverside Focus</em> shows no travel chip — a stop wasn’t located, so no drive-time delta is claimed. The current plan shows no chips at all.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot accent"></span>
+        <div><h3>Trending &amp; in season</h3><p>Pulled from live destination signals for Kyoto and your travel dates; each line disappears when there's nothing real to show.</p></div>
+      </div>
+      <div class="legend-item">
+        <span class="dot accent"></span>
+        <div><h3>You confirm — nothing auto-applies</h3><p>Applying is one deliberate click via <code>apply-to-trip</code>; your original plan is preserved and nothing is charged.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="mock-note">Adopt the Optimization — the ratified slip-review board, kept intact, extended with anchor-built versions (hotel / neighborhood / activity), full-plan reading, keep-original + saved-as-new, per-stop + adopt ticks, and the Optimize + Finalize popups.</p>
+
+</div>
+
+<!-- ===== LIVE POPUP: the Build-around modal that appears on "Optimize this plan" ===== -->
+<div class="scrim" data-testid="optimize-scrim">
+  <div class="modal pop" role="dialog" aria-modal="true" aria-label="Build around" data-testid="optimize-modal">
+    <div class="modal-head">
+      <h3>Build around a location</h3>
+      <button class="modal-x" aria-label="Close">✕</button>
+    </div>
+    <p class="modal-sub">Let the AI pick the three best anchors, or pin your own — choose a type and its list opens right here. We then generate three complete plans.</p>
+
+    <button class="opt-row" data-testid="opt-auto">
+      <span class="opt-ic">✦</span>
+      <span class="opt-body"><span class="opt-t">Auto — recommended</span><span class="opt-d">The AI scores hotels, neighborhoods &amp; activities against your stops and picks the 3 strongest anchors.</span></span>
+      <span class="opt-check">✓</span>
+    </button>
+
+    <p class="opt-or">or pin your own anchor</p>
+    <div class="opt-grid three">
+      <button class="opt-pin on" data-testid="opt-hotel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg><span>Hotel</span><em>Stay somewhere specific</em></button>
+      <button class="opt-pin" data-testid="opt-neighborhood"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3z"/><path d="M9 3v15M15 6v15"/></svg><span>Neighborhood</span><em>Base in one area</em></button>
+      <button class="opt-pin" data-testid="opt-activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6L21 9.3l-4.5 4.2 1.1 6.2L12 16.9 6.4 19.7l1.1-6.2L3 9.3l6.4-.7z"/></svg><span>Activity</span><em>Build around a must-do</em></button>
+    </div>
+
+    <p class="as-label-inline">Hotels near your stops — pick one <span class="muted-note">(Activity lists every stop on your plan, so this area scrolls)</span></p>
+    <div class="as-list scrollable" data-testid="anchor-list">
+      <button class="as-opt on" data-testid="as-candidate-1"><span class="as-radio on"></span><span class="as-main"><b>Hotel Kanra Kyoto</b><em>4.7★ · Shimogyo</em></span><span class="fit good">9 min median <span class="rec">best fit</span></span><span class="as-tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span></button>
+      <button class="as-opt" data-testid="as-candidate-2"><span class="as-radio"></span><span class="as-main"><b>Gion Hatanaka</b><em>4.8★ · Higashiyama</em></span><span class="fit good">7 min median</span></button>
+      <button class="as-opt" data-testid="as-candidate-3"><span class="as-radio"></span><span class="as-main"><b>The Ritz-Carlton Kyoto</b><em>4.9★ · Kamogawa</em></span><span class="fit good">8 min median</span></button>
+      <button class="as-opt" data-testid="as-candidate-4"><span class="as-radio"></span><span class="as-main"><b>Nazuna Kyoto Gosho</b><em>4.6★ · Nishijin</em></span><span class="fit">11 min median</span></button>
+      <button class="as-opt" data-testid="as-candidate-5"><span class="as-radio"></span><span class="as-main"><b>The Thousand Kyoto</b><em>4.6★ · Station</em></span><span class="fit">14 min median</span></button>
+      <button class="as-opt" data-testid="as-candidate-6"><span class="as-radio"></span><span class="as-main"><b>Kyoto Granbell Hotel</b><em>4.4★ · Gion</em></span><span class="fit">16 min median</span></button>
+    </div>
+    <!-- custom location: not in the list? enter an address / place / lat,lng, used as you type -->
+    <div class="as-custom" data-testid="anchor-custom">
+      <label class="as-custom-label">Not listed? Build around a custom location</label>
+      <div class="as-custom-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.4-7-11a7 7 0 0 1 14 0c0 5.6-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg><input type="text" placeholder="Type an address, place name, or 35.0036, 135.7752 — used as you type" aria-label="Custom location or coordinates" /></div>
+    </div>
+    <p class="as-hint">“Fit” = median walk from that base to your stops, scored live against your plan (§14). A custom location is geocoded and scored the same way — if we can’t place it, we say so rather than guess (§13).</p>
+
+    <div class="modal-foot">
+      <button class="btn ghost">Cancel</button>
+      <button class="btn primary" data-testid="button-generate">Generate 3 versions around Hotel Kanra</button>
+    </div>
+    <p class="modal-note">Optimization is a paid step — you confirm here before anything runs or is charged.</p>
+  </div>
+</div>
+
+<style>
+  .scrim { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start; justify-content:center;
+    padding:6vh 18px 40px; background:rgba(20,20,15,.5); backdrop-filter:blur(2px); overflow:auto; }
+  .modal.pop { max-width:460px; width:100%; }
+  @media (prefers-reduced-motion:no-preference){ .modal.pop { animation:pop .18s ease-out; } }
+  @keyframes pop { from { transform:translateY(8px) scale(.98); opacity:0; } to { transform:none; opacity:1; } }
+</style>
+
+
+<style>
+  .card-head .card-base { display:grid; grid-template-columns:15px 1fr; align-items:start; column-gap:8px; row-gap:3px; margin:10px 0 0; padding:9px 11px; border:1px solid var(--caution-br); background:var(--caution-bg); color:var(--caution-fg); border-radius:10px; font-size:12.5px; font-weight:600; line-height:1.35; }
+  .card-head .card-base svg { grid-row:1; margin-top:1px; }
+  .card-head .card-base .ak { grid-column:2; grid-row:1; display:block; }
+  .card-head .card-base .bm { grid-column:2; grid-row:3; }
+  .card-base svg { width:13px; height:13px; flex:none; }
+  .card-base .bm { color:var(--muted); font-weight:400; font-family:var(--mono); font-size:10.5px; }
+  .items .day-sep { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); padding:9px 0 3px; }
+  .adopt-tick { margin-left:7px; width:18px; height:18px; border-radius:999px; border:1.5px solid var(--save-br); background:var(--save-bg); color:var(--save-fg); font-size:12px; font-weight:700; line-height:1; cursor:pointer; vertical-align:middle; padding:0; }
+</style>
+
+<style>
+  .btn.adopt { width:100%; display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--save-bg); border:1.5px solid var(--save-br); color:var(--save-fg); font-weight:700; }
+  .btn.adopt .pl { width:17px; height:17px; border-radius:999px; background:var(--save-fg); color:var(--save-bg);
+    display:grid; place-items:center; font-size:13px; font-weight:700; line-height:1; flex:none; }
+  .card.recommended .btn.adopt { box-shadow:var(--shadow); }
+  .tray { margin-top:9px; border:1.5px dashed var(--save-br); background:var(--save-bg); color:var(--save-fg);
+    border-radius:10px; padding:8px 11px; font-size:12px; line-height:1.45; }
+  .tray b { font-weight:700; }
+  .tray .hint { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+</style>
+
+<style>
+  .anchor-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 16px; padding:12px 14px;
+    background:var(--surface); border:1px solid var(--hairline); border-radius:12px; box-shadow:var(--shadow); }
+  .ap-label { font-weight:700; font-size:13px; margin-right:2px; }
+  .ap-or { font-size:12px; color:var(--muted); margin:0 2px; }
+  .ap-hint { flex-basis:100%; font-size:11.5px; color:var(--muted); margin-top:2px; }
+  .ap-chip { font-family:inherit; font-size:12.5px; font-weight:600; display:inline-flex; align-items:center; gap:6px;
+    padding:6px 12px; border-radius:999px; border:1px solid var(--hairline-strong); background:var(--surface); color:var(--ink); cursor:pointer; }
+  .ap-chip svg { width:14px; height:14px; }
+  .ap-chip .ap-sub { font-weight:400; color:var(--muted); font-size:11px; }
+  .ap-chip.on { background:var(--accent-bg); border-color:var(--accent-br); color:var(--accent-fg); }
+  /* typed anchor row colors: hotel=amber (base), neighborhood=accent, activity=save-green */
+  .card-base.t-hotel { border-color:var(--caution-br); background:var(--caution-bg); color:var(--caution-fg); }
+  .card-base.t-nbhd  { border-color:var(--accent-br);  background:var(--accent-bg);  color:var(--accent-fg); }
+  .card-base.t-act   { border-color:var(--save-br);    background:var(--save-bg);    color:var(--save-fg); }
+  .card-base .ak { grid-column:2; grid-row:1; font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:700; opacity:.85; }
+  .card-base .an { grid-column:2; grid-row:2; font-weight:700; }
+</style>
+
+<style>
+  .handoff { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    margin:20px 0 14px; padding:14px 16px; border:1px solid var(--accent-br); background:var(--accent-bg); border-radius:12px; }
+  .handoff-copy { display:flex; flex-direction:column; gap:2px; max-width:52ch; }
+  .handoff-copy b { font-size:14px; }
+  .handoff-copy span { font-size:12.5px; color:var(--muted); }
+  .handoff-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .btn.hoff { display:inline-flex; align-items:center; gap:7px; background:var(--surface); border:1px solid var(--accent-br); color:var(--accent-fg); font-weight:600; }
+  .btn.hoff svg { width:15px; height:15px; }
+</style>
+
+<style>
+  .built-readout { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    margin:0 0 16px; padding:9px 13px; background:var(--surface-2); border:1px solid var(--hairline); border-radius:10px; font-size:13px; }
+  .built-readout b { font-weight:700; }
+  .link { background:none; border:0; padding:0; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--accent-fg); cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+
+  .modal-caption { font-size:12px; color:var(--muted); margin:18px 0 8px; }
+  .modal-demo { display:flex; justify-content:center; padding:18px; margin:0 0 8px; border:1px dashed var(--hairline-strong); border-radius:16px;
+    background:repeating-linear-gradient(45deg, transparent, transparent 9px, color-mix(in srgb, var(--muted) 6%, transparent) 9px, color-mix(in srgb, var(--muted) 6%, transparent) 10px); }
+  .modal { width:100%; max-width:440px; background:var(--surface); border:1px solid var(--hairline); border-radius:16px; box-shadow:var(--shadow-lift); padding:18px 18px 14px; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; }
+  .modal-head h3 { font-family:var(--display); font-weight:700; font-size:18px; margin:0; }
+  .modal-x { background:none; border:0; font-size:15px; color:var(--muted); cursor:pointer; }
+  .modal-sub { font-size:13px; color:var(--muted); margin:4px 0 14px; }
+  .opt-row { width:100%; display:flex; align-items:center; gap:11px; text-align:left; font-family:inherit; cursor:pointer;
+    border:1.5px solid var(--accent-br); background:var(--accent-bg); border-radius:12px; padding:12px 13px; }
+  .opt-ic { width:26px; height:26px; border-radius:8px; background:var(--accent-fg); color:#fff; display:grid; place-items:center; font-size:14px; flex:none; }
+  .opt-body { display:flex; flex-direction:column; gap:1px; flex:1; }
+  .opt-t { font-weight:700; font-size:14px; }
+  .opt-d { font-size:12px; color:var(--muted); }
+  .opt-check { color:var(--accent-fg); font-weight:800; }
+  .opt-or { text-align:center; font-size:11.5px; color:var(--muted); margin:12px 0; position:relative; }
+  .opt-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  @media (max-width:460px){ .opt-grid{ grid-template-columns:1fr; } }
+  .opt-pin { display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; font-family:inherit; cursor:pointer;
+    border:1px solid var(--hairline-strong); background:var(--surface); border-radius:11px; padding:11px 11px; }
+  .opt-pin svg { width:17px; height:17px; color:var(--ink); }
+  .opt-pin span { font-weight:700; font-size:13px; }
+  .opt-pin em { font-style:normal; font-size:11px; color:var(--muted); }
+  .modal-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .modal-note { font-size:11px; color:var(--muted); text-align:center; margin:10px 0 0; }
+</style>
+
+<style>
+  .opt-ic.diy { background:var(--save-fg); }
+  .opt-grid.three { grid-template-columns:repeat(3,1fr); }
+  @media (max-width:460px){ .opt-grid.three{ grid-template-columns:1fr; } }
+</style>
+
+<style>
+  .anchor-select { margin-top:14px; padding-top:14px; border-top:1px solid var(--hairline); }
+  .as-label { display:block; font-size:12.5px; font-weight:700; margin:0 0 8px; }
+  .as-search { display:flex; align-items:center; gap:8px; border:1px solid var(--hairline-strong); border-radius:10px; padding:8px 11px; background:var(--surface-2); margin-bottom:8px; }
+  .as-search svg { width:15px; height:15px; color:var(--muted); flex:none; }
+  .as-search input { border:0; background:transparent; outline:none; font-family:inherit; font-size:13px; color:var(--ink); width:100%; }
+  .as-list { display:flex; flex-direction:column; gap:6px; }
+  .as-opt { display:flex; align-items:center; gap:10px; text-align:left; font-family:inherit; cursor:pointer;
+    border:1px solid var(--hairline); background:var(--surface); border-radius:10px; padding:9px 11px; }
+  .as-opt.on { border-color:var(--accent-br); background:var(--accent-bg); }
+  .as-radio { width:16px; height:16px; border-radius:999px; border:1.5px solid var(--hairline-strong); flex:none; }
+  .as-radio.on { border-color:var(--accent-fg); background:radial-gradient(circle at center, var(--accent-fg) 0 5px, transparent 6px); }
+  .as-main { display:flex; flex-direction:column; flex:1; }
+  .as-main b { font-size:13.5px; font-weight:700; }
+  .as-main em { font-style:normal; font-size:11.5px; color:var(--muted); }
+  .as-opt .fit { font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+  .as-opt .fit.good { color:var(--save-fg); }
+  .as-opt .fit .rec { font-family:var(--sans); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background:var(--save-bg); color:var(--save-fg); border-radius:999px; padding:2px 6px; }
+  .as-hint { font-size:11px; color:var(--muted); margin:8px 0 0; line-height:1.45; }
+</style>
+
+<style>
+  .as-selected { display:flex; align-items:center; gap:7px; margin:0 0 10px; padding:7px 11px; border-radius:9px;
+    background:var(--save-bg); border:1px solid var(--save-br); color:var(--save-fg); font-size:12.5px; font-weight:600; }
+  .as-selected svg { width:14px; height:14px; flex:none; }
+  .as-selected b { font-weight:700; }
+  .as-selected span { color:var(--muted); font-weight:400; }
+  .as-opt .as-tick { display:none; width:18px; height:18px; border-radius:999px; background:var(--accent-fg); color:#fff; place-items:center; flex:none; }
+  .as-opt .as-tick svg { width:12px; height:12px; }
+  .as-opt.on .as-tick { display:grid; }
+  :root[data-theme="dark"] .as-opt.on .as-tick svg, :root:not([data-theme="light"]) .as-opt.on .as-tick svg { color:#12101d; }
+  .as-custom { margin-top:12px; padding-top:12px; border-top:1px dashed var(--hairline); }
+  .as-custom-label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin:0 0 7px; }
+  .as-custom-field { flex:1; display:flex; align-items:center; gap:8px; border:1px solid var(--hairline-strong); border-radius:10px; padding:8px 11px; background:var(--surface-2); }
+  .as-custom-field svg { width:15px; height:15px; color:var(--muted); flex:none; }
+  .as-custom-field input { border:0; background:transparent; outline:none; font-family:inherit; font-size:13px; color:var(--ink); width:100%; }
+  .btn.as-use { border:1px solid var(--accent-br); background:var(--accent-bg); color:var(--accent-fg); font-weight:600; white-space:nowrap; padding:8px 13px; }
+</style>
+
+<style>
+  .modal-head.step2 { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; }
+  .modal-back { display:inline-flex; align-items:center; gap:4px; background:none; border:0; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--accent-fg); cursor:pointer; padding:0; }
+  .modal-back svg { width:15px; height:15px; }
+  .modal-head.step2 h3 { text-align:center; }
+  .modal-sub .crumb { display:inline-block; font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--accent-fg); margin-right:6px; }
+  .modal-sub .muted-note { display:block; margin-top:4px; font-size:11.5px; color:var(--muted); }
+  .as-list.scrollable { max-height:216px; overflow-y:auto; padding-right:4px; margin:0 -2px; }
+  .as-list.scrollable::-webkit-scrollbar { width:8px; }
+  .as-list.scrollable::-webkit-scrollbar-thumb { background:var(--hairline-strong); border-radius:8px; }
+</style>
+
+<style>
+  .as-label-inline { font-size:12.5px; font-weight:700; margin:14px 0 8px; }
+  .as-label-inline .muted-note { font-weight:400; color:var(--muted); font-size:11px; }
+</style>
+
+<script>
+(function(){
+  var CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  var DATA={
+    hotel:{label:'Hotels near your stops — pick one',items:[
+      {n:'Hotel Kanra Kyoto',s:'4.7★ · Shimogyo',f:'9 min median',good:true,best:true},
+      {n:'Gion Hatanaka',s:'4.8★ · Higashiyama',f:'7 min median',good:true},
+      {n:'The Ritz-Carlton Kyoto',s:'4.9★ · Kamogawa',f:'8 min median',good:true},
+      {n:'Nazuna Kyoto Gosho',s:'4.6★ · Nishijin',f:'11 min median'},
+      {n:'The Thousand Kyoto',s:'4.6★ · Station',f:'14 min median'},
+      {n:'Kyoto Granbell Hotel',s:'4.4★ · Gion',f:'16 min median'}
+    ]},
+    neighborhood:{label:'Neighborhoods to base in — pick one',items:[
+      {n:'Higashiyama',s:'temple district · walkable',f:'8 min median',good:true,best:true},
+      {n:'Gion',s:'geisha quarter',f:'9 min median',good:true},
+      {n:'Pontocho & Kamogawa',s:'riverside',f:'11 min median'},
+      {n:'Nishijin',s:'textile quarter',f:'13 min median'},
+      {n:'Arashiyama',s:'bamboo & river',f:'22 min median'}
+    ]},
+    activity:{label:'Activities on your plan — build around one <span class="muted-note">(scrolls)</span>',items:[
+      {n:'Gion tea ceremony',s:'on your plan · Day 2',f:'9 min median',good:true,best:true},
+      {n:'Kiyomizu-dera',s:'on your plan · Day 2',f:'10 min median',good:true},
+      {n:'Fushimi Inari shrine',s:'on your plan · Day 1',f:'12 min median'},
+      {n:'Nishiki Market crawl',s:'on your plan · Day 1',f:'8 min median',good:true},
+      {n:'Pontocho supper',s:'on your plan · Day 4',f:'10 min median',good:true},
+      {n:'Arashiyama bamboo grove',s:'on your plan · Day 3',f:'21 min median'},
+      {n:'Sagano boat ride',s:'on your plan · Day 3',f:'23 min median'},
+      {n:'Kinkaku-ji (Golden Pavilion)',s:'on your plan · Day 5',f:'19 min median'},
+      {n:'Nijo Castle',s:'on your plan · Day 5',f:'13 min median'}
+    ]}
+  };
+  var listEl=document.querySelector('[data-testid="anchor-list"]');
+  var labelEl=document.querySelector('.as-label-inline');
+  var customEl=document.querySelector('[data-testid="anchor-custom"]');
+  var genBtn=document.querySelector('[data-testid="button-generate"]');
+  var tiles={auto:document.querySelector('[data-testid="opt-auto"]'),hotel:document.querySelector('[data-testid="opt-hotel"]'),neighborhood:document.querySelector('[data-testid="opt-neighborhood"]'),activity:document.querySelector('[data-testid="opt-activity"]')};
+  if(!listEl||!labelEl) return;
+  var chosen=null;
+  function setGen(){ if(genBtn) genBtn.textContent = chosen ? ('Generate 3 versions around '+chosen) : 'Generate 3 versions'; }
+  function wireOpts(){
+    listEl.querySelectorAll('.as-opt').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        listEl.querySelectorAll('.as-opt').forEach(function(b){b.classList.remove('on');var r=b.querySelector('.as-radio');if(r)r.classList.remove('on');});
+        btn.classList.add('on');var r=btn.querySelector('.as-radio');if(r)r.classList.add('on');
+        chosen=btn.getAttribute('data-name');setGen();
+      });
+    });
+  }
+  function renderList(type){
+    var d=DATA[type];
+    labelEl.style.display='';customEl.style.display='';listEl.style.display='';
+    labelEl.innerHTML=d.label;
+    listEl.innerHTML=d.items.map(function(it,i){
+      var on=i===0; var rec=it.best?' <span class="rec">best fit</span>':'';
+      return '<button class="as-opt'+(on?' on':'')+'" data-name="'+it.n+'"><span class="as-radio'+(on?' on':'')+'"></span><span class="as-main"><b>'+it.n+'</b><em>'+it.s+'</em></span><span class="fit'+(it.good?' good':'')+'">'+it.f+rec+'</span><span class="as-tick">'+CHECK+'</span></button>';
+    }).join('');
+    chosen=d.items[0].n;setGen();wireOpts();
+  }
+  function selectType(type){
+    Object.keys(tiles).forEach(function(k){var t=tiles[k];if(t){t.classList.remove('on');t.setAttribute('aria-pressed','false');}});
+    if(type==='auto'){ if(tiles.auto)tiles.auto.classList.add('on'); labelEl.style.display='none';listEl.style.display='none';customEl.style.display='none'; chosen=null;setGen(); }
+    else { if(tiles[type]){tiles[type].classList.add('on');tiles[type].setAttribute('aria-pressed','true');} renderList(type); }
+  }
+  if(tiles.auto)tiles.auto.addEventListener('click',function(){selectType('auto');});
+  if(tiles.hotel)tiles.hotel.addEventListener('click',function(){selectType('hotel');});
+  if(tiles.neighborhood)tiles.neighborhood.addEventListener('click',function(){selectType('neighborhood');});
+  if(tiles.activity)tiles.activity.addEventListener('click',function(){selectType('activity');});
+  renderList('hotel'); // initial: hotel active, matches the tile marked .on
+})();
+</script>
+
+<script>
+(function(){
+  var scrim=document.querySelector('[data-testid="optimize-scrim"]');
+  if(!scrim) return;
+  function close(){ scrim.style.display='none'; }
+  function open(){ scrim.style.display='flex'; }
+  // dismiss: X, Cancel, backdrop click, Escape
+  var x=scrim.querySelector('.modal-x'); if(x) x.addEventListener('click',close);
+  var cancel=scrim.querySelector('.modal-foot .btn.ghost'); if(cancel) cancel.addEventListener('click',close);
+  var gen=scrim.querySelector('[data-testid="button-generate"]'); if(gen) gen.addEventListener('click',close);
+  scrim.addEventListener('click',function(e){ if(e.target===scrim) close(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+  // reopen from the slip toolbar's "Optimize this plan"
+  document.querySelectorAll('.tbtn.optimize').forEach(function(b){ b.style.cursor='pointer'; b.addEventListener('click',open); });
+})();
+</script>
+
+<style>
+  .modal-showcase { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  @media (max-width:900px){ .modal-showcase { grid-template-columns:1fr; } }
+  .modal-showcase .modal-demo { margin:0; }
+  .modal-showcase .modal { max-width:none; }
+</style>
+</body>
+</html>
