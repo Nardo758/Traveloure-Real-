@@ -167,7 +167,6 @@ const ItineraryComparisonPage = lazy(() => import("@/pages/itinerary-comparison"
 // Slip dispatch §4 Spec A: the slip's canonical address (/plans/:tripId). Parameterised
 // route — deliberately NOT in role-routes-config.ts (that registry is static-paths-only).
 const SlipViewPage = lazy(() => import("@/pages/slip-view"));
-const GlobalCalendarPage = lazy(() => import("@/pages/global-calendar"));
 const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
 const TransportationBookingPage = lazy(() => import("@/pages/transportation-booking"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
@@ -463,8 +462,11 @@ function Router() {
           <ProtectedRoute component={ContractViewPage} />
         </PageErrorBoundary>
       </Route>
+      {/* Discover IA Option 1 (findings/DISCOVER_IA_AUDIT.md): the calendar's one home is the
+          Discover Events tab. The standalone /global-calendar carried a duplicate second masthead,
+          so it redirects in — same consolidation precedent as /discover-experiences below. */}
       <Route path="/global-calendar">
-        <Layout><GlobalCalendarPage /></Layout>
+        <Redirect to="/discover?tab=events" />
       </Route>
       <Route path="/transportation">
         <Layout><TransportationBookingPage /></Layout>
