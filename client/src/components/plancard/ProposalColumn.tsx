@@ -64,22 +64,38 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
 
   return (
     <Card
-      className={cn("relative flex flex-col", proposal.recommended && "border-2")}
-      style={proposal.recommended ? { borderColor: purchasedTint.fg } : undefined}
-      data-testid={`proposal-column-${proposal.variantId}`}
-    >
-      {proposal.recommended && (
-        <div className="absolute -top-3 left-4">
-          <Badge style={{ backgroundColor: purchasedTint.fg, color: "#fff" }} data-testid={`proposal-recommended-${proposal.variantId}`}>
-            <Award className="h-3 w-3 mr-1" />
-            Recommended
-          </Badge>
-        </div>
+      className={cn(
+        "relative flex flex-col",
+        proposal.recommended && "border-2",
+        proposal.isBaseline && "border-dashed bg-muted/30",
       )}
+      style={proposal.recommended ? { borderColor: purchasedTint.fg } : undefined}
+      data-testid={`proposal-column-${proposal.testId ?? proposal.variantId}`}
+    >
       <CardHeader className="pt-6 pb-3">
-        <p className="font-semibold text-base">{proposal.name}</p>
+        {(proposal.eyebrow || proposal.recommended) && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "mb-1 w-fit text-[10px] uppercase tracking-wide",
+              proposal.recommended && "border-emerald-300 text-emerald-700 dark:text-emerald-300",
+            )}
+            data-testid={proposal.recommended ? `proposal-recommended-${proposal.testId ?? proposal.variantId}` : undefined}
+          >
+            {proposal.recommended ? <><Award className="h-3 w-3 mr-1" />Recommended</> : proposal.eyebrow}
+          </Badge>
+        )}
+        <p className="font-semibold text-base">{proposal.displayName ?? proposal.name}</p>
         {proposal.tagline && <p className="text-xs text-muted-foreground">{proposal.tagline}</p>}
       </CardHeader>
+      {proposal.totalCostUsd != null && (
+        <div className="px-4 pb-2 flex items-baseline gap-2">
+          <span className="font-mono font-semibold text-lg" data-testid={`proposal-total-${proposal.testId ?? proposal.variantId}`}>
+            ${proposal.totalCostUsd.toLocaleString()}
+          </span>
+          {proposal.perPersonTotal && <span className="text-xs text-muted-foreground">· {proposal.perPersonTotal}/person</span>}
+        </div>
+      )}
       <CardContent className="flex-1 space-y-3">
         {groups.map((g) => (
           <div key={g.dayNum}>
@@ -134,7 +150,7 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
           className="w-full"
           onClick={proposal.onApply}
           disabled={!!proposal.applying}
-          data-testid={`button-apply-variant-${proposal.variantId}`}
+          data-testid={`button-apply-variant-${proposal.testId ?? proposal.variantId}`}
         >
           {proposal.applying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {proposal.applyLabel}
