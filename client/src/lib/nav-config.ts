@@ -56,14 +56,16 @@ export const navGroupsConfig: NavGroupConfig[] = [
     // (the entire expert store lane was nav-invisible), and the services tab was
     // filed under "Experts & Services" as "Service Providers".
     //
-    // Two naming facts this encodes:
-    //  - "Browse Services", NOT "Service Providers". `provider_services` is
-    //    role-agnostic (CLAUDE.md "one builder" — ServiceForm serves both roles),
-    //    so EXPERTS list services in that tab too. Naming it after one role was
-    //    wrong about who sells there.
-    //  - "By Date" is deliberate and pairs with "By Location" as the two browse
-    //    AXES. Do not "align" it to the ?tab=events routing token — the token is
-    //    the URL contract (§10 label-standard precedent), not a user-facing label.
+    // Naming facts this encodes:
+    //  - "Services", NOT "Service Providers". `provider_services` is role-agnostic
+    //    (CLAUDE.md "one builder" — ServiceForm serves both roles), so EXPERTS list
+    //    services in that tab too. Naming it after one role was wrong about who sells there.
+    //  - Canonical tab vocabulary (decision-maker ratified Aug 23): the four tabs are
+    //    NOUNS naming what each surface IS — "Destinations · Ready-Made Trips · Events ·
+    //    Services" — used identically on the tab, in nav, and in the footer (no aliases
+    //    like "By Date"/"Global Calendar" or "By Location"/"TravelPulse"). This supersedes
+    //    the earlier MP-1 "By Location / By Date" paired-axis phrasing. The `?tab=` tokens
+    //    stay the URL contract (§10) and never change with the labels.
     name: "Marketplace",
     i18nKey: "groups.marketplace",
     sections: [
@@ -71,10 +73,10 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "BROWSE",
         i18nKey: "sections.browse",
         items: [
-          { name: "By Location", i18nKey: "links.byLocation", href: "/discover", description: "Explore destinations & trending cities" },
-          { name: "By Date", i18nKey: "links.byDate", href: "/discover?tab=events", description: "Upcoming events & activities" },
+          { name: "Destinations", i18nKey: "links.byLocation", href: "/discover", description: "Explore destinations & trending cities" },
+          { name: "Events", i18nKey: "links.byDate", href: "/discover?tab=events", description: "Upcoming events & activities" },
           { name: "Ready-Made Trips", i18nKey: "links.readyMadeTrips", href: "/discover?tab=packages", description: "Expert-built trips, ready to buy" },
-          { name: "Browse Services", i18nKey: "links.browseServices", href: "/discover?tab=services", description: "Book tours, photography, transport & more" },
+          { name: "Services", i18nKey: "links.browseServices", href: "/discover?tab=services", description: "Book tours, photography, transport & more" },
         ],
       },
     ],
@@ -208,7 +210,7 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
       { label: 'How It Works', i18nKey: 'footer.links.howItWorks',           href: '/how-it-works' },
       { label: 'Pricing', i18nKey: 'footer.links.pricing',                href: '/pricing' },
       { label: 'Features', i18nKey: 'footer.links.features',               href: '/features' },
-      { label: 'Global Calendar', i18nKey: 'footer.links.globalCalendar',        href: '/discover?tab=events' },
+      { label: 'Events', i18nKey: 'footer.links.globalCalendar',        href: '/discover?tab=events' },
       { label: 'Executive Assistant', i18nKey: 'footer.links.executiveAssistant',    href: '/executive-assistant' },
     ],
   },

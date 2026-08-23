@@ -39,10 +39,10 @@
     "explore": "EXPLORE"
   },
   "links": {
-    "byLocation": "By Location",
-    "byDate": "By Date",
+    "byLocation": "Destinations",
+    "byDate": "Events",
     "readyMadeTrips": "Ready-Made Trips",
-    "browseServices": "Browse Services",
+    "browseServices": "Services",
     "localExperts": "Local Experts",
     "tripPlanners": "Trip Planners",
     "travelPlanning": "Travel Planning",
@@ -80,7 +80,7 @@
       "howItWorks": "How It Works",
       "pricing": "Pricing",
       "features": "Features",
-      "globalCalendar": "Global Calendar",
+      "globalCalendar": "Events",
       "executiveAssistant": "Executive Assistant",
       "aboutUs": "About Us",
       "waysToEarn": "Ways to Earn",

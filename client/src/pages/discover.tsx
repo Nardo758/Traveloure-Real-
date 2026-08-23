@@ -1143,7 +1143,7 @@ export default function DiscoverPage() {
                     data-testid="tab-travelpulse"
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">By&nbsp;</span>Location
+                    Destinations
                   </TabsTrigger>
                   <TabsTrigger
                     value="packages"
@@ -1159,7 +1159,7 @@ export default function DiscoverPage() {
                     data-testid="tab-events"
                   >
                     <Calendar className="w-4 h-4 mr-2" />
-                    By Date
+                    Events
                   </TabsTrigger>
                   <TabsTrigger
                     value="services"
@@ -1167,7 +1167,7 @@ export default function DiscoverPage() {
                     data-testid="tab-services"
                   >
                     <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse&nbsp;</span>Services
+                    Services
                   </TabsTrigger>
                 </TabsList>
                 <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
