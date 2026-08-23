@@ -40,3 +40,17 @@ uri = "file://docs/audits/optimized-slip-review-visual/light-mobile.png"
 type = "image"
 title = "Optimized Slip Review — light mobile"
 description = "Authenticated review page at 390×844."
+
+[[outputs]]
+id = "Rma0OrzSVVvw0iDlyuII_"
+uri = "file://docs/audits/adopt-optimization-mock-light.jpg"
+type = "image"
+title = "Adopt optimization mock — light"
+description = "Captured light-mode render of the ratified Adopt the Optimization mock."
+
+[[outputs]]
+id = "2pEhnZAItBruoOfzgs5VX"
+uri = "file://docs/audits/adopt-optimization-mock-dark.jpg"
+type = "image"
+title = "Adopt optimization mock — dark"
+description = "Captured dark-mode render of the ratified Adopt the Optimization mock."
