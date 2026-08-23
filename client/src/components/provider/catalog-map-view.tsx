@@ -67,6 +67,12 @@ export interface CatalogMapService {
   productShape?: string | null;
   // FP-3 fix-door routing: a property_room row's editor needs its parent property's id.
   parentServiceId?: string | null;
+  // Lane console-preview-state (ledger 2026-08-23-console-preview-state): the lifecycle the
+  // "What the traveler sees" card must state, so a just-published (submitted) listing is never
+  // shown as if a traveler can already read it. All three already ride the unfiltered owner read.
+  approvalStatus?: string | null;
+  status?: string | null;
+  editReviewStatus?: string | null;
   // Lane M (D-3/D-4): classifies rows that HAPPEN NOWHERE (remote/artifact) so they are never
   // counted as "missing" a pin — shared predicate, same vocabulary as the wizard and storefront.
   deliveryMethod?: string | null;
@@ -646,6 +652,43 @@ interface TravelerFact {
   key: string;
   label: string;
   value: string;
+}
+
+/**
+ * Lane console-preview-state (ledger 2026-08-23-console-preview-state): the card is captioned
+ * "What the traveler sees" — so it must say WHETHER a traveler can see this listing at all right
+ * now, and WHICH version. Public reads gate on approval_status='approved' AND status='active'
+ * (F2 read gate), and the §23 edit-split keeps the approved version live while an identity edit
+ * awaits review — so a card that renders the live row without this line would tell a
+ * just-published (born-'submitted', migration 111) provider that travelers already read facts
+ * nobody can see. `live` also drives whether the omitted-count copy frames itself as current.
+ */
+function travelerVisibility(s: {
+  approvalStatus?: string | null;
+  status?: string | null;
+  editReviewStatus?: string | null;
+}): { label: string; tone: "live" | "pending" | "hidden"; live: boolean } {
+  if (s.approvalStatus !== "approved") {
+    if (s.approvalStatus === "draft") {
+      return { label: "Draft — not submitted yet, so travelers can't see this listing.", tone: "hidden", live: false };
+    }
+    if (s.approvalStatus === "rejected") {
+      return { label: "Not approved — travelers can't see this listing.", tone: "hidden", live: false };
+    }
+    // submitted (born state, migration 111) or anything else non-approved.
+    return { label: "In review — travelers can't see this listing until it's approved.", tone: "pending", live: false };
+  }
+  if (s.status !== "active") {
+    return { label: "Paused — hidden from travelers right now.", tone: "hidden", live: false };
+  }
+  if (s.editReviewStatus === "pending") {
+    return {
+      label: "Live as approved — this is the version travelers see now; your pending edit is awaiting review and isn't shown here.",
+      tone: "pending",
+      live: true,
+    };
+  }
+  return { label: "Live — this is the traveler's current view.", tone: "live", live: true };
 }
 
 /** The ordered fact list, resolved with the traveler page's own formatters. Mirrors the "Good to
@@ -1309,6 +1352,18 @@ export function CatalogMapView({
                     {displayName(selected)}
                   </span>
                 </div>
+                {(() => {
+                  const vis = travelerVisibility(selected);
+                  const dot = vis.tone === "live" ? "#15803D" : vis.tone === "pending" ? "#B45309" : MUTED;
+                  return (
+                    <div className="flex items-start gap-2 mt-2" data-testid="traveler-visibility">
+                      <span className="mt-[5px] h-2 w-2 rounded-full flex-none" style={{ background: dot }} aria-hidden="true" />
+                      <span className="text-[12px] leading-[1.5]" style={{ color: vis.tone === "live" ? INK : MUTED }}>
+                        {vis.label}
+                      </span>
+                    </div>
+                  );
+                })()}
               </CardHeader>
               <CardContent className="px-5 py-1.5">
                 {facts.length === 0 ? (
