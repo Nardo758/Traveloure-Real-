@@ -1270,4 +1270,5 @@ export const MIGRATION_FILES = [
   // affiliate_products, ON DELETE SET NULL; additive-nullable, no CHECK). Set by the build-time
   // slip resolver (rung 02: catalog → affiliate → DMO); declared in shared/schema.ts.
   "256_itinerary_item_affiliate_grounding.sql",
+  "257_itinerary_variant_anchor.sql",
 ] as const;
