@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import {
   Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock, Wifi, WifiOff,
   PackageCheck, Eye, Lightbulb, CheckCircle2, AlertCircle, MessageCircle, FileText,
-  MoreVertical, Flag, ShieldOff, ShieldCheck,
+  MoreVertical, Flag, ShieldOff, ShieldCheck, Bell,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
@@ -792,9 +792,19 @@ export default function Chat() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">
-                {isEarner ? "Messages" : "Expert Chat"}
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">
+                  {isEarner ? "Messages" : "Expert Chat"}
+                </h1>
+                {!isEarner && (
+                  <Link href="/inbox?tab=updates">
+                    <Button variant="outline" size="sm" data-testid="button-view-updates">
+                      <Bell className="w-3.5 h-3.5 mr-1.5" />
+                      Updates
+                    </Button>
+                  </Link>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">
                 {isEarner ? "Conversations with your clients" : "Connect with local experts for your trips"}
               </p>
