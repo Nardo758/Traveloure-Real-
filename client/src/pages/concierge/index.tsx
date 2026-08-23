@@ -118,7 +118,7 @@ export default function ConciergePage() {
                 directly from local experts.
               </p>
             </div>
-            <Link href="/discover?categoryKey=concierge_vip">
+            <Link href="/services?categoryKey=concierge_vip">
               <Button variant="outline" size="sm" data-testid="button-browse-concierge-services">
                 Browse services
               </Button>

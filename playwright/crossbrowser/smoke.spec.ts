@@ -139,37 +139,36 @@ test('navbar works (dropdowns on desktop / hamburger on mobile)', async ({ page 
   expect(linkVisible, 'mobile nav links not visible after hamburger click').toBe(true);
 });
 
-test('discover page: 4 tabs visible, tab switching works client-side', async ({ page }) => {
-  await page.goto('/discover', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(3000);
-
+test('marketplace surfaces: each page renders its masthead, no tab bar, no overflow', async ({ page }) => {
+  // Marketplace un-group (Aug 23): each surface is its own page; the tabbed
+  // /discover shell is a redirect. Visit each surface and confirm it renders
+  // alone with no grouped header and no horizontal overflow.
+  const SURFACES = [
+    { path: '/destinations', title: 'Destinations' },
+    { path: '/ready-made', title: 'Ready-Made Trips' },
+    { path: '/events', title: 'Events' },
+    { path: '/services', title: 'Services' },
+  ] as const;
   const TAB_IDS = ['tab-travelpulse', 'tab-packages', 'tab-events', 'tab-services'] as const;
 
-  // All 4 tabs visible
-  for (const id of TAB_IDS) {
-    await expect(page.getByTestId(id), `tab ${id} not visible`).toBeVisible();
+  for (const surface of SURFACES) {
+    await page.goto(surface.path, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+
+    await expect(page.getByTestId('text-page-title'), `${surface.path} masthead`).toHaveText(surface.title);
+    for (const id of TAB_IDS) {
+      await expect(page.getByTestId(id), `retired tab ${id} rendered on ${surface.path}`).not.toBeAttached();
+    }
+
+    const noOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 4,
+    );
+    expect(noOverflow, `${surface.path} has horizontal scroll`).toBe(true);
   }
 
-  // Initial selection: first tab is selected
-  await expect(page.getByTestId('tab-travelpulse')).toHaveAttribute('aria-selected', 'true');
-
-  // Click a different tab and confirm client-side switch (no full navigation)
-  const beforeUrl = page.url();
-  await page.getByTestId('tab-packages').click();
-  await page.waitForTimeout(1000);
-  await expect(page.getByTestId('tab-packages')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('tab-travelpulse')).toHaveAttribute('aria-selected', 'false');
-
-  // URL stays on /discover (client-side tab, no hard nav)
-  expect(page.url()).toContain('/discover');
-  // Sanity: the URL didn't somehow change to a completely different page
-  expect(page.url().replace(/\?.*/, '')).toBe(beforeUrl.replace(/\?.*/, ''));
-
-  // No horizontal overflow
-  const noOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth <= window.innerWidth + 4,
-  );
-  expect(noOverflow, 'discover page has horizontal scroll').toBe(true);
+  // The old shell redirects onto the default surface.
+  await page.goto('/discover', { waitUntil: 'domcontentloaded' });
+  await page.waitForURL(/\/destinations/, { timeout: 15_000 });
 });
 
 test('sign-in modal opens with email + password fields', async ({ page }) => {

@@ -1,5 +1,11 @@
 # Discover IA audit — duplicate surfaces & "multiple headers"
 
+> **superseded (2026-08-23, ledger `2026-08-23-marketplace-ungroup`):** after Option 1's first
+> slices landed, the decision-maker clarified the actual intent — **Option 2**: each Marketplace
+> surface is its own page (no tabbed shell, no grouped header), reached straight from the nav
+> dropdown; `/discover` survives only as a redirect. The inventory below remains accurate as-of
+> its SHA; the *recommendation* is superseded.
+
 **As-of:** `1a7c2886` (main, 2026-08-23). Read-only audit; no code changed. Requested by the
 decision-maker after observing that "we grouped all the discover pages instead of letting each be
 its own page, so there are multiple headers."
