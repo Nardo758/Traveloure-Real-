@@ -62,14 +62,18 @@ async function expectNoTabBar(page: import('@playwright/test').Page) {
 // ── 1. Surface pages — own masthead, own content, NO tab bar ─────────────────
 
 test.describe('Marketplace surfaces — each page renders alone, no grouped header', () => {
-  test('/destinations: masthead "Destinations", CityGrid visible, no tab bar', async ({ page }) => {
+  test('/destinations: masthead "Destinations", CityGrid visible, no tab bar, no search/ad', async ({ page }) => {
     await gotoPath(page, '/destinations');
 
     await expect(page.getByTestId('text-page-title')).toHaveText('Destinations');
-    await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('city-grid')).toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
     await expectNoTabBar(page);
+    // Simplified masthead (decision-maker Aug 23, Ready-Made-by-Theme band): the
+    // search bar lives ONLY on /services (the surface its query feeds) and the
+    // instructional-ad banner is gone from every surface page.
+    await expect(page.getByTestId('input-search')).not.toBeAttached();
+    await expect(page.getByTestId('cta-how-it-works')).not.toBeAttached();
   });
 
   test('/events: masthead "Events", GlobalCalendar visible, no tab bar', async ({ page }) => {
@@ -97,13 +101,16 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     }
   });
 
-  test('/services: masthead "Services", filter bar visible, no tab bar', async ({ page }) => {
+  test('/services: masthead "Services", search + filter bar visible, no tab bar, no ad', async ({ page }) => {
     await gotoPath(page, '/services');
 
     await expect(page.getByTestId('text-page-title')).toHaveText('Services');
+    // Services KEEPS the search bar — it is the surface whose query it feeds.
+    await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
     await expect(page.getByTestId('city-grid')).not.toBeVisible();
     await expectNoTabBar(page);
+    await expect(page.getByTestId('cta-how-it-works')).not.toBeAttached();
   });
 });
 
