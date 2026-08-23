@@ -887,6 +887,8 @@ export default function ItineraryComparisonPage() {
   // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
   const [applyingVariantId, setApplyingVariantId] = useState<string | null>(null);
   const [pendingApplyVariant, setPendingApplyVariant] = useState<Variant | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [failedApplyVariant, setFailedApplyVariant] = useState<Variant | null>(null);
   const applyVariantMutation = useMutation({
     mutationFn: async (variantId: string) => {
       await apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
@@ -895,12 +897,16 @@ export default function ItineraryComparisonPage() {
       return { tripId: result.tripId as string };
     },
     onSuccess: (r) => {
+      setApplyError(null);
+      setFailedApplyVariant(null);
       toast({ title: "Variant applied", description: "Your slip has been updated in place." });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
       setLocation(`/plans/${r.tripId}`);
     },
-    onError: () => {
+    onError: (_error, variantId) => {
+      setFailedApplyVariant(data?.variants.find((variant) => variant.id === variantId) || null);
+      setApplyError("We couldn't apply this proposal. Your plan is unchanged. Try again.");
       toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
     },
     onSettled: () => setApplyingVariantId(null),
@@ -1717,6 +1723,26 @@ export default function ItineraryComparisonPage() {
                   Applying a variant updates the slip in place — the other two are discarded.
                   Nothing is purchased by applying.
                 </p>
+                {applyError && (
+                  <div
+                    className="mb-6 flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center"
+                    role="alert"
+                    data-testid="apply-error"
+                  >
+                    <p className="text-sm text-destructive">{applyError}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-apply-retry"
+                      onClick={() => {
+                        setApplyError(null);
+                        if (failedApplyVariant) setPendingApplyVariant(failedApplyVariant);
+                      }}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
                 <AlertDialog
                   open={!!pendingApplyVariant}
                   onOpenChange={(open) => {
@@ -1752,6 +1778,7 @@ export default function ItineraryComparisonPage() {
                         onClick={(event) => {
                           event.preventDefault();
                           if (!pendingApplyVariant || applyVariantMutation.isPending) return;
+                          setApplyError(null);
                           setApplyingVariantId(pendingApplyVariant.id);
                           applyVariantMutation.mutate(pendingApplyVariant.id, {
                             onSettled: () => setPendingApplyVariant(null),
