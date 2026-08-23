@@ -7,8 +7,8 @@
 // places outside that one case.
 
 import { db } from "../db";
-import { dmoExtractedPlaces } from "@shared/schema";
-import { and, asc, count, eq, inArray, isNotNull } from "drizzle-orm";
+import { dmoExtractedPlaces, dmoRawContent } from "@shared/schema";
+import { and, asc, count, eq, ilike, inArray, isNotNull } from "drizzle-orm";
 import type { PlaceEnrichment } from "./place-enrichment.service";
 
 export type ExtractedPlaceRow = typeof dmoExtractedPlaces.$inferSelect;
@@ -47,6 +47,40 @@ export async function getExtractedPlaceRows(dmoContentId: string): Promise<Extra
     .from(dmoExtractedPlaces)
     .where(eq(dmoExtractedPlaces.dmoContentId, dmoContentId))
     .orderBy(asc(dmoExtractedPlaces.position));
+}
+
+/**
+ * Item 2 Phase 1 (ledger 2026-08-23-item2-grounding): DMO extracted places for a MARKET (city),
+ * for the slip-grounding resolver. Extracted places are keyed by guide (dmoContentId); market scope
+ * lives on the parent dmo_raw_content (city + discover_page_visible), so this joins the two. Only
+ * DISCOVER-VISIBLE guides contribute — the same gate the public Discover feed uses, so a traveler's
+ * AI slip never grounds against a guide that isn't publicly surfaced. Returns the raw rows (id +
+ * name + coords) the resolver matches against; empty when no visible guide covers the market (§13).
+ */
+export async function getExtractedPlacesForMarket(
+  destination: string | null | undefined,
+): Promise<ExtractedPlaceRow[]> {
+  const city = destination?.split(",")[0]?.trim() ?? "";
+  if (!city) return [];
+  return db
+    .select({
+      id: dmoExtractedPlaces.id,
+      dmoContentId: dmoExtractedPlaces.dmoContentId,
+      position: dmoExtractedPlaces.position,
+      name: dmoExtractedPlaces.name,
+      normalizedName: dmoExtractedPlaces.normalizedName,
+      latitude: dmoExtractedPlaces.latitude,
+      longitude: dmoExtractedPlaces.longitude,
+      inLibraryId: dmoExtractedPlaces.inLibraryId,
+      ticketingUrl: dmoExtractedPlaces.ticketingUrl,
+      enrichment: dmoExtractedPlaces.enrichment,
+      source: dmoExtractedPlaces.source,
+      extractedAt: dmoExtractedPlaces.extractedAt,
+    })
+    .from(dmoExtractedPlaces)
+    .innerJoin(dmoRawContent, eq(dmoRawContent.id, dmoExtractedPlaces.dmoContentId))
+    .where(and(ilike(dmoRawContent.city, `%${city}%`), eq(dmoRawContent.discoverPageVisible, true)))
+    .limit(500) as unknown as Promise<ExtractedPlaceRow[]>;
 }
 
 export function mapRowsToPlaces(rows: ExtractedPlaceRow[]): ExtractedPlaceResponse[] {
