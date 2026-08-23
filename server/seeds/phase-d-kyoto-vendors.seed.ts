@@ -784,9 +784,15 @@ export async function seedPhaseDKyotoVendors(): Promise<{
         location: svc.location,
         isFeatured: svc.isFeatured ?? false,
         contentAffinityTags: svc.contentAffinityTags ?? [],
+        // Demo data is born visible (approved+active) on purpose — these vendors must appear on
+        // public reads for the seeded market to look populated. That is a deliberate seeder
+        // exception to the born-submitted rule (migration 111/F2), NOT a bypass of it.
         approvalStatus: "approved",
         status: "active",
-        revenueShareRate: "0.75",
+        // §8/§18: no hardcoded fee/commission literal. Leave revenueShareRate unset so it derives
+        // from fee_bands at checkout (safeParseRate falls through to the live band), exactly as a
+        // wizard-created row does — a seed must never bake in a rate the admin can't move.
+        createdVia: "seed", // provenance stamp (Move 2) — this row's origin is the demo seeder.
         leadTimeHours: 48,
         ...(centroid && {
           latitude: centroid.latitude,
