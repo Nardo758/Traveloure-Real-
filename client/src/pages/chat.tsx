@@ -70,6 +70,9 @@ interface DisplayExpert {
   /** Set only for earner-mode conversation partners (audit A4) — the last real message in the
    *  thread, shown in the list card instead of a fabricated rating/location for a client. */
   lastMessage?: string;
+  /** ISO timestamp of the last real message in a conversation, used for the Inbox-style
+   * recency cue in the shared conversation rail. */
+  lastMessageAt?: string | null;
   /** True for earner-mode conversation partners — swaps the "browse an expert" card layout
    *  (rating/location/specialties) for a real thread-preview layout. */
   isConversationPartner?: boolean;
@@ -283,10 +286,22 @@ export default function Chat() {
       languages: [],
       responseTime: "",
       lastMessage: t.lastMessage ?? undefined,
+      lastMessageAt: t.lastMessageAt,
       isConversationPartner: true,
       unreadCount: t.unreadCount,
     }));
   }, [isEarner, conversationThreads]);
+
+  // Inbox threads are role-agnostic: a traveler may be talking with either an expert or a
+  // service provider. Prefer the real thread already returned by /api/chats over the
+  // expert-directory lookup, which intentionally cannot resolve provider profiles.
+  const threadExpertFromUrl = useMemo(
+    () =>
+      expertIdFromUrl
+        ? conversationPartners.find((partner) => String(partner.id) === String(expertIdFromUrl)) ?? null
+        : null,
+    [conversationPartners, expertIdFromUrl],
+  );
 
   // Traveler-mode browse directory (real experts + any deep-linked expert not already in the
   // list). Kept separate from conversationPartners so the two can render as distinct groups
@@ -348,6 +363,7 @@ export default function Chat() {
 
   const [message, setMessage] = useState("");
   const [selectedExpert, setSelectedExpert] = useState<DisplayExpert | null>(null);
+  const handledInitialSelectionRef = useRef<string | null>(null);
 
   // ── Block / report state ─────────────────────────────────────────────────
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
@@ -461,7 +477,7 @@ export default function Chat() {
     },
     enabled: !isEarner && !!tripAdvisor?.expert_id && !expertIdFromUrl,
   });
-  const initialLinkedExpert = effectiveLinkedExpert ?? tripLinkedExpert;
+  const initialLinkedExpert = threadExpertFromUrl ?? effectiveLinkedExpert ?? tripLinkedExpert;
 
   // The trip actually shared with the OPEN conversation partner, resolved from real assignment
   // data only (never guessed — §13). Earner (expert) side reuses partnerAssignedTrip above
@@ -527,11 +543,24 @@ export default function Chat() {
     }
   }, [aboutFromUrl]);
 
+  // A deep link should select its target once. It must not reassert that selection after the
+  // traveler deliberately chooses another thread in the same rail. Resetting the handled key
+  // when the URL context changes still makes links from Inbox and My Plans switch conversations.
+  const initialSelectionKey = expertIdFromUrl
+    ? `expert:${expertIdFromUrl}`
+    : tripIdFromUrl
+      ? `trip:${tripIdFromUrl}`
+      : null;
   useEffect(() => {
-    if (initialLinkedExpert && !selectedExpert) {
-      setSelectedExpert(initialLinkedExpert);
+    if (!initialSelectionKey) {
+      handledInitialSelectionRef.current = null;
+      return;
     }
-  }, [initialLinkedExpert]);
+    if (!initialLinkedExpert || handledInitialSelectionRef.current === initialSelectionKey) return;
+
+    setSelectedExpert(initialLinkedExpert);
+    handledInitialSelectionRef.current = initialSelectionKey;
+  }, [initialLinkedExpert, initialSelectionKey]);
 
   // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
   // client's name so the relevant conversation thread is surfaced immediately.
@@ -725,11 +754,18 @@ export default function Chat() {
                 )}
               </div>
               {expert.isConversationPartner ? (
-                expert.lastMessage && (
-                  <p className="text-sm text-muted-foreground truncate mt-1">
-                    {expert.lastMessage}
-                  </p>
-                )
+                <>
+                  {expert.lastMessage && (
+                    <p className="text-sm text-muted-foreground truncate mt-1">
+                      {expert.lastMessage}
+                    </p>
+                  )}
+                  {expert.lastMessageAt && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {formatDistanceToNow(new Date(expert.lastMessageAt), { addSuffix: true })}
+                    </p>
+                  )}
+                </>
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-2">
