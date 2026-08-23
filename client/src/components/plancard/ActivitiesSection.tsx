@@ -13,6 +13,7 @@ import {
   type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus,
 } from "./plancard-types";
 import { ItemComments } from "./ItemComments";
+import { AffiliateBookButton } from "./AffiliateBookButton";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
@@ -736,6 +737,13 @@ export function ActivitiesSection({
                       </div>
                     );
                   })()}
+
+                  {/* Item 2 Phase 2 — "Book via your Traveloure agent" on an affiliate-grounded
+                      item (§16 agent rail, opaque token). Self-guarding: renders nothing unless the
+                      server stamped an agent-bookable affiliate grounding, so it is inert on every
+                      item until the Phase 2b server lane lands. Owner-only (the traveler books their
+                      own trip). */}
+                  {isOwner && <AffiliateBookButton activity={a} testId={`button-affiliate-book-${a.id}`} />}
 
                   <div className="flex gap-2.5 mt-2">
                     {(a.changes?.length ?? 0) > 0 && (
