@@ -341,20 +341,18 @@ export async function refundReadyMadePurchaseLedger(
     console.error(`Failed to reverse platform revenue for ready-made purchase ${purchaseId}:`, err);
   }
 
-  // Revoke the product: the clone (and its items, by cascade) goes with the refund —
-  // EXCEPT when the buyer has invested in the clone during the escrow window. A buyer can add
-  // their own items and book real platform services onto the clone before refunding; an
-  // unconditional delete then (a) cascade-destroys the buyer's own itinerary_items
-  // (trip_id ON DELETE CASCADE) and (b) orphans a live, separately-paid service_booking
-  // (trip_id ON DELETE SET NULL) that this refund never touches — a live un-refunded charge
-  // pointing at a deleted trip, and the bookings-have-purchased-items invariant broken.
-  // Mirror the defensive invariant the build-delete path already enforces
-  // (ready-made.routes.ts): never delete a trip carrying paid itinerary history. When paid
-  // history exists we PRESERVE the clone (soft-revoke) — the ready-made charge is still
-  // refunded and the author's earning still reversed above; the buyer simply keeps the trip
-  // their own bookings live on. (This also anticipates the ratified "concierge revision instead
-  // of refund" model, under which the clone is never destroyed.)
-  if (claimed.cloneTripId) {
+  // Revoke the product. On the ADMIN path the clone is ALWAYS preserved (ratified Q2,
+  // ledger 2026-08-22-concierge-p3 — "the buyer keeps the trip": weeks later they may have
+  // invested heavily in it, and every admin-refund surface promises "the buyer keeps their
+  // trip"). Only the legacy buyer path (the self-serve /refund route, RETIRED in P3) runs the
+  // conditional delete below — and even there it never deletes a clone carrying paid itinerary
+  // history, because an unconditional delete would (a) cascade-destroy the buyer's own
+  // itinerary_items (trip_id ON DELETE CASCADE) and (b) orphan a live, separately-paid
+  // service_booking (trip_id ON DELETE SET NULL) this refund never touches — a live un-refunded
+  // charge pointing at a deleted trip, and the bookings-have-purchased-items invariant broken.
+  // (The ratified "concierge revision instead of refund" model never destroys the clone at all,
+  // which is why the admin escape hatch preserves it unconditionally.)
+  if (actor === "buyer" && claimed.cloneTripId) {
     const [paidItem] = await db
       .select({ id: itineraryItems.id })
       .from(itineraryItems)
