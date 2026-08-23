@@ -439,12 +439,22 @@ export interface ProposalLegsSummary {
 
 export interface PlanCardProposalData {
   variantId: string;
+  /** Stable review-board selector (baseline, v1, v2, v3); falls back to variantId. */
+  testId?: string;
   /** Variant name ("Variant A" / "Your Plan"). */
   name: string;
   /** Strategy tagline (variant.description). Null → renders nothing (§13). */
   tagline?: string | null;
   /** Exactly one or zero recommended per comparison — derived from optimizer output. */
   recommended?: boolean;
+  /** Styles the original itinerary as the review board's current-plan baseline. */
+  isBaseline?: boolean;
+  /** Optional current-plan label/name overrides for review-first presentation. */
+  eyebrow?: string;
+  displayName?: string;
+  perPersonTotal?: string | null;
+  /** Server-derived total used by the review board; omitted when unavailable. */
+  totalCostUsd?: number | null;
   /** Canonical-trip purchased rows (see ProposalAnchorItem). */
   anchoredItems: ProposalAnchorItem[];
   /** The variant's own proposed items. */
