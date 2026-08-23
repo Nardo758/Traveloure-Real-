@@ -99,6 +99,8 @@ import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
+// Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
+import { resolvePinnedAnchor, parsePinnedAnchorInput } from "./services/anchor-candidates";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -8757,11 +8759,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, optimizationPaymentId } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, optimizationPaymentId, pinnedAnchor: rawPinnedAnchor } = req.body;
 
-      // Sprint-1 dislike loop (harvested from the UNMOUNTED trips.routes.ts copy —
-      // the router is imported but never app.use()d, so this inline registration
-      // is the live one; §9 route-shadow class): whitelisted "what to fix" chips
+      // Sprint-1 dislike loop (this inline registration is the LIVE POST /generate — it is
+      // registered before the trips.routes.ts router is app.use()d, so it shadows the router's
+      // copy; §9 route-shadow class). NOTE: the GET .../anchor-candidates read rail lives only on
+      // the router, so it is reachable; but the pinned-anchor WRITE must land HERE to take effect.
+      // whitelisted "what to fix" chips
       // from a re-run flow into TripPreferences.feedback, where
       // selectVariantStrategy gives them top priority over inferred preferences.
       const FEEDBACK_CHIPS = new Set(["too_expensive", "too_packed", "wrong_areas", "wrong_vibe"]);
@@ -8963,6 +8967,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // 1c: resolve the traveler's "build around THIS" pin (if any) against the SAME baseline the
+      // optimizer will use — `baselineItems` already carries real coordinates on the trip path
+      // (loadTripOptimizerInputs). Unresolvable ⇒ undefined ⇒ the optimizer auto-picks anchors (§13,
+      // never fabricated). Runs after the pay gate; the response was already sent.
+      const pinnedAnchorInput = parsePinnedAnchorInput(rawPinnedAnchor);
+      let resolvedPinnedAnchor:
+        | NonNullable<Awaited<ReturnType<typeof resolvePinnedAnchor>>>
+        | undefined;
+      if (pinnedAnchorInput) {
+        const anchorStops = baselineItems.map((b: any) => {
+          const lat = b.latitude != null ? parseFloat(String(b.latitude)) : NaN;
+          const lng = b.longitude != null ? parseFloat(String(b.longitude)) : NaN;
+          return {
+            id: String(b.id),
+            name: b.name ?? b.title ?? "Stop",
+            lat: Number.isFinite(lat) ? lat : null,
+            lng: Number.isFinite(lng) ? lng : null,
+          };
+        });
+        resolvedPinnedAnchor = (await resolvePinnedAnchor(pinnedAnchorInput, anchorStops)) ?? undefined;
+      }
+
       generateOptimizedItineraries(
         comparisonId,
         userId,
@@ -8976,7 +9002,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         comparison.tripId || undefined,
         undefined,
         tripPreferencesForGen,
-        fixedCommitments
+        fixedCommitments,
+        resolvedPinnedAnchor
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {

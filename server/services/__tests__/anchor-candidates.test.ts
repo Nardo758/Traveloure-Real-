@@ -6,6 +6,7 @@ import {
   rankActivityAnchors,
   pickAutoAnchors,
   buildPinnedCandidateFromCoords,
+  parsePinnedAnchorInput,
   type NamedStop,
 } from "../anchor-candidates-map";
 import { rankAnchors, scoreAnchor } from "../anchor-scoring";
@@ -133,5 +134,31 @@ describe("anchor-candidates — buildPinnedCandidateFromCoords (Phase 1c, pure p
     expect(
       buildPinnedCandidateFromCoords({ type: "hotel", lat: 999, lng: 999 }, STOPS),
     ).toBeNull();
+  });
+});
+
+describe("anchor-candidates — parsePinnedAnchorInput (Phase 1c, §19 allowlist)", () => {
+  it("keeps only the five allowlisted fields and coerces numeric strings", () => {
+    const parsed = parsePinnedAnchorInput({
+      type: "hotel",
+      id: "h1",
+      name: "Hotel Kanra",
+      lat: "35.0016",
+      lng: 135.777,
+      // privileged / junk fields that must never survive the allowlist
+      userId: "attacker",
+      revenueShareRate: "1.00",
+      price: 0.01,
+    } as any);
+    expect(parsed).toEqual({ type: "hotel", id: "h1", name: "Hotel Kanra", lat: 35.0016, lng: 135.777 });
+    expect((parsed as any).userId).toBeUndefined();
+    expect((parsed as any).revenueShareRate).toBeUndefined();
+  });
+
+  it("returns undefined for a missing or wrong-typed pin", () => {
+    expect(parsePinnedAnchorInput(undefined)).toBeUndefined();
+    expect(parsePinnedAnchorInput(null)).toBeUndefined();
+    expect(parsePinnedAnchorInput("hotel")).toBeUndefined();
+    expect(parsePinnedAnchorInput({ type: "castle" })).toBeUndefined(); // not one of the three
   });
 });
