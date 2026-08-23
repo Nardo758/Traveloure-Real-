@@ -1266,4 +1266,8 @@ export const MIGRATION_FILES = [
   // 255: DMO grounding link on itinerary_items — dmo_extracted_place_id (soft ref, additive-nullable,
   // no CHECK). Set by the build-time slip-grounding resolver; declared in shared/schema.ts.
   "255_itinerary_item_dmo_grounding.sql",
+  // 256: affiliate grounding link on itinerary_items — affiliate_product_id (real FK to
+  // affiliate_products, ON DELETE SET NULL; additive-nullable, no CHECK). Set by the build-time
+  // slip resolver (rung 02: catalog → affiliate → DMO); declared in shared/schema.ts.
+  "256_itinerary_item_affiliate_grounding.sql",
 ] as const;
