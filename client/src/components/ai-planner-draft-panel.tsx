@@ -112,11 +112,11 @@ export function AiPlannerDraftPanel({
     // derived from the page's single bounded frame — chat.tsx pattern); in an auto-height
     // parent (mobile stack) h-full resolves to natural height. Overflow scrolls internally.
     <Card
-      className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 h-full flex flex-col min-h-0"
+      className="bg-card rounded-2xl shadow-card border-border h-full flex flex-col min-h-0"
       data-testid="ai-planner-draft-panel"
     >
-      <CardHeader className="pb-3 flex-shrink-0">
-        <CardTitle className="text-lg flex items-center gap-2">
+      <CardHeader className="p-4 pb-2 flex-shrink-0">
+        <CardTitle className="text-base flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" />
           Plan draft
         </CardTitle>
@@ -124,7 +124,7 @@ export function AiPlannerDraftPanel({
           Fills in as you chat — nothing here is guessed.
         </p>
       </CardHeader>
-      <CardContent className="space-y-4 flex-1 min-h-0 overflow-y-auto">
+      <CardContent className="px-4 pb-4 pt-1 space-y-3 flex-1 min-h-0 overflow-y-auto">
         <DraftField
           icon={<MapPin className="w-4 h-4" />}
           label="Destination"
@@ -193,7 +193,7 @@ function DraftField({
   testId: string;
 }) {
   return (
-    <div className="flex items-start gap-2.5">
+    <div className="flex items-start gap-2">
       <div className="mt-0.5 text-muted-foreground">{icon}</div>
       <div className="min-w-0 flex-1">
         <p className="text-xs text-muted-foreground">{label}</p>
