@@ -1263,4 +1263,7 @@ export const MIGRATION_FILES = [
   // a listing). Additive-nullable, app-enforced vocabulary, no CHECK (publish-trap rule); declared
   // in shared/schema.ts. No backfill — NULL = honest unknown. Behavior-neutral on apply.
   "254_service_creation_provenance.sql",
+  // 255: DMO grounding link on itinerary_items — dmo_extracted_place_id (soft ref, additive-nullable,
+  // no CHECK). Set by the build-time slip-grounding resolver; declared in shared/schema.ts.
+  "255_itinerary_item_dmo_grounding.sql",
 ] as const;
