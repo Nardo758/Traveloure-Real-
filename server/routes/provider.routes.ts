@@ -273,6 +273,7 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
           approvalStatus: "submitted",
           submittedAt: new Date(),
           status: "active",
+          createdVia: "bundle", // Creation provenance (2026-08-23).
         })
         .returning();
       await tx.insert(bundleComponents).values(
@@ -601,6 +602,7 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
           approvalStatus: "submitted",
           submittedAt: new Date(),
           status: "active",
+          createdVia: "property", // Creation provenance (2026-08-23).
         })
         .returning();
 
@@ -639,6 +641,7 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
             approvalStatus: "submitted",
             submittedAt: new Date(),
             status: "active",
+            createdVia: "property_room", // Creation provenance (2026-08-23).
           })),
         )
         .returning();
@@ -793,6 +796,7 @@ router.post("/api/provider/properties/:id/rooms", isAuthenticated, async (req, r
           approvalStatus: "submitted",
           submittedAt: new Date(),
           status: "active",
+          createdVia: "property_room", // Creation provenance (2026-08-23).
         })
         .returning();
 
