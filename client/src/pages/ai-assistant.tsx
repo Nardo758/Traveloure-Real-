@@ -332,13 +332,13 @@ export default function AIAssistant() {
     // pane derives its height via flex-1/min-h-0, never its own viewport arithmetic. Below lg the
     // three panes stack at natural height and the shell's <main> scrolls the page (a bounded
     // frame would crush the stacked panes on a phone).
-    <div className="flex flex-col lg:h-[calc(100vh-52px)] min-h-0 bg-gray-50 dark:bg-gray-900">
-      <div className="flex flex-col flex-1 min-h-0 w-full px-4 sm:px-6 py-4 lg:py-6">
-        <div className="mb-4 flex-shrink-0">
+    <div className="flex flex-col lg:h-[calc(100vh-52px)] min-h-0 bg-background">
+      <div className="flex flex-col flex-1 min-h-0 w-full px-4 sm:px-6 py-3 lg:py-4">
+        <div className="mb-3 flex-shrink-0">
           <Button
             variant="ghost"
             onClick={() => setLocation("/dashboard")}
-            className="mb-4 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+            className="mb-2 h-9 px-2 text-muted-foreground hover:text-foreground"
             data-testid="button-back-dashboard"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -346,14 +346,14 @@ export default function AIAssistant() {
           </Button>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-primary rounded-lg">
-                <Bot className="w-8 h-8 text-white" />
+              <div className="p-2 bg-primary rounded-xl">
+                <Bot className="w-6 h-6 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+                <h1 className="text-xl md:text-2xl font-bold text-foreground">
                   AI Travel Assistant
                 </h1>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   AI-assisted, human-backed — our team steps in whenever you need a person
                 </p>
               </div>
@@ -376,10 +376,10 @@ export default function AIAssistant() {
         </div>
 
         <div className="flex flex-col lg:grid lg:grid-cols-5 gap-4 lg:gap-6 flex-1 min-h-0">
-          <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
-            <CardHeader className="pb-3 flex-shrink-0">
+          <Card className="lg:col-span-1 bg-card rounded-2xl shadow-card border-border flex flex-col min-h-0">
+            <CardHeader className="p-4 pb-2 flex-shrink-0">
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-lg">Conversations</CardTitle>
+                <CardTitle className="text-base">Conversations</CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
@@ -391,24 +391,24 @@ export default function AIAssistant() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="p-3 pt-0 flex-1 min-h-0 flex flex-col">
-              <ScrollArea className="flex-1 min-h-0 max-h-64 lg:max-h-none">
+            <CardContent className="px-4 pb-4 pt-0 flex-1 min-h-0 flex flex-col">
+              <ScrollArea className="flex-1 min-h-0 max-h-64 lg:max-h-none [&>div>div]:!block [&>div>div]:!w-full [&>div>div]:!min-w-0">
                 {loadingConversations ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-600 dark:text-gray-400" />
                   </div>
                 ) : conversations.length === 0 ? (
-                  <div className="text-center py-8 text-gray-600 dark:text-gray-400">
-                    <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <div className="text-center py-6 text-muted-foreground">
+                    <MessageSquare className="w-7 h-7 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No conversations yet</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 pl-1.5 pr-3">
                     {conversations.map((conv) => (
                       <div
                         key={conv.id}
                         className={cn(
-                          "p-3 rounded-lg transition-all group flex items-center justify-between gap-2",
+                           "p-2.5 rounded-xl transition-all group flex items-center justify-between gap-2",
                           renamingId === conv.id
                             ? "bg-muted"
                             : selectedConversation === conv.id
