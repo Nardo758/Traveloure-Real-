@@ -173,6 +173,7 @@ import {
   getActivityDemandReport, getActivityTrendsReport, getDestinationBenchmarkReport,
   getUsersBasicByIds, getProviderServiceById, deleteProviderService,
   getRoleChangeAuditLogs,
+  getAuditLogsForResource,
 } from "../services/admin-query.service";
 
 const router = Router();
@@ -5814,6 +5815,29 @@ router.get("/api/admin/audit-logs/role-changes", isAuthenticated, requireAdminLo
     res.json({ ...result, limit, offset });
   } catch (err) {
     console.error("Audit-log role-changes error:", err);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
+
+/**
+ * GET /api/admin/audit-logs?resourceType=&resourceId=  (provenance spine move 5)
+ * The per-resource audit timeline: every logged action against ONE resource, newest first. Makes
+ * the "write-only in practice" audit log readable — the approve/reject/edit-review/refund/dispute
+ * rows the platform already writes become queryable by (resourceType, resourceId). Admin-gated.
+ */
+router.get("/api/admin/audit-logs", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const resourceType = req.query.resourceType ? String(req.query.resourceType) : "";
+    const resourceId = req.query.resourceId ? String(req.query.resourceId) : "";
+    if (!resourceType || !resourceId) {
+      return res.status(400).json({ message: "resourceType and resourceId are required" });
+    }
+    const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10) || 50, 100);
+    const offset = parseInt(String(req.query.offset ?? "0"), 10) || 0;
+    const result = await getAuditLogsForResource({ resourceType, resourceId, limit, offset });
+    res.json({ ...result, limit, offset });
+  } catch (err) {
+    console.error("Audit-log resource error:", err);
     res.status(500).json({ message: "Failed to fetch audit logs" });
   }
 });
