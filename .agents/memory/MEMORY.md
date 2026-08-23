@@ -21,6 +21,7 @@
 - [Amadeus decommission](amadeus-decommission.md) — dropped (ruling 34) and code fully removed Aug 2026; /api/amadeus/* return honest empties; never re-add without new credentials + ledger ruling.
 - [Fee double-take is intended](fee-double-take-ruling.md) — cart checkout charges fee on top AND deducts 25% commission (platform keeps ~50% of list); ratified F1 ruling, not a bug — never "fix" without a new ruling.
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
+- [Optimizer terminal states](optimizer-terminal-states.md) — persisted proposals must remain usable when optional post-generation work fails; distinguish warning completion from generation failure.
 - [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Post-merge boot failures](post-merge-boot-failures.md) — ERR_MODULE_NOT_FOUND after a merge = node_modules not synced; npm install, don't hunt branch bugs.
 - [Passport is live auth](passport-is-live-auth.md) — Clerk secrets exist but no Clerk code; Passport powers all auth flows, never remove it on a "Clerk migration" premise.
