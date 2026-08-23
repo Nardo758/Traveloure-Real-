@@ -6304,6 +6304,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // Deliverables-surfacing lane (ledger 2026-08-23-deliverables-surfacing): the METADATA probe.
+  // The GET above STREAMS the PDF (objstore) — so the client could not use it to decide whether to
+  // render a download button without (a) parsing bytes as JSON (it did — `.json()` threw, the catch
+  // hid the deliverable, and the button NEVER rendered for the protected path) and (b) logging a
+  // `deliverable_downloads` row on every page view, arming the artifact_timer completion clock on a
+  // mere render, not a real download. This probe answers "is there a deliverable, and what kind"
+  // with NO byte download and NO download-log write; the actual download stays the GET above, now
+  // hit only on the user's click — so the log becomes a real download record. Same four gates.
+  app.get("/api/service-bookings/:id/deliverable/meta", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId || booking.status !== "confirmed" || !booking.serviceId) {
+        return res.json({ available: false });
+      }
+      const service = await storage.getProviderServiceById(booking.serviceId);
+      if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
+        return res.json({ available: false });
+      }
+      const fileValue = (service.serviceFile ?? "").trim();
+      if (!fileValue) {
+        // §13 honest absence: qualifies, but nothing uploaded yet — distinguishable from "not a
+        // deliverable booking" so the client can say "your expert hasn't uploaded it yet".
+        return res.json({ available: false, code: "NO_DELIVERABLE_UPLOADED", deliveryMethod: service.deliveryMethod });
+      }
+      const isProtected = fileValue.startsWith(DELIVERABLE_OBJSTORE_PREFIX);
+      // A protected file is fetched by-id on click (never expose the objstore key); a legacy
+      // pasted URL is the provider's own external link and is safe to hand the client directly.
+      return res.json({
+        available: true,
+        protected: isProtected,
+        deliveryMethod: service.deliveryMethod,
+        ...(isProtected ? {} : { fileUrl: fileValue }),
+      });
+    } catch (err) {
+      console.error("Deliverable meta error:", err);
+      res.status(500).json({ message: "Failed to check deliverable" });
+    }
+  });
+
   app.get("/api/bookings/user", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
