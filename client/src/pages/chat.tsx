@@ -1,5 +1,6 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
+import { useTrip } from "@/hooks/use-trips";
 import { useAuth } from "@/hooks/use-auth";
 import { isEarnerRole } from "@shared/roles";
 import { getRoleHomePath } from "@/lib/role-utils";
@@ -187,6 +188,9 @@ export default function Chat() {
   // clientId: forwarded from /expert/messages/:clientId and /provider/messages/:clientId
   // deep-links. Pre-populates the search box so the relevant conversation is surfaced.
   const clientIdFromUrl = urlParams.get("clientId");
+  // tripId: forwarded from My Plans so this shared surface can restore trip context and select
+  // the assigned expert when an accepted advisor relationship exists.
+  const tripIdFromUrl = urlParams.get("tripId");
   // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
   const aboutFromUrl = urlParams.get("about");
   // name/avatar: optional display fallback for expertIdFromUrl (see fallbackExpert below) —
@@ -435,6 +439,30 @@ export default function Chat() {
     staleTime: 60_000,
   });
 
+  const tripAdvisor = useMemo(
+    () =>
+      tripIdFromUrl
+        ? (travelerTripAdvisors ?? []).find(
+            (advisor) =>
+              String(advisor.trip_id) === String(tripIdFromUrl) && advisor.status === "accepted",
+          ) ?? null
+        : null,
+    [tripIdFromUrl, travelerTripAdvisors],
+  );
+
+  // My Plans only knows the trip. Resolve the same expert display record used by direct Inbox
+  // links so both entry points converge on one selected conversation.
+  const { data: tripLinkedExpert } = useQuery<DisplayExpert | null>({
+    queryKey: ["/api/experts", tripAdvisor?.expert_id],
+    queryFn: async () => {
+      const res = await fetch(`/api/experts/${tripAdvisor?.expert_id}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return mapExpertToDisplay(await res.json());
+    },
+    enabled: !isEarner && !!tripAdvisor?.expert_id && !expertIdFromUrl,
+  });
+  const initialLinkedExpert = effectiveLinkedExpert ?? tripLinkedExpert;
+
   // The trip actually shared with the OPEN conversation partner, resolved from real assignment
   // data only (never guessed — §13). Earner (expert) side reuses partnerAssignedTrip above
   // (already resolved from /api/expert/assigned-trips, accepted-only); a provider earner has no
@@ -448,6 +476,11 @@ export default function Chat() {
     );
     return match?.trip_id ?? null;
   }, [selectedExpert, isEarner, isExpertUser, partnerAssignedTrip, travelerTripAdvisors]);
+
+  // Preserve a valid My Plans trip context even before an expert is selected. Once a shared
+  // conversation is open, sharedTripId remains the authoritative relationship-based value.
+  const selectedTripId = sharedTripId ?? tripIdFromUrl;
+  const { data: selectedTrip } = useTrip(!isEarner ? (selectedTripId ?? "") : "");
 
   // The same GET /api/notifications the bell page (notifications.tsx) and Inbox "Updates" tab
   // (inbox.tsx) already read — no new endpoint for the events themselves, only for the
@@ -495,10 +528,10 @@ export default function Chat() {
   }, [aboutFromUrl]);
 
   useEffect(() => {
-    if (effectiveLinkedExpert && !selectedExpert) {
-      setSelectedExpert(effectiveLinkedExpert);
+    if (initialLinkedExpert && !selectedExpert) {
+      setSelectedExpert(initialLinkedExpert);
     }
-  }, [effectiveLinkedExpert]);
+  }, [initialLinkedExpert]);
 
   // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
   // client's name so the relevant conversation thread is surfaced immediately.
@@ -861,6 +894,18 @@ export default function Chat() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-slate-900 dark:text-white">{selectedExpert.name}</h3>
+                        {selectedTrip && selectedTripId && (
+                          <Link href={`/plans/${selectedTripId}`}>
+                            <Badge
+                              variant="outline"
+                              className="text-xs cursor-pointer hover:bg-accent"
+                              data-testid="badge-chat-trip-context"
+                            >
+                              <MapPin className="w-3 h-3 mr-1" />
+                              {selectedTrip.title || selectedTrip.destination || "Trip"}
+                            </Badge>
+                          </Link>
+                        )}
                         {/* F3 (workstation-flows audit): when this conversation partner is a client
                             with an active assignment, jump straight into the trip's workstation. */}
                         {partnerAssignedTrip && (
