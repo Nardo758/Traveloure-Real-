@@ -495,6 +495,7 @@ function ProposalColumnContainer({
   baselineTotalUsd,
   baselineDriveMinutes,
   isBaselineColumn,
+  boardId,
 }: {
   variant: Variant;
   comparison: Comparison;
@@ -508,6 +509,7 @@ function ProposalColumnContainer({
   baselineDriveMinutes: number | null;
   /** This column IS the user's current plan — it has no delta against itself, so no strip. */
   isBaselineColumn: boolean;
+  boardId: string;
 }) {
   const { data: legs } = useQuery<TransportLegApiResponse[]>({
     queryKey: ["/api/itinerary-variants", variant.id, "transport-legs"],
@@ -548,8 +550,8 @@ function ProposalColumnContainer({
   const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
 
   return (
-    <div className="flex flex-col gap-2" data-testid={`proposal-column-${variant.id}`}>
-      {showPreview && <ProposalPreviewStrip preview={preview} variantId={variant.id} />}
+    <div className="flex flex-col gap-2">
+      {showPreview && <ProposalPreviewStrip preview={preview} variantId={boardId} />}
     <PlanCard
       stage="proposal"
       trip={{
@@ -559,9 +561,17 @@ function ProposalColumnContainer({
       }}
       proposal={{
         variantId: variant.id,
+         testId: boardId,
         name: variant.name,
-        tagline: variant.description || null,
+         eyebrow: isBaselineColumn ? "Your current plan" : undefined,
+         displayName: isBaselineColumn ? "As you built it" : undefined,
+         tagline: isBaselineColumn ? "The order you planned, unchanged." : (variant.description || null),
+         isBaseline: isBaselineColumn,
         recommended,
+         totalCostUsd: parseTotal(variant.totalCost),
+         perPersonTotal: parseTotal(variant.totalCost) != null && comparison.travelers > 1
+           ? `$${Math.round(parseTotal(variant.totalCost)! / comparison.travelers).toLocaleString()}`
+           : null,
         anchoredItems,
         items: variant.items.map((it) => ({
           id: it.id,
@@ -571,7 +581,7 @@ function ProposalColumnContainer({
           price: it.price ?? null,
         })),
         legsSummary,
-        applyLabel: `Apply ${variant.name}`,
+         applyLabel: isBaselineColumn ? "Keep this plan" : `Apply ${variant.name}`,
         onApply,
         applying,
       }}
@@ -1219,9 +1229,14 @@ export default function ItineraryComparisonPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{data?.comparison?.title || "Itinerary Comparison"}</h1>
-            <p className="text-muted-foreground">
-              {data?.comparison?.destination} - {data?.comparison?.travelers || 1} traveler(s)
+            {slipTripId && <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary mb-1">Optimization · Review before applying</p>}
+            <h1 className="text-2xl md:text-3xl font-bold" data-testid={slipTripId ? "review-title" : undefined}>
+              {slipTripId ? `Three ways to sharpen your ${primaryCity || data?.comparison?.destination || "trip"} plan` : (data?.comparison?.title || "Itinerary Comparison")}
+            </h1>
+            <p className="text-muted-foreground max-w-2xl" data-testid={slipTripId ? "review-intro" : undefined}>
+              {slipTripId
+                ? "Your optimizer found alternatives to the items still in planning. Nothing changes until you apply one — pick the trade-off that fits, or keep your plan as is."
+                : `${data?.comparison?.destination} - ${data?.comparison?.travelers || 1} traveler(s)`}
             </p>
           </div>
         </div>
@@ -1460,7 +1475,7 @@ export default function ItineraryComparisonPage() {
 
         {hasVariants && (
           <>
-            {destination && (
+            {destination && !slipTripId && (
               <Card className="mb-4 border-purple-200/50 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/10 dark:to-indigo-950/10 dark:border-purple-800/50">
                 <CardContent className="py-3 px-4">
                   <div className="flex items-center gap-2">
@@ -1551,7 +1566,7 @@ export default function ItineraryComparisonPage() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4" data-testid="compare-header">
                   <p className="font-mono text-sm text-muted-foreground">
                     {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
-                    {specColumns.length} proposal{specColumns.length === 1 ? "" : "s"}
+                    {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
                     {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
                   </p>
                   {(anchoredItems.length > 0 || withExpertRows.length > 0) && (
@@ -1627,8 +1642,8 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-4">
-                  {specColumns.map((variant) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                  {specColumns.slice(0, 4).map((variant, index) => (
                     <ProposalColumnContainer
                       key={variant.id}
                       variant={variant}
@@ -1639,13 +1654,14 @@ export default function ItineraryComparisonPage() {
                       baselineTotalUsd={baselineTotalUsd}
                       baselineDriveMinutes={baselineDriveMinutes}
                       isBaselineColumn={variant.source === "user"}
+                      boardId={variant.source === "user" ? "baseline" : `v${aiVariants.findIndex((v) => v.id === variant.id) + 1}`}
                       onApply={() => {
                         setPendingApplyVariant(variant);
                       }}
                     />
                   ))}
                   {isGenerating &&
-                    Array.from({ length: Math.max(0, 3 - specColumns.length) }).map((_, idx) => (
+                    Array.from({ length: Math.max(0, 4 - specColumns.length) }).map((_, idx) => (
                       <Card key={`proposal-skeleton-${idx}`} className="border-dashed opacity-80">
                         <CardHeader className="pt-6">
                           <Skeleton className="h-5 w-32" />
