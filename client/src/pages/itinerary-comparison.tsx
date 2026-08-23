@@ -1116,7 +1116,7 @@ export default function ItineraryComparisonPage() {
       return;
     }
 
-    if (status !== "generated") return;
+    if (status !== "generated" && status !== "generated_with_warnings") return;
 
     const aiVariants = data.variants?.filter((v: Variant) => v.source === "ai_optimized") ?? [];
     if (aiVariants.length === 0) {
@@ -1169,6 +1169,7 @@ export default function ItineraryComparisonPage() {
 
   const isGenerating = data?.comparison?.status === "generating";
   const hasFailed = data?.comparison?.status === "failed";
+  const hasGenerationWarnings = data?.comparison?.status === "generated_with_warnings";
   const isPendingPayment = data?.comparison?.status === "pending_payment";
   const hasVariants = data?.variants && data.variants.length > 0;
   const userVariant = data?.variants?.find((v) => v.source === "user");
@@ -1189,7 +1190,8 @@ export default function ItineraryComparisonPage() {
   // retry. autoApply keeps its own error banner; this renders only for the review flow.
   const generationProducedNoProposals =
     !autoApply &&
-    data?.comparison?.status === "generated" &&
+    (data?.comparison?.status === "generated" ||
+      data?.comparison?.status === "generated_with_warnings") &&
     hasVariants &&
     aiVariants.length === 0;
 
@@ -1392,6 +1394,21 @@ export default function ItineraryComparisonPage() {
                   )}
                   Try Again
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasGenerationWarnings && (
+          <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-generation-warning">
+            <CardContent className="p-5 flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <h3 className="font-semibold">Your optimized plans are ready</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  The proposals were generated successfully, but some optional finishing details
+                  could not be completed. You can still review and apply any of these plans.
+                </p>
               </div>
             </CardContent>
           </Card>

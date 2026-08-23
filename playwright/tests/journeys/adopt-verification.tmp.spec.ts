@@ -75,6 +75,8 @@ async function runCase(
   expect(generateRes.status(), `${label}: ${await generateRes.text()}`).toBe(200);
   const result = await waitForVariants(comparisonId);
   console.log(JSON.stringify({ label, comparisonId, status: result.status, variants: result.variants }, null, 2));
+  expect(["generated", "generated_with_warnings"], `${label}: optimization must complete with usable proposals`).toContain(result.status);
+  expect(result.variants.filter((variant) => variant.source === "ai_optimized")).toHaveLength(3);
   return result;
 }
 

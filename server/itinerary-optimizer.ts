@@ -1826,10 +1826,33 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
   } catch (error) {
     console.error("Error generating optimized itineraries:", error);
 
-    await db
-      .update(itineraryComparisons)
-      .set({ status: "failed", updatedAt: new Date() })
-      .where(eq(itineraryComparisons.id, comparisonId));
+    // A failure after the AI variants have been persisted must not turn a usable
+    // optimization into a generation failure. This includes best-effort
+    // enrichment and final metadata writes: keep the proposals available, but
+    // expose that the run completed with a warning so the review surface can
+    // distinguish it from a run that produced nothing.
+    try {
+      const persistedVariants = await db
+        .select({ id: itineraryVariants.id })
+        .from(itineraryVariants)
+        .where(
+          and(
+            eq(itineraryVariants.comparisonId, comparisonId),
+            eq(itineraryVariants.source, "ai_optimized"),
+          ),
+        );
+
+      await db
+        .update(itineraryComparisons)
+        .set({
+          status: persistedVariants.length > 0 ? "generated_with_warnings" : "failed",
+          ...(persistedVariants.length > 0 ? { optimizedAt: new Date() } : {}),
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(itineraryComparisons.id, comparisonId));
+    } catch (statusError) {
+      console.error("Error recording optimization failure status:", statusError);
+    }
 
     return {
       success: false,
