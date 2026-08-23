@@ -1,14 +1,14 @@
 {
-  "seed": "2026-08-23",
+  "seed": "2026-08-22",
   "chosenStep": "expert-profile-chromium",
   "engine": "chromium",
   "project": "chromium",
   "surface": "expert-profile-chromium",
-  "url": "http://127.0.0.1:5000/experts/615d813b-f3da-4247-8ee4-d3b888a077c0",
-  "scannedAt": "2026-08-23T06:30:04.695Z",
-  "result": "2 violation types, 7 affected nodes",
+  "url": "http://127.0.0.1:5000/experts/503e86df-dfdf-494d-913f-25aeda48c012",
+  "scannedAt": "2026-08-22T20:23:45.853Z",
+  "result": "2 violation types, 8 affected nodes",
   "totalViolations": 2,
-  "totalNodes": 7,
+  "totalNodes": 8,
   "violations": {
     "critical": [
       {
@@ -43,7 +43,7 @@
         "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
         "help": "Elements must meet minimum color contrast ratio thresholds",
         "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
-        "nodeCount": 5,
+        "nodeCount": 6,
         "nodes": [
           {
             "target": [
@@ -68,17 +68,17 @@
           },
           {
             "target": [
-              "#radix-\\:r7\\:-trigger-reviews"
+              "#radix-\\:r7\\:-trigger-ready-made"
             ],
             "html": "<button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"radix-:r7:-content-r...\" data-state=\"inactive\" id=\"radix-:r7:-trigger-r...\" data-replit-metadata=\"client/src/pages/exp...\" data-co",
             "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.39 (foreground color: #6b7280, background color: #f3f4f6, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           },
           {
             "target": [
-              "button[data-testid=\"button-contact-expert\"]"
+              "#radix-\\:r7\\:-trigger-reviews"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/exp...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-contact-exper...\">",
-            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 3.52 (foreground color: #ffffff, background color: #ff3859, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            "html": "<button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"radix-:r7:-content-r...\" data-state=\"inactive\" id=\"radix-:r7:-trigger-r...\" data-replit-metadata=\"client/src/pages/exp...\" data-co",
+            "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 4.39 (foreground color: #6b7280, background color: #f3f4f6, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
           }
         ]
       }
@@ -91,7 +91,7 @@
   "passes": 26,
   "screenshot": "a11y-expert-profile-chromium-chromium.png",
   "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars.",
-  "expertId": "615d813b-f3da-4247-8ee4-d3b888a077c0",
-  "expertHref": "/experts/615d813b-f3da-4247-8ee4-d3b888a077c0",
-  "expertName": "Raj"
+  "expertId": "503e86df-dfdf-494d-913f-25aeda48c012",
+  "expertHref": "/experts/503e86df-dfdf-494d-913f-25aeda48c012",
+  "expertName": "Ahmed"
 }

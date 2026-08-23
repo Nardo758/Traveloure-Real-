@@ -660,6 +660,54 @@ export async function assembleTripPlan(
     ),
   );
 
+  // Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): for items grounded to a bookable affiliate
+  // product, resolve the "Book via your Traveloure agent" CTA server-side (§16). One prefetch of the
+  // products, then ONE vault batch-mint of opaque bookingTokens — the affiliate URL is read only to
+  // mint the token and never emitted. Only `affiliate_bookable` rows get a CTA (Q3 — the classifier
+  // drives it); an in_platform_bookable / unclassified grounded item keeps its pin but carries no
+  // agent CTA. Best-effort: a failure here degrades to no-CTA, never blocks plan assembly.
+  const affiliateBookingByItemId = new Map<string, {
+    productId: string; bookingToken: string; bookingType: string;
+    partnerName: string | null; title: string | null; price: number | null;
+  }>();
+  try {
+    const affiliateItemIds = Array.from(
+      new Set(items.map((i) => (i as any).affiliateProductId).filter((id): id is string => !!id)),
+    );
+    if (affiliateItemIds.length > 0) {
+      const { getAffiliateProductsByIds } = await import("./affiliate-grounding.service");
+      const { mintBookingTokens } = await import("./affiliate-url-vault.service");
+      const products = await getAffiliateProductsByIds(affiliateItemIds);
+      // Gather the eligible (agent-bookable + has-url) items in a stable order, mint one token batch.
+      const eligible: Array<{ itemId: string; p: NonNullable<ReturnType<typeof products.get>> }> = [];
+      for (const it of items) {
+        const pid = (it as any).affiliateProductId as string | null;
+        if (!pid) continue;
+        const p = products.get(pid);
+        if (p && p.bookingType === "affiliate_bookable" && p.affiliateUrl) {
+          eligible.push({ itemId: it.id, p });
+        }
+      }
+      if (eligible.length > 0) {
+        const tokens = await mintBookingTokens(
+          eligible.map((e) => ({ url: e.p.affiliateUrl as string, name: e.p.name, provider: e.p.partnerName })),
+        );
+        eligible.forEach((e, idx) => {
+          affiliateBookingByItemId.set(e.itemId, {
+            productId: e.p.id,
+            bookingToken: tokens[idx],
+            bookingType: e.p.bookingType as string,
+            partnerName: e.p.partnerName,
+            title: e.p.name,
+            price: e.p.price != null ? parseFloat(e.p.price) : null,
+          });
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[trip-plan] affiliate booking resolve failed (non-fatal):", (err as any)?.message);
+  }
+
   // ── W4 (H2): the trip's REAL bookings. `full` only — `teaser`/`preview` returned above, so a
   // store or link-card channel never sees a purchase. The endpoint that asks for `full` is already
   // owner/expert/author/admin-gated (this service authorizes nothing — see the header note).
@@ -724,6 +772,13 @@ export async function assembleTripPlan(
       // ONLY one with the column (the variant snapshot adapter below never sets this key). READ-only
       // pass-through; nothing here writes routing_status (contract §2).
       routingStatus: item.routingStatus,
+
+      // Item 2 Phase 2: the affiliate agent-booking CTA — PRESENT ONLY when the item was grounded
+      // to an affiliate_bookable product and a token was minted above (§16/§13, present-only-when-
+      // real like `booking`, so every non-affiliate item is byte-identical to before).
+      ...(affiliateBookingByItemId.has(item.id)
+        ? { affiliateBooking: affiliateBookingByItemId.get(item.id)! }
+        : {}),
     };
   };
 

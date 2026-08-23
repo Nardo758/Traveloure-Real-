@@ -1,11 +1,11 @@
 {
-  "seed": "2026-08-23",
+  "seed": "2026-08-22",
   "chosenStep": "cart-checkout-payment",
   "engine": "chromium",
   "project": "chromium",
   "surface": "cart-checkout-payment",
   "url": "http://127.0.0.1:5000/cart",
-  "scannedAt": "2026-08-23T06:29:59.178Z",
+  "scannedAt": "2026-08-22T20:23:40.193Z",
   "result": "1 violation types, 6 affected nodes",
   "totalViolations": 1,
   "totalNodes": 6,
@@ -66,5 +66,5 @@
   "passes": 23,
   "screenshot": "a11y-cart-checkout-payment-chromium.png",
   "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars.",
-  "serviceId": "ps-d02"
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695"
 }

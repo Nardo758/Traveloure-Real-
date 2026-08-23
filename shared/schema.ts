@@ -4050,6 +4050,14 @@ export const itineraryItems = pgTable("itinerary_items", {
   // NULL = not grounded to a DMO place. The matched place's real coords are copied onto this item's
   // latitude/longitude so it pins with no client change — never a guessed/city-center pin (§13/§22).
   dmoExtractedPlaceId: varchar("dmo_extracted_place_id"),
+  // Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate, migration 256): the affiliate grounding link
+  // — set when the build-time resolver matches a free-text AI item to a bookable affiliate product
+  // (rung 02: catalog → affiliate → DMO). A real FK (affiliate_products.id is a stable persisted
+  // row, unlike the replace-by-position DMO rows) with ON DELETE SET NULL so retiring a product
+  // doesn't cascade-delete the plan item. Nullable; NULL = not grounded to an affiliate product.
+  // The item's booking CTA is server-derived from this at plancard-assembly time (§16 vault token),
+  // never client-settable (§19 — omitted from the insert schema).
+  affiliateProductId: varchar("affiliate_product_id").references(() => affiliateProducts.id, { onDelete: "set null" }),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
   // The item↔booking key (migration 159; master brief §5 item 2). Stamped by the checkout confirm
@@ -4433,7 +4441,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
 // never client-settable via this schema. Every create route strips whatever the client sent and
 // re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 

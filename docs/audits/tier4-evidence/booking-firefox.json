@@ -1,19 +1,19 @@
 {
-  "seed": "2026-08-23",
+  "seed": "2026-08-22",
   "chosenStep": "confirmation",
   "engine": "firefox",
   "project": "firefox",
-  "result": "PASS - booking 60cf9cef-13d0-4e69-b018-66ee677072ff reached status \"confirmed\"",
+  "result": "PASS - booking 233e2f0b-107c-442d-803a-e052dd95886b reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
   "addToCartMethod": "api",
-  "addToCartLimitation": "[data-testid=\"button-add-to-cart-ps-d04\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
-  "serviceId": "ps-d04",
-  "serviceName": "Montmartre Wine & Dine Tour",
-  "servicePrice": 150,
+  "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
+  "serviceName": "Ceremony Highlight Video (Short-form)",
+  "servicePrice": 1100,
   "bookingIdsFromCheckout": [
-    "60cf9cef-13d0-4e69-b018-66ee677072ff"
+    "233e2f0b-107c-442d-803a-e052dd95886b"
   ],
-  "primaryBookingId": "60cf9cef-13d0-4e69-b018-66ee677072ff",
+  "primaryBookingId": "233e2f0b-107c-442d-803a-e052dd95886b",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
@@ -67,6 +67,10 @@
         "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
       },
       {
+        "type": "warning",
+        "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
+      },
+      {
         "type": "debug",
         "text": "[vite] connecting..."
       },
@@ -100,11 +104,7 @@
       },
       {
         "type": "warning",
-        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%2200530dfe-dda8-4e50-b28e-fa356d193c00%22%2C%22assignments%22%3A%7B%22api_fastpath_ewcs_elements_v1%22%3A%22control%22%2C%22api_fastpath_habanero_v1%22%3A%22treatment%22%7D%7D&wait=false&rtl=false&controllingElement=paymentElement&elementsInitSource=stripe.elements&elementId=payment-002bc52b-8563-4f24-8cb5-840f4a\" line: 0}]"
-      },
-      {
-        "type": "warning",
-        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://b.stripecdn.com/stripethirdparty-srv/assets/v33.9/HCaptchaInvisible.html?id=b77cde95-a010-40c7-b915-8b1bb4cd5525&origin=https%3A%2F%2Fjs.stripe.com\" line: 0}]"
+        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=06c6n21v1i12&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Facco\" line: 0}]"
       }
     ]
   },
@@ -116,16 +116,16 @@
     "bookings": "booking-firefox-bookings-final.png"
   },
   "timings": {
-    "register_ms": 2580,
-    "service_discovery_ms": 38,
-    "discover_load_ms": 3102,
-    "service_detail_load_ms": 2570,
-    "add_to_cart_ms": 151,
-    "cart_load_ms": 3547,
-    "checkout_click_ms": 4103,
-    "stripe_fill_ms": 3144,
-    "payment_submit_ms": 1162,
-    "poll_confirmed_ms": 18
+    "register_ms": 4262,
+    "service_discovery_ms": 87,
+    "discover_load_ms": 4040,
+    "service_detail_load_ms": 2964,
+    "add_to_cart_ms": 116,
+    "cart_load_ms": 3826,
+    "checkout_click_ms": 4104,
+    "stripe_fill_ms": 3134,
+    "payment_submit_ms": 1148,
+    "poll_confirmed_ms": 29
   },
   "consoleMessages": [
     {
@@ -165,6 +165,10 @@
       "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
     },
     {
+      "type": "warning",
+      "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
+    },
+    {
       "type": "debug",
       "text": "[vite] connecting..."
     },
@@ -198,11 +202,7 @@
     },
     {
       "type": "warning",
-      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%2200530dfe-dda8-4e50-b28e-fa356d193c00%22%2C%22assignments%22%3A%7B%22api_fastpath_ewcs_elements_v1%22%3A%22control%22%2C%22api_fastpath_habanero_v1%22%3A%22treatment%22%7D%7D&wait=false&rtl=false&controllingElement=paymentElement&elementsInitSource=stripe.elements&elementId=payment-002bc52b-8563-4f24-8cb5-840f4a\" line: 0}]"
-    },
-    {
-      "type": "warning",
-      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://b.stripecdn.com/stripethirdparty-srv/assets/v33.9/HCaptchaInvisible.html?id=b77cde95-a010-40c7-b915-8b1bb4cd5525&origin=https%3A%2F%2Fjs.stripe.com\" line: 0}]"
+      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=06c6n21v1i12&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Facco\" line: 0}]"
     }
   ]
 }

@@ -1,19 +1,22 @@
 {
-  "seed": "2026-08-23",
+  "seed": "2026-08-22",
   "chosenStep": "keyboard-checkout",
   "engine": "chromium",
   "project": "chromium",
-  "result": "PASS - keyboard checkout completed; booking 6db28bf0-cdba-4124-badb-985be16b7924 status=\"confirmed\"",
+  "result": "BLOCKED - 1 keyboard-accessibility blocker(s)",
   "lastReachedStep": "bookings-page-reached",
   "limitations": "LIMITATION (not a blocker): add-to-cart was performed via API (page.request), not keyboard UI. Service detail page requires login context that is not yet established via keyboard-only navigation.",
-  "serviceId": "ps-d02",
-  "serviceName": "Epicure at Le Bristol",
-  "servicePrice": 400,
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
+  "serviceName": "Ceremony Highlight Video (Short-form)",
+  "servicePrice": 1100,
   "addToCartMethod": "api-only",
-  "bookingId": "6db28bf0-cdba-4124-badb-985be16b7924",
+  "bookingId": "5d9be65a-8692-46ad-b13a-e9be0da3ad2c",
   "finalBookingStatus": "confirmed",
   "confirmedOk": true,
   "stripeKeyboardMethod": "keyboard-tab",
+  "paymentElementReadiness": {
+    "ready": true
+  },
   "stripeCardFilled": true,
   "stripeExpFilled": true,
   "stripeCvcFilled": true,
@@ -26,66 +29,71 @@
       "mainPage": {
         "alerts": [],
         "statusRegions": [],
-        "liveRegions": []
+        "liveRegions": [],
+        "invalidFieldDescriptions": []
       },
       "stripeFrames": [
         {
           "url": "https://js.stripe.com/v3/m-outer-3437aaddcdf6922d623e172c2d6f9278.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://js.stripe.com/v3/controller-with-preconnect-5d3c15d8a17d5dc965abff5f20037420.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://js.stripe.com/v3/elements-inner-loader-ui-d39955e338bdb2a15febf461b25a117b.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://js.stripe.com/v3/elements-inner-accessory-target-ea81a66f718b5efb2a9273900621551c.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": [
-            "[aria-live=\"polite\"] ​",
-            "[aria-live=\"polite\"] ​",
-            "[aria-live=\"polite\"] ​",
-            "[aria-live=\"polite\"] ​",
-            "[aria-live=\"polite\"] ​"
-          ]
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://js.stripe.com/v3/universal-link-modal-inner-b21dec15ebf534c2de6415f41994e809.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://js.stripe.com/v3/hcaptcha-invisible-7a0311dd09132a83e326afea15d62c2b.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         },
         {
           "url": "https://b.stripecdn.com/stripethirdparty-srv/assets/v33.9/HCaptchaInvisible.html",
           "alerts": [],
           "statusRegions": [],
-          "liveRegions": []
+          "liveRegions": [],
+          "invalidFieldDescriptions": []
         }
       ]
     },
-    "announcementPresent": true
+    "announcementPresent": false,
+    "describedErrorPresent": false,
+    "accessibleValidationPresent": false
   },
   "focusOrderCart": [
     {
@@ -300,7 +308,7 @@
     },
     {
       "tag": "a",
-      "label": "1 · $500",
+      "label": "1 · $1,232",
       "testid": "trip-strip-cart",
       "visibleFocus": true
     },
@@ -359,8 +367,8 @@
     "unlabelledInputs": 0,
     "unlabelledButtons": 2,
     "details": [
-      "unlabelled button: testid=button-decrease-a384f9de-295d-4241-aee2-2a4d6e813c26",
-      "unlabelled button: testid=button-increase-a384f9de-295d-4241-aee2-2a4d6e813c26"
+      "unlabelled button: testid=button-decrease-2a7fae34-3cd6-48f5-9395-55a6b7501c6d",
+      "unlabelled button: testid=button-increase-2a7fae34-3cd6-48f5-9395-55a6b7501c6d"
     ]
   },
   "formLabelsPayment": {
@@ -369,7 +377,9 @@
     "details": []
   },
   "submitted": true,
-  "realBlockers": [],
+  "realBlockers": [
+    "BLOCKER: Empty keyboard submission produced no non-empty role=alert/status, aria-live announcement, or aria-describedby error relationship in the app or Stripe frames."
+  ],
   "layoutOverflow": true,
   "viewport": {
     "width": 1280,
@@ -419,14 +429,18 @@
     {
       "type": "warning",
       "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
     }
   ],
   "timings": {
-    "register_ms": 2505,
-    "tab_to_proceed_ms": 4098,
-    "tab_to_complete_ms": 407,
-    "stripe_keyboard_ms": 6544,
-    "keyboard_submit_ms": 5871
+    "register_ms": 2956,
+    "tab_to_proceed_ms": 4222,
+    "tab_to_complete_ms": 415,
+    "stripe_keyboard_ms": 6324,
+    "keyboard_submit_ms": 5763
   },
   "screenshots": {
     "cart": "keyboard-cart.png",

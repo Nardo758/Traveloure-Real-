@@ -1,11 +1,11 @@
 {
-  "seed": "2026-08-23",
+  "seed": "2026-08-22",
   "chosenStep": "discover-search",
   "engine": "chromium",
   "project": "chromium",
   "surface": "discover-search",
   "url": "http://127.0.0.1:5000/discover",
-  "scannedAt": "2026-08-23T06:29:48.580Z",
+  "scannedAt": "2026-08-22T20:23:28.618Z",
   "result": "2 violation types, 72 affected nodes",
   "totalViolations": 2,
   "totalNodes": 72,

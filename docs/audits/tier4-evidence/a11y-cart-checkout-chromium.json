@@ -1,11 +1,11 @@
 {
-  "seed": "2026-08-23",
+  "seed": "2026-08-22",
   "chosenStep": "cart-checkout",
   "engine": "chromium",
   "project": "chromium",
   "surface": "cart-checkout",
   "url": "http://127.0.0.1:5000/cart",
-  "scannedAt": "2026-08-23T06:29:56.458Z",
+  "scannedAt": "2026-08-22T20:23:37.413Z",
   "result": "2 violation types, 11 affected nodes",
   "totalViolations": 2,
   "totalNodes": 11,
@@ -23,21 +23,21 @@
             "target": [
               ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(1)"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-a7dd...\">",
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" disabled=\"\" data-testid=\"button-decrease-57a7...\">",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           },
           {
             "target": [
               ".h-8.\\[border-color\\:var\\(--button-outline\\)\\].shadow-xs:nth-child(3)"
             ],
-            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-a7dd...\">",
+            "html": "<button data-replit-metadata=\"client/src/pages/car...\" data-component-name=\"Button\" class=\"inline-flex items-ce...\" data-testid=\"button-increase-57a7...\">",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           },
           {
             "target": [
               ".border-input"
             ],
-            "html": "<button type=\"button\" role=\"combobox\" aria-controls=\"radix-:rr:\" aria-expanded=\"false\" aria-autocomplete=\"none\" dir=\"ltr\" data-state=\"closed\" data-replit-metadata=\"client/src/pages/car...\" data-compon",
+            "html": "<button type=\"button\" role=\"combobox\" aria-controls=\"radix-:ru:\" aria-expanded=\"false\" aria-autocomplete=\"none\" dir=\"ltr\" data-state=\"closed\" data-replit-metadata=\"client/src/pages/car...\" data-compon",
             "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  "
           }
         ]
@@ -98,6 +98,6 @@
   "passes": 23,
   "screenshot": "a11y-cart-checkout-chromium.png",
   "limitations": "Violations reported but do not cause test failure (audit mode). Dynamic content and Stripe iframes are not scanned. Node HTML truncated to 200 chars; failureSummary to 300 chars.",
-  "serviceId": "ps-d02",
-  "serviceName": "Epicure at Le Bristol"
+  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
+  "serviceName": "Ceremony Highlight Video (Short-form)"
 }

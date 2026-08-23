@@ -2273,7 +2273,7 @@ export default function ItineraryComparisonPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setLocation("/cart")}
+                      onClick={() => setLocation(backExit.to)}
                       data-testid="button-keep-original"
                     >
                       Keep my original plan
