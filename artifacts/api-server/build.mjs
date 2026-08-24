@@ -141,6 +141,13 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     path.join(distDir, "assets"),
     { recursive: true },
   );
+  // The migration runner reads SQL at startup. Keep those files beside the
+  // production bundle so a fresh database can be initialized after deployment.
+  await cp(
+    path.resolve(artifactDir, "src/migrations"),
+    path.join(distDir, "migrations"),
+    { recursive: true },
+  );
 }
 
 buildAll().catch((err) => {

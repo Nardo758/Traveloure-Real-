@@ -25,21 +25,23 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { MIGRATION_FILES } from "./migration-files";
 
-// CJS-safe dirname: never use import.meta.url — it is undefined in the
-// production CJS bundle (dist/index.cjs) and the try/catch does not
-// reliably intercept it after esbuild's transform. Instead probe __dirname
-// (always defined in CJS) then fall back to process.cwd().
+// Resolve the SQL directory from the bundled output first, then retain source
+// and legacy locations for direct development scripts.
 const __dirname_local = (() => {
-  // In the production bundle __dirname === "dist/" — go up one level to reach
-  // "server/migrations". In development tsx sets __dirname per-file correctly.
   if (typeof __dirname !== "undefined") {
+    const bundledMigrations = join(__dirname, "migrations");
+    if (existsSync(join(bundledMigrations, "006_eso_canonicalization.sql"))) {
+      return bundledMigrations;
+    }
     const candidate = join(__dirname, "..", "server", "migrations");
     if (existsSync(candidate)) return candidate;
-    // __dirname already points at server/migrations/ (tsx dev)
     if (existsSync(join(__dirname, "006_eso_canonicalization.sql")))
       return __dirname;
   }
-  // Ultimate fallback: workspace root + server/migrations
+  const sourceMigrations = join(process.cwd(), "src", "migrations");
+  if (existsSync(join(sourceMigrations, "006_eso_canonicalization.sql"))) {
+    return sourceMigrations;
+  }
   return join(process.cwd(), "server", "migrations");
 })()
 
