@@ -83,8 +83,8 @@ function TrackPill({ track }: { track: EarnRole["track"] }) {
   const isInPerson = track === "in-person";
   return (
     <span
-      className={`text-[10px] font-medium px-2 py-0.5 rounded ${
-        isInPerson ? "bg-[#5DCAA5]/15 text-[#1f7a5c]" : "bg-[#2E8B8B]/12 text-[#2E8B8B]"
+      className={`public-track-pill ${
+        isInPerson ? "public-track-pill--in-person" : "public-track-pill--remote"
       }`}
     >
       {track}
@@ -96,7 +96,7 @@ function EarningBadge({ text, testId }: { text: string | null; testId: string })
   if (!text) return null;
   return (
     <span
-      className="text-xs font-medium text-[#8a6414] bg-[#E8B339]/15 px-2.5 py-0.5 rounded-md whitespace-nowrap"
+      className="public-earning-badge"
       data-testid={testId}
     >
       {text}
@@ -121,20 +121,18 @@ function RoleCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`text-left bg-white rounded-xl p-4 transition-colors ${
-        active ? "border-2 border-[#2E8B8B]" : "border border-[#E7E4DD] hover:border-[#2E8B8B]/60"
-      }`}
+      className="public-card public-card-interactive public-role-card"
       data-testid={`earn-role-${role.key}`}
       aria-pressed={active}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold text-[#1E3A5F]">{role.label}</span>
+        <span className="text-sm font-semibold text-[color:var(--public-ink)]">{role.label}</span>
         <TrackPill track={role.track} />
       </div>
-      <p className="text-xs text-[#6A7480] leading-snug mb-2">{role.blurb}</p>
+      <p className="text-xs text-[color:var(--public-muted)] leading-snug mb-2">{role.blurb}</p>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {chips.map((c) => (
-          <span key={c} className="text-[11px] text-[#6A7480] bg-[#F6F5F1] px-2 py-0.5 rounded-md">
+          <span key={c} className="text-[11px] text-[color:var(--public-muted)] bg-[var(--public-surface-subtle)] px-2 py-0.5 rounded-md">
             {c}
           </span>
         ))}
@@ -159,14 +157,14 @@ function OfferingRow({
     <button
       type="button"
       onClick={onClick}
-      className="group flex items-center justify-between gap-3 w-full text-left bg-white border border-[#E7E4DD] rounded-lg px-3.5 py-2.5 transition-colors hover:border-[#2E8B8B]"
+      className="public-card public-card-interactive public-offering-row group"
       data-testid={testId}
     >
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-[#1F2733]">{name}</div>
-        {tagline && <div className="text-xs text-[#6A7480] mt-0.5">{tagline}</div>}
+        <div className="text-[13px] font-semibold text-[color:var(--public-body)]">{name}</div>
+        {tagline && <div className="text-xs text-[color:var(--public-muted)] mt-0.5">{tagline}</div>}
       </div>
-      <span className="text-xs font-medium text-[#0F6E56] whitespace-nowrap group-hover:translate-x-0.5 transition-transform">
+      <span className="text-xs font-semibold text-[color:var(--public-accent-ink)] whitespace-nowrap group-hover:translate-x-0.5 transition-transform">
         I do this →
       </span>
     </button>
@@ -285,25 +283,25 @@ export default function EarnPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-[#F6F5F1]">
+      <div className="public-page min-h-screen">
         {/* ── Hero ─────────────────────────────────────────────────────── */}
-        <div className="bg-white border-b border-[#E7E4DD]" data-testid="earn-hero">
-          <div className="max-w-5xl mx-auto px-5 pt-9 pb-6">
+        <div className="public-masthead" data-testid="earn-hero">
+          <div className="public-container public-container--narrow pt-9 pb-7">
             <h1
-              className="text-[26px] font-semibold text-[#1E3A5F] tracking-tight mb-2"
+              className="public-page-title mb-2"
               data-testid="earn-hero-title"
             >
               Get paid for what you already know
             </h1>
-            <p className="text-[15px] text-[#6A7480] max-w-xl mb-3">
+            <p className="public-lede max-w-xl mb-3">
               Pick the role that sounds like you — see exactly what you'd offer and what you keep.
             </p>
             <div className="text-[13px]">
-              <span className="text-[#6A7480]">Already a partner?</span>{" "}
+              <span className="text-[color:var(--public-muted)]">Already a partner?</span>{" "}
               <button
                 type="button"
                 onClick={() => openSignInModal()}
-                className="text-[#0F6E56] font-medium"
+                className="public-link"
                 data-testid="earn-signin"
               >
                 Sign in →
@@ -313,15 +311,15 @@ export default function EarnPage() {
         </div>
 
         {/* ── Role band: "Which of these is you?" ──────────────────────── */}
-        <div className="bg-white border-b border-[#E7E4DD]">
-          <div className="max-w-5xl mx-auto px-5 py-5">
+        <div className="public-band">
+          <div className="public-container public-container--narrow py-5">
             <div className="flex items-center gap-4 mb-3">
-              <span className="text-[13px] font-semibold text-[#1F2733]">Which of these is you?</span>
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6A7480]">
-                <span className="w-2 h-2 rounded-sm bg-[#5DCAA5]" /> in-person
+              <span className="text-[13px] font-semibold text-[color:var(--public-body)]">Which of these is you?</span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--public-muted)]">
+                <span className="w-2 h-2 rounded-sm bg-[var(--earn-green)]" /> in-person
               </span>
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6A7480]">
-                <span className="w-2 h-2 rounded-sm bg-[#2E8B8B]" /> remote
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--public-muted)]">
+                <span className="w-2 h-2 rounded-sm bg-[var(--public-accent)]" /> remote
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5" data-testid="earn-role-band">
@@ -337,11 +335,11 @@ export default function EarnPage() {
               ))}
             </div>
             {/* EA: real signup, no offering backing yet — text link, not a card. */}
-            <p className="text-xs text-[#6A7480] mt-3">
+            <p className="text-xs text-[color:var(--public-muted)] mt-3">
               {EA_SIGNUP.label} — {EA_SIGNUP.blurb}.{" "}
               <Link
                 href={EA_SIGNUP.signupPath}
-                className="text-[#0F6E56] font-medium"
+                className="public-link"
                 data-testid="earn-ea-signup"
               >
                 Apply as an EA →
@@ -351,31 +349,31 @@ export default function EarnPage() {
         </div>
 
         {/* ── Catalog: the selected role's full mapped offering list ───── */}
-        <section className="bg-[#FAFAF8] border-b border-[#E7E4DD]">
-          <div className="max-w-5xl mx-auto px-5 py-6">
+        <section className="border-b border-[color:var(--public-border)]">
+          <div className="public-container public-container--narrow py-7">
             <div className="flex items-baseline justify-between mb-3">
-              <h3 className="text-base font-semibold text-[#1E3A5F]" data-testid="earn-catalog-title">
+              <h2 className="public-section-title" data-testid="earn-catalog-title">
                 {activeRole.label} · all services
-              </h3>
+              </h2>
               <EarningBadge text={roleEarning(activeRole)} testId="earn-catalog-earning" />
             </div>
             {catalogLoading ? (
-              <p className="text-sm text-[#6A7480]">Loading offerings…</p>
+              <div className="public-state" aria-live="polite"><p className="text-sm">Loading offerings…</p></div>
             ) : catalogError ? (
               <div
-                className="flex flex-col items-center gap-3 py-8 px-5 bg-[#FFF4F4] border border-[#FCCACA] rounded-xl text-center"
+                className="public-state public-state--error"
                 data-testid="earn-catalog-error"
               >
-                <AlertCircle className="w-7 h-7 text-[#E85D55]" />
+                <AlertCircle className="w-7 h-7" />
                 <div>
-                  <p className="text-sm font-semibold text-[#C0392B]">Couldn't load offerings</p>
-                  <p className="text-xs text-[#8B3A3A] mt-0.5">There was a problem fetching the catalog. Please try again.</p>
+                  <p className="text-sm font-semibold">Couldn't load offerings</p>
+                  <p className="text-xs mt-0.5">There was a problem fetching the catalog. Please try again.</p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => catalogRefetch()}
-                  className="border-[#E85D55] text-[#E85D55] hover:bg-[#FFF0F0]"
+                  className="border-[color:var(--public-danger)] text-[color:var(--public-danger)] hover:bg-[var(--public-danger-wash)]"
                   data-testid="earn-catalog-retry"
                 >
                   Retry
@@ -383,11 +381,11 @@ export default function EarnPage() {
               </div>
             ) : catalog.length === 0 ? (
               <div
-                className="flex flex-col items-center gap-2 py-8 px-5 bg-white border border-dashed border-[#D5D0C8] rounded-xl text-center"
+                className="public-state"
                 data-testid="earn-catalog-empty"
               >
-                <PackageOpen className="w-7 h-7 text-[#B0AAA0]" />
-                <p className="text-sm text-[#6A7480]">No offerings published yet.</p>
+                <PackageOpen className="w-7 h-7 text-[color:var(--earn-faint)]" />
+                <p className="text-sm">No offerings published yet.</p>
               </div>
             ) : (
               <div className="grid gap-2" data-testid="earn-catalog">
@@ -407,12 +405,12 @@ export default function EarnPage() {
 
         {/* ── Featured strip: is_surprising rows ───────────────────────── */}
         {surprising.length > 0 && (
-          <div className="max-w-5xl mx-auto px-5 py-5">
+          <div className="public-container public-container--narrow py-6">
             <div
-              className="flex items-center gap-1.5 text-[13px] font-medium text-[#1F2733] mb-2.5"
+              className="flex items-center gap-1.5 text-[13px] font-semibold text-[color:var(--public-body)] mb-2.5"
               data-testid="earn-surprising-label"
             >
-              <Star className="w-4 h-4 text-[#E8B339]" />
+              <Star className="w-4 h-4 text-[color:var(--public-gold)]" />
               <span>You probably didn't know you could get paid to…</span>
             </div>
             <div className="flex flex-wrap gap-2" data-testid="earn-surprising-row">
@@ -421,7 +419,7 @@ export default function EarnPage() {
                   key={s.key}
                   type="button"
                   onClick={() => handleSelect(s.role, s.key, s.name)}
-                  className="text-xs text-[#2E8B8B] bg-[#2E8B8B]/10 px-2.5 py-1 rounded-md hover:bg-[#2E8B8B]/20 transition-colors inline-flex items-center gap-1"
+                  className="public-control min-h-11 text-xs font-semibold text-[color:var(--public-accent-ink)] bg-[var(--public-accent-wash)] px-3 py-2 rounded-full hover:brightness-95 transition-colors inline-flex items-center gap-1"
                   data-testid={`earn-surprising-${s.key}`}
                 >
                   {s.name}

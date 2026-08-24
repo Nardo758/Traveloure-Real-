@@ -489,7 +489,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <nav
         ref={navRef}
         aria-label={t("mainNavigation")}
-        className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm"
+        className="public-site-header bg-card/95 backdrop-blur-lg border-b border-border sticky top-0 z-50"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16">
@@ -750,7 +750,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Footer */}
-      <footer className="bg-card border-t border-border py-16">
+      <footer className="public-site-footer bg-card border-t border-border py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
