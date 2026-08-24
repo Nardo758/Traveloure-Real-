@@ -1,0 +1,43 @@
+DISPATCH — Ready-Made skeleton gate + storefront link
+
+audited@a1264197 · lane: rm-skeleton-gate · branch lane/rm-skeleton-gate from origin/main · agent: Claude Code
+
+Locked
+Gate lives at submit (already exists) and approve (missing). Not at ship-to-store: a draft is allowed to be empty.
+Pick-based schemas only. No hardcoded fee/price literals.
+Never confirm a write vulnerability with a successful write.
+Behavioral proof, file:line.
+Phase 0 — read-only audit
+Prod, read-only: SELECT id, title, plan_type, price_cents, status, active, created_at, source_trip_id, author_id FROM ready_made_trips WHERE status='approved' AND active AND (title='Untitled build' OR plan_type IS NULL OR price_cents IS NULL OR inside_counts IS NULL). Report rows.
+For each row: how did it reach approved? Check submitted_at, reviewed_by, reviewed_at. If submitted_at IS NULL, it never passed submit → approved-from-draft or seeded. Grep server/seed*, scripts/, migrations/ for ready_made_trips inserts with status approved.
+Confirm admin.routes.ts:925 approve handler has no status precondition — quote the .where() clause.
+Outage window (piggyback, read-only): MAX(created_at) before 2026-08-24 on bookings, affiliate_booking_requests, ready_made_purchases, and latest Stripe event stored. Report.
+
+HARD STOP. Report with the bypass path named.
+
+Phase 1 — code (on "go")
+ready-made.routes.ts submit: add title requirement — non-empty after trim and not equal to the create-schema placeholder constant (export it, don't duplicate the string). Message: "Give the trip a real title."
+ready-made.routes.ts:51: keep the default for build creation (a draft may be untitled) but export READY_MADE_PLACEHOLDER_TITLE.
+admin.routes.ts approve: .where(and(eq(id), eq(status,'submitted'))); on 0 rows → 409 "Only submitted listings can be approved". Before the update, run the same completeness check submit uses — extract it into assertReadyMadeComplete(listing) returning missing[], called from both routes. One source.
+providers-directory.tsx:37: /p/ → /s/. Nothing else in that file.
+Tests: submit rejects placeholder title; approve rejects draft (409); approve rejects submitted-but-incomplete (400); approve succeeds on complete submitted. file:line for each assertion.
+
+Gates: grep for "Untitled build" returns only the constant definition; tsc no new errors.
+
+HARD STOP. Diff stat.
+
+Phase 2 — prod data (Leon decides per row from Phase 0)
+
+Rows from Phase 0.1: active=false for test rows; retitle/price via admin for real ones. Agent executes only the rows Leon names, as UPDATE … WHERE id IN (…), report rowcount.
+
+What Not To Do
+Do not add validation at ship-to-store.
+Do not touch insideCounts snapshot logic.
+Do not migrate the DB or alter ready_made_trips columns.
+Do not fix the third bypass path if found — file it.
+FOLLOWUPS
+Third bypass path, if any.
+Outage window result → separate assessment.
+Ledger
+
+2026-08-25-ready-made-approve-gate: approval requires status='submitted' and re-runs the submit completeness check; placeholder titles rejected at submit. [guarded] by the four tests.
