@@ -401,7 +401,7 @@ function Router() {
       {/* Ready Made Trips store detail (Phase 4): public teaser + purchase→clone; the author of
           an unapproved listing sees the same page flagged Preview. */}
       <Route path="/ready-made/:id">
-        {() => <ReadyMadeDetailPage />}
+        {() => <Layout><ReadyMadeDetailPage /></Layout>}
       </Route>
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
