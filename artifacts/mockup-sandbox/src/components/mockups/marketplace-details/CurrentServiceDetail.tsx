@@ -45,7 +45,7 @@ export function CurrentServiceDetail() {
   return (
     <div className="current-service-detail">
       <header className="csd-nav">
-        <div className="csd-brand">TRAVELOURE</div>
+        <div className="csd-brand"><img src="/__mockup/images/traveloure-logo.png" alt="Traveloure" /></div>
         <nav><span>Discover</span><span>Plan a trip</span><span>Messages</span></nav>
         <button className="csd-account">Sign in</button>
       </header>

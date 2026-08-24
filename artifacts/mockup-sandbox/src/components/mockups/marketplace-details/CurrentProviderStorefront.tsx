@@ -78,7 +78,7 @@ function Rating({ rating, reviews }: Pick<Offering, "rating" | "reviews">) {
 }
 
 function Logo() {
-  return <div className="ps-logo"><span className="ps-logo-mark">T</span><span>TRAVELOURE</span></div>;
+  return <div className="ps-logo"><img src="/__mockup/images/traveloure-logo.png" alt="Traveloure" /></div>;
 }
 
 function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string; count: number }) {
