@@ -1561,7 +1561,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   <div className="marketplace-section-head">
                     <div>
                       <p className="marketplace-kicker">Curated for right now</p>
-                      <h2>Travel like you have a local editor</h2>
+                      <h2>Guided itineraries crafted by verified experts — buy the plan and travel it your way.</h2>
                     </div>
                     {readyMadeShelf && (
                       <p>{readyMadeShelf.length} {readyMadeShelf.length === 1 ? "edition" : "editions"} · one clear price</p>

@@ -14,17 +14,6 @@
 .rmd-live a:focus-visible,
 .rmd-live button:focus-visible { outline: 3px solid rgb(251 59 99 / 28%); outline-offset: 3px; }
 
-.rmd-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 66px;
-  border-bottom: 1px solid var(--rmd-line);
-}
-.rmd-logo { display: inline-flex; align-items: center; }
-.rmd-header-actions { display: flex; align-items: center; gap: 12px; }
-.rmd-header-actions > span { color: var(--rmd-muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-
 .rmd-breadcrumb {
   display: flex;
   align-items: center;
@@ -106,10 +95,23 @@
   border-radius: 16px;
   background: #183d4a;
 }
-.rmd-hero-map-only { grid-template-columns: 1fr; }
 .rmd-hero-photo { position: relative; min-height: 330px; overflow: hidden; background: #dbe9e4; }
 .rmd-hero-photo:after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 35%, rgb(12 35 46 / 58%)); }
 .rmd-hero-photo img { width: 100%; height: 100%; min-height: 330px; object-fit: cover; }
+.rmd-hero-photo--fallback {
+  display: flex;
+  align-items: flex-end;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 78% 20%, rgb(255 255 255 / 24%) 0 1px, transparent 2px),
+    radial-gradient(circle at 24% 38%, rgb(255 255 255 / 16%) 0 1px, transparent 2px),
+    linear-gradient(145deg, #287a79 0%, #183d4a 58%, #142b45 100%);
+  background-size: 80px 80px, 110px 110px, auto;
+}
+.rmd-hero-fallback-content { position: relative; z-index: 1; display: grid; gap: 8px; color: white; }
+.rmd-hero-fallback-content span { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; opacity: .76; }
+.rmd-hero-fallback-content strong { font: 600 38px/1 "Fraunces", Georgia, serif; letter-spacing: -.045em; }
+.rmd-hero-fallback-content small { max-width: 230px; font-size: 11px; line-height: 1.45; opacity: .78; }
 .rmd-hero-caption { position: absolute; z-index: 1; left: 28px; right: 28px; bottom: 27px; color: white; }
 .rmd-hero-caption span { display: block; margin-bottom: 7px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .rmd-hero-caption strong { display: block; max-width: 500px; font: 600 30px/1.04 "Fraunces", Georgia, serif; letter-spacing: -.035em; }
@@ -212,7 +214,6 @@
 
 @media (max-width: 520px) {
   .rmd-live { width: min(100% - 28px, 1180px); padding-bottom: 40px; }
-  .rmd-header-actions > span { display: none; }
   .rmd-intro { padding-top: 18px; }
   .rmd-intro h1 { font-size: 38px; }
   .rmd-hero-photo, .rmd-hero-photo img { min-height: 270px; }
