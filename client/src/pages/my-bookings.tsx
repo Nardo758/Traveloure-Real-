@@ -450,7 +450,7 @@ export default function MyBookingsPage() {
               <h2 className="text-xl font-semibold mb-2">No bookings yet</h2>
               <p className="text-muted-foreground mb-6">Browse our services and make your first booking</p>
               <Button asChild data-testid="button-browse-services">
-                <Link href="/discover">Browse Services</Link>
+                <Link href="/services">Browse Services</Link>
               </Button>
             </CardContent>
           </Card>

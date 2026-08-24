@@ -638,7 +638,52 @@ function ServiceCard({
   );
 }
 
-export default function DiscoverPage() {
+/**
+ * Marketplace un-group (decision-maker ratified Aug 23, ledger
+ * 2026-08-23-marketplace-ungroup): each Marketplace surface is its OWN page —
+ * /destinations, /ready-made, /events, /services — reached straight from the nav
+ * dropdown, with NO tab bar (the grouped header is gone). `surface` pins this
+ * component to one surface: the tab bar is not rendered, the masthead titles
+ * itself for that surface, and ?tab= is ignored. Without `surface` the legacy
+ * tabbed shell still works (only the /discover redirect uses that path now).
+ */
+export type MarketplaceSurface = "travelpulse" | "packages" | "events" | "services";
+
+// Each surface masthead follows the ratified Ready-Made-by-Theme band (artifact
+// 5c827895): a Fraunces serif title with a leading emoji + a muted one-line sub.
+// `emoji` is the band-title glyph (🏅 is the one the mock itself draws).
+const SURFACE_META: Record<MarketplaceSurface, { emoji: string; title: string; subtitle: string; url: string; seoTitle: string }> = {
+  travelpulse: {
+    emoji: "📍",
+    title: "Destinations",
+    subtitle: "Explore destinations & trending cities.",
+    url: "/destinations",
+    seoTitle: "Destinations — Trending Cities & Travel Intel",
+  },
+  packages: {
+    emoji: "🏅",
+    title: "Ready-Made Trips",
+    subtitle: "Buy a complete trip built around an experience — it becomes your own editable plan.",
+    url: "/ready-made",
+    seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
+  },
+  events: {
+    emoji: "📅",
+    title: "Events",
+    subtitle: "Upcoming events & activities around the world.",
+    url: "/events",
+    seoTitle: "Events — Festivals & Travel Calendar",
+  },
+  services: {
+    emoji: "🛎️",
+    title: "Services",
+    subtitle: "Book tours, photography, transport & more — we assemble & optimize your trip.",
+    url: "/services",
+    seoTitle: "Services — Tours, Photography, Transport & More",
+  },
+};
+
+export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface } = {}) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
@@ -697,12 +742,15 @@ export default function DiscoverPage() {
   const rawUrlTab = urlParams.get("tab") || "travelpulse";
   const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
   const urlCity = urlParams.get("city") || "";
-  const [activeTab, setActiveTab] = useState(urlTab);
+  // A surface page is PINNED — ?tab= never overrides it (the /discover redirect
+  // is what maps old ?tab= links onto the right surface route).
+  const [activeTab, setActiveTab] = useState(surface ?? urlTab);
 
-  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks)
+  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks).
+  // Surface pages skip this — their surface is fixed by the route.
   useEffect(() => {
-    setActiveTab(urlTab);
-  }, [urlTab]);
+    if (!surface) setActiveTab(urlTab);
+  }, [urlTab, surface]);
 
   // Debounce search query
   useEffect(() => {
@@ -1064,11 +1112,11 @@ export default function DiscoverPage() {
 
   return (
     <>
-      <SEOHead 
-        title="Discover Services & Experiences"
+      <SEOHead
+        title={surface ? SURFACE_META[surface].seoTitle : "Discover Services & Experiences"}
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
-        url="/discover"
+        url={surface ? SURFACE_META[surface].url : "/discover"}
       />
       <div className="min-h-screen bg-background">
 
@@ -1088,25 +1136,51 @@ export default function DiscoverPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
+            {/* Surface masthead = the ratified Ready-Made-by-Theme band (artifact
+                5c827895, decision-maker Aug 23): a Fraunces serif title with a leading
+                emoji + a muted one-line sub, left-aligned, content immediately below. NO
+                search bar except on Services (the only surface whose query it actually
+                feeds) and NO instructional-ad banner (removed per the same ruling — the
+                pitch was funnel copy, not surface content). Fraunces is applied inline
+                (loaded in index.html) because --font-serif is a runtime theme token, not a
+                static one. The legacy tabbed shell keeps its old centered sans masthead +
+                search + ad; it is reachable only through the /discover redirect. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center mb-4"
+              className={surface ? "text-left" : "text-center mb-4"}
             >
-              <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]" data-testid="text-page-title">
-                Explore Services & Ready-Made Trips
+              <h1
+                className={surface
+                  ? "flex items-center gap-2.5 flex-wrap text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)]"
+                  : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
+                style={surface ? { fontFamily: "'Fraunces', Georgia, serif" } : undefined}
+              >
+                {surface ? (
+                  <>
+                    <span aria-hidden="true">{SURFACE_META[surface].emoji}</span>
+                    {/* testid lives on the text span (not the h1) so masthead
+                        assertions stay an exact match — the emoji is decorative. */}
+                    <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
+                  </>
+                ) : (
+                  <span data-testid="text-page-title">Explore Services &amp; Ready-Made Trips</span>
+                )}
               </h1>
-              <p className="text-[15px] text-[color:var(--earn-muted)] mt-1.5">
-                Expert services, ready-made trips, and AI-powered recommendations.
+              <p className={surface
+                ? "text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]"
+                : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
+                {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
               </p>
             </motion.div>
+            {(!surface || surface === "services") && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className="max-w-3xl mx-auto"
+              className={surface ? "mt-3" : "max-w-3xl mx-auto"}
             >
-              <div className="relative">
+              <div className={surface ? "relative max-w-xl" : "relative"}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search services, destinations..."
@@ -1116,7 +1190,8 @@ export default function DiscoverPage() {
                   data-testid="input-search"
                 />
               </div>
-              {/* The instructional ad — tells users what to DO (the funnel's one pitch) */}
+              {/* The instructional ad — legacy tabbed shell only (funnel's one pitch). */}
+              {!surface && (
               <button
                 type="button"
                 onClick={() => setActiveTab("services")}
@@ -1134,7 +1209,11 @@ export default function DiscoverPage() {
                   Browse services <ArrowRight className="w-4 h-4" />
                 </span>
               </button>
-              {/* Tab bar — inside the hero band (merged header) */}
+              )}
+              {/* Tab bar — legacy tabbed shell ONLY. A surface page renders NO tab bar
+                  (the grouped header is the thing the un-group removes); navigation
+                  between surfaces is the nav dropdown. */}
+              {!surface && (
               <div className="relative mt-3">
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <TabsTrigger
@@ -1172,7 +1251,9 @@ export default function DiscoverPage() {
                 </TabsList>
                 <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
               </div>
+              )}
             </motion.div>
+            )}
           </div>
         </section>
 

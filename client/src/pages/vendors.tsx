@@ -391,7 +391,7 @@ export default function Vendors() {
             <span className="text-gray-700 dark:text-gray-300">
               Looking for tours, transport, or photography?
             </span>
-            <a href="/discover?tab=services" className="ml-auto shrink-0 font-medium text-primary underline-offset-2 hover:underline" data-testid="link-browse-services-banner">
+            <a href="/services" className="ml-auto shrink-0 font-medium text-primary underline-offset-2 hover:underline" data-testid="link-browse-services-banner">
               Browse Service Catalog →
             </a>
           </div>
@@ -422,7 +422,7 @@ export default function Vendors() {
                     Add Vendor
                   </Button>
                 ) : (
-                  <a href="/discover?tab=services">
+                  <a href="/services">
                     <Button data-testid="button-browse-services-empty">
                       Browse Service Catalog
                     </Button>

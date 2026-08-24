@@ -1110,7 +1110,7 @@ function CityCard({
                     <MapPin className="h-3 w-3 mr-1" />
                     See {city.cityName}{monthName ? ` in ${monthName}` : ""}
                   </Button>
-                  <Link href="/discover?tab=packages">
+                  <Link href="/ready-made">
                     <Button variant="outline" size="sm" data-testid={`button-modal-view-packages-${city.id}`}>
                       <BookOpen className="h-3 w-3 mr-1" />
                       View packages

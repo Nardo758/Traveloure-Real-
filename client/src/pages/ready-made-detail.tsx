@@ -224,7 +224,7 @@ export default function ReadyMadeDetailPage() {
       <div className="max-w-3xl mx-auto p-10 text-center">
         <h1 className="text-xl font-semibold mb-2">Trip not found</h1>
         <p className="text-muted-foreground mb-4">It may have been removed or isn't available yet.</p>
-        <Button asChild variant="outline"><Link href="/discover">Browse Ready Made Trips</Link></Button>
+        <Button asChild variant="outline"><Link href="/ready-made">Browse Ready Made Trips</Link></Button>
       </div>
     );
   }
