@@ -65,7 +65,7 @@ export function StorefrontLink({
   // Rule 1: no handle → no storefront → render nothing at all.
   if (!handle) return null;
 
-  const href = `/p/${handle}`;
+  const href = `/s/${handle}`;
   const displayName = name || `@${handle}`;
   // Don't repeat the handle in the subtitle when it is already the title.
   const subtitle = name

@@ -222,12 +222,12 @@ export default function ExpertDetailPage() {
 
   // S2 (redirect-when-claimed): an earner who has claimed a public storefront
   // handle (users.handle, migration 136) is canonically represented at
-  // /p/:handle — this id-based browse-context page (/experts/:id,
+  // /s/:handle — this id-based browse-context page (/experts/:id,
   // /local-experts/:id) redirects there client-side. Earners without a handle
   // keep this page unchanged. Placed AFTER the loading/not-found returns above
   // so `expert` is guaranteed loaded here (no flash-redirect on undefined).
   if (typeof expert.handle === "string" && expert.handle.trim().length > 0) {
-    return <Redirect to={`/p/${expert.handle}`} />;
+    return <Redirect to={`/s/${expert.handle}`} />;
   }
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim();

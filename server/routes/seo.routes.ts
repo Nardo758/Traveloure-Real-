@@ -7,7 +7,7 @@
  *   GET /discover, /experts, /experiences, /about, /contact, /pricing, /visa-help
  *                    — per-route <title>/<meta description>/<link rel=canonical> injection
  *                      into the SPA shell, same interception pattern as
- *                      storefront.routes.ts /p/:handle. Without this, every route served
+ *                      storefront.routes.ts /s/:handle. Without this, every route served
  *                      the homepage's head verbatim — including a canonical pointing AT
  *                      the homepage, which told crawlers the whole site is one page.
  *
@@ -56,7 +56,7 @@ async function buildSitemap(): Promise<string> {
       .select({ id: readyMadeTrips.id, updatedAt: readyMadeTrips.updatedAt })
       .from(readyMadeTrips)
       .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true))),
-    // Mirror loadStorefront's public-visibility predicate: a /p/:handle page only
+    // Mirror loadStorefront's public-visibility predicate: a /s/:handle page only
     // exists when the owner has at least one APPROVED offering in one of the three
     // lanes — a bare handle 404s, and listing it would feed crawlers dead URLs.
     // When the storefront verification gate is enabled, skip storefronts entirely
@@ -95,7 +95,7 @@ async function buildSitemap(): Promise<string> {
     })),
     ...storefronts
       .filter((u) => !!u.handle)
-      .map((u) => ({ loc: `${CANONICAL_ORIGIN}/p/${u.handle}` })),
+      .map((u) => ({ loc: `${CANONICAL_ORIGIN}/s/${u.handle}` })),
   ];
 
   const body = urls

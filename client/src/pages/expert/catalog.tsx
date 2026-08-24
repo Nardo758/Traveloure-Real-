@@ -198,7 +198,7 @@ function StorefrontHeader() {
     (readyMade.data?.listings ?? []).filter((r: any) => r.status === "approved").length;
 
   const isLive = !!handle && countsLoaded && approvedCount > 0;
-  const publicPath = handle ? `/p/${handle}` : null;
+  const publicPath = handle ? `/s/${handle}` : null;
   const publicUrl = publicPath ? `${window.location.origin}${publicPath}` : null;
 
   async function copyLink() {

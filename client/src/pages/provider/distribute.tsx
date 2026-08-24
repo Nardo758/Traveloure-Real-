@@ -149,7 +149,7 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
   );
   const liveCount  = liveServices.length;
   const isLive     = !!handle && liveCount > 0;
-  const publicPath = handle ? `/p/${handle}` : null;
+  const publicPath = handle ? `/s/${handle}` : null;
   const publicUrl  = publicPath ? `${window.location.origin}${publicPath}` : null;
   const displayUrl = handle ? `${window.location.host}/s/${handle}` : null;
   const qrSvgUrl   = publicUrl ? qrCodeSvgDataUrl(publicUrl) : null;

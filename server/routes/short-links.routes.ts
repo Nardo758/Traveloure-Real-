@@ -263,7 +263,7 @@ router.get("/r/:code", async (req, res) => {
     if (targetType === "storefront") {
       const [owner] = await db.select({ handle: users.handle }).from(users).where(eq(users.id, row.ownerUserId)).limit(1);
       if (!owner?.handle) return res.redirect(302, "/discover");
-      return res.redirect(302, `/p/${owner.handle}${ref}`);
+      return res.redirect(302, `/s/${owner.handle}${ref}`);
     }
     if (targetType === "service") return res.redirect(302, `/services/${row.targetId}${ref}`);
     if (targetType === "template") return res.redirect(302, `/expert-templates/${row.targetId}${ref}`);

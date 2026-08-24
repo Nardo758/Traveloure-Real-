@@ -5,7 +5,7 @@
  * lane leans on (expert-card, provider-card, the discover ServiceCard): `users.handle`
  * is nullable (migration 136), and a null/undefined handle must render NOTHING — never
  * a guessed handle, never a disabled-looking link to a 404. These proofs pin that down
- * at the component boundary, plus the positive case (a real /p/:handle href) for both
+ * at the component boundary, plus the positive case (a real /s/:handle href) for both
  * variants.
  *
  * Harness: react-dom/server renderToString, the same DB-free posture as
@@ -45,9 +45,9 @@ describe("StorefrontLink rule 1 — null handle renders nothing", () => {
 });
 
 describe("StorefrontLink with a real handle", () => {
-  it("inline variant links to /p/:handle and shows the handle when no name given", () => {
+  it("inline variant links to /s/:handle and shows the handle when no name given", () => {
     const html = render(<StorefrontLink handle="yuki-flowers" variant="inline" />);
-    assert.match(html, /href="\/p\/yuki-flowers"/);
+    assert.match(html, /href="\/s\/yuki-flowers"/);
     // SSR interleaves text expressions with <!-- --> markers — match the parts.
     assert.match(html, /More from/);
     assert.match(html, /@yuki-flowers/);
@@ -55,14 +55,14 @@ describe("StorefrontLink with a real handle", () => {
 
   it("inline variant prefers the display name when provided", () => {
     const html = render(<StorefrontLink handle="yuki-flowers" name="Yuki" variant="inline" />);
-    assert.match(html, /href="\/p\/yuki-flowers"/);
+    assert.match(html, /href="\/s\/yuki-flowers"/);
     assert.match(html, /More from/);
     assert.match(html, /Yuki/);
   });
 
-  it("section variant links to /p/:handle and never fabricates an item count (§13)", () => {
+  it("section variant links to /s/:handle and never fabricates an item count (§13)", () => {
     const html = render(<StorefrontLink handle="yuki-flowers" name="Yuki" sellerNoun="expert" />);
-    assert.match(html, /href="\/p\/yuki-flowers"/);
+    assert.match(html, /href="\/s\/yuki-flowers"/);
     assert.match(html, /Everything this expert offers/);
     // §13: no "N other offerings" style claim anywhere in the output.
     assert.doesNotMatch(html, /\d+\s+(other\s+)?offerings/i);

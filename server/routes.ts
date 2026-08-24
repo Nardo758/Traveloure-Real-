@@ -1029,8 +1029,8 @@ export async function registerRoutes(
   // (shared/service-attestations.ts); the body is a §19 allowlist of one field.
   app.use(serviceAttestationsRoutes);
 
-  // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
-  // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
+  // Public earner storefront (backoffice Phase 1a/1b) — /s/:handle OG shell + /api/storefront/:handle
+  // + PATCH /api/me/handle. Mounted per §9; /s/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
 
   // Crawler surfaces (2026-08-17 SEO audit): /sitemap.xml + per-route canonical/title

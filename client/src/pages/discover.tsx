@@ -136,7 +136,7 @@ function readyMadeThemeHeading(key: string): string {
  * Ready-Made shelf card, theme-first: the theme is the eyebrow (per-listing custom text via
  * planTypeDisplay), the author type is a badge. The author row lives OUTSIDE the detail-page
  * link so the storefront link is a real, un-nested anchor — StorefrontLink's Discover-card
- * constraint solved by structure. No handle → plain text, never a dead /p/ link (rule 1).
+ * constraint solved by structure. No handle → plain text, never a dead /s/ link (rule 1).
  */
 function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
   return (
@@ -170,7 +170,7 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
           by{" "}
           {l.authorHandle ? (
             <Link
-              href={`/p/${l.authorHandle}`}
+            href={`/s/${l.authorHandle}`}
               className="font-medium text-primary hover:underline"
               data-testid={`link-rm-author-${l.id}`}
             >
@@ -219,7 +219,7 @@ type Service = {
   providerImageUrl?: string | null;
   providerRating?: string | null;
   providerBusinessName?: string | null;
-  /** MP-2 storefront return path — null when the owner has no claimed handle (no /p/ page). */
+  /** MP-2 storefront return path — null when the owner has no claimed handle (no /s/ page). */
   providerHandle?: string | null;
 };
 
@@ -483,13 +483,13 @@ function ServiceCard({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        navigateTo(`/p/${service.providerHandle}`);
+    navigateTo(`/s/${service.providerHandle}`);
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           e.stopPropagation();
-                          navigateTo(`/p/${service.providerHandle}`);
+      navigateTo(`/s/${service.providerHandle}`);
                         }
                       }}
                     >

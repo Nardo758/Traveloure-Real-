@@ -406,8 +406,11 @@ function Router() {
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
       </Route>
-      {/* Public earner storefront (backoffice Phase 1b) — the mockup's /p/{handle} "one link
-          that books and pays". Server injects OG tags for crawlers; SPA renders here. */}
+      {/* Public earner storefront — the mockup's /s/{handle} "one link that books and pays".
+          /p/:handle remains a legacy-compatible entry point for existing shared links. */}
+      <Route path="/s/:handle">
+        {() => <StorefrontPage />}
+      </Route>
       <Route path="/p/:handle">
         {() => <StorefrontPage />}
       </Route>

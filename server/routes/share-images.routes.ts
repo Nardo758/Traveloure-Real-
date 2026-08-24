@@ -71,7 +71,7 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
         stops: routePoints.map((p) => p.name),
         earnerName,
         earnerHandle,
-        path: earnerHandle ? `/p/${earnerHandle}` : `/services/${service.id}`,
+        path: earnerHandle ? `/s/${earnerHandle}` : `/services/${service.id}`,
       };
       const routeBuf = await renderShareImage("service-route", routeData);
       return sendPng(res, routeBuf);
@@ -84,7 +84,7 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
       reviewCount: service.reviewCount ?? 0,
       earnerName,
       earnerHandle,
-      path: earnerHandle ? `/p/${earnerHandle}` : `/services/${service.id}`,
+      path: earnerHandle ? `/s/${earnerHandle}` : `/services/${service.id}`,
     };
 
     const buf = await renderShareImage(format === "story" ? "service-story" : "service-feed", data);
@@ -120,7 +120,7 @@ router.get("/api/share-image/ready-made/:id.png", heavyReadRateLimiter, async (r
       priceCents: row.priceCents ?? null,
       authorName,
       authorHandle,
-      path: authorHandle ? `/p/${authorHandle}` : `/ready-made/${row.id}`,
+      path: authorHandle ? `/s/${authorHandle}` : `/ready-made/${row.id}`,
     };
 
     const buf = await renderShareImage(format === "story" ? "ready-made-story" : "ready-made-feed", data);

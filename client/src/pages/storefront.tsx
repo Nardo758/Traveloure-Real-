@@ -1,7 +1,7 @@
 /**
- * Public earner storefront — /p/:handle (backoffice Phase 1b, identity-hero rebuild).
+ * Public earner storefront — /s/:handle (backoffice Phase 1b, identity-hero rebuild).
  *
- * Rebuilt to the approved mockup (docs/backoffice/mockups/mockup-offering-page.html /p/yuki-flowers
+ * Rebuilt to the approved mockup (docs/backoffice/mockups/mockup-offering-page.html /s/yuki-flowers
  * concept): a cover band + overlapping avatar identity hero, a verified pill gated on a genuinely
  * approved verification signal, a real fact strip, Yuki-spec offering cards across the three lanes,
  * a "not sure what you're looking for?" message band, and an honest trust strip. Every number/badge
@@ -152,8 +152,9 @@ function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string;
 }
 
 export default function StorefrontPage() {
-  const [, params] = useRoute("/p/:handle");
-  const handle = params?.handle ?? "";
+  const [, storefrontParams] = useRoute("/s/:handle");
+  const [, legacyStorefrontParams] = useRoute("/p/:handle");
+  const handle = storefrontParams?.handle ?? legacyStorefrontParams?.handle ?? "";
   const { toast } = useToast();
   const { user } = useAuth();
   const askExpert = useAskExpert();
@@ -171,7 +172,7 @@ export default function StorefrontPage() {
   });
 
   function copyLink() {
-    const url = `${window.location.origin}/p/${handle}`;
+    const url = `${window.location.origin}/s/${handle}`;
     navigator.clipboard.writeText(url).then(() => {
       toast({ title: "Link copied", description: "Share it anywhere — it books and pays." });
     });
@@ -224,7 +225,7 @@ export default function StorefrontPage() {
   function messageEarner() {
     askExpert({
       expertId: earner.id,
-      returnTo: `/p/${handle}`,
+      returnTo: `/s/${handle}`,
       fallbackName: earner.name,
       fallbackAvatar: earner.profileImageUrl ?? undefined,
     });
