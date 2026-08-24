@@ -89,6 +89,40 @@
   --earn-muted: #6A7480;
   --earn-faint: #B0AAA0;
   --earn-chip: #F6F5F1;
+
+  /* ── Public traveler system ─────────────────────────────────────────────
+     Shared by Marketplace, location detail, /earn, and other public shells.
+     These aliases intentionally sit above route-specific styling: commerce
+     can remain editorial and travel-intelligence can remain data-led while
+     their surfaces, controls, type hierarchy, and states still feel related.
+     Keep this scope separate from .console-scope. */
+  --public-ground: var(--earn-ground);
+  --public-surface: var(--earn-card);
+  --public-surface-subtle: var(--earn-chip);
+  --public-border: var(--earn-border);
+  --public-ink: var(--earn-navy);
+  --public-body: var(--earn-ink);
+  --public-muted: var(--earn-muted);
+  --public-brand: #FF4D70;
+  --public-brand-wash: #FFF0F3;
+  --public-accent: var(--earn-teal);
+  --public-accent-ink: var(--earn-teal-ink);
+  --public-accent-wash: var(--earn-teal-wash);
+  --public-accent-contrast: #FFFFFF;
+  --public-gold: var(--earn-gold);
+  --public-gold-ink: var(--earn-gold-ink);
+  --public-gold-wash: var(--earn-gold-wash);
+  --public-danger: var(--earn-coral-ink);
+  --public-danger-wash: var(--earn-coral-bg);
+  --public-danger-border: var(--earn-coral-border);
+  --public-active-bg: var(--public-ink);
+  --public-active-fg: #FFFFFF;
+  --public-radius-sm: 0.625rem;
+  --public-radius: 1rem;
+  --public-radius-lg: 1.25rem;
+  --public-shadow: 0 8px 28px rgba(30, 58, 95, 0.055);
+  --public-shadow-hover: 0 14px 36px rgba(30, 58, 95, 0.11);
+  --public-display: 'DM Serif Display', Georgia, serif;
 }
 
 /* ── Earner back-office console scope (decision-maker ratified Jul 27, 2026) ──
@@ -223,6 +257,13 @@
   --earn-muted: #9BA3AD;
   --earn-faint: #71747A;
   --earn-chip: #2A2C30;
+  --public-brand: #FF6B86;
+  --public-brand-wash: rgba(255, 107, 134, 0.15);
+  --public-accent-contrast: #10243D;
+  --public-active-bg: var(--public-brand);
+  --public-active-fg: #FFFFFF;
+  --public-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  --public-shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.32);
 }
 
 @layer base {
@@ -285,6 +326,394 @@
 
 /* Travel-themed component styles */
 @layer components {
+  /* Shared public-page foundations. Add `.public-page` only to traveler and
+     partner acquisition surfaces; authenticated consoles remain untouched. */
+  .public-page {
+    min-height: 100%;
+    background: var(--public-ground);
+    color: var(--public-body);
+  }
+
+  .public-container {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  .public-container--narrow {
+    max-width: 64rem;
+  }
+
+  .public-masthead {
+    background: var(--public-surface);
+    border-bottom: 1px solid var(--public-border);
+  }
+
+  .public-page-title {
+    margin: 0;
+    color: var(--public-ink);
+    font-family: var(--public-display);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 400;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  .public-section-title {
+    color: var(--public-ink);
+    font-family: var(--public-display);
+    font-size: 1.5rem;
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+  }
+
+  .public-lede {
+    color: var(--public-muted);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  .public-link {
+    color: var(--public-accent-ink);
+    font-weight: 600;
+    text-underline-offset: 0.2em;
+  }
+
+  .public-link:hover {
+    text-decoration: underline;
+  }
+
+  .public-card {
+    border: 1px solid var(--public-border);
+    border-radius: var(--public-radius);
+    background: var(--public-surface);
+    box-shadow: var(--public-shadow);
+  }
+
+  .public-card-interactive {
+    transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  }
+
+  .public-card-interactive:hover {
+    border-color: color-mix(in srgb, var(--public-accent) 55%, var(--public-border));
+    box-shadow: var(--public-shadow-hover);
+  }
+
+  .public-card-interactive:focus-visible,
+  .public-control:focus-visible,
+  .public-back-link:focus-visible,
+  .public-filter-chip:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--public-brand) 38%, transparent);
+    outline-offset: 2px;
+  }
+
+  .public-band {
+    background: var(--public-surface);
+    border-bottom: 1px solid var(--public-border);
+  }
+
+  .public-back-link {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--public-border);
+    border-radius: 999px;
+    background: var(--public-surface);
+    padding: 0.5rem 0.875rem;
+    color: var(--public-muted);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(30, 58, 95, 0.04);
+    transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .public-back-link:hover {
+    color: var(--public-ink);
+    border-color: color-mix(in srgb, var(--public-accent) 45%, var(--public-border));
+    box-shadow: var(--public-shadow);
+  }
+
+  .public-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px dashed var(--public-border);
+    border-radius: var(--public-radius);
+    background: var(--public-surface);
+    padding: 2rem 1.25rem;
+    text-align: center;
+    color: var(--public-muted);
+  }
+
+  .public-state--error {
+    border-style: solid;
+    border-color: var(--public-danger-border);
+    background: var(--public-danger-wash);
+    color: var(--public-danger);
+  }
+
+  .public-track-pill,
+  .public-earning-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    white-space: nowrap;
+    font-weight: 700;
+  }
+
+  .public-track-pill {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.625rem;
+    letter-spacing: 0.02em;
+  }
+
+  .public-track-pill--in-person {
+    background: color-mix(in srgb, var(--earn-green) 16%, transparent);
+    color: var(--earn-green-ink);
+  }
+
+  .public-track-pill--remote {
+    background: var(--public-accent-wash);
+    color: var(--public-accent-ink);
+  }
+
+  .public-earning-badge {
+    padding: 0.25rem 0.65rem;
+    background: var(--public-gold-wash);
+    color: var(--public-gold-ink);
+    font-size: 0.75rem;
+  }
+
+  .public-role-card {
+    min-height: 10.5rem;
+    padding: 1rem;
+    text-align: left;
+  }
+
+  .public-role-card[aria-pressed="true"] {
+    border-color: var(--public-accent);
+    box-shadow: 0 0 0 1px var(--public-accent), var(--public-shadow);
+  }
+
+  .public-offering-row {
+    display: flex;
+    width: 100%;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    text-align: left;
+  }
+
+  .public-location-hero {
+    position: relative;
+    min-height: 14rem;
+    overflow: hidden;
+    border-radius: var(--public-radius-lg);
+    border: 1px solid color-mix(in srgb, var(--public-border) 70%, transparent);
+    padding: clamp(1.25rem, 4vw, 2rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background-position: center;
+    background-size: cover;
+    box-shadow: var(--public-shadow);
+    isolation: isolate;
+  }
+
+  .public-location-hero--date {
+    min-height: 8.5rem;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .public-location-hero--fallback {
+    background:
+      radial-gradient(circle at 88% 10%, rgba(93, 202, 165, 0.24), transparent 32%),
+      linear-gradient(135deg, #184f55 0%, #163d50 54%, #1e3a5f 100%);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback {
+    background: var(--public-accent-wash);
+    color: var(--public-accent-ink);
+  }
+
+  .public-location-hero-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(to top, rgba(14, 33, 49, 0.88) 0%, rgba(14, 33, 49, 0.38) 58%, rgba(14, 33, 49, 0.12) 100%);
+  }
+
+  .public-location-hero--date .public-location-hero-overlay {
+    background: linear-gradient(135deg, rgba(20, 68, 67, 0.92), rgba(30, 58, 95, 0.68));
+  }
+
+  .public-location-title {
+    margin: 0;
+    color: white;
+    font-family: var(--public-display);
+    font-size: clamp(2.25rem, 7vw, 3.75rem);
+    font-weight: 400;
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.24);
+  }
+
+  .public-location-hero--date .public-location-title {
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-location-title {
+    color: var(--public-ink);
+    text-shadow: none;
+  }
+
+  .public-location-highlight {
+    margin-top: 0.5rem;
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-location-highlight {
+    color: var(--public-accent-ink);
+  }
+
+  .public-pulse-badge {
+    flex: 0 0 auto;
+    min-width: 4rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 0.875rem;
+    background: rgba(13, 29, 42, 0.5);
+    padding: 0.625rem 0.75rem;
+    text-align: center;
+    color: #9ce2ca;
+    backdrop-filter: blur(8px);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-pulse-badge {
+    border-color: color-mix(in srgb, var(--public-accent) 30%, transparent);
+    background: var(--public-surface);
+    color: var(--public-accent-ink);
+  }
+
+  .public-date-pill {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.17);
+    padding: 0.25rem 0.75rem;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 0.75rem;
+    backdrop-filter: blur(8px);
+  }
+
+  .public-location-hero--date.public-location-hero--fallback .public-date-pill {
+    background: var(--public-surface);
+    color: var(--public-accent-ink);
+  }
+
+  .public-stat {
+    border: 1px solid var(--public-border);
+    border-radius: 999px;
+    background: var(--public-surface);
+    padding: 0.55rem 0.85rem;
+    color: var(--public-muted);
+    font-size: 0.75rem;
+    box-shadow: 0 2px 10px rgba(30, 58, 95, 0.035);
+  }
+
+  .public-filter-dock {
+    position: sticky;
+    top: 4rem;
+    z-index: 30;
+    margin-inline: -0.5rem;
+    border-bottom: 1px solid var(--public-border);
+    padding: 0.65rem 0.5rem;
+    background: color-mix(in srgb, var(--public-ground) 92%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .public-filter-chip {
+    min-height: 2.5rem;
+    flex: 0 0 auto;
+    border: 1px solid var(--public-border);
+    border-radius: 999px;
+    background: var(--public-surface);
+    padding: 0.5rem 0.9rem;
+    color: var(--public-muted);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+  }
+
+  .public-filter-chip:hover {
+    border-color: color-mix(in srgb, var(--public-accent) 45%, var(--public-border));
+    color: var(--public-ink);
+  }
+
+  .public-filter-chip.is-active {
+    border-color: var(--public-accent);
+    background: var(--public-accent);
+    color: var(--public-accent-contrast);
+  }
+
+  .public-filter-dock > div {
+    scrollbar-width: none;
+  }
+
+  .public-filter-dock > div::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dark .public-site-header img[alt="Traveloure"] {
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
+  }
+
+  .public-location-page [data-testid^="feed-card-"],
+  .public-location-page [data-testid^="section-lead-expert"],
+  .public-location-page [data-testid^="addon-"] {
+    border-radius: var(--public-radius);
+    border-color: var(--public-border);
+    box-shadow: var(--public-shadow);
+  }
+
+  @media (min-width: 640px) {
+    .public-container {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  @media (max-width: 639px) {
+    .public-location-hero {
+      min-height: 12rem;
+      padding: 1.25rem;
+    }
+
+    .public-location-hero--date {
+      min-height: 8rem;
+    }
+
+    .public-role-card {
+      min-height: 0;
+    }
+  }
+
   /* Glassmorphism effects - auto dark mode */
   .glass {
     @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-white/10;
