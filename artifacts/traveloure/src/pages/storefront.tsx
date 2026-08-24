@@ -21,6 +21,7 @@ import { isPlaceAnchored } from "@shared/service-fundamentals";
 import {
   ArrowUpRight,
   BadgeCheck,
+  ChevronRight,
   Handshake,
   MapPin,
   MessageCircle,
@@ -293,6 +294,8 @@ export default function StorefrontPage() {
   const memberSinceYear = earner.memberSince ? new Date(earner.memberSince).getFullYear() : null;
   const initial = earner.name.charAt(0).toUpperCase() || "T";
   const firstName = earner.name.split(" ")[0];
+  const areaName = earner.location?.split(",")[0].trim();
+  const offeringsHeading = areaName ? `Plans shaped around ${areaName}` : `Plans from ${firstName}`;
 
   function messageEarner() {
     askExpert({
@@ -382,6 +385,13 @@ export default function StorefrontPage() {
         />
 
         <div className="sf-shell sf-main">
+        <nav className="sf-breadcrumb" aria-label="Breadcrumb">
+          <Link href="/destinations">Marketplace</Link>
+          <ChevronRight aria-hidden="true" />
+          <Link href="/services">Experts &amp; services</Link>
+          <ChevronRight aria-hidden="true" />
+          <span aria-current="page">{earner.name}</span>
+        </nav>
         <section className="sf-hero">
           <div
             className={`sf-cover ${earner.coverImageUrl ? "" : "sf-cover-fallback"}`}
@@ -415,6 +425,7 @@ export default function StorefrontPage() {
                 <span data-testid="storefront-earner-rating">
                   <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
                 </span>
+                {memberSinceYear && <span><BadgeCheck aria-hidden="true" /> On Traveloure since {memberSinceYear}</span>}
                 {away && (
                   <Badge variant="outline" className="sf-away" data-testid="badge-storefront-away">
                     Away — back {awayUntilLabel}
@@ -439,7 +450,7 @@ export default function StorefrontPage() {
         <section className="sf-facts" data-testid="storefront-facts">
           <div><strong data-testid="fact-offerings">{earner.offeringsCount}</strong><span>Offerings</span></div>
           <div><strong data-testid="fact-reviews">{earner.reviewCount}</strong><span>Reviews</span></div>
-          {memberSinceYear && <div><strong data-testid="fact-member-since">{memberSinceYear}</strong><span>On Traveloure since</span></div>}
+          {earner.location && <div><strong data-testid="fact-location">{earner.location.split(",")[0]}</strong><span>Area of expertise</span></div>}
           <aside>
             <Sparkles aria-hidden="true" />
             <p><strong>One expert, three ways to plan</strong><span>Book time, bring home a route, or start with a complete trip.</span></p>
@@ -448,7 +459,7 @@ export default function StorefrontPage() {
 
         <section className="sf-offerings">
           <div className="sf-offerings-heading">
-            <div><p className="sf-eyebrow">Choose your starting point</p><h2>Ways to plan with {firstName}</h2></div>
+            <div><p className="sf-eyebrow">Choose your starting point</p><h2>{offeringsHeading}</h2></div>
             <span>{visibleOfferings.length} offering{visibleOfferings.length === 1 ? "" : "s"}</span>
           </div>
           <div className="sf-toolbar">
