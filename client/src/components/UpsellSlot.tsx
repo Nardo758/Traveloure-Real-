@@ -209,7 +209,7 @@ export function UpsellSlot({
 
   const handleExplore = (c: UpsellCandidate) => {
     logClick(c.offeringId);
-    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
+    navigate(`/services?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${surface}`);
   };
 
   return (

@@ -10,6 +10,13 @@
 
 - **Discover** (`/discover`): one header band — title, search, a single instructional
   ad ("browse services, add to cart — we assemble & optimize your trip"), tabs.
+  **superseded@marketplace-ungroup (Aug 23, 2026, decision-maker ratified — ledger
+  `2026-08-23-marketplace-ungroup`):** the tabbed shell is retired. Each Marketplace surface
+  is its OWN page (`/destinations`, `/ready-made`, `/events`, `/services`), each with its own
+  single masthead and no tab bar; nav "Marketplace" is dropdown-only and deep-links straight
+  to them; `/discover` is a smart redirect (`?tab=` → surface route, other params forwarded).
+  The funnel itself (browse → add to cart → assemble & optimize) is unchanged — only the
+  grouping is gone.
 - **Cart** (`/cart`): the real planning tool — Cart → Trip details ("What are you
   planning?" drives the real fee tier) → Optimize (free preview metrics + paid full
   LLM optimization) → Itinerary → Payment. The cart step shows a §13-honest savings

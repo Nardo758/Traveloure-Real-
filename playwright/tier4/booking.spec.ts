@@ -168,16 +168,17 @@ test.describe('Tier4 — cross-browser booking audit', () => {
       timings.service_discovery_ms = elapsed(t1);
       lastReachedStep = 'service-found';
 
-      // ── Visit /discover and confirm the Services tab exists ───────────────
+      // ── Visit the Services surface (Marketplace un-group: own page, no tabs) ──
       const t2 = now();
-      await page.goto('/discover', { waitUntil: 'domcontentloaded' });
+      await page.goto('/services', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(2500);
       timings.discover_load_ms = elapsed(t2);
       lastReachedStep = 'discover-loaded';
 
-      const servicesTab = page.getByTestId('tab-services');
-      await expect(servicesTab, 'Services tab must be visible on /discover').toBeVisible();
-      await servicesTab.click();
+      await expect(
+        page.getByTestId('services-filter-bar'),
+        'Services filter bar must be visible on /services',
+      ).toBeVisible();
       await page.waitForTimeout(1500);
 
       supportingScreenshots.discover = await saveScreenshot(page, `${evidenceBase}-discover.png`);

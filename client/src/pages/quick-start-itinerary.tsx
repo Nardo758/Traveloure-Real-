@@ -294,7 +294,7 @@ export default function QuickStartItinerary() {
       params.set("source", "quick-start");
       params.set("showExperts", "true");
       
-      setLocation(`/discover?${params.toString()}`);
+      setLocation(`/services?${params.toString()}`);
     } catch (error) {
       console.error("Failed to create trip:", error);
       // Fall back to direct navigation with itinerary context
@@ -308,7 +308,7 @@ export default function QuickStartItinerary() {
       params.set("source", "quick-start");
       params.set("showExperts", "true");
       
-      setLocation(`/discover?${params.toString()}`);
+      setLocation(`/services?${params.toString()}`);
     }
   };
 

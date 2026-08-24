@@ -160,15 +160,9 @@ test.describe('Tier4 — a11y audit (axe-core)', () => {
     async ({ page }, testInfo) => {
       const projectName = testInfo.project.name;
 
-      await page.goto('/discover', { waitUntil: 'domcontentloaded' });
+      // Marketplace un-group (Aug 23): the services surface is its own page.
+      await page.goto('/services', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(3000);
-
-      // Click services tab for a deeper scan of the services surface
-      const servicesTab = page.getByTestId('tab-services');
-      if (await servicesTab.isVisible().catch(() => false)) {
-        await servicesTab.click();
-        await page.waitForTimeout(1500);
-      }
 
       await scanSurface(page, 'discover-search', projectName);
       // Always passes — audit mode collects, does not gate.
