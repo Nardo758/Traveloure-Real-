@@ -40,3 +40,31 @@ uri = "file://docs/audits/optimized-slip-review-visual/light-mobile.png"
 type = "image"
 title = "Optimized Slip Review — light mobile"
 description = "Authenticated review page at 390×844."
+
+[[outputs]]
+id = "WyN2EK2_HABNnwHHLbHxD"
+uri = "file://screenshots/dispatch-destinations.jpg"
+type = "image"
+title = "Marketplace — Destinations"
+description = "Verified /destinations masthead and CityGrid surface."
+
+[[outputs]]
+id = "cp3x8iksz2eFqDCRNkHqm"
+uri = "file://screenshots/dispatch-ready-made.jpg"
+type = "image"
+title = "Marketplace — Ready-Made Trips"
+description = "Verified /ready-made masthead and Ready-Made shelf."
+
+[[outputs]]
+id = "rZUmqd9KBAPcnec5MvCT4"
+uri = "file://screenshots/dispatch-events.jpg"
+type = "image"
+title = "Marketplace — Events"
+description = "Verified /events masthead and GlobalCalendar surface."
+
+[[outputs]]
+id = "5aD_MIiBIP2lEiLFevkvA"
+uri = "file://screenshots/dispatch-services.jpg"
+type = "image"
+title = "Marketplace — Services"
+description = "Verified /services masthead, search field, filters, and service cards."
