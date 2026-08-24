@@ -1,0 +1,432 @@
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
+
+import { Camera, Mail, Bell, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+// H8: the fixed vocabulary the "Preferred Travel Style" (multi-select) and "Budget Preference"
+// (single-select) chips offer. Mirrored server-side (storefront.routes.ts travelPreferencesPatchSchema)
+// so the client can never send a value the server would reject.
+const TRAVEL_STYLES = ["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"] as const;
+const BUDGET_PREFERENCES = ["Budget-Friendly", "Moderate", "Luxury"] as const;
+
+interface TravelPreferences {
+  travelStyles: string[];
+  budgetPreference: string | null;
+}
+
+export default function Profile() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isLoading, setIsLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Notification email — for earner roles only (expert-family + service_provider; NOT executive_assistant)
+  const EARNER_ROLES = new Set(["expert","local_expert","travel_expert","event_planner","service_provider"]);
+  const isEarner = user?.role != null && EARNER_ROLES.has(user.role);
+  const [notificationEmail, setNotificationEmail] = useState<string>("");
+  const [notificationEmailError, setNotificationEmailError] = useState<string>("");
+  const hydratedNotifEmail = useRef(false);
+
+  const { data: savedNotificationEmail } = useQuery<{ notificationEmail: string | null }>({
+    queryKey: ["/api/me/notification-email"],
+    enabled: !!isEarner,
+  });
+
+  useEffect(() => {
+    if (!savedNotificationEmail || hydratedNotifEmail.current) return;
+    hydratedNotifEmail.current = true;
+    setNotificationEmail(savedNotificationEmail.notificationEmail ?? "");
+  }, [savedNotificationEmail]);
+
+  const saveNotificationEmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/me/notification-email", {
+        notificationEmail: notificationEmail.trim() || null,
+      });
+      return res.json() as Promise<{ notificationEmail: string | null }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/notification-email"] });
+    },
+  });
+
+  // H8: Travel Preferences — persisted via GET/PATCH /api/me/travel-preferences
+  // (users.preferences.travelPreferences, no schema change). Hydrates once from the saved
+  // value, then the chips are locally-controlled toggle state until Save Changes.
+  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+  const [selectedBudget, setSelectedBudget] = useState<string | null>(null);
+  const hydratedPrefs = useRef(false);
+
+  const { data: savedTravelPreferences } = useQuery<TravelPreferences>({
+    queryKey: ["/api/me/travel-preferences"],
+  });
+
+  useEffect(() => {
+    if (!savedTravelPreferences || hydratedPrefs.current) return;
+    hydratedPrefs.current = true;
+    setSelectedStyles(savedTravelPreferences.travelStyles ?? []);
+    setSelectedBudget(savedTravelPreferences.budgetPreference ?? null);
+  }, [savedTravelPreferences]);
+
+  const toggleStyle = (style: string) => {
+    setSelectedStyles((prev) =>
+      prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style]
+    );
+  };
+
+  const toggleBudget = (budget: string) => {
+    setSelectedBudget((prev) => (prev === budget ? null : budget));
+  };
+
+  const saveTravelPreferencesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/me/travel-preferences", {
+        travelStyles: selectedStyles,
+        budgetPreference: selectedBudget,
+      });
+      return res.json() as Promise<TravelPreferences>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/travel-preferences"] });
+    },
+  });
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "File too large", description: "Please select an image under 5MB.", variant: "destructive" });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileImage(reader.result as string);
+        toast({ title: "Photo updated", description: "Your profile photo has been updated." });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setProfileImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    toast({ title: "Photo removed", description: "Your profile photo has been removed." });
+  };
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateNotificationEmail = (value: string): string => {
+    if (value.trim() === "") return "";
+    return EMAIL_RE.test(value.trim()) ? "" : "Please enter a valid email address.";
+  };
+
+  const handleNotificationEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNotificationEmail(value);
+    // Clear error immediately once the value becomes empty or valid
+    if (value.trim() === "" || EMAIL_RE.test(value.trim())) {
+      setNotificationEmailError("");
+    }
+  };
+
+  const handleNotificationEmailBlur = () => {
+    setNotificationEmailError(validateNotificationEmail(notificationEmail));
+  };
+
+  const handleSave = async () => {
+    if (isEarner) {
+      const emailErr = validateNotificationEmail(notificationEmail);
+      if (emailErr) {
+        setNotificationEmailError(emailErr);
+        return;
+      }
+    }
+    setIsLoading(true);
+    try {
+      const saves: Promise<any>[] = [saveTravelPreferencesMutation.mutateAsync()];
+      if (isEarner) saves.push(saveNotificationEmailMutation.mutateAsync());
+      await Promise.all(saves);
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been saved successfully.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't save your profile",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
+          Profile Settings
+        </h1>
+
+        {/* Profile Photo */}
+        <Card className="border border-border">
+          <CardHeader>
+            <CardTitle className="text-lg text-foreground dark:text-white">Profile Photo</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              This will be displayed on your profile and in messages
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center gap-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+              data-testid="input-photo-file"
+            />
+            <div className="relative">
+              <Avatar className="h-24 w-24 border-4 border-border">
+                <AvatarImage src={profileImage || user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
+                <AvatarFallback className="bg-[#FFE3E8] text-primary text-2xl font-bold">
+                  {user?.firstName?.[0] || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <Button
+                size="icon"
+                variant="outline"
+                className="absolute -bottom-2 -right-2 rounded-full bg-white border-border"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-change-photo"
+              >
+                <Camera className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            </div>
+            <div>
+              <Button variant="outline" className="mr-2" onClick={() => fileInputRef.current?.click()} data-testid="button-upload-photo">
+                Upload Photo
+              </Button>
+              <Button variant="ghost" className="text-muted-foreground" onClick={handleRemovePhoto} data-testid="button-remove-photo">
+                Remove
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Personal Information */}
+        <Card className="border border-border">
+          <CardHeader>
+            <CardTitle className="text-lg text-foreground dark:text-white">Personal Information</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Update your personal details
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName" className="text-foreground dark:text-white">First Name</Label>
+                <Input
+                  id="firstName"
+                  defaultValue={user?.firstName || ""}
+                  className="border-border"
+                  data-testid="input-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName" className="text-foreground dark:text-white">Last Name</Label>
+                <Input
+                  id="lastName"
+                  defaultValue={user?.lastName || ""}
+                  className="border-border"
+                  data-testid="input-last-name"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-foreground dark:text-white flex items-center gap-2">
+                <Mail className="w-4 h-4 text-muted-foreground" />
+                Email Address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                defaultValue={user?.email || ""}
+                className="border-border"
+                data-testid="input-email"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="text-foreground dark:text-white flex items-center gap-2">
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                Phone Number
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1 (555) 123-4567"
+                className="border-border"
+                data-testid="input-phone"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location" className="text-foreground dark:text-white flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                Location
+              </Label>
+              <Input
+                id="location"
+                placeholder="City, Country"
+                className="border-border"
+                data-testid="input-location"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bio" className="text-foreground dark:text-white">Bio</Label>
+              <Textarea
+                id="bio"
+                placeholder="Tell us a bit about yourself and your travel preferences..."
+                className="border-border min-h-[100px]"
+                data-testid="input-bio"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Notification email — experts and providers only */}
+        {isEarner && (
+          <Card className="border border-border">
+            <CardHeader>
+              <CardTitle className="text-lg text-foreground dark:text-white flex items-center gap-2">
+                <Bell className="w-4 h-4 text-muted-foreground" />
+                Booking Notifications
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Choose where booking alert emails are delivered
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="notificationEmail" className="text-foreground dark:text-white flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  Notification email
+                </Label>
+                <Input
+                  id="notificationEmail"
+                  type="email"
+                  placeholder={user?.email || "your@business.com"}
+                  value={notificationEmail}
+                  onChange={handleNotificationEmailChange}
+                  onBlur={handleNotificationEmailBlur}
+                  className={`border-border${notificationEmailError ? " border-destructive" : ""}`}
+                  data-testid="input-notification-email"
+                  aria-invalid={!!notificationEmailError}
+                  aria-describedby={notificationEmailError ? "notification-email-error" : "notification-email-hint"}
+                />
+                {notificationEmailError ? (
+                  <p id="notification-email-error" className="text-xs text-destructive" data-testid="error-notification-email">
+                    {notificationEmailError}
+                  </p>
+                ) : (
+                  <p id="notification-email-hint" className="text-xs text-muted-foreground">
+                    Booking alerts will go here instead of your account email. Leave blank to use your account email.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Payment Methods (FP-2) */}
+        <PaymentMethodsCard />
+
+        {/* Travel Preferences */}
+        <Card className="border border-border">
+          <CardHeader>
+            <CardTitle className="text-lg text-foreground dark:text-white">Travel Preferences</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Help us personalize your experience
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-foreground dark:text-white">Preferred Travel Style</Label>
+              <div className="flex flex-wrap gap-2">
+                {TRAVEL_STYLES.map(style => {
+                  const isSelected = selectedStyles.includes(style);
+                  return (
+                    <Button
+                      key={style}
+                      type="button"
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      className={isSelected ? "" : "border-border"}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleStyle(style)}
+                      data-testid={`button-style-${style.toLowerCase()}`}
+                    >
+                      {style}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-foreground dark:text-white">Budget Preference</Label>
+              <div className="flex flex-wrap gap-2">
+                {BUDGET_PREFERENCES.map(budget => {
+                  const isSelected = selectedBudget === budget;
+                  return (
+                    <Button
+                      key={budget}
+                      type="button"
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      className={isSelected ? "" : "border-border"}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleBudget(budget)}
+                      data-testid={`button-budget-${budget.toLowerCase()}`}
+                    >
+                      {budget}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Save Button */}
+        <div className="flex justify-end">
+          <Button
+            className="bg-primary hover:bg-primary/90 text-white"
+            onClick={handleSave}
+            disabled={isLoading}
+            data-testid="button-save-profile"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        </div>
+    </div>
+  );
+}

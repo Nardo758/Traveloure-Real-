@@ -1,0 +1,62 @@
+{
+  "tabs": {
+    "profile": "Profile",
+    "settings": "Settings"
+  },
+  "preferences": {
+    "title": "Preferences",
+    "description": "Language for menus, buttons and labels across Traveloure",
+    "languageLabel": "Display language",
+    "languageHelp": "This changes the platform's own wording only. Listings you write stay in the language you wrote them in.",
+    "save": "Save preferences",
+    "saving": "Saving..."
+  },
+  "verification": {
+    "title": "Verification & Payouts"
+  },
+  "business": {
+    "title": "Business Preferences",
+    "description": "Configure how you receive and manage bookings",
+    "instantBooking": "Instant Booking",
+    "instantBookingDesc": "Allow clients to book without prior approval",
+    "autoResponse": "Auto-Response",
+    "autoResponseDesc": "Send automatic responses to new inquiries",
+    "leadTime": "Minimum Lead Time",
+    "leadTimeUnit": "days before event",
+    "responseTime": "Target Response Time",
+    "responseTimeUnit": "hours"
+  },
+  "notifications": {
+    "title": "Notification Preferences",
+    "description": "Choose how you want to be notified",
+    "newBookings": "New Booking Requests",
+    "newBookingsDesc": "Get notified when you receive a new booking request",
+    "bookingUpdates": "Booking Updates",
+    "bookingUpdatesDesc": "Updates on confirmed bookings and changes",
+    "messages": "Messages",
+    "messagesDesc": "New messages from clients and experts",
+    "reviews": "Reviews",
+    "reviewsDesc": "When clients leave reviews",
+    "payouts": "Payout Notifications",
+    "payoutsDesc": "Payout processing and completion",
+    "marketing": "Marketing & Tips",
+    "marketingDesc": "Tips to improve your listing and promotions"
+  },
+  "payment": {
+    "title": "Payment Settings",
+    "description": "Manage your payout methods and preferences",
+    "frequency": "Payout Frequency",
+    "weekly": "Weekly",
+    "biweekly": "Bi-weekly",
+    "monthly": "Monthly",
+    "minPayout": "Minimum Payout Amount"
+  },
+  "save": {
+    "all": "Save All Settings",
+    "saving": "Saving...",
+    "successTitle": "Settings saved",
+    "successBody": "Your preferences have been updated.",
+    "errorTitle": "Error",
+    "errorBody": "Failed to save settings."
+  }
+}
