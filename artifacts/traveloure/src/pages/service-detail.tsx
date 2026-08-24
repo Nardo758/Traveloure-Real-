@@ -766,7 +766,10 @@ export default function ServiceDetailPage() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link href="/discover" data-testid="breadcrumb-home">Home</Link>
+                <Link href="/discover" data-testid="breadcrumb-home" className="service-detail-crumb-back">
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Back to services
+                </Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             {providerVerification?.handle && (
@@ -793,57 +796,53 @@ export default function ServiceDetailPage() {
           aria-label="Service overview"
         >
           <div className="service-detail-hero-note">
-          <Button variant="ghost" size="sm" asChild data-testid="button-back" className="service-detail-back">
-            <Link href="/discover">
-              <ArrowLeft className="w-4 h-4" />
-              Back to services
-            </Link>
-          </Button>
           <div>
             <span className="service-detail-kicker">
               {service.deliveryMethod ? service.deliveryMethod.replace(/_/g, " ") : "Traveloure service"}
               {displayLocation ? ` · ${displayLocation}` : ""}
             </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 data-testid="text-service-name">
-                {service.serviceName}
-              </h1>
+            <h1 data-testid="text-service-name">
+              {service.serviceName}
+            </h1>
+            {(providerVerification?.identityVerified || providerVerification?.businessVerified || service.translation?.status === "fallback") && (
+              <div className="service-detail-verification">
               {providerVerification?.identityVerified && (
-                <Badge className="bg-blue-600 text-white text-xs" title="Provider identity verified" data-testid="badge-identity-verified">
+                <Badge className="service-detail-verified-badge" title="Provider identity verified" data-testid="badge-identity-verified">
                   <ShieldCheck className="w-3 h-3 mr-1" />
                   ID Verified
                 </Badge>
               )}
               {providerVerification?.businessVerified && (
-                <Badge className="bg-purple-600 text-white text-xs" title="Provider business verified" data-testid="badge-business-verified">
+                <Badge className="service-detail-verified-badge" title="Provider business verified" data-testid="badge-business-verified">
                   <Building2 className="w-3 h-3 mr-1" />
                   Business Verified
                 </Badge>
               )}
-            </div>
-            {/* Ruling 60 Phase B (§13 applied to language): when the active locale has no
-                approved translation, the original content is shown with an HONEST label keyed to
-                the listing's actual source language (ruling 115) — never silently, never
-                machine-translated at read time. The label text itself is chrome (Phase A t()),
-                the only place B touches A. */}
-            {service.translation?.status === "fallback" && (
-              <Badge
-                variant="outline"
-                className="mt-2 text-xs font-normal"
-                title={t(
-                  (service.translation.sourceLocale ?? "en") === "ja"
-                    ? "contentTranslation.shownInJapaneseHint"
-                    : "contentTranslation.shownInEnglishHint",
-                )}
-                data-testid="badge-shown-in-english"
-              >
-                <Languages className="w-3 h-3 mr-1" />
-                {t(
-                  (service.translation.sourceLocale ?? "en") === "ja"
-                    ? "contentTranslation.shownInJapanese"
-                    : "contentTranslation.shownInEnglish",
-                )}
-              </Badge>
+              {/* Ruling 60 Phase B (§13 applied to language): when the active locale has no
+                  approved translation, the original content is shown with an HONEST label keyed to
+                  the listing's actual source language (ruling 115) — never silently, never
+                  machine-translated at read time. The label text itself is chrome (Phase A t()),
+                  the only place B touches A. */}
+              {service.translation?.status === "fallback" && (
+                <Badge
+                  variant="outline"
+                  className="service-detail-language-badge"
+                  title={t(
+                    (service.translation.sourceLocale ?? "en") === "ja"
+                      ? "contentTranslation.shownInJapaneseHint"
+                      : "contentTranslation.shownInEnglishHint",
+                  )}
+                  data-testid="badge-shown-in-english"
+                >
+                  <Languages className="w-3 h-3 mr-1" />
+                  {t(
+                    (service.translation.sourceLocale ?? "en") === "ja"
+                      ? "contentTranslation.shownInJapanese"
+                      : "contentTranslation.shownInEnglish",
+                  )}
+                </Badge>
+              )}
+              </div>
             )}
             {(service.shortDescription || service.description) && (
               <p className="service-detail-hero-copy">{service.shortDescription || service.description}</p>

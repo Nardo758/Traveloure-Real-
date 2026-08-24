@@ -7,15 +7,14 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Layout } from "@/components/layout";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
-import { LanguageMenu } from "@/components/language-menu";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
@@ -258,28 +257,31 @@ export default function StorefrontPage() {
 
   if (isLoading) {
     return (
-      <div className="sf-page sf-loading">
-        <div className="sf-header"><div className="sf-shell"><TraveloureLogo /></div></div>
-        <div className="sf-shell">
+      <Layout>
+        <div className="sf-page sf-loading">
+          <div className="sf-shell">
           <Skeleton className="sf-loading-cover" />
           <Skeleton className="sf-loading-profile" />
           <div className="sf-loading-grid">
             {[...Array(3)].map((_, i) => <Skeleton key={i} className="sf-loading-card" />)}
           </div>
+          </div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (isError || !data) {
     return (
-      <div className="sf-page sf-error">
-        <div className="sf-error-card" data-testid="storefront-not-found">
-          <h1>Storefront not found</h1>
-          <p>This link may be incorrect, or the owner has no bookable offerings yet.</p>
-          <Link href="/discover"><Button>Explore Traveloure</Button></Link>
+      <Layout>
+        <div className="sf-page sf-error">
+          <div className="sf-error-card" data-testid="storefront-not-found">
+            <h1>Storefront not found</h1>
+            <p>This link may be incorrect, or the owner has no bookable offerings yet.</p>
+            <Link href="/discover"><Button>Explore Traveloure</Button></Link>
+          </div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
@@ -372,20 +374,14 @@ export default function StorefrontPage() {
     visibleOfferings.filter((item) => item.category === itemCategory);
 
   return (
-    <div className="sf-page" data-testid="storefront-page">
-      <SEOHead
-        title={`${earner.name} — Book local experiences | Traveloure`}
-        description={earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`}
-      />
+    <Layout>
+      <div className="sf-page" data-testid="storefront-page">
+        <SEOHead
+          title={`${earner.name} — Book local experiences | Traveloure`}
+          description={earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`}
+        />
 
-      <header className="sf-header">
-        <div className="sf-shell sf-header-inner">
-          <Link href="/" className="sf-logo" data-testid="link-storefront-logo"><TraveloureLogo /></Link>
-          <LanguageMenu />
-        </div>
-      </header>
-
-      <main className="sf-shell">
+        <div className="sf-shell sf-main">
         <section className="sf-hero">
           <div
             className={`sf-cover ${earner.coverImageUrl ? "" : "sf-cover-fallback"}`}
@@ -410,6 +406,7 @@ export default function StorefrontPage() {
                   </span>
                 )}
               </div>
+              {earner.bio && <p className="sf-bio">{earner.bio}</p>}
               <div className="sf-meta">
                 <span>@{earner.handle}</span>
                 {earner.location && (
@@ -425,7 +422,6 @@ export default function StorefrontPage() {
                 )}
               </div>
               {away?.message && <p className="sf-away-message" data-testid="storefront-away-message">{away.message}</p>}
-              {earner.bio && <p className="sf-bio">{earner.bio}</p>}
             </div>
             <div className="sf-actions">
               {!isOwnStorefront && (
@@ -527,7 +523,8 @@ export default function StorefrontPage() {
           <div><BadgeCheck aria-hidden="true" /><p><strong>Offerings are reviewed before publishing</strong><span>Listings appear here only after Traveloure approves them.</span></p></div>
           <div><Handshake aria-hidden="true" /><p><strong>Keep planning in one place</strong><span>Your messages, booking details, and receipts stay together.</span></p></div>
         </section>
-      </main>
-    </div>
+        </div>
+      </div>
+    </Layout>
   );
 }
