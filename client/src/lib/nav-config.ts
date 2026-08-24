@@ -79,6 +79,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
           { name: "Events", i18nKey: "links.byDate", href: "/events", description: "Upcoming events & activities" },
           { name: "Ready-Made Trips", i18nKey: "links.readyMadeTrips", href: "/ready-made", description: "Expert-built trips, ready to buy" },
           { name: "Services", i18nKey: "links.browseServices", href: "/services", description: "Book tours, photography, transport & more" },
+          { name: "Service Providers", i18nKey: "links.serviceProviders", href: "/providers", description: "Browse local businesses & book direct" },
         ],
       },
     ],
