@@ -5,6 +5,25 @@ import chokidar from "chokidar";
 import type { FSWatcher } from "chokidar";
 import type { Plugin } from "vite";
 
+/**
+ * Vite plugin that dynamically discovers mockup components and writes them to
+ * a generated module under src/.generated. Uses fast-glob for initial
+ * discovery and a dedicated chokidar watcher (with awaitWriteFinish) for
+ * reliable file monitoring.
+ *
+ * Adapted from the component gallery plugin in pid2
+ * (pkg/pid2/src/lib/vite/componentGalleryPlugin.ts).
+ *
+ * Generated module: "src/.generated/mockup-components.ts"
+ * Exports: { modules: Record<string, () => Promise<Record<string, unknown>>> }
+ *
+ * When mockup files are added or removed, the generated module is rewritten.
+ * Vite's normal file watching handles the update. If a relevant preview
+ * request still returns 404 before the watcher settles, the dev server rescans
+ * automatically. Individual file edits are handled by React Fast Refresh and
+ * imported CSS HMR (no manual CSS invalidation needed).
+ */
+
 const MOCKUPS_DIR = "src/components/mockups";
 const GENERATED_MODULE = "src/.generated/mockup-components.ts";
 

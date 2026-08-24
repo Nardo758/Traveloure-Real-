@@ -1,0 +1,203 @@
+name: Discover Tabs Gate
+
+# Guards against regressions in the MARKETPLACE SURFACES (Marketplace un-group,
+# ledger 2026-08-23-marketplace-ungroup).
+#
+# Background: discover-tabs.spec.ts is now the marketplace-surfaces suite. Each
+# surface is its OWN page with NO tab bar — /destinations, /ready-made, /events,
+# /services — and /discover survives only as a smart redirect (?tab= maps onto
+# the surface route; other query params forwarded). The suite covers: each
+# surface's masthead + content with the retired tab triggers absent from the
+# DOM, all redirect mappings incl. param forwarding, Services filters and
+# quick-cat chips, add-to-cart toast feedback, the expert handoff banner
+# (/services?source=quick-start&showExperts=true), and 375px mobile rendering.
+# Without a CI gate a breaking change to discover.tsx or its sub-components
+# silently merges without any automated signal.
+#
+# Jobs:
+#   discover-tabs-smoke — full browser + API end-to-end test.
+#     Starts a local dev server, runs discover-tabs.spec.ts against a real
+#     browser (Chromium) hitting http://localhost:5000.
+#     No authentication setup required — all surfaces are publicly visible.
+#     (Workflow/job/spec names kept from the tabbed era so the REQUIRED
+#     status context "discover-tabs-smoke" is undisturbed.)
+#
+# Status contexts (for branch-protection required checks):
+#   * discover-tabs-smoke — safe to mark as a REQUIRED check.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: discover-tabs-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # discover-tabs-smoke: browser end-to-end test.
+  #
+  # Starts the dev server (tsx server/index.ts), waits for /api/ready,
+  # then runs the marketplace-surfaces suite in discover-tabs.spec.ts against
+  # Chromium. No PW_AUTH_SETUP — the surfaces require no login.
+  # ─────────────────────────────────────────────────────────────────────────
+  discover-tabs-smoke:
+    # NOTE: this job name must EXACTLY equal the branch-protection required-status
+    # context "discover-tabs-smoke" — a descriptive suffix here would orphan the
+    # required context and leave it stuck "Expected — Waiting for status to be reported".
+    name: discover-tabs-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert spec file exists (discover-tabs)
+        # Guard: if the spec is renamed or deleted, Playwright silently reports
+        # "0 passed" and exits 0 — letting the gate go green with no tests run.
+        # This step fails fast before any Playwright invocation.
+        run: |
+          if [ ! -f "playwright/tests/discover-tabs.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/discover-tabs.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          # 25 tests each reload the API-heavy /discover page from one loopback
+          # IP; the general /api limiter (100 req/min/IP) 429s late tests and
+          # CityGrid never leaves its skeleton. Exempt loopback for this
+          # test-only server. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+
+      - name: Marketplace surfaces smoke test
+        # Runs the 6 suites in discover-tabs.spec.ts (marketplace-surfaces suite):
+        #   1. Surface pages — own masthead + content, retired tab bar absent from DOM
+        #   2. /discover redirects — ?tab= mapping + query-param forwarding
+        #   3. /services filters — filter bar inputs and quick-cat chips
+        #   4. Add to cart — feedback toast appears on button click
+        #   5. Expert handoff banner — /services?source=quick-start&showExperts=true
+        #   6. Mobile 375px — masthead + content visible, no tab bar
+        # No auth setup required — all surfaces are publicly visible.
+        run: npx playwright test discover-tabs --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: discover-tabs-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR comment)
+    runs-on: ubuntu-latest
+    needs: [discover-tabs-smoke]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Discover Tabs Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> **discover-tabs-smoke**: runs the marketplace-surfaces suite in `discover-tabs.spec.ts` against a local dev server.',
+              '> Covers: each surface page (/destinations, /ready-made, /events, /services) rendering its own masthead + content with NO tab bar, the /discover redirect mappings (`?tab=` → surface route, params forwarded), Services filters and quick-cat chips, add-to-cart toast feedback, the expert handoff banner, and 375px mobile rendering.',
+              '> No authentication required — all surfaces are publicly visible.',
+              allGreen ? '' : '> A red gate means a Marketplace surface is broken — fix `client/src/pages/discover.tsx`, `client/src/App.tsx`, or their sub-components before merging.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
