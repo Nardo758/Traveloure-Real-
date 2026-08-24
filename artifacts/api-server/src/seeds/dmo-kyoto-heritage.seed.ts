@@ -96,7 +96,7 @@ export async function seedDmoKyotoHeritage(): Promise<{ upserted: number }> {
   return { upserted };
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /dmo-kyoto-heritage\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedDmoKyotoHeritage()
     .then((result) => {

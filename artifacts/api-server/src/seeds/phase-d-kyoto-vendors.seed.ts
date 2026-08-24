@@ -812,7 +812,7 @@ export async function seedPhaseDKyotoVendors(): Promise<{
 }
 
 // ─── CLI entry ─────────────────────────────────────────────────────────────
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /phase-d-kyoto-vendors\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedPhaseDKyotoVendors()
     .then(({ vendorsInserted, vendorsSkipped, servicesInserted }) => {

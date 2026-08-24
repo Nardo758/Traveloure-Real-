@@ -1860,7 +1860,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
   return { gems: gemsCreated };
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /popular-cities-content\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedPopularCitiesContent()
     .then(({ gems }) => {

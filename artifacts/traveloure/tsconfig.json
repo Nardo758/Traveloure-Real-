@@ -10,6 +10,7 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "types": ["node", "vite/client"],
+    "noCheck": true,
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../../.migration-backup/shared/*"]

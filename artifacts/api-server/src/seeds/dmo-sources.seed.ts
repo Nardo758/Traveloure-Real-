@@ -281,7 +281,7 @@ export async function seedDmoSources(): Promise<{ upserted: number }> {
   return { upserted };
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /dmo-sources\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedDmoSources()
     .then((result) => {

@@ -818,7 +818,7 @@ export async function seedCityNeighborhoods(): Promise<{ inserted: number; skipp
   return { inserted, skipped };
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /city-neighborhoods\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedCityNeighborhoods()
     .then(({ inserted, skipped }) => {

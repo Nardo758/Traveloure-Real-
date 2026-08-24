@@ -840,7 +840,7 @@ export async function seedMajorCitiesBackfill(): Promise<{
   return { neighborhoodsPatched, gemsInserted, travelerCountsFixed };
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /major-cities-backfill\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedMajorCitiesBackfill()
     .then(({ neighborhoodsPatched, gemsInserted, travelerCountsFixed }) => {

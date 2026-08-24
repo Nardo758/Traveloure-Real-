@@ -124,7 +124,7 @@ export async function seedLocationCache(): Promise<{ upserted: number; skipped: 
   return { upserted, skipped: false };
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = /location-cache\.seed\.(?:ts|js|mjs)$/.test(process.argv[1] ?? "");
 if (isMainModule) {
   seedLocationCache()
     .then((result) => {
