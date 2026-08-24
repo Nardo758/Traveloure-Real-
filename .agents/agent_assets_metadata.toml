@@ -68,3 +68,10 @@ uri = "file://screenshots/dispatch-services.jpg"
 type = "image"
 title = "Marketplace — Services"
 description = "Verified /services masthead, search field, filters, and service cards."
+
+[[outputs]]
+id = "pH0uYM0GCbhP-zoIcY3DM"
+uri = "file://exports/traveloure-marketplace-detail-mockups.html"
+type = "text"
+title = "Traveloure Marketplace Detail Mockups"
+description = "Self-contained HTML export of the six selected marketplace detail mockups, arranged as a continuity-versus-baseline comparison sheet."
