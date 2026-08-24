@@ -70,9 +70,20 @@
 .field-guide .fg-card-body { padding: 15px; }
 .field-guide .fg-card-title { color: var(--ink); font: 600 20px/1.12 "Fraunces", Georgia, serif; letter-spacing: -.02em; margin: 0; }
 .field-guide .fg-meta { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; margin-top: 5px; }
+.field-guide .fg-meta svg { width: 13px; height: 13px; flex: 0 0 auto; }
 .field-guide .fg-card-rule { height: 1px; background: var(--line); margin: 14px 0 10px; }
 .field-guide .fg-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #526170; font-size: 12px; }
 .field-guide .fg-link { cursor: pointer; border: 0; background: none; padding: 0; color: var(--coral); font-size: 12px; font-weight: 700; }
+.field-guide .fg-link svg { display: inline-block; vertical-align: -3px; margin-left: 2px; }
+.field-guide .fg-status { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; color: var(--muted); background: var(--paper); font-size: 10px; font-weight: 700; }
+.field-guide .fg-status.teal { border-color: #c7ded9; color: var(--teal); background: var(--teal-wash); }
+.field-guide .fg-status.gold { border-color: #ead7aa; color: var(--gold); background: var(--gold-wash); }
+.field-guide .fg-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 13px; }
+.field-guide .fg-fact { min-width: 0; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.25; }
+.field-guide .fg-fact strong { display: block; color: var(--ink); font-size: 12px; margin-bottom: 2px; }
+.field-guide .fg-card-cta { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 7px 11px; border: 1px solid var(--ink); border-radius: 6px; background: var(--ink); color: white; font-size: 11px; font-weight: 700; }
+.field-guide .fg-card-cta.secondary { background: transparent; color: var(--ink); border-color: var(--line); }
+.field-guide .fg-card-cta svg { width: 13px; height: 13px; }
 .field-guide .fg-search-row { display: grid; grid-template-columns: minmax(240px, 1.4fr) minmax(190px, .8fr) auto; gap: 10px; margin-bottom: 14px; }
 .field-guide .fg-input-wrap { background: white; border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; display: flex; align-items: center; gap: 8px; min-height: 43px; }
 .field-guide .fg-input-wrap svg { height: 16px; width: 16px; color: var(--muted); }
@@ -82,6 +93,7 @@
 .field-guide .fg-filter-select { border: 1px solid var(--line); background: white; color: #53606e; padding: 8px 10px; border-radius: 8px; font-size: 12px; }
 .field-guide .fg-service-card { padding: 15px; min-height: 228px; display: flex; flex-direction: column; }
 .field-guide .fg-service-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.field-guide .fg-service-top .fg-service-provider { display: inline-flex; align-items: center; gap: 5px; }
 .field-guide .fg-service-provider { color: var(--teal); font-weight: 700; }
 .field-guide .fg-service-price { color: var(--ink); font: 600 21px/1 "Fraunces", Georgia, serif; }
 .field-guide .fg-service-price span { color: var(--muted); font: 400 11px "DM Sans", sans-serif; margin-left: 3px; }
@@ -112,6 +124,7 @@
 .field-guide .fg-month-name { color: var(--ink); font-size: 11px; font-weight: 700; }
 .field-guide .fg-month-event { color: var(--muted); font-size: 9px; line-height: 1.35; margin-top: 16px; }
 .field-guide .fg-month-event b { color: var(--coral); }
+.field-guide .fg-event-proof { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 7px; color: var(--muted); font-size: 10px; }
 .field-guide .fg-bottom-note { border-top: 1px solid var(--line); margin-top: 30px; padding-top: 15px; color: var(--muted); font-size: 11px; display: flex; gap: 8px; align-items: center; }
 .field-guide .fg-bottom-note svg { color: var(--teal); width: 15px; height: 15px; }
 
