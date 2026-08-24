@@ -5664,8 +5664,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Destination Calendar (Public travel guide) ===
   
   // Public provider verification status (for service detail page badge)
-  // A6: also surfaces the owner's storefront handle (migration 136, users.handle) so the
-  // service-detail page can breadcrumb into /p/:handle — additive select, null when unclaimed.
+  // A6: also surfaces the owner's storefront handle and role so the service-detail page can
+  // choose the role-specific canonical storefront path — additive, null when the user is absent.
   app.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
       const [form] = await db.select({
@@ -5683,6 +5683,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // private is added: this name is already public on the storefront and every listing card.
       const [userRow] = await db.select({
         handle: users.handle,
+        role: users.role,
         firstName: users.firstName,
         lastName: users.lastName,
       })
@@ -5690,19 +5691,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .where(eq(users.id, req.params.userId))
         .limit(1);
       const handle = userRow?.handle ?? null;
+      const role = userRow?.role ?? null;
       const displayName = userRow
         ? ([userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || null)
         : null;
-      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle, displayName });
+      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle, role, displayName });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
         businessVerified: form.businessVerificationStatus === "verified",
         handle,
+        role,
         displayName,
       });
     } catch {
       // Fail closed: if the verification profile cannot be read, report as unverified.
-      res.json({ identityVerified: false, businessVerified: false, handle: null, displayName: null });
+      res.json({ identityVerified: false, businessVerified: false, handle: null, role: null, displayName: null });
     }
   });
 

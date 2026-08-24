@@ -60,6 +60,11 @@ describe("StorefrontLink with a real handle", () => {
     assert.match(html, /Yuki/);
   });
 
+  it("uses the explicit provider destination when requested", () => {
+    const html = render(<StorefrontLink handle="yuki-flowers" target="provider" variant="inline" />);
+    assert.match(html, /href="\/providers\/yuki-flowers"/);
+  });
+
   it("section variant links to /s/:handle and never fabricates an item count (§13)", () => {
     const html = render(<StorefrontLink handle="yuki-flowers" name="Yuki" sellerNoun="expert" />);
     assert.match(html, /href="\/s\/yuki-flowers"/);

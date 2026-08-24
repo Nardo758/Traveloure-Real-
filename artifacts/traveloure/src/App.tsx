@@ -147,6 +147,7 @@ const AdminAuditLog = lazy(() => import("@/pages/admin/audit-log"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
+const LegacyStorefrontRedirect = lazy(() => import("@/pages/storefront").then((m) => ({ default: m.LegacyStorefrontRedirect })));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
@@ -411,8 +412,11 @@ function Router() {
       <Route path="/s/:handle">
         {() => <StorefrontPage />}
       </Route>
-      <Route path="/p/:handle">
+      <Route path="/providers/:handle">
         {() => <StorefrontPage />}
+      </Route>
+      <Route path="/p/:handle">
+        {() => <LegacyStorefrontRedirect />}
       </Route>
       <Route path="/local-experts">
         <Layout><ExpertsPage /></Layout>
