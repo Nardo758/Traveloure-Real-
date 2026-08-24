@@ -16,8 +16,8 @@ name: Discover Tabs Gate
 #
 # Jobs:
 #   discover-tabs-smoke — full browser + API end-to-end test.
-#     Starts a local dev server, runs discover-tabs.spec.ts against a real
-#     browser (Chromium) hitting http://localhost:5000.
+#     Starts a local dev server, runs the marketplace surface and card-link specs
+#     against a real browser (Chromium) hitting http://localhost:5000.
 #     No authentication setup required — all surfaces are publicly visible.
 #     (Workflow/job/spec names kept from the tabbed era so the REQUIRED
 #     status context "discover-tabs-smoke" is undisturbed.)
@@ -147,7 +147,10 @@ jobs:
           exit 1
 
       - name: Marketplace surfaces smoke test
-        # Runs the 6 suites in discover-tabs.spec.ts (marketplace-surfaces suite):
+        # Runs the six suites in discover-tabs.spec.ts (marketplace-surfaces suite)
+        # plus marketplace-card-links.spec.ts, which uses a deterministic
+        # handle-bearing fixture to prove card detail/storefront links remain valid.
+        # The surface suites cover:
         #   1. Surface pages — own masthead + content, retired tab bar absent from DOM
         #   2. /discover redirects — ?tab= mapping + query-param forwarding
         #   3. /services filters — filter bar inputs and quick-cat chips
@@ -155,7 +158,7 @@ jobs:
         #   5. Expert handoff banner — /services?source=quick-start&showExperts=true
         #   6. Mobile 375px — masthead + content visible, no tab bar
         # No auth setup required — all surfaces are publicly visible.
-        run: npx playwright test discover-tabs --project=chromium
+        run: npx playwright test discover-tabs marketplace-card-links --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
