@@ -1,3 +1,4 @@
 - [Legacy API parity](legacy-api-parity.md) — Traveloure keeps its legacy API and shared module surface during migration rather than replacing it with generated endpoints.
 - [Bundled seed entrypoints](bundled-seed-entrypoints.md) — ESM bundle entrypoints must not trigger imported seed CLIs during API startup.
 - [Bundled migration assets](bundled-migration-assets.md) — SQL migrations are runtime inputs and must ship alongside the API bundle.
+- [Marketplace surface scope](marketplace-surface-scope.md) — Field Guide is the full treatment for commerce, with a lighter touch for travel intelligence.
