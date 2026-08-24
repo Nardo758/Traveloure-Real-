@@ -93,6 +93,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
         items: [
           { name: "Local Experts", i18nKey: "links.localExperts", href: "/experts?role=local_expert", description: "City guides & neighbourhood specialists" },
           { name: "Trip Planners", i18nKey: "links.tripPlanners", href: "/experts?role=travel_expert", description: "Trip planners who handle every detail" },
+          { name: "Book Services", href: "/services", description: "Browse and book local services" },
         ],
       },
     ],
