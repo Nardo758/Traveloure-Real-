@@ -1,0 +1,50 @@
+{
+  "seed": "2026-08-24",
+  "chosenStep": "account-auth",
+  "engine": "webkit",
+  "project": "webkit",
+  "result": "PASS - two responsive rendered loops",
+  "loops": [
+    {
+      "variant": "desktop-keyboard",
+      "viewport": {
+        "width": 1365,
+        "height": 900
+      },
+      "screenshot": "deep-auth-webkit-desktop-keyboard.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 1,
+      "criticalA11y": 0,
+      "a11yFindings": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ],
+      "consoleErrors": []
+    },
+    {
+      "variant": "mobile-touch",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "screenshot": "deep-auth-webkit-mobile-touch.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 1,
+      "criticalA11y": 0,
+      "a11yFindings": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ],
+      "consoleErrors": []
+    }
+  ],
+  "limitations": "Automated keyboard checks are not a claim of physical screen-reader coverage."
+}
