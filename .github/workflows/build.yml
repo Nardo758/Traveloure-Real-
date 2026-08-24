@@ -326,3 +326,18 @@ jobs:
       # built-ins only — no npm ci needed. See docs/E2E_ITEM_LIFECYCLE.md §3.
       - name: Linkage-preservation guard
         run: node scripts/check-linkage-preservation.cjs
+
+  artifact-deploy-guard:
+    name: artifact-deploy-guard (root Autoscale is the sole deploy target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Production is built from the committed tree. A tracked .replit-artifact/
+      # directory can activate Replit's artifact static deployment override.
+      - name: Artifact deploy guard predicate self-test
+        run: node scripts/check-artifact-deploy-guard.cjs --self-test
+      - name: Artifact deploy override guard
+        run: node scripts/check-artifact-deploy-guard.cjs
