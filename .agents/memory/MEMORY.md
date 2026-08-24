@@ -47,3 +47,4 @@
 - [Meeting pin confirmation](meeting-pin-confirmation.md) — proposed pins need explicit confirmation; address geocoding may seed an empty map but locations are never guessed.
 - [Vite development logger resilience](vite-dev-logger-resilience.md) — Vite/client diagnostics must log without terminating the dev server and dropping the preview.
 - [Playwright WebKit on Nix](webkit-playwright-nix-runtime.md) — bundled WPE can launch yet hang on EGL; use GTK under Xvfb and preserve the external library path.
+- [Marketplace continuity design](marketplace-continuity-design.md) — post-click Marketplace pages evolve the current Traveloure visual language; Field Guide improves hierarchy, not brand styling.
