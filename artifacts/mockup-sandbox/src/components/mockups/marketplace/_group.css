@@ -107,11 +107,12 @@
 .field-guide .fg-trip-title { margin: 5px 0 6px; color: var(--ink); font-weight: 700; font-size: 14px; }
 .field-guide .fg-trip-details { color: var(--muted); font-size: 12px; }
 .field-guide .fg-trip-footer { margin-top: 17px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.field-guide .fg-trip-actions { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .field-guide .fg-calendar-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(285px, .9fr); gap: 26px; align-items: start; }
 .field-guide .fg-period { display: flex; align-items: center; gap: 5px; padding: 4px; background: #f1f0ed; border-radius: 10px; }
 .field-guide .fg-period button { cursor: pointer; border: 0; border-radius: 7px; background: transparent; padding: 7px 9px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .field-guide .fg-period button.active { background: white; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-.field-guide .fg-event-line { padding: 13px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 43px 1fr auto; gap: 11px; align-items: center; }
+.field-guide .fg-event-line { padding: 12px; margin-bottom: 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); display: grid; grid-template-columns: 43px 1fr auto; gap: 11px; align-items: center; }
 .field-guide .fg-datebox { background: var(--coral-wash); border-radius: 10px; text-align: center; color: var(--coral); font-size: 11px; font-weight: 700; padding: 7px 2px; }
 .field-guide .fg-datebox strong { display: block; color: var(--ink); font: 600 18px/1 "Fraunces", Georgia, serif; margin-top: 2px; }
 .field-guide .fg-event-name { color: var(--ink); font-size: 13px; font-weight: 700; }
