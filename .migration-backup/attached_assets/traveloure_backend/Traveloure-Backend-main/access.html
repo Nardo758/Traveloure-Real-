@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Access Travel – Stage Embed</title>
+  <!-- Add favicon to prevent 404 error -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <!-- Stage SDK script -->
+  <script src="https://booking-stage.accessdevelopment.com/scripts/travel.client.v2.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .topbar {
+      padding: 10px 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    #status {
+      font-size: 0.95rem;
+      opacity: 0.8;
+    }
+    #travel-container {
+      width: 100%;
+      height: calc(100vh - 52px);
+    }
+    button {
+      padding: 8px 10px;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: #eef2ff; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>Access Travel (Stage)</strong>
+    <button id="btn-home">Home</button>
+    <button id="btn-hotels">Hotels</button>
+    <button id="btn-lang-en">EN</button>
+    <button id="btn-lang-es">ES</button>
+    <span id="status">Loading…</span>
+  </div>
+
+  <div id="travel-container"></div>
+
+  <script>
+    const SESSION_TOKEN = "ACCESS_SESSION__fBtLK1UynzjPZL4dX8dHXz5d8cJpnVp";
+
+    try {
+      window.travelClient.start({
+        session_token: SESSION_TOKEN,
+        container: "#travel-container",
+        width: "100%",
+        height: "100%",
+        language: "en",
+        // Optional: Suppress iFrameSizer warning (check SDK docs)
+        iframeResizer: { warningTimeout: 0 }
+      });
+
+      window.travelClient.on("update", (event) => {
+        document.getElementById("status").textContent = "Update: " + (event?.message || "");
+        console.log("[TravelClient update]", event);
+      });
+
+      window.travelClient.on("error", (event) => {
+        document.getElementById("status").textContent = "Error: " + (event?.error_message || "Unknown");
+        console.error("[TravelClient error]", event);
+      });
+
+      document.getElementById("status").textContent = "Initialized.";
+    } catch (e) {
+      document.getElementById("status").textContent = "Init failed. See console.";
+      console.error("Initialization error:", e);
+    }
+
+    document.getElementById("btn-home").addEventListener("click", () => {
+      if (window.travelClient?.navigateTo) window.travelClient.navigateTo("home");
+    });
+    document.getElementById("btn-hotels").addEventListener("click", () => {
+      if (window.travelClient?.navigateTo) window.travelClient.navigateTo("hotels");
+    });
+    document.getElementById("btn-lang-en").addEventListener("click", () => {
+      if (window.travelClient?.updateLanguage) window.travelClient.updateLanguage("en");
+    });
+    document.getElementById("btn-lang-es").addEventListener("click", () => {
+      if (window.travelClient?.updateLanguage) window.travelClient.updateLanguage("es");
+    });
+  </script>
+</body>
+</html>

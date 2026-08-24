@@ -1,0 +1,97 @@
+You are a Senior Performance Engineer at Netflix.
+Test ONLY navbar performance on Traveloure.
+
+TEST 1 — Initial render time:
+Open DevTools → Performance tab.
+Hard reload the page (Ctrl+Shift+R).
+Measure:
+- Time to navbar first render (ms)
+- Time to navbar interactive (ms)
+- Any layout shift during render (CLS score)
+
+Expected thresholds:
+First render: under 200ms
+Interactive: under 500ms
+Layout shift: CLS under 0.1
+
+TEST 2 — Navigation speed:
+Click each navbar link and measure:
+Time from click to page interactive.
+Expected: Under 1 second per navigation.
+
+Check network tab:
+Are page transitions making unnecessary
+API calls that could be cached?
+
+TEST 3 — Memory leak detection:
+Open DevTools → Memory tab.
+Take a heap snapshot (Snapshot 1).
+Navigate through ALL navbar links 
+10 times each.
+Take another heap snapshot (Snapshot 2).
+Compare: Is memory growing significantly?
+Expected: Memory returns to baseline,
+no growing detached DOM nodes.
+
+TEST 4 — API call efficiency:
+Open DevTools → Network tab.
+Click every navbar link.
+For each navigation check:
+- How many API calls fired?
+- Any duplicate calls to same endpoint?
+- Any calls returning 404 silently?
+- Any calls taking over 1 second?
+
+Flag every endpoint taking over 500ms.
+
+TEST 5 — Stress test navigation:
+Rapidly click different navbar links
+100 times in 30 seconds.
+Expected:
+- No console errors
+- No white screen
+- No React error boundary triggered
+- No memory crash
+- Final page loads correctly
+
+TEST 6 — Concurrent tabs:
+Open 5 tabs of traveloure.com.
+Navigate navbar in all 5 simultaneously.
+Expected: Each tab works independently,
+no cross-tab state pollution.
+
+TEST 7 — Slow network simulation:
+DevTools → Network → Throttling → Slow 3G.
+Navigate each navbar link.
+Expected:
+- Loading states shown (spinners/skeletons)
+- Not a blank white screen during load
+- Timeout handling if API takes too long
+- User not stuck with no feedback
+
+TEST 8 — Offline then reconnect:
+DevTools → Network → Offline.
+Try to navigate navbar links.
+Expected: Graceful error message,
+not a crash or white screen.
+Go back online.
+Expected: App recovers without refresh.
+
+TEST 9 — Bundle size check:
+DevTools → Network → filter by JS.
+Hard reload and check:
+What is the total JS bundle size?
+Is the navbar component lazy-loaded 
+or always in main bundle?
+Expected: Main bundle under 500KB.
+
+TEST 10 — Console errors during navigation:
+Open console tab.
+Navigate every navbar link.
+Expected: ZERO red console errors.
+Yellow warnings are acceptable but 
+document any found.
+
+REPORT FORMAT:
+Test | Metric measured | Result | 
+Pass/Fail | Fix if failed

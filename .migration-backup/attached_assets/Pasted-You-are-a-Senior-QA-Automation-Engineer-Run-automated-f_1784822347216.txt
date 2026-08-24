@@ -1,0 +1,139 @@
+You are a Senior QA Automation Engineer.
+Run automated form reliability testing 
+on every form reachable from the navbar.
+
+FORMS TO TEST:
+1. Login form
+2. Signup/Register form
+3. Search bar (treated as a form)
+4. Forgot password form
+5. Any other form in navbar dropdowns
+
+FOR EACH FORM run ALL of these 
+50 test cases automatically:
+
+VALID DATA VARIATIONS (10 cases):
+V1: Standard valid data
+V2: Minimum valid length inputs
+V3: Maximum allowed length inputs
+V4: Mixed case email 
+    (Test.User@GMAIL.com)
+V5: Email with + sign 
+    (test+user@gmail.com)
+V6: Email with dots 
+    (test.user.name@gmail.com)
+V7: Password with all special chars 
+    (!@#$%^&*()_+)
+V8: Password with spaces 
+    (Test Pass 1234)
+V9: International name 
+    (José García)
+V10: Very common data 
+     (john@gmail.com / Password123)
+
+BOUNDARY VALUES (10 cases):
+B1: Email = exactly 1 char before @ 
+    (a@b.com)
+B2: Email = 254 chars (max allowed)
+B3: Password = exactly min length 
+    (e.g. 8 chars)
+B4: Password = exactly max length 
+    (e.g. 128 chars)
+B5: Name = 1 character
+B6: Name = 100 characters
+B7: Name = 101 characters 
+    (1 over limit if limit exists)
+B8: Submit form exactly at session 
+    expiry moment
+B9: Submit with trailing whitespace 
+    in all fields
+B10: Submit with leading whitespace 
+     in all fields
+
+INVALID DATA (10 cases):
+I1: Email missing @ symbol
+I2: Email missing domain (.com)
+I3: Email with double @@ 
+    (test@@gmail.com)
+I4: Password too short (3 chars)
+I5: Password with only spaces
+I6: All fields blank
+I7: Only whitespace in all fields
+I8: Numbers only in name field
+I9: Email with consecutive dots 
+    (test..user@gmail.com)
+I10: Email ending with dot 
+     (test@gmail.)
+
+SPECIAL CHARACTERS (10 cases):
+S1:  !@#$%^&*()_+-=[]{}|;:,.<>?
+S2:  Backticks and quotes: `'"
+S3:  Backslashes: \\\
+S4:  Null bytes: \0\0\0
+S5:  Newlines in fields: \n\r\n
+S6:  Tab characters: \t\t\t
+S7:  Unicode: 你好世界
+S8:  Arabic: مرحبا بالعالم  
+S9:  Emoji: 🌍🗼✈️🏖️🎉
+S10: Mixed: Hello\n<b>World</b>\t!
+
+ATTACK PAYLOADS (10 cases):
+A1:  SQL: ' OR '1'='1
+A2:  SQL: '; DROP TABLE users; --
+A3:  SQL: 1; SELECT * FROM users
+A4:  XSS: <script>alert('xss')</script>
+A5:  XSS: <img src=x onerror=alert(1)>
+A6:  XSS: javascript:alert('xss')
+A7:  XSS: "><script>alert(1)</script>
+A8:  HTML: <b>bold</b><i>italic</i>
+A9:  Template: {{7*7}} ${7*7} #{7*7}
+A10: Path: ../../etc/passwd
+
+RELIABILITY/STRESS (10 cases):
+R1:  Submit same form 10x rapidly
+R2:  Submit then immediately refresh
+R3:  Submit in two tabs simultaneously
+R4:  Submit then press back button
+R5:  Submit with browser DevTools open 
+     and network throttled to Slow 3G
+R6:  Submit then go offline immediately
+R7:  Submit with expired session cookie
+R8:  Submit with modified CSRF token
+R9:  Submit 50 times with valid data 
+     (stress test — should get 
+     rate limited after threshold)
+R10: Submit valid data, get success,
+     submit EXACT same data again
+     (duplicate detection test)
+
+FOR EACH TEST CASE REPORT:
+Case ID | Input used | HTTP status returned |
+Response body (first 100 chars) |
+UI message shown | Pass/Fail | 
+Security risk if Fail
+
+EXPECTED RESULTS SUMMARY:
+Valid data (V1-V10): 200/201 success
+Boundary valid (B1-B7): 200/201 success
+Boundary invalid (B8-B10): handled gracefully
+Invalid data (I1-I10): 400 validation error
+Special chars (S1-S10): sanitized, no crash
+Attack payloads (A1-A10): 
+  rejected OR sanitized, NEVER executed
+Stress tests (R1-R10): 
+  no crash, rate limit on R9,
+  duplicate handling on R10
+
+FINAL RELIABILITY SCORE:
+Count Pass/Fail across all 50 cases.
+Score = (Pass / 50) × 100
+
+Under 90%: Form is NOT production ready
+90-95%: Acceptable with minor fixes
+95-100%: Production ready
+
+Do NOT stop testing when you find 
+the first failure. Test ALL 50 cases.
+Fix every failure found.
+Re-test after each fix.
+Show final Pass/Fail count.

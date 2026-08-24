@@ -1,0 +1,61 @@
+REASSESS & RE-PLAN (read-only until the final task list; do NOT change code or docs in this pass).
+
+Context: main now includes the full concierge→coordination monetization loop (PR #289 /
+squash d0990b12): engagement creation (1a), fee CAPTURE + paid-signal credit ledger (Phase 2,
+migration 125), traveler /my-events pay surface (1b), admin coordinator assignment (1c).
+CLAUDE.md is the authoritative record of INTENT — where code diverges from it, the code is the
+bug, not the doc (do not "fix" the doc to match a divergence). Treat every finding as evidence-
+backed with file:line; do not assert status from memory or from a doc claim alone — verify against
+the actual served tree (remember: dead routes return 200-HTML via the Vite catch-all, NOT 404, so
+a 200 is not proof a route is live).
+
+STEP 1 — Ground truth the just-landed loop (confirm, don't assume):
+  - Migration 125 applied: coordination_fee_credits table + coordination_states fee_* columns +
+    the fee_payment_status CHECK all exist in the workspace DB.
+  - The Phase-2 endpoints are reachable in the MOUNTED tree (routes.ts /pay + /pay/confirm;
+    admin.routes.ts assign-coordinator; optimization.routes.ts credit insert), not shadowed/dark.
+  - /my-events is routed in App.tsx and linked in the sidebar; the concierge Full-pick links to it.
+
+STEP 2 — Harvest the OPEN work already filed in the codebase (these are the real backlog, not
+guesses). Enumerate with file:line evidence:
+  - CLAUDE.md §13 "Known Defects" still open: the 90/10 commission literal; hardcoded
+    "free cancellation / instant confirmation / 24-7 support" trust copy; the 2-char-neighbourhood
+    empty-result trap; the expert-level rating aggregate that doesn't exist yet; mock-data demo
+    arrays (chat.tsx, explore.tsx, help-me-decide sample packages, provider/profile).
+  - Coordination follow-ups filed in §7: tighten credit matching to same-event; accumulate
+    multiple credits; reverse the consumed credit + platform_revenue on a coordination refund
+    (mirror the escrow reversal spine).
+  - §14/§15 residuals: /checkout idempotency key is optional (client can omit → bypass dedup);
+    process-cart AI-item price still trusted; the legacy /api/bookings/refund still targets the
+    `bookings` table, not `service_bookings`.
+  - Dark routers still intentionally unmounted (experts.routes.ts / cross-sell.routes.ts /
+    trips.routes.ts) — list which handler families remain dark and whether any now have a live
+    client consumer (a consumer = a real bug to mount, like the savedItems catch).
+  - Any TODO/FIXME in server/ + client/src that maps to a shippable task.
+
+STEP 3 — Scan for NEW divergences the loop may have introduced or exposed:
+  - coordination refund path: a refund today does NOT reverse the coordination credit or the
+    platform_revenue row — confirm and rank.
+  - guests: coordination requires userId NOT NULL; confirm a guest Full-pick degrades gracefully
+    (no crash, honest "sign in to track" path) rather than silently dropping.
+  - the coordination status machine (intake/planning/…): is there any consumer that advances it,
+    or is it inert after assignment? Flag if the coordinator workspace can't move it.
+
+STEP 4 — Produce a RE-PRIORITIZED task list (this is the deliverable). For each task:
+  - one-line title; file:line evidence; type = {bug | gap | follow-up | cosmetic};
+  - severity = {money/security | correctness | UX | polish};
+  - a flag: NEEDS DECISION-MAKER SIGN-OFF? (yes for anything touching fee/commission logic, DB
+    migrations/schema, approval-status defaults, the two offering catalogs, or a new service table —
+    per CLAUDE.md Coordination Prevention; no otherwise);
+  - est. size = {S | M | L}.
+  Order by severity (money/security first), then by whether it unblocks a live user journey.
+  Explicitly separate "ready to build now" from "blocked on a decision." Do NOT include work that
+  isn't backed by a concrete finding — no speculative features.
+
+Rules: do not add a new service table (consolidate into provider_services or escalate); do not
+reintroduce per-endpoint admin opt-in; no fee/commission literals outside fee_bands/config; any
+migration goes in server/migrations/ + registered in migration-files.ts. If a finding conflicts
+with CLAUDE.md, surface it as an escalation item, don't silently resolve it.
+
+Output only: (a) the STEP-1 confirmation lines, (b) a short "divergences found" list, and (c) the
+re-prioritized task list. Keep it tight.

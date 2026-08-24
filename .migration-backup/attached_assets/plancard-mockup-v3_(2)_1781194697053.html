@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlanCard — aligned views + mobile loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#1E3A5F;--teal:#2E8B8B;--gold:#E8B339;--dark:#0D2137;--green:#5DCAA5;--red:#E85D55;
+    --ink:#0D2137;--paper:#F4F1EA;--line:rgba(13,33,55,.10);
+    --display:'Bricolage Grotesque',serif;--body:'Hanken Grotesk',sans-serif}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:radial-gradient(1200px 600px at 80% -10%, rgba(46,139,139,.18), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(232,179,57,.14), transparent 55%),#0a1a2e;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:36px 16px 60px;color:var(--ink)}
+  .lead{color:#cfe2e2;text-align:center;max-width:640px;margin-bottom:16px}
+  .lead h1{font-family:var(--display);font-weight:800;letter-spacing:-.02em;font-size:25px;color:#fff;margin-bottom:6px}
+  .lead p{font-size:13px;line-height:1.55;color:#9fb6c8}
+  .legend{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin:12px 0 24px}
+  .lg{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+    border-radius:999px;padding:5px 12px;font-size:11px;color:#cfe2e2}
+  .lg b{color:#fff}
+  .dotL{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .dotG{width:8px;height:8px;border-radius:50%;background:var(--gold)}
+
+  .stages{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+  .col{display:flex;flex-direction:column;align-items:center;gap:9px}
+  .coltitle{color:#fff;font-family:var(--display);font-weight:700;font-size:15px}
+  .colsub{color:#7fa8a8;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;margin-top:-5px}
+
+  .phone{width:380px;max-width:100%;background:var(--paper);border-radius:38px;padding:11px;
+    box-shadow:0 40px 90px -30px rgba(0,0,0,.7),0 0 0 2px rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+  .screen{background:var(--paper);border-radius:28px;overflow:hidden;position:relative;height:768px;
+    display:flex;flex-direction:column;border:1px solid var(--line)}
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:112px;height:21px;background:var(--dark);
+    border-radius:0 0 15px 15px;z-index:40}
+  .scroll{overflow-y:auto;flex:1;min-height:0}
+
+  .b-live,.b-gated{font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;
+    border-radius:6px;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
+  .b-live{background:rgba(93,202,165,.18);color:#1d7a55}
+  .b-gated{background:rgba(232,179,57,.2);color:#8a6510}
+  .rev{color:var(--gold);font-weight:800}
+
+  /* SHARED HEADER — identical in both stages (the "grown up" continuity) */
+  .phead{background:var(--dark);color:#fff;padding:20px 16px 16px;position:relative}
+  .phead .status{display:inline-block;background:rgba(232,179,57,.22);color:var(--gold);font-size:9px;font-weight:800;
+    letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:6px;margin-bottom:8px}
+  .phead h2{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:-.01em}
+  .phead .loc{font-size:12px;color:#9fb6c8;margin-top:3px}
+  .phead .cd{position:absolute;top:18px;right:16px;text-align:center;color:#fff}
+  .phead .cd b{display:block;font-family:var(--display);font-size:24px;font-weight:800;line-height:1}
+  .phead .cd span{font-size:9.5px;color:#9fb6c8}
+  /* identical 4-up metric strip */
+  .pmetrics{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:14px;text-align:center}
+  .pm .v{font-family:var(--display);font-weight:800;font-size:18px;color:#fff}
+  .pm .l{font-size:9px;color:#9fb6c8;margin-top:1px}
+
+  .sec{padding:12px 16px;border-bottom:1px solid var(--line);background:#fff}
+  .sec.alt{background:var(--paper)}
+  .sechd{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;color:#8a9bab;margin-bottom:9px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .pchip{font-size:10.5px;font-weight:700;border-radius:999px;padding:4px 9px;background:#eef2f6;color:var(--navy);
+    display:flex;align-items:center;gap:4px}
+  .pchip.aiopt{background:rgba(46,139,139,.12);color:var(--teal)}
+
+  /* CONCIERGE — prominent, shared, the revenue spine */
+  .concierge{display:flex;align-items:center;gap:11px;background:linear-gradient(135deg,rgba(46,139,139,.14),rgba(232,179,57,.12));
+    border:1px solid rgba(46,139,139,.35);border-radius:14px;padding:12px 13px}
+  .concierge .ico{flex:0 0 38px;height:38px;border-radius:11px;background:var(--teal);color:#fff;display:flex;
+    align-items:center;justify-content:center;font-size:18px}
+  .concierge .t{flex:1}
+  .concierge .t b{font-size:13px;font-weight:800;color:var(--navy);display:flex;align-items:center;gap:6px}
+  .concierge .t small{display:block;font-size:10.5px;color:#6b7c8c;margin-top:1px}
+  .concierge .go{background:var(--navy);color:#fff;font-size:11px;font-weight:800;border-radius:9px;padding:8px 12px;white-space:nowrap}
+
+  .advisor{display:flex;gap:10px;align-items:flex-start}
+  .ava{flex:0 0 32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;
+    justify-content:center;font-weight:800;font-size:12px}
+  .advisor .nm{font-size:12px;font-weight:800;color:var(--ink)}
+  .advisor .msg{font-size:11px;color:#6b7c8c;margin-top:2px;line-height:1.4}
+  .cta{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px dashed rgba(232,179,57,.6);
+    background:rgba(232,179,57,.08);border-radius:12px;padding:10px 12px}
+  .cta .t{font-size:12px;font-weight:700;color:var(--navy)}
+  .cta .t small{display:block;font-weight:500;color:#8a9bab;font-size:10px;margin-top:1px}
+  .cta .go{background:var(--gold);color:#3a2a05;font-size:11px;font-weight:800;border-radius:8px;padding:7px 11px;white-space:nowrap}
+
+  .botbar{display:flex;gap:8px;padding:12px 16px;background:#fff}
+  .bb{flex:1;text-align:center;font-size:11.5px;font-weight:800;border-radius:10px;padding:10px;border:1px solid var(--line);color:var(--navy)}
+  .bb.solid{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .navnote{padding:0 16px 13px;background:#fff;font-size:10px;color:#8a9bab;line-height:1.45}
+
+  /* control-center extras */
+  .viewtog{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;background:#fff;border-bottom:1px solid var(--line)}
+  .viewtog .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;font-size:11px;font-weight:800}
+  .viewtog .seg span{padding:6px 11px;color:#8a9bab}
+  .viewtog .seg span.on{background:var(--navy);color:#fff}
+  .mapwrap{position:relative;height:188px;background:#dfe7df}
+  svg.map{width:100%;height:100%;display:block}
+  .maptop{position:absolute;top:9px;left:9px;right:9px;display:flex;justify-content:space-between;pointer-events:none}
+  .layers{display:flex;flex-direction:column;gap:5px;pointer-events:auto}
+  .ltog{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.94);border:1px solid var(--line);
+    border-radius:8px;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;user-select:none}
+  .ltog .dot{width:8px;height:8px;border-radius:50%} .ltog.off{opacity:.4}
+  .mapsbtn{pointer-events:auto;background:var(--navy);color:#fff;border:none;border-radius:9px;padding:7px 10px;font-size:10.5px;font-weight:800;cursor:pointer}
+  .legpill{position:absolute;transform:translate(-50%,-50%);background:#fff;border:1px solid var(--line);border-radius:999px;
+    padding:2px 8px 2px 5px;font-size:10px;font-weight:700;display:flex;gap:4px;align-items:center;cursor:pointer;box-shadow:0 4px 12px -6px rgba(0,0,0,.4);z-index:15}
+  .leg{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)}
+  .leg:last-child{border-bottom:none}
+  .leg .ic{flex:0 0 26px;height:26px;border-radius:7px;background:#eef2f6;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .leg .t{font-size:12px;font-weight:700;color:var(--ink)}
+  .leg .s{font-size:10.5px;color:#8a9bab;margin-top:1px}
+  .bookrow{display:flex;gap:6px;margin-top:6px;align-items:center}
+  .bookbtn{font-size:10.5px;font-weight:800;border-radius:8px;padding:6px 10px;border:none;cursor:pointer}
+  .bookbtn.platform{background:var(--teal);color:#fff} .bookbtn.view{background:#fff;border:1px solid var(--line);color:var(--navy)}
+  .upsell{border:1px dashed rgba(46,139,139,.5);background:rgba(46,139,139,.07);border-radius:12px;padding:11px}
+  .upsell .u-t{font-size:12px;font-weight:800;color:var(--navy)}
+  .upsell .u-r{font-size:10.5px;color:#6b7c8c;margin:2px 0 8px}
+  .upsell .explore{background:var(--navy);color:#fff;font-size:10.5px;font-weight:800;border-radius:8px;padding:6px 11px;display:inline-block}
+
+  /* on-trip mobile loop */
+  .loop{margin-top:38px;max-width:920px;width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);
+    border-radius:20px;padding:22px}
+  .loop h3{color:#fff;font-family:var(--display);font-weight:700;font-size:17px;text-align:center;margin-bottom:4px}
+  .loop .ls{color:#9fb6c8;font-size:12px;text-align:center;margin-bottom:20px}
+  .steps{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .step{flex:1;min-width:165px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;position:relative}
+  .step .n{font-family:var(--display);font-weight:800;font-size:13px;color:var(--gold);margin-bottom:6px}
+  .step .st{color:#fff;font-weight:700;font-size:13px;margin-bottom:4px}
+  .step .sd{color:#9fb6c8;font-size:11px;line-height:1.45}
+  .step .chan{margin-top:8px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);
+    background:rgba(232,179,57,.14);border:1px solid rgba(232,179,57,.3);border-radius:6px;padding:3px 7px;display:inline-block}
+  .arrow{align-self:center;color:#9fb6c8;font-size:18px;flex:0 0 auto}
+  .caption{color:#9fb6c8;font-size:11.5px;text-align:center;margin-top:22px;max-width:660px;line-height:1.55}
+  .caption b{color:#cfe2e2}
+</style>
+</head>
+<body>
+
+<div class="lead">
+  <h1>PlanCard — aligned, with the Concierge front-and-center</h1>
+  <p>The full page is the summary <em>grown up</em>: same header, same metric strip, same Concierge module — so tapping in reads as the card expanding, not a jump to a different screen.</p>
+</div>
+<div class="legend">
+  <div class="lg"><span class="dotL"></span><b>LIVE</b></div>
+  <div class="lg"><span class="dotG"></span><b>IN-FLIGHT</b> (gated)</div>
+  <div class="lg"><span class="rev">💰</span><b>revenue / Concierge</b></div>
+</div>
+
+<div class="stages">
+
+  <!-- STAGE A — SUMMARY -->
+  <div class="col">
+    <div class="coltitle">Stage A · Summary</div>
+    <div class="colsub">dashboard list item</div>
+    <div class="phone"><div class="screen"><div class="notch"></div><div class="scroll">
+      <div class="phead">
+        <div class="cd"><b>5</b><span>days</span></div>
+        <span class="status">Soon</span>
+        <h2>California Coastal Road Trip</h2>
+        <div class="loc">📍 California, USA · 12–19 Jun</div>
+        <div class="pmetrics">
+          <div class="pm"><div class="v">8</div><div class="l">Days</div></div>
+          <div class="pm"><div class="v">32</div><div class="l">Activities</div></div>
+          <div class="pm"><div class="v">22</div><div class="l">Transit legs</div></div>
+          <div class="pm"><div class="v">14h</div><div class="l">Transit time</div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="chips">
+          <span class="pchip">💰 3 services</span><span class="pchip">🚐 22 legs</span>
+          <span class="pchip">💰 Expert</span><span class="pchip aiopt">✦ Saved $214</span>
+        </div>
+      </div>
+
+      <div class="sec alt">
+        <div class="sechd">Concierge <span class="rev">💰</span> <span class="b-live">● live</span></div>
+        <div class="concierge">
+          <div class="ico">✦</div>
+          <div class="t"><b>Ask the Concierge</b><small>Hand off any task — per-task fee. AI now, or an expert.</small></div>
+          <span class="go">Start →</span>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sechd">Trip alerts <span class="b-gated">● in-flight · gated on consent backend</span></div>
+        <div style="display:flex;gap:11px;align-items:flex-start;border:1px solid var(--line);border-radius:13px;padding:11px 12px;background:#fff">
+          <div style="flex:0 0 34px;height:34px;border-radius:10px;background:#eef2f6;display:flex;align-items:center;justify-content:center;font-size:17px">🔔</div>
+          <div style="flex:1">
+            <b style="font-size:12.5px;font-weight:800;color:var(--navy)">Get text alerts for this trip</b>
+            <div style="font-size:10px;color:#8a9bab;margin-top:2px;line-height:1.4">Reminders &amp; offers by SMS · msg frequency varies · rates may apply · reply STOP to cancel</div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#6b7c8c;margin-top:7px"><input type="checkbox" style="accent-color:var(--teal)"> I agree to receive texts — <a style="color:var(--teal)">Terms</a> · <a style="color:var(--teal)">Privacy</a></label>
+          </div>
+          <span style="color:#b6c0c9;font-size:13px">✕</span>
+        </div>
+        <div style="margin-top:8px;font-size:10px;color:#8a9bab">Pre-trip only · shown once to the not-yet-opted-in · dismissible · dead control until 10DLC registration + consent store exist</div>
+      </div>
+
+      <div class="sec">
+        <div class="sechd">Your expert <span class="rev">💰</span> <span class="b-live">● live</span></div>
+        <div class="advisor"><div class="ava">SC</div>
+          <div><div class="nm">Sofia Chen</div><div class="msg">"Hi! I'm Sofia, your California road-trip expert…"</div></div></div>
+      </div>
+
+      <div class="botbar">
+        <span class="bb">🧭 Maps</span>
+        <span class="bb solid">View Itinerary →</span>
+      </div>
+      <div class="navnote">↳ <b style="color:#6b7c8c">"View Itinerary"</b> → <code>/trip/:id</code> = the full control center (Stage B, same header).</div>
+    </div></div></div>
+  </div>
+
+  <!-- STAGE B — FULL -->
+  <div class="col">
+    <div class="coltitle">Stage B · Full control center</div>
+    <div class="colsub">the summary, grown up</div>
+    <div class="phone"><div class="screen"><div class="notch"></div><div class="scroll">
+      <!-- IDENTICAL header -->
+      <div class="phead">
+        <div class="cd"><b>5</b><span>days</span></div>
+        <span class="status">Soon</span>
+        <h2>California Coastal Road Trip</h2>
+        <div class="loc">📍 California, USA · 12–19 Jun · Expert: Sofia C.</div>
+        <div class="pmetrics">
+          <div class="pm"><div class="v">8</div><div class="l">Days</div></div>
+          <div class="pm"><div class="v">32</div><div class="l">Activities</div></div>
+          <div class="pm"><div class="v">22</div><div class="l">Transit legs</div></div>
+          <div class="pm"><div class="v">14h</div><div class="l">Transit time</div></div>
+        </div>
+      </div>
+
+      <!-- SAME Concierge module, same place -->
+      <div class="sec alt">
+        <div class="sechd">Concierge <span class="rev">💰</span> <span class="b-live">● live</span></div>
+        <div class="concierge">
+          <div class="ico">✦</div>
+          <div class="t"><b>Ask the Concierge</b><small>Plan a task, book a thing, fix a gap — per task.</small></div>
+          <span class="go">Start →</span>
+        </div>
+      </div>
+
+      <div class="viewtog">
+        <span style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a9bab">View mode <span class="b-live">live</span></span>
+        <div class="seg"><span>Card</span><span class="on">Map Control Center</span></div>
+      </div>
+
+      <div class="mapwrap">
+        <svg class="map" viewBox="0 0 380 188" preserveAspectRatio="xMidYMid slice">
+          <rect width="380" height="188" fill="#dfe7df"/>
+          <rect x="0" y="0" width="140" height="188" fill="#bcd6dd" opacity=".5"/>
+          <g id="routes">
+            <polyline data-leg="l1" points="170,38 220,92" fill="none" stroke="var(--gold)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="9 7"/>
+            <polyline data-leg="l2" points="220,92 296,142" fill="none" stroke="var(--gold)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="9 7"/>
+          </g>
+          <g id="pins">
+            <g><circle cx="170" cy="38" r="12" fill="var(--teal)"/><text x="170" y="43" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">1</text></g>
+            <g><circle cx="220" cy="92" r="12" fill="var(--teal)"/><text x="220" y="97" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">2</text></g>
+            <g><circle cx="296" cy="142" r="12" fill="var(--teal)"/><text x="296" y="147" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">3</text></g>
+          </g>
+        </svg>
+        <div id="legpills"></div>
+        <div class="maptop">
+          <div class="layers">
+            <div class="ltog on" data-layer="pins"><span class="dot" style="background:var(--teal)"></span>Pins</div>
+            <div class="ltog on" data-layer="routes"><span class="dot" style="background:var(--gold)"></span>Routes</div>
+            <div class="ltog on" data-layer="notes"><span class="dot" style="background:var(--gold)"></span>Notes</div>
+          </div>
+          <button class="mapsbtn" id="openmaps">↗ Maps</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sechd">Transport · per-leg booking</div>
+        <div class="leg"><div class="ic">🚗</div><div style="flex:1">
+          <div class="t">Santa Monica → Malibu</div><div class="s">💰 Book on Traveloure</div>
+          <div class="bookrow"><button class="bookbtn platform">Book</button><span class="b-gated">strand · #43</span></div>
+        </div></div>
+        <div class="leg"><div class="ic">🚐</div><div style="flex:1">
+          <div class="t">Malibu → Santa Barbara</div><div class="s">via GetTransfer</div>
+          <div class="bookrow"><button class="bookbtn view">View ↗</button><span class="b-live">affiliate wired</span></div>
+        </div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sechd">Upsell · plancard_ontrip <span class="rev">💰</span> <span class="b-gated">gated · PR #50</span></div>
+        <div class="upsell"><div class="u-t">Add a coastal wine tour</div>
+          <div class="u-r">Locals' favorite near tomorrow's route</div><span class="explore">Explore →</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="sechd">Escalation <span class="rev">💰</span> <span class="b-live">● live</span></div>
+        <div class="cta"><div class="t">Have an expert polish this<small>Priced via /concierge/quote</small></div><span class="go">From $49 →</span></div>
+      </div>
+
+      <div class="botbar"><span class="bb">🧭 Maps</span><span class="bb solid">View Itinerary →</span></div>
+    </div></div></div>
+  </div>
+</div>
+
+<!-- ON-TRIP MOBILE LOOP -->
+<div class="loop">
+  <h3>How it works on the phone, during the trip</h3>
+  <div class="ls">The on-trip value depends on a <b style="color:#E8B339">push channel</b> — the one piece not yet built.</div>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div class="st">📲 Push reaches them</div>
+      <div class="sd">"Near you tomorrow: a wine tour" · "Sofia suggested a route change — accept?"</div>
+      <span class="chan">needs: web-push / SMS</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="n">2</div><div class="st">Opens the PlanCard</div>
+      <div class="sd">Lands on the live-day view — today's stops, the map, what's pending.</div>
+      <span class="chan">PWA / mobile web</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="n">3</div><div class="st">Acts in-app</div>
+      <div class="sd">Accept the suggestion · Explore the upsell · Book a leg (Stripe) · Ask the Concierge.</div>
+      <span class="chan">💰 conversion</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="n">4</div><div class="st">Hands to native maps</div>
+      <div class="sd">Turn-by-turn happens in Google / Apple Maps via the deep-link — PlanCard stays the overview.</div>
+      <span class="chan">deep-link · live</span></div>
+  </div>
+</div>
+
+<p class="caption">Communication artifact, not source of truth (the manifest wins). Aesthetic is illustrative — the real build is Shadcn/Tailwind on platform tokens. <b>Step 1 is the open architecture question</b>: today notifications are pull-only; reaching the phone needs a real push channel.</p>
+
+<script>
+const MODES=[{id:'drive',icon:'🚗',label:'Drive',color:'var(--gold)',dash:'9 7'},
+  {id:'transit',icon:'🚆',label:'Transit',color:'var(--teal)',dash:'none'},
+  {id:'walk',icon:'🚶',label:'Walk',color:'var(--navy)',dash:'2 8'}];
+let legs=[{id:'l1',mode:'drive',x:37,y:33},{id:'l2',mode:'drive',x:68,y:61}];
+function rl(){const w=document.getElementById('legpills');w.innerHTML='';legs.forEach(lg=>{
+  const m=MODES.find(x=>x.id===lg.mode);const el=document.createElement('div');el.className='legpill';
+  el.style.left=lg.x+'%';el.style.top=lg.y+'%';el.innerHTML=`<span>${m.icon}</span>${m.label} ⇄`;
+  el.onclick=()=>{const i=MODES.findIndex(x=>x.id===lg.mode);lg.mode=MODES[(i+1)%MODES.length].id;
+    const nm=MODES.find(x=>x.id===lg.mode);const ln=document.querySelector(`[data-leg="${lg.id}"]`);
+    ln.setAttribute('stroke',nm.color);ln.setAttribute('stroke-dasharray',nm.dash);rl();};w.appendChild(el);});}
+document.querySelectorAll('.ltog').forEach(t=>t.onclick=()=>{const on=t.classList.toggle('on');t.classList.toggle('off',!on);
+  const l=t.dataset.layer;if(l==='pins')document.getElementById('pins').style.display=on?'':'none';
+  if(l==='routes'){document.getElementById('routes').style.display=on?'':'none';document.getElementById('legpills').style.display=on?'':'none';}});
+document.getElementById('openmaps').onclick=()=>alert('Google multi-waypoint deep link → opens native Maps\n(Apple → per-leg fallback)');
+rl();
+</script>
+</body>
+</html>

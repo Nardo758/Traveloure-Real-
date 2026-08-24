@@ -1,0 +1,98 @@
+# Execution Protocol — closing the decision→execution gap
+
+**Status:** Dispatch for Claude Code. Small lane: create the ledger, retrofit brief headers, slim CLAUDE.md, wire the checklist. Phase 0 inventory (§7), HARD STOP, then execute. This document is itself durable content and follows its own rules.
+
+---
+
+## 0. The problem
+
+Decisions are made in a stream (working conversations, merging lanes); execution reads from snapshots (briefs, CLAUDE.md, audit maps). Snapshots decay the moment the stream moves, and with concurrent agents the stream moves daily. Three consecutive audits found materially stale specs (dispatch vs. optimizer read path; role map vs. landed L10 fixes; 4 of 6 console-sigma flags already dead). The cost is paid in Phase 0 re-verification, near-miss rebuilds of landed work, and rulings that exist only in conversation history. Root cause: documents mix **durable** content (decisions, invariants) with **volatile** content (current-state claims) and nothing forces the volatile parts to update when code changes. Every artifact guarded by CI (mint-path tripwire, fee-literal grep, matrix lint) has never gone stale; everything enforced by prose has. The fix converts prose to mechanism wherever possible and bounds the rest to one merge cycle.
+
+## 1. The durable/volatile rule (binding on all briefs from adoption)
+
+- **Durable content** — decisions, contracts, invariants, prohibitions, scope boundaries. True until explicitly amended. Lives in briefs, the contract docs, and the ledger.
+- **Volatile content** — any claim about the current state of code, schema, data, or defects ("X is cart-based", "flag #2 exists", "N paths leave this NULL"). True only at a SHA.
+- Rules:
+  1. Every brief header carries `audited@<main-sha>` (and `spec@<sha>` when auditing another doc).
+  2. Volatile claims inside briefs are tagged `as-of <sha>` where load-bearing, and agents treat ALL volatile claims as hypotheses: **every Phase 0 opens by diffing the brief's state claims against current main** and recording deltas as findings before anything else. (This formalizes what agents have been doing instinctively.)
+  3. Briefs cite ledger rulings by number instead of restating them — restatement is where paraphrase drift enters. A brief may quote a ruling verbatim with its number; it may not paraphrase one.
+  4. Code is ground truth over every document; ledger is ground truth over every brief; a ledger-vs-code disagreement is a finding, never a silent divergence.
+
+## 2. The decision ledger — `docs/DECISIONS.md`
+
+Append-only. One line per ruling: number, date, decision, amends-pointer if any, context link (brief/PR/conversation-derived doc). Amendments are new entries pointing back (as ruling 18 amended ruling 12) — never edits. When a spec and the ledger disagree, ledger wins.
+
+**Seed content (rulings 1–19 as previously numbered in `SLIP_EXPERIENCE_DISPATCH.md` and the Lane 6/S rulings; 20–26 assigned now to previously un-numbered calls):**
+
+1. PR #348 merged (trip_contexts re-key), honest backfill.
+2. Lane 3 = Option B: date-derived admin phase; trips.status deprecated-in-place, future owner = Phase 4 brief.
+3. Optimizer read scope: optimizable = in_planning + ready_for_checkout; purchased = read-only constraints; with_expert excluded.
+4. Drop policy (a): variants may not drop ready_for_checkout items; policy (b) documented future refinement.
+5. Guest cart-fallback until G2; gates strictly on guest-ness; retirement is a G2 exit criterion.
+6. Slip identity + transition log approved as Lane S (post reconcile Phase 1b).
+7. Optimizer contract-row amendment ships with Lane 6 code.
+8. Four-tab mockup ratified as the Spec A/B/C build reference.
+9. Already-built inventory binding; agents build only remaining scope; Lane 6 = residue (rejection check, transactional apply, variant discard).
+10. Tracking number: reuse trips.trackingNumber; derivation retired; close NULL mint paths; tripwire.
+11. Diary: new append-only item_transition_log; itinerary_changes keeps display semantics; variant_applied single-writer moves; feed derivation = named follow-up.
+12. Same-transaction log writes for all status transitions incl. money-path; cosmetic events best-effort. (Amended by 18.)
+13. Role-hygiene lane first; mint-path tripwire now, getTripRole architectural fix = named follow-up; jsonb class-B remediation precedes any workspace consumption.
+14. Apply discards unshared losing variants only; selected variant + metrics retained (sanctioned copy, equals slip by construction); losing-variant-share "outdated proposal" treatment = named follow-up.
+15. In-checkout rejection check uses the two-key predicate (providerServiceId ∥ title), FAIL-CLOSED (unmatched ⇒ reject); originalItemId column = follow-up only if false rejections occur.
+16. Trip-scoped events log as trip-level rows (itemId NULL); grain follows the event.
+17. Tracking numbers minted on ALL 5 mint paths incl. NULL-owner authoring builds; no exemptions; tripwire covers.
+18. Amends 12: flip+log atomic pair inside helper-internal transaction; outer money-path swallow retained; swallowed failure MUST alarm (ops-visible error w/ ids) + Lane S ships the bookings-vs-purchased reconciliation health-check.
+19. varchar(20) tracking headroom = named follow-up (own verified ALTER, not opportunistic); migration numbering re-verified at merge (chain-integrity test is arbiter); traveler delete-optimize-row loss accepted per 11's follow-up.
+20. Ground-truthed fixed flags become expected-PASS regression assertions citing fixing commit.
+21. Expected-fail ABSENCE rows carry an expiry tag (deferred:<lane>) and MUST flip to expected-PASS in the wave their lane merges.
+22. Console reorder heuristic = second-query-engine class; assert divergence now; remediation (reorder consumes the optimizer's constraint service) = named follow-up, not harness scope.
+23. Kyoto expert fixture seeded in Phase 2 via full approval lifecycle; tests never bypass the Kyoto submit gate; fixture-bench gaps feed the journey suite's role/fixture inventory.
+24. Harness v1 = workspace machine only; per-item routing layer enters as deferred:phase-4 cells.
+25. Client-computed next-status = client-trusted-input class; server owns transition derivation; expected-fail now, inversion = small named follow-up. Expert-favorable 0.75 fallback moves into fee_bands as a default row (safety net lives in the single source of truth); files to the standing fee-literal follow-up.
+26. This protocol adopted: durable/volatile rule, ledger authority, guard classification (§3), merge write-back (§4), thin CLAUDE.md (§5).
+
+## 3. Ruling classification — every new ruling gets one tag at creation
+
+- **`[guarded]`** — enforceable by a cheap machine check (grep gate, tripwire script, lint, CI assertion). The guard ships **in the same lane** as the ruling's implementation; the ledger line names the guard.
+- **`[advisory]`** — judgment/process rulings; ledger only.
+Existing guarded set (name-checked so agents don't re-invent): fee-literal grep · apply-never-writes-routing_status grep · mint-path owner tripwire · trackingNumber tripwire (17) · matrix lint w/ expiring deferred tags · chain-integrity test. Convert-candidates for this lane's follow-up list: single-writer-per-event-type (11), log append-only route inventory (N12), no-second-scheduling-heuristic (22 remediation), env allowlist. The `deferred:` expiry mechanism is the standard staleness-forcing device — spread it to expected-fail assertions (21) and, where practical, to `as-of` brief claims.
+
+## 4. Merge write-back checklist (append to every lane's merge gate)
+
+On every merge to main, the lane's PR must include:
+1. CLAUDE.md delta for any state its merge changed (or explicit "no delta").
+2. Expiry of any `deferred:`/expected-fail tags this merge satisfies.
+3. One-line `superseded@<sha>` annotation appended to any brief section whose volatile claims this merge invalidated (annotation, not rewrite — the original stays legible).
+4. Ledger append if the lane executed or amended a ruling (implementation reference added to the ruling's line).
+Cost: ~30 seconds per merge. It replaces read-repair (audits discovering drift) with write-through.
+
+## 5. CLAUDE.md slimming spec
+
+CLAUDE.md becomes an index, not a narrative: invariants + pointers (ledger, contract docs, lane board, guard list) + the thin operational notes agents genuinely need at boot. It contains NO restated rulings, NO defect status ("fix in flight" class is banned — defect state lives in findings docs with `as-of` SHAs), NO duplicated spec content. Target: agents read it in one screen and know where truth lives.
+
+## 6. Honest bound
+
+This protocol does not eliminate drift; it bounds it to ≤ one merge cycle and makes it self-announcing (expired tags, failed guards, Phase-0 diff findings) instead of audit-discovered. Concurrency cap (two lanes) remains a load-bearing part of the bound — staleness velocity scales with parallel lanes.
+
+## 7. Phase 0 (read-only, HARD STOP)
+
+1. Inventory all live briefs/specs in docs/: current header state, which contain volatile claims, which restate rulings (candidates for cite-by-number replacement).
+2. Reconstruct `audited@sha` for each live brief from git history where determinable; where not, mark `audited@unknown` (honest) for refresh at next touch.
+3. Inventory existing guards (script + CI job list, file:line) vs. §3's name-check; list gaps.
+4. Current CLAUDE.md content classified: keep-as-index / move-to-ledger / move-to-findings / delete-as-stale.
+5. Return findings for approval before touching any file.
+
+**Phase 1 scope (after approval):** create DECISIONS.md seeded per §2 · retrofit headers · slim CLAUDE.md per the approved classification · add §4 checklist to the PR template · matrix-lint-style ledger lint (every `[guarded]` ruling's named guard exists in CI).
+
+## 8. What NOT to do
+
+- Do NOT rewrite historical briefs to "fix" stale claims — annotate with `superseded@sha`; history stays legible.
+- Do NOT edit or delete ledger entries — amendments are new entries.
+- Do NOT paraphrase rulings into briefs — cite numbers, quote verbatim if needed.
+- Do NOT build heavyweight tooling (no databases, no dashboards) — the protocol is markdown + tiny lint scripts, same weight class as the mint tripwire.
+- Do NOT let this lane absorb any guard-conversion follow-up beyond the ledger lint itself — convert-candidates are named follow-ups.
+- Do NOT treat a green protocol as eliminating Phase 0 diffs — the opening diff ritual is permanent.
+
+---
+
+*One sentence: decisions live in an append-only numbered ledger that outranks every brief, state claims carry SHAs and are re-verified at every Phase 0, every enforceable ruling ships with its guard, and every merge writes its own deltas back — bounding drift to one merge cycle and making it announce itself.*

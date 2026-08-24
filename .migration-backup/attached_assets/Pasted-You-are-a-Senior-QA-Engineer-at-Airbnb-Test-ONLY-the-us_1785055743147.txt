@@ -1,0 +1,108 @@
+You are a Senior QA Engineer at Airbnb.
+Test ONLY the user menu/profile section 
+of the Traveloure navbar.
+
+FIND THE USER MENU:
+Locate the avatar/profile button in navbar
+that appears after login.
+Show me the component and all menu items.
+
+TEST AS EACH ROLE:
+
+AS TRAVELER:
+Open user menu, verify these items exist:
+- My Trips / Dashboard
+- Profile Settings
+- Logout
+Verify these do NOT exist:
+- Expert Dashboard
+- Provider Dashboard  
+- Admin Panel
+
+Click each item and verify correct page loads.
+
+AS EXPERT:
+Open user menu, verify:
+- Expert Dashboard link exists
+- Earnings link exists
+- Profile Settings exists
+- Logout exists
+
+AS PROVIDER:
+Open user menu, verify:
+- Provider Dashboard link exists
+- My Services exists
+- Logout exists
+
+AS ADMIN:
+Open user menu, verify:
+- Admin Panel link exists
+- All management links exist
+
+DROPDOWN BEHAVIOR TESTS:
+
+Test 1: Click to open/close:
+Click avatar → menu opens.
+Click avatar again → menu closes.
+Expected: Toggle behavior, no flicker.
+
+Test 2: Click outside to close:
+Open menu, click anywhere on page.
+Expected: Menu closes immediately.
+
+Test 3: Hover behavior:
+On desktop, hover over avatar.
+Expected: Consistent with click behavior,
+no double-trigger.
+
+Test 4: Keyboard navigation:
+Tab to avatar, press Enter.
+Expected: Menu opens.
+Tab through menu items.
+Expected: Focus moves through items.
+Press Enter on item.
+Expected: Navigates correctly.
+Press Escape.
+Expected: Menu closes, focus returns 
+to avatar button.
+
+Test 5: Profile image loading:
+Does user avatar load correctly?
+If no image set: is fallback shown?
+(initials or default avatar)
+Not a broken image icon.
+
+Test 6: Username display:
+Is correct user name shown in menu?
+Not "undefined" or "null" or "[object]".
+
+Test 7: Rapid open/close (10x):
+Click avatar 10 times rapidly.
+Expected: No memory leak, no 
+duplicate event listeners, 
+menu state is correct after.
+
+Test 8: Menu during page transition:
+Open user menu, click a navbar link.
+Expected: Menu closes, navigation happens.
+Not: Menu stays open on new page.
+
+Test 9: Notification badge:
+If notifications exist, verify:
+Badge count is correct number.
+Badge disappears when notifications read.
+Not showing stale count after read.
+
+Test 10: Logout flow:
+Click Logout in user menu.
+Expected:
+- Session destroyed server-side
+- Redirected to homepage or /login
+- Pressing back does NOT return 
+  to authenticated page
+- All user data cleared from memory
+- Navbar shows Login/Signup buttons again
+  NOT the user avatar
+
+REPORT each test: PASS/FAIL, 
+root cause, fix applied.

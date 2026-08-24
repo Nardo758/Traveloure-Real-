@@ -1,0 +1,150 @@
+# BRIEF — Expert Console Sigma Test Lane · Phase 0 (Audit) + Phase 1 (Opportunity Checklist)
+
+**Lane:** `console-sigma-test`
+**Branch:** `lane/console-sigma-test` (one lane, one branch, one agent; no direct-to-main commits)
+**Executor:** Claude Code
+**Phases in this brief:** Phase 0 (read-only audit) → HARD STOP → Phase 1 (checklist authoring, document-only)
+**Phases NOT in this brief:** Phase 2 (MSA / planted defects), Phase 3 (Playwright harness), Phase 4 (baseline measurement run), Phase 5 (merge-gate control). Each gets its own brief after the prior phase's evidence is accepted.
+
+---
+
+## DECISIONS — LOCKED. DO NOT RELITIGATE.
+
+1. **As-is baseline.** The test measures the console as it exists today. Known-missing engine wires (Workflow Spec §4) are *expected failures* that establish the baseline — they are opportunities that fail, not exclusions, and not build items for this lane.
+2. **Unit of work:** one assignment run end-to-end: routed lead → admin confirm → `trip_expert_advisors` row → workspace open → build actions → `draft → in_review → delivered`.
+3. **Defect categories (fixed taxonomy):**
+   - `ABSENCE` — absence-compared-to-absence (null===null auth, unset env, unmounted router, missing escape/guard)
+   - `DEAD_PATH` — dead or no-op code paths (e.g., empty-body `saveMutation`)
+   - `STATE_DIVERGENCE` — UI state ≠ backend state machine (e.g., 5-stage UI vs 3-stage server)
+   - `ENGINE_UNWIRED` — built engine capability not invoked by the surface
+   - `MONEY_INTEGRITY` — hardcoded rates, missing idempotency, TOCTOU, non-atomic money-path transitions, fee literals outside `fee_bands`
+   - `AUTH_SCOPE` — access beyond assignment scope (incl. `getTripRole` platform-role bypass class)
+4. **Severity weights:** `MONEY_INTEGRITY` and `AUTH_SCOPE` defects rank above all others in the fix backlog regardless of frequency.
+5. **Pass standard:** behavioral proof only. "Compile-green," "renders correctly," and grep hits are explicitly NOT pass conditions. Every gate claim requires `file:line` evidence at the audited commit.
+6. **Sigma framing:** DPMO is computed for structure and trend, not as a launch metric. The actionable output is the defect Pareto by category.
+7. **Kyoto constraint** applies wherever submit gates are in scope.
+
+---
+
+## PROBLEM STATEMENT
+
+The Expert Console (workspace at `/expert/workspace/:tripId` plus its surrounding surfaces) has a specified workflow (forward-only `workspaceStatus` machine), a set of feature endpoints, and a set of engine capabilities it is supposed to consume. Spec documents (EXPERT_WORKSPACE_SPEC, EXPERT_WORKFLOW_SPEC) identify six flagged defects and a full engine-disconnect table, all pinned to commit `68d588e` (2026-06-02). There is currently **no instrument** that (a) enumerates what "correct" means as testable assertions, (b) proves the instrument itself can detect defects, or (c) produces a ranked, category-coded defect list to drive improvement.
+
+This lane builds that instrument. This brief covers only: verifying current ground truth (Phase 0) and authoring the assertion checklist (Phase 1).
+
+**Code is ground truth over spec when they diverge — always.** Where the audit finds the spec stale, the checklist is written against code, and the divergence is logged.
+
+---
+
+## PHASE 0 — READ-ONLY AUDIT
+
+**Mode: strictly read-only. No writes to DB. No code changes. No test executions that mutate state. No commits other than the audit report file.**
+
+### 0.1 Re-pin ground truth
+- Record the current `main` commit SHA. All `file:line` refs in this lane are against this SHA.
+- `server/routes.ts` is ~18.5k lines; spec line numbers from `68d588e` are presumed stale. Re-locate and record current `file:line` for every endpoint in the workspace endpoint table (EXPERT_WORKSPACE_SPEC §7) and the status-transition handler.
+
+### 0.2 Status machine verification (read code, not spec)
+- Confirm `validTransitions` map contents and enforcement location.
+- Confirm client-side `next`-computation location (`advanceStatusMutation`) and whether the server or client is authoritative.
+- Confirm current state of the 5-stage UI list vs 3-state server machine (flag #6) — still present? Record `file:line`.
+- Confirm whether any transition writes to `item_transition_log` or any log at all, same-transaction or otherwise. Record what logging exists on `workspaceStatus` changes today (expected: none — record the absence explicitly).
+
+### 0.3 Assignment bridge verification
+- Confirm current state of the `expert_requests` → `trip_expert_advisors` bridge (flag #1). Is the admin-confirm step built, partially built, or absent? Record `file:line` for whatever exists.
+- If absent: the unit-of-work journey for the harness must begin at a manually seeded `trip_expert_advisors` row. Record this as the baseline entry condition.
+
+### 0.4 Feature-endpoint inventory
+For each endpoint the workspace touches (assignment lookup, itinerary read/add, commission, expert-notes read/patch, traveler-profile, provider services, geocode, experience search, status patch):
+- Current `file:line`, auth guard present/absent, assignment-scoping check present/absent.
+- Commission fallback: locate the default rate literal. Record whether it is `0.30`, `0.75`, or `fee_bands`-sourced. Record every fee/commission literal found in console-touched code paths (candidate `MONEY_INTEGRITY` opportunities).
+- Confirm current state of dead `saveMutation` (flag #2) — record `file:line` or record removal.
+
+### 0.5 Engine connectivity matrix (as-is)
+For each row of Workflow Spec §4 (optimizer variants/scores, `applyAnchorConstraints`, anchor impact detection, day-boundary enforcement, energy calc, template presets):
+- Record whether ANY console code path invokes it today. Evidence = call site `file:line` or explicit "no call site found after search of X, Y, Z" with the search scope named. Grep alone is insufficient for a positive claim; for a negative claim, name what was searched.
+- Record the current implementation of the "AI Gaps" tab (flag #4) — is it still the single client-side dinner heuristic?
+
+### 0.6 Auth-scope probes — STATIC ONLY
+- Trace `getTripRole` (or successor) for the platform-role bypass class. Record the exact conditional and `file:line`.
+- Trace non-assigned-expert rejection on each workspace endpoint. Record guard `file:line` per endpoint or record its absence.
+- **Do NOT execute any request that would confirm a write vulnerability with a successful write.** Static trace only in Phase 0. Live negative-probe tests belong to Phase 3 and will be designed to assert rejection, never to perform the forbidden write.
+
+### 0.7 Test-fixture readiness
+- Confirm test accounts exist for: ≥1 Kyoto expert, ≥1 non-Kyoto expert, ≥1 admin, ≥1 traveler, ≥1 platform-role user usable for the `AUTH_SCOPE` probe class (from the 45-account matrix).
+- Confirm ≥1 seedable trip per template family needed for the journey (minimum: travel template; record which others are cheaply available).
+- Record row counts for `trip_expert_advisors`, `expert_requests` on the DEV database only. **Do not touch the Neon production DB in this lane, read or write.**
+
+### 0.8 Phase 0 deliverable
+- `docs/testing/CONSOLE_SIGMA_AUDIT.md` — every finding above with `file:line` @ recorded SHA, spec-vs-code divergences listed, and a "baseline entry conditions" section stating exactly where the harness journey can start today.
+
+### ⛔ HARD STOP
+Phase 0 report is committed and reviewed by Leon before Phase 1 begins. Any surprising finding (e.g., bridge partially built, commission literal moved, flags already fixed) is surfaced as a question, not silently absorbed into the checklist.
+
+---
+
+## PHASE 1 — OPPORTUNITY CHECKLIST (DOCUMENT ONLY)
+
+**Mode: authoring one spec document. No harness code. No test code. No fixtures. No fixes.**
+
+### 1.1 Deliverable
+`docs/testing/CONSOLE_SIGMA_CHECKLIST.md` — the complete, numbered assertion inventory. Every assertion has:
+- **ID** (stable, e.g., `WF-03`, `FL-12`, `CX-05`)
+- **Layer:** `WF` (workflow) / `FL` (feature logic) / `CX` (connectivity)
+- **Assertion** — one testable behavioral statement with expected observable outcome
+- **Defect category** (from the locked taxonomy) it detects when failing
+- **Severity** (`critical` = MONEY_INTEGRITY / AUTH_SCOPE; `major`; `minor`)
+- **Evidence standard** — what Phase 3 must capture to prove pass/fail (response body field, DB row state, log row, rendered element)
+- **Expected baseline result** — `pass` / `fail (known: ENGINE_UNWIRED)` / `unknown`. Known-fail rows stay in the count; that is the as-is baseline decision.
+
+### 1.2 Required coverage (minimums, not the ceiling)
+- **WF:** every legal transition succeeds exactly once per run; every illegal transition (including backward, skip, and repeat-terminal) is rejected with the allowed-set error; UI stage display equals backend state at each step; terminal state is truly terminal.
+- **FL:** one or more assertions per endpoint in the §7 table, asserting *outcome* not status code (e.g., add-item → item present in itinerary read AND commission query invalidated/refreshed; commission → resolves configured rate else 0.75, and specifically never 0.30; notes PATCH → round-trips on subsequent GET; identity masking default-on, toggle reveals; non-assigned expert → 403/404 on every endpoint; Kyoto submit gate where in scope).
+- **CX:** one binary assertion per engine wire from the Phase 0 matrix (invoked-and-rendered = pass), plus the "AI Gaps honesty" assertion (tab content matches what is actually computed).
+- **Cross-cutting:** every `workspaceStatus` transition on a money-adjacent path asserts an append-only log row in the same transaction *once such logging exists* — at baseline this is an expected-fail `ABSENCE` opportunity, counted, not omitted.
+
+### 1.3 Sizing sanity check
+Target 40–60 opportunities per run. If the count lands materially outside that range, stop and flag before finalizing — too few means coverage gaps; too many usually means assertions are compound and need splitting (one observable outcome per assertion).
+
+### ⛔ HARD STOP
+Checklist reviewed and locked by Leon. The locked checklist is the sole requirements source for the Phase 2 (MSA) and Phase 3 (harness) briefs. Phase 2 does not begin under this brief.
+
+---
+
+## WHAT NOT TO DO
+
+- Do NOT fix anything found in Phase 0 — not the dead mutation, not the 0.30 literal, not the stage counter. Findings go in the audit report and FOLLOWUPS.md only.
+- Do NOT write any harness, Playwright, or fixture code in this brief's scope.
+- Do NOT confirm any write vulnerability with a successful write, ever. Static trace in Phase 0; rejection-asserting probes only in Phase 3.
+- Do NOT touch the Neon production database, read or write. DEV ("helium") only, reads only.
+- Do NOT treat spec line numbers as current — re-verify everything against the recorded SHA.
+- Do NOT exclude known-failing engine wires from the opportunity count (as-is baseline is locked).
+- Do NOT expand into console consolidation, Content Studio merge, smart-landing, or Provider Engine scope. Adjacent findings → FOLLOWUPS.md.
+- Do NOT count any assertion as passable via grep evidence alone.
+
+---
+
+## OPEN DECISIONS — REQUIRE LEON'S CALL BEFORE THE NAMED PHASE PROCEEDS
+
+1. **(Blocks Phase 1 finalization)** Does the WF layer test only the workspace `workspaceStatus` machine, or also the per-item routing statuses (`in_planning → with_expert → ready_for_checkout → purchased`) where they surface in the console? Recommendation: include per-item statuses that are readable from console surfaces; defer cart/checkout-side transitions to a Trip Slip lane test.
+2. **(Blocks Phase 2 brief)** Planted-defect set for MSA — proposed minimum: the dead `saveMutation` (if still present, it's a free plant), one temporarily reintroduced hardcoded rate on a branch-only commit, one deliberately unmounted route. Confirm or amend.
+3. **(Blocks Phase 4 brief)** Run matrix size for the baseline: proposal is 1 run × each of 5 markets' expert accounts on DEV, Kyoto counted as the canonical run. Confirm.
+
+---
+
+## FOLLOWUPS.md — ENTRIES TO CREATE (do not action)
+
+- Any Phase 0 finding that is a fixable defect (dead mutation, stage counter, commission literal, missing transition logging) → one named follow-up each, category-tagged.
+- Workspace ↔ PlanCard renderer divergence — test implication: two renderers means WF UI-state assertions may need dual coverage later; note, defer.
+- Harness-as-merge-gate CI wiring → Phase 5 brief.
+- Baseline Pareto → per-lane fix briefs → Phase 4 output routing.
+
+---
+
+## GATES SUMMARY
+
+| Gate | Evidence required |
+|---|---|
+| Phase 0 complete | `CONSOLE_SIGMA_AUDIT.md` committed; every claim has `file:line` @ recorded SHA or a named-scope negative search; no writes performed |
+| Phase 1 complete | `CONSOLE_SIGMA_CHECKLIST.md` committed; every assertion has ID, layer, category, severity, evidence standard, expected baseline result; opportunity count in or explicitly flagged outside 40–60; Open Decision #1 resolved and reflected |
+| Lane exit (this brief) | Both documents merged to the lane branch; no other files changed; FOLLOWUPS.md entries created |

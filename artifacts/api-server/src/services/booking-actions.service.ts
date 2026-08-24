@@ -1,0 +1,843 @@
+/**
+ * booking-actions.service.ts
+ * DB-touching helpers extracted from booking-actions.routes.ts.
+ * Routes → this service → db. No raw db calls in route handlers.
+ */
+
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+import crypto from "crypto";
+import { isTripAdvisor } from "../utils/trip-advisor";
+import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
+
+// ─── Expert Requests ──────────────────────────────────────────────────────────
+
+/**
+ * Mark an expert request as completed. If the request's optimization_context
+ * flags it as Partnerize-assisted (partnerizeAssisted: true), also increments
+ * total_bookings_assisted on the assigned expert's local_expert_forms row —
+ * the metric used to surface booking-assist volume in expert/admin dashboards.
+ *
+ * Returns null if the request doesn't exist, isn't assigned to expertUserId,
+ * or is already completed (idempotent no-op on repeat calls).
+ */
+export async function completeExpertRequest(
+  requestId: string,
+  expertUserId: string,
+): Promise<{ id: string; partnerizeAssisted: boolean } | null> {
+  const existing = await db.execute(sql`
+    SELECT id, status, assigned_expert_id, optimization_context
+    FROM expert_requests
+    WHERE id = ${requestId} AND assigned_expert_id = ${expertUserId}
+    LIMIT 1
+  `);
+  const row = existing.rows?.[0] as any;
+  if (!row) return null;
+  if (row.status === 'completed') return { id: row.id, partnerizeAssisted: false };
+
+  const optimizationContext = row.optimization_context || {};
+  const partnerizeAssisted = optimizationContext?.partnerizeAssisted === true;
+
+  // §15: completion is now a money event (it credits the R6 expert split below), so the status
+  // flip is an atomic claim — a concurrent/duplicate complete matches 0 rows and credits nothing.
+  const claimed = await db.execute(sql`
+    UPDATE expert_requests
+    SET status = 'completed', completed_at = NOW()
+    WHERE id = ${requestId} AND status <> 'completed'
+    RETURNING id
+  `);
+  if (!claimed.rows?.length) return { id: row.id, partnerizeAssisted: false };
+
+  if (partnerizeAssisted) {
+    await db.execute(sql`
+      UPDATE local_expert_forms
+      SET total_bookings_assisted = COALESCE(total_bookings_assisted, 0) + 1
+      WHERE user_id = ${expertUserId}
+    `);
+  }
+
+  // R6 (ratified Jul 26, 2026): credit the reviewing expert their share of the PAID fee. Only
+  // requests that carry a verified PaymentIntent (stamped at create) qualify — the amount comes
+  // from the capture-time platform_revenue LEDGER row, never from the client-writable expert_fee.
+  // Best-effort: a credit failure must not un-complete the request (retryable via ledger state).
+  const paymentIntentId = optimizationContext?.paymentIntentId;
+  if (typeof paymentIntentId === "string" && paymentIntentId) {
+    try {
+      await creditExpertReviewSplit(requestId, expertUserId, paymentIntentId);
+    } catch (err) {
+      console.error("[expert-requests] R6 completion split credit failed (non-fatal):", err);
+    }
+  }
+
+  return { id: row.id, partnerizeAssisted };
+}
+
+/**
+ * R6 — split a paid expert-review fee at completion. The capture-time platform_revenue row
+ * (recorded 100%-platform, sourceId = the verified PaymentIntent) is atomically re-split:
+ * expert gets the `expert_review_expert_share` band rate (default 0.75, admin-editable), the
+ * platform keeps the remainder. The conditional UPDATE (expert_id IS NULL) is BOTH the
+ * idempotency guard and the concurrency claim (§15): only the first completion re-splits and
+ * credits; a duplicate matches 0 rows and does nothing. The expert earning is born `held` on
+ * the escrow spine (migration 112) and clears via the release scheduler.
+ */
+async function creditExpertReviewSplit(
+  requestId: string,
+  expertUserId: string,
+  paymentIntentId: string,
+): Promise<void> {
+  const expertShareRate = await bandRateOr(0.75, "expert_review_expert_share", "percent"); // fee-literal-ok: fallback default
+  if (!(expertShareRate > 0)) return; // admin set the split to 0 → fee stays 100% platform
+
+  const claim = await db.execute(sql`
+    UPDATE platform_revenue
+    SET expert_id = ${expertUserId},
+        expert_earnings = ROUND(gross_amount * ${expertShareRate}::numeric, 2),
+        platform_fee = ROUND(gross_amount * (1 - ${expertShareRate}::numeric), 2),
+        net_amount = ROUND(gross_amount * (1 - ${expertShareRate}::numeric), 2) - COALESCE(processing_fees, 0)
+    WHERE source_id = ${paymentIntentId}
+      AND source_type = 'expert_review_fee'
+      AND expert_id IS NULL
+    RETURNING gross_amount
+  `);
+  const rev = claim.rows?.[0] as any;
+  if (!rev) return; // no paid ledger row (free-lead request) or already credited
+
+  const gross = Number(rev.gross_amount) || 0;
+  const share = Math.round(gross * expertShareRate * 100) / 100;
+  if (!(share > 0)) return;
+
+  const { storage } = await import("../storage");
+  const { availableAtFor } = await import("../config/earnings-hold.config");
+  await storage.createExpertEarning({
+    expertId: expertUserId,
+    type: "expert_review_fee",
+    amount: String(share),
+    referenceId: paymentIntentId,
+    referenceType: "expert_review_fee",
+    description: `Expert review completion split (request ${requestId})`,
+    status: "held", // escrow: born held (migration 112)
+    availableAt: availableAtFor("expert_review_fee"),
+  } as any);
+}
+
+/**
+ * R7 (GAP 2 fix, expert-loop object-flow audit, Jul 30 2026): find PAID, not-yet-completed
+ * `expert_requests` rows bridging to this (trip, expert) pair — the same bridge the lead-routing
+ * fire-and-forget path uses (`assignExpertAdvisorToRequest` stamps `assigned_expert_id`;
+ * `ensureTripAdvisorRow` creates the matching `trip_expert_advisors` row, both keyed on tripId).
+ * "PAID" = a verified PaymentIntent was stamped onto `optimization_context.paymentIntentId` at
+ * create (see `POST /api/expert-requests`); unpaid/free-lead requests never match, so nothing is
+ * auto-completed for them (per §14, the credit itself only ever reads the stored PI-derived
+ * ledger row — see `creditExpertReviewSplit`).
+ */
+export async function getPaidUncompletedExpertRequestIds(
+  tripId: string,
+  expertUserId: string,
+): Promise<string[]> {
+  const result = await db.execute(sql`
+    SELECT id FROM expert_requests
+    WHERE trip_id = ${tripId}
+      AND assigned_expert_id = ${expertUserId}
+      AND status <> 'completed'
+      AND optimization_context ->> 'paymentIntentId' IS NOT NULL
+  `);
+  return (result.rows || []).map((r: any) => String(r.id));
+}
+
+export async function getExpertRequestsByUser(
+  userId: string,
+  tripId?: string,
+): Promise<any[]> {
+  const base = `
+    SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
+           request_type, expert_fee, status, assigned_expert_id, queue_position,
+           notes, optimization_context, created_at, assigned_at, completed_at
+    FROM expert_requests
+    WHERE user_id = $1
+  `;
+  if (tripId) {
+    const result = await db.execute(
+      sql`SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
+             request_type, expert_fee, status, assigned_expert_id, queue_position,
+             notes, optimization_context, created_at, assigned_at, completed_at
+          FROM expert_requests
+          WHERE user_id = ${userId} AND trip_id = ${tripId}
+          ORDER BY created_at DESC`,
+    );
+    return result.rows || [];
+  }
+  const result = await db.execute(
+    sql`SELECT id, user_id, trip_id, variant_id, comparison_id, destination_city,
+           request_type, expert_fee, status, assigned_expert_id, queue_position,
+           notes, optimization_context, created_at, assigned_at, completed_at
+        FROM expert_requests
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC`,
+  );
+  return result.rows || [];
+}
+
+// ─── Saved Trips ──────────────────────────────────────────────────────────────
+
+export async function getVariantCost(variantId: string): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT total_cost FROM itinerary_variants WHERE id = ${variantId}
+  `);
+  return Number(result.rows?.[0]?.total_cost) || 0;
+}
+
+// Owner + cost for a variant, in one query — used by the expert-service PaymentIntent path to
+// (a) enforce ownership (IDOR) and (b) derive the charge amount server-side. The variant's
+// totalCost is the server-side source of truth; the client must never send its own amount.
+export async function getVariantOwnerAndCost(
+  variantId: string,
+): Promise<{ ownerUserId: string; totalCost: number } | null> {
+  const result = await db.execute(sql`
+    SELECT c.user_id AS owner_user_id, v.total_cost
+    FROM itinerary_variants v
+    JOIN itinerary_comparisons c ON c.id = v.comparison_id
+    WHERE v.id = ${variantId}
+    LIMIT 1
+  `);
+  const row = result.rows?.[0];
+  if (!row) return null;
+  return { ownerUserId: String(row.owner_user_id), totalCost: Number(row.total_cost) || 0 };
+}
+
+// Expert-review service tiers — SERVER-SIDE source of truth for the charge amount. The client
+// previously computed these and sent `amount` in the body (a live amount-tampering hole: a caller
+// could POST amount:0.01). The price is a flat base + a percentage of the variant's stored
+// totalCost, resolved here and never from the request body.
+// Migration 137: the live rates are admin-editable fee_bands rows; these constants survive ONLY
+// as the safe-failure fallback when a band is absent/invalid (the coordination-floor posture, §8).
+const EXPERT_REVIEW_TIERS: Record<
+  string,
+  { base: number; pct: number; flatBand: string; pctBand: string | null }
+> = {
+  review:          { base: 50,  pct: 0,    flatBand: "expert_review_flat",      pctBand: null },                        // fee-literal-ok: fallback default
+  review_and_book: { base: 50,  pct: 0.05, flatBand: "expert_review_book_flat", pctBand: "expert_review_book_percent" }, // fee-literal-ok: fallback default
+  full_concierge:  { base: 100, pct: 0.08, flatBand: "full_concierge_flat",     pctBand: "full_concierge_percent" },     // fee-literal-ok: fallback default
+};
+
+async function bandRateOr(fallback: number, bandKey: string, expectType: "flat" | "percent"): Promise<number> {
+  const { getBand } = await import("./commission");
+  const band = await getBand(bandKey);
+  // Wrong rate_type or non-positive → the band is misconfigured; charge the documented default
+  // rather than a wrong amount (a fee's safe failure mode — same as the coordination floor).
+  if (!band || band.rateType !== expectType || !(band.rate > 0)) return fallback;
+  return band.rate;
+}
+
+export async function resolveExpertReviewAmount(serviceType: string, variantTotalCost: number): Promise<number | null> {
+  const tier = EXPERT_REVIEW_TIERS[serviceType];
+  if (!tier) return null;
+  const cost = Number.isFinite(variantTotalCost) && variantTotalCost > 0 ? variantTotalCost : 0;
+  const base = await bandRateOr(tier.base, tier.flatBand, "flat");
+  const pct = tier.pctBand ? await bandRateOr(tier.pct, tier.pctBand, "percent") : 0;
+  return Math.round((base + cost * pct) * 100) / 100;
+}
+
+export async function insertSavedTrip(values: {
+  userId: string;
+  variantId: string;
+  comparisonId: string;
+  notes?: string | null;
+  priceSnapshot: number;
+  expiresAt: Date;
+}): Promise<string> {
+  const result = await db.execute(sql`
+    INSERT INTO saved_trips (
+      id, user_id, variant_id, comparison_id, notes,
+      saved_at, expires_at, price_snapshot, status
+    ) VALUES (
+      ${crypto.randomUUID()}, ${values.userId}, ${values.variantId},
+      ${values.comparisonId}, ${values.notes ?? null},
+      NOW(), ${values.expiresAt.toISOString()}, ${values.priceSnapshot}, 'active'
+    ) RETURNING id
+  `);
+  return String(result.rows?.[0]?.id);
+}
+
+export async function getSavedTripsForUser(userId: string): Promise<any[]> {
+  const result = await db.execute(sql`
+    SELECT
+      st.id, st.variant_id, st.comparison_id, st.notes,
+      st.saved_at, st.expires_at, st.price_snapshot, st.status,
+      iv.name as variant_name, iv.total_cost as variant_cost,
+      ic.destination, ic.start_date, ic.end_date, ic.travelers, ic.trip_id
+    FROM saved_trips st
+    LEFT JOIN itinerary_variants iv ON iv.id = st.variant_id
+    LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
+    WHERE st.user_id = ${userId} AND st.status = 'active'
+    ORDER BY st.saved_at DESC
+  `);
+  return result.rows || [];
+}
+
+// ─── Shared Trips (variant-based) ─────────────────────────────────────────────
+
+export async function insertSharedTrip(values: {
+  variantId: string;
+  comparisonId: string;
+  sharedBy: string;
+  shareToken: string;
+  expiresAt: Date;
+}): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO shared_trips (
+      id, variant_id, comparison_id, shared_by,
+      share_token, expires_at, views, bookings, created_at
+    ) VALUES (
+      ${crypto.randomUUID()}, ${values.variantId}, ${values.comparisonId},
+      ${values.sharedBy}, ${values.shareToken}, ${values.expiresAt.toISOString()},
+      0, 0, NOW()
+    )
+  `);
+}
+
+export async function getSharedTripByVariantToken(token: string): Promise<any | null> {
+  const result = await db.execute(sql`
+    SELECT st.*, iv.*, ic.*
+    FROM shared_trips st
+    JOIN itinerary_variants iv ON st.variant_id = iv.id
+    JOIN itinerary_comparisons ic ON st.comparison_id = ic.id
+    WHERE st.share_token = ${token} AND st.expires_at > NOW()
+  `);
+  return result.rows?.[0] ?? null;
+}
+
+export async function incrementSharedTripViews(token: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE shared_trips SET views = views + 1 WHERE share_token = ${token}
+  `);
+}
+
+// ─── Trip-based sharing ───────────────────────────────────────────────────────
+
+export async function getTripOwnerCheck(tripId: string, userId: string): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT id FROM trips WHERE id = ${tripId} AND user_id = ${userId}
+  `);
+  return !!(result.rows && result.rows.length > 0);
+}
+
+export async function upsertTripShareToken(
+  tripId: string,
+  userId: string,
+  shareToken: string,
+  expiresAt: Date,
+): Promise<void> {
+  // Fix #969: `shared_trips.trip_id` has NO unique/exclusion constraint (verified against
+  // shared/schema.ts + server/migrations/000_baseline_schema.sql — only a PK on `id` and an
+  // FK on `trip_id`), so `ON CONFLICT (trip_id)` 500s on EVERY call with
+  // "there is no unique or exclusion constraint matching the ON CONFLICT specification"
+  // (proven locally: this was the actual root cause of the client's "Could not create share
+  // link" toast — the endpoint was reachable, not missing). Adding the missing unique
+  // constraint is out of scope here (no migrations in this change), so this uses the
+  // constraint-free idempotent-insert idiom instead: insert only if no row exists yet for
+  // this trip. Not perfectly race-proof under two concurrent first-share requests for the
+  // same trip (a narrow window could insert two rows), but `getCanonicalTripShareToken`
+  // always returns a single deterministic token via `LIMIT 1`, so the endpoint stays
+  // idempotent from the caller's perspective either way.
+  const id = crypto.randomUUID();
+  await db.execute(sql`
+    INSERT INTO shared_trips (id, trip_id, shared_by, share_token, expires_at, views, bookings, created_at)
+    SELECT ${id}, ${tripId}, ${userId}, ${shareToken}, ${expiresAt.toISOString()}, 0, 0, NOW()
+    WHERE NOT EXISTS (SELECT 1 FROM shared_trips WHERE trip_id = ${tripId})
+  `);
+}
+
+export async function getCanonicalTripShareToken(tripId: string): Promise<string | null> {
+  const result = await db.execute(sql`
+    SELECT share_token FROM shared_trips WHERE trip_id = ${tripId} LIMIT 1
+  `);
+  return String(result.rows?.[0]?.share_token ?? "") || null;
+}
+
+export async function getTripByShareToken(token: string): Promise<{ row: any; sharedTripId: string } | null> {
+  const result = await db.execute(sql`
+    SELECT
+      st.id as shared_trip_id,
+      t.id, t.title, t.destination, t.start_date, t.end_date,
+      t.number_of_travelers, t.status,
+      gi.itinerary_data
+    FROM shared_trips st
+    JOIN trips t ON t.id = st.trip_id
+    LEFT JOIN generated_itineraries gi ON gi.trip_id = t.id AND gi.status = 'generated'
+      AND gi.created_at = (
+        SELECT MAX(gi2.created_at) FROM generated_itineraries gi2
+        WHERE gi2.trip_id = t.id AND gi2.status = 'generated'
+      )
+    WHERE st.share_token = ${token}
+      AND (st.expires_at IS NULL OR st.expires_at > NOW())
+    LIMIT 1
+  `);
+  if (!result.rows || result.rows.length === 0) return null;
+  const row = result.rows[0] as any;
+
+  // Prefer live itinerary_items over the generated_itineraries snapshot so that any
+  // manual edit (add/remove/reorder) is immediately visible on the share page without
+  // requiring a regenerate.
+  // CC-3: start_time is a "h:mm AM/PM" string; a SQL text ORDER BY on it is a LEXICAL sort
+  // ("05:30 PM" sorts before "09:00 AM" because '0' < '9'), not a chronological one — so it is
+  // deliberately dropped from this ORDER BY. sort_order/created_at remain as the stable tiebreak
+  // for the JS-side chronological re-sort applied below (parseActivityTimeToMinutes).
+  const itemsResult = await db.execute(sql`
+    SELECT title, description, item_type, day_number, start_time, location_name, estimated_cost, routing_status
+    FROM itinerary_items
+    WHERE trip_id = ${String(row.id)}
+    ORDER BY day_number ASC, sort_order ASC, created_at ASC
+  `);
+  const items = (itemsResult.rows ?? []) as Array<{
+    title: string;
+    description: string | null;
+    item_type: string | null;
+    day_number: number;
+    start_time: string | null;
+    location_name: string | null;
+    estimated_cost: string | null;
+    routing_status: string | null;
+  }>;
+
+  if (items.length > 0) {
+    // Synthesize itinerary_data from live itinerary_items so the share page always
+    // reflects the current plan.
+    const dayMap = new Map<number, { day: number; title: string; activities: any[] }>();
+    for (const item of items) {
+      const dayNum = item.day_number;
+      if (!dayMap.has(dayNum)) {
+        dayMap.set(dayNum, { day: dayNum, title: `Day ${dayNum}`, activities: [] });
+      }
+      // CC-2b: a public viewer must never see a price on an item that hasn't actually been
+      // purchased (e.g. a cart-pending `ready_for_checkout` item) — showing a price there implies
+      // a booking/commitment that never happened. Only `purchased` items carry a price publicly;
+      // the activity itself still renders either way.
+      const isPurchased = item.routing_status === "purchased";
+      dayMap.get(dayNum)!.activities.push({
+        time: item.start_time ?? undefined,
+        title: item.title,
+        description: item.description ?? undefined,
+        type: item.item_type ?? "activity",
+        locationName: item.location_name ?? undefined,
+        estimatedCost: isPurchased && item.estimated_cost != null ? Number(item.estimated_cost) : undefined,
+      });
+    }
+    const days = Array.from(dayMap.values())
+      .sort((a, b) => a.day - b.day)
+      .map((d) => ({
+        ...d,
+        // CC-3: chronological re-sort (see parseActivityTimeToMinutes) — Array#sort is stable in
+        // Node/V8, so equal-time (including absent-time) activities keep the SQL-supplied
+        // (sort_order, created_at) order rather than being shuffled.
+        activities: [...d.activities].sort(
+          (a, b) => parseActivityTimeToMinutes(a.time) - parseActivityTimeToMinutes(b.time),
+        ),
+      }));
+    row.itinerary_data = { days };
+  }
+  // If no itinerary_items exist, row.itinerary_data already holds the
+  // generated_itineraries snapshot (or null) from the JOIN above.
+
+  return { row, sharedTripId: String(row.shared_trip_id) };
+}
+
+export async function insertSharedTripView(sharedTripId: string, viewerIp: string | null): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO shared_trip_views (id, shared_trip_id, viewer_ip, viewed_at)
+    VALUES (${crypto.randomUUID()}, ${sharedTripId}::uuid, ${viewerIp}, NOW())
+  `);
+}
+
+// ─── Trip Experts ─────────────────────────────────────────────────────────────
+
+export async function getApprovedExperts(destination?: string): Promise<any[]> {
+  if (destination && destination.trim()) {
+    const destPattern = `%${destination.trim().toLowerCase()}%`;
+    const result = await db.execute(sql`
+      SELECT
+        lef.id, lef.user_id, lef.first_name, lef.last_name,
+        lef.bio, lef.specialties, lef.destinations,
+        lef.hourly_rate, lef.years_of_experience,
+        lef.availability, lef.response_time,
+        u.profile_image_url,
+        COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
+        COUNT(rr.id) as review_count
+      FROM local_expert_forms lef
+      JOIN users u ON u.id = lef.user_id
+      LEFT JOIN review_ratings rr ON rr.local_expert_id = lef.user_id
+      WHERE lef.status = 'approved'
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(lef.destinations) d
+          WHERE lower(d) LIKE ${destPattern}
+        )
+      GROUP BY lef.id, lef.user_id, lef.first_name, lef.last_name, lef.bio,
+               lef.specialties, lef.destinations, lef.hourly_rate,
+               lef.years_of_experience, lef.availability, lef.response_time,
+               u.profile_image_url
+      ORDER BY avg_rating DESC, review_count DESC
+      LIMIT 20
+    `);
+    return result.rows || [];
+  }
+  const result = await db.execute(sql`
+    SELECT
+      lef.id, lef.user_id, lef.first_name, lef.last_name,
+      lef.bio, lef.specialties, lef.destinations,
+      lef.hourly_rate, lef.years_of_experience,
+      lef.availability, lef.response_time,
+      u.profile_image_url,
+      COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
+      COUNT(rr.id) as review_count
+    FROM local_expert_forms lef
+    JOIN users u ON u.id = lef.user_id
+    LEFT JOIN review_ratings rr ON rr.local_expert_id = lef.user_id
+    WHERE lef.status = 'approved'
+    GROUP BY lef.id, lef.user_id, lef.first_name, lef.last_name, lef.bio,
+             lef.specialties, lef.destinations, lef.hourly_rate,
+             lef.years_of_experience, lef.availability, lef.response_time,
+             u.profile_image_url
+    ORDER BY avg_rating DESC, review_count DESC
+    LIMIT 20
+  `);
+  return result.rows || [];
+}
+
+// ─── Trip Expert Advisor ──────────────────────────────────────────────────────
+
+export async function getTripExpertAdvisor(tripId: string): Promise<any | null> {
+  const result = await db.execute(sql`
+    SELECT
+      tea.id as advisor_id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
+      lef.id as expert_form_id, lef.first_name, lef.last_name,
+      lef.bio, lef.specialties, lef.destinations, lef.hourly_rate,
+      u.profile_image_url,
+      COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
+      COUNT(rr.id) as review_count
+    FROM trip_expert_advisors tea
+    JOIN local_expert_forms lef ON lef.user_id = tea.local_expert_id
+    JOIN users u ON u.id = tea.local_expert_id
+    LEFT JOIN review_ratings rr ON rr.local_expert_id = tea.local_expert_id
+    WHERE tea.trip_id = ${tripId} AND tea.status IN ('pending', 'accepted')
+    GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
+             lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
+             lef.destinations, lef.hourly_rate, u.profile_image_url
+    ORDER BY tea.assigned_at DESC
+    LIMIT 1
+  `);
+  return result.rows?.[0] ?? null;
+}
+
+export async function getExistingAdvisorRecord(tripId: string): Promise<{ id: string; status: string } | null> {
+  const result = await db.execute(sql`
+    SELECT id, status FROM trip_expert_advisors
+    WHERE trip_id = ${tripId} AND status IN ('pending', 'accepted')
+    LIMIT 1
+  `);
+  if (!result.rows || result.rows.length === 0) return null;
+  return result.rows[0] as { id: string; status: string };
+}
+
+export async function isExpertApproved(expertUserId: string): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT user_id FROM local_expert_forms
+    WHERE user_id = ${expertUserId} AND status = 'approved'
+  `);
+  return !!(result.rows && result.rows.length > 0);
+}
+
+export async function getTripDestination(tripId: string): Promise<string> {
+  const result = await db.execute(sql`SELECT destination FROM trips WHERE id = ${tripId}`);
+  return String((result.rows?.[0] as any)?.destination || "unknown");
+}
+
+export async function getExpertQueuePosition(destination: string): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT COALESCE(MAX(queue_position), 0) + 1 as next_position
+    FROM expert_requests
+    WHERE destination_city = ${destination.toLowerCase()} AND status IN ('queued', 'assigned')
+  `);
+  return Number((result.rows?.[0] as any)?.next_position) || 1;
+}
+
+/**
+ * Persist a successful lead-routing decision onto an existing expert_requests
+ * row (created by POST /api/expert-requests). Distinct from assignExpertAdvisor
+ * below, which inserts a brand-new row for the older advisor-assignment flow.
+ * Non-fatal on failure — caller is fire-and-forget.
+ */
+export async function assignExpertAdvisorToRequest(
+  requestId: string,
+  expertUserId: string,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET assigned_expert_id = ${expertUserId}, status = 'assigned', assigned_at = NOW()
+    WHERE id = ${requestId}
+  `);
+}
+
+/**
+ * F1 (workstation-flows audit, ratified 2026-07-26): materialize a routed lead in the expert's
+ * request inbox. The auto-routed path stamped only `expert_requests.assigned_expert_id` — but
+ * Assigned Trips reads `trip_expert_advisors`, and workspace auth requires the advisor row, so a
+ * PAID request never reached the workstation (the notification pointed at work the expert could
+ * not open). This creates the same `pending` advisor row the direct-pick path
+ * (`assignExpertAdvisor`) writes, idempotently: an existing pending/accepted advisor row for
+ * this (trip, expert) pair short-circuits, so re-routing or a direct pick + a routed lead never
+ * duplicates the assignment.
+ */
+export async function ensureTripAdvisorRow(
+  tripId: string,
+  expertUserId: string,
+  message?: string | null,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
+    SELECT ${crypto.randomUUID()}, ${tripId}, ${expertUserId}, 'pending', ${message ?? null}, NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM trip_expert_advisors
+      WHERE trip_id = ${tripId} AND local_expert_id = ${expertUserId}
+        AND status IN ('pending', 'accepted')
+    )
+  `);
+}
+
+export async function assignExpertAdvisor(values: {
+  userId: string;
+  tripId: string;
+  expertUserId: string;
+  destination: string;
+  queuePosition: number;
+  message?: string | null;
+}): Promise<{ expertRequestId: string; advisorId: string }> {
+  const expertRequestId = crypto.randomUUID();
+  const advisorId = crypto.randomUUID();
+
+  await db.execute(sql`BEGIN`);
+  try {
+    await db.execute(sql`
+      INSERT INTO expert_requests (
+        id, user_id, trip_id, destination_city, request_type,
+        status, queue_position, notes, assigned_expert_id, created_at
+      ) VALUES (
+        ${expertRequestId}, ${values.userId}, ${values.tripId},
+        ${values.destination.toLowerCase()}, 'review',
+        'queued', ${values.queuePosition}, ${values.message ?? null},
+        ${values.expertUserId}, NOW()
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
+      VALUES (${advisorId}, ${values.tripId}, ${values.expertUserId}, 'pending', ${values.message ?? null}, NOW())
+    `);
+    await db.execute(sql`COMMIT`);
+  } catch (err) {
+    await db.execute(sql`ROLLBACK`);
+    throw err;
+  }
+
+  return { expertRequestId, advisorId };
+}
+
+export async function createExpertAssignmentNotification(
+  expertUserId: string,
+  tripId: string,
+  tripLabel: string,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
+    VALUES (
+      ${crypto.randomUUID()}, ${expertUserId}, 'booking_request',
+      'New trip request',
+      ${`You've been invited to advise on ${tripLabel} — accept it in your Inbox to get started.`},
+      ${JSON.stringify({ tripId, workspacePath: `/expert/workspace/${tripId}` })}::jsonb,
+      false, NOW()
+    )
+  `);
+}
+
+export async function getTripLabel(tripId: string): Promise<string> {
+  const result = await db.execute(sql`
+    SELECT title, destination FROM trips WHERE id = ${tripId} LIMIT 1
+  `);
+  const row = (result.rows?.[0] as any) || {};
+  return row.title || row.destination || "a new trip";
+}
+
+// ─── Expert Assigned Trips ────────────────────────────────────────────────────
+
+export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
+  // Concierge revision (ledger 2026-08-22-concierge-revision-p2): a ready-made revision request
+  // already lands here as an ordinary accepted advisor row (P1 writes it). We LEFT JOIN the
+  // purchase so the Inbox can flag it as a paid revision and show the buyer's note — the advisor
+  // row's own `message` (the note) rides along too. Ordinary (non-ready-made) assignments simply
+  // get NULL for these and render unchanged.
+  const result = await db.execute(sql`
+    SELECT
+      t.id as trip_id, t.title as trip_title, t.destination,
+      t.start_date, t.end_date,
+      tea.id as assignment_id, tea.status, tea.assigned_at,
+      tea.message as assignment_message,
+      rmp.revision_status, rmp.revision_request_note,
+      u.id as traveler_user_id,
+      u.first_name as traveler_first_name,
+      u.last_name as traveler_last_name,
+      COALESCE(
+        (SELECT COUNT(*) FROM trip_suggestions ts WHERE ts.trip_id = t.id AND ts.expert_id = ${expertId}),
+        0
+      )::int as suggestion_count
+    FROM trip_expert_advisors tea
+    JOIN trips t ON t.id = tea.trip_id
+    JOIN users u ON u.id = t.user_id
+    LEFT JOIN ready_made_purchases rmp
+      ON rmp.clone_trip_id = t.id AND rmp.revision_status IS NOT NULL
+    WHERE tea.local_expert_id = ${expertId} AND tea.status IN ('pending', 'accepted')
+    ORDER BY tea.assigned_at DESC
+  `);
+  return (result.rows || []).map((row: any) => ({
+    ...row,
+    traveler_name: [row.traveler_first_name, row.traveler_last_name].filter(Boolean).join(" ") || "Traveler",
+  }));
+}
+
+/**
+ * Traveler-side mirror of getExpertAssignedTrips above: for the SESSION traveler (trip owner),
+ * return each of their own trips' real advisor linkage (`trip_expert_advisors`, pending|accepted
+ * — the canonical "is there an active advisor on this trip" predicate this file already uses
+ * elsewhere, e.g. isTripAdvisor / getExpertAssignedTrips). Built for chat.tsx's plan-events feature
+ * (claude/chat-plan-events): the existing `partnerAssignedTrip` logic in chat.tsx resolves the
+ * shared trip for an EXPERT viewing a traveler counterpart via `/api/expert/assigned-trips`; there
+ * is no reverse read for a TRAVELER viewing an expert counterpart, and `trips.expertId` is a dead
+ * fallback column no assignment path writes (see resolveDeliveredBy's comment + a repo-wide grep —
+ * only trip_expert_advisors is truly written), so it cannot serve as the real link. This is that
+ * real, minimal, read-only reverse.
+ */
+export async function getTravelerTripAdvisors(userId: string): Promise<Array<{ trip_id: string; expert_id: string; status: string }>> {
+  const result = await db.execute(sql`
+    SELECT t.id as trip_id, tea.local_expert_id as expert_id, tea.status
+    FROM trip_expert_advisors tea
+    JOIN trips t ON t.id = tea.trip_id
+    WHERE t.user_id = ${userId} AND tea.status IN ('pending', 'accepted')
+    ORDER BY tea.assigned_at DESC
+  `);
+  return (result.rows || []) as any[];
+}
+
+// ─── Trip Suggestions ─────────────────────────────────────────────────────────
+
+export async function isTripOwner(tripId: string, userId: string): Promise<boolean> {
+  const result = await db.execute(sql`SELECT id FROM trips WHERE id = ${tripId} AND user_id = ${userId}`);
+  return !!(result.rows && result.rows.length > 0);
+}
+
+// Delegates to the CANONICAL advisor predicate (server/utils/trip-advisor.ts). This used to
+// filter `status IN ('pending','accepted')`, which wrongly EXCLUDED `'assigned'` — the status
+// an admin lead-confirm writes — so admin-confirmed experts failed every gate built on it.
+// L20 Part A.
+export async function isExpertAssignedToTrip(tripId: string, userId: string): Promise<boolean> {
+  return isTripAdvisor(tripId, userId);
+}
+
+export async function tripExistsById(tripId: string): Promise<boolean> {
+  const result = await db.execute(sql`SELECT id FROM trips WHERE id = ${tripId}`);
+  return !!(result.rows && result.rows.length > 0);
+}
+
+export async function getTripSuggestions(tripId: string, expertIdFilter?: string): Promise<any[]> {
+  const result = await db.execute(sql`
+    SELECT
+      ts.id, ts.trip_id, ts.expert_id, ts.type, ts.day_number,
+      ts.title, ts.description, ts.estimated_cost, ts.status,
+      ts.rejection_note, ts.created_at, ts.reviewed_at,
+      u.first_name as expert_first_name, u.last_name as expert_last_name,
+      u.profile_image_url as expert_profile_image_url
+    FROM trip_suggestions ts
+    JOIN users u ON u.id = ts.expert_id
+    WHERE ts.trip_id = ${tripId}
+      ${expertIdFilter ? sql`AND ts.expert_id = ${expertIdFilter}` : sql``}
+    ORDER BY ts.created_at DESC
+  `);
+  return result.rows || [];
+}
+
+export async function createTripSuggestion(values: {
+  tripId: string;
+  expertId: string;
+  type: string;
+  dayNumber?: number | null;
+  title: string;
+  description?: string | null;
+  estimatedCost?: string | null;
+}): Promise<string> {
+  const suggestionId = crypto.randomUUID();
+  await db.execute(sql`
+    INSERT INTO trip_suggestions (id, trip_id, expert_id, type, day_number, title, description, estimated_cost, status, created_at)
+    VALUES (${suggestionId}, ${values.tripId}, ${values.expertId}, ${values.type},
+            ${values.dayNumber ?? null}, ${values.title}, ${values.description ?? null},
+            ${values.estimatedCost ?? null}, 'pending', NOW())
+  `);
+  return suggestionId;
+}
+
+export async function getPendingSuggestion(suggestionId: string, tripId: string): Promise<any | null> {
+  const result = await db.execute(sql`
+    SELECT id, type, day_number, title, description, estimated_cost
+    FROM trip_suggestions
+    WHERE id = ${suggestionId} AND trip_id = ${tripId} AND status = 'pending'
+  `);
+  return result.rows?.[0] ?? null;
+}
+
+// W3-A hardening (§15): the transition is atomic-conditional on `status = 'pending'` — the
+// separate getPendingSuggestion SELECT in the route is a TOCTOU check on its own, and approval
+// now creates a real itinerary_items row, so a racing double-approve must lose here (0 rows)
+// rather than double-materialize the item. Returns whether a row actually flipped.
+export async function updateSuggestionStatus(
+  suggestionId: string,
+  tripId: string,
+  status: string,
+  rejectionNote?: string | null,
+): Promise<boolean> {
+  const result = await db.execute(sql`
+    UPDATE trip_suggestions
+    SET status = ${status}, rejection_note = ${rejectionNote ?? null}, reviewed_at = NOW()
+    WHERE id = ${suggestionId} AND trip_id = ${tripId} AND status = 'pending'
+    RETURNING id
+  `);
+  return ((result as any).rows?.length ?? 0) > 0;
+}
+
+export async function getGeneratedItinerary(tripId: string): Promise<{ id: string; itinerary_data: any } | null> {
+  const result = await db.execute(sql`
+    SELECT id, itinerary_data FROM generated_itineraries
+    WHERE trip_id = ${tripId} AND status = 'generated'
+    ORDER BY created_at DESC LIMIT 1
+  `);
+  return result.rows?.[0] as { id: string; itinerary_data: any } | null ?? null;
+}
+
+export async function updateGeneratedItineraryData(itineraryId: string, data: any): Promise<void> {
+  await db.execute(sql`
+    UPDATE generated_itineraries
+    SET itinerary_data = ${JSON.stringify(data)}::jsonb, updated_at = NOW()
+    WHERE id = ${itineraryId}
+  `);
+}
+
+// ─── Traveler Profile ─────────────────────────────────────────────────────────
+
+export async function getTravelerProfile(tripId: string): Promise<any | null> {
+  const result = await db.execute(sql`
+    SELECT
+      t.id as trip_id, t.title as trip_title, t.destination,
+      t.start_date, t.end_date, t.number_of_travelers,
+      u.id as traveler_user_id,
+      u.first_name, u.last_name, u.email, u.profile_image_url
+    FROM trips t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.id = ${tripId}
+    LIMIT 1
+  `);
+  return result.rows?.[0] ?? null;
+}

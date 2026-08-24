@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Traveloure"
+description = "Traveloure is a travel planning and marketplace web application for travelers, local experts, and service providers."
+version = "1.0.0"
+id = "artifacts/traveloure"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20087
+
+[services.development]
+run = "pnpm --filter @workspace/traveloure run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/traveloure", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/traveloure/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20087"
+BASE_PATH = "/"
