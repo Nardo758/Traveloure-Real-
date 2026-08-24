@@ -52,8 +52,11 @@ export interface StorefrontLinkProps {
   sellerNoun?: string;
   /** Explicit public storefront destination; defaults to the expert route. */
   target?: "expert" | "provider";
-  /** `section` = a full card block (detail pages). `inline` = a one-line link. */
-  variant?: "section" | "inline";
+  /**
+   * `section` = a full card block (detail pages), `inline` = a one-line link,
+   * and `button` = a prominent compact card action.
+   */
+  variant?: "section" | "inline" | "button";
   "data-testid"?: string;
 }
 
@@ -84,6 +87,19 @@ export function StorefrontLink({
       >
         <Store className="w-3.5 h-3.5" aria-hidden="true" />
         More from {displayName}
+      </Link>
+    );
+  }
+
+  if (variant === "button") {
+    return (
+      <Link
+        href={href}
+        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        data-testid={testId}
+      >
+        <Store className="w-3.5 h-3.5" aria-hidden="true" />
+        View storefront
       </Link>
     );
   }

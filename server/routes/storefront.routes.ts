@@ -25,7 +25,7 @@ import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
@@ -923,6 +923,98 @@ async function loadProviderStorefront(handle: string, activeLocale?: string) {
   };
 }
 
+// Public provider directory for the Experts-page storefront tab. This deliberately aggregates
+// only the live service gate and never selects a service row, so listing copy, prices, and
+// provider verification data cannot enter the directory payload.
+async function loadProviderStorefrontDirectory() {
+  const rows = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      handle: users.handle,
+      bio: users.bio,
+      profileImageUrl: users.profileImageUrl,
+      serviceCount: sql<number>`count(${providerServices.id})::int`,
+      // Match the storefront's review-weighted rating calculation. Services without a rating
+      // do not affect either aggregate, avoiding an invented average for unrated inventory.
+      averageRating: sql<number | null>`
+        case
+          when coalesce(sum(
+            case
+              when ${providerServices.averageRating} is not null
+              then coalesce(${providerServices.reviewCount}, 0)
+              else 0
+            end
+          ), 0) > 0
+          then round(
+            sum(
+              case
+                when ${providerServices.averageRating} is not null
+                then ${providerServices.averageRating} * coalesce(${providerServices.reviewCount}, 0)
+                else 0
+              end
+            ) / sum(
+              case
+                when ${providerServices.averageRating} is not null
+                then coalesce(${providerServices.reviewCount}, 0)
+                else 0
+              end
+            ),
+            2
+          )
+          else null
+        end
+      `,
+      reviewCount: sql<number>`
+        coalesce(sum(
+          case
+            when ${providerServices.averageRating} is not null
+            then coalesce(${providerServices.reviewCount}, 0)
+            else 0
+          end
+        ), 0)::int
+      `,
+    })
+    .from(users)
+    .innerJoin(
+      providerServices,
+      and(
+        eq(providerServices.userId, users.id),
+        eq(providerServices.approvalStatus, "approved"),
+        eq(providerServices.status, "active"),
+      ),
+    )
+    .where(
+      and(
+        eq(users.role, "service_provider"),
+        eq(users.isDeleted, false),
+        eq(users.isSuspended, false),
+        isNotNull(users.handle),
+      ),
+    )
+    .groupBy(
+      users.id,
+      users.firstName,
+      users.lastName,
+      users.handle,
+      users.bio,
+      users.profileImageUrl,
+    );
+
+  return Promise.all(rows.map(async (row) => ({
+    id: row.id,
+    name: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Traveloure provider",
+    handle: row.handle,
+    bio: row.bio ?? null,
+    profileImageUrl: row.profileImageUrl ?? null,
+    serviceCount: Number(row.serviceCount),
+    averageRating: row.averageRating == null ? null : Number(row.averageRating),
+    reviewCount: Number(row.reviewCount),
+    location: await resolveEarnerLocation(row.id),
+  })));
+}
+
 router.get("/api/storefront/:handle", async (req, res) => {
   try {
     const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
@@ -944,6 +1036,17 @@ router.get("/api/provider-storefront/:handle", async (req, res) => {
   } catch (error: any) {
     console.error("[provider-storefront] load failed:", error);
     return res.status(500).json({ message: "Failed to load provider storefront" });
+  }
+});
+
+// Register the collection route separately from the singular `/:handle` route above: the
+// plural path keeps `/api/provider-storefront/:handle` unambiguous.
+router.get("/api/provider-storefronts", async (_req, res) => {
+  try {
+    return res.json(await loadProviderStorefrontDirectory());
+  } catch (error: any) {
+    console.error("[provider-storefronts] directory load failed:", error);
+    return res.status(500).json({ message: "Failed to load provider storefronts" });
   }
 });
 

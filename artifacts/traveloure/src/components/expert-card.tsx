@@ -316,17 +316,14 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
           </div>
         )}
 
-        {/* D1 (lane nav-storefront): direct storefront affordance. The card's main CTA stays
-            /experts/:id (which itself redirects handled experts to /p/:handle), so this is a
-            shortcut, not a second source of truth. This card is NOT wrapped in a <Link>, so
-            the inline anchor variant is valid here (no nested anchors). StorefrontLink renders
-            nothing when handle is null; the outer guard just avoids an empty spacer div. */}
+        {/* A claimed handle earns a clear, direct storefront CTA. StorefrontLink
+            renders nothing when the handle is absent, preserving the no-link behavior. */}
         {expert.handle && (
-          <div className="mt-2">
+          <div className="mt-3">
             <StorefrontLink
               handle={expert.handle}
               name={expert.firstName || undefined}
-              variant="inline"
+              variant="button"
               data-testid={`link-expert-storefront-${expert.id}`}
             />
           </div>
