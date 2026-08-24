@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -167,7 +167,6 @@ const ItineraryComparisonPage = lazy(() => import("@/pages/itinerary-comparison"
 // Slip dispatch §4 Spec A: the slip's canonical address (/plans/:tripId). Parameterised
 // route — deliberately NOT in role-routes-config.ts (that registry is static-paths-only).
 const SlipViewPage = lazy(() => import("@/pages/slip-view"));
-const GlobalCalendarPage = lazy(() => import("@/pages/global-calendar"));
 const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
 const TransportationBookingPage = lazy(() => import("@/pages/transportation-booking"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
@@ -323,6 +322,28 @@ function ChatWithRoleLayout() {
   );
 }
 
+// Marketplace un-group (ledger 2026-08-23-marketplace-ungroup): the old tabbed shell's
+// ?tab= tokens were the URL contract (§10), and deep links across the app carried real
+// state (q, city, categoryKey, expert-handoff params). This redirect keeps every old
+// /discover link meaningful: ?tab= maps onto the surface route, everything else is
+// forwarded verbatim. Unknown/absent tab → Destinations (the old default tab).
+const DISCOVER_TAB_ROUTES: Record<string, string> = {
+  travelpulse: "/destinations",
+  packages: "/ready-made",
+  events: "/events",
+  services: "/services",
+};
+
+function DiscoverRedirect() {
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const tab = params.get("tab") ?? "";
+  params.delete("tab");
+  const base = DISCOVER_TAB_ROUTES[tab] ?? "/destinations";
+  const qs = params.toString();
+  return <Redirect to={`${base}${qs ? `?${qs}` : ""}`} />;
+}
+
 function Router() {
   // Automatically claim guest trips and concierge requests when user signs in
   useClaimGuestTrips();
@@ -380,7 +401,7 @@ function Router() {
       {/* Ready Made Trips store detail (Phase 4): public teaser + purchase→clone; the author of
           an unapproved listing sees the same page flagged Preview. */}
       <Route path="/ready-made/:id">
-        <Layout><ReadyMadeDetailPage /></Layout>
+        {() => <ReadyMadeDetailPage />}
       </Route>
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
@@ -398,16 +419,32 @@ function Router() {
           <ExpertDetailPage />
         </PageErrorBoundary>
       </Route>
-      {/* /service-providers retired as a standalone surface — providers now live in the
-          Discover "Services" tab (redesign decision, Jul 2026). Redirect preserves any
-          inbound links/bookmarks. */}
+      {/* /service-providers retired as a standalone surface — providers now live on the
+          Services page (redesign decision, Jul 2026; un-grouped Aug 23). Redirect preserves
+          any inbound links/bookmarks. */}
       <Route path="/service-providers">
-        <Redirect to="/discover?tab=services" />
+        <Redirect to="/services" />
       </Route>
       
-      {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
+      {/* Marketplace un-group (ledger 2026-08-23-marketplace-ungroup): each surface is its
+          OWN page with its own single masthead and NO tab bar; the nav "Marketplace"
+          dropdown deep-links straight here. */}
+      <Route path="/destinations">
+        <Layout><DiscoverPage surface="travelpulse" /></Layout>
+      </Route>
+      <Route path="/ready-made">
+        <Layout><DiscoverPage surface="packages" /></Layout>
+      </Route>
+      <Route path="/events">
+        <Layout><DiscoverPage surface="events" /></Layout>
+      </Route>
+      <Route path="/services">
+        <Layout><DiscoverPage surface="services" /></Layout>
+      </Route>
+      {/* The old tabbed shell URL. A smart redirect maps ?tab= onto the surface route and
+          forwards every other query param (deep links carried q/city/category state). */}
       <Route path="/discover">
-        <Layout><DiscoverPage /></Layout>
+        <DiscoverRedirect />
       </Route>
       {/* Phase 3 LocationView — 9-section city marketplace (Decision #5 = Replace). */}
       <Route path="/discover/location/:city">
@@ -463,8 +500,11 @@ function Router() {
           <ProtectedRoute component={ContractViewPage} />
         </PageErrorBoundary>
       </Route>
+      {/* The calendar's one home is the Events page (findings/DISCOVER_IA_AUDIT.md; un-grouped
+          Aug 23). The standalone /global-calendar carried a duplicate second masthead, so it
+          redirects — same consolidation precedent as /discover-experiences below. */}
       <Route path="/global-calendar">
-        <Layout><GlobalCalendarPage /></Layout>
+        <Redirect to="/events" />
       </Route>
       <Route path="/transportation">
         <Layout><TransportationBookingPage /></Layout>
@@ -516,18 +556,18 @@ function Router() {
         <ExperienceTemplatePage />
       </Route>
       <Route path="/discover-experiences">
-        <Redirect to="/discover" />
+        <Redirect to="/destinations" />
       </Route>
       {/* /deals kept: unique content (flash sales, seasonal, last-minute, bundle listings)
           with countdown timers and discount data not surfaced inside /discover. */}
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
       </Route>
-      {/* /spontaneous absorbed into Discover happening-now (v2 spec §6, Phase 2). */}
-      {/* Route preserved as redirect for bookmark continuity; Phase 3 wires the */}
-      {/* per-city happening-now section into the location view. */}
+      {/* /spontaneous absorbed into TravelPulse/Destinations (v2 spec §6, Phase 2; the merged
+          home is the Destinations page after the Aug 23 un-group). Route preserved as
+          redirect for bookmark continuity. */}
       <Route path="/spontaneous">
-        <Redirect to="/discover" />
+        <Redirect to="/destinations" />
       </Route>
       {/* /hidden-gems kept: unique Grok-powered discovery of authentic local experiences with
           category-based filtering (local food secrets, hidden viewpoints, etc.) — not present
@@ -1121,13 +1161,13 @@ function Router() {
         <Redirect to="/experiences" />
       </Route>
       <Route path="/help-me-decide">
-        <Redirect to="/discover" />
+        <Redirect to="/destinations" />
       </Route>
       <Route path="/explore">
-        <Redirect to="/discover" />
+        <Redirect to="/destinations" />
       </Route>
       <Route path="/browse">
-        <Redirect to="/discover" />
+        <Redirect to="/destinations" />
       </Route>
       <Route path="/travel-experts">
         <Redirect to="/become-expert" />

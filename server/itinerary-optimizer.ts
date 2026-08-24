@@ -1764,18 +1764,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         });
       }
 
-      // Metrics are supplementary review metadata. A legacy development database can still have
-      // narrower numeric constraints than the current schema (for example, relaxation minutes
-      // over 999.99), so a metrics write must never turn an otherwise usable generated variant
-      // into a failed optimization. Core variant/item persistence above remains fail-closed.
-      try {
-        await db.insert(itineraryVariantMetrics).values(metricsToInsert);
-      } catch (metricsErr) {
-        console.warn(
-          `[Optimizer] metrics persistence skipped for variant ${newVariant.id}:`,
-          metricsErr instanceof Error ? metricsErr.message : metricsErr,
-        );
-      }
+      // Batch-insert all metrics in one round-trip
+      await db.insert(itineraryVariantMetrics).values(metricsToInsert);
 
       // Transport legs — only for items with real coordinates
       try {
@@ -1826,33 +1816,10 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
   } catch (error) {
     console.error("Error generating optimized itineraries:", error);
 
-    // A failure after the AI variants have been persisted must not turn a usable
-    // optimization into a generation failure. This includes best-effort
-    // enrichment and final metadata writes: keep the proposals available, but
-    // expose that the run completed with a warning so the review surface can
-    // distinguish it from a run that produced nothing.
-    try {
-      const persistedVariants = await db
-        .select({ id: itineraryVariants.id })
-        .from(itineraryVariants)
-        .where(
-          and(
-            eq(itineraryVariants.comparisonId, comparisonId),
-            eq(itineraryVariants.source, "ai_optimized"),
-          ),
-        );
-
-      await db
-        .update(itineraryComparisons)
-        .set({
-          status: persistedVariants.length > 0 ? "generated_with_warnings" : "failed",
-          ...(persistedVariants.length > 0 ? { optimizedAt: new Date() } : {}),
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(itineraryComparisons.id, comparisonId));
-    } catch (statusError) {
-      console.error("Error recording optimization failure status:", statusError);
-    }
+    await db
+      .update(itineraryComparisons)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(eq(itineraryComparisons.id, comparisonId));
 
     return {
       success: false,

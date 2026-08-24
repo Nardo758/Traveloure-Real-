@@ -56,14 +56,18 @@ export const navGroupsConfig: NavGroupConfig[] = [
     // (the entire expert store lane was nav-invisible), and the services tab was
     // filed under "Experts & Services" as "Service Providers".
     //
-    // Two naming facts this encodes:
-    //  - "Browse Services", NOT "Service Providers". `provider_services` is
-    //    role-agnostic (CLAUDE.md "one builder" — ServiceForm serves both roles),
-    //    so EXPERTS list services in that tab too. Naming it after one role was
-    //    wrong about who sells there.
-    //  - "By Date" is deliberate and pairs with "By Location" as the two browse
-    //    AXES. Do not "align" it to the ?tab=events routing token — the token is
-    //    the URL contract (§10 label-standard precedent), not a user-facing label.
+    // Marketplace un-group (decision-maker ratified Aug 23, ledger
+    // 2026-08-23-marketplace-ungroup): "Marketplace" is DROPDOWN-ONLY (no href on the
+    // group, no hub page) and each item deep-links straight to that surface's OWN page —
+    // no tabbed shell, no grouped header, no extra step. Old /discover?tab= links are
+    // mapped by the App.tsx DiscoverRedirect.
+    // Naming facts this encodes:
+    //  - "Services", NOT "Service Providers". `provider_services` is role-agnostic
+    //    (CLAUDE.md "one builder" — ServiceForm serves both roles), so EXPERTS list
+    //    services there too. Naming it after one role was wrong about who sells there.
+    //  - Canonical noun vocabulary (ratified Aug 23): "Destinations · Ready-Made Trips ·
+    //    Events · Services" — used identically in nav, footer, and page mastheads (no
+    //    aliases like "By Date"/"Global Calendar" or "By Location"/"TravelPulse").
     name: "Marketplace",
     i18nKey: "groups.marketplace",
     sections: [
@@ -71,10 +75,10 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "BROWSE",
         i18nKey: "sections.browse",
         items: [
-          { name: "By Location", i18nKey: "links.byLocation", href: "/discover", description: "Explore destinations & trending cities" },
-          { name: "By Date", i18nKey: "links.byDate", href: "/discover?tab=events", description: "Upcoming events & activities" },
-          { name: "Ready-Made Trips", i18nKey: "links.readyMadeTrips", href: "/discover?tab=packages", description: "Expert-built trips, ready to buy" },
-          { name: "Browse Services", i18nKey: "links.browseServices", href: "/discover?tab=services", description: "Book tours, photography, transport & more" },
+          { name: "Destinations", i18nKey: "links.byLocation", href: "/destinations", description: "Explore destinations & trending cities" },
+          { name: "Events", i18nKey: "links.byDate", href: "/events", description: "Upcoming events & activities" },
+          { name: "Ready-Made Trips", i18nKey: "links.readyMadeTrips", href: "/ready-made", description: "Expert-built trips, ready to buy" },
+          { name: "Services", i18nKey: "links.browseServices", href: "/services", description: "Book tours, photography, transport & more" },
         ],
       },
     ],
@@ -154,7 +158,10 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "EXPLORE",
         i18nKey: "sections.explore",
         items: [
-          { name: "Live Intel", i18nKey: "links.liveIntel", href: "/discover", description: "Real-time local insights" },
+          // "Live Intel" was merged into the Destinations surface (decision-maker Aug 23),
+          // so a separate entry just duplicated it — removed per the no-aliases rule
+          // (ledger 2026-08-23-marketplace-ungroup). `links.liveIntel` locale key kept
+          // (unused) so en/ja parity is untouched.
           { name: "Today's Deals", i18nKey: "links.todaysDeals", href: "/deals", description: "Special offers & discounts" },
         ],
       },
@@ -165,8 +172,10 @@ export const navGroupsConfig: NavGroupConfig[] = [
 
 export const authNavConfig: AuthNavConfig[] = [
   { href: "/dashboard", label: "My Plans" },
-  // MP-1: label only — the route stays /discover (URL contract unchanged).
-  { href: "/discover", label: "Marketplace" },
+  // Un-group (Aug 23): "Marketplace" is dropdown-only; this flat entry (currently
+  // rendered nowhere — authNavItems has no render site) points at the default
+  // surface so it can never resurrect a hub.
+  { href: "/destinations", label: "Marketplace" },
   { href: "/concierge", label: "Concierge" },
   { href: "/chat", label: "Expert Chat" },
 ];
@@ -203,12 +212,12 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
     i18nKey: 'footer.sections.product',
     links: [
       { label: 'Plan an Experience', i18nKey: 'footer.links.planAnExperience',     href: '/experiences' },
-      { label: 'Marketplace', i18nKey: 'footer.links.marketplace',            href: '/discover' },
+      { label: 'Marketplace', i18nKey: 'footer.links.marketplace',            href: '/destinations' },
       { label: 'Talk to Experts', i18nKey: 'footer.links.talkToExperts',        href: '/chat' },
       { label: 'How It Works', i18nKey: 'footer.links.howItWorks',           href: '/how-it-works' },
       { label: 'Pricing', i18nKey: 'footer.links.pricing',                href: '/pricing' },
       { label: 'Features', i18nKey: 'footer.links.features',               href: '/features' },
-      { label: 'Global Calendar', i18nKey: 'footer.links.globalCalendar',        href: '/global-calendar' },
+      { label: 'Events', i18nKey: 'footer.links.globalCalendar',        href: '/events' },
       { label: 'Executive Assistant', i18nKey: 'footer.links.executiveAssistant',    href: '/executive-assistant' },
     ],
   },

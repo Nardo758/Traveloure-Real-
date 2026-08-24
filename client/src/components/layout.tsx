@@ -70,15 +70,16 @@ import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  "By Location":       MapPin,
-  "By Date":           Calendar,
+  "Destinations":      MapPin,
+  "Events":            Calendar,
   "Local Experts":     MapPin,
   "Trip Planners":     User,
-  // MP-1: the services tab is role-agnostic (experts sell there too), so the
-  // leaf is "Browse Services", not "Service Providers". "Ready-Made Trips" uses
-  // Award to match the tab trigger's own icon in discover.tsx. (Hyphenated per
-  // the lane-D naming scheme; this key must track nav-config.ts's `name`.)
-  "Browse Services":   Building2,
+  // The four Marketplace tabs use the canonical NOUN vocabulary (ledger
+  // 2026-08-23-discover-vocabulary): Destinations · Ready-Made Trips · Events ·
+  // Services. These icon keys MUST track nav-config.ts's `name` values; the
+  // services tab is role-agnostic (experts sell there too), and Ready-Made Trips
+  // uses Award to match its tab trigger's icon in discover.tsx.
+  "Services":          Building2,
   "Ready-Made Trips":  Award,
   "Travel Planning":   Plane,
   "Romantic Getaways": Sparkles,
@@ -493,7 +494,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </Link>
 
-              <div className="hidden min-[960px]:ml-4 min-[960px]:flex min-[960px]:items-center min-[1200px]:ml-8 gap-0 min-[1200px]:gap-1">
+              <div className="hidden lg:ml-8 lg:flex lg:items-center gap-1">
                 {navItems.map((item) => (
                   <DesktopDropdown key={item.name} item={item} isActive={item.href === location} />
                 ))}
@@ -562,7 +563,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
-              <div className="flex items-center min-[960px]:hidden">
+              <div className="flex items-center lg:hidden">
                 <button
                   ref={hamburgerRef}
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -596,7 +597,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-modal="true"
               aria-label={t("navigationMenu")}
               {...slideMotion}
-              className="min-[960px]:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
+              className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
             >
               {/* Mobile Nav */}
               <div className="pt-2 pb-3 space-y-1 px-4">

@@ -646,7 +646,7 @@ export default function VisaHelpPage() {
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
                 Check back soon — we're onboarding certified visa specialists.
               </p>
-              <Link href="/discover?category=visa-assistance">
+              <Link href="/services?category=visa-assistance">
                 <Button variant="outline" className="mt-4" data-testid="button-browse-experts">
                   Browse All Services
                 </Button>

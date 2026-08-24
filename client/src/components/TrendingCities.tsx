@@ -125,7 +125,7 @@ export function TrendingCities() {
           viewport={{ once: true }}
           className="text-center mt-10"
         >
-          <Link href="/discover?tab=travelpulse">
+          <Link href="/destinations">
             <Button
               size="lg"
               className="bg-primary text-white font-semibold px-8"

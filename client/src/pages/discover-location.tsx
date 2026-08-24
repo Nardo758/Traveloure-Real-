@@ -187,10 +187,10 @@ function HeroSection({
               >
                 📅 {datePillLabel}
                 {/* D7 date-continuity: back to the By-Date calendar
-                    (/discover?tab=events) to pick a different date. Additive —
+                    (/events) to pick a different date. Additive —
                     the ✕ dismiss below is untouched. */}
                 <a
-                  href="/discover?tab=events"
+                  href="/events"
                   className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
                   data-testid="link-change-date"
                 >
@@ -244,10 +244,10 @@ function HeroSection({
             >
               📅 {datePillLabel}
               {/* D7 date-continuity: back to the By-Date calendar
-                  (/discover?tab=events) to pick a different date. Additive —
+                  (/events) to pick a different date. Additive —
                   the ✕ dismiss below is untouched. */}
               <a
-                href="/discover?tab=events"
+                href="/events"
                 className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
                 data-testid="link-change-date"
               >
@@ -1331,19 +1331,19 @@ function DateHighlightStrip({
   // D2 honest links: the old `/experiences/photo` and `/experiences/gear` hrefs
   // resolved to the /experiences/:slug route but matched NO real experience
   // template — dead-ish destinations. The companion object carries no service
-  // id, so each "Book" now goes to `/discover?tab=services` — the live Browse
+  // id, so each "Book" now goes to `/services` — the live Browse
   // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
   // are actually searchable. `/local-experts` (festival guide) was already a
   // real routed page and stays.
   const companionService: ServiceAddon | null = (() => {
     if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
-      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/discover?tab=services" };
+      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/services" };
     if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
-      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/discover?tab=services" };
+      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/services" };
     if (highlight.includes("festival") || highlight.includes("matsuri"))
       return { icon: "🎋", label: "Festival guide", price: "from ¥8,000", href: "/local-experts" };
     if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
-      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/discover?tab=services" };
+      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/services" };
     return null;
   })();
 
@@ -1381,10 +1381,10 @@ function DateHighlightStrip({
               >
                 {/* D2 honest link: was /experiences/events — a slug that resolved to
                     the /experiences/:slug route but matched no real experience
-                    template. Now points at /discover?tab=events, the live By-Date
+                    template. Now points at /events, the live By-Date
                     calendar tab (in discover.tsx's VISIBLE_TABS), where dated
                     events are actually browsable. */}
-                <a href="/discover?tab=events">Tickets</a>
+                <a href="/events">Tickets</a>
               </Button>
               <Button
                 size="sm"
@@ -1834,7 +1834,7 @@ export default function DiscoverLocationPage() {
 
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
-    navigate(`/discover?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
+    navigate(`/services?categoryKey=${encodeURIComponent(c.categoryKey)}&upsellSource=${upsellSurface}`);
   };
 
   // ── Injected-element payloads for the composition layer ────────────────
@@ -2056,7 +2056,7 @@ export default function DiscoverLocationPage() {
             if (window.history.length > 1) {
               window.history.back();
             } else {
-              navigate("/discover?tab=events");
+              navigate("/events");
             }
           }}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"

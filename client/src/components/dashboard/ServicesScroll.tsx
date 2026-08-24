@@ -67,7 +67,7 @@ export function ServicesScroll() {
     <section className="mb-[22px]" data-testid="services-scroll-section">
       <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
         <span>Top services</span>
-        <Link href="/discover">
+        <Link href="/services">
           <span className="text-[11px] cursor-pointer hover:underline" style={{ color: "#2E8B8B" }} data-testid="link-browse-services">
             Browse all
           </span>
@@ -78,7 +78,7 @@ export function ServicesScroll() {
         {active.map((cat) => {
           const count = providerCounts?.[cat.id] ?? 0;
           return (
-            <Link key={cat.id} href={`/discover?category=${cat.slug || cat.id}`}>
+            <Link key={cat.id} href={`/services?category=${cat.slug || cat.id}`}>
               <div
                 className="flex-shrink-0 w-[110px] rounded-[10px] py-3 px-2.5 cursor-pointer text-center transition-colors hover:opacity-80"
                 style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
