@@ -312,6 +312,8 @@ interface ProviderVerification {
   // A6: storefront handle (migration 136, users.handle) — null when the owner hasn't
   // claimed one yet. Backs the breadcrumb's "/s/:handle" link only when non-null.
   handle: string | null;
+  /** The backend identifies service-provider owners explicitly for storefront routing. */
+  role?: string | null;
   // Ledger 90 (FP-5, I3): the owner's public display name, needed by "Contact Provider" to open
   // a real chat thread (chat.tsx's `?name=` fallback — `/api/experts/:id` is expert-family only).
   displayName?: string | null;
@@ -759,7 +761,7 @@ export default function ServiceDetailPage() {
   return (
     <Layout>
       <div className="service-detail-page container max-w-6xl mx-auto">
-        {/* Breadcrumb into the provider storefront (mockup: Home > /s/:handle > service name).
+        {/* Breadcrumb into the owner's storefront (mockup: Home > storefront > service name).
             The handle link only renders when the owner has actually claimed one (migration 136) —
             no fake/guessed storefront link is shown for an unclaimed handle. */}
         <Breadcrumb className="service-detail-breadcrumb">
@@ -777,7 +779,7 @@ export default function ServiceDetailPage() {
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link href={`/s/${providerVerification.handle}`} data-testid="breadcrumb-storefront">
+                    <Link href={`${providerVerification.role === "service_provider" ? "/providers" : "/s"}/${providerVerification.handle}`} data-testid="breadcrumb-storefront">
                       @{providerVerification.handle}
                     </Link>
                   </BreadcrumbLink>
@@ -1427,6 +1429,7 @@ export default function ServiceDetailPage() {
             <StorefrontLink
               handle={providerVerification?.handle}
               sellerNoun="seller"
+              target={providerVerification?.role === "service_provider" ? "provider" : "expert"}
               data-testid="link-service-storefront"
             />
 

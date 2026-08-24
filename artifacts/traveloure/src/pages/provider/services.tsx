@@ -250,7 +250,7 @@ export function ProviderStorefrontHeader() {
   ).length;
 
   const isLive = !!handle && countsLoaded && approvedCount > 0;
-  const publicPath = handle ? `/s/${handle}` : null;
+  const publicPath = handle ? `/providers/${handle}` : null;
   const publicUrl = publicPath ? `${window.location.origin}${publicPath}` : null;
 
   // D-2 (mock conformance, Aug 15): the card leads with WHO the storefront belongs to — avatar +
@@ -368,7 +368,7 @@ export function ProviderStorefrontHeader() {
             opened in place so Distribute is where a storefront is dressed. */}
         {editingStorefront && (
           <div data-testid="panel-storefront-editor">
-            <HandleClaimCard currentHandle={handle} />
+            <HandleClaimCard currentHandle={handle} target="provider" />
           </div>
         )}
 
@@ -377,7 +377,7 @@ export function ProviderStorefrontHeader() {
         {isLive && handle && (
           <div className="pt-3 border-t border-console-light">
             <p className="text-xs font-medium text-console-mid mb-2">Share your storefront</p>
-            <StorefrontShareTools handle={handle} />
+            <StorefrontShareTools handle={handle} target="provider" />
           </div>
         )}
       </CardContent>

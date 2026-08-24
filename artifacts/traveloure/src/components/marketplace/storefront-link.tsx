@@ -50,6 +50,8 @@ export interface StorefrontLinkProps {
    * listing; pass whatever the hosting page honestly knows.
    */
   sellerNoun?: string;
+  /** Explicit public storefront destination; defaults to the expert route. */
+  target?: "expert" | "provider";
   /** `section` = a full card block (detail pages). `inline` = a one-line link. */
   variant?: "section" | "inline";
   "data-testid"?: string;
@@ -59,13 +61,14 @@ export function StorefrontLink({
   handle,
   name,
   sellerNoun = "expert",
+  target = "expert",
   variant = "section",
   "data-testid": testId = "link-storefront-return",
 }: StorefrontLinkProps) {
   // Rule 1: no handle → no storefront → render nothing at all.
   if (!handle) return null;
 
-  const href = `/s/${handle}`;
+  const href = `${target === "provider" ? "/providers" : "/s"}/${handle}`;
   const displayName = name || `@${handle}`;
   // Don't repeat the handle in the subtitle when it is already the title.
   const subtitle = name

@@ -671,7 +671,13 @@ export function PostingOpportunitiesCard({
  * GET /api/promo-text?targetType=storefront, deterministic fallback), moved verbatim.
  * The caller decides where it renders (share-promote's storefront card; Catalog's header).
  */
-export function StorefrontShareTools({ handle }: { handle: string }) {
+export function StorefrontShareTools({
+  handle,
+  target = "expert",
+}: {
+  handle: string;
+  target?: "expert" | "provider";
+}) {
   const [storefrontCaption, setStorefrontCaption] = useState("");
   useEffect(() => {
     // Client-side fallback shows immediately; the server caption (when available) replaces it.
@@ -707,7 +713,7 @@ export function StorefrontShareTools({ handle }: { handle: string }) {
       <ShareActions
         caption={storefrontCaption}
         idPrefix="storefront"
-        onGetLink={() => ensureShortLink({ targetType: "storefront" }, `/s/${handle}`)}
+        onGetLink={() => ensureShortLink({ targetType: "storefront" }, `${target === "provider" ? "/providers" : "/s"}/${handle}`)}
       />
     </div>
   );

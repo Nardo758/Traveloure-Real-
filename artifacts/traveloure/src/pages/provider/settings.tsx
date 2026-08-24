@@ -472,7 +472,7 @@ export default function ProviderSettings() {
           `max-w-4xl` carried no `mx-auto`, so this form-heavy page hugged the left edge
           with a lopsided gutter on any wide screen; the shared container centers it. */}
       <div className="p-6 space-y-6">
-        <HandleClaimCard />
+        <HandleClaimCard target="provider" />
 
         <Tabs defaultValue={tabParam} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
