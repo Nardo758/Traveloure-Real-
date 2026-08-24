@@ -202,6 +202,9 @@ jobs:
       # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
       - name: EX-2 service price-floor pin
         run: npx tsx --test server/__tests__/service-price-floor.test.ts
+      # Ready-Made listings must pass the same completeness gate at submit and approval.
+      - name: Ready-Made completeness gate
+        run: npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts
 
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
