@@ -442,7 +442,7 @@ const SURFACE_META: Record<MarketplaceSurface, { icon: typeof Compass; title: st
   packages: {
     icon: Sparkles,
     title: "Ready-Made Trips",
-    subtitle: "Curated itineraries you can make your own, with every stop shaped by someone who knows the place.",
+    subtitle: "Guided itineraries crafted by verified experts — buy the plan and travel it your way.",
     label: "Trip editions",
     url: "/ready-made",
     seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
@@ -1557,17 +1557,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                     for the other tabs, which left this tab visibly wider than its own
                     header. Scoped here so the services tab keeps its wide grid. */}
                 <div className="max-w-6xl mx-auto">
-                {surface && (
-                  <div className="marketplace-section-head">
-                    <div>
-                      <p className="marketplace-kicker">Curated for right now</p>
-                      <h2>Guided itineraries crafted by verified experts — buy the plan and travel it your way.</h2>
-                    </div>
-                    {readyMadeShelf && (
-                      <p>{readyMadeShelf.length} {readyMadeShelf.length === 1 ? "edition" : "editions"} · one clear price</p>
-                    )}
-                  </div>
-                )}
                 {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
                     sectioned by author type per the ratified store model. Surfaced now that the buy
                     loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
