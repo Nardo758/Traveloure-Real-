@@ -1,0 +1,93 @@
+# DISPATCH — Restore Root Autoscale Deployment; Retire Artifact Deploy
+
+`audited@832e42f` · lane: `restore-root-deploy` · agent: Replit · **Leon owns all UI actions; agent owns verification and one authorized reset**
+
+## Locked rulings (no relitigation)
+
+- `2026-08-24-client-tree-canonical`: `client/src` sole production client; `artifacts/` reference only, never published, never deployed.
+- `2026-08-24-worktree-base-guard`.
+- Hard stop means no `git commit`. Attachments and `.generated/` output are never committed.
+- Config is intent; deployment log is ground truth.
+
+## Finding this lane remediates
+
+Production `www.traveloure.com` runs a **static-only artifact deployment** (`artifact mode enabled static=1 runnable=0`, `publicDir=artifacts/traveloure/dist/public path=/`). No Express server is deployed; every `/api/*` route returns `index.html`. `.replit [deployment]` (Autoscale, `npm run build` / `npm start`) is correct but not what is live.
+
+## Phase 0 — Git reset (authorized, one operation)
+
+```
+git reset --hard origin/main
+git status -sb   # expect: ## main...origin/main, clean
+git rev-parse HEAD   # expect 832e42f...
+```
+Drops `7e885d85` and `335272b4`. Report output. Delete `attached_assets/Pasted-DISPATCH-*` if it survives as untracked.
+
+Then append to `replit.md` (working tree only, uncommitted):
+> Never commit files under `attached_assets/` or any `.generated/` path. Never publish artifacts. Deployment type is Autoscale from root; static artifact deployments are forbidden.
+
+**HARD STOP.** Report and wait for Leon to complete Phase 1.
+
+## Phase 1 — Leon, Replit UI (agent does not act)
+
+1. Deployments → stop and delete the artifact static deployment. Note its creation date in the reply — that's the outage start.
+2. Deployments → new Autoscale deployment from `main` @ `832e42f`. Build `npm run build`, run `npm start`.
+3. Artifacts pane → unpublish `traveloure`; delete `traveloure-marketplace`.
+4. Workflows → delete `artifacts/traveloure: web` and `artifacts/mockup-sandbox: Component Preview Server`.
+5. Say "verify".
+
+## Phase 2 — Agent verification (read-only, on "verify")
+
+Report every output verbatim.
+
+**Deployment log**
+- Must contain `runnable=1` (or equivalent) and the Express start line. Must NOT contain `static-only deployment` or `registered static handler for artifact`.
+
+**Production API**
+```
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' https://www.traveloure.com/api/health
+curl -s https://www.traveloure.com/api/experts | head -c 200
+```
+Pass: `application/json`, not `text/html`.
+
+**Production bundle**
+```
+curl -s https://www.traveloure.com/ | grep -oE 'src="/assets/index-[^"]+\.js"'
+# fetch that bundle, then:
+grep -c 'Book Services' index-*.js          # expect 0
+grep -c 'Event Planners' index-*.js         # expect ≥1
+grep -oE 'experts-[A-Za-z0-9_-]+\.js' index-*.js | sort -u   # fetch each
+grep -c 'service_provider' experts-*.js     # expect 0 in every chunk
+```
+
+**Production render**
+- `https://www.traveloure.com/experts?role=local_expert`: role-switcher child count 3, labels verbatim; results count > 0.
+- Experts & Services dropdown: four labels verbatim.
+- `/ready-made/osaka-rmt-test-00000000000001` (or any approved listing): title and price render, not "Untitled build" / "—".
+
+**Dev host**
+- External replit.dev URL `/experts`: same three tabs. `curl` root → `/src/main.tsx` served, no `/assets/` static.
+
+**Workspace**
+- `ps`/workflow list: only `Start application` and `check-noop-migrations` running. No process on 20087 or 23636.
+
+**HARD STOP.** Report. Leon says "commit" for the `replit.md` line.
+
+## What Not To Do
+
+- Do not delete `artifacts/traveloure/` — it remains the transcription reference until FOLLOWUPS says otherwise.
+- Do not edit `.replit`. Do not edit `vite.config.ts` or `server/`.
+- Do not touch nav-config or experts.tsx in either tree.
+- Do not create, trigger, or modify any deployment yourself — Phase 1 is Leon's.
+- Do not commit anything, including `replit.md`, until "commit".
+- Do not screenshot into the repo or `attached_assets/`.
+
+## Ledger (Leon appends on pass)
+
+`2026-08-24-artifact-deploy-override`: Replit artifact publishing produced a static-only production deployment with no backend, overriding `.replit [deployment]`. Artifacts are never published; deployment type is Autoscale from root. Guard: the Phase 2 production checks (API content-type + bundle greps) join the J1 beta gate as `[guarded]`.
+
+## FOLLOWUPS.md
+
+- Outage window: artifact deploy creation date → today. Assess impact on any real bookings/Stripe events in that window.
+- Migrate prod verification greps into a `scripts/verify-prod-tree.sh` for CI.
+- `providers-directory.tsx:37` legacy `/p/` → `/s/`.
+- `artifacts/mockup-sandbox` disposition.

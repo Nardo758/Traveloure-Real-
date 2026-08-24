@@ -35,6 +35,7 @@ Preferred communication style: Simple, everyday language.
 - **Never touch `artifacts/` for the production application.** The production client is `client/src`; both the preview and deployment must serve `client/src`.
 - The root Vite configuration builds `client/` into `dist/public`, and the Replit deployment target runs the root `npm run build` followed by `npm start`.
 - **HARD STOP means no Git commit.** Keep edits in the working tree until Leon explicitly says “commit.”
+- Never commit files under `attached_assets/` or any `.generated/` path. Never publish artifacts. Deployment type is Autoscale from root; static artifact deployments are forbidden.
 
 ### UI/UX Decisions
 The application uses a modern, responsive design built with React, Tailwind CSS, shadcn/ui for consistent components, and Framer Motion for smooth transitions. The primary color scheme is `#FF385C` with a gray-900 palette for admin interfaces and amber accents. Dashboards are role-specific (Provider, Admin, Executive Assistant) with distinct layouts and collapsible sidebars.
