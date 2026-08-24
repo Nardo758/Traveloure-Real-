@@ -29,19 +29,20 @@ function MastheadIcon({ surface }: { surface: Surface }) {
 
 function DestinationCards() {
   const cities = [
-    ["Kyoto", "Japan", "Temple air & autumn color", "Peak foliage · Nov", cityPhotos.kyoto],
-    ["Jaipur", "India", "Rose city, blue hour", "Heritage season · Dec", cityPhotos.jaipur],
-    ["Bali", "Indonesia", "Rituals by the water", "Dry season · May", cityPhotos.bali],
+    { city: "Kyoto", country: "Japan", premise: "Temple air & autumn color", season: "Peak foliage · Nov", score: "87", price: "$175", crowd: "Busy", gems: "35 gems", image: cityPhotos.kyoto },
+    { city: "Jaipur", country: "India", premise: "Rose city, blue hour", season: "Heritage season · Dec", score: "78", price: "$95", crowd: "Moderate", gems: "18 gems", image: cityPhotos.jaipur },
+    { city: "Bali", country: "Indonesia", premise: "Rituals by the water", season: "Dry season · May", score: "90", price: "$115", crowd: "Easygoing", gems: "42 gems", image: cityPhotos.bali },
   ];
   return <div className="fg-card-grid">
-    {cities.map(([city, country, premise, season, image]) => (
-      <article className="fg-card" key={city}>
-        <div className="fg-photo" style={{ backgroundImage: `url(${image})` }}><span className="fg-signal">{season}</span></div>
+    {cities.map((place) => (
+      <article className="fg-card" key={place.city}>
+        <div className="fg-photo" style={{ backgroundImage: `url(${place.image})` }}><span className="fg-signal">{place.season}</span></div>
         <div className="fg-card-body">
-          <p className="fg-card-title">{city}</p>
-          <p className="fg-meta"><MapPin />{country}</p>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}><div><p className="fg-card-title">{place.city}</p><p className="fg-meta"><MapPin />{place.country}</p></div><span className="fg-status teal">Pulse {place.score}</span></div>
+          <p className="fg-meta" style={{ color: "var(--teal)", fontWeight: 700, marginTop: 12 }}><Sparkles size={13} />{place.premise}</p>
+          <div className="fg-facts"><div className="fg-fact"><strong>{place.price}</strong>per night</div><div className="fg-fact"><strong>{place.crowd}</strong>crowd feel</div><div className="fg-fact"><strong>{place.gems}</strong>local finds</div></div>
           <div className="fg-card-rule" />
-          <div className="fg-card-foot"><span>{premise}</span><button className="fg-link">Explore <ArrowUpRight size={13} /></button></div>
+          <div className="fg-card-foot"><span className="fg-status gold">{place.crowd}</span><button className="fg-card-cta">Take me here <ArrowUpRight size={13} /></button></div>
         </div>
       </article>
     ))}
@@ -94,9 +95,9 @@ function Events() {
   const [selectedMonth, setSelectedMonth] = useState("Aug");
   const months = ["May", "Jun", "Jul", "Aug", "Sep", "Oct"];
   const events = [
-    { month: "Aug", day: "24", name: "Summer Wine Festival", place: "Bordeaux · France", note: "A warm-weather weekend" },
-    { month: "Aug", day: "29", name: "Edinburgh Fringe", place: "Edinburgh · UK", note: "Comedy, theatre & late nights" },
-    { month: "Sep", day: "07", name: "Kite Festival", place: "Bali · Indonesia", note: "A day at Sanur beach" },
+    { month: "Aug", day: "24", name: "Summer Wine Festival", place: "Bordeaux · France", note: "A warm-weather weekend", proof: "2 events nearby" },
+    { month: "Aug", day: "29", name: "Edinburgh Fringe", place: "Edinburgh · UK", note: "Comedy, theatre & late nights", proof: "9.2 / 10 season fit" },
+    { month: "Sep", day: "07", name: "Kite Festival", place: "Bali · Indonesia", note: "A day at Sanur beach", proof: "Family-friendly" },
   ];
   const visibleEvents = events.filter((event) => event.month === selectedMonth);
   return <div className="fg-calendar-layout">
@@ -109,7 +110,7 @@ function Events() {
       <div>
         {visibleEvents.map((event) => <div className="fg-event-line" key={event.name}>
           <div className="fg-datebox">{event.month}<strong>{event.day}</strong></div>
-          <div><div className="fg-event-name">{event.name}</div><div className="fg-event-meta">{event.place} · {event.note}</div></div>
+          <div><div className="fg-event-name">{event.name}</div><div className="fg-event-meta">{event.place}</div><div className="fg-event-proof"><span>{event.note}</span><span>·</span><span>{event.proof}</span></div></div>
           <button className="fg-link">Details</button>
         </div>)}
       </div>
@@ -134,13 +135,13 @@ function Services() {
   const [sort, setSort] = useState("Recommended");
   const [added, setAdded] = useState<string | null>(null);
   const services = [
-    { city: "Kyoto", name: "Private Gion after-hours walk", provider: "Nori Sato · 4.9 (61)", price: "$180", fact: "Local story, one clear price", category: "Tours" },
-    { city: "Paris", name: "Architectural portrait session", provider: "Léa Martin · 4.8 (44)", price: "$280", fact: "Two hours · finished gallery", category: "Photography" },
-    { city: "Bali", name: "Airport-to-villa welcome service", provider: "Made Kartika · 4.9 (88)", price: "$95", fact: "Private transfer · door to door", category: "Transport" },
+    { city: "Kyoto", name: "Private Gion after-hours walk", provider: "Nori Sato", rating: "4.9 (61)", price: "$180", fact: "4 hours · starts 5am", status: "Open today", category: "Tours" },
+    { city: "Paris", name: "Architectural portrait session", provider: "Léa Martin", rating: "4.8 (44)", price: "$280", fact: "2 hours · finished gallery", status: "3 spots left", category: "Photography" },
+    { city: "Bali", name: "Airport-to-villa welcome service", provider: "Made Kartika", rating: "4.9 (88)", price: "$95", fact: "Private transfer · door to door", status: "Open today", category: "Transport" },
   ];
   const normalizedQuery = query.trim().toLowerCase();
   const visibleServices = services.filter((service) => {
-    const matchesQuery = !normalizedQuery || `${service.name} ${service.city} ${service.provider}`.toLowerCase().includes(normalizedQuery);
+    const matchesQuery = !normalizedQuery || `${service.name} ${service.city} ${service.provider} ${service.category}`.toLowerCase().includes(normalizedQuery);
     const matchesDestination = !destination.trim() || service.city.toLowerCase().includes(destination.trim().toLowerCase());
     const matchesCategory = category === "All services" || category === "More categories" || service.category === category;
     const matchesPrice = price === "Any price" || (price === "Under $150" && service.price === "$95") || (price === "$150–$300" && service.price !== "$95");
@@ -164,13 +165,14 @@ function Services() {
     </div>
     <div className="fg-card-grid">
       {visibleServices.map((service) => <article className="fg-card fg-service-card" key={service.name}>
-        <div className="fg-service-top"><span className="fg-service-provider"><CheckCircle2 size={13} /> Verified local</span><span>{service.city}</span></div>
+        <div className="fg-service-top"><span className="fg-service-provider"><CheckCircle2 size={13} /> Verified local</span><span className="fg-status teal">{service.status}</span></div>
         <p className="fg-card-title" style={{ marginTop: 19 }}>{service.name}</p>
-        <p className="fg-meta">{service.provider}</p>
+        <p className="fg-meta">{service.provider} · {service.rating} · {service.city}</p>
         <div style={{ flex: 1 }} />
         <p className="fg-meta" style={{ color: "var(--teal)", fontWeight: 700 }}>{service.fact}</p>
+        <div className="fg-facts"><div className="fg-fact"><strong>{service.price}</strong>per service</div><div className="fg-fact"><strong>{service.rating.split(" ")[0]}</strong>guest rating</div><div className="fg-fact"><strong>{service.category}</strong>service type</div></div>
         <div className="fg-card-rule" />
-        <div className="fg-card-foot"><span className="fg-service-price">{service.price}<span>per service</span></span><button className="fg-link" onClick={() => setAdded(service.name)}>{added === service.name ? "Added to trip ✓" : "Add to trip"} <ArrowUpRight size={13} /></button></div>
+        <div className="fg-card-foot"><span className="fg-service-price">{service.price}<span>per service</span></span><button className="fg-card-cta" onClick={() => setAdded(service.name)}>{added === service.name ? "Added ✓" : "Add to trip"} <ArrowUpRight size={13} /></button></div>
       </article>)}
     </div>
     {!visibleServices.length && <div className="fg-card" style={{ padding: 24, marginTop: 16, color: "var(--muted)", textAlign: "center" }}>No services match those refinements. <button className="fg-link" onClick={clearRefinements}>Clear all</button></div>}
