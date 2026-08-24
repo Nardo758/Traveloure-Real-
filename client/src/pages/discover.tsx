@@ -81,6 +81,7 @@ import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { UnifiedResultGrid, catalogItemToUnifiedResult } from "@/components/unified-result-card";
 import type { CatalogItem } from "@/types/catalog";
+import "./marketplace-field-guide.css";
 
 // Ready-Made shelf DTO (GET /api/ready-made) — teaser fields only; the itinerary stays behind
 // the purchase→clone gate.
@@ -141,27 +142,32 @@ function readyMadeThemeHeading(key: string): string {
 function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
   return (
     <Card
-      className="overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col"
+      className="marketplace-guide-card marketplace-trip-card overflow-hidden h-full flex flex-col"
       data-testid={`rm-shelf-card-${l.id}`}
     >
-      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer">
-        {/* D3: h-40 aligns the card image height with the Itinerary Templates grid below. */}
+      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer group">
         {l.heroImageUrl && (
-          <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
+          <div className="marketplace-card-photo">
+            <img src={l.heroImageUrl} alt={l.title} className="w-full h-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-105" />
+            <span className="marketplace-card-signal">{l.market}</span>
+          </div>
         )}
-        <CardContent className="p-4 pb-2">
-          <div className="text-[11px] uppercase tracking-wide text-primary font-semibold">
+        <CardContent className="p-4 pb-3">
+          <div className="marketplace-kicker">
             {planTypeDisplay(l.planType, l.planTypeCustom)}
           </div>
-          <div className="font-semibold truncate">{l.title}</div>
-          <div className="text-sm text-muted-foreground">
-            {l.market} · {l.durationDays} days
+          <div className="marketplace-card-title line-clamp-2">{l.title}</div>
+          <div className="marketplace-facts">
+            <span><strong>{l.durationDays} days</strong>trip length</span>
+            <span>
+              <strong>{l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}</strong>
+              {l.pricingMode === "per_traveler" ? "per traveler" : "complete trip"}
+            </span>
+            <span><strong>{l.authorName.split(" ")[0]}</strong>trip editor</span>
           </div>
-          <div className="mt-2 font-bold">
-            {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
-            {l.pricingMode === "per_traveler" && (
-              <span className="text-xs font-normal text-muted-foreground"> /traveler</span>
-            )}
+          <div className="marketplace-card-action">
+            <span>Editable after purchase</span>
+            <span className="marketplace-primary-action">View trip <ArrowRight className="w-3.5 h-3.5" /></span>
           </div>
         </CardContent>
       </Link>
@@ -219,6 +225,8 @@ type Service = {
   providerImageUrl?: string | null;
   providerRating?: string | null;
   providerBusinessName?: string | null;
+  serviceImage?: string | null;
+  galleryImages?: string[] | null;
   /** MP-2 storefront return path — null when the owner has no claimed handle (no /p/ page). */
   providerHandle?: string | null;
 };
@@ -320,24 +328,9 @@ function ServiceCard({
   const isVerified = reviewCount >= 3;
   const isHot = rating >= 4.7 && reviewCount >= 10;
   
-  // Generate mock image based on category
-  const getCategoryImage = (categorySlug: string) => {
-    const imageMap: Record<string, string> = {
-      "photography-videography": "https://picsum.photos/seed/photography/600/400",
-      "transportation-logistics": "https://picsum.photos/seed/transport/600/400",
-      "food-culinary": "https://picsum.photos/seed/food/600/400",
-      "childcare-family": "https://picsum.photos/seed/family/600/400",
-      "tours-experiences": "https://picsum.photos/seed/tours/600/400",
-      "personal-assistance": "https://picsum.photos/seed/assistance/600/400",
-      "health-wellness": "https://picsum.photos/seed/wellness/600/400",
-      "beauty-styling": "https://picsum.photos/seed/beauty/600/400",
-      "pets-animals": "https://picsum.photos/seed/pets/600/400",
-      "events-celebrations": "https://picsum.photos/seed/events/600/400",
-      "technology-connectivity": "https://picsum.photos/seed/technology/600/400",
-      "language-translation": "https://picsum.photos/seed/language/600/400",
-    };
-    return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
-  };
+  const serviceImage = service.serviceImage
+    || service.galleryImages?.find((image): image is string => Boolean(image))
+    || null;
 
   // Build real provider display name from API data.
   // Fallback chain: firstName+lastName → businessName (from service_provider_forms) → "Provider"
@@ -350,13 +343,6 @@ function ServiceCard({
     || service.providerBusinessName?.[0]?.toUpperCase()
     || "P";
 
-  const getStatusColor = (rating: number) => {
-    if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
-    if (rating >= 4.0) return { text: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
-    return { text: "text-green-500 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20" };
-  };
-
-  const statusColor = getStatusColor(rating);
   const heatScore = Math.round(rating * 20);
 
   return (
@@ -366,17 +352,23 @@ function ServiceCard({
       className="group"
     >
       <div 
-        className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-500 border border-border h-full flex flex-col"
+        className="marketplace-guide-card marketplace-service-card bg-card dark:bg-card overflow-hidden border border-border h-full flex flex-col"
         data-testid={`card-service-${service.id}`}
       >
         {/* Image Header with Overlay */}
         <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
           <div className="relative h-48 overflow-hidden cursor-pointer">
-            <img
-              src={getCategoryImage(category?.slug || "")}
-              alt={service.serviceName}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            />
+            {serviceImage ? (
+              <img
+                src={serviceImage}
+                alt={service.serviceName}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+            ) : (
+              <div className="marketplace-service-image-fallback" aria-label="No service photo provided">
+                <Icon aria-hidden="true" />
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             
             {/* Heat Score Badge - Top Right. D5 (UX audit Jul 29): "Heat Score 0" rendered on
@@ -521,7 +513,7 @@ function ServiceCard({
         </Link>
 
         {/* Card Content */}
-        <div className="p-4 flex-1 flex flex-col">
+          <div className="p-4 flex-1 flex flex-col">
           {/* Description */}
           <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
             {description}
@@ -558,21 +550,14 @@ function ServiceCard({
             )}
           </div>
 
-          {/* Price and Status */}
-          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          {/* Price. Availability is only shown when a provider supplies real schedule data. */}
+          <div className="flex items-center mb-3 gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-foreground">${price.toFixed(0)}</span>
               <span className="text-xs text-emerald-600 dark:text-emerald-400">
                 per service
               </span>
             </div>
-            <span className={cn(
-              "text-xs font-medium px-2 py-0.5 rounded-full",
-              statusColor.text,
-              statusColor.bg
-            )}>
-              {rating >= 4.5 ? "Busy" : rating >= 4.0 ? "Moderate" : "Available"}
-            </span>
           </div>
 
           {/* Service Tip */}
@@ -590,7 +575,7 @@ function ServiceCard({
           )}
 
           {/* Bottom Stats Row */}
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border mt-auto" data-testid={`stats-footer-${service.id}`}>
+          <div className="marketplace-facts marketplace-service-facts mt-auto" data-testid={`stats-footer-${service.id}`}>
             <div className="flex items-center gap-1" data-testid={`stat-rating-${service.id}`}>
               <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
               <span className="font-medium">{rating.toFixed(1)}</span>
@@ -639,45 +624,44 @@ function ServiceCard({
 }
 
 /**
- * Marketplace un-group (decision-maker ratified Aug 23, ledger
- * 2026-08-23-marketplace-ungroup): each Marketplace surface is its OWN page —
- * /destinations, /ready-made, /events, /services — reached straight from the nav
- * dropdown, with NO tab bar (the grouped header is gone). `surface` pins this
- * component to one surface: the tab bar is not rendered, the masthead titles
- * itself for that surface, and ?tab= is ignored. Without `surface` the legacy
- * tabbed shell still works (only the /discover redirect uses that path now).
+ * Each Marketplace surface remains its own route and keeps its existing route
+ * semantics. `surface` pins the content while the Field Guide route rail uses
+ * real links to connect the four sibling pages; ?tab= remains ignored.
  */
 export type MarketplaceSurface = "travelpulse" | "packages" | "events" | "services";
 
-// Each surface masthead follows the ratified Ready-Made-by-Theme band (artifact
-// 5c827895): a Fraunces serif title with a leading emoji + a muted one-line sub.
-// `emoji` is the band-title glyph (🏅 is the one the mock itself draws).
-const SURFACE_META: Record<MarketplaceSurface, { emoji: string; title: string; subtitle: string; url: string; seoTitle: string }> = {
+// Shared Field Guide masthead metadata. Icons and copy establish each route's job
+// while the route rail keeps the four Marketplace surfaces visibly connected.
+const SURFACE_META: Record<MarketplaceSurface, { icon: typeof Compass; title: string; subtitle: string; label: string; url: string; seoTitle: string }> = {
   travelpulse: {
-    emoji: "📍",
+    icon: Compass,
     title: "Destinations",
-    subtitle: "Explore destinations & trending cities.",
+    subtitle: "Field notes on places worth planning around — seasons, culture, and the feeling of being there.",
+    label: "Travel intelligence",
     url: "/destinations",
     seoTitle: "Destinations — Trending Cities & Travel Intel",
   },
   packages: {
-    emoji: "🏅",
+    icon: Sparkles,
     title: "Ready-Made Trips",
-    subtitle: "Buy a complete trip built around an experience — it becomes your own editable plan.",
+    subtitle: "Curated itineraries you can make your own, with every stop shaped by someone who knows the place.",
+    label: "Trip editions",
     url: "/ready-made",
     seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
   },
   events: {
-    emoji: "📅",
+    icon: Calendar,
     title: "Events",
-    subtitle: "Upcoming events & activities around the world.",
+    subtitle: "Use the calendar to find a date, then see the festivals and places that make it worth the journey.",
+    label: "Time-led planning",
     url: "/events",
     seoTitle: "Events — Festivals & Travel Calendar",
   },
   services: {
-    emoji: "🛎️",
+    icon: Sparkles,
     title: "Services",
-    subtitle: "Book tours, photography, transport & more — we assemble & optimize your trip.",
+    subtitle: "Book local expertise for the part of your trip that deserves to feel effortless.",
+    label: "Book with confidence",
     url: "/services",
     seoTitle: "Services — Tours, Photography, Transport & More",
   },
@@ -1094,6 +1078,8 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
   };
 
   const clearFilters = () => {
+    setSearchQuery("");
+    setDebouncedQuery("");
     setSelectedCategory("all");
     setMinPrice(0);
     setMaxPrice(0);
@@ -1103,6 +1089,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
   };
 
   const hasActiveFilters = 
+    searchQuery.trim() !== "" ||
     selectedCategory !== "all" || 
     minPrice > 0 || 
     maxPrice > 0 || 
@@ -1127,7 +1114,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
         url={surface ? SURFACE_META[surface].url : "/discover"}
       />
-      <div className="min-h-screen bg-background">
+      <div className={cn("min-h-screen bg-background", surface && "marketplace-field-guide")}>
 
         {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
             title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
@@ -1143,46 +1130,59 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
         <Tabs value={activeTab} onValueChange={setSelectedTab} className="w-full">
-        <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
+        <section className="marketplace-masthead bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
-            {/* Surface masthead = the ratified Ready-Made-by-Theme band (artifact
-                5c827895, decision-maker Aug 23): a Fraunces serif title with a leading
-                emoji + a muted one-line sub, left-aligned, content immediately below. NO
-                search bar except on Services (the only surface whose query it actually
-                feeds) and NO instructional-ad banner (removed per the same ruling — the
-                pitch was funnel copy, not surface content). Fraunces is applied inline
-                (loaded in index.html) because --font-serif is a runtime theme token, not a
-                static one. The legacy tabbed shell keeps its old centered sans masthead +
-                search + ad; it is reachable only through the /discover redirect. */}
+            {/* Field Guide masthead: a route-specific icon, serif title, concise deck,
+                and real-link route rail. Services search lives with its result filters;
+                the legacy tabbed shell keeps its existing centered search and ad. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={surface ? "text-left" : "text-center mb-4"}
+              className={surface ? "marketplace-titlebar" : "text-center mb-4"}
             >
-              <h1
-                className={surface
-                  ? "flex items-center gap-2.5 flex-wrap text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)]"
-                  : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
-                style={surface ? { fontFamily: "'Fraunces', Georgia, serif" } : undefined}
-              >
-                {surface ? (
-                  <>
-                    <span aria-hidden="true">{SURFACE_META[surface].emoji}</span>
-                    {/* testid lives on the text span (not the h1) so masthead
-                        assertions stay an exact match — the emoji is decorative. */}
-                    <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
-                  </>
-                ) : (
-                  <span data-testid="text-page-title">Explore Services &amp; Ready-Made Trips</span>
-                )}
-              </h1>
-              <p className={surface
-                ? "text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]"
-                : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
-                {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
-              </p>
+              <div>
+                <h1
+                  className={surface
+                    ? "marketplace-page-title"
+                    : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
+                >
+                  {surface ? (
+                    <>
+                      <span className={`marketplace-title-icon marketplace-title-icon--${surface}`} aria-hidden="true">
+                        {(() => { const SurfaceIcon = SURFACE_META[surface].icon; return <SurfaceIcon />; })()}
+                      </span>
+                      <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
+                    </>
+                  ) : (
+                    <span data-testid="text-page-title">Explore Services &amp; Ready-Made Trips</span>
+                  )}
+                </h1>
+                <p className={surface
+                  ? "marketplace-page-deck"
+                  : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
+                  {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
+                </p>
+              </div>
+              {surface && (
+                <div className="marketplace-route-block">
+                  <p>{SURFACE_META[surface].label}</p>
+                  <nav className="marketplace-route-tabs" aria-label="Marketplace sections">
+                    {(Object.keys(SURFACE_META) as MarketplaceSurface[]).map((key) => (
+                      <Link
+                        key={key}
+                        href={SURFACE_META[key].url}
+                        className={key === surface ? "active" : ""}
+                        aria-current={key === surface ? "page" : undefined}
+                        data-testid={`marketplace-route-${key}`}
+                      >
+                        {SURFACE_META[key].title.replace(" Trips", "")}
+                      </Link>
+                    ))}
+                  </nav>
+                </div>
+              )}
             </motion.div>
-            {(!surface || surface === "services") && (
+            {!surface && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1439,13 +1439,13 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
         )}
 
         {/* Main Content */}
-        <section className="py-12">
+        <section className={surface ? "marketplace-content py-7 md:py-8" : "py-12"}>
           <div className="container mx-auto px-4 max-w-[1400px]">
             {/* Tab bar moved INTO the hero band (funnel PR1) — TabsContents below stay
                 inside the same Tabs root, which now opens above the hero. */}
 
               {/* Browse Services Tab */}
-              <TabsContent value="services">
+              <TabsContent value="services" className="marketplace-surface-content">
 
                 {/* Quick Category Chips */}
                 {categories && categories.length > 0 && (
@@ -1501,7 +1501,17 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                 {/* Unified Filter Bar — one earn-styled bar (mirrors the /experts filter
                     bar) replacing the old desktop sidebar Card + scattered Location/Sort
                     row + mobile filter Sheet. Every control inline; wraps on small screens. */}
-                <div className="bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
+                <div className="marketplace-filter-bar bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
+                  {surface && <div className="relative flex-[1.4] min-w-[220px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="What do you need help with?"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                      data-testid="input-search"
+                    />
+                  </div>}
                   <div className="relative flex-1 min-w-[170px]">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -1569,6 +1579,18 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   )}
                 </div>
 
+                <div className="marketplace-section-head">
+                  <div>
+                    <p className="marketplace-kicker">
+                      {selectedCategory === "all" ? "All services" : getCategoryById(selectedCategory)?.name}
+                    </p>
+                    <h2>Good hands, exactly where you need them</h2>
+                  </div>
+                  {result && (
+                    <p>{result.total} {result.total === 1 ? "match" : "matches"} · {sortBy.replaceAll("_", " ")}</p>
+                  )}
+                </div>
+
                 <div>
                     {/* Active Filters */}
                     {hasActiveFilters && (
@@ -1629,7 +1651,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                       <CardGridSkeleton count={8} />
                     ) : result?.services && result.services.length > 0 ? (
                       <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        <div className="marketplace-service-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                           {result.services.map((service) => (
                             <ServiceCard
                               key={service.id}
@@ -1726,12 +1748,23 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
               </TabsContent>
 
               {/* Trip Packages Tab */}
-              <TabsContent value="packages">
+              <TabsContent value="packages" className="marketplace-surface-content">
                 {/* D3 (lane nav-storefront): the tab's content is width-aligned to the hero
                     band (max-w-6xl) — the surrounding shared container is max-w-[1400px]
                     for the other tabs, which left this tab visibly wider than its own
                     header. Scoped here so the services tab keeps its wide grid. */}
                 <div className="max-w-6xl mx-auto">
+                {surface && (
+                  <div className="marketplace-section-head">
+                    <div>
+                      <p className="marketplace-kicker">Curated for right now</p>
+                      <h2>Travel like you have a local editor</h2>
+                    </div>
+                    {readyMadeShelf && (
+                      <p>{readyMadeShelf.length} {readyMadeShelf.length === 1 ? "edition" : "editions"} · one clear price</p>
+                    )}
+                  </div>
+                )}
                 {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
                     sectioned by author type per the ratified store model. Surfaced now that the buy
                     loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
@@ -2185,12 +2218,21 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
               </TabsContent>
 
               {/* Events Tab - Global Calendar */}
-              <TabsContent value="events">
+              <TabsContent value="events" className="marketplace-surface-content marketplace-events-content">
                 <GlobalCalendar />
               </TabsContent>
 
               {/* TravelPulse Tab */}
-              <TabsContent value="travelpulse">
+              <TabsContent value="travelpulse" className="marketplace-surface-content marketplace-destinations-content">
+                {surface && (
+                  <div className="marketplace-section-head">
+                    <div>
+                      <p className="marketplace-kicker">Now worth knowing</p>
+                      <h2>Cities with a story this season</h2>
+                    </div>
+                    <p>One travel signal · one reason to go</p>
+                  </div>
+                )}
                 {/* On the /destinations SURFACE the masthead is the page header, so
                     suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
                 <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />

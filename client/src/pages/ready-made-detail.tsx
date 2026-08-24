@@ -30,7 +30,6 @@ import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import StripeCheckout from "@/components/booking/StripeCheckout";
@@ -39,7 +38,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeDisplay } from "@shared/ready-made-plan-types";
 import { resolveFormat } from "@/lib/build-formats/registry";
-import { CalendarDays, ConciergeBell, Loader2, MapPin, ShoppingBag, Sun } from "lucide-react";
+import {
+  ArrowLeft, CalendarDays, CheckCircle2, Clock3, ConciergeBell, Copy, FileText,
+  Loader2, LockKeyhole, MapPin, Pencil, ShoppingBag, Sun, UserRound,
+} from "lucide-react";
+import "./ready-made-detail.css";
 
 interface DetailListing {
   id: string;
@@ -156,6 +159,7 @@ export default function ReadyMadeDetailPage() {
   const { user } = useAuth();
   const [paymentIntent, setPaymentIntent] = useState<{ clientSecret: string; paymentIntentId: string; amount: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [purchasing, setPurchasing] = useState(false);
   // Teaser map section is additive — a broken image must never ship on a listing page, so a
   // load failure hides the whole section rather than showing a broken-image block.
   const [teaserMapFailed, setTeaserMapFailed] = useState(false);
@@ -172,24 +176,40 @@ export default function ReadyMadeDetailPage() {
       toast({ title: "Sign in to buy this trip", description: "You need an account so the trip can be copied into your plans." });
       return;
     }
-    const res = await fetch(`/api/ready-made/${id}/purchase`, {
-      method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
-    });
-    const body = await res.json().catch(() => ({}));
-    if (res.status === 409 && body.purchase?.cloneTripId) {
-      // Already purchased → straight to the canonical Trip Slip (matches the confirm redirect).
-      navigate(`/plans/${body.purchase.cloneTripId}`);
-      return;
+    setPurchasing(true);
+    try {
+      const res = await fetch(`/api/ready-made/${id}/purchase`, {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 409 && body.purchase?.cloneTripId) {
+        // Already purchased → straight to the canonical editable Trip Slip.
+        navigate(`/plans/${body.purchase.cloneTripId}`);
+        return;
+      }
+      if (res.status !== 202) {
+        toast({ title: "Purchase unavailable", description: body.message ?? "Please try again.", variant: "destructive" });
+        return;
+      }
+      setPaymentIntent({
+        clientSecret: body.clientSecret,
+        paymentIntentId: body.paymentIntentId,
+        amount: body.listing?.priceCents ?? listing?.priceCents ?? 0,
+      });
+    } catch {
+      toast({ title: "Purchase unavailable", description: "We couldn't reach checkout. Check your connection and try again.", variant: "destructive" });
+    } finally {
+      setPurchasing(false);
     }
-    if (res.status !== 202) {
-      toast({ title: "Purchase unavailable", description: body.message ?? "Please try again.", variant: "destructive" });
-      return;
+  };
+
+  const copyTripLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast({ title: "Trip link copied" });
+    } catch {
+      toast({ title: "Could not copy link", description: "Copy the address from your browser instead.", variant: "destructive" });
     }
-    setPaymentIntent({
-      clientSecret: body.clientSecret,
-      paymentIntentId: body.paymentIntentId,
-      amount: body.listing?.priceCents ?? listing?.priceCents ?? 0,
-    });
   };
 
   const handleStripeSuccess = async (paymentIntentId: string) => {
@@ -214,14 +234,15 @@ export default function ReadyMadeDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-3xl mx-auto p-6 space-y-4">
-        <Skeleton className="h-8 w-64" /><Skeleton className="h-64 w-full rounded-2xl" /><Skeleton className="h-40 w-full" />
+      <div className="rmd-live rmd-state" aria-busy="true" aria-label="Loading trip">
+        <Skeleton className="h-5 w-40" /><Skeleton className="h-14 w-2/3" />
+        <Skeleton className="h-80 w-full rounded-2xl" /><Skeleton className="h-48 w-full rounded-xl" />
       </div>
     );
   }
   if (error || !listing) {
     return (
-      <div className="max-w-3xl mx-auto p-10 text-center">
+      <div className="rmd-live rmd-state rmd-error-state">
         <h1 className="text-xl font-semibold mb-2">Trip not found</h1>
         <p className="text-muted-foreground mb-4">It may have been removed or isn't available yet.</p>
         <Button asChild variant="outline"><Link href="/ready-made">Browse Ready Made Trips</Link></Button>
@@ -245,164 +266,167 @@ export default function ReadyMadeDetailPage() {
   const teaserMapUrl = `/api/ready-made/${id}/teaser-map.svg`;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6">
-      {/* ── Branded page header — the quality structure's frame ── */}
-      <div className="flex items-center justify-between border-b border-border pb-3 mb-5">
-        <Link href="/" className="flex items-center" data-testid="link-rm-logo">
-          <TraveloureLogo />
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-widest text-muted-foreground">Ready Made Trips</span>
-          {/* Ruling 116 (distribution-language audit P2): a link/QR recipient can switch the UI
-              language here like on every other landing — same ONE selector (ruling 60 (b)). */}
+    <div className="rmd-live">
+      <header className="rmd-header">
+        <Link href="/" className="rmd-logo" data-testid="link-rm-logo"><TraveloureLogo /></Link>
+        <div className="rmd-header-actions">
+          <span>Ready Made Trips</span>
           <LanguageMenu />
         </div>
-      </div>
+      </header>
+
+      <nav className="rmd-breadcrumb" aria-label="Breadcrumb">
+        <Link href="/ready-made"><ArrowLeft aria-hidden="true" /> Marketplace</Link>
+        <span aria-hidden="true">/</span><strong>Ready-Made Trips</strong>
+      </nav>
 
       {isPreview && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800" data-testid="banner-preview">
-          Preview — this is exactly what buyers will see once your listing is approved. Purchasing is disabled.
+        <div className="rmd-preview" data-testid="banner-preview">
+          <strong>Buyer preview</strong> — this is exactly what shoppers will see once approved. Purchasing is disabled.
         </div>
       )}
 
-      {lead === "venue-hero" ? (
-        /* store:kyoto-wedding lead — the mockup's venue-led hero. Facts row renders ONLY real
-           DTO fields: durationDays always exists; bestSeason (the date window) only when the
-           listing carries it; party size is NOT in the DTO, so it is never shown (§13). */
-        <div
-          className="rounded-2xl p-6 sm:p-8 mb-4 text-white bg-gradient-to-br from-[#7A2E3B] to-[#B4434F]"
-          data-testid="lead-venue-hero"
-        >
-          <div className="text-xs font-semibold uppercase tracking-wide text-white/80" data-testid="text-plan-type">
+      <section className="rmd-intro">
+        <div>
+          <p className="rmd-plan-type" data-testid="text-plan-type">
             {planTypeDisplay(listing.planType, listing.planTypeCustom)}
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold mt-1" data-testid="text-rm-title">
-            {listing.title} — {listing.market}
-          </h1>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white/90 mt-3">
-            <span className="flex items-center gap-1"><CalendarDays className="w-4 h-4" />{listing.durationDays} days</span>
-            {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Date window: {listing.bestSeason}</span>}
-          </div>
+          </p>
+          <h1 data-testid="text-rm-title">{listing.title}</h1>
+          <p className="rmd-deck">
+            A complete, thoughtfully built plan for {listing.market} — ready to become your own editable trip.
+          </p>
         </div>
-      ) : (
-        <>
-          {/* Type of Plan — the structure's headline */}
-          <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground" data-testid="text-plan-type">
-            {planTypeDisplay(listing.planType, listing.planTypeCustom)}
+        <div className="rmd-author">
+          <span className="rmd-author-avatar" aria-hidden="true">{listing.authorName.charAt(0).toUpperCase()}</span>
+          <div>
+            <span>Built by {listing.authorName}</span>
+            <small>{listing.section === "trips_by_locals" ? "Local perspective" : "Trip planner"} · fixed plan</small>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-1 mb-3" data-testid="text-rm-title">{listing.title}</h1>
-        </>
+          <Badge variant="secondary" data-testid="badge-rm-section" className="sr-only">
+            {listing.section === "trips_by_locals" ? `Trip by a Local — ${listing.authorName}` : `By Trip Planner ${listing.authorName}`}
+          </Badge>
+        </div>
+      </section>
+
+      {lead === "venue-hero" && (
+        <div className="rmd-format-lead" data-testid="lead-venue-hero">
+          <span>{listing.market}</span>
+          <strong>{listing.durationDays} days</strong>
+          {listing.bestSeason && <span>Date window: {listing.bestSeason}</span>}
+        </div>
       )}
-
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
-        {/* The venue hero already carries market/duration/season — don't repeat them below it. */}
-        {lead !== "venue-hero" && (
-          <>
-            <span className="flex items-center gap-1"><MapPin className="w-4 h-4" />{listing.market}</span>
-            <span className="flex items-center gap-1"><CalendarDays className="w-4 h-4" />{listing.durationDays} days</span>
-            {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Best in {listing.bestSeason}</span>}
-          </>
-        )}
-        <Badge variant="secondary" data-testid="badge-rm-section">
-          {listing.section === "trips_by_locals" ? `Trip by a Local — ${listing.authorName}` : `By Trip Planner ${listing.authorName}`}
-        </Badge>
-        {listing.badge && <Badge>{listing.badge}</Badge>}
-      </div>
-
-      {/* store:kyoto-cultural lead — the neighborhood strip band above the existing content. */}
       {lead === "map-strip" && <NeighborhoodStrip market={listing.market} />}
 
-      {listing.heroImageUrl && (
-        <div className="mb-5">
-          <img src={listing.heroImageUrl} alt={listing.title} className="w-full h-64 sm:h-80 object-cover rounded-2xl" data-testid="img-rm-hero" />
+      {(listing.heroImageUrl || !teaserMapFailed) && (
+        <figure className={`rmd-hero ${!listing.heroImageUrl ? "rmd-hero-map-only" : ""}`}>
+          {listing.heroImageUrl && (
+            <div className="rmd-hero-photo">
+              <img src={listing.heroImageUrl} alt={listing.title} data-testid="img-rm-hero" />
+              <div className="rmd-hero-caption">
+                <span>{listing.market}</span>
+                <strong>{listing.title}</strong>
+              </div>
+            </div>
+          )}
+          {!teaserMapFailed && (
+            <div className="rmd-route" data-testid="section-route-teaser">
+              <div className="rmd-route-label"><span>Route preview</span><span>{listing.market.split(",")[0]}</span></div>
+              <img
+                src={teaserMapUrl}
+                alt="General route preview without stop details"
+                data-testid="img-route-teaser"
+                onError={() => setTeaserMapFailed(true)}
+              />
+              <div className="rmd-route-lock"><LockKeyhole aria-hidden="true" /> Stops unlock with purchase</div>
+              <small>Traveloure map · © OpenStreetMap contributors</small>
+            </div>
+          )}
           {listing.heroImageMeta?.photographer && (
-            <div className="text-[11px] text-muted-foreground mt-1">
-              Photo by <a className="underline" href={listing.heroImageMeta.profileUrl} target="_blank" rel="noreferrer">{listing.heroImageMeta.photographer}</a> on Unsplash
-            </div>
+            <figcaption>
+              Photo by <a href={listing.heroImageMeta.profileUrl} target="_blank" rel="noreferrer">{listing.heroImageMeta.photographer}</a> on Unsplash
+            </figcaption>
           )}
-        </div>
+        </figure>
       )}
 
-      {/* Teaser map — public teaser-map.svg for this listing. No itinerary/pins are exposed
-          pre-purchase (the SVG bakes only geography + generic route shape); a load failure hides
-          the whole section (a broken-image block must never ship on a listing page, §13/§17). */}
-      {!teaserMapFailed && (
-        <div className="mb-5" data-testid="section-route-teaser">
-          <div className="relative overflow-hidden rounded-2xl border border-border">
-            <img
-              src={teaserMapUrl}
-              alt="Route preview"
-              className="w-full h-auto block"
-              data-testid="img-route-teaser"
-              onError={() => setTeaserMapFailed(true)}
-            />
-            <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white">
-              Stops unlock with purchase
-            </span>
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-1">
-            Traveloure map · © OpenStreetMap contributors
-          </div>
-        </div>
-      )}
-
-      {/* What's inside — the approval-time snapshot; honest empty state if none. */}
-      <Card className="mb-5">
-        <CardContent className="p-4">
-          <h2 className="font-semibold mb-2">What's inside</h2>
-          {inside?.days ? (
-            <div className="flex flex-wrap gap-2" data-testid="inside-counts">
-              <Badge variant="outline">{inside.days} planned days</Badge>
-              <Badge variant="outline">{inside.items} itinerary items</Badge>
-              {Object.entries(inside.byType ?? {}).map(([type, n]) => (
-                <Badge key={type} variant="outline">{n} {TYPE_LABELS[type] ?? type}</Badge>
-              ))}
+      <div className="rmd-layout">
+        <main className="rmd-content">
+          <section className="rmd-card">
+            <h2>Know what you’re buying</h2>
+            <p className="rmd-section-intro">The shape and scope are public. Exact stop names, timing, and the day-by-day route stay private until this trip is yours.</p>
+            <div className="rmd-facts">
+              <div><strong><MapPin aria-hidden="true" />{listing.market}</strong><span>Destination</span></div>
+              <div><strong><CalendarDays aria-hidden="true" />{listing.durationDays} days</strong><span>Planned length</span></div>
+              <div><strong><Clock3 aria-hidden="true" />Flexible</strong><span>Start date</span></div>
+              {listing.bestSeason && <div><strong><Sun aria-hidden="true" />{listing.bestSeason}</strong><span>Best season</span></div>}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Contents are finalized at approval.</p>
-          )}
-          <p className="text-sm text-muted-foreground mt-3">
-            Buying this trip copies the full day-by-day plan into your own trips — every item editable,
-            re-dateable, and bookable.
-          </p>
-          {/* Ledger 2026-08-22-concierge-p3: the refund line is replaced by the concierge promise —
-              static copy, since every ready-made purchase carries the same entitlement (§13: promise
-              only what is true for all). */}
-          <div className="flex items-start gap-2.5 mt-3 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2.5" data-testid="text-concierge-promise">
-            <ConciergeBell className="w-4 h-4 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-            <p className="text-sm">
-              <span className="font-medium">Includes 1 consultation + 1 revision</span>{" "}
-              <span className="text-muted-foreground">
-                with the expert who built it — request anytime from your Trip Slip after purchase.
-              </span>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="rmd-boundary">
+              <LockKeyhole aria-hidden="true" />
+              <div><strong>The itinerary is protected</strong><span>You can preview its scope, but never its private stops before purchase.</span></div>
+            </div>
+          </section>
 
-      {/* Price + buy */}
-      <div className="flex items-center justify-between rounded-xl border border-border p-4 mb-8">
-        <div>
-          <div className="text-2xl font-bold" data-testid="text-rm-price">
+          <section className="rmd-card">
+            <h2>What’s included</h2>
+            <p className="rmd-section-intro">A useful contents snapshot, without revealing the itinerary itself.</p>
+            {inside?.days ? (
+              <div className="rmd-counts" data-testid="inside-counts">
+                <div><strong>{inside.days}</strong><span>planned days</span></div>
+                {typeof inside.items === "number" && <div><strong>{inside.items}</strong><span>itinerary items</span></div>}
+                {Object.entries(inside.byType ?? {}).map(([type, n]) => (
+                  <div key={type}><strong>{n}</strong><span>{TYPE_LABELS[type] ?? type}</span></div>
+                ))}
+              </div>
+            ) : (
+              <p className="rmd-empty">Contents are finalized at approval.</p>
+            )}
+            <div className="rmd-editable">
+              <Pencil aria-hidden="true" />
+              <p><strong>Unlocked means fully yours.</strong> After checkout, the complete plan is copied to your Trip Slip. Re-date it, edit every item, and book from your own trip.</p>
+            </div>
+            <div className="rmd-concierge" data-testid="text-concierge-promise">
+              <ConciergeBell aria-hidden="true" />
+              <p><strong>Includes 1 consultation + 1 revision.</strong> Request it from your Trip Slip after purchase.</p>
+            </div>
+          </section>
+
+          <StorefrontLink
+            handle={listing.authorHandle}
+            name={listing.authorName}
+            sellerNoun={listing.section === "trips_by_locals" ? "local expert" : "trip planner"}
+            data-testid="link-rm-storefront"
+          />
+        </main>
+
+        <aside className="rmd-buy-card" aria-label="Purchase this trip">
+          <p className="rmd-eyebrow">One-time purchase</p>
+          <h2>Make this plan yours</h2>
+          <div className="rmd-price" data-testid="text-rm-price">
             {price === null ? "—" : `$${price}`}
-            {listing.pricingMode === "per_traveler" && <span className="text-sm font-normal text-muted-foreground"> / traveler</span>}
+            {listing.pricingMode === "per_traveler" && <span> / traveler</span>}
           </div>
-          <div className="text-xs text-muted-foreground">One-time purchase · yours to edit</div>
-        </div>
-        <Button size="lg" onClick={startPurchase} disabled={isPreview || price === null} data-testid="button-buy-rm" className="gap-2">
-          <ShoppingBag className="w-4 h-4" />
-          {isPreview ? "Preview only" : "Get this trip"}
-        </Button>
+          <p className="rmd-price-note">No recurring fee · copied into your editable trips</p>
+          <Button
+            size="lg"
+            onClick={startPurchase}
+            disabled={isPreview || price === null || purchasing}
+            data-testid="button-buy-rm"
+            className="rmd-buy-button"
+          >
+            {purchasing ? <Loader2 className="animate-spin" /> : <ShoppingBag />}
+            {isPreview ? "Preview only" : purchasing ? "Preparing checkout…" : "Get this trip"}
+          </Button>
+          <div className="rmd-benefits">
+            <span><Pencil aria-hidden="true" />Edit every itinerary item</span>
+            <span><FileText aria-hidden="true" />Keep it in your Trip Slip</span>
+            <span><UserRound aria-hidden="true" />Consult the expert after purchase</span>
+            <span><CheckCircle2 aria-hidden="true" />Pay once, keep the plan</span>
+          </div>
+          <Button variant="outline" className="rmd-copy-button" onClick={copyTripLink}>
+            <Copy aria-hidden="true" /> Copy trip link
+          </Button>
+        </aside>
       </div>
-
-      {/* MP-2 return path: "I like this — show me everything this expert offers."
-          Renders nothing when the author has not claimed a handle (no dead links). */}
-      <StorefrontLink
-        handle={listing.authorHandle}
-        name={listing.authorName}
-        sellerNoun={listing.section === "trips_by_locals" ? "local expert" : "trip planner"}
-        data-testid="link-rm-storefront"
-      />
 
       <Dialog open={!!paymentIntent} onOpenChange={(open) => !open && !confirming && setPaymentIntent(null)}>
         <DialogContent className="sm:max-w-md">
