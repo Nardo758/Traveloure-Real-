@@ -2,3 +2,4 @@
 - [Bundled seed entrypoints](bundled-seed-entrypoints.md) — ESM bundle entrypoints must not trigger imported seed CLIs during API startup.
 - [Bundled migration assets](bundled-migration-assets.md) — SQL migrations are runtime inputs and must ship alongside the API bundle.
 - [Marketplace surface scope](marketplace-surface-scope.md) — Field Guide is the full treatment for commerce, with a lighter touch for travel intelligence.
+- [Playwright Chromium runtime](playwright-chromium-runtime.md) — The local browser needs its Nix runtime libraries declared before marketplace browser specs can launch.
