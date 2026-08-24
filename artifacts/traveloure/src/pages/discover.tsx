@@ -254,29 +254,6 @@ interface CartData {
   total: string;
 }
 
-type ExpertTemplate = {
-  id: string;
-  expertId: string;
-  title: string;
-  description: string;
-  shortDescription?: string;
-  destination: string;
-  duration: number;
-  price: string;
-  currency?: string;
-  category?: string;
-  coverImage?: string;
-  images?: string[];
-  highlights?: string[];
-  tags?: string[];
-  isPublished: boolean;
-  isFeatured: boolean;
-  salesCount?: number;
-  viewCount?: number;
-  averageRating?: string;
-  reviewCount?: number;
-};
-
 const categoryIcons: Record<string, React.ElementType> = {
   "photography-videography": Camera,
   "transportation-logistics": Car,
@@ -528,7 +505,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
 
   // Trip packages state
   const [favorites, setFavorites] = useState<number[]>([]);
-  const [showAllPackages, setShowAllPackages] = useState(false);
 
   // Cart state
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
@@ -731,10 +707,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
   // One display-name resolution for group keys, vocab and expert-minted alike.
   const themeHeadingFor = (key: string): string =>
     readyMadeThemes.customLabels.get(key) ?? readyMadeThemeHeading(key);
-
-  const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
-    queryKey: ["/api/expert-templates"],
-  });
 
   // TravelPulse city data is consumed directly by the <CityGrid> component in the
   // travelpulse tab — no mapping needed here.
@@ -1743,189 +1715,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   </div>
                 )}
 
-                {/* Itinerary Templates Section — expert_templates (D3 naming: matches the
-                    storefront's "Itinerary Templates" lane; "Ready-Made Trips" is the
-                    ready_made_trips shelf above, a different product). */}
-                <div className="mb-10">
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-primary" />
-                        Itinerary Templates
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Guided itineraries crafted by verified experts — buy the plan and travel it your way
-                      </p>
-                    </div>
-                    {expertTemplates && expertTemplates.length > 0 && (
-                      <Badge variant="secondary">
-                        {expertTemplates.length} Available
-                      </Badge>
-                    )}
-                  </div>
-
-                  {!templatesLoading && (!expertTemplates || expertTemplates.length === 0) && (
-                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-14 text-center mb-6">
-                      <BookOpen className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-                      <h3 className="font-semibold text-gray-700 mb-1">No itinerary templates published yet</h3>
-                      <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
-                        Verified experts can publish itinerary templates here for travelers to purchase.
-                      </p>
-                      {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
-                        <Link href="/expert/workspace">
-                          <Button size="sm" data-testid="button-create-first-template">
-                            Build a store trip in the Workstation
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        </Link>
-                      ) : (
-                        <Link href="/expert-status">
-                          <Button size="sm" variant="outline" data-testid="button-become-expert-packages">
-                            Become an expert
-                          </Button>
-                        </Link>
-                      )}
-                    </div>
-                  )}
-
-                  {(expertTemplates && expertTemplates.length > 0) && (
-                    <>
-                    {/* D3: breakpoints + gap aligned with the Ready-Made shelf grid above
-                        (sm:2 / lg:3, gap-4) — the tab's two grids now share one rhythm. */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {(showAllPackages ? expertTemplates : expertTemplates.slice(0, 6)).map((template, idx) => (
-                        <motion.div
-                          key={template.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.05 }}
-                        >
-                          <Card
-                            className="hover-elevate overflow-hidden group h-full"
-                            data-testid={`card-template-${template.id}`}
-                          >
-                            <CardContent className="p-0 flex flex-col h-full">
-                              <div className="relative h-40 bg-gradient-to-br from-primary/10 to-primary/5">
-                                {template.coverImage ? (
-                                  <img 
-                                    src={template.coverImage} 
-                                    alt={template.title}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="absolute inset-0 flex items-center justify-center text-primary/30">
-                                    <BookOpen className="w-16 h-16" />
-                                  </div>
-                                )}
-                                
-                                {template.isFeatured && (
-                                  <div className="absolute top-3 left-3">
-                                    <Badge>
-                                      <Star className="w-3 h-3 mr-1 fill-current" />
-                                      Featured
-                                    </Badge>
-                                  </div>
-                                )}
-
-                                <div className="absolute bottom-3 right-3 bg-background px-3 py-1.5 rounded-lg shadow-sm">
-                                  <span className="font-bold text-lg">
-                                    ${template.price}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="p-4 flex-1 flex flex-col">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                                  <MapPin className="w-4 h-4" />
-                                  <span>{template.destination}</span>
-                                </div>
-
-                                <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                                  {template.title}
-                                </h3>
-
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3 flex-1">
-                                  {template.shortDescription || template.description}
-                                </p>
-
-                                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-3">
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="w-4 h-4" />
-                                    {template.duration} days
-                                  </span>
-                                  {template.averageRating && parseFloat(template.averageRating) > 0 && (
-                                    <span className="flex items-center gap-1">
-                                      <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                                      {parseFloat(template.averageRating).toFixed(1)} ({template.reviewCount || 0})
-                                    </span>
-                                  )}
-                                  {template.salesCount && template.salesCount > 0 && (
-                                    <span className="flex items-center gap-1">
-                                      <Users className="w-4 h-4" />
-                                      {template.salesCount} sold
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex flex-wrap gap-1 mb-4">
-                                  {template.highlights?.slice(0, 2).map((h) => (
-                                    <Badge key={h} variant="secondary" className="text-xs">
-                                      {h}
-                                    </Badge>
-                                  ))}
-                                  {template.highlights && template.highlights.length > 2 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{template.highlights.length - 2} more
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                <Link href={`/expert-templates/${template.id}`}>
-                                  <Button className="w-full" data-testid={`button-view-template-${template.id}`}>
-                                    View & Purchase
-                                    <ArrowRight className="w-4 h-4 ml-2" />
-                                  </Button>
-                                </Link>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </motion.div>
-                      ))}
-                    </div>
-
-                    {expertTemplates.length > 6 && (
-                      <div className="text-center mt-6">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowAllPackages((v) => !v)}
-                          data-testid="button-view-all-templates"
-                        >
-                          {showAllPackages ? (
-                            <>Show fewer</>
-                          ) : (
-                            <>
-                              View all {expertTemplates.length} templates
-                              <ArrowRight className="w-4 h-4 ml-2" />
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-
-                    </>
-                  )}
-                </div>
-
-                {templatesLoading && (
-                  <div className="mb-10">
-                    <Skeleton className="h-6 w-48 mb-6" />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-72 rounded-lg" />
-                      ))}
-                    </div>
-                  </div>
-                )}
                 </div>
 
               </TabsContent>
