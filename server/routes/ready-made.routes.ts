@@ -47,8 +47,10 @@ function isAuthenticated(req: any, res: any, next: any) {
   next();
 }
 
+export const READY_MADE_PLACEHOLDER_TITLE = "Untitled build";
+
 const createReadyMadeSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Untitled build"),
+  title: z.string().trim().min(1).max(200).default(READY_MADE_PLACEHOLDER_TITLE),
   // Location-aware builds (W-4): a BUILD can be for any destination — the location the expert
   // sets here drives what data loads (neighborhood grouping, platform-services search, format
   // resolution). The §12 launch gate does NOT belong at build creation; it is enforced where it
@@ -152,7 +154,7 @@ router.post("/api/expert/ready-made/from-trip/:tripId", isAuthenticated, async (
     if (!isLaunchMarket(market)) {
       return res.status(400).json({ message: STORE_GATE_MESSAGE });
     }
-    const title = (parsed.data.title ?? trip.title ?? "Untitled build").slice(0, 200);
+    const title = (parsed.data.title ?? trip.title ?? READY_MADE_PLACEHOLDER_TITLE).slice(0, 200);
 
     // Duration from the build's own date window, clamped to the listing contract (1–30).
     const spanMs =
@@ -485,6 +487,55 @@ const patchListingSchema = z
   .partial()
   .strict();
 
+type ReadyMadeCompletenessListing = {
+  title: string | null;
+  planType: string | null;
+  heroImageUrl: string | null;
+  heroImageMeta: unknown;
+  priceCents: number | null;
+  market: string;
+  durationDays: number;
+  sourceTripId: string;
+};
+
+export async function assertReadyMadeComplete(
+  listing: ReadyMadeCompletenessListing,
+): Promise<Array<{ requirement: string; message: string }>> {
+  const missing: Array<{ requirement: string; message: string }> = [];
+  const title = listing.title?.trim() ?? "";
+  if (!title || title === READY_MADE_PLACEHOLDER_TITLE) {
+    missing.push({ requirement: "title", message: "Give the trip a real title." });
+  }
+  if (!listing.planType) {
+    missing.push({ requirement: "planType", message: "Choose a plan type (Hiking Itinerary, Road Trip Itinerary, …)" });
+  }
+  if (!listing.heroImageUrl || !(listing.heroImageMeta as any)?.photographer) {
+    missing.push({ requirement: "hero", message: "Pick a cover photo from the Unsplash picker" });
+  }
+  if (listing.priceCents === null || listing.priceCents === undefined) {
+    missing.push({ requirement: "price", message: "Set a price" });
+  }
+  if (!isLaunchMarket(listing.market)) {
+    missing.push({ requirement: "market", message: STORE_GATE_MESSAGE });
+  }
+
+  const dayRows = await db
+    .select({ dayNumber: itineraryItems.dayNumber })
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, listing.sourceTripId))
+    .groupBy(itineraryItems.dayNumber);
+  const daysWithItems = new Set(dayRows.map((row) => row.dayNumber));
+  const emptyDays = Array.from({ length: listing.durationDays }, (_, i) => i + 1)
+    .filter((day) => !daysWithItems.has(day));
+  if (emptyDays.length > 0) {
+    missing.push({
+      requirement: "itinerary",
+      message: `Day${emptyDays.length > 1 ? "s" : ""} ${emptyDays.join(", ")} ${emptyDays.length > 1 ? "have" : "has"} no items yet — every day needs at least one`,
+    });
+  }
+  return missing;
+}
+
 /**
  * Material fields — a change to any of these on an APPROVED listing drops it back to
  * `submitted` for re-review (the §10 A3 rule, widened past price because a ready-made
@@ -612,36 +663,7 @@ router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, re
     const listing = await loadAuthorListing(req.params.id, userId);
     if (!listing) return res.status(404).json({ message: "Listing not found" });
 
-    const missing: Array<{ requirement: string; message: string }> = [];
-    if (!listing.planType) {
-      missing.push({ requirement: "planType", message: "Choose a plan type (Hiking Itinerary, Road Trip Itinerary, …)" });
-    }
-    if (!listing.heroImageUrl || !(listing.heroImageMeta as any)?.photographer) {
-      missing.push({ requirement: "hero", message: "Pick a cover photo from the Unsplash picker" });
-    }
-    if (listing.priceCents === null || listing.priceCents === undefined) {
-      missing.push({ requirement: "price", message: "Set a price" });
-    }
-    // §12/F8: a grandfathered non-launch-market listing can't enter the store queue.
-    if (!isLaunchMarket(listing.market)) {
-      missing.push({ requirement: "market", message: STORE_GATE_MESSAGE });
-    }
-
-    // No empty days: the buyer is purchasing a complete plan, not a scaffold.
-    const dayRows = await db
-      .select({ dayNumber: itineraryItems.dayNumber, count: sql<number>`count(*)::int` })
-      .from(itineraryItems)
-      .where(eq(itineraryItems.tripId, listing.sourceTripId))
-      .groupBy(itineraryItems.dayNumber);
-    const daysWithItems = new Set(dayRows.map((r) => r.dayNumber));
-    const emptyDays = Array.from({ length: listing.durationDays }, (_, i) => i + 1)
-      .filter((d) => !daysWithItems.has(d));
-    if (emptyDays.length > 0) {
-      missing.push({
-        requirement: "itinerary",
-        message: `Day${emptyDays.length > 1 ? "s" : ""} ${emptyDays.join(", ")} ${emptyDays.length > 1 ? "have" : "has"} no items yet — every day needs at least one`,
-      });
-    }
+    const missing = await assertReadyMadeComplete(listing);
 
     if (missing.length > 0) {
       return res.status(400).json({ message: "Not ready to submit", missing });
