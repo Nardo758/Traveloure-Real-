@@ -442,7 +442,7 @@ const SURFACE_META: Record<MarketplaceSurface, { icon: typeof Compass; title: st
   packages: {
     icon: Sparkles,
     title: "Ready-Made Trips",
-    subtitle: "Curated itineraries you can make your own, with every stop shaped by someone who knows the place.",
+    subtitle: "Guided itineraries crafted by verified experts — buy the plan and travel it your way.",
     label: "Trip editions",
     url: "/ready-made",
     seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",

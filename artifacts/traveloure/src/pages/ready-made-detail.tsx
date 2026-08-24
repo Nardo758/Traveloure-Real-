@@ -1,8 +1,8 @@
 /**
  * /ready-made/:id — the buyer-facing Ready Made Trips detail page (Phase 4).
  *
- * Renders the store's QUALITY STRUCTURE (decision-maker model): branded page header with the
- * Traveloure mark, the declared Type of Plan, hero with its Unsplash credit, then the structured
+ * Renders the store's QUALITY STRUCTURE (decision-maker model): shared app navigation, the
+ * declared Type of Plan, hero with its Unsplash credit, then the structured
  * teaser — what's inside (the approval-time insideCounts snapshot), author + shelf section, price.
  * The full itinerary is never shown here: on purchase it clones into the buyer's own editable
  * trip, which is where they see it.
@@ -23,12 +23,10 @@
  * untouched, and the author's preview-as-buyer renders the same branch automatically.
  */
 import { useState } from "react";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { LanguageMenu } from "@/components/language-menu";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -267,14 +265,6 @@ export default function ReadyMadeDetailPage() {
 
   return (
     <div className="rmd-live">
-      <header className="rmd-header">
-        <Link href="/" className="rmd-logo" data-testid="link-rm-logo"><TraveloureLogo /></Link>
-        <div className="rmd-header-actions">
-          <span>Ready Made Trips</span>
-          <LanguageMenu />
-        </div>
-      </header>
-
       <nav className="rmd-breadcrumb" aria-label="Breadcrumb">
         <Link href="/ready-made"><ArrowLeft aria-hidden="true" /> Marketplace</Link>
         <span aria-hidden="true">/</span><strong>Ready-Made Trips</strong>
@@ -318,16 +308,24 @@ export default function ReadyMadeDetailPage() {
       {lead === "map-strip" && <NeighborhoodStrip market={listing.market} />}
 
       {(listing.heroImageUrl || !teaserMapFailed) && (
-        <figure className={`rmd-hero ${!listing.heroImageUrl ? "rmd-hero-map-only" : ""}`}>
-          {listing.heroImageUrl && (
-            <div className="rmd-hero-photo">
+        <figure className="rmd-hero">
+          <div className={`rmd-hero-photo ${listing.heroImageUrl ? "" : "rmd-hero-photo--fallback"}`}>
+            {listing.heroImageUrl ? (
               <img src={listing.heroImageUrl} alt={listing.title} data-testid="img-rm-hero" />
+            ) : (
+              <div className="rmd-hero-fallback-content">
+                <span>Ready-Made Trip</span>
+                <strong>{listing.market}</strong>
+                <small>A thoughtfully built route, ready to make your own.</small>
+              </div>
+            )}
+            {listing.heroImageUrl && (
               <div className="rmd-hero-caption">
                 <span>{listing.market}</span>
                 <strong>{listing.title}</strong>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           {!teaserMapFailed && (
             <div className="rmd-route" data-testid="section-route-teaser">
               <div className="rmd-route-label"><span>Route preview</span><span>{listing.market.split(",")[0]}</span></div>
