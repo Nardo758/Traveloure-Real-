@@ -1,0 +1,56 @@
+DISPATCH — Preview Tree Identity Audit (/experts 4-tab discrepancy)
+
+audited@832e42f · lane: preview-identity-audit · agent: Replit · read-only, no writes, no commits
+
+Locked rulings
+2026-08-24-client-tree-canonical: client/src is the sole production client. artifacts/ is reference only.
+2026-08-24-worktree-base-guard: worktree base = origin/main HEAD or stop.
+Hard stop means no git commit. This lane has no commit phase at all.
+Behavioral proof with file:line or verbatim command output is the only pass condition.
+The discrepancy
+
+Screenshot at <replit-host>/experts?role=local_expert shows a four-tab role switcher including "Service Providers 0". At 832e42f:
+
+client/src/pages/experts.tsx:339-341 defines three tabs (local_expert, travel_expert, event_planner).
+artifacts/traveloure/src/pages/experts.tsx:381 is the only source of a service_provider tab.
+
+Therefore the served page is not the production experts.tsx at HEAD. Determine why.
+
+Phase 0 — Identify what served the page
+
+Report all outputs verbatim.
+
+git rev-parse HEAD && git status -sb — confirm checkout is 832e42f, clean.
+Every running workflow: name, command, port, PID. Include anything not named "Start application".
+For the workflow bound to the preview port: its exact command and the Vite root / entry it resolves (vite.config.* root, server/vite.ts middleware root).
+Fetch the served HTML: curl -s http://127.0.0.1:<port>/experts?role=local_expert | grep -oE '(src|href)="[^"]+"' | sort -u. Report every script/module path. Then grep the served JS bundle(s) for the string service_provider and "Service Providers", and report which module path contains it.
+Alias resolution: grep -n "alias\|@/" vite.config.* tsconfig*.json — report where @/ points for the running config.
+find . -path ./node_modules -prune -o -name 'experts.tsx' -print — every copy in the tree.
+Vite cache: ls -la node_modules/.vite 2>/dev/null and any dist/ with mtime — is the served page a stale prebuilt bundle rather than HMR from source?
+Browser check (fresh, cache-busted): open /experts?role=local_expert&audit=<sha>; report the tab labels in DOM order and the value of data-testid="role-switcher"'s child count.
+
+HARD STOP. Report and wait.
+
+Diagnosis this must resolve to exactly one of
+A. Wrong workflow — a second workflow is serving the artifacts app on the preview port, or the preview URL points at a different port than "Start application".
+B. Wrong alias/root — the running Vite config resolves @/pages/experts into artifacts/.
+C. Stale bundle — preview serves a prebuilt dist/ from before the merge; source is correct, build is old.
+D. Source mismatch — the checkout serving the page isn't at 832e42f (different worktree, unpulled).
+
+State which, with the output line that proves it.
+
+Secondary check (same read-only pass)
+Local Experts "0 found": psql-equivalent read on dev DB: count of expert rows by role (local_expert, travel_expert, event_planner) that are published/visible per whatever predicate /api/experts applies. Report counts and the predicate file:line. Empty state vs. broken query.
+What Not To Do
+No edits to any file, config, or workflow. Diagnose only.
+No restart of workflows until Phase 0 is reported — restarting destroys the evidence of what was running.
+No git write operations of any kind.
+Do not "fix" the fourth tab. Its existence in artifacts/ is expected; its appearance in the preview is the bug.
+Do not screenshot into the repo.
+Open decision (Leon, after diagnosis)
+
+Remediation lane is dispatched separately based on A/B/C/D. Likely one-liner for A–C; for D, resolve the worktree first.
+
+FOLLOWUPS.md (file, don't absorb)
+providers-directory.tsx:37 links legacy /p/:handle; should be canonical /s/:handle.
+Guard: CI check that client/src never imports from artifacts/ and vice versa.
