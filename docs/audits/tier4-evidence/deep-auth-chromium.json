@@ -1,0 +1,210 @@
+{
+  "seed": "2026-08-24",
+  "chosenStep": "account-auth",
+  "engine": "chromium",
+  "project": "chromium",
+  "result": "PASS - two responsive rendered loops",
+  "loops": [
+    {
+      "variant": "desktop-keyboard",
+      "viewport": {
+        "width": 1365,
+        "height": 900
+      },
+      "screenshot": "deep-auth-modal-invalid-chromium-desktop-keyboard.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 4,
+      "criticalA11y": 0,
+      "a11yFindings": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 7
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ],
+      "surfaceAudits": [
+        {
+          "surface": "sign-in-modal-invalid",
+          "screenshot": "deep-auth-modal-invalid-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 7
+            }
+          ]
+        },
+        {
+          "surface": "sign-in-modal-reset",
+          "screenshot": "deep-auth-modal-reset-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 5
+            }
+          ]
+        },
+        {
+          "surface": "sign-in-modal-signup",
+          "screenshot": "deep-auth-modal-signup-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 6
+            }
+          ]
+        },
+        {
+          "surface": "signup-page-validation",
+          "screenshot": "deep-auth-signup-page-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 1
+            }
+          ]
+        }
+      ],
+      "consoleErrors": []
+    },
+    {
+      "variant": "mobile-touch",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "screenshot": "deep-auth-modal-invalid-chromium-mobile-touch.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 4,
+      "criticalA11y": 0,
+      "a11yFindings": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 6
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 4
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 5
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        }
+      ],
+      "surfaceAudits": [
+        {
+          "surface": "sign-in-modal-invalid",
+          "screenshot": "deep-auth-modal-invalid-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 6
+            }
+          ]
+        },
+        {
+          "surface": "sign-in-modal-reset",
+          "screenshot": "deep-auth-modal-reset-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 4
+            }
+          ]
+        },
+        {
+          "surface": "sign-in-modal-signup",
+          "screenshot": "deep-auth-modal-signup-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 5
+            }
+          ]
+        },
+        {
+          "surface": "signup-page-validation",
+          "screenshot": "deep-auth-signup-page-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 1
+            }
+          ]
+        }
+      ],
+      "consoleErrors": []
+    }
+  ],
+  "limitations": "Automated keyboard checks are not a claim of physical screen-reader coverage."
+}

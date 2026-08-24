@@ -660,23 +660,29 @@ export default function Chat() {
 
   const handleSend = () => {
     if (!message.trim() || !selectedExpert) return;
-    
+
     const currentMessage = message;
     const recipientId = String(selectedExpert.id);
-    
-    // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
-    // WebSocket real-time only works with actual platform users
-    if (isConnected && recipientId.length > 10) {
-      // Real user ID (UUID format), try WebSocket
-      const success = wsSendMessage(recipientId, currentMessage);
-      if (success) {
-        setMessage("");
+    const refreshUntilPersisted = async () => {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const result = await refetch();
+        if (result.data?.some((chat) =>
+          chat.senderId === user?.id && chat.message === currentMessage
+        )) {
+          return;
+        }
       }
-    } else {
-      // Demo mode or WebSocket failed - use HTTP mutation
+      toast({
+        title: "Message status delayed",
+        description: "We could not confirm that your message was saved. Please refresh before sending it again.",
+        variant: "destructive",
+      });
+    };
+    const sendViaHttp = () => {
       sendMessageMutation.mutate(
         { message: currentMessage, senderId: user?.id, receiverId: recipientId },
-        { 
+        {
           onSuccess: () => {
             setMessage("");
             refetch();
@@ -687,9 +693,30 @@ export default function Chat() {
               description: "Failed to send message. Please try again.",
               variant: "destructive",
             });
-          }
-        }
+          },
+        },
       );
+    };
+
+    // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
+    // WebSocket real-time only works with actual platform users
+    if (isConnected && recipientId.length > 10) {
+      // Real user ID (UUID format), try WebSocket
+      const success = wsSendMessage(recipientId, currentMessage);
+      if (success) {
+        setMessage("");
+        // Confirm the server persisted the message instead of relying on a
+        // sender echo, which is not guaranteed by every WebSocket runtime.
+        void refreshUntilPersisted();
+      } else {
+        // The socket can close between the connection-state render and this click.
+        // Preserve the user's message by using the same persisted HTTP path rather
+        // than leaving the composer apparently unresponsive.
+        sendViaHttp();
+      }
+    } else {
+      // Demo mode or disconnected WebSocket — use the persisted HTTP path.
+      sendViaHttp();
     }
   };
 

@@ -180,6 +180,7 @@ export const adminRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 30,
   keyGenerator: (req) => `admin:${req.ip || "unknown"}`,
+  skip: (req) => (process.env.NODE_ENV !== "production" && isLoopback(req)) || loopbackSkip(req),
 });
 
 export const heavyReadRateLimiter = createRateLimiter({

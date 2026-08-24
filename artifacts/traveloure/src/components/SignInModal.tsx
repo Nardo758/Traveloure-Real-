@@ -58,6 +58,35 @@ export function SignInModal({
   // Clear inline error whenever the user switches sign-in mode
   useEffect(() => { setAuthError(null); }, [mode]);
 
+  const showValidationError = (message: string, fieldId: string) => {
+    setAuthError(message);
+    requestAnimationFrame(() => document.getElementById(fieldId)?.focus());
+  };
+
+  const validateForm = (): boolean => {
+    const email = formData.email;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showValidationError("Enter a valid email address.", "email");
+      return false;
+    }
+    if (mode !== "reset" && formData.password.length < (mode === "signup" ? 8 : 1)) {
+      showValidationError(
+        mode === "signup" ? "Password must be at least 8 characters." : "Enter your password.",
+        "password",
+      );
+      return false;
+    }
+    if (mode === "signup" && !formData.firstName.trim()) {
+      showValidationError("Enter your first name.", "firstName");
+      return false;
+    }
+    if (mode === "signup" && !formData.lastName.trim()) {
+      showValidationError("Enter your last name.", "lastName");
+      return false;
+    }
+    return true;
+  };
+
   const migrateGuestCart = async () => {
     try {
       const guestSessionId = localStorage.getItem("traveloure_guest_session");
@@ -103,7 +132,10 @@ export function SignInModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!validateForm()) return;
+
     if (mode === "signup" && (!acceptTerms || !acceptPrivacy)) {
+      setAuthError("You must accept the Terms of Service and Privacy Policy to create an account.");
       toast({
         title: "Please accept the agreements",
         description: "You must accept the Terms of Service and Privacy Policy to create an account.",
@@ -164,7 +196,7 @@ export function SignInModal({
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email) return;
+    if (!validateForm()) return;
     setIsLoading(true);
     try {
       await fetch("/api/auth/forgot-password", {
@@ -223,10 +255,12 @@ export function SignInModal({
             onSubmit={mode === "reset" ? handleForgotPassword : handleSubmit}
             className="space-y-4 py-4"
             onChange={() => setAuthError(null)}
+            noValidate
           >
             {/* TEST 10 — aria-live="assertive" announces auth errors to screen readers immediately */}
             {authError && (
               <div
+                id="auth-form-error"
                 role="alert"
                 aria-live="assertive"
                 className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2"
@@ -248,6 +282,8 @@ export function SignInModal({
                       className="pl-9"
                       value={formData.firstName}
                       onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      aria-invalid={authError?.includes("first name") || undefined}
+                      aria-describedby={authError ? "auth-form-error" : undefined}
                       required
                       data-testid="input-first-name"
                     />
@@ -263,6 +299,8 @@ export function SignInModal({
                       className="pl-9"
                       value={formData.lastName}
                       onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      aria-invalid={authError?.includes("last name") || undefined}
+                      aria-describedby={authError ? "auth-form-error" : undefined}
                       required
                       data-testid="input-last-name"
                     />
@@ -282,6 +320,8 @@ export function SignInModal({
                   className="pl-9"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  aria-invalid={authError?.toLowerCase().includes("email") || undefined}
+                  aria-describedby={authError ? "auth-form-error" : undefined}
                   required
                   data-testid="input-email"
                 />
@@ -300,6 +340,8 @@ export function SignInModal({
                     className="pl-9"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    aria-invalid={authError?.toLowerCase().includes("password") || undefined}
+                    aria-describedby={authError ? "auth-form-error" : undefined}
                     required
                     minLength={mode === "signup" ? 8 : 1}
                     data-testid="input-password"
