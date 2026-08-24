@@ -1,0 +1,1537 @@
+import { useState, useEffect, useRef } from "react";
+import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
+import { useParams, Link, useSearch, useLocation } from "wouter";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
+import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
+import { Button } from "@/components/ui/button";
+import { format, differenceInDays, isValid } from "date-fns";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { motion } from "framer-motion";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
+import { getTemplateConfig, type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import { PlanCard } from "@/components/plancard/PlanCard";
+import { EscalationCTA } from "@/components/plancard/EscalationCTA";
+import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
+import { GuestInviteManager } from "@/components/GuestInviteManager";
+import type { UserExperience } from "@shared/schema";
+import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";
+
+type Section = "activities" | "transport";
+
+type BookingType = "inApp" | "partner";
+
+function getBookingType(actType: string): BookingType {
+  const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
+  if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
+  return 'inApp';
+}
+
+/**
+ * Mobile-lens audit #1 fix (found in behavioral verification): the pre-existing
+ * `selectedDay` state below is set via a `useEffect` that fires AFTER first render —
+ * so when it fed `initialSelectedDay` directly, PlanCard (whose `useState` initializer
+ * only reads its prop once, on mount) could mount before the effect ran and get stuck
+ * on the stale value. This is a pure, synchronous version of that exact same "day N of
+ * the trip is today" math (not new date logic — mirrors the effect below verbatim) that
+ * the itinerary render computes directly at render time from `trip`, which is already
+ * guaranteed loaded by the point PlanCard mounts (the page bails out above if !trip) —
+ * so there is no effect/state round-trip to race against.
+ */
+function computeLiveDayNumber(startDate: string | undefined, endDate: string | undefined): number | null {
+  if (!startDate || !endDate) return null;
+  const now = new Date();
+  const start = parseCalendarDate(startDate);
+  const end = parseCalendarDate(endDate);
+  if (!start || !end) return null;
+  if (now < start || now > end) return null;
+  const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.min(Math.max(daysInto, 1), totalDays);
+}
+
+function getActivityIcon(type: string) {
+  switch (type?.toLowerCase()) {
+    case "food": return Utensils;
+    case "travel": return Plane;
+    case "rest": return Bed;
+    case "adventure": return Camera;
+    case "shopping": return ShoppingCart;
+    case "culture":
+    case "sightseeing": return Camera;
+    default: return Coffee;
+  }
+}
+
+interface ProviderService {
+  id: string;
+  providerId: string;
+  categoryId: string;
+  name: string;
+  description: string;
+  basePrice: string;
+  pricingType: string;
+  duration: string | null;
+  location: string | null;
+  rating: string | null;
+  reviewCount: number;
+  isActive: boolean;
+  bookingCount: number;
+}
+
+interface Expert {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  bio: string | null;
+  specialties: string[];
+  destinations: string[];
+  hourly_rate: string | null;
+  years_of_experience: string | null;
+  availability: string | null;
+  response_time: string | null;
+  profile_image_url: string | null;
+  avg_rating: string;
+  review_count: number;
+}
+
+interface ExpertAdvisor {
+  advisor_id: string;
+  status: "pending" | "accepted" | "rejected";
+  message: string | null;
+  assigned_at: string;
+  first_name: string;
+  last_name: string;
+  bio: string | null;
+  specialties: string[];
+  destinations: string[];
+  hourly_rate: string | null;
+  profile_image_url: string | null;
+  avg_rating: string;
+  review_count: number;
+  expertFirstMessage: string | null;
+}
+
+export default function TripDetails() {
+  const { id } = useParams();
+  const searchStr = useSearch();
+  const [, setLocation] = useLocation();
+  const searchParams = new URLSearchParams(searchStr);
+  const initialTab = searchParams.get("tab") || "itinerary";
+  const deepSection = searchParams.get("section");
+  const justOptimized = searchParams.get("optimized") === "1";
+  const { data: trip, isLoading, isError: tripError, refetch: refetchTrip } = useTrip(id || "");
+  // The Generate/Regenerate buttons previously called useOptimizeTrip → the
+  // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
+  // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
+  const generatePlan = useGenerateItinerary();
+  const { data: generatedItinerary } = useGeneratedItinerary(id || "");
+  const {
+    data: plancardData,
+    isLoading: itineraryLoading,
+    isError: itineraryError,
+    refetch: refetchItinerary,
+  } = useQuery<PlanCardData>({
+    queryKey: [`/api/trips/${id}/plancard`],
+    enabled: !!id,
+  });
+  // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
+  // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
+  // `as any`: itineraryData is a free-shape jsonb column typed `{}` at the ORM layer (see the
+  // pre-existing identical casts a few hundred lines below, e.g. `itinerary.days.map(...)`) —
+  // matching the file's existing convention rather than introducing a new typing approach.
+  const hasExistingItineraryItems = !!plancardData?.days?.some(
+    (day) => (day.activities?.length ?? 0) > 0,
+  );
+  const handleRegenerateClick = () => {
+    if (hasExistingItineraryItems) {
+      setShowRegenerateConfirm(true);
+    } else {
+      generatePlan.mutate(trip!.id);
+    }
+  };
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
+  const [section, setSection] = useState<Section>(initialSection);
+  const [showFullItinerary, setShowFullItinerary] = useState(false);
+  const [showAnchorCapture, setShowAnchorCapture] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [expertPickerOpen, setExpertPickerOpen] = useState(false);
+  const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
+  const [expertMessage, setExpertMessage] = useState("");
+  const [selectedOfferingType, setSelectedOfferingType] = useState<{ key: string; label: string; tier: string } | null>(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
+  const [rejectionNote, setRejectionNote] = useState("");
+  const [showPlanningModal, setShowPlanningModal] = useState(false);
+  // T1-1: confirm before "Regenerate Plan" destructively rebuilds the itinerary. Only shown
+  // when there's an existing plan to lose (see `hasExistingItineraryItems` below) — first-time
+  // generation has nothing to warn about.
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const suggestionsRef = useRef<HTMLDivElement | null>(null);
+  // G7: "Plan ready" banner
+  const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
+
+  useEffect(() => {
+    if (initialTab === "expert" && deepSection === "suggestions") {
+      setActiveTab("expert");
+      const timer = setTimeout(() => {
+        suggestionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [initialTab, deepSection]);
+
+  // Mobile-lens audit #1: this effect used to compute "today's day" into a page-level
+  // `selectedDay` state that nothing read (the original audit finding) — then, once wired
+  // to PlanCard, turned out to race PlanCard's mount (effects run after first paint, but
+  // PlanCard's day-index `useState` initializer only reads its prop once, on mount).
+  // Replaced by the synchronous `computeLiveDayNumber` helper above, called directly where
+  // `initialSelectedDay` is computed for `<PlanCard>` below — same math, no effect/state
+  // round-trip to race.
+
+  const shareMutation = useMutation({
+    mutationFn: async (tripId: string) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/share`);
+      return res.json() as Promise<{ success: boolean; shareToken: string }>;
+    },
+    onSuccess: (data) => {
+      const link = `${window.location.origin}/trips/shared/${data.shareToken}`;
+      setShareLink(link);
+      setShareOpen(true);
+    },
+    onError: () => {
+      toast({ title: "Could not create share link", variant: "destructive" });
+    },
+  });
+
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink).then(() => {
+      setCopied(true);
+      toast({ title: "Link copied!", description: "Share it with friends." });
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  // G7: Reuse the canonical plan-card query above for optimization metadata.
+  const optimizationDelta = plancardData?.optimizationDelta ?? null;
+
+  const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
+    queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
+    enabled: !!trip?.destination,
+  });
+
+  const { data: advisorData, isLoading: advisorLoading } = useQuery<{ advisor: ExpertAdvisor | null }>({
+    queryKey: [`/api/trips/${id}/expert-advisor`],
+    enabled: !!id,
+  });
+
+  // Guest-invite surface (A1): a trip born from an event experience template (wedding/
+  // proposal/birthday…) has a user_experiences row linked via tripId — that link is the
+  // Event-class signal. When present, the Guests tab surfaces the organizer's invite
+  // manager. Rides the live session-scoped GET /api/user-experiences (owner-only data).
+  const { data: allUserExperiences } = useQuery<UserExperience[]>({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!user && !!id,
+    staleTime: 30_000,
+  });
+  const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
+
+  const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
+  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
+
+  const createGuestListMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/user-experiences", {
+      tripId: id,
+      title: trip?.title || trip?.destination || "My Event",
+      location: trip?.destination || "",
+      eventDate: trip?.startDate || new Date().toISOString(),
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] }),
+    onError: () => toast({ title: "Could not set up guest list", variant: "destructive" }),
+  });
+
+  const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
+    queryKey: [`/api/trip-experts?destination=${encodeURIComponent(trip?.destination || "")}`],
+    enabled: expertPickerOpen && !!trip?.destination,
+  });
+
+  interface ExpertOfferingOption { offering_type_key: string; display_name: string; service_tier: string; tagline: string | null; }
+  const { data: expertOfferingOptions } = useQuery<ExpertOfferingOption[]>({
+    queryKey: ["/api/offering-types/experts"],
+    queryFn: async () => {
+      const res = await fetch("/api/offering-types/experts");
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: expertPickerOpen,
+    staleTime: 15 * 60_000,
+  });
+
+  interface TripSuggestion {
+    id: string;
+    trip_id: string;
+    expert_id: string;
+    type: string;
+    day_number: number | null;
+    title: string;
+    description: string | null;
+    estimated_cost: string | null;
+    status: "pending" | "approved" | "rejected";
+    rejection_note: string | null;
+    created_at: string;
+    reviewed_at: string | null;
+    expert_first_name: string;
+    expert_last_name: string;
+    expert_profile_image_url: string | null;
+  }
+
+  const advisor = advisorData?.advisor ?? null;
+
+  const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
+    queryKey: [`/api/trips/${id}/suggestions`],
+    enabled: !!id && !!advisor,
+    staleTime: 30000,
+  });
+
+  const reviewSuggestionMutation = useMutation({
+    mutationFn: async ({ suggestionId, status, rejectionNote }: { suggestionId: string; status: "approved" | "rejected"; rejectionNote?: string }) => {
+      const res = await apiRequest("PATCH", `/api/trips/${id}/suggestions/${suggestionId}`, { status, rejectionNote });
+      return res.json() as Promise<{ suggestion: { status: string } }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/suggestions`] });
+      if (data?.suggestion?.status === "approved") {
+        queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", id] });
+        // W3-A: approval now also materializes a real itinerary_items row (booking-actions.ts) —
+        // refresh the canonical reads so the item shows up without a manual reload.
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/plancard`] });
+      }
+      toast({ title: "Suggestion reviewed", description: "Your response has been saved." });
+    },
+    onError: () => {
+      toast({ title: "Could not review suggestion", variant: "destructive" });
+    },
+  });
+
+  const assignExpertMutation = useMutation({
+    mutationFn: async ({ expertUserId, message, offeringTypeKey }: { expertUserId: string; message: string; offeringTypeKey?: string }) => {
+      const res = await apiRequest("POST", `/api/trips/${id}/expert-advisor`, { expertUserId, message, offeringTypeKey });
+      return res.json() as Promise<{ success: boolean; advisorId: string; status: string }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/expert-advisor`] });
+      setExpertPickerOpen(false);
+      setSelectedExpert(null);
+      setExpertMessage("");
+      setSelectedOfferingType(null);
+      toast({ title: "Expert request sent!", description: "They will review and respond soon." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to assign expert", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Open destination in maps
+  const openInMaps = () => {
+    if (!trip?.destination) return;
+    
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const query = encodeURIComponent(trip.destination);
+    
+    if (isIOS) {
+      window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
+    } else {
+      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+    }
+    
+    toast({ title: "Opening Maps", description: `Showing ${trip.destination}` });
+  };
+
+  const handleAddToCart = (serviceId: string) => {
+    if (!user) {
+      toast({ 
+        variant: "destructive", 
+        title: "Sign in required", 
+        description: "Please sign in to add items to your cart" 
+      });
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1500);
+      return;
+    }
+    addToCartMutation.mutate(serviceId);
+  };
+
+  const addToCartMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({ title: "Added to cart!", description: "Service has been added to your cart." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Mobile-lens audit #6: useTrip resolves a real 404 as `data: null` (no error) — only a
+  // genuine fetch/network/server failure sets isError. So this branch is reached ONLY on a
+  // failed request, and stays inside this page (never the app's auth-gate fall-through to
+  // the marketing homepage + "Sign in to continue" modal the audit reproduced). "Trip not
+  // found" below is unchanged for the real 404 case.
+  if (tripError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center" data-testid="trip-network-error">
+        <h2 className="text-2xl font-bold">Can't reach Traveloure</h2>
+        <p className="text-muted-foreground max-w-sm">
+          We couldn't load this trip. Check your connection and try again.
+        </p>
+        <Button onClick={() => refetchTrip()} data-testid="button-retry-trip-fetch">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center">
+        <h2 className="text-2xl font-bold mb-4">Trip not found</h2>
+        <Link href="/dashboard">
+          <Button>Back to Dashboard</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const startDate = parseCalendarDate(trip.startDate);
+  const endDate = parseCalendarDate(trip.endDate);
+  const duration = startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0;
+
+  return (
+    <div className="min-h-screen bg-background pb-20">
+      {/* Hero Header */}
+      <div className="relative h-[45vh] min-h-[350px]">
+        <img 
+          src={`https://picsum.photos/seed/${encodeURIComponent(trip.destination)}/1600/900`}
+          alt={trip.destination}
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
+        
+        {/* Back Button */}
+        <div className="absolute top-4 left-4">
+          <Link href="/dashboard">
+            <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20" data-testid="button-back">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </Link>
+        </div>
+
+        {/* Open in Maps Button (top right) */}
+        <div className="absolute top-4 right-4">
+          <Button 
+            variant="outline" 
+            className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
+            onClick={openInMaps}
+            data-testid="button-open-maps-mobile"
+          >
+            <MapPin className="w-4 h-4 md:mr-2" />
+            <span className="hidden md:inline">Open in Maps</span>
+          </Button>
+        </div>
+
+        {/* Trip Info */}
+        <div className="absolute bottom-0 left-0 right-0 container mx-auto px-4 pb-8">
+          <div className="max-w-4xl">
+            <div className="flex items-center gap-2 mb-3">
+              <Badge className="bg-white/20 backdrop-blur-md text-white border-0">
+                <MapPin className="w-3 h-3 mr-1" />
+                {trip.destination}
+              </Badge>
+              <Badge className="bg-accent/80 backdrop-blur-md text-white border-0">
+                {trip.status}
+              </Badge>
+              {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
+                  field a sibling change adds to GET /api/trips/:id (nullable — coded
+                  defensively in case this lands before that field does). Honest: renders
+                  nothing when there's no assigned expert / no workspace activity yet. */}
+              {(() => {
+                const status = (trip as any).expertWorkspaceStatus as string | null | undefined;
+                if (status === "draft" || status === "in_review") {
+                  return (
+                    <Badge className="bg-amber-500/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Expert draft in progress
+                    </Badge>
+                  );
+                }
+                if (status === "delivered") {
+                  return (
+                    <Badge className="bg-emerald-600/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Delivered by your expert
+                    </Badge>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+            <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">{trip.title}</h1>
+            <div className="flex flex-wrap gap-6 text-white/90">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5" />
+                {startDate && endDate
+                  ? `${format(startDate, "MMMM d")} – ${format(endDate, "MMMM d, yyyy")}`
+                  : "Dates not set"}
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                {duration} {duration === 1 ? 'day' : 'days'}
+              </div>
+              <div className="flex items-center gap-2">
+                <User className="w-5 h-5" />
+                {trip.numberOfTravelers} Traveler{trip.numberOfTravelers !== 1 ? 's' : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* G7: "Plan ready" banner — shown after optimization redirect */}
+      {showOptimizedBanner && (
+        <div className="container mx-auto px-4 mt-3 relative z-20">
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl px-4 py-3 flex items-start gap-3"
+            style={{ background: "linear-gradient(135deg,#1a7f5a,#2aab7c)", color: "#fff" }}
+            data-testid="banner-plan-ready"
+          >
+            <Sparkles className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Your optimized plan is ready</p>
+              <p className="text-xs opacity-90 mt-0.5">
+                AI Optimizer · just now
+                {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
+                  <> · saved <strong>${Math.round(optimizationDelta.savings)}</strong></>
+                )}
+                {optimizationDelta?.savingsPercent != null && optimizationDelta.savingsPercent > 0 && (
+                  <> · <strong>{Math.round(optimizationDelta.savingsPercent)}%</strong> tighter schedule</>
+                )}
+                {optimizationDelta?.starRatingDelta != null && optimizationDelta.starRatingDelta > 0 && (
+                  <> · ⭐ +{optimizationDelta.starRatingDelta.toFixed(1)} rating</>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowOptimizedBanner(false);
+                // Remove ?optimized=1 from URL without a full reload
+                const params = new URLSearchParams(searchStr);
+                params.delete("optimized");
+                const newQ = params.toString();
+                setLocation(`/trip/${id}${newQ ? `?${newQ}` : ""}`);
+              }}
+              className="flex-shrink-0 opacity-80 hover:opacity-100 transition-opacity"
+              aria-label="Dismiss"
+              data-testid="button-dismiss-optimized-banner"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="container mx-auto px-4 -mt-6 relative z-10">
+        <Card className="shadow-xl border-0">
+          <CardContent className="p-0">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <div className="border-b border-border px-6 pt-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                  {/* Mobile-lens audit #7: min-h-11 keeps each trigger's touch target at the
+                      ~44px guideline via padding growth only — labels/icons unchanged. */}
+                  <TabsList className="bg-muted/50">
+                    <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
+                    <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
+                    <TabsTrigger value="expert" data-testid="tab-expert" className="min-h-11">Ask an Expert</TabsTrigger>
+                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
+                      <Package className="w-3.5 h-3.5" />
+                      Logistics
+                    </TabsTrigger>
+                    {isEventTrip && (
+                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1 min-h-11">
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Guests
+                      </TabsTrigger>
+                    )}
+                  </TabsList>
+
+                  <div className="hidden md:flex gap-2">
+                    <Button 
+                      variant="outline"
+                      onClick={openInMaps}
+                      data-testid="button-open-maps"
+                    >
+                      <MapPin className="w-4 h-4 mr-2" />
+                      Open in Maps
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => shareMutation.mutate(trip.id)}
+                      disabled={shareMutation.isPending}
+                      data-testid="button-share-trip"
+                    >
+                      {shareMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Share2 className="w-4 h-4 mr-2" />
+                      )}
+                      Share with friends
+                    </Button>
+                    <Button
+                      onClick={handleRegenerateClick}
+                      disabled={generatePlan.isPending}
+                      data-testid="button-regenerate"
+                    >
+                      {generatePlan.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 mr-2" />
+                      )}
+                      Regenerate Plan
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <TabsContent value="itinerary" className="mt-0 space-y-6">
+                  {/* Flight & hotel time capture — surfaced in the primary trip view
+                      (was only reachable in the buried Logistics tab). Reuses the
+                      canonical TemporalAnchorManager filtered to the 4 flight/hotel
+                      anchor types. Optional; never blocks. */}
+                  {id && (
+                    <Collapsible open={showAnchorCapture} onOpenChange={setShowAnchorCapture}>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-between"
+                          data-testid="button-toggle-anchor-capture"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Plane className="w-4 h-4 text-blue-600" />
+                            Add flight &amp; hotel times (optional)
+                          </span>
+                          <ChevronRight className={`w-4 h-4 transition-transform ${showAnchorCapture ? "rotate-90" : ""}`} />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-3">
+                        <TemporalAnchorManager
+                          tripId={id}
+                          allowedTypes={["flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout"]}
+                          title="Flight & hotel times"
+                          description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+
+                  {/* Itinerary Timeline */}
+                  {(itineraryLoading || generatePlan.isPending) ? (
+                    <div className="space-y-6">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="space-y-3">
+                          <div className="flex items-center gap-4">
+                            <Skeleton className="w-12 h-12 rounded-full" />
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-24" />
+                              <Skeleton className="h-3 w-36" />
+                            </div>
+                          </div>
+                          <div className="ml-6 pl-6 border-l-2 border-border space-y-3">
+                            {[1, 2, 3].map((j) => (
+                              <Skeleton key={j} className="h-16 rounded-xl" />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : itineraryError ? (
+                    /* Mobile-lens audit #6: a failed itinerary fetch previously fell into the
+                       "No Itinerary Yet" branch below, wrongly inviting the traveler to
+                       generate a fresh (destructive) plan during a network blip. Distinct
+                       honest error + retry instead. */
+                    <div className="text-center py-16" data-testid="itinerary-network-error">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Can't reach Traveloure</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        We couldn't load your itinerary. Check your connection and try again.
+                      </p>
+                      <Button onClick={() => refetchItinerary()} data-testid="button-retry-itinerary-fetch">
+                        Retry
+                      </Button>
+                    </div>
+                  ) : !hasExistingItineraryItems ? (
+                    <div className="text-center py-16">
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Sparkles className="w-8 h-8 text-primary" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Itinerary Yet</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        Generate a personalized day-by-day plan for {trip.destination} using AI.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Button
+                          onClick={() => generatePlan.mutate(trip.id)}
+                          disabled={generatePlan.isPending}
+                          data-testid="button-generate-itinerary"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate My Itinerary
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowPlanningModal(true)}
+                          data-testid="button-plan-with-preferences"
+                        >
+                          <MapPin className="w-4 h-4 mr-2" />
+                          Plan with Preferences
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    (() => {
+                      const planCardTrip: PlanCardTrip = {
+                        id: trip.id,
+                        destination: trip.destination ?? "",
+                        title: trip.title ?? undefined,
+                        startDate: (() => {
+                          return calendarDateToIso(trip.startDate);
+                        })(),
+                        endDate: (() => {
+                          return calendarDateToIso(trip.endDate);
+                        })(),
+                        numberOfTravelers: trip.numberOfTravelers ?? 1,
+                        budget: trip.budget ?? undefined,
+                        eventType: trip.eventType ?? undefined,
+                      };
+                      const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
+                      const initialDayIndex = liveDayNumber == null
+                        ? -1
+                        : (plancardData?.days ?? []).findIndex((day) => day.dayNum === liveDayNumber);
+
+                      return (
+                        <PlanCard
+                          role="owner"
+                          stage="full"
+                          trip={planCardTrip}
+                          initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
+                        />
+                      );
+                    })()
+                  )}
+                </TabsContent>
+
+                <TabsContent value="bookings" className="mt-0">
+                  <div className="space-y-6">
+                    {/* Booking Summary card from itinerary.tsx */}
+                    {generatedItinerary?.itineraryData && (
+                      <Card className="bg-card border-border" data-testid="booking-summary-card">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-primary" />
+                            Booking Summary
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0 space-y-2">
+                          {(() => {
+                            const itinerary = generatedItinerary.itineraryData;
+                            const allActivities = itinerary.days.flatMap((d: any) => d.activities);
+                            const inAppBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'inApp' && !a.booked);
+                            const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
+                            const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                            const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                            return (
+                              <>
+                                <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
+                                  <div className="flex items-center gap-1.5">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                    <span className="text-xs font-medium">Book on Traveloure</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-xs text-muted-foreground" data-testid="text-inapp-count">{inAppBookings.length} items</p>
+                                    <p className="text-sm font-semibold text-primary" data-testid="text-inapp-total">${inAppTotal}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 bg-muted/50 rounded-lg">
+                                  <div className="flex items-center gap-1.5">
+                                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                    <span className="text-xs font-medium">Book via Partners</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-xs text-muted-foreground" data-testid="text-partner-count">{partnerBookings.length} items</p>
+                                    <p className="text-sm font-semibold text-foreground" data-testid="text-partner-total">${partnerTotal}</p>
+                                  </div>
+                                </div>
+                                <div className="border-t pt-2 mt-1 flex items-center justify-between">
+                                  <span className="text-sm font-semibold text-foreground">Total Pending</span>
+                                  <span className="text-base font-bold text-primary" data-testid="text-total-pending">${inAppTotal + partnerTotal}</span>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <div className="text-center py-16">
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
+                        <Plane className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Bookings Yet</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        Add flights, hotels, and activities to your trip to keep everything organized in one place.
+                      </p>
+                      <Button variant="outline" data-testid="button-add-booking">
+                        Add a Booking
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="expert" className="mt-0">
+                  <div className="space-y-8 py-4">
+                    {/* Assigned Expert Display */}
+                    {advisorLoading ? (
+                      <div className="flex items-center gap-4 p-4 rounded-xl border border-border">
+                        <Skeleton className="w-14 h-14 rounded-full" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-5 w-40" />
+                          <Skeleton className="h-4 w-64" />
+                        </div>
+                      </div>
+                    ) : advisor ? (
+                      <div
+                        className="flex items-start gap-4 p-4 rounded-xl border border-border bg-muted/20"
+                        data-testid="advisor-card"
+                      >
+                        <Avatar className="w-14 h-14 flex-shrink-0">
+                          <AvatarImage src={advisor.profile_image_url ?? undefined} />
+                          <AvatarFallback className="text-lg font-medium">
+                            {advisor.first_name?.[0]}{advisor.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className="font-semibold text-foreground" data-testid="advisor-name">
+                              {advisor.first_name} {advisor.last_name}
+                            </span>
+                            <Badge
+                              variant={advisor.status === "accepted" ? "default" : "secondary"}
+                              className="text-[11px]"
+                              data-testid="advisor-status"
+                            >
+                              {advisor.status === "accepted" ? "Expert assigned" : "Request pending"}
+                            </Badge>
+                          </div>
+                          {advisor.bio && (
+                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{advisor.bio}</p>
+                          )}
+                          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                            {parseFloat(advisor.avg_rating) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Star className="w-3 h-3 fill-current text-amber-500" />
+                                {parseFloat(advisor.avg_rating).toFixed(1)} ({advisor.review_count} reviews)
+                              </span>
+                            )}
+                            {advisor.hourly_rate && (
+                              <span>${advisor.hourly_rate}/hr</span>
+                            )}
+                          </div>
+                          {advisor.status === "accepted" && advisor.expertFirstMessage && (
+                            <div className="mt-3 p-3 rounded-lg bg-muted/40 border border-border text-sm text-muted-foreground italic" data-testid="advisor-first-message">
+                              <span className="not-italic font-medium text-foreground">{advisor.first_name}: </span>
+                              {advisor.expertFirstMessage}
+                            </div>
+                          )}
+                          {advisor.status === "accepted" && !advisor.expertFirstMessage && (
+                            <p className="mt-2 text-xs text-muted-foreground" data-testid="advisor-awaiting-message">
+                              Your expert will reach out with their first message soon.
+                            </p>
+                          )}
+                          {advisor.status === "accepted" && (
+                            <Link href="/chat">
+                              <Button size="sm" className="mt-3 gap-1.5" data-testid="button-message-expert">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                Message expert
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid md:grid-cols-2 gap-8 items-center">
+                        <div>
+                          <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+                            Connect with a Local Expert
+                          </h3>
+                          <p className="text-muted-foreground mb-6">
+                            Get personalized advice, hidden gems, and real-time support from someone who knows {trip.destination} well.
+                          </p>
+                          <div className="flex flex-wrap gap-3">
+                            <Button
+                              className="gap-2"
+                              onClick={() => setExpertPickerOpen(true)}
+                              data-testid="button-find-expert"
+                            >
+                              <UserPlus className="w-4 h-4" />
+                              Add a local expert
+                            </Button>
+                            <Link href="/experts?role=travel_expert">
+                              <Button variant="outline" className="gap-2" data-testid="button-find-trip-planner">
+                                <Sparkles className="w-4 h-4" />
+                                Work with a Trip Planner
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <img
+                            src="https://picsum.photos/seed/local-expert/600/400"
+                            alt="Local Expert"
+                            className="rounded-2xl shadow-xl"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expert escalation upsell — always visible on expert tab (CON-A.P7 / N3) */}
+                    <div>
+                      <EscalationCTA
+                        tripId={trip.id}
+                        destination={trip.destination}
+                        eventType={(trip as any).eventType}
+                      />
+                    </div>
+
+                    {/* Expert Suggestions Panel */}
+                    {advisor && (
+                      <div ref={suggestionsRef} className="border-t border-border pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Lightbulb className="w-5 h-5 text-amber-500" />
+                            <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
+                              Expert Suggestions
+                            </h4>
+                            {suggestionsData?.suggestions?.filter(s => s.status === "pending").length ? (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
+                                {suggestionsData.suggestions.filter(s => s.status === "pending").length} pending
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {suggestionsLoading ? (
+                          <div className="space-y-3">
+                            {[1, 2].map(i => (
+                              <div key={i} className="rounded-xl border border-border p-4">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
+                                  <div className="h-4 w-32 bg-muted rounded animate-pulse" />
+                                </div>
+                                <div className="h-3 w-full bg-muted rounded animate-pulse mb-1.5" />
+                                <div className="h-3 w-2/3 bg-muted rounded animate-pulse" />
+                              </div>
+                            ))}
+                          </div>
+                        ) : suggestionsData?.suggestions && suggestionsData.suggestions.length > 0 ? (
+                          <div className="space-y-3" data-testid="suggestions-list">
+                            {suggestionsData.suggestions.map((suggestion) => (
+                              <div
+                                key={suggestion.id}
+                                className={`rounded-xl border p-4 transition-colors ${
+                                  suggestion.status === "approved"
+                                    ? "border-green-200 bg-green-50/50 dark:bg-green-950/20"
+                                    : suggestion.status === "rejected"
+                                    ? "border-red-200 bg-red-50/50 dark:bg-red-950/20"
+                                    : "border-border bg-muted/20"
+                                }`}
+                                data-testid={`suggestion-card-${suggestion.id}`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase font-medium tracking-wide">
+                                        {suggestion.type}
+                                      </span>
+                                      {suggestion.day_number && (
+                                        <span className="text-[10px] text-muted-foreground">Day {suggestion.day_number}</span>
+                                      )}
+                                      {suggestion.status === "approved" && (
+                                        <span className="flex items-center gap-1 text-[10px] text-green-700 font-medium">
+                                          <CheckCircle className="w-3 h-3" /> Approved
+                                        </span>
+                                      )}
+                                      {suggestion.status === "rejected" && (
+                                        <span className="flex items-center gap-1 text-[10px] text-red-700 font-medium">
+                                          <XCircle className="w-3 h-3" /> Declined
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="font-medium text-foreground mb-1">{suggestion.title}</p>
+                                    {suggestion.description && (
+                                      <p className="text-sm text-muted-foreground mb-2">{suggestion.description}</p>
+                                    )}
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                      <span>
+                                        {suggestion.expert_first_name} {suggestion.expert_last_name}
+                                      </span>
+                                      {suggestion.estimated_cost && (
+                                        <span className="text-primary font-medium">~${parseFloat(suggestion.estimated_cost).toFixed(0)}</span>
+                                      )}
+                                      <span>{new Date(suggestion.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                                    </div>
+                                    {suggestion.rejection_note && (
+                                      <p className="text-xs text-red-600 mt-1 italic">Note: {suggestion.rejection_note}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                {suggestion.status === "pending" && (
+                                  <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1 gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
+                                      onClick={() => reviewSuggestionMutation.mutate({ suggestionId: suggestion.id, status: "approved" })}
+                                      disabled={reviewSuggestionMutation.isPending}
+                                      data-testid={`button-approve-suggestion-${suggestion.id}`}
+                                    >
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      Approve &amp; add to itinerary
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1 gap-1.5 border-red-300 text-red-700 hover:bg-red-50"
+                                      onClick={() => {
+                                        setRejectTargetId(suggestion.id);
+                                        setRejectionNote("");
+                                        setRejectDialogOpen(true);
+                                      }}
+                                      disabled={reviewSuggestionMutation.isPending}
+                                      data-testid={`button-reject-suggestion-${suggestion.id}`}
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" />
+                                      Decline
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground" data-testid="suggestions-empty">
+                            <Lightbulb className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                            <p className="text-sm">No suggestions yet.</p>
+                            <p className="text-xs mt-1">Your expert will send curated ideas once they review your trip.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="border-t border-border pt-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
+                          Available Services for Your Trip
+                        </h4>
+                        <Link href="/discover">
+                          <Button variant="outline" size="sm" data-testid="button-browse-all">
+                            Browse All <ArrowRight className="w-4 h-4 ml-1" />
+                          </Button>
+                        </Link>
+                      </div>
+                      
+                      {servicesLoading ? (
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {[1, 2, 3].map((i) => (
+                            <Card key={i}>
+                              <CardContent className="p-4">
+                                <Skeleton className="h-5 w-3/4 mb-2" />
+                                <Skeleton className="h-4 w-full mb-3" />
+                                <div className="flex justify-between">
+                                  <Skeleton className="h-6 w-20" />
+                                  <Skeleton className="h-8 w-24" />
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : servicesResult && servicesResult.length > 0 ? (
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {servicesResult.slice(0, 6).map((service) => (
+                            <Card key={service.id} data-testid={`card-service-${service.id}`}>
+                              <CardContent className="p-4">
+                                <h5 className="font-semibold text-slate-900 dark:text-white mb-1 line-clamp-1">
+                                  {service.name}
+                                </h5>
+                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                                  {service.description}
+                                </p>
+                                <div className="flex items-center gap-2 mb-3">
+                                  {service.rating && (
+                                    <Badge variant="secondary" className="gap-1">
+                                      <Star className="w-3 h-3 fill-current" />
+                                      {parseFloat(service.rating).toFixed(1)}
+                                    </Badge>
+                                  )}
+                                  {service.location && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {service.location}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-lg">${parseFloat(service.basePrice).toFixed(0)}</span>
+                                  <Button 
+                                    size="sm"
+                                    onClick={() => handleAddToCart(service.id)}
+                                    disabled={addToCartMutation.isPending}
+                                    data-testid={`button-add-to-cart-${service.id}`}
+                                  >
+                                    {addToCartMutation.isPending ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <ShoppingCart className="w-4 h-4 mr-1" />
+                                        Add
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                          <p>No services found for {trip.destination}.</p>
+                          <p className="text-sm mt-1">Check out our full marketplace for other options.</p>
+                          <Link href="/discover">
+                            <Button variant="outline" className="mt-4" data-testid="button-discover">
+                              Browse Marketplace
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="logistics" className="mt-0 space-y-6">
+                  {id && (
+                    <>
+                      <TripLogisticsDashboard
+                        tripId={id}
+                        tripName={trip?.title || trip?.destination || "Trip"}
+                        budget={typeof trip?.budget === 'number' ? trip.budget : 0}
+                        destination={trip?.destination || "destination"}
+                      />
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <TemporalAnchorManager tripId={id} />
+                        <ScheduleValidator tripId={id} />
+                      </div>
+                      <EnergyBudgetDisplay tripId={id} />
+                      <AnchorSuggestionsPanel tripId={id} />
+                      {trip?.eventType === "wedding" && (
+                        <WeddingAnchorPresets
+                          tripId={id}
+                          templateSlug="wedding"
+                          eventDate={trip.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : ""}
+                        />
+                      )}
+                    </>
+                  )}
+                </TabsContent>
+
+                {isEventTrip && (
+                  <TabsContent value="guests" className="mt-0">
+                    {linkedExperience ? (
+                      <GuestInviteManager
+                        experienceId={linkedExperience.id}
+                        eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
+                        eventDestination={linkedExperience.location || trip?.destination || ""}
+                        eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
+                      />
+                    ) : (
+                      <div className="py-14 flex flex-col items-center gap-4 text-center">
+                        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                          <UserPlus className="w-7 h-7 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground mb-1">Set up your guest list</p>
+                          <p className="text-sm text-muted-foreground max-w-xs">
+                            Track RSVPs, send invites, and manage attendees for{" "}
+                            {trip?.title || trip?.destination || "this event"}.
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => createGuestListMutation.mutate()}
+                          disabled={createGuestListMutation.isPending}
+                          data-testid="button-setup-guest-list"
+                        >
+                          {createGuestListMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Setting up…</>
+                          ) : (
+                            <><UserPlus className="w-4 h-4 mr-2" />Set up guest list</>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </TabsContent>
+                )}
+              </div>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Expert Picker Dialog */}
+      <Dialog open={expertPickerOpen} onOpenChange={(open) => {
+        setExpertPickerOpen(open);
+        if (!open) { setSelectedExpert(null); setExpertMessage(""); setSelectedOfferingType(null); }
+      }}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-expert-picker">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedOfferingType
+                ? `Choose an expert for ${trip?.destination}`
+                : "What kind of help do you need?"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedOfferingType
+                ? `${selectedOfferingType.label} — select an expert to help curate your trip.`
+                : "Pick the type of expert service you're looking for."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Step 0 — pick offering type */}
+          {!selectedOfferingType && (
+            <div className="mt-2 space-y-2" data-testid="expert-picker-offering-step">
+              {(expertOfferingOptions ?? []).length === 0 ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <Skeleton key={i} className="h-14 rounded-lg" />
+                  ))}
+                </div>
+              ) : (
+                (expertOfferingOptions ?? []).map((o) => (
+                  <button
+                    key={o.offering_type_key}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"
+                    onClick={() => setSelectedOfferingType({ key: o.offering_type_key, label: o.display_name, tier: o.service_tier })}
+                    data-testid={`button-offering-type-${o.offering_type_key}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-foreground">{o.display_name}</div>
+                      {o.tagline && <p className="text-xs text-muted-foreground truncate">{o.tagline}</p>}
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] capitalize flex-shrink-0">{o.service_tier.replace(/_/g, " ")}</Badge>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {selectedOfferingType && selectedExpert ? (
+            <div className="space-y-4 mt-2">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <Avatar className="w-10 h-10">
+                  <AvatarImage src={selectedExpert.profile_image_url ?? undefined} />
+                  <AvatarFallback>{selectedExpert.first_name?.[0]}{selectedExpert.last_name?.[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="font-medium">{selectedExpert.first_name} {selectedExpert.last_name}</div>
+                  {parseFloat(selectedExpert.avg_rating) > 0 && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Star className="w-3 h-3 fill-current text-amber-500" />
+                      {parseFloat(selectedExpert.avg_rating).toFixed(1)}
+                    </div>
+                  )}
+                </div>
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedExpert(null)}
+                  data-testid="button-change-expert">
+                  Change
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Message (optional)</label>
+                <Textarea
+                  placeholder="Tell the expert about your preferences, goals, or any specific requests..."
+                  value={expertMessage}
+                  onChange={(e) => setExpertMessage(e.target.value)}
+                  rows={3}
+                  data-testid="input-expert-message"
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => assignExpertMutation.mutate({ expertUserId: selectedExpert.user_id, message: expertMessage, offeringTypeKey: selectedOfferingType?.key })}
+                disabled={assignExpertMutation.isPending}
+                data-testid="button-confirm-expert"
+              >
+                {assignExpertMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <UserPlus className="w-4 h-4 mr-2" />
+                )}
+                Send request to {selectedExpert.first_name}
+              </Button>
+            </div>
+          ) : selectedOfferingType ? (
+            <div className="mt-2 space-y-3" data-testid="expert-picker-expert-step">
+              <button
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
+                onClick={() => { setSelectedExpert(null); setSelectedOfferingType(null); }}
+                data-testid="button-picker-back"
+              >
+                <ArrowLeft className="w-3 h-3" /> Change service type
+              </button>
+              {expertsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                      <Skeleton className="w-10 h-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-48" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : expertsData && expertsData.length > 0 ? (
+                expertsData.map((expert) => (
+                  <button
+                    key={expert.id}
+                    className="w-full flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"
+                    onClick={() => setSelectedExpert(expert)}
+                    data-testid={`button-select-expert-${expert.id}`}
+                  >
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      <AvatarImage src={expert.profile_image_url ?? undefined} />
+                      <AvatarFallback>{expert.first_name?.[0]}{expert.last_name?.[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground">
+                        {expert.first_name} {expert.last_name}
+                      </div>
+                      {expert.bio && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{expert.bio}</p>
+                      )}
+                      {Array.isArray(expert.specialties) && expert.specialties.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {(expert.specialties as string[]).slice(0, 3).map((s, si) => (
+                            <span key={si} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2 mt-1.5 text-xs text-muted-foreground">
+                        {parseFloat(expert.avg_rating) > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <Star className="w-3 h-3 fill-current text-amber-500" />
+                            {parseFloat(expert.avg_rating).toFixed(1)}
+                          </span>
+                        )}
+                        {expert.hourly_rate && <span>${expert.hourly_rate}/hr</span>}
+                        {expert.response_time && <span>Responds {expert.response_time}</span>}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+                  </button>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <User className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No experts found for {trip?.destination}.</p>
+                  <p className="text-sm mt-1 text-muted-foreground">Check back soon or browse all experts.</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Suggestion Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={(open) => { setRejectDialogOpen(open); if (!open) setRejectTargetId(null); }}>
+        <DialogContent className="sm:max-w-sm" data-testid="dialog-reject-suggestion">
+          <DialogHeader>
+            <DialogTitle>Decline suggestion</DialogTitle>
+            <DialogDescription>
+              Let the expert know why you're passing on this idea (optional).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <Textarea
+              placeholder="e.g. Budget doesn't fit, already have plans for this day…"
+              value={rejectionNote}
+              onChange={(e) => setRejectionNote(e.target.value)}
+              rows={3}
+              data-testid="input-rejection-note"
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setRejectDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  if (rejectTargetId) {
+                    reviewSuggestionMutation.mutate({ suggestionId: rejectTargetId, status: "rejected", rejectionNote: rejectionNote || undefined });
+                  }
+                  setRejectDialogOpen(false);
+                  setRejectTargetId(null);
+                }}
+                disabled={reviewSuggestionMutation.isPending}
+                data-testid="button-confirm-reject"
+              >
+                {reviewSuggestionMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4 mr-2" />
+                )}
+                Decline suggestion
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Dialog */}
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-share-trip">
+          <DialogHeader>
+            <DialogTitle>Share your trip plan</DialogTitle>
+            <DialogDescription>
+              Anyone with this link can view your itinerary for {trip?.destination}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              readOnly
+              value={shareLink ?? ""}
+              className="text-sm"
+              data-testid="input-share-link"
+              onFocus={(e) => e.target.select()}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCopyLink}
+              data-testid="button-copy-link"
+              className="shrink-0"
+            >
+              {copied ? (
+                <Check className="w-4 h-4 text-green-600" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Friends can view the itinerary without signing in. Only you can make changes.
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* Enhanced Planning Modal — Stage 3.1 wiring */}
+      <EnhancedPlanningModal
+        isOpen={showPlanningModal}
+        onClose={() => setShowPlanningModal(false)}
+        initialDestination={(() => {
+          if (!trip?.destination) return null;
+          const parts = trip.destination.split(',').map((s) => s.trim());
+          const city = parts[0] || trip.destination;
+          const country = parts[1] || '';
+          return {
+            city,
+            country,
+            cityId: `${city.toLowerCase().replace(/\s+/g, '-')}-${country.toLowerCase().substring(0, 2)}`,
+          };
+        })()}
+        mode="single"
+        userId={user?.id || ''}
+      />
+
+      {/* T1-1: confirm before Regenerate destructively rebuilds the plan. Only reachable via
+          handleRegenerateClick, which itself only opens this when hasExistingItineraryItems —
+          first-time generation never shows it. */}
+      <AlertDialog open={showRegenerateConfirm} onOpenChange={setShowRegenerateConfirm}>
+        <AlertDialogContent data-testid="dialog-regenerate-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerate this plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This replaces the current AI-generated activities with a freshly generated plan.
+              Any items an expert has added to your trip are kept. Manually-added items may be
+              replaced along with the rest of the plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-regenerate-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowRegenerateConfirm(false);
+                generatePlan.mutate(trip.id);
+              }}
+              data-testid="button-regenerate-confirm"
+            >
+              Regenerate Plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

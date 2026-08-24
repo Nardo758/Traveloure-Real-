@@ -1,0 +1,664 @@
+import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLocation } from "wouter";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
+import { 
+  ArrowLeft, 
+  Send, 
+  Bot, 
+  User, 
+  Plus, 
+  Trash2, 
+  Loader2,
+  MessageSquare,
+  Sparkles,
+  Plane,
+  MapPin,
+  Calendar,
+  Pencil,
+  Check,
+  X,
+  LifeBuoy
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { motion, AnimatePresence } from "framer-motion";
+import { AiPlannerDraftPanel } from "@/components/ai-planner-draft-panel";
+import { useToast } from "@/hooks/use-toast";
+
+interface Message {
+  id: number;
+  conversationId: number;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+interface Conversation {
+  id: number;
+  title: string;
+  createdAt: string;
+  messages?: Message[];
+}
+
+export default function AIAssistant() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
+  const [inputMessage, setInputMessage] = useState("");
+  const [streamingMessage, setStreamingMessage] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  // R-D draft panel: bumped once per completed assistant reply to trigger a fresh
+  // TripContext extraction pass (see ai-planner-draft-panel.tsx).
+  const [extractionTrigger, setExtractionTrigger] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: conversations = [], isLoading: loadingConversations } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations"],
+  });
+
+  const { data: currentConversation, isLoading: loadingMessages } = useQuery<Conversation>({
+    queryKey: ["/api/conversations", selectedConversation],
+    enabled: !!selectedConversation,
+  });
+
+  const createConversation = useMutation({
+    mutationFn: async (title: string) => {
+      const res = await apiRequest("POST", "/api/conversations", { title });
+      return res.json() as Promise<Conversation>;
+    },
+    onSuccess: (newConversation: Conversation) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      setSelectedConversation(newConversation.id);
+    },
+  });
+
+  const deleteConversation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/conversations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      if (selectedConversation) {
+        setSelectedConversation(null);
+      }
+    },
+  });
+
+  // Lane C / C4 — "Get help from our team": Platform Concierge is a hybrid
+  // (AI starts, a person steps in), so the human handoff is a first-class,
+  // always-visible chat affordance. Creates a tier-'ai' concierge request
+  // server-side (userId from session, conversation id as staff context) and
+  // fires the admin push signal; confirms to the user in-chat.
+  const escalateToTeam = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/concierge/escalations", {
+        ...(selectedConversation ? { conversationId: selectedConversation } : {}),
+      });
+      return res.json() as Promise<{ id: string }>;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Request sent to our team",
+        description: "A member of our team will follow up with you shortly.",
+      });
+      // In-chat confirmation bubble (local echo — the durable confirmation is
+      // the team's actual follow-up).
+      if (selectedConversation) {
+        queryClient.setQueryData<Conversation>(
+          ["/api/conversations", selectedConversation],
+          (old) =>
+            old
+              ? {
+                  ...old,
+                  messages: [
+                    ...(old.messages || []),
+                    {
+                      id: Date.now(),
+                      conversationId: selectedConversation,
+                      role: "assistant" as const,
+                      content:
+                        "Done — I've sent this conversation to our team. A real person will follow up shortly to help with anything I can't handle here.",
+                      createdAt: new Date().toISOString(),
+                    },
+                  ],
+                }
+              : old
+        );
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't reach our team",
+        description: err?.message || "Please try again in a moment.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const renameConversation = useMutation({
+    mutationFn: async ({ id, title }: { id: number; title: string }) => {
+      const res = await apiRequest("PATCH", `/api/conversations/${id}`, { title });
+      return res.json() as Promise<Conversation>;
+    },
+    onMutate: ({ id, title }) => {
+      queryClient.setQueryData<Conversation[]>(["/api/conversations"], (old) =>
+        old ? old.map((c) => (c.id === id ? { ...c, title } : c)) : old
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  const startRename = (conv: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(conv.id);
+    setRenameValue(conv.title);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  };
+
+  const commitRename = (id: number) => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== conversations.find((c) => c.id === id)?.title) {
+      renameConversation.mutate({ id, title: trimmed });
+    }
+    setRenamingId(null);
+  };
+
+  const cancelRename = () => setRenamingId(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [currentConversation?.messages, streamingMessage]);
+
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isStreaming) return;
+
+    let conversationId = selectedConversation;
+
+    if (!conversationId) {
+      const newConversation = await createConversation.mutateAsync(
+        inputMessage.slice(0, 50) + (inputMessage.length > 50 ? "..." : "")
+      );
+      conversationId = newConversation.id;
+      // Seed the cache so the optimistic update below always has an entry to attach to
+      queryClient.setQueryData<Conversation>(
+        ["/api/conversations", conversationId],
+        { ...newConversation, messages: [] }
+      );
+    }
+
+    const userMessage = inputMessage;
+    const optimisticMessageId = Date.now();
+    setInputMessage("");
+    setIsStreaming(true);
+    setStreamingMessage("");
+
+    queryClient.setQueryData<Conversation>(
+      ["/api/conversations", conversationId],
+      (old) => {
+        const base = old ?? { id: conversationId!, title: "", createdAt: new Date().toISOString(), messages: [] };
+        return {
+          ...base,
+          messages: [
+            ...(base.messages || []),
+            {
+              id: optimisticMessageId,
+              conversationId,
+              role: "user" as const,
+              content: userMessage,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+    );
+
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: userMessage }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (reader) {
+        let fullResponse = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          const lines = text.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.content) {
+                  fullResponse += data.content;
+                  setStreamingMessage(fullResponse);
+                }
+                if (data.done) {
+                  queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+                  setExtractionTrigger((t) => t + 1);
+                }
+              } catch {
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      // T6-3: a server error (e.g. a 500 from POST /api/conversations/:id/messages)
+      // used to leave the user staring at an unanswered message with no feedback and
+      // no way to recover the text they typed. Roll back the optimistic bubble (it
+      // was never actually answered), restore the composed text to the input so
+      // nothing is lost, and surface an honest error toast.
+      queryClient.setQueryData<Conversation>(
+        ["/api/conversations", conversationId],
+        (old) =>
+          old
+            ? { ...old, messages: (old.messages || []).filter((m) => m.id !== optimisticMessageId) }
+            : old
+      );
+      setInputMessage(userMessage);
+      toast({
+        title: "Message failed to send",
+        description:
+          error instanceof Error && error.message
+            ? `${error.message}. Your message wasn't lost — try sending again.`
+            : "Something went wrong reaching the AI assistant. Your message wasn't lost — try sending again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsStreaming(false);
+      setStreamingMessage("");
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleNewChat = () => {
+    setSelectedConversation(null);
+    setInputMessage("");
+  };
+
+  const messages = currentConversation?.messages || [];
+
+  const suggestedPrompts = [
+    { icon: Plane, text: "Plan a romantic getaway to Bali" },
+    { icon: MapPin, text: "Best destinations for a winter wedding" },
+    { icon: Calendar, text: "Create an itinerary for Tokyo in spring" },
+    { icon: Sparkles, text: "Surprise anniversary trip ideas" },
+  ];
+
+  return (
+    // Rendered inside DashboardLayout (sidebar + sticky h-[52px] header; its <main> owns the
+    // scroll) — same shell situation chat.tsx documents. This page used to re-declare its own
+    // viewport frame (min-h-screen + two mismatched h-[calc(100vh-…)] magic numbers), producing
+    // a double scrollbar and misaligned panes. Fix (the chat.tsx pattern): ONE viewport-anchored
+    // frame — lg:h-[calc(100vh-52px)] matching the shell's real 52px header — and every nested
+    // pane derives its height via flex-1/min-h-0, never its own viewport arithmetic. Below lg the
+    // three panes stack at natural height and the shell's <main> scrolls the page (a bounded
+    // frame would crush the stacked panes on a phone).
+    <div className="flex flex-col lg:h-[calc(100vh-52px)] min-h-0 bg-background">
+      <div className="flex flex-col flex-1 min-h-0 w-full px-4 sm:px-6 py-3 lg:py-4">
+        <div className="mb-3 flex-shrink-0">
+          <Button
+            variant="ghost"
+            onClick={() => setLocation("/dashboard")}
+            className="mb-2 h-9 px-2 text-muted-foreground hover:text-foreground"
+            data-testid="button-back-dashboard"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary rounded-xl">
+                <Bot className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-foreground">
+                  AI Travel Assistant
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  AI-assisted, human-backed — our team steps in whenever you need a person
+                </p>
+              </div>
+            </div>
+            {/* C4: first-class, always-visible human handoff (ruled hybrid). */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => escalateToTeam.mutate()}
+              disabled={escalateToTeam.isPending}
+              data-testid="button-escalate-to-team"
+            >
+              {escalateToTeam.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <LifeBuoy className="w-4 h-4 mr-2" />
+              )}
+              Get help from our team
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-col lg:grid lg:grid-cols-5 gap-3 lg:gap-4 flex-1 min-h-0">
+          <Card className="lg:col-span-1 bg-card rounded-2xl shadow-card border-border flex flex-col min-h-0">
+            <CardHeader className="min-w-0 p-3 sm:p-4 pb-2 flex-shrink-0">
+              <div className="flex items-center justify-between gap-1.5 min-w-0">
+                <CardTitle className="text-sm sm:text-base truncate min-w-0">Conversations</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 px-2 whitespace-nowrap"
+                  onClick={handleNewChat}
+                  data-testid="button-new-chat"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  New
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-0 flex-1 min-h-0 flex flex-col">
+              <ScrollArea className="flex-1 min-h-0 max-h-64 lg:max-h-none [&>div>div]:!block [&>div>div]:!w-full [&>div>div]:!min-w-0">
+                {loadingConversations ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <MessageSquare className="w-7 h-7 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No conversations yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 pl-1.5 pr-3">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                         className={cn(
+                            "relative p-2.5 rounded-xl transition-all group flex items-center justify-between gap-2",
+                          renamingId === conv.id
+                            ? "bg-muted"
+                            : selectedConversation === conv.id
+                            ? "bg-primary/10 border border-primary/20 cursor-pointer"
+                            : "hover:bg-muted cursor-pointer"
+                        )}
+                        onClick={() => renamingId !== conv.id && setSelectedConversation(conv.id)}
+                        data-testid={`card-conversation-${conv.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          {renamingId === conv.id ? (
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Input
+                                ref={renameInputRef}
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") commitRename(conv.id);
+                                  if (e.key === "Escape") cancelRename();
+                                }}
+                                onBlur={() => commitRename(conv.id)}
+                                className="h-7 text-sm px-2 py-0"
+                                autoFocus
+                                data-testid={`input-rename-conversation-${conv.id}`}
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0 text-green-600 hover:text-green-700"
+                                onMouseDown={(e) => { e.preventDefault(); commitRename(conv.id); }}
+                                data-testid={`button-confirm-rename-${conv.id}`}
+                              >
+                                <Check className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0"
+                                onMouseDown={(e) => { e.preventDefault(); cancelRename(); }}
+                                data-testid={`button-cancel-rename-${conv.id}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-sm font-medium truncate">{conv.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(conv.createdAt).toLocaleDateString()}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        {renamingId !== conv.id && (
+                           <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded-lg bg-card/95 pl-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0 shadow-sm">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-9 w-9"
+                              onClick={(e) => startRename(conv, e)}
+                              data-testid={`button-rename-conversation-${conv.id}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-9 w-9"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteConversation.mutate(conv.id);
+                              }}
+                              data-testid={`button-delete-conversation-${conv.id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-3 bg-card rounded-2xl shadow-card border-border flex flex-col min-h-0">
+            <CardContent className="flex-1 min-h-0 p-3 sm:p-4 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1 min-h-0 pl-1 pr-3 [&>div>div]:!block [&>div>div]:!w-full [&>div>div]:!min-w-0">
+                {selectedConversation && loadingMessages ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+                  </div>
+                ) : messages.length === 0 && !streamingMessage && !selectedConversation ? (
+                  <div className="h-full flex flex-col items-center justify-center py-8">
+                    <div className="text-center mb-6">
+                      <Sparkles className="w-12 h-12 mx-auto text-primary mb-3" />
+                      <h2 className="text-xl font-bold text-foreground mb-2">
+                        How can I help you today?
+                      </h2>
+                      <p className="text-sm text-muted-foreground max-w-md">
+                        I can help you plan trips, find destinations, create itineraries, and more!
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-2xl">
+                      {suggestedPrompts.map((prompt, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setInputMessage(prompt.text)}
+                          className="p-3 rounded-xl border border-border text-left transition-all flex items-center gap-3 hover:border-primary/40 hover:shadow-sm"
+                          data-testid={`button-suggestion-${index}`}
+                        >
+                          <prompt.icon className="w-5 h-5 text-primary flex-shrink-0" />
+                          <span className="text-sm text-foreground">{prompt.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 py-3">
+                    <AnimatePresence mode="popLayout">
+                      {messages.map((message) => (
+                        <motion.div
+                          key={message.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={cn(
+                            "flex gap-3",
+                            message.role === "user" ? "justify-end" : "justify-start"
+                          )}
+                        >
+                          {message.role === "assistant" && (
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
+                              <Bot className="w-4 h-4 text-primary-foreground" />
+                            </div>
+                          )}
+                          <div
+                            className={cn(
+                              "max-w-[80%] p-3 rounded-2xl text-sm",
+                              message.role === "user"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            )}
+                          >
+                            {message.role === "user" ? (
+                              <p className="whitespace-pre-wrap">{message.content}</p>
+                            ) : (
+                              <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:font-semibold">
+                                <ReactMarkdown>{message.content}</ReactMarkdown>
+                              </div>
+                            )}
+                          </div>
+                          {message.role === "user" && (
+                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4" />
+                            </div>
+                          )}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+
+                    {isStreaming && !streamingMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="flex gap-3 justify-start"
+                        data-testid="typing-indicator"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-4 h-4 text-primary-foreground" />
+                        </div>
+                        <div className="p-3 rounded-2xl bg-muted flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground mr-1">Thinking</span>
+                          {[0, 1, 2].map((i) => (
+                            <span
+                              key={i}
+                              className="w-2 h-2 rounded-full bg-primary/60 animate-bounce"
+                              style={{ animationDelay: `${i * 0.15}s` }}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {streamingMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex gap-3 justify-start"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-4 h-4 text-primary-foreground" />
+                        </div>
+                        <div className="max-w-[80%] p-3 rounded-2xl bg-muted text-sm">
+                          <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:font-semibold">
+                            <ReactMarkdown>{streamingMessage}</ReactMarkdown>
+                          </div>
+                          <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
+                        </div>
+                      </motion.div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </ScrollArea>
+
+              <div className="pt-3 border-t border-border mt-3 flex-shrink-0">
+                <div className="flex gap-2">
+                  <Textarea
+                    ref={textareaRef}
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask me about your travel plans..."
+                    className="resize-none min-h-[52px] max-h-[112px]"
+                    disabled={isStreaming}
+                    data-testid="input-message"
+                  />
+                  <Button
+                    size="lg"
+                    onClick={handleSendMessage}
+                    disabled={!inputMessage.trim() || isStreaming}
+                    className="px-5"
+                    data-testid="button-send-message"
+                  >
+                    {isStreaming ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  AI assistant powered by Claude. Responses are for planning purposes only.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="lg:col-span-1 min-h-0">
+            <AiPlannerDraftPanel
+              conversationId={selectedConversation}
+              extractionTrigger={extractionTrigger}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
