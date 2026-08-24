@@ -158,7 +158,7 @@ function HeroSection({
     if (coverPhotoUrl) {
       return (
         <div
-          className="relative rounded-xl overflow-hidden px-5 py-4 flex justify-between items-start gap-3 min-h-[96px]"
+          className="public-location-hero public-location-hero--date public-location-hero--image"
           style={{
             backgroundImage: `url(${coverPhotoUrl})`,
             backgroundSize: "cover",
@@ -167,23 +167,22 @@ function HeroSection({
           data-testid="section-hero"
         >
           {/* Dark overlay */}
-          <div className="absolute inset-0 rounded-xl" style={{ background: "linear-gradient(135deg, rgba(4,52,44,0.82) 0%, rgba(4,52,44,0.55) 100%)" }} />
+          <div className="public-location-hero-overlay" />
           <div className="relative z-10">
             <h1
-              className="text-[22px] font-medium leading-tight text-white"
+              className="public-location-title"
               data-testid="text-city-name"
             >
               {displayCity}
             </h1>
             {seasonLine && (
-              <div className="text-[13px] mt-1 text-green-200">
+              <div className="public-location-highlight">
                 🌸 {seasonLine}
               </div>
             )}
             {datePillLabel && (
               <div
-                className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
-                style={{ background: "rgba(255,255,255,0.2)", color: "#A7F3D0" }}
+                className="public-date-pill"
               >
                 📅 {datePillLabel}
                 {/* D7 date-continuity: back to the By-Date calendar
@@ -208,9 +207,9 @@ function HeroSection({
             )}
           </div>
           {pulse !== undefined && (
-            <div className="relative z-10 text-center flex-shrink-0" data-testid="pulse-badge">
-              <b className="block text-[20px] font-medium leading-tight text-green-300">{pulse}</b>
-              <span className="text-[11px] text-green-400">pulse</span>
+            <div className="public-pulse-badge relative z-10" data-testid="pulse-badge">
+              <b className="block text-[20px] font-semibold leading-tight">{pulse}</b>
+              <span className="text-[10px] uppercase tracking-widest">pulse</span>
             </div>
           )}
           <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
@@ -220,27 +219,24 @@ function HeroSection({
 
     return (
       <div
-        className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
-        style={{ background: "#E1F5EE" }}
+        className="public-location-hero public-location-hero--date public-location-hero--fallback"
         data-testid="section-hero"
       >
         <div>
           <h1
-            className="text-[22px] font-medium leading-tight"
-            style={{ color: "#04342C" }}
+            className="public-location-title"
             data-testid="text-city-name"
           >
             {displayCity}
           </h1>
           {seasonLine && (
-            <div className="text-[13px] mt-1" style={{ color: "#0F6E56" }}>
+            <div className="public-location-highlight">
               🌸 {seasonLine}
             </div>
           )}
           {datePillLabel && (
             <div
-              className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
-              style={{ background: "rgba(255,255,255,0.55)", color: "#0F6E56" }}
+              className="public-date-pill"
             >
               📅 {datePillLabel}
               {/* D7 date-continuity: back to the By-Date calendar
@@ -265,9 +261,9 @@ function HeroSection({
           )}
         </div>
         {pulse !== undefined && (
-          <div className="text-center flex-shrink-0" data-testid="pulse-badge">
-            <b className="block text-[20px] font-medium leading-tight" style={{ color: "#0F6E56" }}>{pulse}</b>
-            <span className="text-[11px]" style={{ color: "#0F6E56" }}>pulse</span>
+          <div className="public-pulse-badge" data-testid="pulse-badge">
+            <b className="block text-[20px] font-semibold leading-tight">{pulse}</b>
+            <span className="text-[10px] uppercase tracking-widest">pulse</span>
           </div>
         )}
       </div>
@@ -277,7 +273,7 @@ function HeroSection({
   if (coverPhotoUrl) {
     return (
       <div
-        className="relative rounded-xl overflow-hidden px-6 py-8 min-h-[160px] flex flex-col justify-end"
+        className="public-location-hero public-location-hero--image"
         style={{
           backgroundImage: `url(${coverPhotoUrl})`,
           backgroundSize: "cover",
@@ -287,31 +283,29 @@ function HeroSection({
       >
         {/* Dark gradient overlay — bottom-heavy so text is legible */}
         <div
-          className="absolute inset-0 rounded-xl"
-          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.10) 100%)" }}
+          className="public-location-hero-overlay"
         />
         <div className="relative z-10">
           <h1
-            className="text-[34px] font-bold tracking-tight text-white leading-tight drop-shadow"
+            className="public-location-title"
             data-testid="text-city-name"
           >
             {displayCity}
           </h1>
           {highlight ? (
-            <div className="text-sm mt-1 text-white/80">
+            <div className="public-location-highlight">
               {highlightEmoji} {highlight}
             </div>
           ) : null}
         </div>
         {pulse !== undefined && (
           <div
-            className="absolute top-5 right-5 z-10 rounded-xl px-3.5 py-2 text-center"
-            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
+            className="public-pulse-badge absolute top-5 right-5 z-10"
           >
-            <b className="block text-lg font-bold leading-tight text-green-300">
+            <b className="block text-lg font-semibold leading-tight">
               {pulse}
             </b>
-            <span className="text-[10px] uppercase tracking-widest text-green-400">
+            <span className="text-[10px] uppercase tracking-widest">
               pulse
             </span>
           </div>
@@ -323,35 +317,31 @@ function HeroSection({
 
   return (
     <div
-      className="relative rounded-xl overflow-hidden px-6 py-6"
-      style={{ background: "linear-gradient(135deg, #0F6E56 0%, #0c5a47 100%)" }}
+      className="public-location-hero public-location-hero--fallback"
       data-testid="section-hero"
     >
       <h1
-        className="text-[30px] font-bold tracking-tight text-white leading-tight"
+        className="public-location-title"
         data-testid="text-city-name"
       >
         {displayCity}
       </h1>
       {highlight ? (
-        <div className="text-sm mt-1" style={{ color: "#5DCAA5" }}>
+        <div className="public-location-highlight">
           {highlightEmoji} {highlight}
         </div>
       ) : null}
       {pulse !== undefined && (
         <div
-          className="absolute top-5 right-5 rounded-xl px-3.5 py-2 text-center"
-          style={{ background: "#04342C" }}
+          className="public-pulse-badge absolute top-5 right-5"
         >
           <b
-            className="block text-lg font-bold leading-tight"
-            style={{ color: "#5DCAA5" }}
+            className="block text-lg font-semibold leading-tight"
           >
             {pulse}
           </b>
           <span
             className="text-[10px] uppercase tracking-widest"
-            style={{ color: "#5DCAA5" }}
           >
             pulse
           </span>
@@ -387,19 +377,19 @@ function StatsRow({
     <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
       {/* activeTravelers absolute count suppressed per R3 — no absolute visitor count on traveler surfaces */}
       {cityIntel.crowdLevel && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+        <div className="public-stat">
           {crowdEmoji(cityIntel.crowdLevel)}{" "}
           <b className="text-foreground font-semibold capitalize">{cityIntel.crowdLevel}</b>{" "}
           crowds
         </div>
       )}
       {serviceCount > 0 && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+        <div className="public-stat">
           <b className="text-foreground font-semibold">{serviceCount}</b> services
         </div>
       )}
       {neighborhoodCount > 0 && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
+        <div className="public-stat">
           <b className="text-foreground font-semibold">{neighborhoodCount}</b> neighborhoods
         </div>
       )}
@@ -430,7 +420,7 @@ function SpineFilterBar({
 }) {
   return (
     <div
-      className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b py-2"
+      className="public-filter-dock"
       data-testid="spine-filter-bar"
     >
       <div className="flex gap-2 overflow-x-auto pb-0.5 px-0.5 scrollbar-none">
@@ -439,16 +429,9 @@ function SpineFilterBar({
             key={chip.id}
             onClick={() => onSelect(chip.id)}
             className={cn(
-              "flex-shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap border",
-              active === chip.id
-                ? "border-transparent font-semibold"
-                : "bg-card border-border text-muted-foreground hover:bg-muted",
+              "public-filter-chip",
+              active === chip.id && "is-active",
             )}
-            style={
-              active === chip.id
-                ? { background: "#E1F5EE", color: "#0F6E56" }
-                : undefined
-            }
             data-testid={`spine-chip-${chip.id}`}
           >
             {chip.label}
@@ -466,7 +449,7 @@ function LeadExpertCard({ expert }: { expert: any }) {
   const packagesCount = Number(expert.packagesCount ?? 0);
   return (
     <div
-      className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 h-full"
+      className="public-card p-3 flex items-center gap-3 h-full"
       data-testid="section-lead-expert"
     >
       <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -1587,7 +1570,7 @@ function TripComplementsStrip({
               target={addon.isExternal ? "_blank" : undefined}
               rel={addon.isExternal ? "noopener noreferrer" : undefined}
               onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
-              className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
+               className="public-card public-card-interactive flex-1 min-w-[150px] p-3"
               data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
               <AddOnFace addon={addon} />
@@ -1641,7 +1624,7 @@ function AddOnAgentCard({ addon, city }: { addon: AddOn; city: string }) {
         agentBooking.book();
       }}
       disabled={agentBooking.isPending || agentBooking.requested}
-      className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
+      className="public-card public-card-interactive flex-1 min-w-[150px] p-3 text-left"
       data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
     >
       <AddOnFace
@@ -2037,7 +2020,7 @@ export default function DiscoverLocationPage() {
   if (!city) {
     return (
       <Layout>
-        <div className="container mx-auto px-4 py-12 max-w-3xl">
+        <div className="public-page container mx-auto px-4 py-12 max-w-3xl">
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>No city specified.</AlertDescription>
@@ -2049,7 +2032,8 @@ export default function DiscoverLocationPage() {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-6 max-w-5xl">
+      <div className="public-page public-location-page min-h-screen">
+        <div className="public-container public-container--narrow py-6 md:py-8">
         {/* Back navigation */}
         <button
           onClick={() => {
@@ -2059,7 +2043,7 @@ export default function DiscoverLocationPage() {
               navigate("/events");
             }
           }}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+          className="public-back-link mb-5"
           data-testid="btn-back"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -2084,7 +2068,7 @@ export default function DiscoverLocationPage() {
         )}
 
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="public-state--error rounded-2xl">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               {(error as Error).message ?? "Failed to load location view."}
@@ -2093,7 +2077,7 @@ export default function DiscoverLocationPage() {
         )}
 
         {data && (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* ── Hero (cover photo or teal gradient fallback) ────────── */}
             <HeroSection
               city={city}
@@ -2130,7 +2114,7 @@ export default function DiscoverLocationPage() {
                 (there is no feed to interleave into). */}
             {experts.length === 0 && neighborhoods.length === 0 && (
               <div
-                className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
+                className="public-state py-5"
                 data-testid="section-expert-recruitment-generic"
               >
                 <p className="text-sm font-semibold text-primary mb-1">
@@ -2192,10 +2176,10 @@ export default function DiscoverLocationPage() {
             {/* Request-a-service footer — a "nothing here matches" moment gets a
                 forward action instead of a dead end (POST /api/service-requests). */}
             <div
-              className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-center"
+              className="public-state mt-6 py-5"
               data-testid="section-service-request"
             >
-              <p className="text-sm font-semibold text-gray-800 mb-1">
+              <p className="text-sm font-semibold text-[color:var(--public-ink)] mb-1">
                 Can't find what you're looking for in {toTitleCase(city)}?
               </p>
               <p className="text-xs text-muted-foreground mb-3">
@@ -2212,6 +2196,7 @@ export default function DiscoverLocationPage() {
           open={addToExperienceOpen}
           onOpenChange={setAddToExperienceOpen}
         />
+        </div>
       </div>
     </Layout>
   );
