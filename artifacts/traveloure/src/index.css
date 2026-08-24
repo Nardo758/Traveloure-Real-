@@ -1,0 +1,540 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Traveloure Design System - from wireframes v2.0 */
+  
+  /* Primary: #FF385C (Traveloure Red/Pink) */
+  --primary: 350 100% 61%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 350 81% 54%; /* #E23350 */
+
+  /* Secondary: Gray palette */
+  --secondary: 220 9% 46%; /* #6B7280 */
+  --secondary-foreground: 0 0% 100%;
+
+  /* Accent: Green for success */
+  --accent: 160 84% 39%; /* #10B981 */
+  --accent-foreground: 0 0% 100%;
+
+  /* Neutrals - exact wireframe colors */
+  --background: 210 20% 98%; /* #F9FAFB */
+  --foreground: 221 39% 11%; /* #111827 - Text Dark */
+  
+  --muted: 220 14% 96%; /* #F3F4F6 - Secondary Light */
+  --muted-foreground: 220 9% 46%; /* #6B7280 - Text Mid */
+  
+  --card: 0 0% 100%; /* #FFFFFF - Surface */
+  --card-foreground: 221 39% 11%; /* #111827 */
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 221 39% 11%;
+  
+  --border: 220 13% 91%; /* #E5E7EB */
+  --input: 220 13% 91%;
+  
+  --destructive: 0 84% 60%; /* #EF4444 */
+  --destructive-foreground: 0 0% 98%;
+
+  --ring: 350 100% 61%;
+  --radius: 0.5rem;
+
+  /* Text colors */
+  --text-dark: 221 39% 11%; /* #111827 */
+  --text-mid: 220 9% 46%; /* #6B7280 */
+  --text-light: 218 11% 65%; /* #9CA3AF */
+
+  /* Status colors */
+  --success: 160 84% 39%; /* #10B981 */
+  --warning: 38 92% 50%; /* #F59E0B */
+  --error: 0 84% 60%; /* #EF4444 */
+  --info: 217 91% 60%; /* #3B82F6 */
+
+  /* Sidebar */
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 221 39% 11%;
+  --sidebar-primary: 350 100% 61%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 14% 96%;
+  --sidebar-accent-foreground: 221 39% 11%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 350 100% 61%;
+
+  /* Fonts - Inter with system fallbacks */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: 'Architects Daughter', sans-serif;
+
+  /* ── Ways-to-Earn palette — Discover/Experts redesign (themeable, light values) ── */
+  --earn-ground: #FAFAF8;
+  --earn-card: #FFFFFF;
+  --earn-border: #E7E4DD;
+  --earn-border-dash: #D5D0C8;
+  --earn-teal: #2E8B8B;
+  --earn-teal-ink: #226B6B;
+  --earn-teal-wash: rgba(46, 139, 139, 0.10);
+  --earn-gold: #E8B339;
+  --earn-gold-ink: #8A6414;
+  --earn-gold-wash: rgba(232, 179, 57, 0.15);
+  --earn-green: #5DCAA5;
+  --earn-green-ink: #2F7D63;
+  --earn-coral-bg: #FFF4F4;
+  --earn-coral-border: #FCCACA;
+  --earn-coral-ink: #E85D55;
+  --earn-navy: #1E3A5F;
+  --earn-ink: #1F2733;
+  --earn-muted: #6A7480;
+  --earn-faint: #B0AAA0;
+  --earn-chip: #F6F5F1;
+}
+
+/* ── Earner back-office console scope (decision-maker ratified Jul 27, 2026) ──
+   TWO PALETTES BY DESIGN: the Traveler surface keeps the global brand above
+   (--primary #FF385C, cool greys); the earner back office (expert + provider
+   consoles) is a different product with the warm console palette (#E85D55 +
+   #1A1A18/#7A7A72/#E8E8E2/#FAFAF8). Scoped via this class on BackofficeShell's
+   root — every bg-primary / text-foreground / border inside the console resolves
+   to the console palette with ZERO traveler blast radius. Design-audit fixes
+   1+2: collapses the two-reds-on-one-screen split and makes the ~50 cards using
+   shadcn semantics (`border`, `text-muted-foreground`) console-conformant
+   without touching page files. Do not restyle console pages with raw hex —
+   use tokens; this scope makes them correct. */
+.console-scope {
+  --primary: 3 76% 62%; /* #E85D55 */
+  --primary-hover: 3 66% 52%; /* darkened coral */
+  --ring: 3 76% 62%;
+  --sidebar-primary: 3 76% 62%;
+  --sidebar-ring: 3 76% 62%;
+  --background: 60 17% 98%; /* #FAFAF8 */
+  --foreground: 60 4% 10%; /* #1A1A18 */
+  --card-foreground: 60 4% 10%;
+  --muted: 60 10% 95%; /* #F3F3EE */
+  --muted-foreground: 60 3% 46%; /* #7A7A72 */
+  --border: 60 12% 90%; /* #E8E8E2 */
+  --input: 60 12% 90%;
+  --text-dark: 60 4% 10%;
+  --text-mid: 60 3% 46%;
+
+  /* ── Raw console color tokens (W-2, mockup-unified-workspace v9 palette) ──
+     For inline styles inside console pages: consume var(--console-*) — never a
+     raw hex literal in a console page file (§17 "use tokens"). ok/warn/danger
+     are the semantic state trio; *-soft are their wash backgrounds. */
+  --console-ink: #1A1A18;
+  --console-mid: #7A7A72;
+  --console-faint: #A8A8A0;
+  --console-line: #E8E8E2;
+  --console-ground: #FAFAF8;
+  --console-card: #FFFFFF;
+  --console-brand: #E85D55;
+  --console-brand-soft: #FDEFEE;
+  --console-ok: #2E7D5B;
+  --console-ok-soft: #EAF4EF;
+  --console-warn: #B45309;
+  --console-warn-soft: #FCF3E7;
+  --console-danger: #B3261E;
+  --console-danger-soft: #F9E7E6;
+  /* info — the Channel Calendar's store-lifecycle lane (mockup-console-pages §1 legend). */
+  --console-info: #3B6EA5;
+  --console-info-soft: #EAF1F8;
+}
+
+/* Dark counterparts (mockup v9 dark theme — warm-neutral, not a naive invert). */
+.dark .console-scope {
+  --console-ink: #F0EFEA;
+  --console-mid: #9C9B92;
+  --console-faint: #6E6D66;
+  --console-line: #33332F;
+  --console-ground: #191917;
+  --console-card: #211F1D;
+  --console-brand: #F07068;
+  --console-brand-soft: #3A2523;
+  --console-ok: #5CBF94;
+  --console-ok-soft: #1F3229;
+  --console-warn: #E0A050;
+  --console-warn-soft: #362A18;
+  --console-danger: #F28B82;
+  --console-danger-soft: #3A2422;
+  /* info — the Channel Calendar's store-lifecycle lane (mockup-console-pages §1 legend). */
+  --console-info: #86ACD8;
+  --console-info-soft: #1E2A38;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  
+  --card: 222 47% 13%;
+  --card-foreground: 210 40% 98%;
+  
+  --popover: 222 47% 13%;
+  --popover-foreground: 210 40% 98%;
+  
+  --primary: 350 100% 65%;
+  --primary-foreground: 222 47% 11%;
+  
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  
+  --accent: 145 63% 50%;
+  --accent-foreground: 220 47% 11%;
+  
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 210 40% 98%;
+  
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  
+  --ring: 350 100% 65%;
+
+  /* Sidebar Dark */
+  --sidebar-background: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 350 100% 65%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217 33% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217 33% 20%;
+  --sidebar-ring: 350 100% 65%;
+
+  /* ── Ways-to-Earn palette — dark counterpart (warm-neutral, not a naive invert) ── */
+  --earn-ground: #17181A;
+  --earn-card: #202225;
+  --earn-border: #34363B;
+  --earn-border-dash: #3E4045;
+  --earn-teal: #43A5A5;
+  --earn-teal-ink: #83D6D6;
+  --earn-teal-wash: rgba(67, 165, 165, 0.16);
+  --earn-gold: #E8B339;
+  --earn-gold-ink: #E2BB60;
+  --earn-gold-wash: rgba(232, 179, 57, 0.16);
+  --earn-green: #5DCAA5;
+  --earn-green-ink: #82DBBB;
+  --earn-coral-bg: rgba(232, 93, 85, 0.13);
+  --earn-coral-border: rgba(232, 93, 85, 0.36);
+  --earn-coral-ink: #F0908A;
+  --earn-navy: #E9ECF1;
+  --earn-ink: #E6E8EB;
+  --earn-muted: #9BA3AD;
+  --earn-faint: #71747A;
+  --earn-chip: #2A2C30;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body {
+    /* `clip` (not `hidden`): overflow-x hidden on html/body creates a scroll
+       container, which silently breaks the navbar's position: sticky. */
+    overflow-x: clip;
+  }
+  body {
+    @apply bg-background text-foreground antialiased font-body;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold text-gray-900 dark:text-gray-50;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glass-panel {
+    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+  .glass-panel-dark {
+    @apply bg-black/60 backdrop-blur-md border border-white/10 shadow-xl;
+  }
+}
+
+/* Elevation utilities */
+@layer utilities {
+  .hover-elevate {
+    @apply transition-all duration-200;
+  }
+  .hover-elevate:hover {
+    @apply brightness-95 dark:brightness-110;
+  }
+  .active-elevate-2 {
+    @apply transition-all duration-100;
+  }
+  .active-elevate-2:active {
+    @apply brightness-90 dark:brightness-125 scale-[0.98];
+  }
+  .toggle-elevate {
+    @apply transition-all duration-200;
+  }
+  .toggle-elevated {
+    @apply bg-primary/10 dark:bg-primary/20;
+  }
+  .no-default-hover-elevate:hover {
+    @apply brightness-100;
+  }
+  .no-default-active-elevate:active {
+    @apply brightness-100 scale-100;
+  }
+}
+
+/* Travel-themed component styles */
+@layer components {
+  /* Glassmorphism effects - auto dark mode */
+  .glass {
+    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border border-white/20 dark:border-white/10;
+  }
+  
+  .glass-dark {
+    @apply bg-black/40 backdrop-blur-xl border border-white/10;
+  }
+  
+  /* Gradient backgrounds - works in both light/dark mode */
+  .gradient-ocean {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #0369a1 100%);
+  }
+  .dark .gradient-ocean {
+    background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 50%, #0284c7 100%);
+  }
+  
+  .gradient-sunset {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%);
+  }
+  .dark .gradient-sunset {
+    background: linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%);
+  }
+  
+  .gradient-nature {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%);
+  }
+  .dark .gradient-nature {
+    background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  }
+  
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(350, 100%, 61%) 0%, hsl(350, 81%, 54%) 100%);
+  }
+  .dark .gradient-primary {
+    background: linear-gradient(135deg, hsl(350, 100%, 65%) 0%, hsl(350, 100%, 61%) 100%);
+  }
+  
+  .gradient-hero {
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.4) 100%);
+  }
+  
+  .gradient-hero-dark {
+    background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%);
+  }
+  
+  /* Dark mode muted gradients */
+  .gradient-muted {
+    background: linear-gradient(135deg, hsl(220, 14%, 96%) 0%, hsl(210, 20%, 98%) 100%);
+  }
+  .dark .gradient-muted {
+    background: linear-gradient(135deg, hsl(217, 33%, 17%) 0%, hsl(222, 47%, 11%) 100%);
+  }
+  
+  /* Card hover effects - shadow only, no layout changes */
+  .card-lift {
+    @apply transition-shadow duration-300 ease-smooth;
+  }
+  
+  .card-lift:hover {
+    @apply shadow-card-hover;
+  }
+  
+  /* Text gradients - work in both light and dark mode */
+  .text-gradient-ocean {
+    @apply bg-gradient-to-r from-ocean-400 to-ocean-600 dark:from-ocean-300 dark:to-ocean-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-sunset {
+    @apply bg-gradient-to-r from-sunset-400 to-sunset-600 dark:from-sunset-300 dark:to-sunset-500 bg-clip-text text-transparent;
+  }
+  
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent;
+    background: linear-gradient(135deg, hsl(350, 100%, 61%) 0%, hsl(350, 81%, 54%) 100%);
+  }
+  .dark .text-gradient-primary {
+    background: linear-gradient(135deg, hsl(350, 100%, 70%) 0%, hsl(350, 100%, 61%) 100%);
+  }
+  
+  /* Section spacing */
+  .section-padding {
+    @apply py-16 md:py-24 lg:py-32;
+  }
+  
+  .container-padding {
+    @apply px-4 sm:px-6 lg:px-8 xl:px-12;
+  }
+  
+  /* Skeleton loading */
+  .skeleton {
+    @apply bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 bg-[length:200%_100%] animate-shimmer rounded;
+  }
+  
+  /* Focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+  }
+  
+  /* Scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-gray-800 rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors;
+  }
+}
+
+/*
+ * Optimized plan review dark surface.
+ *
+ * This page is also reached from a share/bookmark flow where the app theme
+ * class may not have been initialized yet. Keep the browser-preference rule
+ * alongside the .dark rule so both theme mechanisms produce the same
+ * readable, warm-neutral review surface as the approved mock.
+ */
+.itinerary-comparison-page {
+  color-scheme: light;
+}
+
+.dark .itinerary-comparison-page {
+  color-scheme: dark;
+  --background: 60 17% 7%; /* #14140F */
+  --foreground: 60 11% 91%; /* #EDECE4 */
+  --card: 60 10% 11%; /* #1D1D18 */
+  --card-foreground: 60 11% 91%;
+  --popover: 60 10% 11%;
+  --popover-foreground: 60 11% 91%;
+  --muted: 60 10% 14%; /* #24241E */
+  --muted-foreground: 60 5% 58%; /* #9A9A8F */
+  --border: 60 8% 18%; /* #2E2E27 */
+  --input: 60 8% 18%;
+  --primary: 258 33% 78%; /* #B7A9E6 */
+  --primary-foreground: 60 17% 7%;
+  --ring: 258 33% 78%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .itinerary-comparison-page {
+    color-scheme: dark;
+    --background: 60 17% 7%; /* #14140F */
+    --foreground: 60 11% 91%; /* #EDECE4 */
+    --card: 60 10% 11%; /* #1D1D18 */
+    --card-foreground: 60 11% 91%;
+    --popover: 60 10% 11%;
+    --popover-foreground: 60 11% 91%;
+    --muted: 60 10% 14%; /* #24241E */
+    --muted-foreground: 60 5% 58%; /* #9A9A8F */
+    --border: 60 8% 18%; /* #2E2E27 */
+    --input: 60 8% 18%;
+    --primary: 258 33% 78%; /* #B7A9E6 */
+    --primary-foreground: 60 17% 7%;
+    --ring: 258 33% 78%;
+  }
+
+  body:has(.itinerary-comparison-page) {
+    background-color: #14140f;
+    color: #edece4;
+  }
+}
+
+/* Browser-preference mode has no Tailwind `dark:` class, so translate the
+   page's remaining literal light utility colors explicitly. These selectors
+   are scoped to this review page and do not alter other traveler surfaces. */
+@media (prefers-color-scheme: dark) {
+  .itinerary-comparison-page .bg-green-100,
+  .itinerary-comparison-page .bg-green-50 {
+    background-color: #16281f !important;
+  }
+  .itinerary-comparison-page .text-green-700,
+  .itinerary-comparison-page .text-green-800,
+  .itinerary-comparison-page .text-green-600 {
+    color: #6fd79e !important;
+  }
+  .itinerary-comparison-page .bg-blue-100 {
+    background-color: #1e2a38 !important;
+  }
+  .itinerary-comparison-page .text-blue-700,
+  .itinerary-comparison-page .text-blue-800,
+  .itinerary-comparison-page .text-blue-600 {
+    color: #86acd8 !important;
+  }
+  .itinerary-comparison-page .bg-amber-50,
+  .itinerary-comparison-page .bg-amber-100 {
+    background-color: #2a2314 !important;
+  }
+  .itinerary-comparison-page .text-amber-700,
+  .itinerary-comparison-page .text-amber-800,
+  .itinerary-comparison-page .text-amber-600 {
+    color: #e7b85e !important;
+  }
+  .itinerary-comparison-page .bg-purple-50 {
+    background-color: #221e33 !important;
+  }
+  .itinerary-comparison-page .text-purple-800,
+  .itinerary-comparison-page .text-purple-700,
+  .itinerary-comparison-page .text-purple-600 {
+    color: #b7a9e6 !important;
+  }
+  .itinerary-comparison-page .border-green-500\/50 {
+    border-color: #244a36 !important;
+  }
+  .itinerary-comparison-page .border-amber-200,
+  .itinerary-comparison-page .border-amber-100,
+  .itinerary-comparison-page .border-purple-200\/50,
+  .itinerary-comparison-page .border-blue-200\/50 {
+    border-color: #3a3a31 !important;
+  }
+  .itinerary-comparison-page .bg-white\/60 {
+    background-color: #24241e !important;
+  }
+}
+
+/* Scroll-triggered animations */
+@layer utilities {
+  .animate-on-scroll {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  
+  .animate-on-scroll.visible {
+    animation: fade-in-up 0.6s ease-out forwards;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Image hover brightness - no layout changes */
+  .img-hover-bright {
+    @apply overflow-hidden;
+  }
+  
+  .img-hover-bright img {
+    @apply transition-[filter] duration-300;
+  }
+  
+  .img-hover-bright:hover img {
+    filter: brightness(1.05);
+  }
+}
