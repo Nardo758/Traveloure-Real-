@@ -909,7 +909,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
       />
       <div
         className={cn(
-          "min-h-screen bg-background",
+          "public-page min-h-screen bg-background",
           surface && "marketplace-field-guide",
           surface && (
             surface === "packages" || surface === "services"
@@ -933,7 +933,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
         <Tabs value={activeTab} onValueChange={setSelectedTab} className="w-full">
-        <section className="marketplace-masthead bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
+        <section className="public-masthead marketplace-masthead bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
             {/* Field Guide masthead: a route-specific icon, serif title, concise deck,
                 and real-link route rail. Services search lives with its result filters;
@@ -1243,7 +1243,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
 
         {/* Main Content */}
         <section className={surface ? "marketplace-content py-7 md:py-8" : "py-12"}>
-          <div className="container mx-auto px-4 max-w-[1400px]">
+          <div className="container mx-auto px-4 max-w-7xl">
             {/* Tab bar moved INTO the hero band (funnel PR1) — TabsContents below stay
                 inside the same Tabs root, which now opens above the hero. */}
 
@@ -1304,7 +1304,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                 {/* Unified Filter Bar — one earn-styled bar (mirrors the /experts filter
                     bar) replacing the old desktop sidebar Card + scattered Location/Sort
                     row + mobile filter Sheet. Every control inline; wraps on small screens. */}
-                <div className="marketplace-filter-bar bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
+                <div className="public-card marketplace-filter-bar bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
                   {surface && <div className="relative flex-[1.4] min-w-[220px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -1862,12 +1862,12 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link href="/experts">
-                <Button size="lg" className="px-8" data-testid="button-talk-to-expert">
+                <Button size="lg" className="min-h-11 px-8" data-testid="button-talk-to-expert">
                   Talk to an Expert
                 </Button>
               </Link>
               <Link href="/experiences">
-                <Button size="lg" variant="outline" className="px-8" data-testid="button-plan-experience-cta">
+                <Button size="lg" variant="outline" className="min-h-11 px-8" data-testid="button-plan-experience-cta">
                   Plan Your Experience
                 </Button>
               </Link>
