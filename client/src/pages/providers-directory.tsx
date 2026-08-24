@@ -2,7 +2,7 @@
  * /providers — public "Service Providers" directory (nav-storefront lane).
  *
  * Browses provider BUSINESSES (not individual services — that's /services), each card
- * linking into its own storefront (/p/:handle) where its actual bookable listings live.
+ * linking into its own storefront (/s/:handle) where its actual bookable listings live.
  * Data source is GET /api/provider-storefronts (server/routes/storefront.routes.ts,
  * loadProviderStorefrontDirectory) — a real, server-aggregated row per approved provider
  * with a handle. That endpoint carries no category/location/specialty facet, so the only
@@ -34,7 +34,7 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
 
   return (
     <Link
-      href={`/p/${provider.handle}`}
+      href={`/s/${provider.handle}`}
       data-testid={`card-provider-${provider.handle}`}
       className="group flex flex-col rounded-xl border bg-card p-5 text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >

@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { assertReadyMadeComplete } from "./ready-made.routes";
 import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
 import { pgTextArray } from "../services/upsell-query.service";
 import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
@@ -929,11 +930,30 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
   }
   try {
     const [listing] = await db
-      .select({ id: readyMadeTrips.id, sourceTripId: readyMadeTrips.sourceTripId })
+      .select({
+        id: readyMadeTrips.id,
+        sourceTripId: readyMadeTrips.sourceTripId,
+        title: readyMadeTrips.title,
+        planType: readyMadeTrips.planType,
+        heroImageUrl: readyMadeTrips.heroImageUrl,
+        heroImageMeta: readyMadeTrips.heroImageMeta,
+        priceCents: readyMadeTrips.priceCents,
+        market: readyMadeTrips.market,
+        durationDays: readyMadeTrips.durationDays,
+        status: readyMadeTrips.status,
+      })
       .from(readyMadeTrips)
       .where(eq(readyMadeTrips.id, req.params.id))
       .limit(1);
     if (!listing) return res.status(404).json({ message: "Listing not found" });
+    if (listing.status !== "submitted") {
+      return res.status(409).json({ message: "Only submitted listings can be approved" });
+    }
+
+    const missing = await assertReadyMadeComplete(listing);
+    if (missing.length > 0) {
+      return res.status(400).json({ message: "Not ready to approve", missing });
+    }
 
     // insideCounts from the REAL build (never fabricated, §13): distinct days, total items,
     // and the per-type breakdown the store card renders as "what's inside".
