@@ -61,25 +61,26 @@ function Destinations() {
 function ReadyMade() {
   const [edition, setEdition] = useState("All editions");
   const trips = [
-    ["Kyoto", "Unhurried Kyoto", "3 days · Temples, tea & quiet corners", "Alex Tanaka", "$1,450", cityPhotos.kyoto],
-    ["Bali", "A softer side of Bali", "5 days · Ritual, coast & craft", "Maya Putri", "$2,180", cityPhotos.bali],
-    ["Jaipur", "The Jaipur notebook", "4 days · Courtyards, textiles & food", "Arjun Mehta", "$1,760", cityPhotos.jaipur],
+    { city: "Kyoto", title: "Unhurried Kyoto", details: "3 days · Temples, tea & quiet corners", creator: "Alex Tanaka", price: "$1,450", image: cityPhotos.kyoto, themes: ["Food & culture", "Slow journeys"] },
+    { city: "Bali", title: "A softer side of Bali", details: "5 days · Ritual, coast & craft", creator: "Maya Putri", price: "$2,180", image: cityPhotos.bali, themes: ["Slow journeys"] },
+    { city: "Jaipur", title: "The Jaipur notebook", details: "4 days · Courtyards, textiles & food", creator: "Arjun Mehta", price: "$1,760", image: cityPhotos.jaipur, themes: ["Food & culture"] },
   ];
+  const visibleTrips = edition === "All editions" || edition === "More themes" ? trips : trips.filter((trip) => trip.themes.includes(edition));
   return <>
     <div className="fg-ready-tabs">
-      {["All editions", "Food & culture", "Slow journeys", "More themes"].map((label) => <button key={label} className={edition === label ? "active" : ""} onClick={() => setEdition(label)}>{label}</button>)}
+      {["All editions", "Food & culture", "Slow journeys", "More themes"].map((label) => <button aria-pressed={edition === label} key={label} className={edition === label ? "active" : ""} onClick={() => setEdition(label)}>{label}</button>)}
     </div>
     <div className="fg-section-head">
       <div><p className="fg-kicker">{edition === "All editions" ? "Curated for right now" : edition}</p><h2 className="fg-section-title">{edition === "All editions" ? "Travel like you have a local editor" : `${edition} trip editions`}</h2></div>
-      <p className="fg-section-note">Each edition has one clear price</p>
+      <p className="fg-section-note">{visibleTrips.length} {visibleTrips.length === 1 ? "edition" : "editions"} · Each has one clear price</p>
     </div>
     <div className="fg-card-grid">
-      {trips.map(([city, title, details, creator, price, image]) => (
-        <article className="fg-card" key={title}>
-          <div className="fg-trip-image" style={{ backgroundImage: `url(${image})` }}><span className="fg-trip-destination">{city}</span></div>
+      {visibleTrips.map((trip) => (
+        <article className="fg-card" key={trip.title}>
+          <div className="fg-trip-image" style={{ backgroundImage: `url(${trip.image})` }}><span className="fg-trip-destination">{trip.city}</span></div>
           <div className="fg-trip-body">
-            <p className="fg-kicker">Trip edition</p><p className="fg-trip-title">{title}</p><p className="fg-trip-details">{details}</p>
-            <div className="fg-trip-footer"><span>By {creator} · Local editor</span><strong>{price}</strong></div>
+            <p className="fg-kicker">Trip edition</p><p className="fg-trip-title">{trip.title}</p><p className="fg-trip-details">{trip.details}</p>
+            <div className="fg-trip-footer"><span>By {trip.creator} · Local editor</span><strong>{trip.price}</strong></div>
           </div>
         </article>
       ))}
@@ -90,23 +91,25 @@ function ReadyMade() {
 function Events() {
   const [period, setPeriod] = useState("Month");
   const [mood, setMood] = useState("All places");
+  const [selectedMonth, setSelectedMonth] = useState("Aug");
   const months = ["May", "Jun", "Jul", "Aug", "Sep", "Oct"];
   const events = [
-    ["AUG", "24", "Summer Wine Festival", "Bordeaux · France", "A warm-weather weekend"],
-    ["AUG", "29", "Edinburgh Fringe", "Edinburgh · UK", "Comedy, theatre & late nights"],
-    ["SEP", "07", "Kite Festival", "Bali · Indonesia", "A day at Sanur beach"],
+    { month: "Aug", day: "24", name: "Summer Wine Festival", place: "Bordeaux · France", note: "A warm-weather weekend" },
+    { month: "Aug", day: "29", name: "Edinburgh Fringe", place: "Edinburgh · UK", note: "Comedy, theatre & late nights" },
+    { month: "Sep", day: "07", name: "Kite Festival", place: "Bali · Indonesia", note: "A day at Sanur beach" },
   ];
+  const visibleEvents = events.filter((event) => event.month === selectedMonth);
   return <div className="fg-calendar-layout">
     <div>
       <div className="fg-section-head"><div><p className="fg-kicker">Choose the feeling</p><h2 className="fg-section-title">Build your trip around a moment</h2></div></div>
       <div className="fg-chip-row" style={{ marginBottom: 18 }}>
         {["All places", "Romantic", "Adventure", "Culture", "Food & drink", "With family"].map((label) => <button className={`fg-chip ${mood === label ? "active" : ""}`} key={label} onClick={() => setMood(label)}>{label}</button>)}
       </div>
-      <div className="fg-section-head"><div><p className="fg-kicker">August · {mood}</p><h2 className="fg-section-title">Three dates to plan around</h2></div><p className="fg-section-note">Event first, destination second</p></div>
+      <div className="fg-section-head"><div><p className="fg-kicker">{selectedMonth} 2026 · {mood} · {period}</p><h2 className="fg-section-title">{visibleEvents.length ? "Dates to plan around" : "No dates in this month yet"}</h2></div><p className="fg-section-note">Event first, destination second</p></div>
       <div>
-        {events.map(([month, day, name, place, note]) => <div className="fg-event-line" key={name}>
-          <div className="fg-datebox">{month}<strong>{day}</strong></div>
-          <div><div className="fg-event-name">{name}</div><div className="fg-event-meta">{place} · {note}</div></div>
+        {visibleEvents.map((event) => <div className="fg-event-line" key={event.name}>
+          <div className="fg-datebox">{event.month}<strong>{event.day}</strong></div>
+          <div><div className="fg-event-name">{event.name}</div><div className="fg-event-meta">{event.place} · {event.note}</div></div>
           <button className="fg-link">Details</button>
         </div>)}
       </div>
@@ -114,7 +117,7 @@ function Events() {
     <aside className="fg-calendar">
       <div className="fg-cal-head"><span>Find your date</span><div className="fg-period">{["Month", "Week", "Day"].map((label) => <button className={period === label ? "active" : ""} onClick={() => setPeriod(label)} key={label}>{label}</button>)}</div></div>
       <div className="fg-months">
-        {months.map((month) => <button className={`fg-month ${month === "Aug" ? "selected" : ""}`} key={month}><span className="fg-month-name">{month} 2026</span><span className="fg-month-event"><b>{month === "Aug" ? "24" : "12"}</b> · {month === "Aug" ? "Fringe + 4 more" : "Festival season"}</span></button>)}
+        {months.map((month) => <button className={`fg-month ${month === selectedMonth ? "selected" : ""}`} onClick={() => setSelectedMonth(month)} key={month}><span className="fg-month-name">{month} 2026</span><span className="fg-month-event"><b>{month === "Aug" ? "24" : month === "Sep" ? "07" : "12"}</b> · {month === "Aug" ? "Fringe + 4 more" : month === "Sep" ? "Kite Festival" : "Festival season"}</span></button>)}
       </div>
       <div className="fg-bottom-note"><Ticket />The calendar is the time filter — it stays beside the results.</div>
     </aside>
@@ -124,37 +127,53 @@ function Events() {
 function Services() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [category, setCategory] = useState("All services");
+  const [query, setQuery] = useState("");
+  const [destination, setDestination] = useState("");
+  const [price, setPrice] = useState("Any price");
+  const [rating, setRating] = useState("Any rating");
+  const [sort, setSort] = useState("Recommended");
+  const [added, setAdded] = useState<string | null>(null);
   const services = [
-    ["Kyoto", "Private Gion after-hours walk", "Nori Sato · 4.9 (61)", "$180", "Local story, one clear price"],
-    ["Paris", "Architectural portrait session", "Léa Martin · 4.8 (44)", "$280", "Two hours · finished gallery"],
-    ["Bali", "Airport-to-villa welcome service", "Made Kartika · 4.9 (88)", "$95", "Private transfer · door to door"],
+    { city: "Kyoto", name: "Private Gion after-hours walk", provider: "Nori Sato · 4.9 (61)", price: "$180", fact: "Local story, one clear price", category: "Tours" },
+    { city: "Paris", name: "Architectural portrait session", provider: "Léa Martin · 4.8 (44)", price: "$280", fact: "Two hours · finished gallery", category: "Photography" },
+    { city: "Bali", name: "Airport-to-villa welcome service", provider: "Made Kartika · 4.9 (88)", price: "$95", fact: "Private transfer · door to door", category: "Transport" },
   ];
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleServices = services.filter((service) => {
+    const matchesQuery = !normalizedQuery || `${service.name} ${service.city} ${service.provider}`.toLowerCase().includes(normalizedQuery);
+    const matchesDestination = !destination.trim() || service.city.toLowerCase().includes(destination.trim().toLowerCase());
+    const matchesCategory = category === "All services" || category === "More categories" || service.category === category;
+    const matchesPrice = price === "Any price" || (price === "Under $150" && service.price === "$95") || (price === "$150–$300" && service.price !== "$95");
+    return matchesQuery && matchesDestination && matchesCategory && matchesPrice;
+  });
+  const clearRefinements = () => { setPrice("Any price"); setRating("Any rating"); setSort("Recommended"); setQuery(""); setDestination(""); setCategory("All services"); setAdded(null); };
   return <>
     <div className="fg-search-row">
-      <label className="fg-input-wrap"><Search /><input placeholder="What do you need help with?" aria-label="Service search" /></label>
-      <label className="fg-input-wrap"><MapPin /><input placeholder="Where are you going?" aria-label="Destination" /></label>
+      <label className="fg-input-wrap"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="What do you need help with?" aria-label="Service search" /></label>
+      <label className="fg-input-wrap"><MapPin /><input value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="Where are you going?" aria-label="Destination" /></label>
       <button className="fg-filter-button" onClick={() => setFiltersOpen(!filtersOpen)}><Filter size={15} />Filters {filtersOpen ? "−" : "+"}</button>
     </div>
     <div className="fg-chip-row" style={{ marginBottom: 12 }}>
-      {["All services", "Tours", "Food", "Photography", "Transport"].map((label) => <button className={`fg-chip ${category === label ? "active" : ""}`} onClick={() => setCategory(label)} key={label}>{label}</button>)}
+      {["All services", "Tours", "Food", "Photography", "Transport"].map((label) => <button aria-pressed={category === label} className={`fg-chip ${category === label ? "active" : ""}`} onClick={() => setCategory(label)} key={label}>{label}</button>)}
       <button className="fg-chip" onClick={() => setCategory("More categories")}>More categories <ChevronDown /></button>
     </div>
-    {filtersOpen && <div className="fg-refine"><select className="fg-filter-select" defaultValue=""><option value="" disabled>Price range</option><option>Under $150</option><option>$150–$300</option></select><select className="fg-filter-select" defaultValue=""><option value="" disabled>Guest rating</option><option>4.5 and above</option><option>4.0 and above</option></select><select className="fg-filter-select" defaultValue=""><option value="" disabled>Sort by</option><option>Recommended</option><option>Lowest price</option></select><button className="fg-link" onClick={() => setFiltersOpen(false)}>Clear refinements</button></div>}
+    {filtersOpen && <div className="fg-refine"><select className="fg-filter-select" value={price} onChange={(event) => setPrice(event.target.value)}><option>Any price</option><option>Under $150</option><option>$150–$300</option></select><select className="fg-filter-select" value={rating} onChange={(event) => setRating(event.target.value)}><option>Any rating</option><option>4.5 and above</option><option>4.0 and above</option></select><select className="fg-filter-select" value={sort} onChange={(event) => setSort(event.target.value)}><option>Recommended</option><option>Lowest price</option></select><button className="fg-link" onClick={clearRefinements}>Clear refinements</button></div>}
     <div className="fg-section-head">
-      <div><p className="fg-kicker">{category}</p><h2 className="fg-section-title">Good hands, exactly where you need them</h2></div>
-      <p className="fg-section-note">Browse once · refine only when needed</p>
+      <div><p className="fg-kicker">{category}{rating !== "Any rating" ? ` · ${rating}` : ""}</p><h2 className="fg-section-title">Good hands, exactly where you need them</h2></div>
+      <p className="fg-section-note">{visibleServices.length} matches · {sort.toLowerCase()}</p>
     </div>
     <div className="fg-card-grid">
-      {services.map(([city, name, provider, price, fact]) => <article className="fg-card fg-service-card" key={name}>
-        <div className="fg-service-top"><span className="fg-service-provider"><CheckCircle2 size={13} /> Verified local</span><span>{city}</span></div>
-        <p className="fg-card-title" style={{ marginTop: 19 }}>{name}</p>
-        <p className="fg-meta">{provider}</p>
+      {visibleServices.map((service) => <article className="fg-card fg-service-card" key={service.name}>
+        <div className="fg-service-top"><span className="fg-service-provider"><CheckCircle2 size={13} /> Verified local</span><span>{service.city}</span></div>
+        <p className="fg-card-title" style={{ marginTop: 19 }}>{service.name}</p>
+        <p className="fg-meta">{service.provider}</p>
         <div style={{ flex: 1 }} />
-        <p className="fg-meta" style={{ color: "var(--teal)", fontWeight: 700 }}>{fact}</p>
+        <p className="fg-meta" style={{ color: "var(--teal)", fontWeight: 700 }}>{service.fact}</p>
         <div className="fg-card-rule" />
-        <div className="fg-card-foot"><span className="fg-service-price">{price}<span>per service</span></span><button className="fg-link">View service <ArrowUpRight size={13} /></button></div>
+        <div className="fg-card-foot"><span className="fg-service-price">{service.price}<span>per service</span></span><button className="fg-link" onClick={() => setAdded(service.name)}>{added === service.name ? "Added to trip ✓" : "Add to trip"} <ArrowUpRight size={13} /></button></div>
       </article>)}
     </div>
+    {!visibleServices.length && <div className="fg-card" style={{ padding: 24, marginTop: 16, color: "var(--muted)", textAlign: "center" }}>No services match those refinements. <button className="fg-link" onClick={clearRefinements}>Clear all</button></div>}
   </>;
 }
 
