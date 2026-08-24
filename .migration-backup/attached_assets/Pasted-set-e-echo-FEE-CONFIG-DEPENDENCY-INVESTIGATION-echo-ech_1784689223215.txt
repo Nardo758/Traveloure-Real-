@@ -1,0 +1,29 @@
+set +e
+echo "########## FEE-CONFIG DEPENDENCY INVESTIGATION ##########"
+
+echo; echo "===== Locate the commission reader file(s) ====="
+COMM=$(grep -rIl -e "commissionRate" -e "insuranceBand" -e "insurance" server --include=*.ts | grep -iE "commission")
+echo "$COMM"
+
+echo; echo "===== Q1: does the commission reader pull insurance from booking_fee_configs? ====="
+for f in $COMM; do echo "--- $f ---"; grep -nE "booking_fee_configs|bookingFeeConfigs|insurance" "$f"; done
+
+echo; echo "===== Q2: does the platform_settings insurance reader + migration 124 exist? ====="
+echo "-- migration 124 file(s):"; ls -1 server/migrations/124_* 2>/dev/null || echo "  (none)"
+echo "-- 124 registered in migration-files.ts:"; grep -n "124" server/migrations/migration-files.ts 2>/dev/null || echo "  (not registered)"
+echo "-- insurance read from platform_settings anywhere:"; grep -rnE "platform_settings|platformSettings" server --include=*.ts | grep -i insurance || echo "  (none found)"
+
+echo; echo "===== Q3: is there a test for the reader? ====="
+grep -rIl -e "insurance" -e "commission" server client --include=*.test.ts --include=*.spec.ts 2>/dev/null | sort -u || echo "  (no obvious test files)"
+
+echo; echo "===== Q4: EVERY reader/writer of booking_fee_configs in code ====="
+grep -rnE "booking_fee_configs|bookingFeeConfigs" server client shared --include=*.ts --include=*.tsx 2>/dev/null || echo "  (none — table not referenced in code)"
+
+echo; echo "===== Q5: live vs dormant — what fee source does the commission reader use? ====="
+for f in $COMM; do echo "--- $f ---"; grep -nE "fee_bands|feeBands|booking_fee_configs|bookingFeeConfigs|platform_settings|platformSettings|getFee|resolveCommission" "$f"; done
+
+echo; echo "===== Committed vs uncommitted ('built & tested' actually in the tree?) ====="
+git status --short
+echo "-- recent commits touching fee/commission/insurance/migrations:"
+git log --oneline -20 -- server 2>/dev/null | grep -iE "commiss|fee|insur|124|819|booking_fee" || echo "  (none in last 20)"
+echo "########## END ##########"

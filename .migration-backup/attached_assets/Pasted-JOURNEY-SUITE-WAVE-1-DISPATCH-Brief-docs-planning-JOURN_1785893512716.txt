@@ -1,0 +1,68 @@
+JOURNEY SUITE — WAVE 1 DISPATCH
+
+Brief: docs/planning/JOURNEY_TEST_SUITE_BRIEF.md — note it predates several
+merges and carries no audited@ pin (protocol landed after it). First act of
+Phase 0: retrofit its header (audited@<creation-sha> per ruling 26 mechanics)
+and treat every state claim in it as hypothesis.
+
+Cap check: takes the open lane slot alongside Lane 6 residue (ruling 26).
+Branch: lane/journey-suite.
+
+Ledger housekeeping (first touch of DECISIONS.md, ride this lane's PR):
+- Append ruling 35: two-layer born-approved enforcement for approval-
+  lifecycle tables (schema gate + DB default/constraint), filed with its
+  task number. (Renumbered from the collided 34 — Amadeus keeps 34.)
+- Append the numbering rule to the protocol section: rulings issued in
+  conversation are provisional until appended; the appender claims the
+  next free number at write time. Ledger is the number authority.
+
+PHASE 0 (read-only, per brief §8, plus inheritances):
+1. Enumerate matrix columns from actual routes + UI controls (file:line),
+   not from docs.
+2. Inventory existing Playwright/test coverage → map to cells. Absorb the
+   console-sigma pre-claims recorded in its audit §11: D6(b) = J8 assertion
+   (delivered→R7 credit) + Tier-3 negative (non-assigned actor forcing
+   delivered mints no credit). Claimed cells cite that audit.
+3. Fixture bench: kyoto-temples@traveloure.test EXISTS (console-sigma
+   Phase 2 owns it — consume, do not re-seed; its reconciling seeder is
+   the pattern for any new fixtures). List remaining role gaps for
+   J9/J11/J12 (admin context especially).
+4. Confirm Stripe test-mode wiring + webhook path in dev + env allowlist
+   enforcement point (allowlist guard is a named [guarded] candidate —
+   if trivial, wire it here; if not, task it).
+5. Confirm test-db read-only helper approach for CI parallelism.
+6. Amadeus-drop surface check: record which UI surfaces now render empty
+   (service short-circuits per ruling 34) and verify NO Wave-1 journey
+   step depends on one. Anything on the J1 path becomes a finding for
+   the beta-gate conversation, not a workaround in tests.
+HARD STOP: return findings + the seeded coverage matrix for approval
+before Wave 1 code.
+
+WAVE 1 BUILD (after matrix approval):
+- Matrix lint (expiring deferred: tags per brief §6). Landing it expires
+  the ledger lint's standing warning [matrix-lint deferred:journey-suite-
+  wave-1] — flip it in the same PR.
+- Tier 3 negatives testable today (from N1–N15: skip any whose feature
+  is unbuilt — mark deferred:<lane>, e.g. N3 waits on Lane 6 residue).
+- J1-minus-phase-4: build → optimize → apply → route to checkout →
+  purchase (4242) → Trip Card/booking render. Expert leg (steps 4–5)
+  enters as deferred:phase-4 cells. Lane S is MERGED (#1028): log and
+  version assertions are ACTIVE from day one — every transition step
+  asserts its diary row, same-transaction, per rulings 12/16/18.
+- J2 (AI entry, H5 linkage), J6 (optimizer contract: anchors byte-
+  identical, in-checkout in all variants, with-expert in none — note J6
+  partially overlaps Lane 6 residue's own gates; assert current main,
+  tag the generation-time-rejection step deferred:lane-6 until it merges),
+  J7 (discovery deep-dive, noting item 6's Amadeus findings).
+- J13 share checks: verify lane 5 (canonical share renderer) status on
+  main first — build J13 against whichever renderer is live and tag
+  accordingly.
+
+Standing rules: DB-fact assertions; fresh trip per test, no shared
+fixtures, no order dependence; dev DB only, never prod/Neon; no fee
+literals in expectations (assert against fee_bands reads); no direct
+app-table writes from helpers (app APIs only; read-only DB for asserts);
+tsc baseline unchanged; merge PR carries the §4 write-back checklist.
+
+Return after the HARD STOP approval → build → merge without a second
+stop unless a finding contradicts a ruling.

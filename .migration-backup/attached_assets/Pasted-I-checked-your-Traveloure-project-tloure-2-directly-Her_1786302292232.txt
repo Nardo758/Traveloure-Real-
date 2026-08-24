@@ -1,0 +1,48 @@
+I checked your Traveloure project (tloure-2) directly. Here's what I found and what to do about it.
+
+1. Current referrer restrictions on the key
+
+There are two API keys in this project. The one your web app is almost certainly using is "Traveloure browser — Maps JS," which is restricted to HTTP referrers and scoped to two APIs: Maps JavaScript API and Places API. That's the correct restriction type for a client-side key, and the API scoping looks right. There's a second key, "Traveloure server geocoding," which isn't referrer-restricted — that one is presumably meant for server-side calls only.
+
+The problem is in the referrer allowlist itself. Right now it only contains two entries: https://traveloure-platform.replit.app and https://traveloure.com. Neither of those covers your actual Replit dev preview domain (the *.replit.dev one you get while developing) or localhost. That mismatch is exactly what produces RefererNotAllowedMapError — the browser is sending a referrer header that isn't on the list, so Google rejects the request before it even gets to a billing or quota check.
+
+2. Referrer patterns to add
+
+I'd add these entries to the same key (I did not save anything — this needs your confirmation first):
+
+https://*.replit.dev/* — covers Replit's dev preview domains (these are typically multi-level subdomains like something-hash.picard.replit.dev, and Google's wildcard match works as a simple prefix glob, so a single *.replit.dev entry should cover them)
+http://localhost:*/* — for local dev. If a bare port wildcard doesn't get accepted or doesn't behave as expected, add explicit entries instead, e.g. http://localhost:3000/*, http://localhost:5173/* for whichever ports you actually use
+http://127.0.0.1:*/* (or explicit ports) in case anything loads via the loopback IP instead of localhost
+
+Keep your existing production entries (https://traveloure.com, https://traveloure-platform.replit.app) as-is. Want me to go ahead and add these to the "Traveloure browser — Maps JS" key?
+
+3. Billing status
+
+Billing is fine — the project is linked to a billing account named "Google Maps API" and it shows as a paid account (not a trial/expired state). So billing is not the cause of your current error; Places API does require billing, and that requirement is satisfied here.
+
+4. Testing the key directly with curl
+
+This isolates whether it's a referrer/config issue versus a code issue, since curl lets you send (or omit) a Referer header manually. Run these yourself (I won't run them with your live key):
+
+# Simulate a request with no referrer — restricted keys should reject this
+curl "https://maps.googleapis.com/maps/api/js?key=YOUR_KEY"
+
+# Simulate a request from your Replit dev domain
+curl -H "Referer: https://your-actual-subdomain.picard.replit.dev/" \
+  "https://maps.googleapis.com/maps/api/js?key=YOUR_KEY"
+
+# Simulate localhost
+curl -H "Referer: http://localhost:3000/" \
+  "https://maps.googleapis.com/maps/api/js?key=YOUR_KEY"
+
+# Places API text search, same idea
+curl -H "Referer: http://localhost:3000/" \
+  "https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee&key=YOUR_KEY"
+
+If the localhost/Replit-referrer requests fail today but succeed after you add the patterns above, that confirms it's purely a referrer allowlist issue, not something in your app code.
+
+5. Separate keys for dev vs prod
+
+You already have a reasonable pattern started (a browser key vs. a server key). For dev vs. prod specifically, I'd lean toward creating a distinct "Traveloure browser — dev" key scoped only to *.replit.dev and localhost referrers, and keeping your current key locked to just the production domains. That way a leaked or overly-permissive dev key can't be used against your production domain's traffic budget, and you never have to loosen production's referrer list for development convenience. It's not strictly required — a single key with both sets of referrers whitelisted (as in step 2) will work — but separate keys give you cleaner quota tracking and easier revocation if a dev key ever leaks.
+
+Let me know if you'd like me to go ahead and edit the referrer list on the existing key, or create a new dev-specific key instead.

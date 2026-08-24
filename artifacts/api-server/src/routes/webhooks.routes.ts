@@ -1,0 +1,602 @@
+/**
+ * Webhook handlers for third-party verification services.
+ * Mounted at /api/webhooks in routes.ts.
+ *
+ * IMPORTANT: These routes receive raw request bodies because the server's
+ * express.json() middleware captures req.rawBody via its `verify` callback.
+ * Stripe webhook signature verification MUST use req.rawBody (Buffer), NOT req.body.
+ */
+
+import { Router } from "express";
+import Stripe from "stripe";
+import { storage } from "../storage";
+import { revenueTrackingService } from "../services/revenue-tracking.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
+import { activateVerificationHeldListings } from "../services/publish-verification.service";
+import { db } from "../db";
+import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
+import { getStripeSecretKey } from "../utils/stripe-key";
+
+const router = Router();
+
+const stripe = new Stripe(getStripeSecretKey()!, {
+  apiVersion: "2024-12-18.acacia" as any,
+});
+
+// POST /api/webhooks/stripe-identity
+// Uses req.rawBody (Buffer) captured by the server's JSON verify callback for signature verification.
+router.post("/stripe-identity", async (req: any, res) => {
+  const sig = req.headers["stripe-signature"] as string | undefined;
+  const webhookSecret = process.env.STRIPE_IDENTITY_WEBHOOK_SECRET;
+  let event: any;
+
+  if (webhookSecret) {
+    if (!sig) {
+      return res.status(400).json({ message: "Missing Stripe-Signature header" });
+    }
+    if (!req.rawBody) {
+      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
+    }
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Stripe Identity signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
+    }
+  } else {
+    // Dev/test mode: no secret configured — only allow in non-production environments
+    if (process.env.NODE_ENV === "production") {
+      return res.status(400).json({ message: "STRIPE_IDENTITY_WEBHOOK_SECRET must be set in production" });
+    }
+    try {
+      event = typeof req.body === "object" ? req.body : JSON.parse(req.rawBody?.toString() ?? "{}");
+    } catch (err: any) {
+      return res.status(400).json({ message: "Invalid JSON body" });
+    }
+  }
+
+  const session = event.data?.object;
+  const userId: string | undefined = session?.metadata?.user_id;
+  const formType: string | undefined = session?.metadata?.form_type;
+
+  if (!userId) return res.json({ received: true });
+
+  try {
+    if (event.type === "identity.verification_session.verified") {
+      const ft = formType === "expert" ? "expert" : "provider";
+      await storage.updateFormIdentityVerification(ft, userId, "verified", new Date());
+      // QA_PUNCH_LIST.md P0 auto-activation sweep: identity verifying may be the LAST
+      // outstanding half of the publish predicate for this user (the whole predicate for
+      // experts; one of two for providers) — re-evaluate and promote any approved+draft
+      // held listings. No-ops safely if the provider side is still unverified.
+      await activateVerificationHeldListings(userId).catch((err) =>
+        console.error("[webhooks/stripe-identity] activateVerificationHeldListings failed (non-fatal):", err)
+      );
+    } else if (event.type === "identity.verification_session.requires_input") {
+      const ft = formType === "expert" ? "expert" : "provider";
+      await storage.updateFormIdentityVerification(ft, userId, "failed");
+    }
+  } catch (err) {
+    console.error("Stripe Identity webhook DB update error:", err);
+  }
+
+  res.json({ received: true });
+});
+
+// POST /api/webhooks/persona — RETIRED (Persona KYB removed Aug 2026)
+// Business verification now flows through the Stripe account.updated webhook below.
+router.post("/persona", (_req, res) => {
+  res.status(410).json({ message: "Persona KYB webhook retired. Business verification is now Stripe Connect-derived." });
+});
+
+// ─── Core Stripe event processor ────────────────────────────────────────────
+// Runs AFTER res.json({ received: true }) so Stripe never times out waiting.
+//
+// Responsibilities:
+//   1. Deduplication  — check webhook_events for already-processed event IDs
+//   2. Event logging  — INSERT into webhook_events before any business logic
+//   3. Business logic — switch on event.type (account, transfer, payment)
+//   4. Mark complete  — UPDATE webhook_events.processed=true or record error
+//
+// Any unhandled error is surfaced via the error column on webhook_events and
+// will appear in GET /api/admin/webhooks/unprocessed for manual review.
+async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
+  // ── 1. Deduplication ──────────────────────────────────────────────────────
+  // Stripe guarantees at-least-once delivery; the same event ID can arrive twice.
+  const existing = await db
+    .select({ processed: webhookEvents.processed })
+    .from(webhookEvents)
+    .where(eq(webhookEvents.stripeEventId, event.id))
+    .limit(1);
+
+  if (existing.length > 0 && existing[0].processed) {
+    console.info(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already processed — skipping`);
+    return;
+  }
+
+  // ── 2. Event log insert ───────────────────────────────────────────────────
+  // ON CONFLICT DO NOTHING handles any concurrent delivery of the same event.
+  await db.execute(sql`
+    INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
+    VALUES (
+      ${event.id},
+      ${event.type},
+      FALSE,
+      ${JSON.stringify(event)}::jsonb
+    )
+    ON CONFLICT (stripe_event_id) DO NOTHING
+  `);
+
+  let processingError: string | null = null;
+
+  try {
+    // ── 3. Business logic ─────────────────────────────────────────────────
+    switch (event.type) {
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        const userId = account.metadata?.userId;
+
+        // ── Restriction detection ─────────────────────────────────────────────
+        // Stripe sets requirements.disabled_reason when it restricts or suspends
+        // an account (compliance violation, dispute, etc.). This can happen AFTER
+        // an expert is already approved and receiving leads, so we must detect it
+        // at webhook time and alert admins immediately — not just at onboarding.
+        const disabledReason = account.requirements?.disabled_reason;
+        const isRestricted =
+          disabledReason !== null && disabledReason !== undefined && disabledReason !== "";
+
+        // Canonical stripeConnectStatus for this event
+        const newStripeConnectStatus = isRestricted
+          ? "restricted"
+          : account.details_submitted && account.charges_enabled && account.payouts_enabled
+          ? "complete"
+          : account.details_submitted
+          ? "pending"
+          : "not_started";
+
+        // ── Path A: Update via metadata.userId (normal onboarding flow) ───────
+        if (userId) {
+          const userStatus =
+            !isRestricted && account.details_submitted && account.charges_enabled && account.payouts_enabled
+              ? "active"
+              : account.details_submitted
+              ? "under_review"
+              : "onboarding_incomplete";
+
+          await storage.updateUserStripeAccount(userId, account.id, userStatus);
+
+          await db
+            .update(localExpertForms)
+            .set({ stripeConnectStatus: newStripeConnectStatus } as any)
+            .where(eq(localExpertForms.userId, userId));
+        }
+
+        // ── Path B: Restriction alert via stripeAccountId lookup ─────────────
+        // Stripe compliance events often lack metadata.userId. We resolve the
+        // expert by matching account.id against local_expert_forms.stripe_account_id.
+        // Fire an admin notification if an already-approved expert gets restricted.
+        const expertByAccount = await db
+          .select()
+          .from(localExpertForms)
+          .where(eq(localExpertForms.stripeAccountId, account.id))
+          .limit(1);
+
+        if (expertByAccount.length > 0) {
+          const expert = expertByAccount[0];
+
+          // Sync status (only if Path A didn't already write the same row)
+          if (!userId || expert.userId !== userId) {
+            await db
+              .update(localExpertForms)
+              .set({ stripeConnectStatus: newStripeConnectStatus } as any)
+              .where(eq(localExpertForms.id, expert.id));
+          }
+
+          // Alert admin when an approved expert's account becomes restricted.
+          // The expert may still appear in lead routing and be receiving leads
+          // but will be unable to receive payouts — admin must act immediately.
+          if (newStripeConnectStatus === "restricted" && expert.status === "approved") {
+            await db.insert(adminNotifications).values({
+              type: "expert_stripe_restricted",
+              message:
+                `Expert ${expert.id} Stripe account restricted: ` +
+                `${disabledReason ?? "unknown reason"}`,
+              reason: "stripe_account_restricted",
+            } as any);
+
+            console.error(
+              `[STRIPE RESTRICTION] Expert ${expert.id} ` +
+              `(${expert.firstName ?? ""} ${expert.lastName ?? ""}) ` +
+              `account restricted. Reason: ${disabledReason}`
+            );
+          }
+        }
+
+        // ── Path D: Derive businessVerificationStatus for service providers ──
+        // Stripe Connect Express performs its own KYB during Express onboarding.
+        // We map the account's verification signals to businessVerificationStatus
+        // so providers no longer need a separate Persona check. This replaces the
+        // retired Persona webhook handler.
+        //
+        // Lookup: users.stripeAccountId → users.id → serviceProviderForms.userId
+        // (serviceProviderForms has no stripeAccountId column; the Connect account ID
+        //  is stored only on the users row.)
+        //
+        // Mapping:
+        //   rejected.* disabled_reason          → "failed"
+        //   details_submitted + charges_enabled → "verified"
+        //   details_submitted only              → "submitted"  (mid-onboarding, manual fallback)
+        //   anything else                       → "pending"
+        const userByConnectId = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.stripeAccountId, account.id))
+          .limit(1);
+
+        if (userByConnectId.length > 0) {
+          const provUserId = userByConnectId[0].id;
+          const [providerForm] = await db
+            .select({
+              id: serviceProviderForms.id,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, provUserId))
+            .limit(1);
+
+          if (providerForm) {
+            const newBizStatus =
+              (disabledReason && /^rejected/i.test(disabledReason))
+                ? "failed"
+                : (!isRestricted && account.details_submitted && account.charges_enabled)
+                ? "verified"
+                : account.details_submitted
+                ? "submitted"
+                : "pending";
+
+            if (newBizStatus !== providerForm.businessVerificationStatus) {
+              await db
+                .update(serviceProviderForms)
+                .set({ businessVerificationStatus: newBizStatus } as any)
+                .where(eq(serviceProviderForms.id, providerForm.id));
+              console.log(
+                `[WEBHOOK] account.updated: provider userId=${provUserId} ` +
+                `businessVerificationStatus → ${newBizStatus} (connectId=${account.id})`
+              );
+              // QA_PUNCH_LIST.md P0 auto-activation sweep: business verifying may be the
+              // last outstanding half of the provider publish predicate — re-evaluate and
+              // promote any approved+draft held listings. Only worth attempting on the
+              // "verified" transition; the sweep itself re-checks the full predicate
+              // (identity too) and no-ops safely if it still fails.
+              if (newBizStatus === "verified") {
+                await activateVerificationHeldListings(provUserId).catch((err) =>
+                  console.error("[webhooks/stripe] activateVerificationHeldListings failed (non-fatal):", err)
+                );
+              }
+            }
+          }
+        }
+
+        console.log(
+          `[WEBHOOK] account.updated: connectId=${account.id} userId=${userId ?? "—"} ` +
+          `newStripeStatus=${newStripeConnectStatus} restricted=${isRestricted}`
+        );
+        break;
+      }
+
+      case "transfer.created":
+      case "transfer.paid": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const payoutId = transfer.metadata?.payoutId;
+        const requesterType = transfer.metadata?.requesterType;
+        if (!payoutId || !requesterType) break;
+
+        if (requesterType === "expert") {
+          await storage.updateExpertPayoutStatus(payoutId, "completed", undefined, transfer.id);
+        } else if (requesterType === "provider") {
+          await storage.updateProviderPayoutStatus(payoutId, "completed", undefined, transfer.id);
+        }
+        console.info(`Stripe ${event.type}: payoutId=${payoutId} transferId=${transfer.id}`);
+        break;
+      }
+
+      case "payment_intent.succeeded": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        // ── Step 1: Confirm bookings on BOTH rails (authoritative path) ─────
+        // handlePaymentSucceeded now drives the shared payment promotion
+        // (checkout-claim.service.ts `promotePaidCheckout`) for the CART rail —
+        // service_bookings, resolved by the stamped PaymentIntent id and, for a
+        // claim whose PI was never stamped, by the PI's own bookingIds metadata —
+        // and then the legacy `bookings` rail unchanged. Both are idempotent:
+        // an already-confirmed booking matches 0 rows and is a no-op.
+        try {
+          await stripePaymentService.handlePaymentSucceeded(paymentIntent);
+        } catch (bookingErr: any) {
+          console.error("payment_intent.succeeded: booking confirmation error:", bookingErr.message);
+          // Non-fatal: continue to revenue tracking even if booking confirmation fails
+        }
+
+        // ── Step 2 REMOVED (legacy-reconciliation lane, task #212) ──────────
+        // A raw inline `UPDATE service_bookings SET status='confirmed' WHERE
+        // stripe_payment_intent_id = … AND status='payment_pending'` used to live here.
+        // It was a SECOND, divergent implementation of the payment promotion: no diary
+        // row (rulings 12/16/18), no actor attribution, no plan-side catch-up, and — because
+        // it keyed exclusively on a stamped PI id — no help whatsoever in the one case the
+        // webhook is the only possible rescuer (server died mid-authorization, PI created,
+        // never stamped). Step 1 now performs the same transition through the ONE shared
+        // promotion, which handles all of the above. Do not reintroduce an inline UPDATE here.
+
+        // ── Step 3: Revenue tracking ────────────────────────────────────────
+        const sourceType = paymentIntent.metadata?.sourceType as any;
+        const sourceId = paymentIntent.metadata?.sourceId;
+        const expertId = paymentIntent.metadata?.expertId;
+        const providerId = paymentIntent.metadata?.providerId;
+
+        if (sourceId && sourceType) {
+          // Fast-path pre-check (advisory, not the authoritative dedup gate).
+          // The real guard is the DB unique index on metadata->>'paymentIntentId'
+          // (migration 244): recordRevenueEvent → insertPlatformRevenueOnce uses
+          // ON CONFLICT DO NOTHING and skips earnings mints when inserted===false,
+          // so a concurrent duplicate that slips past this read is handled safely.
+          const alreadyRecorded = await storage.hasPaymentIntentRevenue(paymentIntent.id);
+          if (alreadyRecorded) {
+            console.info(`Stripe payment_intent.succeeded: already recorded for paymentIntentId=${paymentIntent.id}, skipping`);
+            break;
+          }
+
+          const amount = paymentIntent.amount / 100;
+          const expertShare = expertId && paymentIntent.metadata?.expertShare
+            ? parseFloat(paymentIntent.metadata.expertShare)
+            : undefined;
+          const providerShare = providerId && paymentIntent.metadata?.providerShare
+            ? parseFloat(paymentIntent.metadata.providerShare)
+            : undefined;
+
+          try {
+            await revenueTrackingService.recordRevenueEvent({
+              sourceType: sourceType || "other",
+              sourceId,
+              grossAmount: amount,
+              expertId,
+              expertShare,
+              providerId,
+              providerShare,
+              description: `Payment intent ${paymentIntent.id}`,
+              metadata: { paymentIntentId: paymentIntent.id },
+            });
+            console.info(`Stripe payment_intent.succeeded: recorded revenue for sourceId=${sourceId} paymentIntentId=${paymentIntent.id}`);
+          } catch (err: any) {
+            // Treat a unique-constraint violation (postgres 23505) as a successful dedup —
+            // this is the last-resort safety net if the ON CONFLICT DO NOTHING path in
+            // insertPlatformRevenueOnce ever doesn't fire (e.g. the index is missing).
+            const pgCode = (err as any)?.code ?? (err?.cause as any)?.code;
+            if (pgCode === "23505") {
+              console.info(`Stripe payment_intent.succeeded: duplicate revenue row blocked by DB constraint for paymentIntentId=${paymentIntent.id}`);
+            } else {
+              console.error("Failed to record revenue for payment_intent.succeeded:", err.message);
+            }
+          }
+        }
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        // Flip any service_bookings still at payment_pending to "failed" so they
+        // stop accumulating in the stuck-pending admin report and the customer
+        // can safely retry without hitting the idempotency guard.
+        try {
+          const failed = await db.execute(sql`
+            UPDATE service_bookings
+            SET status     = 'failed',
+                updated_at = NOW()
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+              AND status = 'payment_pending'
+            RETURNING id, traveler_id, service_id
+          `);
+          if (failed.rows.length > 0) {
+            const ids = (failed.rows as any[]).map((r: any) => r.id).join(', ');
+            console.info(`[payment_intent.payment_failed] Marked ${failed.rows.length} service_booking(s) as failed [${ids}] for PI ${paymentIntent.id}`);
+
+            // Fire-and-forget payment-failed email to each affected traveler so
+            // they know the booking wasn't confirmed and can retry. Non-blocking.
+            for (const r of failed.rows as any[]) {
+              if (!r.traveler_id) continue;
+              try {
+                const detail = await db.execute(sql`
+                  SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
+                  FROM users u
+                  LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+                  WHERE u.id = ${r.traveler_id}
+                  LIMIT 1
+                `);
+                const row = detail.rows?.[0] as any;
+                if (row?.email) {
+                  const { sendPaymentFailedEmail } = await import("../services/email.service");
+                  sendPaymentFailedEmail({
+                    toEmail: row.email,
+                    userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
+                    bookingTitle: row.title ?? null,
+                  }).catch((e: any) => console.error(`[email] payment-failed send error for booking ${r.id}:`, e?.message));
+                }
+              } catch (mailErr: any) {
+                console.error(`[payment_intent.payment_failed] email resolve error for booking ${r.id}:`, mailErr.message);
+              }
+            }
+          }
+        } catch (failErr: any) {
+          console.error("payment_intent.payment_failed: service_booking update error:", failErr.message);
+        }
+
+        // Also update the payment_intents ledger row if one exists
+        try {
+          await db.execute(sql`
+            UPDATE payment_intents
+            SET status = 'failed'
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+          `);
+        } catch (_) {
+          // payment_intents row may not exist for all PI flows — non-fatal
+        }
+
+        console.info(`Stripe payment_intent.payment_failed: pi=${paymentIntent.id} last_error=${(paymentIntent as any).last_payment_error?.message ?? 'unknown'}`);
+        break;
+      }
+
+      case "charge.dispute.created": {
+        const dispute = event.data.object as Stripe.Dispute;
+
+        // Fetch the charge to get bookingId from metadata
+        const charge = await stripe.charges.retrieve(dispute.charge as string);
+        const bookingId = charge.metadata?.bookingId;
+
+        if (bookingId) {
+          // Mark booking as disputed
+          await db
+            .update(bookings)
+            .set({
+              status: "disputed",
+              disputeId: dispute.id,
+              disputeReason: dispute.reason,
+            })
+            .where(eq(bookings.id, bookingId));
+
+          // Alert admin immediately
+          await db.insert(adminNotifications).values({
+            type: "dispute_created",
+            message: `Chargeback filed for booking ${bookingId} — reason: ${dispute.reason}`,
+            reason: dispute.reason,
+          } as any);
+
+          console.warn(`[DISPUTE] Booking ${bookingId} disputed. Reason: ${dispute.reason} · Dispute ID: ${dispute.id}`);
+
+          // Check if expert was already paid for this booking —
+          // DO NOT automatically claw back funds; flag for human review only.
+          const booking = await db
+            .select({ tripId: bookings.tripId })
+            .from(bookings)
+            .where(eq(bookings.id, bookingId))
+            .limit(1);
+
+          if (booking[0]?.tripId) {
+            const relatedExpertRequest = await db
+              .select({ status: expertRequests.status })
+              .from(expertRequests)
+              .where(eq(expertRequests.tripId, booking[0].tripId))
+              .limit(1);
+
+            if (relatedExpertRequest[0]?.status === "completed") {
+              await db.insert(adminNotifications).values({
+                type: "dispute_after_payout",
+                message: `URGENT: Booking ${bookingId} disputed but expert may have already been paid. Manual review required.`,
+                reason: "payout_clawback_review",
+              } as any);
+              console.warn(`[DISPUTE] Booking ${bookingId}: expert request was completed — possible payout clawback needed. Manual review required.`);
+            }
+          }
+        } else {
+          console.warn(`[DISPUTE] Dispute ${dispute.id} on charge ${dispute.charge} has no bookingId in metadata — no booking updated.`);
+        }
+        break;
+      }
+
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+
+        // won  → we keep the funds; restore booking to confirmed
+        // lost → customer refunded; mark booking as dispute_lost for ops
+        const charge = await stripe.charges.retrieve(dispute.charge as string);
+        const bookingId = charge.metadata?.bookingId;
+
+        if (bookingId) {
+          const newStatus = dispute.status === "won" ? "confirmed" : "dispute_lost";
+          await db
+            .update(bookings)
+            .set({ status: newStatus })
+            .where(eq(bookings.id, bookingId));
+
+          await db.insert(adminNotifications).values({
+            type: "dispute_closed",
+            message: `Dispute ${dispute.id} for booking ${bookingId} closed — outcome: ${dispute.status}. Booking status set to "${newStatus}".`,
+            reason: dispute.status,
+          } as any);
+
+          console.info(`[DISPUTE] Dispute ${dispute.id} closed (${dispute.status}). Booking ${bookingId} → ${newStatus}.`);
+        }
+        break;
+      }
+
+      default:
+        // Acknowledge unhandled event types without error
+        break;
+    }
+  } catch (err: any) {
+    processingError = err.message ?? String(err);
+    console.error(`[WEBHOOK] Processing error for ${event.type} (${event.id}):`, err);
+  }
+
+  // ── 4. Mark processed / record error ──────────────────────────────────────
+  // processed=false + error text → shows in GET /api/admin/webhooks/unprocessed
+  if (processingError === null) {
+    await db.execute(sql`
+      UPDATE webhook_events
+      SET processed    = TRUE,
+          processed_at = NOW()
+      WHERE stripe_event_id = ${event.id}
+    `);
+  } else {
+    await db.execute(sql`
+      UPDATE webhook_events
+      SET error = ${processingError}
+      WHERE stripe_event_id = ${event.id}
+    `);
+  }
+}
+
+// POST /api/webhooks/stripe
+// Handles Stripe Connect account events, transfer confirmations, and payment intents.
+// No auth middleware — verified via Stripe-Signature header using raw body.
+router.post("/stripe", async (req: any, res) => {
+  const sig = req.headers["stripe-signature"] as string | undefined;
+  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+  let event: Stripe.Event;
+
+  if (webhookSecret) {
+    if (!sig) {
+      return res.status(400).json({ message: "Missing Stripe-Signature header" });
+    }
+    if (!req.rawBody) {
+      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
+    }
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Stripe Connect webhook signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
+    }
+  } else {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(400).json({ message: "STRIPE_CONNECT_WEBHOOK_SECRET must be set in production" });
+    }
+    try {
+      event = typeof req.body === "object" ? req.body : JSON.parse(req.rawBody?.toString() ?? "{}");
+    } catch (err: any) {
+      return res.status(400).json({ message: "Invalid JSON body" });
+    }
+  }
+
+  // Acknowledge receipt IMMEDIATELY — Stripe's 30-second timeout starts from
+  // the HTTP request. Blocking on DB writes risks a timeout that triggers Stripe
+  // to re-queue the event, creating duplicate deliveries.
+  res.json({ received: true });
+
+  // Process AFTER responding — fire-and-forget with full error logging
+  processStripeWebhookEvent(event).catch(err => {
+    console.error("[WEBHOOK PROCESSING ERROR]", event.type, err);
+  });
+});
+
+export default router;

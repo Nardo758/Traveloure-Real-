@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "strictNullChecks": false,
+    "strictPropertyInitialization": false,
+    "useUnknownInCatchVariables": false,
+    "baseUrl": ".",
+    "paths": {
+      "drizzle-orm": ["./node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"],
+      "drizzle-zod": ["./node_modules/drizzle-zod"],
+      "zod": ["./node_modules/zod"]
+    }
+  },
+  "include": [
+    "src/index.ts",
+    "src/schema/index.ts",
+    "../../.migration-backup/shared/**/*.ts"
+  ]
+}

@@ -1,0 +1,38 @@
+Verify the concierge→coordination fulfillment loop (PR #289) is present on this
+workspace and migration 125 applied. Report each as PASS/FAIL — do not change any code.
+
+1. HEAD includes the merge: `git log --oneline -1` shows the squash commit
+   "Concierge→coordination fulfillment — full loop ... (#289)" (sha d0990b12 or a
+   descendant). `git status` is clean.
+
+2. Migration 125 is registered + applied:
+   - `grep 125_coordination_fee_payments server/migrations/migration-files.ts` → present.
+   - Against the workspace DB, confirm the paid-signal ledger + fee columns exist:
+     psql "$DATABASE_URL" -c "\d coordination_fee_credits"   → table exists
+     (id, user_id, source_payment_intent_id UNIQUE, amount_cents,
+      consumed_by_coordination_id, ...).
+     psql "$DATABASE_URL" -c "SELECT column_name FROM information_schema.columns
+       WHERE table_name='coordination_states' AND column_name LIKE 'fee_%'
+       ORDER BY 1;"
+     → fee_amount_cents, fee_credit_cents, fee_paid_at, fee_payment_intent_id,
+       fee_payment_status.
+     psql "$DATABASE_URL" -c "SELECT conname FROM pg_constraint WHERE
+       conname='coordination_states_fee_payment_status_check';" → one row.
+
+3. The Phase-2 money endpoints are in the served tree:
+   grep -n "coordination-states/:id/pay" server/routes.ts        → POST /pay + /pay/confirm
+   grep -n "coordination_fee_credit" server/routes/optimization.routes.ts → credit insert on confirm
+   grep -n "assign-coordinator" server/routes/admin.routes.ts     → admin assign endpoint
+
+4. The client surfaces exist:
+   ls client/src/pages/my-events.tsx                              → present
+   grep -n "/my-events" client/src/App.tsx client/src/components/dashboard-sidebar.tsx
+                                                                  → route + sidebar entry
+
+5. Health: `npm run build` exits 0; `npx tsc --noEmit 2>&1 | grep -c "error TS"`
+   equals the baseline 254 (0 net-new).
+
+If any FAIL, print the exact failing output. Do NOT run a bare `npm install` and commit
+the lockfile — if the lockfile changed, run `node scripts/scrub-lockfile.cjs` before anything.
+Note: the live Stripe pay path can only be exercised on the deployed app with real
+test keys; the DB-level checks above are the correct workspace verification.

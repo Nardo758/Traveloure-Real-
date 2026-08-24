@@ -1,0 +1,24 @@
+3. Verification — run this after pulling, before publishing
+4. Dispatch — paste this to whoever/whatever verifies the deploy
+Verify the Traveloure deploy landed (PRs #336–#340).
+
+Run the verification block above on the Replit shell after git pull and after the app has booted at least once.
+
+Pass criteria:
+
+All 9 files present; nav renamed, F2 gate, and checkout index declared all OK.
+Lockfile pollution count is 0.
+migrations stamped ≥ 156 and migration 158 shows applied.
+checkout index: present — this one is non-negotiable. Without it, concurrent same-key checkouts create duplicate real Stripe charges (measured: 3 charges vs 1). If it says MISSING after a publish, the deploy push dropped it; re-create it before taking any traffic.
+service_demand_requests: dropped, ai_cost_tracking: present.
+The one interactive risk: if activity_bookings reads NULL, the deploy's automatic drizzle-kit push will ask "Is activity_bookings created or renamed from another table?" — always answer create table. The "rename from schema_migrations" option would erase the migration ledger and cause all 156 migrations to re-run against production. Never accept "copy dev database over production" if it's offered.
+
+Smoke-test after publish:
+
+Nav shows a Marketplace menu with four entries: By Location, By Date, Ready Made Trips, Browse Services. No "Service Providers" entry remains.
+/discover?tab=packages loads the Ready Made Trips shelf.
+A service or ready-made detail page whose owner has claimed a handle shows a "More from …" card linking to /p/<handle>; one without a handle shows no such card and no broken link.
+GET /api/discover/location/Kyoto returns only services with approvalStatus: "approved" — any other value is a regression of the read-gate fix.
+Report the block's output verbatim plus pass/fail per criterion. If anything fails, do not publish further; report before changing anything.
+
+One caveat worth stating plainly: I verified all of this against a local Postgres and a fresh migration run, not against your production database — I don't have access to it. The activity_bookings and index checks are exactly the two that could behave differently on prod, which is why they're first in the dispatch.
