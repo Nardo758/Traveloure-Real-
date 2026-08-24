@@ -79,5 +79,25 @@ timeoutMs = 30000
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 20087
+externalPort = 3001
+
+[[ports]]
+localPort = 23435
+externalPort = 3000
+
+[[ports]]
+localPort = 23636
+externalPort = 3003
+
 [objectStorage]
 defaultBucketID = "replit-objstore-b9da6238-639b-4b0e-8956-034ec0042760"
