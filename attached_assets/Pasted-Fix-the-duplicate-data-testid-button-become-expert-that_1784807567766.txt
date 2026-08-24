@@ -1,0 +1,42 @@
+Fix the duplicate `data-testid="button-become-expert"` that fails discover-tabs-smoke.
+
+Problem: Playwright strict mode fails on /discover because 3 elements share
+data-testid="button-become-expert". The test (playwright/tests/discover-tabs.spec.ts:197)
+does `expect(page.getByTestId('button-become-expert')).toBeVisible()` which requires a
+UNIQUE match. This is a pre-existing bug on main (NOT caused by the routing PR #290);
+discover-tabs-smoke is currently RED on main because of it.
+
+There are 4 occurrences total; make each testid unique and descriptive:
+  - client/src/components/layout.tsx:369        (top-nav "Join as Partner" trigger)
+      → data-testid="button-become-expert-nav"
+  - client/src/pages/discover.tsx:1350          (Ready Made Trips tabpanel button)
+      → data-testid="button-become-expert-packages"
+  - client/src/pages/discover.tsx:1676          ("Share your local expertise" section CTA)
+      → data-testid="button-become-expert-hero"
+  - client/src/pages/experts.tsx:627            (experts page — not on /discover, but rename for consistency)
+      → data-testid="button-become-expert-experts"
+  - client/src/pages/about.tsx:371              (about page — not on /discover; rename for consistency)
+      → data-testid="button-become-expert-about"
+(Pick clearer suffixes if you prefer — the only hard requirement is that no two elements
+that can co-render on the SAME page share the testid. The three on /discover — nav,
+packages, hero — MUST become distinct.)
+
+Then update the test to match. In playwright/tests/discover-tabs.spec.ts around line 197,
+the assertion `getByTestId('button-become-expert')` must target the SPECIFIC button the
+test intends (the packages-tab empty-state CTA — read the surrounding context at lines
+~85 and ~179 to confirm which one). Change it to the new specific testid
+(e.g. `button-become-expert-packages`), OR if the test just wants "the become-expert CTA
+is present," scope it: `page.getByRole('tabpanel', { name: /Ready Made/ }).getByTestId(
+'button-become-expert-packages')`. Do NOT use `.first()` to paper over it — the point is
+a unique, intentional target.
+
+Verify before pushing:
+  - grep -rn 'data-testid="button-become-expert"' client/src  → expect 0 (all renamed).
+  - No two co-rendering-on-one-page testids collide (esp. the 3 on /discover).
+  - Run discover-tabs locally if you can:
+      npx playwright test playwright/tests/discover-tabs.spec.ts
+    → both previously-failing cases (packages tab active / ?tab=packages deep-link) pass.
+  - tsc unchanged at baseline 254; build green.
+
+Small PR, this-fix-only. This is a test/testid hygiene fix — no behavior change, no
+routing/schema/money surface. After it merges, discover-tabs-smoke goes green on main.

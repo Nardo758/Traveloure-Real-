@@ -1,0 +1,134 @@
+DISPATCH — pre-deploy verification, then ship main, then post-deploy, then
+git isolation. Do not skip a gate. Do not revert. Do not cherry-pick.
+
+CONTEXT YOU MUST NOT LOSE:
+  • PATCH and GET /api/trips/:id are anonymously exploitable on production
+    RIGHT NOW. 55/55 trips. The fix is written, tested, and unshipped.
+  • There is no branch isolation. You work on main. origin/main is 14 commits
+    behind. Deploying ships all 14, not just Lane 1.
+  • That is accepted. We ship main. Reverting other sessions' commits under
+    time pressure is how TemplateFiltersPanel came back. Do not do it.
+
+═══════════════════════════════════════════════════════════════════
+PHASE D2-REVISED — the two things that can turn this deploy into an outage
+═══════════════════════════════════════════════════════════════════
+READ-ONLY. Report before deploying.
+
+D2a. THE ENV VAR MISMATCH. This is the single failure that would take
+     production down with a safety fix.
+     - Cite validate-env.ts verbatim. Which variable does the guard read:
+       NODE_ENV or ENVIRONMENT? Paste the line and its file:line.
+     - On the DEPLOY TARGET — not local, not the dev workflow — what is that
+       variable's value? Show how you obtained it.
+     - Deploy target STRIPE_SECRET_KEY: does it begin sk_live_?
+     - Trace the guard's logic against those two actual values. Does it
+       throw, or pass? State the conclusion plainly: "production will boot"
+       or "production will refuse to boot."
+     If it would refuse to boot: STOP. Report. Do not deploy.
+
+D2b. THE UNAPPROVED eventsOnly COMMITS WILL SHIP (5d127ee2, 42977ce5).
+     We established: destination_seasons.rating is notNull(), six values,
+     none of them 'events-only'. The filter matches ZERO rows. The API will
+     ship a permanently-empty array. That is wrong but may be inert.
+     Determine which, read-only:
+     - GlobalCalendar.tsx crashed on grouped.eventsOnly being UNDEFINED.
+       Does it render, or crash, when eventsOnly is an EMPTY ARRAY?
+       Cite the line that reads it and trace the empty-array path.
+     - Grep every consumer of grouped.eventsOnly. Any other reader?
+     - Does any UI element render conditionally on eventsOnly.length > 0?
+       If so, the tab shows nothing where it should show something —
+       cosmetic, not a crash.
+     VERDICT REQUIRED: "empty array is inert, safe to ship" or "empty array
+     breaks a render." If it breaks a render, STOP and report — we isolate
+     that commit before shipping.
+
+     🛑 HARD STOP. Report D2a and D2b. Await go.
+
+═══════════════════════════════════════════════════════════════════
+PHASE D3 — deploy
+═══════════════════════════════════════════════════════════════════
+Only on Leon's explicit go, after D2a and D2b clear.
+
+D3a. Paste `git diff origin/main --stat` one more time immediately before
+     deploying. Record exactly what is shipping. This is the record.
+D3b. Push main to origin. Then deploy.
+D3c. Do not touch anything else during the deploy window.
+
+═══════════════════════════════════════════════════════════════════
+PHASE D4 — post-deploy, within five minutes
+═══════════════════════════════════════════════════════════════════
+Run all four. Paste actual status codes. Do not summarize.
+
+D4a. GET /api/health on the deployed URL              → expect 200
+     If this fails, validate-env.ts is throwing. ROLL BACK IMMEDIATELY.
+
+D4b. unauth GET /api/trips/<real prod trip id>        → expect 401
+     This is the entire point of the deploy. Read-only. No PATCH.
+
+D4c. guest GET /api/trips/<id>?token=<valid shareToken> → expect 200
+     This proves you did not break every guest link in production.
+     If this returns 401, guests are locked out of their own trips.
+     ROLL BACK IMMEDIATELY.
+
+D4d. GET /discover?tab=events on the deployed URL     → expect 200
+     Then curl /api/travelpulse/global-calendar and paste grouped's keys
+     and each array length. Confirms the eventsOnly commit shipped inert.
+
+If ANY of these is wrong: roll back first, report second. Do not debug
+forward on a production deploy.
+
+═══════════════════════════════════════════════════════════════════
+PHASE E — git isolation. Read-only. Report only. Do not implement.
+═══════════════════════════════════════════════════════════════════
+This is the root cause of ghost migrations 047/050/058 and the
+TemplateFiltersPanel regression. It is still running. It has silently voided
+"one branch per lane" for this entire dispatch chain.
+
+E1. Can you create and work on a non-main branch in this environment?
+    Test it: `git checkout -b probe/isolation-test`, `git status`,
+    `git checkout main`, `git branch -D probe/isolation-test`.
+    Report whether each step succeeded. If it failed, paste the error.
+E2. What forces work onto main? Is it a Replit constraint, a git config, a
+    tooling limitation, or convention? Cite evidence.
+E3. Does anything auto-commit? Two commits on the diff are titled "Saved
+    progress at the end of the loop" and "Saved your changes before starting
+    work." Who wrote those? What triggers them? Can it be disabled?
+E4. Recommend a workable isolation model given the constraint. Options to
+    evaluate, not to implement:
+      (a) Claude Code CLI owns git; Replit runs read-only
+      (b) push origin/main after every lane closes, so the diff is always
+          one lane deep
+      (c) something else you can actually make work here
+    Recommend one. State its failure mode.
+
+DO NOT implement E4. This is a report.
+
+═══════════════════════════════════════════════════════════════════
+STILL QUEUED — do not start
+═══════════════════════════════════════════════════════════════════
+Lane 2  ?role= silently dropped — read-only. experts.routes.ts (dead) supports
+        it; the live inline copy at routes.ts:3892 ignores it silently.
+Lane 3  eventsOnly — revert the server edit, fix the CLIENT guard instead.
+Lane 4  prove the E2E password fix against a FRESH hash (seed skips existing).
+Row H   traveler GET /api/provider/dashboard → 200. Live IDOR, financial data.
+Journey-1  void. Fabricated selector, dead 90s waits, Expert-vs-Expert never run.
+Dedup   385 duplicate registrations. A project. experts.routes.ts is
+        dead-but-BETTER. DELETE NOTHING.
+
+═══════════════════════════════════════════════════════════════════
+STANDING PROHIBITIONS
+═══════════════════════════════════════════════════════════════════
+• Do not revert or cherry-pick another session's commits to isolate this fix.
+• A read-only probe uses GET, or a request you EXPECT to fail. Never confirm
+  a write vulnerability with a successful write.
+• Do not assert a status code the handler cannot produce. Report SKIPPED with
+  a citation, as you did for the 403. That is the standard.
+• Do not report a mutation you did not make.
+• Do not report curl 200, a compile, or an above-the-fold screenshot as
+  evidence that a page renders.
+• Do not explain an anomaly as "transient", "stale", "warm-up", or "a quirk".
+  Produce a mechanism, or write "cannot explain".
+• State scope limits explicitly. "I did not check X" is a valued deliverable.
+• Delete nothing in routes.ts.
+• Do not touch: migrations, components/plancard/, fee_bands. No fee,
+  commission, or margin literals anywhere.

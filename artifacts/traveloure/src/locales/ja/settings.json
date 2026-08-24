@@ -1,0 +1,62 @@
+{
+  "tabs": {
+    "profile": "プロフィール",
+    "settings": "設定"
+  },
+  "preferences": {
+    "title": "表示設定",
+    "description": "Traveloure のメニュー・ボタン・ラベルに使用する言語です",
+    "languageLabel": "表示言語",
+    "languageHelp": "変更されるのはプラットフォーム側の表記のみです。ご自身で作成した出品内容は、記入した言語のまま表示されます。",
+    "save": "表示設定を保存する",
+    "saving": "保存しています..."
+  },
+  "verification": {
+    "title": "本人確認と出金"
+  },
+  "business": {
+    "title": "ビジネス設定",
+    "description": "予約の受け付け方法と管理方法を設定します",
+    "instantBooking": "即時予約",
+    "instantBookingDesc": "承認なしで予約できるようにします",
+    "autoResponse": "自動返信",
+    "autoResponseDesc": "新しい問い合わせに自動で返信します",
+    "leadTime": "最短受付期間",
+    "leadTimeUnit": "日前まで受付",
+    "responseTime": "目標返信時間",
+    "responseTimeUnit": "時間"
+  },
+  "notifications": {
+    "title": "通知設定",
+    "description": "通知の受け取り方法を選択してください",
+    "newBookings": "新しい予約リクエスト",
+    "newBookingsDesc": "新しい予約リクエストを受け取ったときに通知します",
+    "bookingUpdates": "予約の更新",
+    "bookingUpdatesDesc": "確定した予約や変更に関するお知らせです",
+    "messages": "メッセージ",
+    "messagesDesc": "お客様やエキスパートからの新着メッセージです",
+    "reviews": "レビュー",
+    "reviewsDesc": "お客様がレビューを投稿したときに通知します",
+    "payouts": "出金のお知らせ",
+    "payoutsDesc": "出金の処理状況と完了のお知らせです",
+    "marketing": "お役立ち情報",
+    "marketingDesc": "出品を改善するヒントやキャンペーンのご案内です"
+  },
+  "payment": {
+    "title": "お支払い設定",
+    "description": "出金方法と設定を管理します",
+    "frequency": "出金の頻度",
+    "weekly": "毎週",
+    "biweekly": "隔週",
+    "monthly": "毎月",
+    "minPayout": "出金の最低金額"
+  },
+  "save": {
+    "all": "すべての設定を保存する",
+    "saving": "保存しています...",
+    "successTitle": "設定を保存しました",
+    "successBody": "設定内容を更新しました。",
+    "errorTitle": "エラー",
+    "errorBody": "設定を保存できませんでした。"
+  }
+}

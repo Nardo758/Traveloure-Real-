@@ -17,4 +17,6 @@
 //   export type InsertPost = z.infer<typeof insertPostSchema>;
 //   export type Post = typeof postsTable.$inferSelect;
 
-export {}
+// Traveloure's schema remains a single shared source during the workspace port.
+// The backend and frontend both consume it through the workspace package.
+export * from "../../../../.migration-backup/shared/schema";

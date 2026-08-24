@@ -1,0 +1,306 @@
+.marketplace-field-guide {
+  --market-ink: #1e3a5f;
+  --market-muted: #687384;
+  --market-line: #e7e4dd;
+  --market-paper: #fafaf8;
+  --market-coral: #ff4d70;
+  --market-teal: #287a79;
+  --market-gold: #b57d13;
+  background: var(--market-paper);
+}
+
+.dark .marketplace-field-guide {
+  --market-ink: #e8eef7;
+  --market-muted: #a8b0bd;
+  --market-line: hsl(var(--border));
+  --market-paper: hsl(var(--background));
+}
+
+.marketplace-field-guide * {
+  box-sizing: border-box;
+}
+
+.marketplace-masthead {
+  background: var(--market-paper);
+}
+
+.marketplace-titlebar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.marketplace-page-title {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 0;
+  color: var(--market-ink);
+  font: 600 2.125rem/1.05 "Fraunces", Georgia, serif;
+  letter-spacing: -.035em;
+}
+
+.marketplace-title-icon {
+  width: 2.375rem;
+  height: 2.375rem;
+  border-radius: .75rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.marketplace-title-icon svg { width: 1.25rem; height: 1.25rem; }
+.marketplace-title-icon--travelpulse { color: var(--market-teal); background: #eaf7f5; }
+.marketplace-title-icon--packages { color: var(--market-gold); background: #fff7e4; }
+.marketplace-title-icon--events { color: #6056b5; background: #f1f0ff; }
+.marketplace-title-icon--services { color: var(--market-coral); background: #fff0f3; }
+
+.marketplace-page-deck {
+  max-width: 36rem;
+  margin: .45rem 0 0 3.125rem;
+  color: var(--market-muted);
+  font-size: .875rem;
+  line-height: 1.45;
+}
+
+.marketplace-route-block > p {
+  margin: 0 0 .25rem;
+  color: var(--market-muted);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.marketplace-route-tabs {
+  display: flex;
+  gap: .35rem;
+  padding: .5rem;
+  border-radius: .875rem;
+  background: color-mix(in srgb, var(--market-line) 55%, transparent);
+}
+
+.marketplace-route-tabs a {
+  min-height: 2.25rem;
+  padding: .55rem .7rem;
+  border-radius: .5625rem;
+  color: var(--market-muted);
+  font-size: .75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.marketplace-route-tabs a.active {
+  color: white;
+  background: #1e3a5f;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 15%);
+}
+
+.marketplace-route-tabs a:focus-visible,
+.marketplace-field-guide button:focus-visible {
+  outline: 3px solid rgb(255 77 112 / 38%);
+  outline-offset: 2px;
+}
+
+.marketplace-content .container {
+  max-width: 75rem;
+}
+
+.marketplace-surface-content {
+  margin-top: 0;
+}
+
+.marketplace-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .95rem;
+}
+
+.marketplace-section-head h2 {
+  margin: .3rem 0 0;
+  color: var(--market-ink);
+  font: 600 1.375rem/1.15 "Fraunces", Georgia, serif;
+  letter-spacing: -.025em;
+}
+
+.marketplace-section-head > p {
+  color: var(--market-muted);
+  font-size: .75rem;
+  text-align: right;
+}
+
+.marketplace-guide-card {
+  border-radius: .9375rem;
+  box-shadow: 0 5px 18px rgb(26 37 49 / 4%);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.marketplace-guide-card:hover {
+  border-color: color-mix(in srgb, var(--market-teal) 45%, var(--market-line));
+  box-shadow: 0 10px 26px rgb(30 58 95 / 10%);
+  transform: translateY(-2px);
+}
+
+.marketplace-card-photo {
+  position: relative;
+  height: 10.5rem;
+  overflow: hidden;
+}
+
+.marketplace-card-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgb(13 29 42 / 34%), transparent 54%);
+}
+
+.marketplace-card-signal {
+  position: absolute;
+  z-index: 1;
+  top: .75rem;
+  left: .75rem;
+  padding: .32rem .55rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 94%);
+  color: #287a79;
+  font-size: .6875rem;
+  font-weight: 700;
+}
+
+.marketplace-kicker {
+  color: var(--market-coral);
+  font-size: .6875rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.marketplace-card-title {
+  margin-top: .35rem;
+  color: var(--market-ink);
+  font: 600 1.22rem/1.15 "Fraunces", Georgia, serif;
+}
+
+.marketplace-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .45rem;
+  margin-top: .8rem;
+}
+
+.marketplace-facts > span,
+.marketplace-service-facts > div {
+  min-width: 0;
+  padding-top: .5rem;
+  border-top: 1px solid var(--market-line);
+  color: var(--market-muted);
+  font-size: .625rem;
+  line-height: 1.25;
+}
+
+.marketplace-facts strong {
+  display: block;
+  overflow: hidden;
+  color: var(--market-ink);
+  font-size: .75rem;
+  text-overflow: ellipsis;
+}
+
+.marketplace-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-top: .8rem;
+  padding-top: .65rem;
+  border-top: 1px solid var(--market-line);
+  color: var(--market-muted);
+  font-size: .6875rem;
+}
+
+.marketplace-primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  min-height: 2rem;
+  padding: .45rem .7rem;
+  border-radius: .375rem;
+  background: var(--market-ink);
+  color: var(--market-paper);
+  font-size: .6875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.marketplace-filter-bar {
+  background: color-mix(in srgb, var(--market-paper) 70%, white);
+  box-shadow: 0 3px 12px rgb(30 58 95 / 4%);
+}
+
+.marketplace-service-card .relative.h-48 { height: 9.75rem; }
+.marketplace-service-image-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background:
+    radial-gradient(circle at 28% 24%, rgb(255 255 255 / 24%), transparent 25%),
+    linear-gradient(135deg, #6b8f8b, #183d4d);
+  color: rgb(255 255 255 / 76%);
+}
+.marketplace-service-image-fallback svg {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+.marketplace-service-card .marketplace-service-facts { margin-bottom: .25rem; }
+.marketplace-service-card .marketplace-service-facts > div {
+  justify-content: flex-start;
+  border-top-color: var(--market-line);
+}
+
+.marketplace-destinations-content [data-testid="city-grid"] > div:last-child {
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.marketplace-destinations-content [data-testid^="card-city-"] {
+  border-radius: .9375rem;
+  box-shadow: 0 5px 18px rgb(26 37 49 / 4%);
+}
+
+.marketplace-events-content [data-testid="global-calendar"] {
+  gap: 1.625rem;
+}
+
+.marketplace-events-content [data-testid^="event-card-"] {
+  border-radius: .5rem;
+  box-shadow: none;
+}
+
+@media (max-width: 850px) {
+  .marketplace-titlebar { display: block; }
+  .marketplace-route-block { margin-top: 1.25rem; }
+  .marketplace-route-tabs { width: max-content; max-width: 100%; overflow-x: auto; }
+  .marketplace-destinations-content [data-testid="city-grid"] > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .marketplace-page-title { font-size: 1.875rem; align-items: flex-start; }
+  .marketplace-page-deck { margin-left: 0; }
+  .marketplace-destinations-content [data-testid="city-grid"] > div:last-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .marketplace-route-tabs a { padding-inline: .55rem; }
+  .marketplace-section-head { align-items: flex-start; }
+  .marketplace-section-head > p { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketplace-guide-card { transition: none; }
+  .marketplace-guide-card:hover { transform: none; }
+}

@@ -1,0 +1,194 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api, buildUrl } from "@shared/routes";
+import { z } from "zod";
+import type { InsertTrip, Trip, GeneratedItinerary } from "@shared/schema";
+import { useToast } from "./use-toast";
+import { useGuestTrips } from "@/contexts/GuestTripContext";
+import { useAuth } from "./use-auth";
+
+// === TRIPS ===
+
+export function useTrips() {
+  return useQuery({
+    queryKey: [api.trips.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.trips.list.path, { credentials: "include" });
+      if (res.status === 401) return null; // Handle unauthorized gracefully
+      if (!res.ok) throw new Error("Failed to fetch trips");
+      return api.trips.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useTrip(id: string) {
+  const { getShareToken } = useGuestTrips();
+
+  return useQuery({
+    queryKey: [api.trips.get.path, id],
+    queryFn: async () => {
+      let url = buildUrl(api.trips.get.path, { id });
+      const shareToken = getShareToken(id);
+      if (shareToken) {
+        url += `?token=${encodeURIComponent(shareToken)}`;
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error("Request timed out")), 10_000);
+      try {
+        const res = await fetch(url, { credentials: "include", signal: controller.signal });
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error("Failed to fetch trip");
+        return api.trips.get.responses[200].parse(await res.json());
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    enabled: !!id,
+    retry: false,
+  });
+}
+
+export function useCreateTrip() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const { addGuestTrip } = useGuestTrips();
+
+  return useMutation({
+    mutationFn: async (data: InsertTrip) => {
+      const res = await fetch(api.trips.create.path, {
+        method: api.trips.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        if (res.status === 400) {
+          const error = await res.json();
+          throw new Error(error.message || "Validation failed");
+        }
+        throw new Error("Failed to create trip");
+      }
+      return api.trips.create.responses[201].parse(await res.json());
+    },
+    onSuccess: (trip) => {
+      // If guest created the trip, store the shareToken for later claim
+      if (!user && (trip as any).shareToken) {
+        addGuestTrip(trip.id, (trip as any).shareToken);
+      }
+      queryClient.invalidateQueries({ queryKey: [api.trips.list.path] });
+      toast({
+        title: "Trip Created",
+        description: user ? "Your new adventure awaits!" : "Your trip is ready. Sign up to book services!",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useUpdateTrip() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { getShareToken } = useGuestTrips();
+
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: { id: string } & Partial<InsertTrip>) => {
+      let url = buildUrl(api.trips.update.path, { id });
+      const shareToken = getShareToken(id);
+      if (shareToken) {
+        url += `?token=${encodeURIComponent(shareToken)}`;
+      }
+      const res = await fetch(url, {
+        method: api.trips.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to update trip");
+      return api.trips.update.responses[200].parse(await res.json());
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.trips.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.trips.get.path, variables.id] });
+      toast({
+        title: "Trip Updated",
+        description: "Changes saved successfully.",
+      });
+    },
+  });
+}
+
+export function useDeleteTrip() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const url = buildUrl(api.trips.delete.path, { id });
+      const res = await fetch(url, { 
+        method: api.trips.delete.method,
+        credentials: "include" 
+      });
+      if (!res.ok) throw new Error("Failed to delete trip");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.trips.list.path] });
+      toast({
+        title: "Trip Deleted",
+        description: "Trip removed from your dashboard.",
+      });
+    },
+  });
+}
+
+export function useGenerateItinerary() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (tripId: string) => {
+      const url = buildUrl(api.trips.generateItinerary.path, { id: tripId });
+      const res = await fetch(url, {
+        method: api.trips.generateItinerary.method,
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to generate itinerary");
+      return api.trips.generateItinerary.responses[201].parse(await res.json());
+    },
+    onSuccess: (_, tripId) => {
+      queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", tripId] });
+      // T5-1: PlanCard (stage="full") now sources its `days` from the live plancard DTO
+      // (`GET /api/trips/:id/plancard`) instead of the static itinerary_data blob whenever
+      // trip-details.tsx doesn't hand it a `days` prop. Without this invalidation, a
+      // regenerate would rewrite the DB rows (server, T1-1) but PlanCard would keep
+      // rendering its cached pre-regenerate DTO.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({
+        title: "Itinerary Generated",
+        description: "Your personalized day-by-day plan is ready.",
+      });
+    },
+  });
+}
+
+export function useGeneratedItinerary(tripId: string) {
+  return useQuery({
+    queryKey: ["/api/generated-itineraries", tripId],
+    queryFn: async () => {
+      const res = await fetch(`/api/generated-itineraries/${tripId}`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch generated itinerary");
+      return res.json() as Promise<GeneratedItinerary>;
+    },
+    enabled: !!tripId,
+  });
+}

@@ -1,0 +1,116 @@
+You are the Lead QA Engineer doing the 
+final sign-off regression test on the 
+Traveloure navbar before production deployment.
+
+This is the FINAL CHECK.
+Test everything end-to-end one more time.
+Fix anything found.
+Then produce the deployment readiness report.
+
+REGRESSION CHECKLIST:
+
+LINKS (verify all pass):
+□ Home/Logo → loads homepage
+□ Discover → loads discover page
+□ Experts → loads experts listing
+□ How it Works → loads page
+□ Pricing → loads page
+□ Login → loads login or modal
+□ Signup → loads /signup page
+□ Dashboard → loads correct role dashboard
+□ Logout → clears session, redirects home
+
+ROLE ACCESS (verify all blocked):
+□ Traveler cannot access /expert/*
+□ Traveler cannot access /provider/*
+□ Traveler cannot access /admin/*
+□ Expert cannot access /admin/*
+□ Provider cannot access /admin/*
+□ Unauthenticated cannot access any /*dashboard
+
+SEARCH (verify all pass):
+□ Valid search returns results
+□ Empty search handled gracefully
+□ XSS payload sanitized
+□ SQL injection sanitized
+□ No results shows friendly message
+
+USER MENU (verify all pass):
+□ Avatar shows after login
+□ Correct name displayed (not undefined)
+□ Correct links for each role
+□ Logout works completely
+□ Login/Signup shows when logged out
+
+MOBILE (verify all pass):
+□ Hamburger menu appears at 375px
+□ Menu opens and closes correctly
+□ All links work from mobile menu
+□ Menu closes after navigation
+□ No overflow at 320px
+
+PERFORMANCE (verify all pass):
+□ Zero console errors on any page
+□ Zero broken network requests (404s)
+□ Navbar renders under 200ms
+□ No memory leaks after 10 navigations
+
+SECURITY (verify all pass):
+□ No secrets in client code
+□ Auth endpoints rate limited
+□ Role cannot be spoofed client-side
+□ XSS impossible in search/inputs
+
+ACCESSIBILITY (verify all pass):
+□ All links keyboard reachable
+□ Focus visible on all elements
+□ ARIA labels on icon buttons
+□ Mobile menu focus trapped
+
+NOW PRODUCE THE FINAL QA REPORT:
+
+Format exactly like this:
+
+╔══════════════════════════════════════════╗
+║     TRAVELOURE NAVBAR QA REPORT          ║
+║     Date: [today]                        ║
+╠══════════════════════════════════════════╣
+║ Pages tested:          [N]               ║
+║ Navbar elements tested:[N]               ║
+║ Forms tested:          [N]               ║
+║ Test cases executed:   [N]               ║
+║ Bugs found:            [N]               ║
+║ Bugs fixed:            [N]               ║
+║ Bugs remaining:        [N]               ║
+╠══════════════════════════════════════════╣
+║ CATEGORY SCORES:                         ║
+║ Links & Routes:        [N]%              ║
+║ Authentication:        [N]%              ║
+║ Role Access Control:   [N]%              ║
+║ Search:                [N]%              ║
+║ Mobile/Responsive:     [N]%              ║
+║ Performance:           [N]%              ║
+║ Security:              [N]%              ║
+║ Accessibility:         [N]%              ║
+╠══════════════════════════════════════════╣
+║ OVERALL SCORE: [N]%                      ║
+║                                          ║
+║ [If 95-100%]:                            ║
+║ ✅ READY FOR PRODUCTION                  ║
+║                                          ║
+║ [If 80-94%]:                             ║
+║ ⚠️ READY WITH MINOR FIXES               ║
+║ Fix list: [items]                        ║
+║                                          ║
+║ [If under 80%]:                          ║
+║ ❌ NOT READY FOR PRODUCTION              ║
+║ Critical issues: [items]                 ║
+╚══════════════════════════════════════════╝
+
+Do NOT declare ready for production 
+unless ALL critical items pass:
+- Zero role bypass vulnerabilities
+- Zero XSS vulnerabilities  
+- Zero broken auth flows
+- Zero console errors
+- Zero broken navbar links

@@ -1,0 +1,90 @@
+Replit Dispatch — pull Waves 0–2 (service-creation program) into the workspace
+Target state: workspace `main` at `14f74c7b` ("Merge pull request #468") — the merge that
+completes Wave 2 (S1–S6) of the service-creation execution map, plus the FP-1/FP-2 fix packs and
+QA-1/QA-2.
+Status (Aug 13): steps 1–2 are ✅ DONE in the workspace — recorded below with what actually
+happened. Steps 3–6 remain. One decision item (Clerk) is parked at the bottom.
+---
+1 · Pull — ✅ DONE (via divergence recovery, not a plain pull)
+The workspace `main` had diverged: 3 local commits vs 228 on GitHub, and a plain
+`git pull origin main` produced a 12-file conflicted merge. The rule when this happens: never
+resolve the conflicts by hand in the workspace, never push, NEVER force-push — a force-push
+overwrites the program's landed work. Recovery sequence used (safe because the local commits are
+bookmarked before the reset):
+```bash
+git merge --abort                                    # discard the conflicted half-merge
+git branch replit-backup-aug13                       # bookmark the local commits — nothing lost
+git log --oneline origin/main..replit-backup-aug13   # see what they were
+git reset --hard origin/main                         # workspace main := GitHub main
+git log --oneline -1                                 # MUST print 14f74c7b
+```
+Result: `main` at `14f74c7b`. The 3 rescued commits, triaged:
+Commit	What	Disposition
+`223dff7f` "Update dependency lockfile"	lockfile churn (pollution-prone)	discard — correctly reset away
+`e4091766` "Migrate from Replit Auth to Clerk"	real auth work, never on GitHub	parked — decision item below
+`b156869c` "Add image asset"	one asset	on `replit-backup-aug13` if ever needed
+2 · Install — ✅ DONE (all three checks green)
+```bash
+npm config get registry                    # ✅ printed https://registry.npmjs.org/
+npm install                                # ✅ postinstall scrub ran: "clean — no replit.local URLs"
+grep -c 'replit.local' package-lock.json   # ✅ printed 0
+```
+If the grep is ever non-zero, run `node scripts/scrub-lockfile.cjs` and re-check. Never commit
+a lockfile containing `replit.local` URLs. Do not remove the `.npmrc`, the postinstall scrub,
+or the git hooks.
+npm audit note: the 9 reported vulnerabilities (7 moderate, 2 high) are pre-existing
+dependency advisories, not introduced by this sync. Do not run `npm audit fix` as part of
+this dispatch — it churns the lockfile; handle it as its own reviewed change if at all.
+3 · Restart → migrations apply at startup
+Restart the app (Run). `runMigrations()` applies everything pending; the registry now ends at
+`209_notification_dedupe_key.sql`.
+Watch startup logs: each newly applied migration logs; errors abort startup — report any error
+verbatim rather than retrying blind.
+Verify the stamp: the migrations table's latest row should be `209_notification_dedupe_key.sql`.
+All migrations in this window (176–209) are additive (`ADD COLUMN IF NOT EXISTS`, new
+tables, partial unique indexes) — no destructive steps, no CHECK over legacy values.
+4 · Verify in the running app (dev workspace)
+Log in as a provider account and confirm each marker:
+One-door launcher (S5): every create entry point lands on the Workstation
+"What are you building?" screen (service / bundle / property + category tiles).
+Method-first flow (S1/S3): new service → delivery method is step 1, position 2; the form
+branches off it; step 4 is "Logistics" (pin + radius + route stops, confirm-gated); the
+renamed steps read "Scheduling" and "Capacity".
+Listing home + checklist (S2): saving a draft lands on the listing home; the checklist is
+derived from method + record state; rows navigate; the button says "Submit for review"
+(never "Publish").
+Pricing & fees drawer (S4): on the listing home — travel-surcharge modes (incl. zone
+rings), deposit opt-in, cancellation policy all live HERE; base price renders read-only; the
+creation wizard shows pointer notes where those cards used to be. Open both Select dropdowns
+inside the drawer — they must render above the sheet overlay (the z-index fix).
+Distribute (S6): "Distribute" in the sidebar (storefront header, share dialog, Promote
+block); Catalog is slimmed to read/manage/triage; Catalog's map mode is read-only traveler
+preview.
+QA fixes: Inbox → History shows declined/cancelled/refunded bookings; accept/cancel a test
+booking twice-in-a-row produces exactly one notification (dedupe key).
+5 · Before pressing Publish (deploy) — the push-trap drill
+```bash
+node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"
+```
+Expected: clean (this window adds no CHECKs), but the script is the arbiter, not this note.
+If the deploy offers "copy dev database over production" — NEVER accept it.
+Do not touch `drizzle.config.ts` — its `schema` array (both entries) is load-bearing.
+New columns/tables in this window are declared in `shared/schema.ts` (publish-trap rule), so
+the deploy push should drop nothing.
+6 · After publish
+Re-run the six spot-checks from step 4 against production, and confirm the prod migrations table
+is also stamped through `209_notification_dedupe_key.sql`.
+Report back: the last stamped migration in dev and prod, and pass/fail per spot-check — one
+line each.
+---
+Parked decision item — the Clerk auth migration (`e4091766`, branch `clerk-work-recovered`)
+Real, architecturally significant work done inside Replit and never merged to GitHub: a migration
+from Replit Auth to Clerk. Auth is load-bearing platform-wide — the locked decisions assume
+Passport (serializers in all environments, fix #133), and the admin default-deny guard plus every
+session-derived identity rule (§14) sit on top of it. Decision-maker call required:
+If wanted: reconcile deliberately — rebase `clerk-work-recovered` onto current `main` as
+its own lane, resolve against everything landed since (SignInModal, Signup, identity.routes,
+storage — the exact files that conflicted), re-verify the auth invariants, land via PR, and
+update CLAUDE.md's auth decision in the same change.
+If abandoned: leave the branch as an archive; delete nothing.
+Either way: it must never ride into `main` as a side effect of a workspace sync.

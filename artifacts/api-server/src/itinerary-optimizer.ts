@@ -1,0 +1,2096 @@
+import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { db } from "./db";
+import { trackAICost } from "./services/ai-cost-tracker";
+import {
+  itineraryComparisons,
+  itineraryVariants,
+  itineraryVariantItems,
+  itineraryVariantMetrics,
+  providerServices,
+  cartItems,
+  userExperienceItems,
+  InsertItineraryVariant,
+  InsertItineraryVariantItem,
+  InsertItineraryVariantMetric,
+  ProviderService,
+  temporalAnchors,
+  dayBoundaries,
+  transportLegs,
+  experienceTypes,
+  ExperienceType,
+  travelPulseTrending,
+  travelPulseCalendarEvents,
+  destinationSeasons,
+  trips,
+} from "@workspace/db";
+import { eq, and, inArray, gte, lte, desc, or, ilike, isNull } from "drizzle-orm";
+import {
+  reorderItinerary,
+  calculateItineraryMetrics,
+  SequencedActivity,
+  MethodologyNote,
+  parseAnchorConstraints,
+  applyAnchorConstraints,
+  applyEnergyBalancing,
+  AnchorConstraint,
+  DayBoundaryConstraint,
+} from "./services/smart-sequencing.service";
+import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
+import {
+  getTravelerProfile,
+  recordDislikeFeedback,
+  buildTravelerProfilePromptSection,
+  effectiveProfileToTransportPrefs,
+  matchesDietary,
+  type TravelerProfile,
+  type EffectiveTravelerProfile,
+} from "./services/traveler-profile.service";
+import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
+import { loadRankedAnchors } from "./services/anchor-candidates";
+import { pickAutoAnchors } from "./services/anchor-candidates-map";
+import type { AnchorScore } from "./services/anchor-scoring";
+
+// grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
+// grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
+// already run against the same account.
+const GROK_MODEL = "grok-3";
+const CLAUDE_MODEL = "claude-sonnet-4-5";
+
+// The 2-variant response JSON runs ~120-150 tokens per item; a 7-day trip with empty-day
+// fill can exceed 10k output tokens. 5120 truncated mid-JSON, which surfaced as
+// "Failed to parse AI response" on the fallback path.
+const GROK_MAX_TOKENS = 8192; // the max grok.service.ts has proven against this account
+const CLAUDE_MAX_TOKENS = 16384;
+
+// Anthropic pricing per token (as of 2026-06)
+const ANTHROPIC_PRICING = {
+  input: 3 / 1_000_000,    // $3 per million input tokens
+  output: 15 / 1_000_000,  // $15 per million output tokens
+};
+
+function calculateAnthropicCost(inputTokens: number, outputTokens: number): number {
+  return (inputTokens * ANTHROPIC_PRICING.input) + (outputTokens * ANTHROPIC_PRICING.output);
+}
+
+function getGrokClient(): OpenAI | null {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) return null;
+  return new OpenAI({
+    baseURL: "https://api.x.ai/v1",
+    apiKey,
+  });
+}
+
+function getAnthropicClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  return new Anthropic({ apiKey });
+}
+
+async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
+  const grok = getGrokClient();
+  if (grok) {
+    try {
+      const response = await grok.chat.completions.create({
+        model: GROK_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: GROK_MAX_TOKENS,
+        response_format: { type: "json_object" },
+      });
+      const choice = response.choices[0];
+      const content = choice?.message?.content;
+      // A length-truncated response is unparseable JSON — treat it as a Grok
+      // failure and let the Anthropic path (with a larger budget) take over.
+      if (content && choice?.finish_reason !== "length") return content;
+      if (choice?.finish_reason === "length") {
+        console.warn("Grok response truncated at max_tokens, falling back to Anthropic");
+      }
+    } catch (grokError: any) {
+      console.warn("Grok API failed, falling back to Anthropic:", grokError.message);
+    }
+  }
+
+  const anthropic = getAnthropicClient();
+  if (anthropic) {
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: CLAUDE_MAX_TOKENS,
+      system: systemPrompt,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+    });
+    // Track cost for CON-B pricing analysis
+    if (response.usage) {
+      const cost = calculateAnthropicCost(response.usage.input_tokens, response.usage.output_tokens);
+      trackAICost({
+        sourceType: "ai_optimization",
+        modelUsed: CLAUDE_MODEL,
+        costUsd: cost,
+        tokensIn: response.usage.input_tokens,
+        tokensOut: response.usage.output_tokens,
+      }).catch(err => console.error("[cost-tracker] failed to log optimization cost:", err));
+    }
+    if (response.stop_reason === "max_tokens") {
+      // Truncated JSON is unparseable — fail with the real cause instead of a
+      // downstream "Failed to parse AI response".
+      throw new Error(
+        `Anthropic response truncated at ${CLAUDE_MAX_TOKENS} tokens — itinerary too large for one response`,
+      );
+    }
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    if (textBlock && textBlock.type === "text") return textBlock.text;
+  }
+
+  throw new Error("No AI provider available. Configure XAI_API_KEY or ANTHROPIC_API_KEY.");
+}
+
+// Helper to extract JSON from markdown code blocks or raw text
+function extractJSON(text: string): string {
+  // Try to extract from markdown code blocks first
+  const jsonBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonBlockMatch) {
+    return jsonBlockMatch[1].trim();
+  }
+  
+  // Try to find JSON object directly
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return jsonMatch[0];
+  }
+  
+  return text.trim();
+}
+
+export interface ItineraryItem {
+  id: string;
+  name: string;
+  description?: string;
+  serviceType?: string;
+  price?: number;
+  rating?: number;
+  location?: string;
+  duration?: number;
+  dayNumber?: number;
+  timeSlot?: string;
+  /** Lane 5a Defect 3: the catalog row behind this baseline item, when there is one.
+   *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
+   *  Undefined for an external/AI item with no catalog row (the honest value, §13). */
+  providerServiceId?: string;
+  /** Real coordinates only (ledger 2026-08-22-optimizer-catalog-honesty): the trip item's own
+   *  pin or its linked catalog row's — set by the trip-backed loader, undefined for an unlocated
+   *  item (§13, never geocoded here). Carried onto the baseline variant items so transport-leg
+   *  computation has something real to run on. */
+  latitude?: number;
+  longitude?: number;
+  /** Lane 6 residue (drop policy a): true for a `ready_for_checkout` trip item — schedule-movable
+   *  but NEVER droppable by a variant. A generated variant that omits one is invalid and is
+   *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
+   *  sets this; cart/inline baselines have no routing status and leave it undefined. */
+  mustRetain?: boolean;
+}
+
+/**
+ * A `purchased` trip item (Lane 5b, decision-maker ratified Jul 31, 2026).
+ *
+ * NOT a baseline item and never one: the traveler has PAID for this. It enters the optimizer the
+ * way a temporal anchor does — as an immovable fixed point the plan must be built AROUND — because
+ * "an optimizer that can't see it proposes plans that collide with booked reality: a paid product
+ * contradicting a paid booking". It is never emitted as a variant item (asked of the model in the
+ * prompt AND enforced server-side by `stripFixedCommitmentEchoes`), never re-planned, and never
+ * deleted at apply (the Lane 5a `in_planning`-only delete already protects the row).
+ */
+export interface FixedCommitment {
+  id: string;
+  name: string;
+  dayNumber: number;
+  startTime?: string;
+  location?: string;
+  providerServiceId?: string;
+}
+
+interface OptimizedVariant {
+  name: string;
+  description: string;
+  reasoning: string;
+  items: {
+    dayNumber: number;
+    timeSlot: string;
+    startTime: string;
+    endTime: string;
+    name: string;
+    description: string;
+    serviceType: string;
+    price: number;
+    rating: number;
+    location: string;
+    duration: number;
+    travelTimeFromPrevious: number;
+    isReplacement: boolean;
+    replacementReason?: string;
+    originalServiceId?: string;
+  }[];
+  metrics: {
+    totalCost: number;
+    totalTravelTime: number;
+    averageRating: number;
+    freeTimeMinutes: number;
+    optimizationScore: number;
+  };
+}
+
+interface AIResponse {
+  variants: OptimizedVariant[];
+}
+
+// ── Trip-style adaptive variant strategy ──────────────────────────────────────
+
+export interface TripPreferences {
+  travelStyles?: string[];
+  budget?: number | null;
+  eventType?: string | null;
+  /** Sprint-1 dislike loop: structured "what to fix" chips from a re-run
+   *  (too_expensive | too_packed | wrong_areas | wrong_vibe). When present they
+   *  take priority over inferred preferences — an explicit complaint beats a
+   *  guess. Whitelisted at the API boundary. */
+  feedback?: string[];
+}
+
+interface VariantDescriptor {
+  name: string;
+  goal: string;
+  strategy: string;
+}
+
+/**
+ * Pure function that maps trip preferences to two named variant descriptors.
+ * Priority: eventType → budget tier → first matching style tag → default fallback.
+ */
+export function selectVariantStrategy(prefs?: TripPreferences): [VariantDescriptor, VariantDescriptor] {
+  const eventType = (prefs?.eventType || "").toLowerCase();
+  const budget = prefs?.budget ?? null;
+  const styles: string[] = (prefs?.travelStyles || []).map(s => s.toLowerCase());
+
+  // 0. Dislike-feedback signals (highest priority — an explicit "what to fix"
+  //    from a re-run beats every inferred preference). Each chip maps to a
+  //    primary descriptor; two chips → both primaries; one chip → its primary
+  //    plus the general Experience Enhancer as the contrasting take.
+  const feedback = (prefs?.feedback || []).map(f => f.toLowerCase());
+  if (feedback.length > 0) {
+    const feedbackPrimaries: Record<string, VariantDescriptor> = {
+      too_expensive: {
+        name: "Budget Optimizer",
+        goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+        strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+      },
+      too_packed: {
+        name: "Relaxed Pace",
+        goal: "Slow the itinerary down so each day breathes",
+        strategy: "Cap activities at three per day, group them by neighbourhood to cut transit, add afternoon rest windows, prefer later starts, and protect at least one fully unscheduled evening",
+      },
+      wrong_areas: {
+        name: "Neighbourhood Regroup",
+        goal: "Re-cluster the plan around better-fitting areas",
+        strategy: "Re-group activities by neighbourhood to avoid backtracking, shift the emphasis toward districts that match the traveler's stated styles, and drop legs that force long crosstown transit",
+      },
+      wrong_vibe: {
+        name: "Local Character",
+        goal: "Trade generic stops for distinctive local experiences",
+        strategy: "Replace generic or tourist-heavy items with distinctive local alternatives matched to the traveler's stated styles, add one standout cultural or culinary experience per day, and favour venues locals actually frequent",
+      },
+    };
+    const picked = feedback.filter(f => feedbackPrimaries[f]);
+    if (picked.length >= 2) {
+      return [feedbackPrimaries[picked[0]], feedbackPrimaries[picked[1]]];
+    }
+    if (picked.length === 1) {
+      return [
+        feedbackPrimaries[picked[0]],
+        {
+          name: "Experience Enhancer",
+          goal: "Maximise the variety and quality of experiences across the itinerary",
+          strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+        },
+      ];
+    }
+    // unknown chips only → fall through to the normal preference chain
+  }
+
+  // 1. Event-type signals (highest priority)
+  const romanticEvents = new Set(["honeymoon", "anniversary", "proposal", "wedding"]);
+  if (romanticEvents.has(eventType)) {
+    return [
+      {
+        name: "Romance Optimized",
+        goal: "Craft a deeply romantic, memorable experience tailored for couples",
+        strategy: "Schedule sunset-timed activities, add private dining experiences, replace group tours with couples-only options, include surprise-friendly moments and couple spa treatments",
+      },
+      {
+        name: "Premium Upgrade",
+        goal: "Elevate the trip with exclusive, high-quality experiences",
+        strategy: "Upgrade to boutique hotels or suites, add private guided experiences, replace standard transport with private transfers, find exclusive access options unavailable to general visitors",
+      },
+    ];
+  }
+
+  if (eventType === "corporate") {
+    return [
+      {
+        name: "Business Efficient",
+        goal: "Maximise productivity by minimising transit time and clustering activities geographically",
+        strategy: "Group activities by neighbourhood to avoid backtracking, replace leisure-heavy days with focused half-day windows, keep mornings free for meetings and batch evening activities, prefer venues with reliable WiFi and quiet spaces",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Make the most of free windows with high-quality local experiences",
+        strategy: "Find higher-rated venues near the business district, add a standout cultural or culinary experience for team bonding, replace generic after-work options with unique local alternatives",
+      },
+    ];
+  }
+
+  // 2. Budget tier (if strongly luxury)
+  const isLuxuryBudget = budget != null && budget >= 8000;
+  if (isLuxuryBudget) {
+    return [
+      {
+        name: "Premium Upgrade",
+        goal: "Elevate every aspect of the trip to match a luxury travel standard",
+        strategy: "Upgrade accommodation to 5-star or boutique properties, add private guided experiences and exclusive venue access, replace shared transport with private transfers, prioritise chef's table dinners and unique VIP experiences",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  // 3. Style-tag signals (first matching tag wins)
+  const hasFoodStyle = styles.some(s => s.includes("food") || s.includes("culinary") || s.includes("dining"));
+  const hasAdventureStyle = styles.some(s => s.includes("adventure") || s.includes("outdoor") || s.includes("extreme"));
+  const hasRelaxationStyle = styles.some(s => s.includes("relaxat") || s.includes("wellness") || s.includes("spa") || s.includes("slow"));
+
+  if (hasFoodStyle) {
+    return [
+      {
+        name: "Culinary Deep Dive",
+        goal: "Transform the trip into an immersive food and drink journey",
+        strategy: "Replace generic restaurants with chef's table experiences, street food tours, and cooking classes; add local market visits; swap sightseeing slots for food-district walks; prioritise highly rated local eateries over tourist traps",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  if (hasAdventureStyle) {
+    return [
+      {
+        name: "Off the Beaten Path",
+        goal: "Replace mainstream attractions with authentic, adventurous, and unique access experiences",
+        strategy: "Swap tourist-heavy sites with hikes, local guide-led exploration, and off-grid experiences; add active challenges like kayaking or cycling; find neighbourhoods locals frequent; avoid peak-hour tourist hotspots",
+      },
+      {
+        name: "Experience Enhancer",
+        goal: "Maximise the variety and quality of experiences across the itinerary",
+        strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+      },
+    ];
+  }
+
+  if (hasRelaxationStyle) {
+    return [
+      {
+        name: "Wellness Focus",
+        goal: "Design a restorative itinerary with a slower, more rejuvenating pace",
+        strategy: "Add spa mornings and meditation sessions; reduce the number of daily activities; replace high-energy sightseeing with leisurely neighbourhood strolls; prioritise late-morning starts and include afternoon rest windows; favour wellness retreats and nature escapes",
+      },
+      {
+        name: "Budget Optimizer",
+        goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+        strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+      },
+    ];
+  }
+
+  // 4. Default fallback
+  return [
+    {
+      name: "Budget Optimizer",
+      goal: "Reduce total cost by 15–30% while keeping the spirit of the trip",
+      strategy: "Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs, keep key meals and any protected items intact",
+    },
+    {
+      name: "Experience Enhancer",
+      goal: "Maximise the variety and quality of experiences across the itinerary",
+      strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+    },
+  ];
+}
+
+/**
+ * The slip shows the baseline plan + THREE AI variants (decision-maker 2026-08-23; see
+ * `docs/design/optimized-slip-review-mock.html`). `selectVariantStrategy` picks the two
+ * preference-driven primaries; this appends a genuinely-distinct THIRD from a standing pool —
+ * the first pool entry whose name differs from both primaries — so the three named strategies are
+ * always different regardless of which branch produced the pair. Deterministic (no randomness),
+ * and the branch matrix above is left untouched.
+ */
+const THIRD_STRATEGY_POOL: VariantDescriptor[] = [
+  {
+    name: "Balanced Refresh",
+    goal: "Keep the plan's overall shape but upgrade its weakest links",
+    strategy: "Leave the day-by-day structure and all protected items intact; replace only the lowest-rated or most over-priced stops with better-fitting alternatives; tighten transitions where the route backtracks — a lighter-touch third option beside the other two.",
+  },
+  {
+    name: "Local Character",
+    goal: "Trade generic stops for distinctive local experiences",
+    strategy: "Replace generic or tourist-heavy items with distinctive local alternatives matched to the traveler's stated styles, add one standout cultural or culinary experience per day, and favour venues locals actually frequent",
+  },
+  {
+    name: "Relaxed Pace",
+    goal: "Slow the itinerary down so each day breathes",
+    strategy: "Cap activities at three per day, group them by neighbourhood to cut transit, add afternoon rest windows, prefer later starts, and protect at least one fully unscheduled evening",
+  },
+  {
+    name: "Experience Enhancer",
+    goal: "Maximise the variety and quality of experiences across the itinerary",
+    strategy: "Find higher-rated venues and activities, add a unique local cultural experience each day, improve accommodation quality, and replace generic activities with memorable standout alternatives",
+  },
+];
+
+export function selectThirdVariantStrategy(
+  a: VariantDescriptor,
+  b: VariantDescriptor,
+): VariantDescriptor {
+  const taken = new Set([a.name, b.name]);
+  return THIRD_STRATEGY_POOL.find((d) => !taken.has(d.name)) ?? THIRD_STRATEGY_POOL[0];
+}
+
+function formatAnchorForPrompt(anchor: AnchorConstraint): string {
+  const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  let desc = `${type} at ${time}`;
+  if (anchor.bufferBefore > 0) desc += `, ${anchor.bufferBefore}min buffer before`;
+  if (anchor.bufferAfter > 0) desc += `, ${anchor.bufferAfter}min buffer after`;
+  if (anchor.location) desc += ` (${anchor.location})`;
+  return desc;
+}
+
+/**
+ * Lane 5b: render `purchased` items into the prompt as immovable commitments — the same shape the
+ * anchor section above uses, because they play the same role (a fixed point the plan is built
+ * around). Deliberately NOT fed into `anchorConstraints`: `applyAnchorConstraints` PINS an anchor
+ * by inserting a synthetic activity into the day, and those activities are persisted as variant
+ * items — which would emit the purchased item into every variant, exactly what the ratification
+ * forbids. Prompt-side only; the emission ban is enforced separately and server-side.
+ */
+function buildFixedCommitmentSection(commitments: FixedCommitment[]): string {
+  if (commitments.length === 0) return '';
+  const lines = commitments
+    .slice()
+    .sort((a, b) => (a.dayNumber - b.dayNumber) || (a.startTime ?? '').localeCompare(b.startTime ?? ''))
+    .map(c => {
+      const when = c.startTime ? ` at ${c.startTime}` : '';
+      const where = c.location ? ` (${c.location})` : '';
+      return `- Day ${c.dayNumber}${when}: ${c.name}${where}`;
+    })
+    .join('\n');
+
+  return `\n\nALREADY BOOKED — FIXED COMMITMENTS (the traveler has PAID for these):
+${lines}
+
+These are already on the traveler's plan and are NOT yours to change. Do NOT include them in your variants, do NOT replace, remove, substitute or reschedule them, and do NOT place any activity that overlaps their time or that requires the traveler to be somewhere else at that time. Treat their location as where the traveler will be. Plan AROUND them.`;
+}
+
+/**
+ * Server-side enforcement of "never emitted as a variant item". The prompt asks the model not to
+ * echo a fixed commitment back; this makes it true regardless of what the model does. Necessary
+ * for coherence, not just tidiness: the purchased row SURVIVES apply-to-trip (Lane 5a's
+ * `in_planning`-only delete), so an echoed copy would land as a second, unpaid `in_planning`
+ * duplicate of a booking the traveler already holds.
+ *
+ * Match predicate = the apply-time dedupe predicate, deliberately: `providerServiceId` first
+ * (the catalog identity), then an exact case-insensitive title match (all an AI-authored item
+ * offers). Same rule in both places so the two can't disagree about what "the same item" means.
+ */
+function stripFixedCommitmentEchoes<T extends { name?: string | null; providerServiceId?: string | null }>(
+  items: T[],
+  commitments: FixedCommitment[],
+): { kept: T[]; stripped: number } {
+  if (commitments.length === 0) return { kept: items, stripped: 0 };
+  const committedServiceIds = new Set(
+    commitments.map(c => c.providerServiceId).filter((v): v is string => !!v),
+  );
+  const committedNames = new Set(commitments.map(c => (c.name ?? '').trim().toLowerCase()).filter(Boolean));
+
+  const kept = items.filter(item => {
+    if (item.providerServiceId && committedServiceIds.has(item.providerServiceId)) return false;
+    const name = (item.name ?? '').trim().toLowerCase();
+    if (name && committedNames.has(name)) return false;
+    return true;
+  });
+  return { kept, stripped: items.length - kept.length };
+}
+
+function buildLogisticsContext(expType: ExperienceType): string {
+  const lines: string[] = [];
+
+  lines.push(`EXPERIENCE TYPE: ${expType.name} (${expType.slug})`);
+
+  if (expType.typicalGroupSizeMin != null && expType.typicalGroupSizeMax != null) {
+    lines.push(`GROUP SIZE: ${expType.typicalGroupSizeMin}–${expType.typicalGroupSizeMax} people — size all venue/transport recommendations accordingly`);
+  }
+
+  if (expType.typicalDurationMinDays != null && expType.typicalDurationMaxDays != null) {
+    const dMin = expType.typicalDurationMinDays;
+    const dMax = expType.typicalDurationMaxDays;
+    lines.push(`TYPICAL DURATION: ${dMin === dMax ? `${dMin} day${dMin > 1 ? 's' : ''}` : `${dMin}–${dMax} days`}`);
+  }
+
+  const timingGuide: Record<string, string> = {
+    low: "Flexible timing — 15–20 min transitions are fine",
+    medium: "Standard timing — allow 20–30 min transitions between activities",
+    high: "Tight scheduling — include 30–45 min buffers between major activities",
+    very_high: "Complex timing — build in 45+ min buffers; sequence activities to avoid conflicts",
+    extreme: "Precision scheduling — every activity needs an exact time slot; zero slack tolerated",
+  };
+  if (expType.timingComplexity && timingGuide[expType.timingComplexity]) {
+    lines.push(`TIMING: ${timingGuide[expType.timingComplexity]}`);
+  }
+
+  const contingencyGuide: Record<string, string> = {
+    flexible: "Minor contingencies acceptable — no backup plans required",
+    important: "Flag weather-sensitive activities and suggest indoor alternatives where relevant",
+    critical: "Include a backup option for EVERY major activity or venue — failure is not an option",
+  };
+  if (expType.contingencyLevel && contingencyGuide[expType.contingencyLevel]) {
+    lines.push(`CONTINGENCY: ${contingencyGuide[expType.contingencyLevel]}`);
+  }
+
+  const paymentGuide: Record<string, string> = {
+    joint: "Costs shared between couple/partners — keep per-pair totals visible",
+    group_split: "Costs split evenly across group — prioritize per-person cost clarity",
+    single_payer: "One person pays everything — total cost transparency is key",
+    multi_stakeholder: "Multiple parties paying (e.g., families, sponsors) — group line items by who pays",
+    individual_with_discount: "Individual payments with group discounts — highlight group savings",
+  };
+  if (expType.paymentFlowType && paymentGuide[expType.paymentFlowType]) {
+    lines.push(`PAYMENT: ${paymentGuide[expType.paymentFlowType]}`);
+  }
+
+  return `\n\nEXPERIENCE CONTEXT (use this to tailor the itinerary style and pacing):\n${lines.join('\n')}`;
+}
+
+// ── TravelPulse helpers ───────────────────────────────────────────────────────
+
+/** Extract a normalised city keyword from a destination string like "Tokyo, Japan" */
+function extractCityKey(destination: string): string {
+  return destination.split(',')[0].trim().toLowerCase();
+}
+
+interface CityIntelligence {
+  trending: Array<{ name: string; type: string; trendScore: number; bestTime?: string; worstTime?: string; crowdForecast?: any[] }>;
+  calendarEvents: Array<{ name: string; type: string; crowdImpact: string; description?: string; tips?: string[] }>;
+  seasonTag: string | null;
+}
+
+/** Fetch TravelPulse data for the destination city. Returns empty data on any failure. */
+async function fetchCityIntelligence(
+  destination: string,
+  startDate: string,
+  endDate: string,
+): Promise<CityIntelligence> {
+  const empty: CityIntelligence = { trending: [], calendarEvents: [], seasonTag: null };
+  try {
+    const cityKey = extractCityKey(destination);
+    const tripStartDate = new Date(startDate);
+    const tripEndDate = new Date(endDate);
+    const tripMonth = isNaN(tripStartDate.getTime()) ? null : tripStartDate.getMonth() + 1;
+
+    const [trendingRows, calendarRows, seasonRows] = await Promise.all([
+      db
+        .select()
+        .from(travelPulseTrending)
+        .where(
+          and(
+            or(
+              ilike(travelPulseTrending.city, cityKey),
+              ilike(travelPulseTrending.city, `${cityKey}%`),
+            ),
+            or(
+              gte(travelPulseTrending.expiresAt, new Date()),
+              isNull(travelPulseTrending.expiresAt),
+            ),
+          ),
+        )
+        .orderBy(desc(travelPulseTrending.trendScore))
+        .limit(5),
+
+      !isNaN(tripStartDate.getTime()) && !isNaN(tripEndDate.getTime())
+        ? db
+            .select()
+            .from(travelPulseCalendarEvents)
+            .where(
+              and(
+                or(
+                  ilike(travelPulseCalendarEvents.city, cityKey),
+                  ilike(travelPulseCalendarEvents.city, `${cityKey}%`),
+                ),
+                lte(travelPulseCalendarEvents.startDate, endDate),
+                or(
+                  gte(travelPulseCalendarEvents.endDate, startDate),
+                  isNull(travelPulseCalendarEvents.endDate),
+                ),
+              ),
+            )
+            .limit(5)
+        : Promise.resolve([]),
+
+      tripMonth
+        ? db
+            .select()
+            .from(destinationSeasons)
+            .where(
+              and(
+                or(
+                  ilike(destinationSeasons.city, cityKey),
+                  ilike(destinationSeasons.city, `${cityKey}%`),
+                ),
+                eq(destinationSeasons.month, tripMonth),
+              ),
+            )
+            .limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    const trending = trendingRows.map(r => ({
+      name: r.destinationName,
+      type: r.destinationType || 'experience',
+      trendScore: r.trendScore || 0,
+      bestTime: r.bestTimeToVisit || undefined,
+      worstTime: r.worstTimeToVisit || undefined,
+      crowdForecast: Array.isArray(r.crowdForecast) ? r.crowdForecast as any[] : [],
+    }));
+
+    const calendarEvents = calendarRows.map(r => ({
+      name: r.eventName,
+      type: r.eventType || 'event',
+      crowdImpact: r.crowdImpact || 'moderate',
+      description: r.description || undefined,
+      tips: Array.isArray(r.tips) ? (r.tips as string[]) : [],
+    }));
+
+    const seasonRow = seasonRows[0];
+    let seasonTag: string | null = null;
+    if (seasonRow) {
+      const highlights = Array.isArray(seasonRow.highlights) ? (seasonRow.highlights as string[]) : [];
+      const parts: string[] = [];
+      if (seasonRow.weatherDescription) parts.push(seasonRow.weatherDescription);
+      if (seasonRow.crowdLevel) parts.push(`crowd level: ${seasonRow.crowdLevel}`);
+      if (highlights.length > 0) parts.push(highlights.slice(0, 2).join(', '));
+      seasonTag = parts.length > 0 ? parts.join(' — ') : null;
+    }
+
+    return { trending, calendarEvents, seasonTag };
+  } catch (err) {
+    console.warn('[Optimizer] TravelPulse fetch failed (non-critical):', (err as Error).message);
+    return empty;
+  }
+}
+
+/** Format city intelligence into a compact prompt section. */
+function buildCityIntelligenceSection(intel: CityIntelligence): string {
+  if (intel.trending.length === 0 && intel.calendarEvents.length === 0 && !intel.seasonTag) {
+    return '';
+  }
+
+  const lines: string[] = ['\n\nCITY INTELLIGENCE (TravelPulse data — use to sharpen scheduling decisions):'];
+
+  if (intel.seasonTag) {
+    lines.push(`SEASONAL CONTEXT: ${intel.seasonTag}`);
+  }
+
+  if (intel.trending.length > 0) {
+    lines.push('TRENDING SPOTS (prefer these when selecting replacement activities):');
+    for (const t of intel.trending) {
+      let entry = `- ${t.name} (${t.type}, trend score ${t.trendScore})`;
+      if (t.bestTime) entry += ` — best time: ${t.bestTime}`;
+      if (t.worstTime) entry += ` — avoid: ${t.worstTime}`;
+      lines.push(entry);
+
+      // Surface peak crowd windows the AI should avoid
+      const peakSlots = (t.crowdForecast || [])
+        .filter((f: any) => f.level === 'packed' || f.percent >= 80)
+        .map((f: any) => `${f.hour}:00`);
+      if (peakSlots.length > 0) {
+        lines.push(`  ↳ Avoid scheduling this activity at: ${peakSlots.join(', ')} (peak crowd hours)`);
+      }
+    }
+  }
+
+  if (intel.calendarEvents.length > 0) {
+    lines.push('LOCAL EVENTS DURING TRIP (factor into scheduling):');
+    for (const ev of intel.calendarEvents) {
+      let entry = `- ${ev.name} (${ev.type}, crowd impact: ${ev.crowdImpact})`;
+      if (ev.description) entry += ` — ${ev.description}`;
+      lines.push(entry);
+      if (ev.tips && ev.tips.length > 0) {
+        lines.push(`  ↳ Tip: ${ev.tips[0]}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push('SCHEDULING RULES from city intelligence:');
+  lines.push('1. Prefer trending spots above as replacement candidates when proposing alternatives.');
+  lines.push('2. Do NOT schedule crowd-heavy activities during peak crowd hours listed above.');
+  lines.push('3. If a local event causes extreme crowd impact, avoid nearby areas that day or suggest early-morning timing.');
+
+  return lines.join('\n');
+}
+
+/** Re-sort availableServices so entries matching TravelPulse trending names/types appear first. */
+function weightTrendingServices(
+  services: ProviderService[],
+  trending: CityIntelligence['trending'],
+): ProviderService[] {
+  if (trending.length === 0) return services;
+
+  const trendingNames = new Set(trending.map(t => t.name.toLowerCase()));
+  const trendingTypes = new Set(trending.map(t => t.type.toLowerCase()));
+
+  const prioritised: ProviderService[] = [];
+  const rest: ProviderService[] = [];
+
+  for (const svc of services) {
+    const nameMatch = trendingNames.has((svc.serviceName || '').toLowerCase());
+    const typeMatch = trendingTypes.has((svc.serviceType || '').toLowerCase());
+    if (nameMatch || typeMatch) {
+      prioritised.push(svc);
+    } else {
+      rest.push(svc);
+    }
+  }
+
+  return [...prioritised, ...rest];
+}
+
+/**
+ * Platform-provider ranking by TRAVELER-PROFILE FIT (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md,
+ * sourcing rule step 1: "PLATFORM FIRST ... ranked by fit to the traveler profile"). Runs AFTER
+ * `weightTrendingServices` so trending stays the primary signal and profile fit refines within
+ * it — a STABLE sort (Node's Array#sort has been stable since V8 7.0) so services already tied
+ * on profile fit keep their trending-derived relative order.
+ *
+ * Read-side reordering ONLY: `availableServices` comes from `loadOptimizerCatalog`
+ * (optimizer-baseline.service.ts — active + approved + destination-scoped; before ledger
+ * 2026-08-22-optimizer-catalog-honesty this comment claimed an approved query that neither call
+ * site actually ran) — this never changes which services are eligible, never touches `price`,
+ * and never affects approval gates. Two fit signals, both
+ * derived from REAL service text/price data, never fabricated:
+ *   - dietary: a real keyword match (`matchesDietary`) against the service's own name/type/
+ *     description — never a guess when the traveler has no dietary tags set.
+ *   - budgetBand: the service's OWN price ranked into a tercile of THIS candidate list's own
+ *     price distribution (never a hardcoded dollar threshold — CLAUDE.md §8 forbids fee/rate
+ *     literals; this is a relative-rank comparison, not a rate) and compared against the
+ *     traveler's stated/derived budget band.
+ */
+function weightServicesByProfileFit(
+  services: ProviderService[],
+  effective: EffectiveTravelerProfile | null,
+): ProviderService[] {
+  if (!effective) return services;
+  const hasDietary = effective.dietary.length > 0;
+  const hasBudgetBand = !!effective.budgetBand;
+  if (!hasDietary && !hasBudgetBand) return services;
+
+  // Tercile price bands over THIS candidate list only — relative rank, not a literal threshold.
+  let tierOf: (price: number) => BudgetBandTier | null = () => null;
+  if (hasBudgetBand) {
+    const prices = services
+      .map((s) => parseFloat(s.price || "0"))
+      .filter((p) => Number.isFinite(p) && p > 0)
+      .sort((a, b) => a - b);
+    if (prices.length >= 3) {
+      const lowCut = prices[Math.floor(prices.length / 3)];
+      const highCut = prices[Math.floor((2 * prices.length) / 3)];
+      tierOf = (price: number): BudgetBandTier | null => {
+        if (!Number.isFinite(price) || price <= 0) return null;
+        if (price <= lowCut) return "budget";
+        if (price <= highCut) return "moderate";
+        return "luxury";
+      };
+    }
+  }
+
+  const scored = services.map((svc, idx) => {
+    let score = 0;
+    if (hasDietary) {
+      const text = `${svc.serviceName || ""} ${svc.serviceType || ""} ${svc.shortDescription || ""}`;
+      if (matchesDietary(text, effective.dietary)) score += 2;
+    }
+    if (hasBudgetBand) {
+      const tier = tierOf(parseFloat(svc.price || "0"));
+      if (tier && tier === effective.budgetBand) score += 1;
+    }
+    return { svc, score, idx };
+  });
+
+  // Stable: ties keep their original (trending-weighted) relative order.
+  scored.sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
+  return scored.map((s) => s.svc);
+}
+type BudgetBandTier = "budget" | "moderate" | "luxury";
+
+export async function generateOptimizedItineraries(
+  comparisonId: string,
+  userId: string,
+  baselineItems: ItineraryItem[],
+  availableServices: ProviderService[],
+  destination: string,
+  startDate: string,
+  endDate: string,
+  budget?: number,
+  travelers?: number,
+  tripId?: string,
+  userTransportPrefs?: Partial<UserTransportPrefs>,
+  tripPreferences?: TripPreferences,
+  /** Lane 5b: the trip's `purchased` items. Constraints only — see `FixedCommitment`.
+   *  Passed in by the caller (which has already authorized the trip) rather than read here from
+   *  `tripId`, because the create route deliberately does NOT pass `tripId` today and activating
+   *  its anchor/day-boundary reads as a side effect of this lane would be an unrelated behaviour
+   *  change. Empty array / omitted ⇒ every code path below is a no-op. */
+  fixedCommitments: FixedCommitment[] = [],
+  /** Phase 1c: the traveler's explicit "build around THIS" choice, already resolved + scored by the
+   *  route against real coordinates. When present, ALL THREE versions are built around it (they
+   *  still differ by strategy); when omitted, anchors are auto-picked (one hotel / neighborhood /
+   *  activity). Undefined ⇒ unchanged auto behaviour. */
+  pinnedAnchor?: AnchorScore
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    let anchorConstraints: AnchorConstraint[] = [];
+    let boundaryConstraints: DayBoundaryConstraint[] = [];
+    let anchorPromptSection = '';
+
+    if (tripId) {
+      const [anchors, boundaries] = await Promise.all([
+        db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, tripId)),
+        db.select().from(dayBoundaries).where(eq(dayBoundaries.tripId, tripId)),
+      ]);
+
+      if (anchors.length > 0) {
+        anchorConstraints = parseAnchorConstraints(anchors, startDate);
+        anchorPromptSection = `\n\nTEMPORAL ANCHORS (IMMOVABLE CONSTRAINTS - DO NOT SCHEDULE ACTIVITIES DURING THESE TIMES):
+${anchorConstraints.map(a => `- Day ${a.dayNumber}: ${formatAnchorForPrompt(a)}`).join('\n')}
+
+IMPORTANT: These are fixed commitments (flights, reservations, ceremonies). You MUST NOT place activities during anchor times or their buffer zones. Plan around them.`;
+      }
+
+      if (boundaries.length > 0) {
+        boundaryConstraints = boundaries.map(b => ({
+          dayNumber: b.dayNumber,
+          earliestActivityStart: b.earliestActivityStart || undefined,
+          latestActivityEnd: b.latestActivityEnd || undefined,
+          mustReturnToHotel: b.mustReturnToHotel ?? false,
+        }));
+        anchorPromptSection += `\n\nDAY BOUNDARIES:
+${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart ? `starts at ${b.earliestActivityStart}` : 'normal start'}${b.latestActivityEnd ? `, must end by ${b.latestActivityEnd}` : ''}${b.mustReturnToHotel ? ' (must return to hotel)' : ''}`).join('\n')}`;
+      }
+    }
+
+    // Look up logistics context from experience type
+    let logisticsContextSection = '';
+    const [compRecord] = await db
+      .select({ experienceTypeSlug: itineraryComparisons.experienceTypeSlug })
+      .from(itineraryComparisons)
+      .where(eq(itineraryComparisons.id, comparisonId));
+    if (compRecord?.experienceTypeSlug) {
+      const [expType] = await db
+        .select()
+        .from(experienceTypes)
+        .where(eq(experienceTypes.slug, compRecord.experienceTypeSlug));
+      if (expType) {
+        logisticsContextSection = buildLogisticsContext(expType);
+      }
+    }
+
+    // ── TravelPulse city intelligence (non-blocking fallback) ─────────────────
+    const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
+    const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
+
+    // ── "Build around a location" anchors (ledger 2026-08-23-optimizer-anchors) ─────────
+    // Each of the three versions is built around a real anchor — a hotel, a neighborhood, or the
+    // trip's own centrepiece activity — scored by straight-line fit to the trip's LOCATED stops
+    // (server/services/anchor-scoring.ts). Fail-open: a lookup miss degrades to "no anchor label"
+    // (chosenAnchors stays empty and every anchor prompt line / persisted column below is omitted),
+    // never a failed optimization. §13 — an anchor is only ever a real scored candidate or absent,
+    // never fabricated; a thin catalog simply yields fewer than three anchored versions.
+    let chosenAnchors: AnchorScore[] = [];
+    if (pinnedAnchor) {
+      // 1c: the traveler explicitly chose a location to build around — every version builds around
+      // it (they still differ by strategy). Already resolved + scored by the route against real
+      // coordinates, so it is used as-is; the route dropped it if it couldn't resolve (§13).
+      chosenAnchors = [pinnedAnchor, pinnedAnchor, pinnedAnchor];
+    } else {
+      try {
+        const anchorStops = baselineItems.map((it) => {
+          const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
+          const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
+          return {
+            id: String(it.id),
+            name: (it as any).title ?? (it as any).name ?? "Stop",
+            lat: Number.isFinite(lat) ? lat : null,
+            lng: Number.isFinite(lng) ? lng : null,
+          };
+        });
+        const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
+        chosenAnchors = pickAutoAnchors(ranked, 3);
+      } catch (err) {
+        console.warn("[Optimizer] anchor scoring failed (non-critical):", (err as Error).message);
+      }
+    }
+    // A per-version prompt line — omitted (empty string) when there is no anchor for that slot, so
+    // the AI is only ever told about a real, scored location and never invents one.
+    const anchorLine = (i: number): string => {
+      const a = chosenAnchors[i];
+      if (!a) return "";
+      const kind = a.type === "hotel" ? "hotel" : a.type === "neighborhood" ? "neighborhood" : "central activity";
+      const fit = a.medianMeters != null
+        ? ` (typical straight-line distance to the trip's located stops ≈ ${(a.medianMeters / 1000).toFixed(1)} km; estimate, not routed)`
+        : "";
+      return `\nBUILD THIS VERSION AROUND a ${kind}: "${a.name}"${fit}. Cluster each day so travel radiates from this anchor; keep the trip's fixed commitments intact.`;
+    };
+
+    // ── Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) ─────────────────
+    // Profile-aware platform selection: (1) a prompt section like cityIntelligenceSection above,
+    // conditional on real signal existing (§13 — never a fabricated placeholder); (2) merged into
+    // the transport-leg scoring knobs below (mode/comfort choice only — never price, §8/§18);
+    // (3) used to re-rank the AVAILABLE SERVICES list the AI sees. Non-blocking: a lookup failure
+    // degrades to "no profile signal", never a failed optimization.
+    let travelerProfile: TravelerProfile | null = null;
+    try {
+      travelerProfile = await getTravelerProfile(userId);
+    } catch (err) {
+      console.warn("[Optimizer] Traveler profile fetch failed (non-critical):", (err as Error).message);
+    }
+    const travelerProfileSection = travelerProfile ? buildTravelerProfilePromptSection(travelerProfile) : "";
+    const profileTransportPrefs = travelerProfile ? effectiveProfileToTransportPrefs(travelerProfile.effective) : {};
+    // An explicit prefs object passed in by the caller (none does today — see the service
+    // header's note) still wins over the profile-derived defaults, same "explicit beats derived"
+    // posture the profile's own merge rule uses one layer up.
+    const effectiveTransportPrefs: Partial<UserTransportPrefs> = { ...profileTransportPrefs, ...(userTransportPrefs || {}) };
+
+    // Sprint-1 dislike loop, extended (WP-A): the chips a traveler just submitted on this
+    // regenerate are REAL feedback — record them into the durable profile so a repeated pattern
+    // (e.g. "too_packed" across multiple re-runs) becomes a derived pace signal for next time.
+    // Fire-and-forget; never blocks or fails the optimization itself.
+    if (tripPreferences?.feedback && tripPreferences.feedback.length > 0) {
+      recordDislikeFeedback(userId, tripPreferences.feedback).catch((err) => {
+        console.warn("[Optimizer] recordDislikeFeedback failed (non-critical):", (err as Error).message);
+      });
+    }
+
+    // ── Adaptive variant strategy (style-matched) ─────────────────────────────
+    const [variantA, variantB] = selectVariantStrategy(tripPreferences);
+    const variantC = selectThirdVariantStrategy(variantA, variantB);
+
+    // Stamp updatedAt on every transition INTO "generating" (not just create-time insert) so the
+    // stale-generating sweep (server/services/itinerary-generation-sweep-scheduler.service.ts)
+    // measures staleness from when THIS attempt actually started, not from a re-run's original,
+    // possibly days-old, createdAt/updatedAt. Without this, a regenerate call on an old comparison
+    // row would look instantly "stale" to the sweep the moment it starts.
+    await db
+      .update(itineraryComparisons)
+      .set({ status: "generating", updatedAt: new Date() } as any)
+      .where(eq(itineraryComparisons.id, comparisonId));
+
+    const baselineVariant = await db
+      .insert(itineraryVariants)
+      .values({
+        comparisonId,
+        name: "Your Plan",
+        description: "Your original itinerary selection",
+        source: "user",
+        status: "generated",
+        sortOrder: 0,
+      })
+      .returning();
+
+    const baselineTotal = baselineItems.reduce((sum, item) => sum + (item.price || 0), 0);
+    // §13: average only over items that actually HAVE a rating; when none do,
+    // there is no baseline rating — null, never a fabricated stand-in. (The
+    // route-level mapping no longer injects 4.5 for unrated items.)
+    const ratedBaselineItems = baselineItems.filter(item => typeof item.rating === "number");
+    const baselineAvgRating: number | null = ratedBaselineItems.length > 0
+      ? ratedBaselineItems.reduce((sum, item) => sum + (item.rating as number), 0) / ratedBaselineItems.length
+      : null;
+
+    // Calculate baseline metrics without reordering (keep user's original order)
+    const baselineForMetrics = baselineItems.map(item => ({
+      serviceType: item.serviceType || 'sightseeing',
+      price: item.price,
+      duration: item.duration,
+      dayNumber: item.dayNumber || 1
+    }));
+    const baselineEnhancedMetrics = calculateItineraryMetrics(baselineForMetrics, travelers || 1, compRecord?.experienceTypeSlug);
+
+    if (baselineItems.length > 0) {
+      await db.insert(itineraryVariantItems).values(
+        baselineItems.map((item, i) => ({
+          variantId: baselineVariant[0].id,
+          // Lane 5a Defect 3: carry the catalog link when the caller supplied one (cart-sourced
+          // baselines have it; inline/external ones do not → NULL, never a guess).
+          providerServiceId: item.providerServiceId ?? null,
+          dayNumber: item.dayNumber || 1,
+          timeSlot: item.timeSlot || "morning",
+          name: item.name,
+          description: item.description,
+          serviceType: item.serviceType,
+          price: item.price?.toString(),
+          rating: item.rating?.toString(),
+          location: item.location,
+          // Real coordinates from the loader (item pin or linked catalog row) — the field the
+          // transport-leg gate reads; NULL for an unlocated item, never a guess (§13).
+          latitude: item.latitude != null ? item.latitude.toString() : null,
+          longitude: item.longitude != null ? item.longitude.toString() : null,
+          duration: item.duration,
+          sortOrder: i,
+        }))
+      );
+    }
+
+    await db
+      .update(itineraryVariants)
+      .set({
+        totalCost: baselineTotal.toString(),
+        averageRating: baselineAvgRating !== null ? baselineAvgRating.toFixed(2) : null,
+        optimizationScore: Math.round((baselineEnhancedMetrics.balanceScore + baselineEnhancedMetrics.wellnessScore + baselineEnhancedMetrics.paceScore) / 3),
+      })
+      .where(eq(itineraryVariants.id, baselineVariant[0].id));
+
+    // Add baseline metrics for comparison
+    const baselineMetrics: InsertItineraryVariantMetric[] = [
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "total_cost",
+        metricLabel: "Total Cost",
+        value: baselineTotal.toString(),
+        unit: "USD",
+        betterIsLower: true,
+        description: `Your planned spending: $${baselineTotal.toFixed(0)}`,
+      },
+      // §13: the rating metric only exists when real ratings exist.
+      ...(baselineAvgRating !== null ? [{
+        variantId: baselineVariant[0].id,
+        metricKey: "average_rating",
+        metricLabel: "Average Rating",
+        value: baselineAvgRating.toFixed(2),
+        unit: "stars",
+        betterIsLower: false,
+        description: `Average rating: ${baselineAvgRating.toFixed(1)} stars`,
+      }] : []),
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "balance_score",
+        metricLabel: "Balance Score",
+        value: baselineEnhancedMetrics.balanceScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.balanceScore >= 80 
+          ? "Excellent mix of activity types" 
+          : baselineEnhancedMetrics.balanceScore >= 60
+          ? "Good variety of experiences"
+          : "Could benefit from more variety",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "wellness_score",
+        metricLabel: "Wellness Score",
+        value: baselineEnhancedMetrics.wellnessScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.wellnessScore >= 80
+          ? "Optimal balance of activity and relaxation"
+          : baselineEnhancedMetrics.wellnessScore >= 60
+          ? "Good recovery time included"
+          : "Consider adding relaxation activities",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "pace_score",
+        metricLabel: "Pace Score",
+        value: baselineEnhancedMetrics.paceScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.paceScore >= 80
+          ? "Well-paced itinerary"
+          : baselineEnhancedMetrics.paceScore >= 60
+          ? "Comfortable daily pace"
+          : "May feel rushed or sparse",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "diversity_score",
+        metricLabel: "Diversity Score",
+        value: baselineEnhancedMetrics.diversityScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.diversityScore >= 80
+          ? "Rich variety of experience types"
+          : baselineEnhancedMetrics.diversityScore >= 60
+          ? "Good range of activities"
+          : "Consider diversifying activities",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "relaxation_minutes",
+        metricLabel: "Relaxation Time",
+        value: baselineEnhancedMetrics.relaxationMinutes.toString(),
+        unit: "minutes",
+        betterIsLower: false,
+        description: `${baselineEnhancedMetrics.relaxationMinutes} minutes of wellness activities`,
+      },
+    ];
+
+    await db.insert(itineraryVariantMetrics).values(baselineMetrics);
+
+    // Calculate transport legs for the baseline variant
+    // Only compute if we have persisted variant items (which may have real coords from DB)
+    try {
+      const baselineVariantItems = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, baselineVariant[0].id))
+        .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+
+      const baselineActivitiesWithCoords = baselineVariantItems
+        .filter((item) => item.latitude != null && item.longitude != null)
+        .map((item, idx) => ({
+          id: item.id,
+          name: item.name || `Stop ${idx + 1}`,
+          lat: parseFloat(item.latitude as unknown as string),
+          lng: parseFloat(item.longitude as unknown as string),
+          scheduledTime: item.startTime || "09:00",
+          dayNumber: item.dayNumber,
+          order: item.sortOrder ?? idx,
+        }));
+
+      if (baselineActivitiesWithCoords.length > 0) {
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs);
+      }
+    } catch (legErr) {
+      console.error("Baseline transport leg calculation error (non-critical):", legErr);
+    }
+
+    // Weight trending services to appear first in the top-20 the AI sees, then refine by
+    // traveler-profile fit (WP-A sourcing rule step 1: PLATFORM FIRST, ranked by profile fit).
+    const trendWeightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+    const weightedServices = weightServicesByProfileFit(trendWeightedServices, travelerProfile?.effective ?? null);
+
+    const servicesList = weightedServices.map((s) => ({
+      id: s.id,
+      name: s.serviceName,
+      type: s.serviceType,
+      price: parseFloat(s.price || "0"),
+      rating: parseFloat(s.averageRating || "0"),
+      location: s.location,
+      description: s.shortDescription,
+    }));
+
+    const compactServicesList = servicesList.slice(0, 20).map(s =>
+      `${s.id}|${s.name}|${s.type}|$${s.price}|${s.rating}★|${s.location}`
+    ).join('\n');
+
+    const compactBaseline = baselineItems.map(item =>
+      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
+    ).join('\n');
+
+    // ── Marquee / signature item detection ────────────────────────────────────
+    const MARQUEE_KEYWORDS = [
+      "helicopter", "private", "exclusive", "yacht", "charter",
+      "hot air balloon", "skydiving", "bespoke", "luxury", "vip",
+      "concierge", "villa", "penthouse", "seaplane", "submarine",
+      "float plane", "paragliding", "paramotor", "jet ski",
+    ];
+    // Commodity types are always replaceable — never lock them as "protected"
+    const COMMODITY_TYPES = new Set([
+      'hotel', 'hotels', 'accommodation', 'lodging', 'hostel',
+      'flight', 'flights', 'transport', 'transportation', 'transfer',
+      'car', 'car_rental', 'rental', 'shuttle',
+    ]);
+    // Raised to $300 to avoid accidentally protecting mid-tier restaurants
+    const MARQUEE_PRICE_THRESHOLD = 300;
+
+    const marqueeItems = baselineItems.filter(item => {
+      const nameLower = (item.name || '').toLowerCase();
+      const serviceTypeLower = (item.serviceType || '').toLowerCase();
+      const isCommodity = COMMODITY_TYPES.has(serviceTypeLower);
+      const isKeyword = MARQUEE_KEYWORDS.some(kw => nameLower.includes(kw));
+      const isHighValueExperience = !isCommodity && (item.price || 0) >= MARQUEE_PRICE_THRESHOLD;
+      return isKeyword || isHighValueExperience;
+    });
+
+    // Drop policy a (Lane 6 residue): in-checkout (`ready_for_checkout`) items are protected
+    // regardless of price or commodity-ness — the traveler has expressed purchase intent. They
+    // join the PROTECTED prompt section (schedule-movable, never droppable); the server-side
+    // rejection below the AI call is the enforcement, this is just steering to keep false
+    // rejections rare.
+    const mustRetainItems = baselineItems.filter(item => item.mustRetain);
+    const protectedPromptItems = [
+      ...marqueeItems,
+      ...mustRetainItems.filter(item => !marqueeItems.includes(item)),
+    ];
+
+    let marqueeSection = '';
+    if (protectedPromptItems.length > 0) {
+      const marqueeList = protectedPromptItems
+        .map(item => `- Day ${item.dayNumber || 1} ${item.timeSlot || ''} | ${item.name} | $${item.price || 0}`)
+        .join('\n');
+      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these; you MAY move their day/time):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
+    }
+
+    // ── Lane 5b: already-purchased items as immovable constraints ─────────────
+    const fixedCommitmentSection = buildFixedCommitmentSection(fixedCommitments);
+
+    // ── Empty day detection ───────────────────────────────────────────────────
+    let emptyDaySection = '';
+    if (startDate && endDate) {
+      const startMs = new Date(startDate).getTime();
+      const endMs = new Date(endDate).getTime();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
+        const tripDurationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+        if (tripDurationDays > 1) {
+          // Lane 5b: a day whose only content is an already-PURCHASED item is not empty. Listing
+          // it as "EMPTY DAY TO FILL" would contradict the fixed-commitment section in the same
+          // prompt and invite the model to schedule over a booking.
+          const coveredDays = new Set([
+            ...baselineItems.map(item => item.dayNumber || 1),
+            ...fixedCommitments.map(c => c.dayNumber),
+          ]);
+          const emptyDays: number[] = [];
+          for (let d = 1; d <= tripDurationDays; d++) {
+            if (!coveredDays.has(d)) emptyDays.push(d);
+          }
+          if (emptyDays.length > 0) {
+            const coveredList = [...coveredDays].sort((a, b) => a - b).join(', ');
+            emptyDaySection = `\n\nTRIP DURATION: ${tripDurationDays} days (Days 1–${tripDurationDays})
+DAYS WITH USER ACTIVITIES: Days ${coveredList}
+EMPTY DAYS TO FILL: Days ${emptyDays.join(', ')}
+
+For each empty day, add activities that match the user's experience style (inferred from their existing selections), the destination, and their overall budget pace. Each empty day must include at least: a morning activity, a dining experience, an afternoon activity, and accommodation. These auto-filled days must feel cohesive with the user's existing selections. All variants must cover all ${tripDurationDays} days.`;
+          }
+        }
+      }
+    }
+
+    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
+
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
+
+USER'S CURRENT ITINERARY:
+${compactBaseline}
+
+AVAILABLE SERVICES (id|name|type|price|rating|location):
+${compactServicesList}
+
+Generate EXACTLY 3 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
+
+VARIANT 1 — "${variantA.name}":
+- Goal: ${variantA.goal}
+- Strategy: ${variantA.strategy}
+- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS${anchorLine(0)}
+
+VARIANT 2 — "${variantB.name}":
+- Goal: ${variantB.goal}
+- Strategy: ${variantB.strategy}
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(1)}
+
+VARIANT 3 — "${variantC.name}":
+- Goal: ${variantC.goal}
+- Strategy: ${variantC.strategy}
+- Keep: the same trip duration and any PROTECTED ITEMS${anchorLine(2)}
+
+Rules for all three variants:
+1. The three variants must each differ from one another in at least 40% of their line items
+2. Include metrics showing WHY each variant is better than the user's plan
+3. Use services from the available list when possible
+4. Provide clear reasoning for each change
+5. Preserve all PROTECTED ITEMS exactly — never replace, remove, or move them
+6. Cover all trip days, auto-filling any empty days with contextually appropriate activities
+
+Respond with valid JSON in this exact format:
+{
+  "variants": [
+    {
+      "name": "${variantA.name}",
+      "description": "A tailored alternative that matches your travel style",
+      "reasoning": "This alternative saves 20% on costs by...",
+      "items": [
+        {
+          "dayNumber": 1,
+          "timeSlot": "morning",
+          "startTime": "09:00",
+          "endTime": "12:00",
+          "name": "Activity Name",
+          "description": "Brief description",
+          "serviceType": "activities",
+          "price": 150,
+          "rating": 4.5,
+          "location": "Paris, France",
+          "duration": 180,
+          "travelTimeFromPrevious": 15,
+          "isReplacement": true,
+          "replacementReason": "Similar experience at 30% lower cost",
+          "originalServiceId": "service-id-if-applicable"
+        }
+      ],
+      "metrics": {
+        "totalCost": 1500,
+        "totalTravelTime": 120,
+        "averageRating": 4.6,
+        "freeTimeMinutes": 240,
+        "optimizationScore": 85
+      }
+    }
+  ]
+}
+
+The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, in this order: "${variantA.name}", "${variantB.name}", "${variantC.name}".`;
+
+    const content = await callAI(
+      "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
+      prompt
+    );
+    if (!content) {
+      throw new Error("No response from AI");
+    }
+
+    let aiResponse: AIResponse;
+    try {
+      const jsonContent = extractJSON(content);
+      aiResponse = JSON.parse(jsonContent);
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", content);
+      throw new Error("Failed to parse AI response");
+    }
+
+    // Ratified contract (decision-maker 2026-08-23; docs/design/optimized-slip-review-mock.html —
+    // "Three ways to sharpen your plan", columns v1/v2/v3, "the other two are discarded"): the slip
+    // shows the baseline plan plus EXACTLY THREE AI variants. The prompt asks for three (mapped to
+    // the named strategy descriptors variantA/variantB/variantC), but a model can over-produce — an
+    // audit observed Grok returning 8, and the persist loop below saved every one, so extra,
+    // undifferentiated variants reached travelers. Cap to the first three here: they correspond to
+    // the three requested strategies, in order. The floor case (<3 returned) and the ≥40%
+    // line-item distinctness enforcement are tracked separately (Task #1621).
+    if (Array.isArray(aiResponse.variants) && aiResponse.variants.length > 3) {
+      console.warn(
+        `[optimizer] model returned ${aiResponse.variants.length} variants; capping to 3 per ratified contract`,
+      );
+      aiResponse.variants = aiResponse.variants.slice(0, 3);
+    }
+
+    // Lane 5a Defect 3: the AI is asked for `originalServiceId` but the value was discarded, so
+    // every AI variant item landed with a NULL `providerServiceId` — which is why apply-to-cart
+    // always inserted 0 rows and apply-to-trip always copied NULL. We now thread it through, but
+    // an LLM can invent an id, so it is only honoured when it matches a service we actually put in
+    // front of it. Anything else (invented, empty, or an item the AI created itself) stays NULL.
+    const offeredServiceIds = new Set(availableServices.map((s) => String(s.id)));
+    const resolveOriginalServiceId = (raw: unknown): string | undefined => {
+      if (typeof raw !== "string") return undefined;
+      const id = raw.trim();
+      return id && offeredServiceIds.has(id) ? id : undefined;
+    };
+    // Real coordinates for catalog-linked variant items (ledger
+    // 2026-08-22-optimizer-catalog-honesty): a validated `providerServiceId` copies the catalog
+    // row's own migration-129 coordinates onto the variant item, which is what lets
+    // `calculateTransportLegs` actually run. An AI-invented item with no catalog row stays
+    // NULL/NULL — its location is a string the model wrote, and we never geocode a guess (§13).
+    const serviceCoordsById = new Map(
+      availableServices.map((s) => [
+        String(s.id),
+        { latitude: s.latitude ?? null, longitude: s.longitude ?? null },
+      ]),
+    );
+    const coordsForService = (serviceId: string | null | undefined) =>
+      (serviceId && serviceCoordsById.get(serviceId)) || { latitude: null, longitude: null };
+
+    await Promise.all(aiResponse.variants.map(async (variant, v) => {
+      // Convert AI items to SequencedActivity format
+      const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
+        providerServiceId: resolveOriginalServiceId(item.originalServiceId),
+        name: item.name,
+        serviceType: item.serviceType,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        duration: item.duration,
+        price: item.price,
+        rating: item.rating,
+        location: item.location,
+        dayNumber: item.dayNumber,
+        timeSlot: item.timeSlot,
+        description: item.description,
+        travelTimeFromPrevious: item.travelTimeFromPrevious,
+        isReplacement: item.isReplacement,
+        replacementReason: item.replacementReason
+      }));
+
+      // Lane 5b: a `purchased` item is NEVER a variant item. The prompt says so; this makes it
+      // true. Applied BEFORE sequencing/metrics so an echoed commitment can neither occupy a slot
+      // nor double-count its price into the variant's totals.
+      const { kept: activitiesAfterCommitmentStrip, stripped: strippedEchoes } =
+        stripFixedCommitmentEchoes(activitiesForSequencing, fixedCommitments);
+      if (strippedEchoes > 0) {
+        console.warn(
+          `[optimizer] variant "${variant.name}": dropped ${strippedEchoes} item(s) echoing an already-purchased commitment`,
+        );
+      }
+
+      // Apply smart sequencing to reorder activities
+      const sequencingResult = reorderItinerary(activitiesAfterCommitmentStrip);
+      let reorderedItems = sequencingResult.reorderedItems;
+      const methodologyNotes = [...sequencingResult.allMethodologyNotes];
+      const sequencingScore = sequencingResult.overallScore;
+
+      if (anchorConstraints.length > 0 || boundaryConstraints.length > 0) {
+        const dayGroups: Record<number, SequencedActivity[]> = {};
+        for (const item of reorderedItems) {
+          const day = item.dayNumber || 1;
+          if (!dayGroups[day]) dayGroups[day] = [];
+          dayGroups[day].push(item);
+        }
+
+        const anchorAdjusted: SequencedActivity[] = [];
+        for (const [dayStr, dayItems] of Object.entries(dayGroups)) {
+          const dayNum = parseInt(dayStr);
+          const dayAnchors = anchorConstraints.filter(a => a.dayNumber === dayNum);
+          const dayBoundary = boundaryConstraints.find(b => b.dayNumber === dayNum);
+
+          let adjusted = dayItems;
+          if (dayAnchors.length > 0) {
+            const result = applyAnchorConstraints(adjusted, dayAnchors, dayBoundary);
+            adjusted = result.activities;
+            methodologyNotes.push(...result.anchorNotes);
+          }
+          {
+            const result = applyEnergyBalancing(adjusted);
+            adjusted = result.activities;
+            methodologyNotes.push(...result.energyNotes);
+          }
+          anchorAdjusted.push(...adjusted);
+        }
+        reorderedItems = anchorAdjusted;
+      }
+
+      // Lane 6 residue R1 (drop policy a, rulings 4/15): a variant that omits any in-checkout
+      // (`ready_for_checkout`) baseline item is INVALID — rejected here, before any row is
+      // persisted. Match is the same two-key predicate the strip/dedupe use (`providerServiceId`
+      // first, then case-insensitive title). FAIL-CLOSED: no match ⇒ rejection — the fuzzy
+      // match's failure mode must be a false rejection (regenerate), never a false acceptance.
+      if (mustRetainItems.length > 0) {
+        const omitted = mustRetainItems.filter(retained => {
+          const retainedName = retained.name.trim().toLowerCase();
+          return !reorderedItems.some(item =>
+            (retained.providerServiceId && item.providerServiceId === retained.providerServiceId) ||
+            item.name.trim().toLowerCase() === retainedName,
+          );
+        });
+        if (omitted.length > 0) {
+          console.error(
+            `[optimizer] variant "${variant.name}" REJECTED (drop policy a): omits ${omitted.length} in-checkout item(s): ${omitted.map(o => o.name).join(", ")}`,
+          );
+          return; // not persisted — an invalid variant cannot be generated, selected, or applied
+        }
+      }
+
+      // Calculate enhanced metrics
+      const enhancedMetrics = calculateItineraryMetrics(
+        reorderedItems.map(item => ({
+          serviceType: item.serviceType,
+          price: item.price,
+          duration: item.duration,
+          dayNumber: item.dayNumber
+        })),
+        travelers || 1,
+        compRecord?.experienceTypeSlug
+      );
+
+      // Combine AI optimization score with sequencing score
+      const combinedOptimizationScore = Math.round(
+        (variant.metrics.optimizationScore * 0.6) + (sequencingScore * 0.4)
+      );
+
+      // Create enhanced reasoning with sequencing insights
+      const sequencingInsight = sequencingResult.appliedRulesCount > 0
+        ? ` Activities intelligently sequenced with ${sequencingResult.appliedRulesCount} wellness rules applied for optimal pacing and recovery.`
+        : '';
+      const enhancedReasoning = variant.reasoning + sequencingInsight;
+
+      const [newVariant] = await db
+        .insert(itineraryVariants)
+        .values({
+          comparisonId,
+          name: variant.name,
+          description: variant.description,
+          source: "ai_optimized",
+          status: "generated",
+          totalCost: variant.metrics.totalCost.toString(),
+          totalTravelTime: variant.metrics.totalTravelTime,
+          averageRating: variant.metrics.averageRating.toString(),
+          freeTimeMinutes: variant.metrics.freeTimeMinutes,
+          optimizationScore: combinedOptimizationScore,
+          aiReasoning: enhancedReasoning,
+          sortOrder: v + 1,
+          // "Build around a location" — the anchor this version was built around, by slot (§13:
+          // absent when there was no scorable anchor for this slot, never a fabricated one).
+          anchorType: chosenAnchors[v]?.type ?? null,
+          anchorName: chosenAnchors[v]?.name ?? null,
+          anchorLat: chosenAnchors[v]?.lat != null ? chosenAnchors[v].lat.toString() : null,
+          anchorLng: chosenAnchors[v]?.lng != null ? chosenAnchors[v].lng.toString() : null,
+          anchorMedianMeters:
+            chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
+        })
+        .returning();
+
+      // Batch-insert all variant items in one round-trip
+      if (reorderedItems.length > 0) {
+        await db.insert(itineraryVariantItems).values(
+          reorderedItems.map((item, i) => {
+            const activityNotes = methodologyNotes.filter(
+              n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
+            );
+            const coords = coordsForService(item.providerServiceId);
+            return {
+              variantId: newVariant.id,
+              // Lane 5a Defect 3: the catalog link, validated above against the services actually
+              // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
+              providerServiceId: item.providerServiceId ?? null,
+              // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              dayNumber: item.dayNumber,
+              timeSlot: item.timeSlot,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              name: item.name,
+              description: item.description,
+              serviceType: item.serviceType,
+              price: typeof item.price === 'number' ? item.price.toString() : item.price?.toString(),
+              rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
+              location: item.location,
+              duration: item.duration,
+              travelTimeFromPrevious: item.travelTimeFromPrevious,
+              isReplacement: item.isReplacement,
+              replacementReason: item.replacementReason,
+              metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
+              sortOrder: i,
+            };
+          })
+        );
+      }
+
+      const costSavings = baselineTotal - variant.metrics.totalCost;
+      const costSavingsPercent = baselineTotal > 0 
+        ? ((costSavings / baselineTotal) * 100).toFixed(1) 
+        : "0";
+
+      // §13: a rating comparison needs a real baseline; without one the variant
+      // metric states its own average with no invented "improvement" claim.
+      const ratingImprovement = baselineAvgRating !== null
+        ? variant.metrics.averageRating - baselineAvgRating
+        : null;
+
+      const metricsToInsert: InsertItineraryVariantMetric[] = [
+        {
+          variantId: newVariant.id,
+          metricKey: "total_cost",
+          metricLabel: "Total Cost",
+          value: variant.metrics.totalCost.toString(),
+          unit: "USD",
+          betterIsLower: true,
+          comparison: costSavings > 0 ? "saves" : costSavings < 0 ? "costs more" : "same",
+          improvementPercentage: costSavingsPercent,
+          description: costSavings > 0 
+            ? `Saves $${costSavings.toFixed(0)} (${costSavingsPercent}% less)` 
+            : costSavings < 0 
+            ? `Costs $${Math.abs(costSavings).toFixed(0)} more for better experiences`
+            : "Same total cost",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "average_rating",
+          metricLabel: "Average Rating",
+          value: variant.metrics.averageRating.toString(),
+          unit: "stars",
+          betterIsLower: false,
+          ...(ratingImprovement !== null
+            ? {
+                comparison: ratingImprovement > 0 ? "better" : ratingImprovement < 0 ? "lower" : "same",
+                improvementPercentage: ratingImprovement.toFixed(1),
+                description: ratingImprovement > 0
+                  ? `+${ratingImprovement.toFixed(1)} stars higher rated`
+                  : ratingImprovement < 0
+                  ? `${ratingImprovement.toFixed(1)} stars lower but better value`
+                  : "Same rating quality",
+              }
+            : {
+                description: `Average rating: ${variant.metrics.averageRating.toFixed(1)} stars`,
+              }),
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "travel_time",
+          metricLabel: "Travel Time",
+          value: variant.metrics.totalTravelTime.toString(),
+          unit: "minutes",
+          betterIsLower: true,
+          description: `${variant.metrics.totalTravelTime} minutes between locations`,
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "free_time",
+          metricLabel: "Free Time",
+          value: variant.metrics.freeTimeMinutes.toString(),
+          unit: "minutes",
+          betterIsLower: false,
+          description: `${variant.metrics.freeTimeMinutes} minutes of relaxation time`,
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "optimization_score",
+          metricLabel: "Optimization Score",
+          value: combinedOptimizationScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: `Overall score: ${combinedOptimizationScore}/100`,
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "balance_score",
+          metricLabel: "Balance Score",
+          value: enhancedMetrics.balanceScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.balanceScore >= 80 
+            ? "Excellent mix of activity types" 
+            : enhancedMetrics.balanceScore >= 60
+            ? "Good variety of experiences"
+            : "Could benefit from more variety",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "wellness_score",
+          metricLabel: "Wellness Score",
+          value: enhancedMetrics.wellnessScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.wellnessScore >= 80
+            ? "Optimal balance of activity and relaxation"
+            : enhancedMetrics.wellnessScore >= 60
+            ? "Good recovery time included"
+            : "Consider adding relaxation activities",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "pace_score",
+          metricLabel: "Pace Score",
+          value: enhancedMetrics.paceScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.paceScore >= 80
+            ? "Well-paced itinerary"
+            : enhancedMetrics.paceScore >= 60
+            ? "Comfortable daily pace"
+            : "May feel rushed or sparse",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "diversity_score",
+          metricLabel: "Diversity Score",
+          value: enhancedMetrics.diversityScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.diversityScore >= 80
+            ? "Rich variety of experience types"
+            : enhancedMetrics.diversityScore >= 60
+            ? "Good range of activities"
+            : "Consider diversifying activities",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "sequencing_score",
+          metricLabel: "Sequencing Score",
+          value: sequencingScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: sequencingScore >= 80
+            ? "Optimally ordered for energy and wellness"
+            : sequencingScore >= 60
+            ? "Well-organized activity flow"
+            : "Standard activity ordering",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "relaxation_minutes",
+          metricLabel: "Relaxation Time",
+          value: enhancedMetrics.relaxationMinutes.toString(),
+          unit: "minutes",
+          betterIsLower: false,
+          description: `${enhancedMetrics.relaxationMinutes} minutes of wellness activities`,
+        },
+      ];
+
+      // Add methodology summary metric if applicable
+      const dayNotes = methodologyNotes.filter(n => n.type === 'day');
+      const itineraryNotes = methodologyNotes.filter(n => n.type === 'itinerary');
+      if (dayNotes.length > 0 || itineraryNotes.length > 0) {
+        metricsToInsert.push({
+          variantId: newVariant.id,
+          metricKey: "methodology_summary",
+          metricLabel: "Smart Sequencing Applied",
+          value: sequencingResult.appliedRulesCount.toString(),
+          unit: "rules",
+          betterIsLower: false,
+          description: dayNotes.length > 0 
+            ? dayNotes[0].note 
+            : (itineraryNotes.length > 0 ? itineraryNotes[0].note : "Activities sequenced for optimal flow"),
+        });
+      }
+
+      // Batch-insert all metrics in one round-trip
+      await db.insert(itineraryVariantMetrics).values(metricsToInsert);
+
+      // Transport legs — only for items with real coordinates
+      try {
+        const variantItems = await db
+          .select()
+          .from(itineraryVariantItems)
+          .where(eq(itineraryVariantItems.variantId, newVariant.id))
+          .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+
+        const activitiesWithCoords = variantItems
+          .filter((item) => item.latitude != null && item.longitude != null)
+          .map((item, idx) => ({
+            id: item.id,
+            name: item.name || `Stop ${idx + 1}`,
+            lat: parseFloat(item.latitude as unknown as string),
+            lng: parseFloat(item.longitude as unknown as string),
+            scheduledTime: item.startTime || "09:00",
+            dayNumber: item.dayNumber,
+            order: item.sortOrder ?? idx,
+          }));
+
+        if (activitiesWithCoords.length > 0) {
+          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs);
+        }
+      } catch (legErr) {
+        console.error("Transport leg calculation error (non-critical):", legErr);
+      }
+    }));
+
+    // ── Trip segmentation recommendation (WP-C follow-up, docs/briefs/TRIP_SEGMENTATION_DESIGN.md
+    // §5b Phase 1) — RECOMMENDATION-ONLY. Computed from this run's own server-resolved
+    // `baselineItems`/`startDate`/`endDate`/`travelers`, never from client input (§14 posture).
+    // `computeSegmentationProposal` never throws — a segmentation failure must never fail a paid
+    // optimize run (§15b posture); `null` just means no recommendation is persisted for this run.
+    const segmentationProposal = computeSegmentationProposal(baselineItems, startDate, endDate, travelers);
+
+    await db
+      .update(itineraryComparisons)
+      .set({
+        status: "generated",
+        optimizedAt: new Date(),
+        updatedAt: new Date(),
+        segmentationProposal: segmentationProposal as any,
+      } as any)
+      .where(eq(itineraryComparisons.id, comparisonId));
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error generating optimized itineraries:", error);
+
+    await db
+      .update(itineraryComparisons)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(eq(itineraryComparisons.id, comparisonId));
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export interface UpsellSuggestion {
+  serviceId: string;
+  title: string;
+  description: string | null;
+  price: string | null;
+  imageUrl: string | null;
+  category: string;
+  location: string | null;
+  rating: string | null;
+  matchReason: string;
+}
+
+function buildProfileCategories(
+  travelStyles: string[],
+  budget: number | null,
+  eventType: string
+): Array<{ category: string; keywords: string[]; matchReason: string }> {
+  const categories: Array<{ category: string; keywords: string[]; matchReason: string }> = [];
+
+  if (["honeymoon", "anniversary", "proposal", "wedding"].includes(eventType)) {
+    categories.push({
+      category: "romantic_dining",
+      keywords: ["romantic", "dinner", "candlelit", "intimate", "sunset", "cruise"],
+      matchReason: "Perfect for your romantic occasion",
+    });
+  }
+
+  if (travelStyles.includes("food")) {
+    categories.push({
+      category: "private_chef",
+      keywords: ["chef", "culinary", "cooking", "food", "dining", "tasting"],
+      matchReason: "Matches your culinary travel style",
+    });
+  }
+
+  if (travelStyles.includes("relaxation")) {
+    categories.push({
+      category: "spa",
+      keywords: ["spa", "massage", "wellness", "relaxation", "treatment"],
+      matchReason: "Perfect for your relaxation style",
+    });
+  }
+
+  if (budget && budget > 2000) {
+    categories.push({
+      category: "private_transfer",
+      keywords: ["transfer", "chauffeur", "private car", "driver", "limousine"],
+      matchReason: "Luxury transfer service for your trip",
+    });
+  }
+
+  if (travelStyles.includes("adventure")) {
+    categories.push({
+      category: "outdoor_addon",
+      keywords: ["adventure", "hiking", "outdoor", "excursion", "trekking", "kayak"],
+      matchReason: "Matches your adventure travel style",
+    });
+  }
+
+  return categories;
+}
+
+async function generateUpsellSuggestions(
+  comparison: any,
+  variants: any[]
+): Promise<UpsellSuggestion[]> {
+  try {
+    if (!comparison.tripId) return [];
+
+    const [trip] = await db
+      .select()
+      .from(trips)
+      .where(eq(trips.id, comparison.tripId))
+      .limit(1);
+    if (!trip) return [];
+
+    const eventType = trip.eventType || "vacation";
+    const budget = trip.budget ? parseFloat(trip.budget.toString()) : null;
+    const preferences = (trip.preferences as any) || {};
+    const travelStyles: string[] = preferences.travelStyles || [];
+
+    const scoredCategories = buildProfileCategories(travelStyles, budget, eventType);
+    if (scoredCategories.length === 0) return [];
+
+    const destination = comparison.destination || "";
+    const cityName = destination.split(",")[0].trim();
+    if (!cityName) return [];
+
+    const allKeywords = scoredCategories.flatMap(c => c.keywords);
+    if (allKeywords.length === 0) return [];
+
+    const keywordConditions = allKeywords.flatMap(kw => [
+      ilike(providerServices.serviceName, `%${kw}%`),
+      ilike(providerServices.shortDescription, `%${kw}%`),
+    ]);
+
+    const services = await db
+      .select()
+      .from(providerServices)
+      .where(
+        and(
+          eq(providerServices.status, "active"),
+          // F2 read-side gate (ledger 2026-08-22-optimizer-catalog-honesty): upsells are a
+          // traveler-facing surface, so only approved listings may appear here.
+          eq(providerServices.approvalStatus, "approved"),
+          or(
+            ilike(providerServices.location, `%${cityName}%`),
+            ilike(providerServices.location, `%${destination}%`)
+          ),
+          or(...keywordConditions)
+        )
+      )
+      .orderBy(desc(providerServices.averageRating), desc(providerServices.reviewCount))
+      .limit(15);
+
+    const suggestions: UpsellSuggestion[] = [];
+    const usedIds = new Set<string>();
+
+    for (const category of scoredCategories) {
+      if (suggestions.length >= 3) break;
+      const matchingService = services.find(s => {
+        if (usedIds.has(s.id)) return false;
+        const haystack = `${s.serviceName} ${s.shortDescription || ""} ${s.serviceType || ""}`.toLowerCase();
+        return category.keywords.some(kw => haystack.includes(kw.toLowerCase()));
+      });
+      if (matchingService) {
+        usedIds.add(matchingService.id);
+        suggestions.push({
+          serviceId: matchingService.id,
+          title: matchingService.serviceName,
+          description: matchingService.shortDescription || null,
+          price: matchingService.price?.toString() || null,
+          imageUrl: matchingService.serviceImage || null,
+          category: category.category,
+          location: matchingService.location || null,
+          rating: matchingService.averageRating?.toString() || null,
+          matchReason: category.matchReason,
+        });
+      }
+    }
+
+    return suggestions;
+  } catch (err) {
+    console.warn("[upsell] Failed to generate suggestions (non-critical):", err);
+    return [];
+  }
+}
+
+export async function getComparisonWithVariants(comparisonId: string) {
+  const comparison = await db.query.itineraryComparisons.findFirst({
+    where: eq(itineraryComparisons.id, comparisonId),
+  });
+
+  if (!comparison) return null;
+
+  const variants = await db
+    .select()
+    .from(itineraryVariants)
+    .where(eq(itineraryVariants.comparisonId, comparisonId))
+    .orderBy(itineraryVariants.sortOrder);
+
+  const variantsWithDetails = await Promise.all(
+    variants.map(async (variant) => {
+      const items = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, variant.id))
+        .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+
+      const metrics = await db
+        .select()
+        .from(itineraryVariantMetrics)
+        .where(eq(itineraryVariantMetrics.variantId, variant.id));
+
+      // Fetch transport legs for this variant
+      const legs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, variant.id))
+        .orderBy(transportLegs.dayNumber, transportLegs.legOrder);
+
+      // Organize items and legs by day for frontend consumption
+      const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
+      const days = dayNumbers.map(dayNum => {
+        const dayItems = items.filter(i => i.dayNumber === dayNum);
+        const dayLegs = legs.filter(l => l.dayNumber === dayNum);
+
+        return {
+          dayNumber: dayNum,
+          activities: dayItems.map(item => ({
+            id: item.id,
+            dayNumber: item.dayNumber,
+            timeSlot: item.timeSlot,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            name: item.name,
+            description: item.description,
+            serviceType: item.serviceType,
+            price: item.price,
+            rating: item.rating,
+            location: item.location,
+            duration: item.duration,
+            travelTimeFromPrevious: item.travelTimeFromPrevious,
+            isReplacement: item.isReplacement,
+            replacementReason: item.replacementReason,
+          })),
+          transportLegs: dayLegs.map(leg => ({
+            id: leg.id,
+            legOrder: leg.legOrder,
+            fromName: leg.fromName,
+            toName: leg.toName,
+            recommendedMode: leg.recommendedMode,
+            userSelectedMode: leg.userSelectedMode,
+            distanceDisplay: leg.distanceDisplay,
+            distanceMeters: leg.distanceMeters,
+            estimatedDurationMinutes: leg.estimatedDurationMinutes,
+            estimatedCostUsd: leg.estimatedCostUsd,
+            energyCost: leg.energyCost,
+            alternativeModes: leg.alternativeModes,
+            linkedProductUrl: leg.linkedProductUrl,
+            fromLat: leg.fromLat,
+            fromLng: leg.fromLng,
+            toLat: leg.toLat,
+            toLng: leg.toLng,
+          })),
+        };
+      });
+
+      return { ...variant, items, metrics, days };
+    })
+  );
+
+  const upsellSuggestions = await generateUpsellSuggestions(comparison, variantsWithDetails);
+
+  return { comparison, variants: variantsWithDetails, upsellSuggestions };
+}
+
+export async function selectVariant(comparisonId: string, variantId: string) {
+  const variant = await db.query.itineraryVariants.findFirst({
+    where: and(
+      eq(itineraryVariants.id, variantId),
+      eq(itineraryVariants.comparisonId, comparisonId)
+    ),
+  });
+
+  if (!variant) {
+    return { success: false, error: "Variant not found" };
+  }
+
+  await db
+    .update(itineraryVariants)
+    .set({ status: "pending" })
+    .where(eq(itineraryVariants.comparisonId, comparisonId));
+
+  await db
+    .update(itineraryVariants)
+    .set({ status: "selected" })
+    .where(eq(itineraryVariants.id, variantId));
+
+  await db
+    .update(itineraryComparisons)
+    .set({ selectedVariantId: variantId, updatedAt: new Date() })
+    .where(eq(itineraryComparisons.id, comparisonId));
+
+  return { success: true, variant };
+}

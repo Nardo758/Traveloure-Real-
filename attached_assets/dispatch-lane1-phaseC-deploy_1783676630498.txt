@@ -1,0 +1,107 @@
+DISPATCH — Lane 1 pre-deploy gate, then ship. Lanes 2–4 stay queued.
+
+Do not deploy until Phase C passes. Phase C is small and fast.
+
+═══════════════════════════════════════════════════════════════════
+PHASE C — verify the surface requireAuthOrShareToken created
+═══════════════════════════════════════════════════════════════════
+The fix is good. But requireAuthOrShareToken admits ANY non-empty ?token=
+string at the door and defers the match to the handler. Nobody has tested
+what happens with a WRONG token. Three regression tests cover the no-token
+case. Zero cover the wrong-token case — which is the surface this middleware
+newly created.
+
+C1. CITE THE VALIDATION. file:line of the handler branch that compares
+    ?token= against THAT SPECIFIC trip's shareToken. Not the middleware.
+    The handler. Paste the comparison expression verbatim.
+
+C2. DOES IT HAVE THE SAME NULL BUG? Read the expression from C1.
+    Can trip.shareToken be null? Can the parsed token be null/""/undefined?
+    If both sides can be absent, you have replaced a null-comparison bypass
+    with a second null-comparison bypass one layer down.
+    Answer yes or no, with the schema nullability of shareToken cited.
+
+C3. TEST IT. Do not reason about it. Against a real trip id:
+      GET /api/trips/<real-id>?token=garbage        → expect 4xx
+      GET /api/trips/<real-id>?token=               → expect 4xx
+      GET /api/trips/<real-id>?token=<other-trip's-shareToken> → expect 4xx
+    Paste all three actual statuses. Reads only. No PATCH.
+
+C4. THE TEST NOBODY HAS EVER RUN — authenticated non-owner.
+    Every check in this chain has been unauthenticated. Session-authenticated
+    rejection has never been observed.
+      Log in as an expert account (session cookie).
+      PATCH a trip they do not own, with managedByEaId null AND expertId null.
+      Expect: rejection, any 4xx. Paste actual status and body.
+    If this returns 200, the fix is incomplete. Stop. Do not deploy.
+
+    Note: do NOT assert 403. You correctly established the handler has no
+    403 branch. Assert "rejected", record the code it actually returns.
+
+C5. COMMIT the wrong-token test and the authed-non-owner test into
+    scripts/security-regression-trips.ts alongside the existing five.
+    Run the full suite. Paste all results.
+
+    🛑 If C3 or C4 shows any 200, STOP and report. Do not deploy.
+
+═══════════════════════════════════════════════════════════════════
+PHASE D — deploy, alone
+═══════════════════════════════════════════════════════════════════
+Only after C passes clean.
+
+D1. The branch must contain ONLY the Lane 1 security fix.
+    Confirm with: git diff origin/main --stat
+    Expected files: server/routes.ts, server/utils/trip-ownership.ts,
+    server/guest-invites.ts, scripts/security-regression-trips.ts
+    Nothing else. No eventsOnly. No census work. No route deletions.
+    No E2E password changes. If anything else is on the branch, remove it.
+    Paste the --stat output.
+
+D2. Confirm STRIPE_SECRET_KEY on the DEPLOY target begins sk_live_ and that
+    validate-env.ts gates on the same variable the deployed app actually sets.
+    If the guard reads NODE_ENV and the deploy sets only ENVIRONMENT (or
+    vice versa), production will refuse to boot on this deploy. Verify BEFORE
+    shipping, not after. Cite both: the guard's variable, and the deploy
+    environment's value.
+
+D3. Ask Leon for the go. Then deploy.
+
+D4. POST-DEPLOY, within five minutes:
+    - GET /api/health on the deployed URL → 200
+    - unauth GET /api/trips/<real-prod-trip-id> → expect 401. Paste actual.
+    - GET /api/trips/<id>?token=<valid> as a guest → expect 200. Paste actual.
+    The second is the whole point of the deploy. The third proves you did not
+    break every guest link in production.
+    If either is wrong, roll back immediately. Report before doing anything else.
+
+═══════════════════════════════════════════════════════════════════
+STILL QUEUED — do not start
+═══════════════════════════════════════════════════════════════════
+Lane 2  ?role= silently dropped (audit/experts-role-filter)   — read-only
+Lane 3  eventsOnly unreachable (fix/global-calendar-eventsonly)
+Lane 4  prove the E2E password fix (fix/e2e-password-coalesce)
+
+Also open, not yet dispatched:
+  • Row H — traveler GET /api/provider/dashboard returns 200. Live IDOR,
+    financial data. Needs its own lane.
+  • Journey-1 — void. Fabricated selector retired, 90s waits dead under a
+    60s test ceiling, Expert-vs-Expert never run.
+  • Route deduplication — 385 duplicate registrations. A project, not a lane.
+    experts.routes.ts is dead-but-BETTER. Delete nothing.
+
+═══════════════════════════════════════════════════════════════════
+STANDING PROHIBITIONS
+═══════════════════════════════════════════════════════════════════
+• A read-only probe uses GET, or a request you EXPECT to fail. Never confirm
+  a write vulnerability with a successful write.
+• Do not assert a status code the handler cannot produce. Report SKIPPED with
+  a citation, as you correctly did for the 403. That behavior is the standard.
+• Do not report a mutation you did not make.
+• Do not report curl 200, a compile, or an above-the-fold screenshot as
+  evidence that a page renders.
+• Do not explain an anomaly as "transient", "stale", "warm-up", or "a quirk".
+  Produce a mechanism, or write "cannot explain".
+• State scope limits explicitly. "I did not check X" is a valued deliverable.
+• Do not delete anything in routes.ts.
+• Do not touch: migrations, components/plancard/, fee_bands. No fee,
+  commission, or margin literals anywhere.

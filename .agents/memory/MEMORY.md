@@ -1,0 +1,1 @@
+- [Legacy API parity](legacy-api-parity.md) — Traveloure keeps its legacy API and shared module surface during migration rather than replacing it with generated endpoints.

@@ -1,0 +1,209 @@
+import type { Express, Request, Response } from "express";
+import Anthropic from "@anthropic-ai/sdk";
+import { chatStorage } from "./storage";
+import { isAuthenticated } from "../auth";
+import { trackAICost, calculateAnthropicCost } from "../../services/ai-cost-tracker";
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+function getUserId(req: Request): string {
+  const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+  if (!userId) throw new Error("User ID not found in session");
+  return userId;
+}
+
+function parseId(raw: string): number | null {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function registerChatRoutes(app: Express): void {
+  app.get("/api/conversations", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const conversations = await chatStorage.getAllConversations(userId);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+  });
+
+  app.get("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const id = parseId(req.params.id);
+      if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
+      const userId = getUserId(req);
+      const conversation = await chatStorage.getConversation(id, userId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      const messages = await chatStorage.getMessagesByConversation(id);
+      res.json({ ...conversation, messages });
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ error: "Failed to fetch conversation" });
+    }
+  });
+
+  app.post("/api/conversations", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { title } = req.body;
+      const userId = getUserId(req);
+      const conversation = await chatStorage.createConversation(title || "New Chat", userId);
+      res.status(201).json(conversation);
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  app.patch("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const id = parseId(req.params.id);
+      if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
+      const { title } = req.body;
+      if (!title || typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({ error: "Title is required" });
+      }
+      const userId = getUserId(req);
+      const updated = await chatStorage.renameConversation(id, title, userId);
+      if (!updated) return res.status(404).json({ error: "Conversation not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error renaming conversation:", error);
+      res.status(500).json({ error: "Failed to rename conversation" });
+    }
+  });
+
+  app.delete("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const id = parseId(req.params.id);
+      if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
+      const userId = getUserId(req);
+      await chatStorage.deleteConversation(id, userId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      res.status(500).json({ error: "Failed to delete conversation" });
+    }
+  });
+
+  app.post("/api/conversations/:id/messages", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseId(req.params.id);
+      if (!conversationId) return res.status(400).json({ error: "Invalid conversation ID" });
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+
+      const userId = getUserId(req);
+      const conversation = await chatStorage.getConversation(conversationId, userId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      await chatStorage.createMessage(conversationId, "user", content);
+
+      const messages = await chatStorage.getMessagesByConversation(conversationId);
+      
+      const chatMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+      for (const m of messages) {
+        const lastRole = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1].role : null;
+        if (lastRole === m.role) {
+          chatMessages[chatMessages.length - 1].content += "\n" + m.content;
+        } else {
+          chatMessages.push({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          });
+        }
+      }
+      
+      if (chatMessages.length > 0 && chatMessages[0].role !== "user") {
+        chatMessages.unshift({ role: "user", content: "Hello" });
+      }
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      let fullResponse = "";
+      let inputTokens = 0;
+      let outputTokens = 0;
+
+      const SYSTEM_PROMPT = `You are Traveloure's travel buddy — think of yourself as that well-travelled friend who gives real, honest advice without the fluff.
+
+Keep every reply short and human. No long essays. No giant walls of text. Talk like a person, not a brochure.
+
+## Your style:
+- Casual and warm — like texting a friend who travels a lot
+- Short answers first, details only if asked
+- Use a few bullet points max when listing things — never more than 5
+- Skip the "Great question!" opener. Just answer directly.
+- One follow-up question at a time if you need more info
+- Be honest — if somewhere is overrated or pricey, say so
+
+## What you know:
+Destinations, day trips, hidden spots, food, transport, budgets, visas, accommodation, timing, special trips (honeymoons, family, solo, groups)
+
+## When asked to plan a trip:
+Ask 2-3 quick questions first (when, how long, vibe/budget) — then give a short day-by-day overview, not a novel. User can ask for more detail on any day.
+
+## About Traveloure:
+Users can build full AI itineraries, connect with local expert advisors, discover hidden gems, and book experiences — mention these naturally when helpful, not as a sales pitch.
+
+## Handing off to a human:
+You're the start of the conversation, not the whole team. When something is genuinely complex — multi-vendor coordination, actual bookings or payments, disputes, anything time-sensitive — or the user asks for a person, don't pretend you can handle it: point them to the "Get help from our team" button right here in the chat. It sends the conversation to our team and a real person follows up.
+
+Reply in whatever language the user writes in. Keep it real, keep it short.`;
+
+      const stream = await anthropic.messages.create({
+        model: "claude-sonnet-4-5",
+        max_tokens: 600,
+        system: SYSTEM_PROMPT,
+        messages: chatMessages,
+        stream: true,
+      });
+
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          const text = event.delta.text;
+          fullResponse += text;
+          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        } else if (event.type === "message_start") {
+          inputTokens = event.message.usage?.input_tokens ?? 0;
+        } else if (event.type === "message_delta") {
+          outputTokens = event.usage?.output_tokens ?? outputTokens;
+        }
+      }
+
+      // Track cost for CON-B analysis (chat is informational; tracked as ai_chat)
+      if (inputTokens > 0 || outputTokens > 0) {
+        trackAICost({
+          sourceType: "ai_chat",
+          modelUsed: "claude-sonnet-4-5",
+          costUsd: calculateAnthropicCost(inputTokens, outputTokens),
+          tokensIn: inputTokens,
+          tokensOut: outputTokens,
+        }).catch(err => console.error("[cost-tracker] chat:", err));
+      }
+
+      await chatStorage.createMessage(conversationId, "assistant", fullResponse);
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("Error sending message:", error);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: "Failed to send message" });
+      }
+    }
+  });
+}

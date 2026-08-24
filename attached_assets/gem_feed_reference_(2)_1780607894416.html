@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traveloure — Gem Feed Reference (Kyoto)</title>
+<!--
+  REFERENCE for Replit. Match this layout, not a uniform grid. Maps to GEMFEED_CORRECTION_for_Replit.md:
+  1. BENTO  → .bento grid with .span2 (full-width) tiles alternating with half tiles. NOT equal rectangles.
+  2. MATCHES → .match strip renders on photo-spot (photographer), stay (car/Book both), attraction (guide).
+  3. ACTIONS → every card has Add + Ask; bookable cards add Book/Reserve with a coloured badge.
+  4. NESTING → Kibune is its OWN .nb container, never inside Arashiyama.
+  5. IMAGES  → compact fixed-height .ph placeholders, never giant tiles that stretch the card.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#0F6E56; --teal-dk:#04342C; --teal-lt:#E1F5EE; --teal-mid:#5DCAA5;
+    --navy:#1E3A5F; --gold:#854F0B; --gold-bg:#FAEEDA;
+    --blue:#185FA5; --blue-bg:#E6F1FB; --pink:#993556; --pink-bg:#FBEAF0;
+    --ink:#16201c; --muted:#6b7280; --faint:#9aa3a0; --line:#e7eae8;
+    --bg:#f6f8f7; --card:#ffffff; --r:14px; --rs:10px;
+    font-family:'Plus Jakarta Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);line-height:1.45;-webkit-font-smoothing:antialiased}
+  .feed{max-width:960px;margin:0 auto;padding:24px 20px 60px;display:flex;flex-direction:column;gap:18px}
+
+  /* hero */
+  .hero{background:linear-gradient(135deg,var(--teal) 0%,#0c5a47 100%);border-radius:var(--r);padding:22px 24px;color:var(--teal-lt);position:relative;overflow:hidden}
+  .hero h1{font-size:30px;font-weight:700;color:#fff;letter-spacing:-.02em}
+  .hero .what{font-size:13px;color:var(--teal-mid);margin-top:2px}
+  .pulse{position:absolute;top:20px;right:22px;background:var(--teal-dk);border-radius:var(--rs);padding:6px 13px;text-align:center}
+  .pulse b{display:block;font-size:18px;color:var(--teal-mid);font-weight:700}
+  .pulse span{font-size:10px;color:var(--teal-mid);text-transform:uppercase;letter-spacing:.05em}
+
+  /* stats */
+  .stats{display:flex;gap:10px;flex-wrap:wrap}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:9px 14px;font-size:12px;color:var(--muted)}
+  .stat b{color:var(--ink);font-weight:600}
+
+  /* spine */
+  .spine{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-size:13px;padding:7px 15px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer}
+  .chip.on{background:var(--teal-lt);color:var(--teal);border-color:transparent;font-weight:600}
+
+  /* neighborhood container */
+  .nb{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .nb-head{padding:16px 18px;display:flex;gap:14px}
+  .nb-ph{flex:0 0 60px;height:60px;border-radius:var(--rs);background:var(--teal-lt);display:grid;place-items:center;color:var(--teal);font-size:22px}
+  .nb-title{display:flex;align-items:center;gap:8px}
+  .nb-title h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .nb-trend{font-size:12px;color:var(--teal);margin-top:3px}
+  .nb-desc{font-size:13px;color:var(--muted);margin-top:3px}
+  .nb-cta{display:flex;gap:8px;padding:0 18px 14px}
+
+  .nb-in{background:var(--bg);border-top:1px solid var(--line);padding:14px 16px}
+  .nb-in-label{font-size:11px;color:var(--faint);letter-spacing:.06em;margin-bottom:10px;font-weight:600}
+
+  /* BENTO grid — varied spans, NOT uniform */
+  .bento{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .span2{grid-column:span 2}
+
+  /* card */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--rs);overflow:hidden;display:flex;flex-direction:column}
+  .card.row{flex-direction:row}
+  .ph{background:var(--teal-lt);display:grid;place-items:center;color:var(--teal);font-size:20px;flex:0 0 auto}
+  .card .ph{height:104px}          /* compact, never giant */
+  .card.row .ph{width:96px;height:auto;align-self:stretch}
+  .body{padding:11px 13px;display:flex;flex-direction:column;gap:7px;flex:1;min-width:0}
+  .tag{font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:6px;width:fit-content;text-transform:uppercase}
+  .t-photo{background:var(--teal-lt);color:var(--teal)} .t-attr{background:var(--gold-bg);color:var(--gold)}
+  .t-eat{background:var(--pink-bg);color:var(--pink)} .t-stay{background:var(--blue-bg);color:var(--blue)}
+  .t-land{background:#eef1f0;color:#566} .t-mq{background:var(--gold-bg);color:var(--gold)}
+  .name{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .desc{font-size:12px;color:var(--muted)}
+  .why{font-size:11px;color:var(--teal);display:flex;align-items:center;gap:5px}
+
+  /* match strip */
+  .match{border-top:1px dashed var(--line);padding-top:8px;margin-top:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .match .m{font-size:11px;color:var(--muted);flex:1;min-width:120px}
+  .match .m b{color:var(--ink);font-weight:600}
+
+  /* booking badge */
+  .badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.03em}
+  .b-platform{background:var(--teal-lt);color:var(--teal)} .b-aff{background:var(--blue-bg);color:var(--blue)} .b-no{background:#eef0ef;color:var(--faint)}
+  .b-trend{background:#FDE8CE;color:#B45309}
+
+  /* actions */
+  .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .price{font-size:14px;font-weight:700;margin-right:2px}
+  .btn{font-size:12px;font-weight:600;padding:6px 13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;white-space:nowrap}
+  .btn-pri{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .btn-aff{background:var(--blue);color:#fff;border-color:var(--blue)}
+
+  /* expert card */
+  .expert{background:var(--blue-bg);border:1px solid #cfe0f2;border-radius:var(--r);padding:15px 18px;display:flex;align-items:center;gap:14px}
+  .expert .av{width:48px;height:48px;border-radius:50%;background:#fff;display:grid;place-items:center;font-weight:700;color:var(--blue);flex:0 0 auto}
+  .expert .ex-b{flex:1;min-width:0}
+  .expert .ex-tag{font-size:9px;font-weight:700;background:#fff;color:var(--blue);padding:2px 7px;border-radius:6px;letter-spacing:.04em}
+  .expert h3{font-size:15px;font-weight:600;margin:4px 0 2px}
+  .expert p{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="feed">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>Kyoto</h1>
+    <div class="what">🌸 Cherry-blossom season transforms ancient temple gardens</div>
+    <div class="pulse"><b>88</b><span>pulse</span></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat">👥 <b>4,274</b> travelers here now</div>
+    <div class="stat">Moderate crowds</div>
+    <div class="stat"><b>20</b> services</div>
+    <div class="stat"><b>8</b> neighborhoods</div>
+  </div>
+
+  <!-- SPINE (filters, not section anchors) -->
+  <div class="spine">
+    <span class="chip on">All gems</span><span class="chip">Eat</span><span class="chip">Do</span>
+    <span class="chip">Stay</span><span class="chip">Experts</span><span class="chip">Events</span><span class="chip">Photo spots</span>
+  </div>
+
+  <!-- NEIGHBORHOOD CONTAINER: ARASHIYAMA -->
+  <div class="nb">
+    <div class="nb-head">
+      <div class="nb-ph">🗺</div>
+      <div>
+        <div class="nb-title"><h2>Arashiyama</h2><span class="tag t-land">Neighborhood</span></div>
+        <div class="nb-trend">trending · nature + cultural · 8 things to do</div>
+        <div class="nb-desc">West-side bamboo grove, Togetsukyo bridge, Tenryū-ji temple, monkey park.</div>
+      </div>
+    </div>
+    <div class="nb-cta">
+      <button class="btn btn-pri">Explore Arashiyama</button>
+      <button class="btn">+ Add an Arashiyama day</button>
+    </div>
+
+    <div class="nb-in">
+      <div class="nb-in-label">IN ARASHIYAMA</div>
+      <div class="bento">
+
+        <!-- FULL-WIDTH marquee stay + matched car (span2, row layout) -->
+        <div class="card row span2">
+          <div class="ph t-stay" style="background:var(--blue-bg);color:var(--blue)">🏨</div>
+          <div class="body">
+            <span class="tag t-mq">Marquee stay</span>
+            <div class="name">Suiran, Luxury Collection — riverside ryokan</div>
+            <div class="match" style="border:0;padding:0;margin:0">
+              <span class="m"><b>¥58,000</b>/night</span>
+              <span class="badge b-platform">Book on Traveloure</span>
+            </div>
+            <div class="match">
+              <span class="m">🚗 matched: <b>private car</b> from Kyoto Station · ¥9,000</span>
+              <button class="btn btn-pri">Book both</button>
+            </div>
+            <div class="acts"><button class="btn">+ Add to experience</button><button class="btn">💬 Ask an expert</button></div>
+          </div>
+        </div>
+
+        <!-- HALF: photo spot + matched photographer -->
+        <div class="card">
+          <div class="ph">📷</div>
+          <div class="body">
+            <div style="display:flex;gap:6px;align-items:center"><span class="tag t-photo">Photo spot</span><span class="badge b-trend">🔥 Trending now</span></div>
+            <div class="name">Arashiyama Bamboo Grove</div>
+            <div class="desc">Iconic bamboo paths — best at dawn before crowds.</div>
+            <div class="match"><span class="m">📷 matched: <b>photographer here</b> · ¥14,000</span></div>
+            <div class="acts"><button class="btn btn-pri">Book shoot</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+          </div>
+        </div>
+
+        <!-- HALF: attraction (platform-bookable) + matched guide -->
+        <div class="card">
+          <div class="ph t-attr" style="background:var(--gold-bg);color:var(--gold)">⛩</div>
+          <div class="body">
+            <span class="tag t-attr">Attraction</span>
+            <div class="name">Tenryū-ji Temple</div>
+            <div class="why">↑ matches the cultural trend</div>
+            <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>¥500</b> entry</span><span class="badge b-platform">Traveloure</span></div>
+            <div class="match"><span class="m">🧭 matched: <b>temple guide</b> · ¥6,000</span><button class="btn btn-pri">Book guide</button></div>
+            <div class="acts"><button class="btn btn-pri">Book entry</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+          </div>
+        </div>
+
+        <!-- HALF: not-bookable landmark (Add + Ask only) -->
+        <div class="card">
+          <div class="ph t-land" style="background:#eef1f0;color:#566">🌉</div>
+          <div class="body">
+            <span class="tag t-land">Landmark</span>
+            <div class="name">Togetsukyo Bridge <span class="badge b-no" style="margin-left:4px">Not bookable</span></div>
+            <div class="desc">Scenic arched wooden bridge over the Hozu river.</div>
+            <div class="match"><span class="m">📷 a photographer covers this spot</span><button class="btn btn-pri">Book shoot</button></div>
+            <div class="acts"><button class="btn">+ Add to experience</button><button class="btn">💬 Ask an expert</button></div>
+          </div>
+        </div>
+
+        <!-- HALF: eat (affiliate-bookable reservation) -->
+        <div class="card">
+          <div class="ph t-eat" style="background:var(--pink-bg);color:var(--pink)">🍵</div>
+          <div class="body">
+            <span class="tag t-eat">Eat</span>
+            <div class="name">Shōraian — tofu kaiseki</div>
+            <div class="match" style="border:0;padding:0;margin:0"><span class="m">reservation</span><span class="badge b-aff">via OpenTable</span></div>
+            <div class="acts"><button class="btn btn-aff">Reserve</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- FEED RULE: never two neighborhood containers back-to-back. Break them up with loose gems,
+       an expert, an event, or a complement. Distribute the flat pool as breakers, not one trailing block. -->
+  <div class="bento">
+    <div class="card">
+      <div class="ph t-eat" style="background:var(--pink-bg);color:var(--pink)">🏮</div>
+      <div class="body">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="tag t-eat">Eat</span><span class="badge b-trend">🔥 Trending now</span></div>
+        <div class="name">Pontocho Alley — lantern-lit dining</div>
+        <div class="match" style="border:0;padding:0;margin:0"><span class="m">reservation</span><span class="badge b-aff">via OpenTable</span></div>
+        <div class="acts"><button class="btn btn-aff">Reserve</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ph t-attr" style="background:var(--gold-bg);color:var(--gold)">🏯</div>
+      <div class="body">
+        <span class="tag t-attr">Attraction</span>
+        <div class="name">Kyoto Imperial Palace</div>
+        <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>Free</b></span><span class="badge b-no">Not bookable</span></div>
+        <div class="acts"><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPERT marketed in the feed (itinerary planning) -->
+  <div class="expert">
+    <div class="av">SW</div>
+    <div class="ex-b">
+      <span class="ex-tag">PLAN IT FOR ME</span>
+      <h3>Sakura turns your Kyoto picks into a day-by-day plan</h3>
+      <p>Itinerary planning · ★ 4.9 · from ¥32,000</p>
+    </div>
+    <button class="btn btn-pri">Plan with Sakura</button>
+  </div>
+
+  <!-- SEPARATE NEIGHBORHOOD CONTAINER: KIBUNE (NOT nested in Arashiyama) -->
+  <div class="nb">
+    <div class="nb-head">
+      <div class="nb-ph" style="background:var(--pink-bg);color:var(--pink)">🗺</div>
+      <div>
+        <div class="nb-title"><h2>Kibune</h2><span class="tag t-land">Neighborhood</span></div>
+        <div class="nb-trend">cultural · romantic · 4 things to do</div>
+        <div class="nb-desc">Secluded riverside dining (kawadoko) in a mountain village.</div>
+      </div>
+    </div>
+    <div class="nb-cta">
+      <button class="btn btn-pri">Explore Kibune</button>
+      <button class="btn">+ Add a Kibune day</button>
+    </div>
+    <div class="nb-in">
+      <div class="nb-in-label">IN KIBUNE</div>
+      <div class="bento">
+        <div class="card span2 row">
+          <div class="ph t-eat" style="background:var(--pink-bg);color:var(--pink)">🍱</div>
+          <div class="body">
+            <span class="tag t-eat">Eat</span>
+            <div class="name">Hirobun — kawadoko riverside dining</div>
+            <div class="why">↑ foodie demand rising · 2 creators featured it</div>
+            <div class="match" style="border:0;padding:0;margin:0"><span class="m">reservation</span><span class="badge b-aff">via OpenTable</span></div>
+            <div class="acts"><button class="btn btn-aff">Reserve</button><button class="btn">+ Add to experience</button><button class="btn">💬 Ask an expert</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ph t-attr" style="background:var(--gold-bg);color:var(--gold)">⛩</div>
+          <div class="body">
+            <span class="tag t-attr">Attraction</span>
+            <div class="name">Kifune Shrine</div>
+            <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>Free</b></span><span class="badge b-no">Not bookable</span></div>
+            <div class="acts"><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ph">📷</div>
+          <div class="body">
+            <span class="tag t-photo">Photo spot</span>
+            <div class="name">Kibune lantern path</div>
+            <div class="match"><span class="m">📷 matched: <b>photographer</b> · ¥14,000</span></div>
+            <div class="acts"><button class="btn btn-pri">Book shoot</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CITY-LEVEL / NON-NEIGHBORHOOD GEMS: flat bento, NO container header.
+       Home for: untagged gems, city-wide experiences/events, anything not tied to a walkable area.
+       In a sparse market this is the DOMINANT section. Also what a type-filter view collapses to. -->
+  <div>
+    <div class="nb-in-label" style="padding:0 2px 0 4px">ACROSS KYOTO · not tied to one neighborhood</div>
+    <div class="bento">
+
+      <!-- FULL-WIDTH marquee city experience -->
+      <div class="card row span2">
+        <div class="ph" style="background:var(--gold-bg);color:var(--gold)">🎎</div>
+        <div class="body">
+          <span class="tag t-mq">Featured experience</span>
+          <div class="name">Gion evening walk with a geiko</div>
+          <div class="why">↑ trending · cultural</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>¥22,000</b> · 2 hrs · city-wide</span><span class="badge b-platform">Book on Traveloure</span></div>
+          <div class="acts"><button class="btn btn-pri">Book</button><button class="btn">+ Add to experience</button><button class="btn">💬 Ask an expert</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: city-wide event -->
+      <div class="card">
+        <div class="ph t-eat" style="background:var(--pink-bg);color:var(--pink)">🏮</div>
+        <div class="body">
+          <span class="tag t-eat">Event · Jul</span>
+          <div class="name">Gion Matsuri festival</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m">city-wide</span><span class="badge b-aff">via Fever</span></div>
+          <div class="acts"><button class="btn btn-aff">Tickets</button><button class="btn">+ Add to a date</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: city experience (platform-bookable) -->
+      <div class="card">
+        <div class="ph" style="background:var(--gold-bg);color:var(--gold)">🍜</div>
+        <div class="body">
+          <span class="tag t-attr">Experience</span>
+          <div class="name">Nishiki Market food crawl</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>¥9,500</b></span><span class="badge b-platform">Traveloure</span></div>
+          <div class="acts"><button class="btn btn-pri">Book</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: untagged attraction (no neighborhood yet) -->
+      <div class="card">
+        <div class="ph t-attr" style="background:var(--gold-bg);color:var(--gold)">⛩</div>
+        <div class="body">
+          <span class="tag t-attr">Attraction</span>
+          <div class="name">Fushimi Inari Taisha</div>
+          <div class="why">untagged · no neighborhood yet</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>Free</b></span><span class="badge b-no">Not bookable</span></div>
+          <div class="acts"><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: photo spot (trending) + matched photographer -->
+      <div class="card">
+        <div class="ph">📷</div>
+        <div class="body">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="tag t-photo">Photo spot</span><span class="badge b-trend">🔥 Trending now</span></div>
+          <div class="name">Kiyomizu-dera at sunset</div>
+          <div class="match"><span class="m">📷 matched: <b>photographer</b> · ¥14,000</span></div>
+          <div class="acts"><button class="btn btn-pri">Book shoot</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- FULL-WIDTH day trip -->
+      <div class="card row span2">
+        <div class="ph" style="background:#eaf3ec;color:#3a7a52">🦌</div>
+        <div class="body">
+          <span class="tag t-attr" style="background:#eaf3ec;color:#3a7a52">Day trip</span>
+          <div class="name">Nara — deer park &amp; Great Buddha</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>¥8,000</b> · full day · from Kyoto</span><span class="badge b-platform">Book on Traveloure</span></div>
+          <div class="match"><span class="m">🧭 matched: <b>day guide</b> · ¥12,000</span><button class="btn btn-pri">Book guide</button></div>
+          <div class="acts"><button class="btn btn-pri">Book</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: hidden gem walk (trending, not bookable) + photographer -->
+      <div class="card">
+        <div class="ph" style="background:var(--teal-lt);color:var(--teal)">🍂</div>
+        <div class="body">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="tag t-land" style="background:#eef1f0;color:#566">Hidden gem</span><span class="badge b-trend">🔥 Trending now</span></div>
+          <div class="name">Philosopher's Path</div>
+          <div class="desc">Quiet canal walk under the cherry trees.</div>
+          <div class="match"><span class="m">📷 a photographer covers this walk</span><button class="btn btn-pri">Book shoot</button></div>
+          <div class="acts"><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: restaurant (affiliate reservation) -->
+      <div class="card">
+        <div class="ph t-eat" style="background:var(--pink-bg);color:var(--pink)">🍣</div>
+        <div class="body">
+          <span class="tag t-eat">Eat</span>
+          <div class="name">Kikunoi — 3-star kaiseki</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m">reservation</span><span class="badge b-aff">via OpenTable</span></div>
+          <div class="acts"><button class="btn btn-aff">Reserve</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+      <!-- HALF: wellness (platform-bookable) -->
+      <div class="card">
+        <div class="ph" style="background:#e7f0f4;color:#3a6b80">♨️</div>
+        <div class="body">
+          <span class="tag t-stay" style="background:#e7f0f4;color:#3a6b80">Wellness</span>
+          <div class="name">Kurama onsen day</div>
+          <div class="match" style="border:0;padding:0;margin:0"><span class="m"><b>¥4,500</b></span><span class="badge b-platform">Traveloure</span></div>
+          <div class="acts"><button class="btn btn-pri">Book</button><button class="btn">+ Add</button><button class="btn">💬 Ask</button></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- COMPLEMENTARY PLATFORM SERVICES: trip-level, complement the content (not gem-matched).
+       Mostly affiliate logistics that are wired but otherwise invisible. Compact cards = add-ons, not content gems.
+       Content-driven: the kimono complement is pulled by the cherry-blossom trend in the hero. -->
+  <div>
+    <div class="nb-in-label" style="padding:0 2px 0 4px">COMPLETE YOUR KYOTO TRIP · complements any itinerary</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+
+      <div style="flex:1 1 180px;min-width:168px;background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:11px 13px">
+        <div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">🚖</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Airport transfer</div><div style="font-size:10px;color:var(--muted)">Transport · WelcomePickups</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px"><span style="font-size:13px;font-weight:700">¥6,000</span><button class="btn btn-aff" style="padding:4px 11px">Book</button><button class="btn" style="padding:4px 9px">+ Add</button></div>
+      </div>
+
+      <div style="flex:1 1 180px;min-width:168px;background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:11px 13px">
+        <div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">📶</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Japan eSIM</div><div style="font-size:10px;color:var(--muted)">Connectivity · Airalo</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px"><span style="font-size:13px;font-weight:700">¥1,800</span><button class="btn btn-aff" style="padding:4px 11px">Book</button><button class="btn" style="padding:4px 9px">+ Add</button></div>
+      </div>
+
+      <div style="flex:1 1 180px;min-width:168px;background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:11px 13px">
+        <div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">🛡️</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Travel insurance</div><div style="font-size:10px;color:var(--muted)">Safety · SafetyWing</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px"><span style="font-size:13px;font-weight:700">¥4,200</span><button class="btn btn-aff" style="padding:4px 11px">Book</button><button class="btn" style="padding:4px 9px">+ Add</button></div>
+      </div>
+
+      <div style="flex:1 1 180px;min-width:168px;background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:11px 13px">
+        <div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">👘</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Kimono rental</div><div style="font-size:10px;color:var(--teal)">↑ for blossom season</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px"><span style="font-size:13px;font-weight:700">¥5,500</span><button class="btn btn-pri" style="padding:4px 11px">Book</button><button class="btn" style="padding:4px 9px">+ Add</button></div>
+      </div>
+
+      <div style="flex:1 1 180px;min-width:168px;background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:11px 13px">
+        <div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">🧳</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Luggage storage</div><div style="font-size:10px;color:var(--muted)">Stasher</div></div></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px"><span style="font-size:13px;font-weight:700">¥800</span><button class="btn btn-aff" style="padding:4px 11px">Book</button><button class="btn" style="padding:4px 9px">+ Add</button></div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

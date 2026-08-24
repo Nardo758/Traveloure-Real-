@@ -1,0 +1,637 @@
+# REPLIT AGENT INSTRUCTIONS
+## Preserving Existing UI/UX While Adding New Features
+
+**CRITICAL: Do NOT change the existing landing page, design system, or UI components. Only ADD new features while maintaining 100% design consistency.**
+
+---
+
+## 🎯 PROMPT FOR REPLIT AGENT
+
+Copy and paste this entire prompt to Replit Agent:
+
+```
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+
+I need you to implement new backend features and dashboard enhancements for Traveloure 
+while PRESERVING 100% of the existing landing page, design system, and UI/UX.
+
+WHAT YOU MUST NOT CHANGE:
+❌ Do NOT modify app/(marketing)/page.tsx (landing page)
+❌ Do NOT modify any components in app/(marketing)/components/
+❌ Do NOT change colors, fonts, spacing, or any design tokens
+❌ Do NOT alter the existing component library in /components/ui/
+❌ Do NOT change button styles, card layouts, or form patterns
+❌ Do NOT modify the navigation header on the landing page
+
+WHAT YOU MUST PRESERVE:
+✅ All Tailwind CSS classes currently in use
+✅ All Shadcn/UI component styling
+✅ Current color palette (primary: #FF385C)
+✅ Current typography (system UI font stack)
+✅ Current spacing patterns
+✅ Current catchphrases ("Plan Your Perfect Trip", "Real people, real expertise")
+✅ Current hero section design
+✅ Current card designs and layouts
+
+WHAT YOU SHOULD ADD (New Features Only):
+1. Multi-event type support in dashboard (backend + frontend)
+2. AI blueprint generation API endpoints
+3. Expert AI assistant features (new dashboard section)
+4. Executive Assistant role and dashboard (completely new section)
+5. Enhanced vendor coordination (backend + new dashboard pages)
+
+DESIGN CONSISTENCY RULES:
+- Use ONLY components from /components/ui/ (Shadcn/UI)
+- Use ONLY Tailwind classes that match existing patterns
+- Copy styling patterns from existing dashboard pages
+- Match the visual style of current cards, forms, and buttons
+- Use the same color palette and spacing scale
+
+IMPLEMENTATION APPROACH:
+1. First, analyze all files in app/(marketing)/ - DO NOT TOUCH THESE
+2. Review /components/ui/ to understand the component library
+3. Look at existing dashboard pages to match styling patterns
+4. Implement new features in NEW files/routes only
+5. Reuse existing components and patterns
+
+REFERENCE FILES TO STUDY (DO NOT MODIFY):
+- app/(marketing)/page.tsx - Landing page structure
+- app/(marketing)/components/* - All marketing components
+- components/ui/* - Shadcn/UI component library
+- app/dashboard/page.tsx - Existing dashboard patterns
+- Any files in app/(marketing)/styles/ or global styles
+
+When implementing, ask yourself:
+"Does this match the existing design?" 
+"Am I reusing existing components?"
+"Have I preserved all current UI patterns?"
+
+If you're unsure about styling, STOP and ask me before proceeding.
+
+BEGIN IMPLEMENTATION:
+Start by showing me which files you plan to modify and which you'll create new.
+```
+
+---
+
+## 📋 REFERENCE CODE TO SHARE
+
+### 1. Current Design Tokens
+
+Save this as `DESIGN_REFERENCE.md` and share with Replit Agent:
+
+```markdown
+# TRAVELOURE DESIGN SYSTEM - DO NOT MODIFY
+
+## Colors (Tailwind Config)
+```javascript
+colors: {
+  primary: {
+    DEFAULT: '#FF385C',
+    hover: '#E23350',
+    light: '#FFE3E8',
+  },
+  secondary: {
+    DEFAULT: '#6B7280',
+    dark: '#374151',
+    light: '#F3F4F6',
+  },
+  accent: '#10B981',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#3B82F6',
+}
+```
+
+## Typography
+```javascript
+fontFamily: {
+  sans: [
+    '-apple-system',
+    'BlinkMacSystemFont',
+    '"Segoe UI"',
+    'Roboto',
+    '"Helvetica Neue"',
+    'Arial',
+    'sans-serif',
+  ],
+}
+
+fontSize: {
+  'h1': ['36px', { lineHeight: '1.2', fontWeight: '700' }],
+  'h2': ['30px', { lineHeight: '1.3', fontWeight: '700' }],
+  'h3': ['24px', { lineHeight: '1.4', fontWeight: '600' }],
+  'h4': ['20px', { lineHeight: '1.5', fontWeight: '600' }],
+  'body': ['16px', { lineHeight: '1.6', fontWeight: '400' }],
+  'small': ['14px', { lineHeight: '1.5', fontWeight: '400' }],
+  'caption': ['12px', { lineHeight: '1.4', fontWeight: '400' }],
+}
+```
+
+## Spacing Scale
+```javascript
+spacing: {
+  '0': '0px',
+  '1': '4px',
+  '2': '8px',
+  '3': '12px',
+  '4': '16px',
+  '5': '20px',
+  '6': '24px',
+  '8': '32px',
+  '10': '40px',
+  '12': '48px',
+  '16': '64px',
+  '20': '80px',
+}
+```
+
+## Component Patterns
+
+### Button (Primary)
+```tsx
+<Button 
+  className="bg-primary hover:bg-primary-hover text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+>
+  Button Text
+</Button>
+```
+
+### Card
+```tsx
+<Card className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
+  <CardHeader>
+    <CardTitle className="text-h3">Card Title</CardTitle>
+  </CardHeader>
+  <CardContent>
+    Content here
+  </CardContent>
+</Card>
+```
+
+### Input
+```tsx
+<Input 
+  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+  placeholder="Placeholder text"
+/>
+```
+
+## Layout Patterns
+
+### Container
+```tsx
+<div className="container mx-auto px-4 max-w-7xl">
+  {/* Content */}
+</div>
+```
+
+### Section Spacing
+```tsx
+<section className="py-20">
+  {/* Use py-20 for major sections */}
+</section>
+```
+
+### Grid Layouts
+```tsx
+{/* 3-column desktop, 1-column mobile */}
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {/* Grid items */}
+</div>
+```
+```
+
+---
+
+## 🎨 SPECIFIC COMPONENT EXAMPLES
+
+### 2. Landing Page Hero Pattern
+
+Save this to show Replit what to preserve:
+
+```tsx
+// REFERENCE: Current Hero Section Pattern (DO NOT MODIFY)
+// This is the EXACT pattern used in app/(marketing)/page.tsx
+
+export function Hero() {
+  return (
+    <section className="relative py-20 lg:py-32 bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="container mx-auto px-4 max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          {/* Left Column - Text */}
+          <div className="space-y-6">
+            <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 leading-tight">
+              Plan Your Perfect Trip
+            </h1>
+            <p className="text-xl text-gray-600 leading-relaxed">
+              From dream vacations to unforgettable weddings - connect with 
+              local experts who make it happen.
+            </p>
+            
+            {/* Feature List */}
+            <div className="space-y-3">
+              <FeatureItem icon="🤖" text="AI + Human Expertise" />
+              <FeatureItem icon="💡" text="Personalized Plans" />
+              <FeatureItem icon="🌍" text="Global Network" />
+            </div>
+            
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button 
+                size="lg"
+                className="bg-primary hover:bg-primary-hover text-white font-semibold"
+              >
+                Get Started - Free
+              </Button>
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="border-2 border-gray-300 hover:border-gray-400"
+              >
+                See How It Works
+              </Button>
+            </div>
+          </div>
+          
+          {/* Right Column - Image/Visual */}
+          <div className="relative">
+            {/* Image carousel or hero image */}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeatureItem({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-2xl">{icon}</span>
+      <span className="text-lg text-gray-700">{text}</span>
+    </div>
+  );
+}
+```
+
+---
+
+### 3. Card Pattern Reference
+
+```tsx
+// REFERENCE: Current Card Pattern (REUSE THIS EXACT STYLING)
+
+export function ExpertCard({ expert }) {
+  return (
+    <Card className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow overflow-hidden">
+      {/* Image */}
+      <div className="aspect-square overflow-hidden">
+        <img 
+          src={expert.image} 
+          alt={expert.name}
+          className="w-full h-full object-cover"
+        />
+      </div>
+      
+      {/* Content */}
+      <CardContent className="p-6 space-y-3">
+        <h3 className="text-xl font-semibold text-gray-900">
+          {expert.name}
+        </h3>
+        <p className="text-sm text-gray-600">
+          {expert.title}
+        </p>
+        
+        {/* Rating */}
+        <div className="flex items-center gap-2">
+          <div className="flex text-yellow-400">
+            {'⭐'.repeat(5)}
+          </div>
+          <span className="text-sm text-gray-600">
+            ({expert.reviews})
+          </span>
+        </div>
+        
+        {/* Description */}
+        <p className="text-gray-600 line-clamp-2">
+          {expert.description}
+        </p>
+        
+        {/* Action Button */}
+        <Button 
+          className="w-full mt-4 bg-primary hover:bg-primary-hover text-white"
+        >
+          View Profile
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+---
+
+### 4. Form Pattern Reference
+
+```tsx
+// REFERENCE: Current Form Pattern (REUSE THIS EXACT STYLING)
+
+export function TripForm() {
+  return (
+    <form className="space-y-6 bg-white rounded-lg shadow-md p-8">
+      {/* Form Group */}
+      <div className="space-y-2">
+        <Label htmlFor="destination" className="text-sm font-medium text-gray-700">
+          Destination *
+        </Label>
+        <Input
+          id="destination"
+          placeholder="Where would you like to go?"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+        />
+        <p className="text-xs text-gray-500">
+          Enter a city or country
+        </p>
+      </div>
+      
+      {/* Date Range */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="start-date">From *</Label>
+          <Input
+            id="start-date"
+            type="date"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="end-date">To *</Label>
+          <Input
+            id="end-date"
+            type="date"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary"
+          />
+        </div>
+      </div>
+      
+      {/* Select */}
+      <div className="space-y-2">
+        <Label htmlFor="budget">Budget Range</Label>
+        <Select>
+          <SelectTrigger className="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            <SelectValue placeholder="Select budget range" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="budget">Budget-Friendly ($50-100/day)</SelectItem>
+            <SelectItem value="moderate">Moderate ($100-200/day)</SelectItem>
+            <SelectItem value="luxury">Luxury ($200+/day)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      
+      {/* Checkboxes */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium text-gray-700">
+          Interests
+        </Label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox id="culture" />
+            <span className="text-sm text-gray-700">Culture & History</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox id="food" />
+            <span className="text-sm text-gray-700">Food & Dining</span>
+          </label>
+        </div>
+      </div>
+      
+      {/* Submit Button */}
+      <Button 
+        type="submit"
+        className="w-full bg-primary hover:bg-primary-hover text-white font-semibold py-3"
+      >
+        Continue
+      </Button>
+    </form>
+  );
+}
+```
+
+---
+
+## 🔧 IMPLEMENTATION CHECKLIST FOR REPLIT
+
+Share this checklist:
+
+```markdown
+# IMPLEMENTATION CHECKLIST
+
+Before making ANY changes:
+
+## Step 1: Analyze Current Code
+- [ ] Review app/(marketing)/page.tsx
+- [ ] Review all components in app/(marketing)/components/
+- [ ] Review components/ui/ (Shadcn components)
+- [ ] Review app/dashboard/page.tsx
+- [ ] Review tailwind.config.ts
+- [ ] Review global CSS files
+
+## Step 2: Plan New Features
+- [ ] List files that will NOT be modified (marketing pages)
+- [ ] List new files that will be created
+- [ ] List existing files that will be extended (dashboard)
+- [ ] Confirm all new components use existing design patterns
+
+## Step 3: Create New Features
+- [ ] Multi-event backend schema
+- [ ] AI blueprint API endpoints
+- [ ] Expert AI assistant pages (new route)
+- [ ] Executive Assistant dashboard (new route)
+- [ ] Vendor coordination (new route)
+
+## Step 4: Verify Design Consistency
+- [ ] All new components use Shadcn/UI
+- [ ] All colors match existing palette
+- [ ] All spacing matches existing patterns
+- [ ] All typography matches existing styles
+- [ ] All buttons match existing button styles
+- [ ] All cards match existing card layouts
+- [ ] All forms match existing form patterns
+
+## Step 5: Test Landing Page
+- [ ] Landing page unchanged
+- [ ] Hero section unchanged
+- [ ] All marketing components unchanged
+- [ ] Navigation unchanged
+- [ ] Footer unchanged
+```
+
+---
+
+## 💬 EXAMPLE CONVERSATION WITH REPLIT AGENT
+
+### First Message to Replit Agent:
+
+```
+I need to implement new features while preserving my existing landing page and UI/UX 100%.
+
+Here's what you MUST preserve (DO NOT MODIFY):
+- app/(marketing)/page.tsx and all components
+- Current design system (colors, fonts, spacing)
+- All Shadcn/UI components in /components/ui/
+- Current landing page catchphrases and messaging
+
+I've attached DESIGN_REFERENCE.md which shows the exact patterns to follow.
+
+First, please:
+1. Show me which files you plan to modify
+2. Show me which new files you'll create
+3. Confirm you understand the design constraints
+
+Do NOT start coding until I approve your plan.
+```
+
+### Second Message (After Replit Shows Plan):
+
+```
+Approved. Begin implementation, but:
+
+1. Show me code for ONE component at a time
+2. Before each component, explain how it matches existing patterns
+3. Reference specific examples from DESIGN_REFERENCE.md
+4. If you're unsure about styling, STOP and ask me
+
+Start with the backend schema for multi-event support.
+```
+
+---
+
+## 📦 FILES TO SHARE WITH REPLIT
+
+Create these files locally and upload to Replit:
+
+### File 1: `DESIGN_REFERENCE.md`
+(Content provided above)
+
+### File 2: `IMPLEMENTATION_PLAN.md`
+
+```markdown
+# IMPLEMENTATION PLAN
+
+## Phase 1: Backend (No UI Changes)
+Files to create/modify:
+- prisma/schema.prisma - Add multi-event support
+- app/api/plans/route.ts - Update for event types
+- app/api/ai/blueprint/route.ts - NEW
+- app/api/executive-assistant/route.ts - NEW
+
+Files to NOT touch:
+- app/(marketing)/** - ALL FILES
+- components/ui/** - ALL FILES
+
+## Phase 2: Dashboard Updates (Reuse Existing Patterns)
+Files to create:
+- app/dashboard/events/create/page.tsx - NEW (use existing form patterns)
+- app/expert-dashboard/ai-assistant/page.tsx - NEW (use existing card patterns)
+- app/executive-assistant/dashboard/page.tsx - NEW (use existing layout patterns)
+
+Files to modify (carefully):
+- app/dashboard/page.tsx - Add event type routing
+- app/dashboard/layout.tsx - Add EA role check
+
+Files to NOT touch:
+- app/(marketing)/page.tsx - LANDING PAGE
+- app/(marketing)/components/** - ALL MARKETING COMPONENTS
+
+## Design Consistency Rules:
+1. Copy component patterns from existing dashboard pages
+2. Use ONLY components from /components/ui/
+3. Match colors: bg-primary, text-gray-600, etc.
+4. Match spacing: space-y-6, gap-4, p-6, etc.
+5. Match typography: text-xl, font-semibold, etc.
+```
+
+---
+
+## 🎯 FINAL PROMPT (Copy/Paste to Replit)
+
+```
+TASK: Implement new Traveloure features while preserving existing UI/UX
+
+CONSTRAINTS (CRITICAL):
+❌ DO NOT modify app/(marketing)/page.tsx
+❌ DO NOT modify app/(marketing)/components/*
+❌ DO NOT change design tokens (colors, fonts, spacing)
+❌ DO NOT alter /components/ui/* (Shadcn components)
+
+✅ DO reuse existing component patterns
+✅ DO match existing styling exactly
+✅ DO create new routes for new features
+✅ DO ask before changing any existing files
+
+REFERENCE:
+I've uploaded DESIGN_REFERENCE.md - study this first.
+
+WORKFLOW:
+1. Show me your implementation plan
+2. Wait for my approval
+3. Implement one feature at a time
+4. Show code before committing
+5. Verify design consistency
+
+START: What files will you modify vs. create new?
+```
+
+---
+
+## 📸 Visual Reference Technique
+
+Take screenshots of your current landing page and send them to Replit Agent:
+
+```
+Here are screenshots of my current landing page.
+
+Match these EXACTLY:
+1. Hero section - [screenshot1.png]
+2. Expert cards - [screenshot2.png]
+3. Testimonials - [screenshot3.png]
+4. CTA section - [screenshot4.png]
+
+When creating new components, they must look identical in style to these screenshots.
+```
+
+---
+
+## ✅ SUCCESS CHECKLIST
+
+After Replit implements changes, verify:
+
+```markdown
+Landing Page Preservation Checklist:
+
+- [ ] app/(marketing)/page.tsx unchanged (git diff shows no changes)
+- [ ] Hero section looks identical
+- [ ] Buttons look identical (same colors, same hover effects)
+- [ ] Cards look identical (same shadows, same spacing)
+- [ ] Typography looks identical (same sizes, same weights)
+- [ ] Colors match exactly (use color picker to verify)
+- [ ] Spacing matches exactly (measure with browser tools)
+- [ ] Animations identical (if any)
+- [ ] Responsive behavior identical
+
+New Features Checklist:
+
+- [ ] New dashboard routes created
+- [ ] New components match existing style
+- [ ] AI assistant uses existing card/form patterns
+- [ ] Executive Assistant dashboard uses existing layout
+- [ ] All new components use Shadcn/UI
+- [ ] All new components use same color palette
+- [ ] All new pages use same spacing patterns
+```
+
+---
+
+This gives you everything you need to instruct Replit Agent to preserve your current design while adding new features! 🎨

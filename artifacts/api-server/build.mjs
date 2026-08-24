@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -22,6 +22,7 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
+    nodePaths: [path.resolve(artifactDir, "node_modules")],
     // Some packages may not be bundleable, so we externalize them, we can add more here as needed.
     // Some of the packages below may not be imported or installed, but we're adding them in case they are in the future.
     // Examples of unbundleable packages:
@@ -33,6 +34,7 @@ async function buildAll() {
       "better-sqlite3",
       "sqlite3",
       "canvas",
+      "@resvg/resvg-js",
       "bcrypt",
       "argon2",
       "fsevents",
@@ -101,11 +103,25 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    alias: {
+      "@shared": path.resolve(artifactDir, "../../.migration-backup/shared"),
+    },
     plugins: [
+      {
+        name: "legacy-route-dynamic-imports",
+        setup(build) {
+          build.onResolve({ filter: /^\.\/services\// }, (args) => {
+            if (!args.importer.endsWith("/src/routes/routes.ts")) return null;
+            return {
+              path: path.resolve(path.dirname(args.importer), "..", `${args.path.slice(2)}.ts`),
+            };
+          });
+        },
+      },
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })
     ],
+    sourcemap: "linked",
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
       js: `import { createRequire as __bannerCrReq } from 'node:module';
@@ -118,6 +134,13 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  await mkdir(path.join(distDir, "assets"), { recursive: true });
+  await cp(
+    path.resolve(artifactDir, "../../.migration-backup/server/assets"),
+    path.join(distDir, "assets"),
+    { recursive: true },
+  );
 }
 
 buildAll().catch((err) => {
