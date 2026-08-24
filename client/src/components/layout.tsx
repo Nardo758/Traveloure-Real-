@@ -146,6 +146,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
   const recentCities = useRecentlyViewed();
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
+  const [location] = useLocation();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -204,6 +205,13 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
+
+  // A wouter navigation preserves this component instance, so close the menu
+  // explicitly when a child link changes the route. Without this, the old
+  // Marketplace menu can remain painted over the newly selected surface.
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location]);
 
   const slugify = (str: string) => str.toLowerCase().replace(/\s+/g, '-');
 
@@ -335,6 +343,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                         role="menuitem"
                         className={sharedClass}
                         data-testid={`link-nav-${slugify(child.name)}`}
+                        onClick={() => setIsOpen(false)}
                       >
                         {inner}
                       </Link>
@@ -361,6 +370,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                         FOCUS_RING
                       )}
                       data-testid={`link-recent-city-${c.slug}`}
+                        onClick={() => setIsOpen(false)}
                     >
                       <MapPin className="w-3 h-3 shrink-0" aria-hidden="true" />
                       {c.name}
