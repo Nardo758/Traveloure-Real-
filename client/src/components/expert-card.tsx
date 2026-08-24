@@ -1,17 +1,49 @@
-import { Card, CardContent } from "@/components/ui/card";
+/**
+ * ExpertCard — traveler-facing browse card, rebuilt to the ratified EXPERT CARD
+ * grammar (attached_assets/marketplace_action_grammar_and_expert_card_(2)_...html,
+ * item 4 "expert marketed in feed") applied in the marketplace-continuity design
+ * LANGUAGE (artifacts/mockup-sandbox/.../marketplace-details/_shared, the
+ * ProviderStorefrontContinuity card idiom) — see docs/DECISIONS.md ledger row
+ * 2026-08-24-experts-continuity. Anatomy: avatar + colored role badge (the
+ * mock's tinted eyebrow tag) + name/verification + a single meta line
+ * (specialty · rating · price) + real secondary facts (specialties, languages,
+ * neighbourhoods, storefront volume) + a two-button action row (Message /
+ * View profile — the mock's "Ask an expert" / primary-CTA pairing).
+ *
+ * Only consumer: client/src/pages/experts.tsx (kept local per the continuity
+ * lane's no-shared-component-churn rule — this file lives in components/ for
+ * historical reasons but is not imported anywhere else).
+ *
+ * §13: every field renders only when the real record has it. No fabricated
+ * rating, no invented specialty, no placeholder photo beyond the deterministic
+ * initials avatar. All existing data-testid values and CTA wiring preserved
+ * verbatim so playwright/tests/experts-flow.spec.ts stays green.
+ */
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home, Plane, PartyPopper, BookOpen, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 
-const ROLE_BADGE: Record<string, { label: string; className: string; Icon: React.ElementType }> = {
-  local_expert:  { label: "Local Expert",   className: "bg-emerald-500 text-white", Icon: MapPin },
-  travel_expert: { label: "Trip Planner", className: "bg-blue-500 text-white",    Icon: Plane },
-  event_planner: { label: "Event Planner",  className: "bg-purple-500 text-white",  Icon: PartyPopper },
+// Continuity tokens — the same values as artifacts/mockup-sandbox's
+// _shared/continuity.css :root and the action-grammar mock's own badge tints
+// (#E1F5EE/#0F6E56 "on Traveloure" green, #E6F1FB/#185FA5 partner blue), so
+// this card reads as one system with the rest of the marketplace-continuity
+// direction without importing the sandbox file (that file is a design
+// reference, not app code).
+const INK = "#111827";
+const MUTED = "#667085";
+const LINE = "#e4e7ec";
+const SURFACE = "#ffffff";
+const PINK = "#fb3b63";
+const PINK_SOFT = "#fff0f3";
+const GOLD = "#b54708";
+
+const ROLE_BADGE: Record<string, { label: string; bg: string; ink: string; Icon: React.ElementType }> = {
+  local_expert: { label: "Local Expert", bg: "#E1F5EE", ink: "#0F6E56", Icon: MapPin },
+  travel_expert: { label: "Trip Planner", bg: "#E6F1FB", ink: "#185FA5", Icon: Plane },
+  event_planner: { label: "Event Planner", bg: PINK_SOFT, ink: "#d92d55", Icon: PartyPopper },
 };
 
 interface ExpertCardProps {
@@ -81,40 +113,31 @@ interface ExpertCardProps {
   detailQuery?: string;
 }
 
-export function ExpertCard({ expert, showServices = true, experienceTypeFilter, onNeighbourhoodClick, detailQuery }: ExpertCardProps) {
+export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery }: ExpertCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [, setLocation] = useLocation();
-  
+
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Expert";
   const initials = `${expert.firstName?.[0] || "T"}${expert.lastName?.[0] || "E"}`;
-  
+
   const lowestPrice = expert.selectedServices?.length
     ? Math.min(...expert.selectedServices.map(s => parseFloat(s.offering?.price || "0")))
     : null;
-  
+
   const location = expert.expertForm?.city && expert.expertForm?.country
     ? `${expert.expertForm.city}, ${expert.expertForm.country}`
     : expert.expertForm?.destinations?.[0] || null;
-  
+
   const languages = expert.expertForm?.languages || [];
   const responseTime = expert.responseTime || expert.expertForm?.responseTime || null;
-  // Roadmap 3.5: real expert-level rating (approved service reviews for this
-  // expert). expertRating is null when the expert has no reviews → show "New",
-  // never a fabricated score (§13).
   const expertRating: number | null =
     typeof expert.expertRating === "number" ? expert.expertRating : null;
   const reviewsCount = (expert.expertReviewCount ?? expert.reviewsCount) || null;
   const tripsCount = expert.tripsCount || null;
-  // LB-P4b: badge resolves from identityVerificationStatus (set by Stripe Identity /
-  // Persona KYB flow). No fallback default — only render the checkmark when the
-  // expert has actually completed verification. Legacy expert.verified retained as
-  // a transition fallback for seeded data, but new card consumers should populate
-  // expertForm.identityVerificationStatus.
   const verified = expert.expertForm?.identityVerificationStatus === "verified"
     || expert.verified === true;
   const superExpert = expert.superExpert || false;
-  const hasMetrics = reviewsCount !== null || tripsCount !== null;
-  
+
   const specialties = expert.specialties || expert.specializations?.slice(0, 2) || [];
   const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
   const showNeighbourhoods = neighbourhoods.length > 0;
@@ -131,229 +154,211 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
   const hasStorefront = servicesCount > 0 || packagesCount > 0;
 
   return (
-    <Card className="relative hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
-      {roleBadge && (
-        <span
-          className={cn("absolute -top-2.5 left-3 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm", roleBadge.className)}
-          data-testid="badge-expert-role"
-        >
-          <roleBadge.Icon className="w-2.5 h-2.5 shrink-0" />
-          {roleBadge.label}
-        </span>
-      )}
-      <CardContent className="p-3">
-        <div className="flex gap-3">
-          <div className="relative shrink-0">
-            <Avatar className="w-12 h-12 border border-white shadow-sm">
-              <AvatarImage src={expert.profileImageUrl || undefined} alt={fullName} />
-              <AvatarFallback className="bg-gradient-to-br from-[#FF385C] to-[#E23350] text-white font-semibold text-sm">
+    <article
+      className="group relative flex h-full flex-col overflow-hidden rounded-[14px] border bg-[color:var(--ec-surface)] p-3.5 transition-all duration-200 hover:-translate-y-0.5"
+      style={{ ["--ec-surface" as any]: SURFACE, borderColor: LINE, boxShadow: "0 1px 3px rgba(17,24,39,.04)" }}
+      data-testid={`card-expert-${expert.id}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="relative shrink-0">
+          <div className="h-12 w-12 overflow-hidden rounded-full border shadow-sm" style={{ borderColor: SURFACE }}>
+            {expert.profileImageUrl ? (
+              <img src={expert.profileImageUrl} alt={fullName} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#fb3b63] to-[#d92d55] text-sm font-semibold text-white">
                 {initials}
-              </AvatarFallback>
-            </Avatar>
-            {superExpert && (
-              <div className="absolute -bottom-0.5 -right-0.5 bg-amber-500 rounded-full p-0.5">
-                <Award className="w-2.5 h-2.5 text-white" />
               </div>
             )}
           </div>
-          
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-1">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-semibold text-foreground dark:text-white text-sm truncate" data-testid="text-expert-name">
-                    {fullName}
-                  </h3>
-                  {verified && (
-                    <CheckCircle className="w-3.5 h-3.5 text-blue-500 fill-blue-500 shrink-0" />
-                  )}
-                  {superExpert && (
-                    <Badge className="bg-amber-500 text-white text-[10px] px-1 py-0 border-0 shrink-0">
-                      Super
-                    </Badge>
-                  )}
-                </div>
-                
-                {location && (
-                  <div className="flex items-center gap-1 text-muted-foreground text-xs">
-                    <MapPin className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{location}</span>
-                  </div>
-                )}
-              </div>
-              
-              <button 
-                onClick={() => setIsFavorite(!isFavorite)}
-                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
-                data-testid="button-favorite"
-              >
-                <Heart className={cn(
-                  "w-4 h-4 transition-colors",
-                  isFavorite ? "fill-[#FF385C] text-primary" : "text-gray-400"
-                )} />
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
-              <div className="flex items-center text-amber-500">
-                <Star className="w-3 h-3 fill-amber-500" />
-                {expertRating !== null ? (
-                  <>
-                    <span className="ml-0.5 font-semibold text-muted-foreground">{expertRating.toFixed(1)}</span>
-                    {reviewsCount !== null && (
-                      <span className="text-muted-foreground ml-0.5">({reviewsCount})</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="ml-0.5 font-semibold text-muted-foreground">New</span>
-                )}
-              </div>
-              
-              {tripsCount !== null && (
-                <div className="flex items-center gap-0.5 text-muted-foreground">
-                  <Briefcase className="w-3 h-3" />
-                  <span>{tripsCount} trips</span>
-                </div>
-              )}
-              
-              {responseTime && (
-                <div className="flex items-center gap-0.5 text-muted-foreground">
-                  <Clock className="w-3 h-3" />
-                  <span>{responseTime}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {lowestPrice && (
-            <div className="text-right shrink-0">
-              <p className="text-[10px] text-muted-foreground">From</p>
-              <p className="text-lg font-bold text-primary" data-testid="text-price">
-                ${lowestPrice}
-              </p>
+          {superExpert && (
+            <div className="absolute -bottom-0.5 -right-0.5 rounded-full p-0.5" style={{ background: GOLD }}>
+              <Award className="h-2.5 w-2.5 text-white" />
             </div>
           )}
         </div>
-        
-        {(specialties.length > 0 || languages.length > 0) && (
-          <div className="flex flex-wrap items-center gap-1 mt-2">
-            {specialties.slice(0, 3).map((specialty, idx) => (
-              <Badge 
-                key={idx} 
-                variant="secondary" 
-                className="text-[10px] px-1.5 py-0 bg-[#F3F4F6] dark:bg-gray-800 text-[#374151] dark:text-gray-300 border-0"
-                data-testid={`badge-specialty-${idx}`}
-              >
-                {specialty}
-              </Badge>
-            ))}
-            {languages.length > 0 && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <Languages className="w-3 h-3" />
-                {languages.slice(0, 2).join(", ")}
-              </span>
-            )}
-          </div>
-        )}
 
-        {showNeighbourhoods && (
-          <div className="flex flex-wrap items-center gap-1 mt-1.5" data-testid="neighbourhood-chips" title="Neighbourhoods covered by this expert">
-            <Home className="w-3 h-3 text-emerald-500 shrink-0" />
-            {neighbourhoods.slice(0, 3).map((n, idx) => (
-              <Badge
-                key={idx}
-                variant="outline"
-                className={cn(
-                  "text-[10px] px-1.5 py-0 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30",
-                  onNeighbourhoodClick && "cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/50 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors"
-                )}
-                data-testid={`badge-neighbourhood-${idx}`}
-                onClick={onNeighbourhoodClick ? (e) => { e.preventDefault(); e.stopPropagation(); onNeighbourhoodClick(n); } : undefined}
-              >
-                {n}
-              </Badge>
-            ))}
-            {neighbourhoods.length > 3 && (
-              <span className="text-[10px] text-[#9CA3AF]">+{neighbourhoods.length - 3}</span>
-            )}
-          </div>
-        )}
-        
-        {/* Storefront — what this expert sells + real sales volume (§13: hidden at 0). */}
-        {hasStorefront && (
-          <div
-            className="flex flex-wrap items-center gap-1.5 mt-2"
-            data-testid="expert-storefront"
-          >
-            {servicesCount > 0 && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
-                data-testid="storefront-services"
-              >
-                <Briefcase className="w-2.5 h-2.5" />
-                {servicesCount} {servicesCount === 1 ? "service" : "services"}
-              </span>
-            )}
-            {packagesCount > 0 && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
-                data-testid="storefront-trips"
-              >
-                <BookOpen className="w-2.5 h-2.5" />
-                {packagesCount} {packagesCount === 1 ? "trip" : "trips"}
-              </span>
-            )}
-            {totalSales > 0 && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[var(--earn-gold-wash)] text-[color:var(--earn-gold-ink)]"
-                data-testid="storefront-sales"
-                title={`${serviceBookings} bookings · ${packagesSold} trips sold`}
-              >
-                <TrendingUp className="w-2.5 h-2.5" />
-                {totalSales} sold
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* D1 (lane nav-storefront): direct storefront affordance. The card's main CTA stays
-            /experts/:id (which itself redirects handled experts to /p/:handle), so this is a
-            shortcut, not a second source of truth. This card is NOT wrapped in a <Link>, so
-            the inline anchor variant is valid here (no nested anchors). StorefrontLink renders
-            nothing when handle is null; the outer guard just avoids an empty spacer div. */}
-        {expert.handle && (
-          <div className="mt-2">
-            <StorefrontLink
-              handle={expert.handle}
-              name={expert.firstName || undefined}
-              variant="inline"
-              data-testid={`link-expert-storefront-${expert.id}`}
-            />
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border dark:border-gray-700">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-1 h-7 text-xs"
-            data-testid="button-message"
-            onClick={() => setLocation(`/chat?expertId=${expert.id}`)}
-          >
-            <MessageCircle className="w-3 h-3" />
-            Message
-          </Button>
-          <Link href={`/experts/${expert.id}${detailQuery ?? ""}`} className="flex-1">
-            <Button 
-              size="sm" 
-              className="w-full bg-primary hover:bg-primary/90 h-7 text-xs"
-              data-testid="button-view-profile"
+        <div className="min-w-0 flex-1">
+          {roleBadge && (
+            <span
+              className="mb-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+              style={{ background: roleBadge.bg, color: roleBadge.ink }}
+              data-testid="badge-expert-role"
             >
-              View Profile
-            </Button>
-          </Link>
+              <roleBadge.Icon className="h-2.5 w-2.5 shrink-0" />
+              {roleBadge.label}
+            </span>
+          )}
+          <div className="flex items-center gap-1.5">
+            <h3
+              className="truncate text-[14px] font-semibold"
+              style={{ color: INK }}
+              data-testid="text-expert-name"
+            >
+              {fullName}
+            </h3>
+            {verified && <CheckCircle className="h-3.5 w-3.5 shrink-0 fill-blue-500 text-blue-500" />}
+          </div>
+          {location && (
+            <div className="flex items-center gap-1 text-[11px]" style={{ color: MUTED }}>
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{location}</span>
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        <button
+          onClick={() => setIsFavorite(!isFavorite)}
+          className="shrink-0 rounded-full p-1 hover:bg-black/5"
+          data-testid="button-favorite"
+          aria-label="Save expert"
+        >
+          <Heart className={cn("h-4 w-4 transition-colors", isFavorite ? "fill-[#fb3b63] text-[#fb3b63]" : "text-gray-400")} />
+        </button>
+      </div>
+
+      {/* Meta line — the mock's "Itinerary planning · ★4.9 · from €249" grammar */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px]">
+        <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: GOLD }}>
+          <Star className="h-3 w-3 fill-current" />
+          {expertRating !== null ? (
+            <>
+              {expertRating.toFixed(1)}
+              {reviewsCount !== null && <span className="font-medium" style={{ color: MUTED }}>&nbsp;({reviewsCount})</span>}
+            </>
+          ) : (
+            <span className="font-semibold" style={{ color: MUTED }}>New</span>
+          )}
+        </span>
+        {tripsCount !== null && (
+          <span className="inline-flex items-center gap-0.5" style={{ color: MUTED }}>
+            <span>·</span><Briefcase className="h-3 w-3" />{tripsCount} trips
+          </span>
+        )}
+        {responseTime && (
+          <span className="inline-flex items-center gap-0.5" style={{ color: MUTED }}>
+            <span>·</span><Clock className="h-3 w-3" />{responseTime}
+          </span>
+        )}
+        {lowestPrice !== null && (
+          <span className="ml-auto font-bold" style={{ color: INK }} data-testid="text-price">
+            from ${lowestPrice}
+          </span>
+        )}
+      </div>
+
+      {(specialties.length > 0 || languages.length > 0) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {specialties.slice(0, 3).map((specialty, idx) => (
+            <span
+              key={idx}
+              className="rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium"
+              style={{ background: "#f5f7fa", color: "#667085" }}
+              data-testid={`badge-specialty-${idx}`}
+            >
+              {specialty}
+            </span>
+          ))}
+          {languages.length > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px]" style={{ color: MUTED }}>
+              <Languages className="h-3 w-3" />
+              {languages.slice(0, 2).join(", ")}
+            </span>
+          )}
+        </div>
+      )}
+
+      {showNeighbourhoods && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1" data-testid="neighbourhood-chips" title="Neighbourhoods covered by this expert">
+          <Home className="h-3 w-3 shrink-0" style={{ color: "#0F6E56" }} />
+          {neighbourhoods.slice(0, 3).map((n, idx) => (
+            <Badge
+              key={idx}
+              variant="outline"
+              className={cn(
+                "border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[10px] text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400",
+                onNeighbourhoodClick && "cursor-pointer transition-colors hover:border-emerald-400 hover:bg-emerald-100 dark:hover:border-emerald-600 dark:hover:bg-emerald-900/50"
+              )}
+              data-testid={`badge-neighbourhood-${idx}`}
+              onClick={onNeighbourhoodClick ? (e) => { e.preventDefault(); e.stopPropagation(); onNeighbourhoodClick(n); } : undefined}
+            >
+              {n}
+            </Badge>
+          ))}
+          {neighbourhoods.length > 3 && (
+            <span className="text-[10px] text-[#9CA3AF]">+{neighbourhoods.length - 3}</span>
+          )}
+        </div>
+      )}
+
+      {/* Storefront — what this expert sells + real sales volume (§13: hidden at 0). */}
+      {hasStorefront && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="expert-storefront">
+          {servicesCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ background: "var(--earn-teal-wash)", color: "var(--earn-teal-ink)" }}
+              data-testid="storefront-services"
+            >
+              <Briefcase className="h-2.5 w-2.5" />
+              {servicesCount} {servicesCount === 1 ? "service" : "services"}
+            </span>
+          )}
+          {packagesCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ background: "var(--earn-teal-wash)", color: "var(--earn-teal-ink)" }}
+              data-testid="storefront-trips"
+            >
+              <BookOpen className="h-2.5 w-2.5" />
+              {packagesCount} {packagesCount === 1 ? "trip" : "trips"}
+            </span>
+          )}
+          {totalSales > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={{ background: "var(--earn-gold-wash)", color: "var(--earn-gold-ink)" }}
+              data-testid="storefront-sales"
+              title={`${serviceBookings} bookings · ${packagesSold} trips sold`}
+            >
+              <TrendingUp className="h-2.5 w-2.5" />
+              {totalSales} sold
+            </span>
+          )}
+        </div>
+      )}
+
+      {expert.handle && (
+        <div className="mt-2">
+          <StorefrontLink
+            handle={expert.handle}
+            name={expert.firstName || undefined}
+            variant="inline"
+            data-testid={`link-expert-storefront-${expert.id}`}
+          />
+        </div>
+      )}
+
+      {/* Action grammar — the mock's two-button row (secondary + primary CTA) */}
+      <div className="mt-auto flex items-center gap-2 pt-2.5" style={{ borderTop: `1px solid ${LINE}`, marginTop: "10px" }}>
+        <button
+          className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md border text-[11px] font-semibold transition-colors hover:bg-black/[.03]"
+          style={{ borderColor: "#d0d5dd", color: "#344054" }}
+          data-testid="button-message"
+          onClick={() => setLocation(`/chat?expertId=${expert.id}`)}
+        >
+          <MessageCircle className="h-3 w-3" />
+          Message
+        </button>
+        <Link href={`/experts/${expert.id}${detailQuery ?? ""}`} className="flex-1">
+          <button
+            className="flex h-7 w-full items-center justify-center gap-1 rounded-md text-[11px] font-bold text-white transition-transform hover:-translate-y-px"
+            style={{ background: PINK, boxShadow: "0 4px 12px rgba(251,59,99,.18)" }}
+            data-testid="button-view-profile"
+          >
+            View profile
+          </button>
+        </Link>
+      </div>
+    </article>
   );
 }

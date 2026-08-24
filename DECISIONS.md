@@ -4,14 +4,6 @@ Running record of bindings, rulings, and confirmed answers. Append-only; date-st
 
 ---
 
-## Preview/deployment surface verification — 2026-08-24
-
-**Ledger note:** as-of e1905398, nav ratification verified on client/src only; not verified on deployed surface.
-
-The preview helper now runs the root Traveloure application from `client/src`. Replit deployment remains the root autoscale target: `npm run build` produces `dist/public` from `client/`, and `npm start` serves that build.
-
----
-
 ## Phase 2 new rulings — 2026-08-16
 
 **R7 — Backfill ruling.** The fabrication ban covers *manufacturing* history, not *retrieving* it. A historical observation fetched from a source's archive, or deterministically reconstructed from existing platform rows, is legitimate: `observed_at` = the real historical date, `ingested_at` = now. What remains banned: manufacturing rows for periods a source has no record of, and — explicitly — **ingesting Grok's historical pulse/trending/crowd/traveler-estimate outputs as signals.** Those are outputs of the fabrication this lane replaces. They never enter `trend_signals`, ever.

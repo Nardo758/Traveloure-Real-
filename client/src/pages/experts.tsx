@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -391,8 +389,9 @@ export default function ExpertsPage() {
       {/* Filters & Results */}
       <section className="py-8">
         <div className="container mx-auto px-4 max-w-6xl">
-          {/* Unified Filter Bar */}
-          <div className="bg-white border border-border rounded-xl p-3 mb-6 shadow-sm">
+          {/* Unified Filter Bar — continuity tc-card idiom: hairline border,
+              soft shadow, 14px radius (marketplace-continuity language). */}
+          <div className="bg-white border rounded-[14px] p-3 mb-6" style={{ borderColor: "#e4e7ec", boxShadow: "0 1px 3px rgba(17,24,39,.04)" }}>
             {/* Top row: search + destination */}
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <div className="flex-1 relative">
@@ -530,6 +529,21 @@ export default function ExpertsPage() {
             </div>
           )}
 
+          {/* Section heading — continuity's eyebrow + count grammar
+              (ProviderStorefrontContinuity's tc-section-heading). */}
+          {!isLoadingExperts && sortedExperts.length > 0 && (
+            <div className="flex items-end justify-between gap-4 mb-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "#667085" }}>
+                  {roleLabels[selectedRole] ?? "Experts"}
+                </p>
+                <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: "#111827" }}>
+                  {sortedExperts.length} {sortedExperts.length === 1 ? "expert" : "experts"} to choose from
+                </h2>
+              </div>
+            </div>
+          )}
+
           {/* Expert Cards Grid */}
           {isLoadingExperts ? (
             <div className="flex items-center justify-center py-16">
@@ -559,18 +573,22 @@ export default function ExpertsPage() {
 
           {/* Empty State */}
           {sortedExperts.length === 0 && (
-            <div className="text-center py-16">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center">
+            <div
+              className="flex flex-col items-center justify-center gap-3 rounded-[14px] border border-dashed py-16 text-center"
+              style={{ borderColor: "#d0d5dd" }}
+            >
+              <div className="w-16 h-16 rounded-full bg-[#F3F4F6] flex items-center justify-center">
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
+              <h3 className="text-lg font-semibold" style={{ color: "#111827" }}>
                 No experts found
               </h3>
-              <p className="text-muted-foreground mb-4">
+              <p className="text-muted-foreground">
                 Try adjusting your filters or search terms
               </p>
-              <Button
-                variant="outline"
+              <button
+                className="mt-1 rounded-md px-4 py-2 text-sm font-bold"
+                style={{ color: "#d92d55" }}
                 onClick={() => {
                   setSearchQuery("");
                   setSelectedDestination("All Destinations");
@@ -580,24 +598,23 @@ export default function ExpertsPage() {
                 }}
                 data-testid="button-clear-filters"
               >
-                Clear All Filters
-              </Button>
+                Clear all filters
+              </button>
             </div>
           )}
 
           {/* Load More */}
           {sortedExperts.length > visibleCount && (
             <div className="text-center mt-8">
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-border"
+              <button
+                className="inline-flex items-center gap-2 rounded-md border px-5 py-2.5 text-sm font-bold transition-colors hover:bg-black/[.03]"
+                style={{ borderColor: "#d0d5dd", color: "#344054" }}
                 onClick={() => setVisibleCount(c => c + 12)}
                 data-testid="button-load-more"
               >
-                Load More Experts
-                <ChevronDown className="w-4 h-4 ml-2" />
-              </Button>
+                Load more experts
+                <ChevronDown className="w-4 h-4" />
+              </button>
             </div>
           )}
         </div>
@@ -627,33 +644,32 @@ export default function ExpertsPage() {
         };
         const config = ctaConfig[selectedRole] ?? ctaConfig.local_expert;
         return (
-          <section className="py-16 bg-white border-t border-border">
+          <section className="py-16 bg-white border-t" style={{ borderColor: "#e4e7ec" }}>
             <div className="container mx-auto px-4 max-w-4xl text-center">
-              <h2 className="text-3xl font-bold text-foreground mb-4">
+              <h2 className="text-3xl font-bold mb-4" style={{ color: "#111827" }}>
                 {config.heading}
               </h2>
-              <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+              <p className="text-lg mb-8 max-w-2xl mx-auto" style={{ color: "#667085" }}>
                 {config.body}
               </p>
-              <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-wrap justify-center gap-3">
                 <Link href={config.href}>
-                  <Button
-                    size="lg"
-                    className="bg-primary hover:bg-primary/90 text-white px-8"
+                  <button
+                    className="rounded-md px-8 py-3 text-sm font-bold text-white transition-transform hover:-translate-y-px"
+                    style={{ background: "#fb3b63", boxShadow: "0 4px 12px rgba(251,59,99,.18)" }}
                     data-testid="button-become-expert-experts"
                   >
                     {config.cta}
-                  </Button>
+                  </button>
                 </Link>
                 <Link href="/earn">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="border-border px-8"
+                  <button
+                    className="rounded-md border px-8 py-3 text-sm font-bold transition-colors hover:bg-black/[.03]"
+                    style={{ borderColor: "#d0d5dd", color: "#344054" }}
                     data-testid="button-learn-more"
                   >
-                    Learn More
-                  </Button>
+                    Learn more
+                  </button>
                 </Link>
               </div>
             </div>
