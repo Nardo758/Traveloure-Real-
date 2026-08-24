@@ -58,6 +58,7 @@ import {
   Zap,
   Trophy,
   CheckCircle,
+  ArrowUpRight,
   Mountain,
   Cake,
   Gem,
@@ -141,56 +142,64 @@ function readyMadeThemeHeading(key: string): string {
  */
 function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
   return (
-    <Card
-      className="marketplace-guide-card marketplace-trip-card overflow-hidden h-full flex flex-col"
+    <article
+      className="marketplace-card flex flex-col h-full"
       data-testid={`rm-shelf-card-${l.id}`}
     >
-      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer group">
-        {l.heroImageUrl && (
-          <div className="marketplace-card-photo">
-            <img src={l.heroImageUrl} alt={l.title} className="w-full h-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-105" />
-            <span className="marketplace-card-signal">{l.market}</span>
+      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer group hover:no-underline text-inherit">
+        <div
+          className="marketplace-trip-image overflow-hidden"
+          style={l.heroImageUrl ? { backgroundImage: `url(${l.heroImageUrl})` } : {}}
+        >
+          <span className="marketplace-trip-destination">{l.market}</span>
+        </div>
+        <div className="marketplace-trip-body flex flex-col flex-1">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <p className="marketplace-kicker">{planTypeDisplay(l.planType, l.planTypeCustom)}</p>
+            <span className="marketplace-status gold">Editable after purchase</span>
           </div>
-        )}
-        <CardContent className="p-4 pb-3">
-          <div className="marketplace-kicker">
-            {planTypeDisplay(l.planType, l.planTypeCustom)}
-          </div>
-          <div className="marketplace-card-title line-clamp-2">{l.title}</div>
-          <div className="marketplace-facts">
-            <span><strong>{l.durationDays} days</strong>trip length</span>
-            <span>
+          <p className="marketplace-trip-title line-clamp-2">{l.title}</p>
+          <p className="marketplace-trip-details">{l.durationDays} days · editable plan</p>
+          <div className="marketplace-facts mt-auto">
+            <div className="marketplace-fact">
               <strong>{l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}</strong>
               {l.pricingMode === "per_traveler" ? "per traveler" : "complete trip"}
+            </div>
+            <div className="marketplace-fact">
+              <strong>{l.durationDays} days</strong>
+              trip length
+            </div>
+            <div className="marketplace-fact">
+              <strong>By {l.authorName.split(" ")[0]}</strong>
+              {l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner"}
+            </div>
+          </div>
+          <div className="marketplace-trip-actions">
+            <span className="marketplace-meta" style={{ margin: 0 }}>
+              Editable plan · yours after checkout
             </span>
-            <span><strong>{l.authorName.split(" ")[0]}</strong>trip editor</span>
+            <span className="marketplace-card-cta">
+              View trip <ArrowRight className="w-3.5 h-3.5" />
+            </span>
           </div>
-          <div className="marketplace-card-action">
-            <span>Editable after purchase</span>
-            <span className="marketplace-primary-action">View trip <ArrowRight className="w-3.5 h-3.5" /></span>
-          </div>
-        </CardContent>
+        </div>
       </Link>
-      <div className="px-4 pb-3 pt-1 flex items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span className="truncate">
-          by{" "}
-          {l.authorHandle ? (
-            <Link
-              href={`/p/${l.authorHandle}`}
-              className="font-medium text-primary hover:underline"
-              data-testid={`link-rm-author-${l.id}`}
-            >
-              {l.authorName}
-            </Link>
-          ) : (
-            l.authorName
-          )}
-        </span>
-        <Badge variant="secondary" className="shrink-0 text-[10px] uppercase tracking-wide">
-          {l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner"}
-        </Badge>
+      <div className="marketplace-card-owner">
+        <span>Trip editor</span>
+        {l.authorHandle ? (
+          <Link
+            href={`/p/${l.authorHandle}`}
+            className="marketplace-owner-link"
+            data-testid={`link-rm-author-${l.id}`}
+          >
+            {l.authorName}
+            <ArrowUpRight aria-hidden="true" />
+          </Link>
+        ) : (
+          <span>{l.authorName}</span>
+        )}
       </div>
-    </Card>
+    </article>
   );
 }
 
@@ -297,328 +306,140 @@ const tripCategories = [
 ];
 
 
-function ServiceCard({ 
-  service, 
+function ServiceCard({
+  service,
   category,
   onAddToCart,
   isAddingToCart,
   isAdded,
-}: { 
-  service: Service; 
+}: {
+  service: Service;
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
 }) {
-  // D1c (lane nav-storefront): programmatic navigation for the provider-name deep link.
-  // The whole image header is wrapped in a <Link> (below), so the storefront affordance
-  // must NOT be an <a> — nested anchors are invalid HTML (the StorefrontLink doc rule).
-  // Pattern precedent: expert-card.tsx neighbourhood chips (preventDefault + stopPropagation
-  // on a non-anchor child inside a clickable parent).
-  const [, navigateTo] = useLocation();
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
-  const Icon = category ? categoryIcons[category.slug] || Compass : Compass;
-  const description = service.shortDescription || service.description || "No description available";
   const location = service.location || "Remote";
-  
-  // Determine expert badges based on rating and review count
-  const isTopExpert = rating >= 4.8 && reviewCount >= 5;
-  const isVerified = reviewCount >= 3;
-  const isHot = rating >= 4.7 && reviewCount >= 10;
-  
-  const serviceImage = service.serviceImage
-    || service.galleryImages?.find((image): image is string => Boolean(image))
-    || null;
-
-  // Build real provider display name from API data.
-  // Fallback chain: firstName+lastName → businessName (from service_provider_forms) → "Provider"
+  const categoryName = category?.name || "Service";
+  const hasReviews = reviewCount > 0;
   const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || service.providerBusinessName || "Provider";
-  const providerImageUrl = service.providerImageUrl || null;
-
-  // Initials fallback for providers without a profile photo.
-  // When no first/last name is set, use the first letter of the business name instead.
-  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase()
-    || service.providerBusinessName?.[0]?.toUpperCase()
-    || "P";
-
-  const heatScore = Math.round(rating * 20);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group"
+      className="group h-full"
     >
-      <div 
-        className="marketplace-guide-card marketplace-service-card bg-card dark:bg-card overflow-hidden border border-border h-full flex flex-col"
+      <article
+        className="marketplace-card marketplace-service-card bg-card dark:bg-card overflow-hidden h-full flex flex-col hover-elevate transition-all"
         data-testid={`card-service-${service.id}`}
       >
-        {/* Image Header with Overlay */}
-        <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
-          <div className="relative h-48 overflow-hidden cursor-pointer">
-            {serviceImage ? (
-              <img
-                src={serviceImage}
-                alt={service.serviceName}
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-              />
-            ) : (
-              <div className="marketplace-service-image-fallback" aria-label="No service photo provided">
-                <Icon aria-hidden="true" />
-              </div>
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-            
-            {/* Heat Score Badge - Top Right. D5 (UX audit Jul 29): "Heat Score 0" rendered on
-                every zero-review service with no legend — read as a bad score, not "no data
-                yet". A real title tooltip explains the number; a service with no reviews yet
-                shows the same honest "New" the rest of the platform uses (§13) instead of a
-                fabricated-looking 0. */}
-            {reviewCount > 0 ? (
-              <div
-                className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
-                data-testid={`badge-heat-score-${service.id}`}
-                title={`Traveler Score: ${heatScore}/100 — based on this service's average rating (${rating.toFixed(1)}/5 from ${reviewCount} review${reviewCount === 1 ? "" : "s"})`}
-              >
-                <span className={cn(
-                  "text-lg font-bold",
-                  heatScore >= 90 ? "text-primary" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
-                )}>
-                  {heatScore}
-                </span>
-              </div>
-            ) : (
-              <div
-                className="absolute top-3 right-3 px-2.5 h-6 rounded-full bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
-                data-testid={`badge-heat-score-${service.id}`}
-                title="No reviews yet — a Traveler Score appears once travelers rate this service."
-              >
-                <span className="text-[11px] font-semibold text-muted-foreground">New</span>
-              </div>
-            )}
+        <Link href={`/services/${service.id}`} className="block flex-1 cursor-pointer group hover:no-underline text-inherit" data-testid={`link-service-${service.id}`}>
+          <div className="marketplace-service-top">
+            <span className="marketplace-service-provider">
+              {hasReviews ? "Guest-rated service" : "New listing"}
+            </span>
+            <span className="marketplace-status teal">
+              {service.status === "active" ? "Active listing" : "Service listing"}
+            </span>
+          </div>
 
-            {/* Hot/Trending Badge - Top Left */}
-            <div className="absolute top-3 left-3 flex items-center gap-2">
-              {isHot ? (
-                <span 
-                  className="px-2.5 py-1 rounded-lg bg-primary text-white text-xs font-bold flex items-center gap-1 shadow-lg"
-                  data-testid={`badge-hot-${service.id}`}
-                >
-                  <Zap className="w-3 h-3 fill-white" />
-                  Hot
-                </span>
-              ) : isTopExpert ? (
-                <span 
-                  className="px-2.5 py-1 rounded-lg bg-amber-500 dark:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 shadow-lg"
-                  data-testid={`badge-top-expert-${service.id}`}
-                >
-                  <Trophy className="w-3 h-3" />
-                  Top Expert
-                </span>
-              ) : null}
-              {reviewCount > 0 && (
-                <span 
-                  className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1 shadow-sm"
-                  data-testid={`badge-reviews-${service.id}`}
-                >
-                  <Users className="w-3 h-3" />
-                  {reviewCount}
+          <p
+            className="marketplace-card-title line-clamp-2"
+            style={{ marginTop: 19 }}
+            data-testid={`text-service-name-${service.id}`}
+          >
+            {service.serviceName}
+          </p>
+
+          <p className="marketplace-meta truncate">
+            <span data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+            {" · "}
+            <span data-testid={`text-provider-rating-${service.id}`}>{rating > 0 ? rating.toFixed(1) : "New"}</span>
+            {" · "}
+            <span data-testid={`text-location-${service.id}`}>{location}</span>
+          </p>
+
+          {Boolean(service.shortDescription || service.description) && (
+            <p className="marketplace-service-summary line-clamp-2">
+              {service.shortDescription || service.description}
+            </p>
+          )}
+
+          <p className="marketplace-meta" style={{ color: "var(--teal)", fontWeight: 700, marginTop: 12 }}>
+            {service.deliveryTimeframe || "Flexible timing"}
+          </p>
+
+          {(service.deliveryMethod || service.revisionsIncluded !== undefined || service.includesExpertNotes) && (
+            <div className="marketplace-service-inclusions">
+              {service.deliveryMethod && <span>{service.deliveryMethod}</span>}
+              {service.revisionsIncluded !== undefined && (
+                <span>
+                  {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"}
                 </span>
               )}
+              {service.includesExpertNotes && <span>Expert notes included</span>}
             </div>
+          )}
 
-            {/* Provider Info & Service Title */}
-            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3">
-              <div className="relative">
-                {providerImageUrl ? (
-                  <img
-                    src={providerImageUrl}
-                    alt={providerName}
-                    className="w-12 h-12 rounded-full border-2 border-white object-cover shadow-lg"
-                    data-testid={`img-provider-avatar-${service.id}`}
-                  />
-                ) : (
-                  <div
-                    className="w-12 h-12 rounded-full border-2 border-white shadow-lg bg-primary flex items-center justify-center"
-                    data-testid={`img-provider-avatar-${service.id}`}
-                  >
-                    <span className="text-white text-sm font-bold">{providerInitials}</span>
-                  </div>
-                )}
-                {isVerified && (
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white">
-                    <CheckCircle className="w-3 h-3 text-white" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 
-                  className="text-lg font-bold text-white line-clamp-1"
-                  data-testid={`text-service-name-${service.id}`}
-                >
-                  {service.serviceName}
-                </h3>
-                <div className="flex items-center gap-2 text-white/90 text-sm">
-                  {/* Storefront deep link (D1) — only when the owner has a claimed handle
-                      (StorefrontLink rule 1: never a dead /p/ link). Rendered as a
-                      keyboard-operable span, not an <a>: this block sits inside the card's
-                      <Link>, and nesting anchors is invalid HTML. */}
-                  {service.providerHandle ? (
-                    <span
-                      role="link"
-                      tabIndex={0}
-                      className="font-medium underline-offset-2 hover:underline cursor-pointer"
-                      title={`See everything @${service.providerHandle} offers`}
-                      data-testid={`link-provider-storefront-${service.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        navigateTo(`/p/${service.providerHandle}`);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          navigateTo(`/p/${service.providerHandle}`);
-                        }
-                      }}
-                    >
-                      {providerName}
-                    </span>
-                  ) : (
-                    <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
-                  )}
-                  {service.providerRating && parseFloat(service.providerRating) > 0 && (
-                    <>
-                      <span className="text-white/60">•</span>
-                      <span
-                        className="flex items-center gap-0.5"
-                        data-testid={`text-provider-rating-${service.id}`}
-                        title={`Provider portfolio rating: ${parseFloat(service.providerRating).toFixed(1)}/5`}
-                      >
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                        <span className="text-amber-300 font-semibold">{parseFloat(service.providerRating).toFixed(1)}</span>
-                      </span>
-                    </>
-                  )}
-                  <span className="text-white/60">•</span>
-                  <MapPin className="w-3 h-3" />
-                  <span data-testid={`text-location-${service.id}`}>{location}</span>
-                </div>
-              </div>
+          <div className="marketplace-facts" data-testid={`stats-footer-${service.id}`}>
+            <div className="marketplace-fact">
+              <strong>${price.toFixed(0)}</strong>
+              per service
+            </div>
+            <div className="marketplace-fact" data-testid={`stat-rating-${service.id}`}>
+              <strong>{rating > 0 ? rating.toFixed(1) : "—"}</strong>
+              guest rating
+            </div>
+            <div className="marketplace-fact truncate" title={categoryName}>
+              <strong>{categoryName}</strong>
+              service type
             </div>
           </div>
         </Link>
 
-        {/* Card Content */}
-          <div className="p-4 flex-1 flex flex-col">
-          {/* Description */}
-          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-            {description}
-          </p>
-
-          {/* Category Tags */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {category && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                {category.name}
-              </span>
-            )}
-            {service.deliveryTimeframe && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {service.deliveryTimeframe}
-              </span>
-            )}
-            {service.includesExpertNotes && (
-              <span
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex items-center gap-1"
-                data-testid={`badge-expert-notes-${service.id}`}
-              >
-                📝 Expert Notes
-              </span>
-            )}
-            {(service.revisionsIncluded ?? 0) > 0 && (
-              <span
-                className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-                data-testid={`badge-revisions-${service.id}`}
-              >
-                {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"}
-              </span>
-            )}
-          </div>
-
-          {/* Price. Availability is only shown when a provider supplies real schedule data. */}
-          <div className="flex items-center mb-3 gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-foreground">${price.toFixed(0)}</span>
-              <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                per service
-              </span>
-            </div>
-          </div>
-
-          {/* Service Tip */}
-          {rating >= 4.5 && (
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 mb-3">
-              <div className="flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 line-clamp-2">
-                  {isTopExpert 
-                    ? "Highly rated expert with proven track record and excellent reviews."
-                    : "Quality service provider with consistent positive feedback from clients."}
-                </p>
-              </div>
-            </div>
+        <div className="marketplace-card-owner">
+          <span>Offered by</span>
+          {service.providerHandle ? (
+            <Link
+              href={`/p/${service.providerHandle}`}
+              className="marketplace-owner-link"
+              data-testid={`link-provider-storefront-${service.id}`}
+            >
+              {providerName}
+              <ArrowUpRight aria-hidden="true" />
+            </Link>
+          ) : (
+            <span>{providerName}</span>
           )}
+        </div>
 
-          {/* Bottom Stats Row */}
-          <div className="marketplace-facts marketplace-service-facts mt-auto" data-testid={`stats-footer-${service.id}`}>
-            <div className="flex items-center gap-1" data-testid={`stat-rating-${service.id}`}>
-              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-              <span className="font-medium">{rating.toFixed(1)}</span>
-            </div>
-            <div className="flex items-center gap-1" data-testid={`stat-reviews-${service.id}`}>
-              <Users className="w-3 h-3" />
-              {reviewCount}
-            </div>
-            {service.deliveryMethod && (
-              <div className="flex items-center gap-1">
-                <Compass className="w-3 h-3" />
-                {service.deliveryMethod}
-              </div>
-            )}
-          </div>
+        <div className="marketplace-card-rule" />
 
-          {/* Add to Cart Button */}
+        <div className="marketplace-card-foot">
+          <span className="marketplace-service-price">
+            ${price.toFixed(0)}<span>per service</span>
+          </span>
           {onAddToCart && (
-            <Button
-              size="sm"
-              className={cn(
-                "w-full mt-3",
-                isAdded ? "bg-green-600 hover:bg-green-700" : ""
-              )}
-              onClick={() => onAddToCart(service.id)}
+            <button
+              className="marketplace-card-cta"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAddToCart(service.id);
+              }}
               disabled={isAddingToCart || isAdded}
               data-testid={`button-add-to-cart-${service.id}`}
             >
-              {isAdded ? (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Added
-                </>
-              ) : (
-                <>
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                  {isAddingToCart ? "Adding..." : "Add to Cart"}
-                </>
-              )}
-            </Button>
+              {isAdded ? "Added ✓" : "Add to trip"}
+              {!isAdded && <ArrowUpRight size={13} />}
+            </button>
           )}
         </div>
-      </div>
+      </article>
     </motion.div>
   );
 }
@@ -1114,7 +935,17 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
         url={surface ? SURFACE_META[surface].url : "/discover"}
       />
-      <div className={cn("min-h-screen bg-background", surface && "marketplace-field-guide")}>
+      <div
+        className={cn(
+          "min-h-screen bg-background",
+          surface && "marketplace-field-guide",
+          surface && (
+            surface === "packages" || surface === "services"
+              ? "marketplace-field-guide--full"
+              : "marketplace-field-guide--delicate"
+          ),
+        )}
+      >
 
         {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
             title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
@@ -1143,7 +974,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
               <div>
                 <h1
                   className={surface
-                    ? "marketplace-page-title"
+                    ? "marketplace-title"
                     : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
                 >
                   {surface ? (
@@ -1158,15 +989,15 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   )}
                 </h1>
                 <p className={surface
-                  ? "marketplace-page-deck"
+                  ? "marketplace-deck"
                   : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
                   {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
                 </p>
               </div>
               {surface && (
-                <div className="marketplace-route-block">
+                <div className="marketplace-surface-block">
                   <p>{SURFACE_META[surface].label}</p>
-                  <nav className="marketplace-route-tabs" aria-label="Marketplace sections">
+                  <nav className="marketplace-surface-nav" aria-label="Marketplace sections">
                     {(Object.keys(SURFACE_META) as MarketplaceSurface[]).map((key) => (
                       <Link
                         key={key}
@@ -1857,7 +1688,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                                 </button>
                               )}
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="marketplace-ready-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                               {rows.slice(0, 3).map((l) => (
                                 <ReadyMadeThemeCard key={l.id} listing={l} />
                               ))}
@@ -1900,7 +1731,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                                 Show all experiences
                               </button>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="marketplace-ready-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                               {filteredRows.map((l) => (
                                 <ReadyMadeThemeCard key={l.id} listing={l} />
                               ))}
