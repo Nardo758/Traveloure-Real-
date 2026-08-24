@@ -285,6 +285,8 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                 : "left-0 w-72"
             )}
             style={sections.length > 2 ? megaStyle : {}}
+            onPointerDown={() => setIsOpen(false)}
+            onClickCapture={() => setIsOpen(false)}
           >
             <div className={cn(
               "py-3",
