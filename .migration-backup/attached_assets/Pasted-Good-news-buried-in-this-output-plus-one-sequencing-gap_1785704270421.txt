@@ -1,0 +1,20 @@
+Good news buried in this output, plus one sequencing gap and two genuinely important findings the new tooling just earned its keep on. In order:
+
+1. The missing table is a deploy-sequencing gap, not a migration failure
+The timeline: the workspace merged main in at 20:12 and published at 20:16 — after both slip PRs — so the publish should have created the table. It didn't, which means either that publish's build/push didn't actually complete cleanly (worth a glance at the Replit deployment log) or the deployed process hasn't cold-started with the new code, so runMigrations() hasn't fired. Meanwhile your workspace tree clearly has the new code — the invariants output includes bookings-have-purchased-items, which only exists post-merge.
+
+The safe fix from the workspace (same shared DB): start the app once — npm run dev, let it boot, Ctrl-C. Boot runs the migration chain, 171 is CREATE TABLE IF NOT EXISTS, done. I'd deliberately use that rather than db:push — a workspace push against the shared DB is the migration-168 incident class, and the migration runner creates exactly the same table with zero drop surface. Then re-run the count query.
+
+2. The slip program's own checks are all green
+Every invariant this program added or touches passed against live data: owner-collaborator rows (0 violations — the L10 backfill and mint-path fixes are holding in prod), purchased-items-have-booking-id, bookings-have-purchased-items, cart projection integrity, ready-made clone consistency. The deployed state of the slip spine is clean.
+
+3. Two real violations — pre-existing money-data debt, now visible
+Neither is caused by today's work, but neither should be waved off:
+
+20 paid_out earnings (~$4,240 across 6 owners) with no payout_id — money marked as having left without a payout record behind it. The round-robin amounts and repeated owner ids smell like seeded demo earners, but the activity_bookings incident taught us not to grade a money finding from the DB row alone.
+11 paid-status bookings with no payment intent — one id is literally rev2-booking-completed-0000-0002 (a test fixture), and six are identical $89 rows, so this cluster is almost certainly seed/e2e residue in the shared DB.
+Triage both with one classification pass — run in the workspace:
+
+(If a column name differs, the exact ones are in scripts/invariants.mjs.) If every email lands in the test domains (%@test.dev, %@t.test), this is fixture residue — the right disposition is a decision-maker-ratified cleanup, same as the expert-templates PROD-count protocol. If any owner is real, the payout-id gap becomes a money-audit item: verify against live Stripe transfers before concluding anything, per the incident lesson — a missing payout_id proves the record is missing, not necessarily the money.
+
+Once the table exists, finish the remaining three checklist items (route an item → diary row + version tick, /plans/:tripId on a new trip, one optimize→apply). Paste me the triage output and I'll give you the disposition.

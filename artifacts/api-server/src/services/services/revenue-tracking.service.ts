@@ -1,0 +1,345 @@
+import { storage } from "../storage";
+import { db } from "../db";
+import { 
+  platformRevenue, expertEarnings, providerEarnings, 
+  serviceBookings, templatePurchases, expertTips, affiliateEarnings,
+  dailyRevenueSummary, revenueSplits,
+  contentRegistry
+} from "@workspace/db";
+import { resolveCommissionRates, PROCESSING_FEE_RATE } from "./commission";
+import { availableAtFor } from "../config/earnings-hold.config";
+import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
+
+export interface RevenueEvent {
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'expert_review_fee' | 'other';
+  sourceId: string;
+  trackingNumber?: string;
+  grossAmount: number;
+  expertId?: string;
+  expertShare?: number;
+  providerId?: string;
+  providerShare?: number;
+  description?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UnifiedRevenueDashboard {
+  platform: {
+    totalRevenue: number;
+    thisMonth: number;
+    lastMonth: number;
+    growthPercent: number;
+    bySource: Record<string, number>;
+  };
+  experts: {
+    totalPaid: number;
+    totalPending: number;
+    activeExperts: number;
+  };
+  providers: {
+    totalPaid: number;
+    totalPending: number;
+    activeProviders: number;
+  };
+  // Platform-wide affiliate revenue (the platform's cut). Tracked in affiliate_earnings, not
+  // platform_revenue (external partner networks), so folded in here for the "all fees" view.
+  affiliate: {
+    total: number;
+    pending: number;
+    confirmed: number;
+    paid: number;
+  };
+  recentTransactions: Array<{
+    id: string;
+    date: Date;
+    sourceType: string;
+    grossAmount: number;
+    platformFee: number;
+    trackingNumber?: string;
+  }>;
+  dailyTrend: Array<{
+    date: string;
+    platformRevenue: number;
+    expertPayouts: number;
+    providerPayouts: number;
+  }>;
+}
+
+class RevenueTrackingService {
+  async recordRevenueEvent(event: RevenueEvent): Promise<void> {
+    // Optimization AND coordination fees are 100% platform revenue — route through the 'ai' source
+    // tier (AI_PLATFORM_FEE = 1.0). fee-literal-ok: prose naming the commission.ts constant, not an
+    // assignment. Coordination fee has no expert/provider split (the coordinator is
+    // paid via the earnings ledger on the bookings they place, not from this fee).
+    // expert_review_fee (F3): 100% platform at CAPTURE. R6 (ratified Jul 26, 2026): when the
+    // assigned expert COMPLETES the request, completeExpertRequest atomically re-splits this
+    // capture-time row (expert gets the admin-editable 'expert_review_expert_share' band rate,
+    // default 0.75; platform keeps the remainder) and credits a held expert earning.
+    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee' || event.sourceType === 'expert_review_fee';
+    // Derive source flag for the resolver so affiliate events get the 70% tier.
+    const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
+    const rates = await resolveCommissionRates({
+      category: isFullPlatformFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
+      source: isFullPlatformFee ? 'ai' : affiliateSource,
+    });
+    const platformFee = event.grossAmount * rates.platformFeeRate;
+    const processingFees = platformFee * PROCESSING_FEE_RATE;
+    const netAmount = platformFee - processingFees;
+
+    // Task 1573: use insertPlatformRevenueOnce so the DB unique constraint on paymentIntentId
+    // (migration 244) is the authoritative dedup gate. If two concurrent webhooks race past the
+    // pre-check, the second insert hits ON CONFLICT DO NOTHING and inserted===false, which causes
+    // us to skip the expert/provider earnings mints — preventing partial double-writes.
+    const { inserted } = await storage.insertPlatformRevenueOnce({
+      sourceType: event.sourceType,
+      sourceId: event.sourceId,
+      trackingNumber: event.trackingNumber,
+      grossAmount: String(event.grossAmount),
+      platformFee: String(platformFee),
+      netAmount: String(netAmount),
+      processingFees: String(processingFees),
+      expertId: event.expertId,
+      expertEarnings: event.expertShare ? String(event.expertShare) : '0',
+      providerId: event.providerId,
+      providerEarnings: event.providerShare ? String(event.providerShare) : '0',
+      description: event.description,
+      metadata: event.metadata || {},
+      status: 'recorded',
+      transactionDate: new Date(),
+    });
+
+    if (!inserted) {
+      // The DB constraint absorbed a duplicate — skip all dependent side-effects so we never
+      // mint a second expert/provider earning for the same payment event.
+      return;
+    }
+
+    if (event.expertId && event.expertShare) {
+      await storage.createExpertEarning({
+        expertId: event.expertId,
+        type: event.sourceType,
+        amount: String(event.expertShare),
+        referenceId: event.sourceId,
+        referenceType: event.sourceType,
+        description: event.description,
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
+      });
+    }
+
+    if (event.providerId && event.providerShare) {
+      await storage.createProviderEarning({
+        providerId: event.providerId,
+        type: event.sourceType,
+        amount: String(event.providerShare),
+        sourceType: event.sourceType,
+        sourceId: event.sourceId,
+        trackingNumber: event.trackingNumber,
+        description: event.description,
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
+      });
+    }
+  }
+
+  /** Idempotent variant: no-op (returns false) when a platform_revenue row already carries this
+   *  sourceId — the §15 guard for retryable payment-completion paths (webhook redelivery, client
+   *  retry). Use whenever the same external payment id can reach the recorder twice. */
+  async recordRevenueEventOnce(event: RevenueEvent): Promise<boolean> {
+    if (event.sourceId && (await storage.hasPlatformRevenueForSource(event.sourceId))) return false;
+    await this.recordRevenueEvent(event);
+    return true;
+  }
+
+  async getUnifiedDashboard(): Promise<UnifiedRevenueDashboard> {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const [platformSummary, thisMonthRevenue, lastMonthRevenue] = await Promise.all([
+      storage.getPlatformRevenueSummary(),
+      storage.getPlatformRevenueSummary(thisMonthStart, now),
+      storage.getPlatformRevenueSummary(lastMonthStart, lastMonthEnd),
+    ]);
+
+    const growthPercent = lastMonthRevenue.totalPlatformFee > 0
+      ? ((thisMonthRevenue.totalPlatformFee - lastMonthRevenue.totalPlatformFee) / lastMonthRevenue.totalPlatformFee) * 100
+      : 0;
+
+    const [expertStats, providerStats, recentTxns, dailyTrend, affiliate] = await Promise.all([
+      this.getExpertEarningsStats(),
+      this.getProviderEarningsStats(),
+      this.getRecentTransactions(10),
+      this.getDailyTrend(30),
+      storage.getPlatformAffiliateRevenueSummary(),
+    ]);
+
+    return {
+      // platform.* keeps its existing meaning (platform_revenue only) so existing consumers and the
+      // by-source chart are unchanged; affiliate is surfaced as its own additive field (below), and
+      // the client shows a grand total = platform.totalRevenue + affiliate.total.
+      platform: {
+        totalRevenue: platformSummary.totalPlatformFee,
+        thisMonth: thisMonthRevenue.totalPlatformFee,
+        lastMonth: lastMonthRevenue.totalPlatformFee,
+        growthPercent: Math.round(growthPercent * 10) / 10,
+        bySource: platformSummary.bySource,
+      },
+      experts: expertStats,
+      providers: providerStats,
+      affiliate,
+      recentTransactions: recentTxns,
+      dailyTrend,
+    };
+  }
+
+  private async getExpertEarningsStats() {
+    const allEarnings = await db.select().from(expertEarnings);
+    // escrow vocab (migration 112): "pending" (owed, not yet paid out) = held + releasable, not the
+    // retired 'pending' status. 'reversed' is excluded from both buckets.
+    const pending = allEarnings.filter(e => e.status === 'held' || e.status === 'releasable');
+    const paidOut = allEarnings.filter(e => e.status === 'paid_out');
+    const uniqueExperts = new Set(allEarnings.map(e => e.expertId));
+
+    return {
+      totalPaid: paidOut.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      totalPending: pending.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      activeExperts: uniqueExperts.size,
+    };
+  }
+
+  private async getProviderEarningsStats() {
+    const allEarnings = await db.select().from(providerEarnings);
+    // escrow vocab (migration 112): "pending" (owed, not yet paid out) = held + releasable.
+    const pending = allEarnings.filter(e => e.status === 'held' || e.status === 'releasable');
+    const paidOut = allEarnings.filter(e => e.status === 'paid_out');
+    const uniqueProviders = new Set(allEarnings.map(e => e.providerId));
+
+    return {
+      totalPaid: paidOut.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      totalPending: pending.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      activeProviders: uniqueProviders.size,
+    };
+  }
+
+  private async getRecentTransactions(limit: number) {
+    const txns = await db.select()
+      .from(platformRevenue)
+      .orderBy(desc(platformRevenue.transactionDate))
+      .limit(limit);
+
+    return txns.map(t => ({
+      id: t.id,
+      date: t.transactionDate || new Date(),
+      sourceType: t.sourceType,
+      grossAmount: parseFloat(t.grossAmount || '0'),
+      platformFee: parseFloat(t.platformFee || '0'),
+      trackingNumber: t.trackingNumber || undefined,
+    }));
+  }
+
+  private async getDailyTrend(days: number) {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const summaries = await db.select()
+      .from(dailyRevenueSummary)
+      .where(and(
+        gte(dailyRevenueSummary.date, startDate.toISOString().split('T')[0]),
+        lte(dailyRevenueSummary.date, endDate.toISOString().split('T')[0])
+      ))
+      .orderBy(dailyRevenueSummary.date);
+
+    return summaries.map(s => ({
+      date: s.date,
+      platformRevenue: parseFloat(s.totalPlatformFee || '0'),
+      expertPayouts: parseFloat(s.totalExpertEarnings || '0'),
+      providerPayouts: parseFloat(s.totalProviderEarnings || '0'),
+    }));
+  }
+
+  async getExpertRevenueDetails(expertId: string) {
+    const [earnings, payouts, tips, affiliates] = await Promise.all([
+      storage.getExpertEarnings(expertId),
+      storage.getExpertPayouts(expertId),
+      storage.getTipsForExpert(expertId),
+      storage.getAffiliateEarnings(expertId),
+    ]);
+
+    const earningsSummary = await storage.getExpertEarningsSummary(expertId);
+    const affiliateSummary = await storage.getAffiliateEarningsSummary(expertId);
+
+    return {
+      summary: {
+        totalEarnings: earningsSummary.total,
+        pendingEarnings: earningsSummary.pending,
+        availableEarnings: earningsSummary.available,
+        paidOut: earningsSummary.paidOut,
+        totalTips: tips.totalAmount,
+        totalAffiliateCommissions: affiliateSummary.total,
+      },
+      earnings: earnings.slice(0, 20),
+      payouts: payouts.slice(0, 10),
+      recentTips: tips.tips.slice(0, 10),
+      recentAffiliateEarnings: affiliates.slice(0, 10),
+    };
+  }
+
+  async getProviderRevenueDetails(providerId: string) {
+    const [earnings, payouts] = await Promise.all([
+      storage.getProviderEarnings(providerId),
+      storage.getProviderPayouts(providerId),
+    ]);
+
+    const summary = await storage.getProviderEarningsSummary(providerId);
+
+    const byService: Record<string, number> = {};
+    for (const e of earnings) {
+      const service = e.sourceType || 'other';
+      byService[service] = (byService[service] || 0) + parseFloat(e.amount || '0');
+    }
+
+    return {
+      summary: {
+        totalEarnings: summary.total,
+        pendingEarnings: summary.pending,
+        availableEarnings: summary.available,
+        paidOut: summary.paidOut,
+      },
+      byService,
+      earnings: earnings.slice(0, 20),
+      payouts: payouts.slice(0, 10),
+    };
+  }
+
+  async getContentRevenueReport(trackingNumber: string) {
+    const revenues = await db.select()
+      .from(platformRevenue)
+      .where(eq(platformRevenue.trackingNumber, trackingNumber))
+      .orderBy(desc(platformRevenue.transactionDate));
+
+    const content = await db.select()
+      .from(contentRegistry)
+      .where(eq(contentRegistry.trackingNumber, trackingNumber))
+      .limit(1);
+
+    const totalPlatformFee = revenues.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0);
+    const totalExpertEarnings = revenues.reduce((sum, r) => sum + parseFloat(r.expertEarnings || '0'), 0);
+    const totalProviderEarnings = revenues.reduce((sum, r) => sum + parseFloat(r.providerEarnings || '0'), 0);
+
+    return {
+      trackingNumber,
+      content: content[0] || null,
+      totalTransactions: revenues.length,
+      totalGross: revenues.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
+      totalPlatformFee,
+      totalExpertEarnings,
+      totalProviderEarnings,
+      transactions: revenues,
+    };
+  }
+}
+
+export const revenueTrackingService = new RevenueTrackingService();
