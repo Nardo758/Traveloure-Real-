@@ -236,7 +236,7 @@ type Service = {
   providerBusinessName?: string | null;
   serviceImage?: string | null;
   galleryImages?: string[] | null;
-  /** MP-2 storefront return path — null when the owner has no claimed handle (no /s/ page). */
+  /** Service owners use the provider storefront when a claimed handle exists. */
   providerHandle?: string | null;
 };
 
@@ -382,7 +382,7 @@ function ServiceCard({
           <span>Offered by</span>
           {service.providerHandle ? (
             <Link
-              href={`/s/${service.providerHandle}`}
+              href={`/providers/${service.providerHandle}`}
               className="marketplace-owner-link"
               data-testid={`link-provider-storefront-${service.id}`}
             >

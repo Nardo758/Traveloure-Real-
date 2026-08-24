@@ -149,9 +149,9 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
   );
   const liveCount  = liveServices.length;
   const isLive     = !!handle && liveCount > 0;
-  const publicPath = handle ? `/s/${handle}` : null;
+  const publicPath = handle ? `/providers/${handle}` : null;
   const publicUrl  = publicPath ? `${window.location.origin}${publicPath}` : null;
-  const displayUrl = handle ? `${window.location.host}/s/${handle}` : null;
+  const displayUrl = handle ? `${window.location.host}/providers/${handle}` : null;
   const qrSvgUrl   = publicUrl ? qrCodeSvgDataUrl(publicUrl) : null;
 
   async function getStorefrontLink(): Promise<string> {
@@ -290,7 +290,7 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
         {/* Inline editor (shown when toggled) */}
         {editingStorefront && (
           <div style={{ padding: "14px 20px", borderBottom: `1px solid ${HAIR}` }} data-testid="panel-storefront-editor">
-            <HandleClaimCard currentHandle={handle} />
+            <HandleClaimCard currentHandle={handle} target="provider" />
           </div>
         )}
 

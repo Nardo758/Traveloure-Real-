@@ -176,7 +176,7 @@ export function ProviderSidebar() {
   // "My Storefront" resolves to the real public page only when a handle exists —
   // otherwise it lands on Distribute, whose storefront card carries the claim editor.
   const handle = (user as any)?.handle as string | null | undefined;
-  const storefrontHref = handle ? `/s/${handle}` : "/provider/distribute";
+  const storefrontHref = handle ? `/providers/${handle}` : "/provider/distribute";
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>

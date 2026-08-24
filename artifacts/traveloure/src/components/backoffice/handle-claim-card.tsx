@@ -1,7 +1,7 @@
 /**
  * HandleClaimCard — claim/change the public storefront handle (backoffice Phase 1a).
- * Embedded in expert + provider Settings. On success shows the live /s/{handle} link
- * with copy — the mockup's "Your unique booking link".
+ * Embedded in expert + provider Settings. The host supplies the role-specific public path
+ * for the mockup's "Your unique booking link".
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,11 +12,18 @@ import { useToast } from "@/hooks/use-toast";
 import { Link2, Copy, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
-export function HandleClaimCard({ currentHandle }: { currentHandle?: string | null }) {
+export function HandleClaimCard({
+  currentHandle,
+  target = "expert",
+}: {
+  currentHandle?: string | null;
+  target?: "expert" | "provider";
+}) {
   const { user } = useAuth() as {
     user?: { handle?: string | null; bio?: string | null; preferences?: { storefront?: { coverImageUrl?: string | null } } | null };
   };
   const existing = currentHandle ?? user?.handle ?? null;
+  const storefrontBasePath = target === "provider" ? "/providers" : "/s";
   const [handle, setHandle] = useState(existing ?? "");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -34,14 +41,14 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
       return body as { handle: string };
     },
     onSuccess: (data) => {
-      toast({ title: "Handle saved", description: `Your storefront: /s/${data.handle}` });
+      toast({ title: "Handle saved", description: `Your storefront: ${storefrontBasePath}/${data.handle}` });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
     onError: (e: Error) => toast({ title: "Could not save handle", description: e.message, variant: "destructive" }),
   });
 
   const saved = claimMutation.data?.handle ?? existing;
-  const url = saved ? `${window.location.origin}/s/${saved}` : null;
+  const url = saved ? `${window.location.origin}${storefrontBasePath}/${saved}` : null;
 
   // Storefront cover image — earner-chosen, optional (users.preferences.storefront.coverImageUrl,
   // no migration). Gradient fallback renders on the storefront when unset.

@@ -1,12 +1,13 @@
 /**
- * Public provider storefront — canonical /s/:handle.
+ * Public storefronts: local experts at /s/:handle and service providers at
+ * /providers/:handle.
  *
  * This page is intentionally backed only by GET /api/storefront/:handle. Identity, trust,
  * availability, prices, reviews, and every offering shown here are production storefront data.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useRoute } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,8 +90,8 @@ interface StorefrontReadyMade {
 interface StorefrontData {
   earner: StorefrontEarner;
   services: StorefrontService[];
-  templates: StorefrontTemplate[];
-  readyMade: StorefrontReadyMade[];
+  templates?: StorefrontTemplate[];
+  readyMade?: StorefrontReadyMade[];
   away: { until: string; message: string | null } | null;
 }
 
@@ -229,10 +230,83 @@ function Lane({
   );
 }
 
+function StorefrontNotFound() {
+  return (
+    <Layout>
+      <div className="sf-page sf-error">
+        <div className="sf-error-card" data-testid="storefront-not-found">
+          <h1>Storefront not found</h1>
+          <p>This link may be incorrect, or the owner has no bookable offerings yet.</p>
+          <Link href="/discover"><Button>Explore Traveloure</Button></Link>
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+/**
+ * Client-side compatibility for legacy /p/:handle links. Development Vite serves
+ * the SPA shell for these links before the server's legacy redirect can run, so
+ * resolve only against real public storefront reads before choosing a destination.
+ */
+export function LegacyStorefrontRedirect() {
+  const [, params] = useRoute("/p/:handle");
+  const [, navigate] = useLocation();
+  const handle = params?.handle ?? "";
+
+  const provider = useQuery<boolean>({
+    queryKey: ["/api/provider-storefront", handle, "legacy-resolve"],
+    queryFn: async () => {
+      const response = await fetch(`/api/provider-storefront/${encodeURIComponent(handle)}`);
+      if (response.ok) return true;
+      if (response.status === 404) return false;
+      throw new Error(`Provider storefront lookup failed: ${response.status}`);
+    },
+    enabled: handle.length > 0,
+    retry: false,
+  });
+  const expert = useQuery<boolean>({
+    queryKey: ["/api/storefront", handle, "legacy-resolve"],
+    queryFn: async () => {
+      const response = await fetch(`/api/storefront/${encodeURIComponent(handle)}`);
+      if (response.ok) return true;
+      if (response.status === 404) return false;
+      throw new Error(`Expert storefront lookup failed: ${response.status}`);
+    },
+    enabled: handle.length > 0,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (provider.data) {
+      navigate(`/providers/${handle}`, { replace: true });
+    } else if (provider.isSuccess && !provider.data && expert.data) {
+      navigate(`/s/${handle}`, { replace: true });
+    }
+  }, [expert.data, handle, navigate, provider.data]);
+
+  if (!handle || (provider.isSuccess && !provider.data && expert.isSuccess && !expert.data)) {
+    return <StorefrontNotFound />;
+  }
+
+  return (
+    <Layout>
+      <div className="sf-page sf-loading">
+        <div className="sf-shell">
+          <Skeleton className="sf-loading-cover" />
+          <Skeleton className="sf-loading-profile" />
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
 export default function StorefrontPage() {
   const [, storefrontParams] = useRoute("/s/:handle");
+  const [, providerStorefrontParams] = useRoute("/providers/:handle");
   const [, legacyStorefrontParams] = useRoute("/p/:handle");
-  const handle = storefrontParams?.handle ?? legacyStorefrontParams?.handle ?? "";
+  const isProviderStorefront = !!providerStorefrontParams;
+  const handle = storefrontParams?.handle ?? providerStorefrontParams?.handle ?? legacyStorefrontParams?.handle ?? "";
   const { toast } = useToast();
   const { user } = useAuth();
   const askExpert = useAskExpert();
@@ -242,13 +316,13 @@ export default function StorefrontPage() {
   const [query, setQuery] = useState("");
 
   const { data, isLoading, isError } = useQuery<StorefrontData>({
-    queryKey: [`/api/storefront/${handle}`, { locale }],
+    queryKey: [isProviderStorefront ? `/api/provider-storefront/${handle}` : `/api/storefront/${handle}`, { locale }],
     enabled: handle.length > 0,
     retry: false,
   });
 
   function copyLink() {
-    const url = `${window.location.origin}/s/${handle}`;
+    const url = `${window.location.origin}/${isProviderStorefront ? "providers" : "s"}/${handle}`;
     navigator.clipboard.writeText(url).then(() => {
       toast({ title: "Link copied", description: "Share it anywhere — it books and pays." });
     }).catch(() => {
@@ -273,20 +347,10 @@ export default function StorefrontPage() {
   }
 
   if (isError || !data) {
-    return (
-      <Layout>
-        <div className="sf-page sf-error">
-          <div className="sf-error-card" data-testid="storefront-not-found">
-            <h1>Storefront not found</h1>
-            <p>This link may be incorrect, or the owner has no bookable offerings yet.</p>
-            <Link href="/discover"><Button>Explore Traveloure</Button></Link>
-          </div>
-        </div>
-      </Layout>
-    );
+    return <StorefrontNotFound />;
   }
 
-  const { earner, services, templates, readyMade, away } = data;
+  const { earner, services, templates = [], readyMade = [], away } = data;
   const isOwnStorefront = !!user && String(user.id) === String(earner.id);
   const awayUntilLabel = away
     ? new Date(away.until).toLocaleDateString(undefined, { month: "short", day: "numeric" })
@@ -295,12 +359,14 @@ export default function StorefrontPage() {
   const initial = earner.name.charAt(0).toUpperCase() || "T";
   const firstName = earner.name.split(" ")[0];
   const areaName = earner.location?.split(",")[0].trim();
-  const offeringsHeading = areaName ? `Plans shaped around ${areaName}` : `Plans from ${firstName}`;
+  const offeringsHeading = isProviderStorefront
+    ? areaName ? `Services in ${areaName}` : `Services from ${firstName}`
+    : areaName ? `Plans shaped around ${areaName}` : `Plans from ${firstName}`;
 
   function messageEarner() {
     askExpert({
       expertId: earner.id,
-      returnTo: `/s/${handle}`,
+      returnTo: `/${isProviderStorefront ? "providers" : "s"}/${handle}`,
       fallbackName: earner.name,
       fallbackAvatar: earner.profileImageUrl ?? undefined,
     });
@@ -332,7 +398,7 @@ export default function StorefrontPage() {
         bookingMode: away ? undefined : service.bookingMode,
       };
     }),
-    ...templates.map((template) => ({
+    ...(isProviderStorefront ? [] : templates.map((template) => ({
       id: template.id,
       category: "Templates" as const,
       href: `/expert-templates/${template.id}`,
@@ -347,8 +413,8 @@ export default function StorefrontPage() {
       reviews: template.reviewCount,
       price: `$${Number(template.price).toFixed(0)}`,
       cta: "View template",
-    })),
-    ...readyMade.map((trip) => ({
+    }))),
+    ...(isProviderStorefront ? [] : readyMade.map((trip) => ({
       id: trip.id,
       category: "Ready-made" as const,
       href: `/ready-made/${trip.id}`,
@@ -361,7 +427,7 @@ export default function StorefrontPage() {
       ],
       price: typeof trip.priceCents === "number" ? `$${(trip.priceCents / 100).toFixed(0)}` : "Contact for price",
       cta: "Preview trip",
-    })),
+    }))),
   ];
 
   const visibleOfferings = (() => {
@@ -380,8 +446,12 @@ export default function StorefrontPage() {
     <Layout>
       <div className="sf-page" data-testid="storefront-page">
         <SEOHead
-          title={`${earner.name} — Book local experiences | Traveloure`}
-          description={earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`}
+          title={isProviderStorefront
+            ? `${earner.name} — Service provider | Traveloure`
+            : `${earner.name} — Book local experiences | Traveloure`}
+          description={earner.bio ?? (isProviderStorefront
+            ? `Bookable services from ${earner.name} on Traveloure.`
+            : `Bookable experiences from ${earner.name} on Traveloure.`)}
         />
 
         <div className="sf-shell sf-main">
@@ -407,7 +477,7 @@ export default function StorefrontPage() {
               <div className="sf-avatar sf-avatar-fallback" aria-label={earner.name}>{initial}</div>
             )}
             <div className="sf-identity">
-              <p className="sf-eyebrow">Local expert storefront</p>
+              <p className="sf-eyebrow">{isProviderStorefront ? "Service provider storefront" : "Local expert storefront"}</p>
               <div className="sf-name-row">
                 <h1 data-testid="storefront-name">{earner.name}</h1>
                 {earner.verified && (
@@ -448,23 +518,25 @@ export default function StorefrontPage() {
         </section>
 
         <section className="sf-facts" data-testid="storefront-facts">
-          <div><strong data-testid="fact-offerings">{earner.offeringsCount}</strong><span>Offerings</span></div>
+          <div><strong data-testid="fact-offerings">{earner.offeringsCount}</strong><span>{isProviderStorefront ? "Services" : "Offerings"}</span></div>
           <div><strong data-testid="fact-reviews">{earner.reviewCount}</strong><span>Reviews</span></div>
-          {earner.location && <div><strong data-testid="fact-location">{earner.location.split(",")[0]}</strong><span>Area of expertise</span></div>}
+          {earner.location && <div><strong data-testid="fact-location">{earner.location.split(",")[0]}</strong><span>{isProviderStorefront ? "Service area" : "Area of expertise"}</span></div>}
           <aside>
             <Sparkles aria-hidden="true" />
-            <p><strong>One expert, three ways to plan</strong><span>Book time, bring home a route, or start with a complete trip.</span></p>
+            <p>{isProviderStorefront
+              ? <><strong>Services from a trusted provider</strong><span>Browse and book the services this provider offers.</span></>
+              : <><strong>One expert, three ways to plan</strong><span>Book time, bring home a route, or start with a complete trip.</span></>}</p>
           </aside>
         </section>
 
         <section className="sf-offerings">
           <div className="sf-offerings-heading">
-            <div><p className="sf-eyebrow">Choose your starting point</p><h2>{offeringsHeading}</h2></div>
-            <span>{visibleOfferings.length} offering{visibleOfferings.length === 1 ? "" : "s"}</span>
+            <div><p className="sf-eyebrow">{isProviderStorefront ? "Available services" : "Choose your starting point"}</p><h2>{offeringsHeading}</h2></div>
+            <span>{visibleOfferings.length} {isProviderStorefront ? "service" : "offering"}{visibleOfferings.length === 1 ? "" : "s"}</span>
           </div>
           <div className="sf-toolbar">
             <div className="sf-tabs" aria-label="Filter offerings by category">
-              {(["All", "Services", "Templates", "Ready-made"] as OfferingCategory[]).map((tab) => (
+              {(isProviderStorefront ? ["All", "Services"] : ["All", "Services", "Templates", "Ready-made"] as OfferingCategory[]).map((tab) => (
                 <button
                   type="button"
                   aria-pressed={category === tab}
@@ -507,8 +579,12 @@ export default function StorefrontPage() {
                   </p>
                 )}
               />
-              <Lane testId="storefront-lane-templates" eyebrow="Bring home a route" title="Itinerary templates" items={visibleByCategory("Templates")} />
-              <Lane testId="storefront-lane-readymade" eyebrow="Start with the whole plan" title="Ready-made trips" items={visibleByCategory("Ready-made")} />
+               {!isProviderStorefront && (
+                 <>
+                   <Lane testId="storefront-lane-templates" eyebrow="Bring home a route" title="Itinerary templates" items={visibleByCategory("Templates")} />
+                   <Lane testId="storefront-lane-readymade" eyebrow="Start with the whole plan" title="Ready-made trips" items={visibleByCategory("Ready-made")} />
+                 </>
+               )}
             </>
           )}
         </section>
@@ -520,8 +596,10 @@ export default function StorefrontPage() {
               : <div className="sf-mini-avatar" aria-hidden="true">{initial}</div>}
             <div>
               <p className="sf-eyebrow">A good place to begin</p>
-              <h2>Have a trip in mind, but not a format yet?</h2>
-              <p>Tell {firstName} what you are planning and get pointed to the right offering, or something custom.</p>
+              <h2>{isProviderStorefront ? "Need help choosing a service?" : "Have a trip in mind, but not a format yet?"}</h2>
+              <p>{isProviderStorefront
+                ? `Tell ${firstName} what you need and get pointed to the right service.`
+                : `Tell ${firstName} what you are planning and get pointed to the right offering, or something custom.`}</p>
             </div>
             <Button onClick={messageEarner} data-testid="button-message-band">
               <MessageCircle aria-hidden="true" /> Start a conversation
