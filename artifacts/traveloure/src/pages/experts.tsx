@@ -34,6 +34,7 @@ import {
   Target,
   Home,
   X,
+  Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -92,6 +93,19 @@ const roleLabels: Record<string, string> = {
   travel_expert: "Trip Planners",
   local_expert: "Local Experts",
   event_planner: "Event Planners",
+  service_provider: "Service Providers",
+};
+
+type ProviderStorefront = {
+  id: string;
+  handle: string;
+  name: string;
+  profileImageUrl?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  serviceCount: number;
+  averageRating: number | null;
+  reviewCount: number;
 };
 
 export default function ExpertsPage() {
@@ -197,6 +211,17 @@ export default function ExpertsPage() {
     },
   });
 
+  // Provider storefronts are intentionally loaded from their own public directory
+  // endpoint. Unlike experts, this API is already limited to claimed storefronts.
+  const { data: providerStorefronts = [], isLoading: isLoadingProviderStorefronts } = useQuery<ProviderStorefront[]>({
+    queryKey: ["/api/provider-storefronts"],
+    queryFn: async () => {
+      const res = await fetch("/api/provider-storefronts");
+      if (!res.ok) throw new Error("Failed to fetch provider storefronts");
+      return res.json();
+    },
+  });
+
   // Audit A8: the default tab was hardcoded to "local_expert" even when it has zero results
   // in the flagship Kyoto market (§12) — a first-time visitor landed on "No experts found"
   // with real data (Trip Planners) one click away. Once real counts arrive, if the CURRENT
@@ -215,6 +240,7 @@ export default function ExpertsPage() {
   // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
     queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole],
+    enabled: selectedRole !== "service_provider",
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
@@ -267,7 +293,14 @@ export default function ExpertsPage() {
   });
 
   const seo =
-    selectedRole === "travel_expert"
+    selectedRole === "service_provider"
+      ? {
+          title: "Travel Service Providers",
+          description:
+            "Browse claimed storefronts from travel service providers and find services for your next trip.",
+          keywords: ["travel service provider", "travel services", "provider storefront"],
+        }
+      : selectedRole === "travel_expert"
       ? {
           title: "Trip Planners",
           description:
@@ -313,6 +346,8 @@ export default function ExpertsPage() {
                 ? "Work with a Trip Planner"
                 : selectedRole === "event_planner"
                 ? "Plan Your Event"
+                : selectedRole === "service_provider"
+                ? "Browse Travel Service Providers"
                 : "Find Your Perfect Local Expert"}
             </h1>
             <p className="text-[15px] text-[color:var(--earn-muted)] max-w-2xl mx-auto">
@@ -320,6 +355,8 @@ export default function ExpertsPage() {
                 ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
                 : selectedRole === "event_planner"
                 ? "Specialist event planners for weddings, proposals, and group celebrations. Let an expert make it unforgettable."
+                : selectedRole === "service_provider"
+                ? "Explore claimed storefronts from providers offering services for every part of your journey."
                 : "Connect with verified local experts who know their destinations inside out. Get personalized recommendations and insider access."}
             </p>
           </motion.div>
@@ -341,8 +378,12 @@ export default function ExpertsPage() {
                 { role: "local_expert", label: "Local Experts" },
                 { role: "travel_expert", label: "Trip Planners" },
                 { role: "event_planner", label: "Event Planners" },
+                { role: "service_provider", label: "Service Providers" },
               ].map(({ role, label }) => {
-                const count = roleCounts?.[role];
+                const count = role === "service_provider" ? providerStorefronts.length : roleCounts?.[role];
+                const isLoadingCount = role === "service_provider"
+                  ? isLoadingProviderStorefronts
+                  : isLoadingCounts;
                 return (
                   <button
                     key={role}
@@ -358,7 +399,7 @@ export default function ExpertsPage() {
                     data-testid={`tab-role-${role}`}
                   >
                     {label}
-                    {isLoadingCounts ? (
+                    {isLoadingCount ? (
                       <span
                         className={cn(
                           "inline-block w-5 h-4 rounded-full animate-pulse",
@@ -391,7 +432,8 @@ export default function ExpertsPage() {
       {/* Filters & Results */}
       <section className="py-8">
         <div className="container mx-auto px-4 max-w-6xl">
-          {/* Unified Filter Bar */}
+          {/* Expert-only filters are deliberately not shown for the provider directory. */}
+          {selectedRole !== "service_provider" && (
           <div className="bg-white border border-border rounded-xl p-3 mb-6 shadow-sm">
             {/* Top row: search + destination */}
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
@@ -480,9 +522,10 @@ export default function ExpertsPage() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Active Filter Chips */}
-          {(selectedDestination !== "All Destinations" || neighbourhoodQuery.trim().length >= 2) && (
+          {selectedRole !== "service_provider" && (selectedDestination !== "All Destinations" || neighbourhoodQuery.trim().length >= 2) && (
             <div className="flex flex-wrap items-center gap-2 mb-5" data-testid="active-filter-chips">
               <span className="text-sm text-muted-foreground font-medium flex items-center gap-1">
                 <Filter className="w-3.5 h-3.5" />
@@ -530,8 +573,61 @@ export default function ExpertsPage() {
             </div>
           )}
 
-          {/* Expert Cards Grid */}
-          {isLoadingExperts ? (
+          {selectedRole === "service_provider" ? (
+            isLoadingProviderStorefronts ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading service providers...</span>
+              </div>
+            ) : providerStorefronts.length === 0 ? (
+              <div className="text-center py-16" data-testid="empty-provider-storefronts">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center">
+                  <Store className="w-8 h-8 text-[#9CA3AF]" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">No service provider storefronts yet</h3>
+                <p className="text-muted-foreground">There are no claimed provider storefronts available right now.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="provider-storefront-directory">
+                {providerStorefronts.map((provider) => {
+                  const name = provider.name || `@${provider.handle}`;
+                  const initials = name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+                  return (
+                    <Card key={provider.id} className="h-full">
+                      <CardContent className="p-5 flex flex-col h-full">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-12 h-12">
+                            <AvatarImage src={provider.profileImageUrl || undefined} alt={name} />
+                            <AvatarFallback>{initials || "SP"}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <h2 className="font-semibold text-foreground truncate">{name}</h2>
+                            <p className="text-sm text-muted-foreground truncate">@{provider.handle}</p>
+                          </div>
+                        </div>
+                        {provider.bio && <p className="mt-4 text-sm text-muted-foreground line-clamp-3">{provider.bio}</p>}
+                        {provider.location && <p className="mt-3 text-sm text-muted-foreground flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{provider.location}</p>}
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>{provider.serviceCount} {provider.serviceCount === 1 ? "service" : "services"}</span>
+                          {provider.reviewCount > 0 && provider.averageRating !== null && (
+                            <span className="inline-flex items-center gap-1">
+                              <Star className="w-3.5 h-3.5 fill-current text-amber-500" />
+                              {provider.averageRating.toFixed(1)} · {provider.reviewCount} review{provider.reviewCount === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </div>
+                        <Link href={`/providers/${provider.handle}`} className="mt-5">
+                          <Button className="w-full" data-testid={`button-view-provider-storefront-${provider.id}`}>
+                            View storefront
+                          </Button>
+                        </Link>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )
+          ) : isLoadingExperts ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-2 text-muted-foreground">Loading experts...</span>
@@ -558,7 +654,7 @@ export default function ExpertsPage() {
           )}
 
           {/* Empty State */}
-          {sortedExperts.length === 0 && (
+          {selectedRole !== "service_provider" && sortedExperts.length === 0 && (
             <div className="text-center py-16">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center">
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
@@ -586,7 +682,7 @@ export default function ExpertsPage() {
           )}
 
           {/* Load More */}
-          {sortedExperts.length > visibleCount && (
+          {selectedRole !== "service_provider" && sortedExperts.length > visibleCount && (
             <div className="text-center mt-8">
               <Button
                 variant="outline"
@@ -617,6 +713,12 @@ export default function ExpertsPage() {
             body: "Plan weddings, proposals, and group celebrations. Join our network of specialist event planners and reach clients worldwide.",
             cta: "Become an Event Planner",
             href: "/become-expert?type=event_planner",
+          },
+          service_provider: {
+            heading: "Are You a Service Provider?",
+            body: "Create your storefront and help travelers find the services you offer.",
+            cta: "Manage Your Services",
+            href: "/provider/services",
           },
           local_expert: {
             heading: "Are You a Local Expert?",
