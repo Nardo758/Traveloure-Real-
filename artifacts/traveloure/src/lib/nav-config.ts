@@ -95,6 +95,13 @@ export const navGroupsConfig: NavGroupConfig[] = [
           { name: "Trip Planners", i18nKey: "links.tripPlanners", href: "/experts?role=travel_expert", description: "Trip planners who handle every detail" },
         ],
       },
+      {
+        title: "BOOK SERVICES",
+        i18nKey: "sections.bookServices",
+        items: [
+          { name: "Services", i18nKey: "links.browseServices", href: "/services", description: "Book tours, photography, transport & more" },
+        ],
+      },
     ],
   },
   {
