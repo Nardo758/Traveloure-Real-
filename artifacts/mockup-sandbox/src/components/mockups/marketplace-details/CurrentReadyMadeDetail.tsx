@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ConciergeBell,
+  Globe2,
   MapPin,
   ShoppingBag,
   Sun,
@@ -70,19 +71,34 @@ export function CurrentReadyMadeDetail() {
 
   return (
     <main className="rmd-page">
-      <div className="rmd-shell">
-        <header className="rmd-header">
+      <header className="rmd-site-nav">
+        <div className="rmd-site-nav-inner">
           <button className="rmd-logo" aria-label="Traveloure home" onClick={() => undefined}>
             <img src="/__mockup/images/traveloure-logo.png" alt="Traveloure" />
           </button>
-          <div className="rmd-header-right">
-            <span className="rmd-heading">Ready Made Trips</span>
-            <div className="rmd-language">
-              <button aria-expanded={languageOpen} onClick={() => setLanguageOpen(!languageOpen)}>EN <ChevronDown size={13} /></button>
-              {languageOpen && <div className="rmd-language-menu"><button onClick={() => setLanguageOpen(false)}>English <Check size={13} /></button><button onClick={() => setLanguageOpen(false)}>Français</button><button onClick={() => setLanguageOpen(false)}>日本語</button></div>}
-            </div>
+          <nav className="rmd-primary-nav" aria-label="Primary navigation">
+            <button type="button">Marketplace <ChevronDown size={13} /></button>
+            <button type="button">Experts &amp; Services <ChevronDown size={13} /></button>
+            <button type="button">Experiences <ChevronDown size={13} /></button>
+            <button type="button">Planning Tools <ChevronDown size={13} /></button>
+            <button type="button">Ways to Earn</button>
+          </nav>
+          <div className="rmd-nav-actions">
+            <button type="button" className="rmd-globe" aria-label="Change language"><Globe2 size={17} /></button>
+            <button type="button" className="rmd-partner">Join as Partner <ChevronDown size={13} /></button>
+            <button type="button" className="rmd-sign-in">Sign In</button>
           </div>
-        </header>
+        </div>
+      </header>
+
+      <div className="rmd-shell">
+        <div className="rmd-context-bar">
+          <span className="rmd-heading">Ready Made Trips</span>
+          <div className="rmd-language">
+            <button aria-expanded={languageOpen} onClick={() => setLanguageOpen(!languageOpen)}>EN <ChevronDown size={13} /></button>
+            {languageOpen && <div className="rmd-language-menu"><button onClick={() => setLanguageOpen(false)}>English <Check size={13} /></button><button onClick={() => setLanguageOpen(false)}>Français</button><button onClick={() => setLanguageOpen(false)}>日本語</button></div>}
+          </div>
+        </div>
 
         <section className="rmd-intro">
           <p className="rmd-plan-type">{listing.planType}</p>
