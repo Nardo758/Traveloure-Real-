@@ -4178,7 +4178,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const counts: Record<string, number> = { local_expert: 0, travel_expert: 0, event_planner: 0 };
     for (const expert of filtered) {
       const r = expert.role as string;
-      if (r in counts) counts[r]++;
+      // The stored `expert` role is a valid expert-family role but has no
+      // standalone browse tab. Surface it alongside trip planners so claimed
+      // expert storefronts do not become discoverable only by a copied URL.
+      if (r === "expert") {
+        counts.travel_expert++;
+      } else if (r in counts) {
+        counts[r]++;
+      }
     }
     res.json(counts);
   });
@@ -4194,9 +4201,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
     let filtered = experts;
 
-    // Filter by role (travel_expert, local_expert, event_planner)
+    // Filter by role. The legacy generic `expert` stored role belongs in the
+    // Trip Planners browse lane; the UI has no separate generic-expert tab.
     if (role) {
-      filtered = filtered.filter((expert: any) => expert.role === role);
+      filtered = filtered.filter((expert: any) =>
+        role === "travel_expert"
+          ? expert.role === "travel_expert" || expert.role === "expert"
+          : expert.role === role,
+      );
     }
 
     // Filter by location (match against expert form destinations, city, or country)
