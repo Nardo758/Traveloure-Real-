@@ -1,0 +1,32 @@
+DISPATCH — Verify the content-system work landed + Playwright it
+Paste to the Replit agent. It's mostly verification; the only writes are a new test spec and (optionally) the deploy-only admin ingest.
+
+Branch: claude/sync-local-repo-2j7ghv, HEAD must be ccf6b4dd. This is the full content-system program: central-content remediation (P0–P7), DMO-central (approach A), and the §16 catalog-ingest engine.
+
+A. Confirm it landed
+Start the server once so migrations 131 + 132 apply (watch the [Migrations] Applied lines). If a stale server holds port 5000, kill it first (pkill -f "tsx server/index.ts") so you're on the current binary — this is what made the earlier admin POST return HTML.
+
+B. Regression — run the existing Playwright gate suite (nothing should break)
+Expect green. The retired surfaces (experience-discovery, itinerary map-entry) must not produce dead routes.
+
+C. New targeted spec — the content-system behaviors that ARE testable without live data
+Create playwright/tests/content-system.spec.ts covering:
+
+Surface retirements redirect, don't 404:
+/discover-experiences → lands on /discover
+/spontaneous → lands on /discover
+/itinerary/<any-id> → lands on /trip/<id> (URL contains /trip)
+DMO hard-invariant (API, via Playwright request): GET /api/content/discover?destination=Kyoto, Japan&surface=travelpulse-discover → response items array contains no item whose contentCategory/type is dmo_content (assert items.every(i => i.contentCategory !== 'dmo_content')). Also assert 200 + shape {items, total}.
+§16 catalog-ingest key-gate (API): POST /api/admin/catalog/ingest {"city":"Kyoto","network":"tiqets"} without a Travelpayouts token → JSON ready:false and results[0].created === 0 (proves §13 — no token, zero writes). (Needs an admin session; if the harness has an admin-auth helper reuse it, else skip this case and note it.)
+No raw affiliate outbound (static assertion): grep the built client for the removed pattern — ! grep -rq "window.open(item.affiliate_url" client/src/components/curated-content-section.tsx and confirm the transport/fever components import useContentAgentBooking / useAgentBooking rather than raw opens.
+Run it:
+
+D. DB-side invariants (psql — no browser)
+E. (Deploy-only, optional) exercise the real ingest
+Only meaningful where a TRAVELPAYOUTS_TOKEN is set (proxy blocks it in-workspace). As admin:
+
+Then approve the partners → run POST /api/admin/content-placement-rules/auto-index → the items appear in /api/content/discover under "Paid partners" with the agent-rail CTA.
+
+Report
+A table: check → PASS/FAIL → evidence. Flag any Playwright red with the failing assertion. The full plan is in docs/audits/central-content-remediation-plan.md; the §16 design (incl. why U4 is deploy-gated) in docs/audits/s16-catalog-unification-design.md.
+
