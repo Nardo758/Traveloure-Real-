@@ -5,8 +5,8 @@
  *
  * Local-dev only: assertNotProduction() accepts loopback hosts and nothing else.
  * Registers a fresh @traveloure.test user, discovers a real priced service,
- * navigates discover → service detail (attempts UI add-to-cart, records limitation
- * if API fallback is used) → cart → checkout → Stripe 4242 → waits for the app's
+ * navigates discover → service detail (requires the real rendered Add to Cart
+ * control; API substitution is forbidden) → cart → checkout → Stripe 4242 → waits for the app's
  * real redirect to /bookings → polls /api/my-bookings until the exact booking ID
  * from the checkout response reaches a terminal-confirmed status.
  *
@@ -32,7 +32,6 @@ import {
   assertNotProduction,
   registerAndLogin,
   findPricedService,
-  addToCartApi,
   fillStripeTestCard,
   collectConsole,
   checkOverflow,
@@ -178,7 +177,7 @@ test.describe('Tier4 — cross-browser booking audit', () => {
       await expect(
         page.getByTestId('services-filter-bar'),
         'Services filter bar must be visible on /services',
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15_000 });
       await page.waitForTimeout(1500);
 
       supportingScreenshots.discover = await saveScreenshot(page, `${evidenceBase}-discover.png`);
@@ -198,32 +197,29 @@ test.describe('Tier4 — cross-browser booking audit', () => {
       supportingScreenshots.serviceDetail = await saveScreenshot(page, `${evidenceBase}-service-detail.png`);
       await captureCheckpoint('service-detail');
 
-      // ── Add to cart: try UI button first, fall back to API ────────────────
+      // ── Add to cart through the real service-detail UI ────────────────────
+      // The marketplace card uses button-add-to-cart-${serviceId}; the service
+      // detail page intentionally uses the stable button-add-to-cart selector.
+      // The old audit looked for the card selector on this page, failed to find
+      // it, and silently substituted POST /api/cart. A missing or unusable
+      // rendered control is now a hard failure.
       const t4 = now();
-      let addToCartMethod: 'ui' | 'api' = 'api';
-      let addToCartLimitation: string | undefined;
-
-      const addToCartBtn = page.locator(`[data-testid="button-add-to-cart-${svc.id}"]`).first();
-      const hasUiBtn = await addToCartBtn.isVisible({ timeout: 3000 }).catch(() => false);
-
-      if (hasUiBtn) {
-        try {
-          await addToCartBtn.click();
-          await page.waitForTimeout(1500);
-          addToCartMethod = 'ui';
-        } catch (uiErr) {
-          addToCartLimitation =
-            `UI add-to-cart button click failed (${(uiErr as Error).message}); fell back to API.`;
-          await addToCartApi(page, svc.id);
-        }
-      } else {
-        addToCartLimitation =
-          `[data-testid="button-add-to-cart-${svc.id}"] was not visible on the service detail page; ` +
-          'used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.';
-        await addToCartApi(page, svc.id);
-      }
+      const addToCartBtn = page.getByTestId('button-add-to-cart').first();
+      await expect(
+        addToCartBtn,
+        'The real service-detail Add to Cart control must be visible; API fallback is forbidden.',
+      ).toBeVisible({ timeout: 10_000 });
+      await expect(
+        addToCartBtn,
+        'The real service-detail Add to Cart control must be enabled for the selected service.',
+      ).toBeEnabled();
+      await addToCartBtn.click();
+      await expect(
+        page.getByText('Added to cart', { exact: true }),
+        'The UI must provide visible feedback after Add to Cart.',
+      ).toBeVisible({ timeout: 10_000 });
       timings.add_to_cart_ms = elapsed(t4);
-      lastReachedStep = `cart-added-via-${addToCartMethod}`;
+      lastReachedStep = 'cart-added-via-ui';
 
       // ── Navigate to /cart ─────────────────────────────────────────────────
       const t5 = now();
@@ -411,8 +407,8 @@ test.describe('Tier4 — cross-browser booking audit', () => {
         project: projectName,
         result,
         lastReachedStep,
-        addToCartMethod,
-        addToCartLimitation,
+        addToCartMethod: 'ui',
+        addToCartLimitation: null,
         serviceId: svc.id,
         serviceName: svc.name,
         servicePrice: svc.price,

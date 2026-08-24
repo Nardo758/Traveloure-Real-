@@ -1,0 +1,196 @@
+{
+  "seed": "2026-08-24",
+  "chosenStep": "messaging-reviews",
+  "engine": "chromium",
+  "project": "chromium",
+  "result": "PASS - two disposable rendered loops",
+  "loops": [
+    {
+      "variant": "desktop-keyboard",
+      "viewport": {
+        "width": 1365,
+        "height": 900
+      },
+      "screenshot": "deep-chat-chromium-desktop-keyboard.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 3,
+      "criticalA11y": 1,
+      "a11yFindings": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 22
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ],
+      "surfaceAudits": [
+        {
+          "surface": "chat-thread-after-rapid-messages",
+          "screenshot": "deep-chat-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 2,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 2
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 22
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "service-review-rendering",
+          "screenshot": "deep-reviews-chromium-desktop-keyboard.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 3
+            }
+          ]
+        }
+      ],
+      "consoleErrors": [],
+      "details": {
+        "sentMessages": 3,
+        "duplicateCountsVerified": true,
+        "reviewCards": 0
+      }
+    },
+    {
+      "variant": "mobile-touch",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "screenshot": "deep-chat-chromium-mobile-touch.png",
+      "noHorizontalOverflow": true,
+      "seriousA11y": 4,
+      "criticalA11y": 1,
+      "a11yFindings": [
+        {
+          "id": "button-name",
+          "impact": "critical",
+          "help": "Buttons must have discernible text",
+          "nodes": 2
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 1
+        },
+        {
+          "id": "link-name",
+          "impact": "serious",
+          "help": "Links must have discernible text",
+          "nodes": 1
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "help": "Scrollable region must have keyboard access",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "nodes": 3
+        }
+      ],
+      "surfaceAudits": [
+        {
+          "surface": "chat-thread-after-rapid-messages",
+          "screenshot": "deep-chat-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 3,
+          "criticalA11y": 1,
+          "a11yFindings": [
+            {
+              "id": "button-name",
+              "impact": "critical",
+              "help": "Buttons must have discernible text",
+              "nodes": 2
+            },
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 1
+            },
+            {
+              "id": "link-name",
+              "impact": "serious",
+              "help": "Links must have discernible text",
+              "nodes": 1
+            },
+            {
+              "id": "scrollable-region-focusable",
+              "impact": "serious",
+              "help": "Scrollable region must have keyboard access",
+              "nodes": 1
+            }
+          ]
+        },
+        {
+          "surface": "service-review-rendering",
+          "screenshot": "deep-reviews-chromium-mobile-touch.png",
+          "noHorizontalOverflow": true,
+          "seriousA11y": 1,
+          "criticalA11y": 0,
+          "a11yFindings": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help": "Elements must meet minimum color contrast ratio thresholds",
+              "nodes": 3
+            }
+          ]
+        }
+      ],
+      "consoleErrors": [],
+      "details": {
+        "sentMessages": 3,
+        "duplicateCountsVerified": true,
+        "reviewCards": 0
+      }
+    }
+  ],
+  "limitations": "Review authoring requires a completed booking; this run audits real review rendering, not review submission."
+}

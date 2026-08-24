@@ -1,30 +1,30 @@
 {
-  "seed": "2026-08-22",
-  "chosenStep": "confirmation",
+  "seed": "2026-08-24",
+  "chosenStep": "cart",
   "engine": "firefox",
   "project": "firefox",
-  "result": "PASS - booking 233e2f0b-107c-442d-803a-e052dd95886b reached status \"confirmed\"",
+  "result": "PASS - booking a2026ad0-1e13-4944-a73a-dda655aa86ff reached status \"confirmed\"",
   "lastReachedStep": "booking-confirmed-confirmed",
-  "addToCartMethod": "api",
-  "addToCartLimitation": "[data-testid=\"button-add-to-cart-88fbc4fd-b68a-477f-a087-650e72b9f695\"] was not visible on the service detail page; used API fallback (POST /api/cart). This is not a full UI pass for the add-to-cart step.",
-  "serviceId": "88fbc4fd-b68a-477f-a087-650e72b9f695",
-  "serviceName": "Ceremony Highlight Video (Short-form)",
-  "servicePrice": 1100,
+  "addToCartMethod": "ui",
+  "addToCartLimitation": null,
+  "serviceId": "ps-a04",
+  "serviceName": "Paris Bike Tour",
+  "servicePrice": 65,
   "bookingIdsFromCheckout": [
-    "233e2f0b-107c-442d-803a-e052dd95886b"
+    "a2026ad0-1e13-4944-a73a-dda655aa86ff"
   ],
-  "primaryBookingId": "233e2f0b-107c-442d-803a-e052dd95886b",
+  "primaryBookingId": "a2026ad0-1e13-4944-a73a-dda655aa86ff",
   "finalBookingStatus": "confirmed",
   "stripeCardFilled": true,
   "checkpointData": {
-    "screenshotRel": "booking-firefox-checkpoint-confirmation.png",
+    "screenshotRel": "booking-firefox-checkpoint-cart.png",
     "viewport": {
       "width": 1280,
       "height": 900
     },
     "documentDimensions": {
       "scrollWidth": 1280,
-      "scrollHeight": 900,
+      "scrollHeight": 1512,
       "innerWidth": 1280,
       "innerHeight": 900
     },
@@ -40,7 +40,7 @@
       },
       {
         "type": "info",
-        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
+        "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
       },
       {
         "type": "debug",
@@ -52,7 +52,7 @@
       },
       {
         "type": "info",
-        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
+        "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
       },
       {
         "type": "debug",
@@ -64,11 +64,7 @@
       },
       {
         "type": "info",
-        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
-      },
-      {
-        "type": "warning",
-        "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
+        "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
       },
       {
         "type": "debug",
@@ -80,31 +76,7 @@
       },
       {
         "type": "info",
-        "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
-      },
-      {
-        "type": "warning",
-        "text": "You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS."
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] Your Elements integration is using an older API. We recommend migrating to the Checkout Sessions API to reduce code, maintenance, and tokens (for AI agents). Additionally, you can easily turn on advanced features like Adaptive Pricing.\nView migration guide: https://docs.stripe.com/payments/payment-element/migration-ewcs"
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] If you are testing Apple Pay or Google Pay, you must serve this page over HTTPS as it will not work over HTTP. Please read https://stripe.com/docs/stripe-js/elements/payment-request-button#html-js-prerequisites for more details."
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] The following payment method types are not activated:\n\n- link\n- cashapp\n- klarna\n- amazon_pay\n\nThey will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use."
-      },
-      {
-        "type": "warning",
-        "text": "[Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: \n\n- apple_pay\n\nPlease follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain."
-      },
-      {
-        "type": "warning",
-        "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=06c6n21v1i12&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Facco\" line: 0}]"
+        "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
       }
     ]
   },
@@ -116,16 +88,16 @@
     "bookings": "booking-firefox-bookings-final.png"
   },
   "timings": {
-    "register_ms": 4262,
-    "service_discovery_ms": 87,
-    "discover_load_ms": 4040,
-    "service_detail_load_ms": 2964,
-    "add_to_cart_ms": 116,
-    "cart_load_ms": 3826,
-    "checkout_click_ms": 4104,
-    "stripe_fill_ms": 3134,
-    "payment_submit_ms": 1148,
-    "poll_confirmed_ms": 29
+    "register_ms": 4121,
+    "service_discovery_ms": 40,
+    "discover_load_ms": 3151,
+    "service_detail_load_ms": 2569,
+    "add_to_cart_ms": 284,
+    "cart_load_ms": 3602,
+    "checkout_click_ms": 4115,
+    "stripe_fill_ms": 3415,
+    "payment_submit_ms": 382,
+    "poll_confirmed_ms": 28
   },
   "consoleMessages": [
     {
@@ -138,7 +110,7 @@
     },
     {
       "type": "info",
-      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
+      "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
     },
     {
       "type": "debug",
@@ -150,7 +122,7 @@
     },
     {
       "type": "info",
-      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
+      "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
     },
     {
       "type": "debug",
@@ -162,11 +134,7 @@
     },
     {
       "type": "info",
-      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
-    },
-    {
-      "type": "warning",
-      "text": "As of February 21st, 2024, google.maps.Marker is deprecated. Please use google.maps.marker.AdvancedMarkerElement instead. At this time, google.maps.Marker is not scheduled to be discontinued, but google.maps.marker.AdvancedMarkerElement is recommended over google.maps.Marker. While google.maps.Marker will continue to receive bug fixes for any major regressions, existing bugs in google.maps.Marker will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/deprecations for additional details and https://developers.google.com/maps/documentation/javascript/advanced-markers/migration for the migration guide."
+      "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
     },
     {
       "type": "debug",
@@ -178,7 +146,7 @@
     },
     {
       "type": "info",
-      "text": "Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools"
+      "text": "Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"
     },
     {
       "type": "warning",
@@ -194,7 +162,7 @@
     },
     {
       "type": "warning",
-      "text": "[Stripe.js] The following payment method types are not activated:\n\n- link\n- cashapp\n- klarna\n- amazon_pay\n\nThey will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use."
+      "text": "[Stripe.js] The following payment method types are not activated:\n\n- link\n- cashapp\n- amazon_pay\n- klarna\n\nThey will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use."
     },
     {
       "type": "warning",
@@ -202,7 +170,7 @@
     },
     {
       "type": "warning",
-      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://newassets.hcaptcha.com/captcha/v1/1dab630d2576352c6ab33820f3c19d7400cd0955/static/hcaptcha.html#frame=challenge&id=06c6n21v1i12&host=b.stripecdn.com&sentry=true&reportapi=https%3A%2F%2Faccounts.hcaptcha.com&recaptchacompat=true&custom=false&hl=en&tplinks=on&andint=off&pstissuer=https%3A%2F%2Fpst-issuer.hcaptcha.com&sitekey=20000000-ffff-ffff-ffff-000000000002&size=invisible&theme=light&origin=https%3A%2F%2Fb.stripecdn.com&clientOptions=%7B%22sentry%22%3Atrue%2C%22reportapi%22%3A%22https%3A%2F%2Facco\" line: 0}]"
+      "text": "[JavaScript Warning: \"Layout was forced before the page was fully loaded. If stylesheets are not yet loaded this may cause a flash of unstyled content.\" {file: \"https://js.stripe.com/v3/elements-inner-ach-bank-search-results-d3c2b59b7a0ba1638e1ecfbc4b62569f.html#__shared_params__[version]=v3&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22d2827e77-1134-4921-9481-e712b779a473%22%2C%22assignments%22%3A%7B%22api_fastpath_ewcs_elements_v1%22%3A%22control%22%2C%22api_fastpath_habanero_v1%22%3A%22treatment%22%7D%7D&wait=false&rtl=false&controllingElement=paymentElement&elementsInitSource=stripe.elements&elementId=payment-2a71a76d-3758-4b40-a830-04559c\" line: 0}]"
     }
   ]
 }

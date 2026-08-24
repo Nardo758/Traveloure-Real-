@@ -115,14 +115,19 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
       return false;
     }
 
-    wsRef.current.send(JSON.stringify({
-      type: "chat",
-      senderId: userId,
-      recipientId,
-      content,
-    }));
-
-    return true;
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: "chat",
+        senderId: userId,
+        recipientId,
+        content,
+      }));
+      return true;
+    } catch (error) {
+      console.error("Failed to send WebSocket message:", error);
+      setIsConnected(false);
+      return false;
+    }
   }, [userId]);
 
   const sendTyping = useCallback((recipientId: string) => {
@@ -130,11 +135,15 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
       return;
     }
 
-    wsRef.current.send(JSON.stringify({
-      type: "typing",
-      senderId: userId,
-      recipientId,
-    }));
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: "typing",
+        senderId: userId,
+        recipientId,
+      }));
+    } catch {
+      setIsConnected(false);
+    }
   }, [userId]);
 
   return {
