@@ -225,10 +225,10 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       <Link
         href={item.href || "#"}
         className={cn(
-          "text-sm font-medium transition-colors px-3 py-2 relative hover-elevate rounded-md",
+          "text-sm font-medium transition-colors px-2 xl:px-3 py-2 relative hover-elevate rounded-md",
           FOCUS_RING,
           isActive
-            ? "text-primary after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-primary after:rounded-full"
+            ? "text-primary after:absolute after:bottom-0 after:left-2 after:right-2 xl:after:left-3 xl:after:right-3 after:h-0.5 after:bg-primary after:rounded-full"
             : "text-muted-foreground"
         )}
         // TEST 5 — aria-current for active page
@@ -255,7 +255,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       <button
         ref={triggerRef}
         className={cn(
-          "flex items-center text-sm font-medium text-muted-foreground hover-elevate transition-colors px-3 py-2 rounded-md",
+          "flex items-center text-sm font-medium text-muted-foreground hover-elevate transition-colors px-2 xl:px-3 py-2 rounded-md",
           FOCUS_RING
         )}
         type="button"
@@ -506,7 +506,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </Link>
 
-              <div className="hidden lg:ml-8 lg:flex lg:items-center gap-1">
+              <div className="hidden min-[960px]:ml-3 min-[960px]:flex min-[960px]:items-center xl:ml-8 gap-0 xl:gap-1">
                 {navItems.map((item) => (
                   <DesktopDropdown key={item.name} item={item} isActive={item.href === location} />
                 ))}
@@ -520,15 +520,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <LanguageMenu />
 
               {!user && (
-                <div className="hidden lg:flex items-center gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1 text-sm">
-                        {t("joinAsPartner")}
-                        <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-72 p-2">
+                <div className="hidden min-[960px]:flex items-center gap-2">
+                  <div className="hidden min-[1100px]:block">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1 text-sm">
+                          {t("joinAsPartner")}
+                          <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-72 p-2">
                       {[
                         // `label` stays English: it is the React key AND the source of the
                         // `link-partner-*` testid. Only `k` drives what the user reads.
@@ -552,8 +553,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           </Link>
                         </DropdownMenuItem>
                       ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                   <Button
                     size="sm"
                     className="text-sm"
@@ -568,14 +570,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {user && (
                 <>
                   <NotificationBell />
-                  <div className="hidden lg:block">
+                  <div className="hidden min-[960px]:block">
                     <UserMenu />
                   </div>
                 </>
               )}
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
-              <div className="flex items-center lg:hidden">
+              <div className="flex items-center min-[960px]:hidden">
                 <button
                   ref={hamburgerRef}
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -609,7 +611,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-modal="true"
               aria-label={t("navigationMenu")}
               {...slideMotion}
-              className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
+              className="min-[960px]:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
             >
               {/* Mobile Nav */}
               <div className="pt-2 pb-3 space-y-1 px-4">
