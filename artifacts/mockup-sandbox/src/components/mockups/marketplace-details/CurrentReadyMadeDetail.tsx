@@ -73,7 +73,7 @@ export function CurrentReadyMadeDetail() {
       <div className="rmd-shell">
         <header className="rmd-header">
           <button className="rmd-logo" aria-label="Traveloure home" onClick={() => undefined}>
-            <span className="rmd-logo-mark">✦</span><span>traveloure</span>
+            <img src="/__mockup/images/traveloure-logo.png" alt="Traveloure" />
           </button>
           <div className="rmd-header-right">
             <span className="rmd-heading">Ready Made Trips</span>

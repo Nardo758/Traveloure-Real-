@@ -3,8 +3,8 @@
 .tc-shell { width: min(1180px, calc(100% - 48px)); margin-inline: auto; }
 .tc-topbar { height: 62px; background: #fff; border-bottom: 1px solid var(--tc-line); }
 .tc-nav { height: 100%; display: flex; align-items: center; justify-content: space-between; gap: 26px; }
-.tc-wordmark { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; letter-spacing: -.045em; white-space: nowrap; }
-.tc-mark { color: var(--tc-pink); font-size: 20px; line-height: 1; transform: rotate(-20deg); }
+.tc-wordmark { display: flex; align-items: center; white-space: nowrap; }
+.tc-wordmark img { display: block; width: 108px; height: auto; }
 .tc-main-nav { display: flex; align-items: center; gap: 8px; margin-right: auto; }
 .tc-main-nav button, .tc-nav-actions button { border: 0; background: transparent; color: #475467; cursor: pointer; }
 .tc-main-nav button { display: inline-flex; align-items: center; gap: 4px; padding: 7px 9px; font-size: 12px; font-weight: 600; }

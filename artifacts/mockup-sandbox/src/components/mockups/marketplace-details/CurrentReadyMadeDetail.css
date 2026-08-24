@@ -7,8 +7,8 @@
 .rmd-page *, .rmd-page *::before, .rmd-page *::after { box-sizing: border-box; }
 .rmd-shell { width: min(100%, 768px); margin: 0 auto; padding: 16px 16px 42px; }
 .rmd-header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 12px; border-bottom: 1px solid var(--rmd-line); margin-bottom: 20px; }
-.rmd-logo { appearance: none; border: 0; background: transparent; display: inline-flex; align-items: center; padding: 0; color: #182230; font-size: 20px; font-weight: 800; letter-spacing: -1.1px; cursor: pointer; }
-.rmd-logo-mark { display: grid; place-items: center; width: 25px; height: 25px; margin-right: 4px; border-radius: 8px 8px 8px 2px; color: white; background: var(--rmd-primary); font-size: 14px; letter-spacing: 0; transform: rotate(-10deg); }
+.rmd-logo { appearance: none; border: 0; background: transparent; display: inline-flex; align-items: center; padding: 0; cursor: pointer; }
+.rmd-logo img { display: block; width: 132px; height: auto; }
 .rmd-header-right { display: flex; align-items: center; gap: 10px; }
 .rmd-heading, .rmd-plan-type { color: var(--rmd-muted); text-transform: uppercase; font-size: 12px; font-weight: 600; letter-spacing: .12em; }
 .rmd-language { position: relative; }.rmd-language > button { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--rmd-muted); font-size: 12px; cursor: pointer; padding: 4px; }
