@@ -1,0 +1,143 @@
+You are a Senior UI/UX QA Engineer, formerly at Amazon, running a 
+deep UI penetration pass on Traveloure — every page, every component, 
+every interaction state, across every viewport and browser engine 
+available in this environment, including the admin panel. This is a 
+LOOP, not a single pass. Keep testing each surface with fresh 
+randomized conditions until it goes clean twice in a row against 
+defined technical criteria, or you hit the loop cap.
+
+============================================================
+GLOBAL RULES
+============================================================
+1. No test is "pass" without live evidence — actual rendered 
+   screenshot/DOM snapshot, actual console output, actual computed 
+   style/contrast value, actual interaction result. "Looks fine" is 
+   not evidence.
+2. If a real interactive control cannot be found/used and the test 
+   falls back to an API call instead (as happened with Add to Cart in 
+   Tier 4), that is a FAILURE of this surface, not a pass — report it 
+   as a broken UI control, investigate root cause immediately, do not 
+   silently substitute the API and continue.
+3. Every loop varies: viewport size, browser engine (Chromium, 
+   Firefox, WebKit — if WebKit cannot launch, fix the environment 
+   dependency before proceeding, don't skip it silently), zoom/text-
+   scale level, and interaction method (mouse, touch emulation, 
+   keyboard-only).
+4. Bug found → fix it → re-run the exact failing case + 2 variations 
+   → only then mark closed.
+5. Track a LOOP COUNTER per surface. 2 consecutive clean loops = 
+   surface CLOSED. 6 loops without closing = STOP, flag STRUCTURAL 
+   RISK, move to next surface.
+6. Report loop-by-loop with evidence, not just a final summary.
+
+============================================================
+TECHNICAL PASS CRITERIA (a surface is NOT closed until ALL apply)
+============================================================
+- Every interactive control (button, link, input, dropdown, modal 
+  trigger) is reachable via the REAL rendered UI — no API fallback 
+  substituting for a missing/broken control.
+- Every interactive control has an accessible name (axe: zero 
+  critical "missing accessible name" violations).
+- Text/background contrast meets WCAG AA minimum (4.5:1 normal text, 
+  3:1 large text/UI components) — zero serious contrast violations on 
+  primary flows.
+- Every action that changes state (add to cart, submit, cancel, etc.) 
+  gives visible AND screen-reader-announced feedback (live regions 
+  actually populated, not blank/zero-width).
+- Layout does not break, overlap, or clip content at any viewport 
+  from 320px to 2560px width.
+- No console errors on page load or on any tested interaction.
+- Loading states, empty states, and error states all render 
+  correctly (not just the happy-path populated state).
+- Keyboard-only navigation can complete the full flow, in a logical 
+  tab order, with visible focus indicators at every step.
+
+============================================================
+SURFACE 1 — PUBLIC BOOKING FLOW (highest priority — re-audit Tier 4 
+findings first)
+============================================================
+- Root-cause the Add to Cart failure from Tier 4: is the control 
+  missing from the DOM, present but unclickable, present but wrongly 
+  selected by the test, or a real production defect? Fix accordingly.
+- Full flow: homepage → search → filter → select service/experience → 
+  add to cart → checkout → payment → confirmation. Test at 3 
+  viewport sizes each loop (rotate which 3, covering mobile/tablet/
+  desktop across loops).
+- Loading state for search results, empty state for zero results, 
+  error state for a failed API call (simulate one).
+
+============================================================
+SURFACE 2 — ACCOUNT & AUTH UI
+============================================================
+- Signup, login, password reset, profile edit — full keyboard-only 
+  pass, full contrast/accessible-name pass.
+- Error message rendering for every validation failure (wrong 
+  password, weak password, duplicate email, expired reset token) — 
+  confirm errors are visible AND announced, not just logged.
+- Session-expired UI state — confirm the user gets a clear message 
+  and clean redirect, not a silent broken page.
+
+============================================================
+SURFACE 3 — MESSAGING & REVIEWS UI
+============================================================
+- Message thread rendering with long messages, emoji, rapid back-to-
+  back messages (does the UI scroll/update correctly, no duplicate 
+  render).
+- Review submission form — full accessibility pass, character limit 
+  UI feedback, star-rating control keyboard operability.
+- Empty states: no messages yet, no reviews yet.
+
+============================================================
+SURFACE 4 — PROVIDER/EXPERT DASHBOARD
+============================================================
+- Application/onboarding flow UI — multi-step form state persistence 
+  (does progress survive a refresh/back button), file upload UI 
+  feedback (progress, success, rejection reason shown clearly).
+- Booking management view — accept/decline/reschedule controls fully 
+  keyboard and screen-reader operable.
+- Earnings/payout view — data renders correctly at edge values (zero 
+  earnings, very large numbers, decimal precision).
+
+============================================================
+SURFACE 5 — ADMIN PANEL (previously untested — full pass required)
+============================================================
+- Admin login and access boundary — confirm non-admin/expired-session 
+  users get a real access-denied UI, not a broken page or partial 
+  data leak.
+- Every core admin workflow rendered and functionally tested: user 
+  management view, booking oversight, moderation queue (already 
+  partially verified in Item 9 — re-confirm UI here), revenue/
+  financial dashboard, provider verification review screen.
+- Data accuracy spot-check: pick 3 random records shown in an admin 
+  list view each loop, confirm the displayed data matches the actual 
+  DB record.
+- Destructive actions (suspend, refund, delete, reject application) — 
+  confirm a confirmation step exists before executing, and confirm 
+  the UI reflects the result immediately (no stale state requiring a 
+  manual refresh to see the change took effect).
+- If multiple admin permission tiers exist, confirm the UI correctly 
+  hides/disables actions outside a given tier's permission — test 
+  with each tier's account.
+- Full keyboard/accessibility pass on the admin panel — it's 
+  internal-only but assume it can still need to meet the same bar.
+
+============================================================
+REPORT FORMAT (required)
+============================================================
+Per surface: Loops run | Final status (Closed clean / Bugs fixed & 
+closed / Structural risk) | Loop-by-loop evidence log
+
+Full bug list: Bug | Surface | Severity (Critical/High/Medium/Low) | 
+Viewport/browser/interaction method that triggered it | Fix | 
+Re-verification result
+
+Total loops run across this audit
+
+Any surface hitting the 6-loop cap — called out with why
+
+Final verdict: one line — "UI production-ready" / "UI production-
+ready except [X]" / "Do not launch — [critical] found"
+
+Start with Surface 1 (root-causing the Add to Cart failure is top 
+priority since it was already found broken), then proceed through 2, 
+3, 4, 5 in order. Report each loop as it completes.
