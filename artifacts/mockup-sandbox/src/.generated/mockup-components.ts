@@ -6,6 +6,7 @@ export const modules: ModuleMap = {
   "./components/mockups/discover-date/Gap7.tsx": () => import("../components/mockups/discover-date/Gap7.tsx"),
   "./components/mockups/discover-date/Reference.tsx": () => import("../components/mockups/discover-date/Reference.tsx"),
   "./components/mockups/expert-workspace/Workspace.tsx": () => import("../components/mockups/expert-workspace/Workspace.tsx"),
+  "./components/mockups/marketplace/FieldGuide.tsx": () => import("../components/mockups/marketplace/FieldGuide.tsx"),
   "./components/mockups/provider-console/AvailabilityCalendar.tsx": () => import("../components/mockups/provider-console/AvailabilityCalendar.tsx"),
   "./components/mockups/provider-console/AvailabilityNightly.tsx": () => import("../components/mockups/provider-console/AvailabilityNightly.tsx"),
   "./components/mockups/provider-console/AvailabilityNoCalendar.tsx": () => import("../components/mockups/provider-console/AvailabilityNoCalendar.tsx"),
