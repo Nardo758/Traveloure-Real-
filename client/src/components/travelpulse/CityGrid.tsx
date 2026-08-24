@@ -71,6 +71,10 @@ interface TravelPulseCity {
 interface CityGridProps {
   onCitySelect?: (city: TravelPulseCity) => void;
   selectedCityName?: string;
+  // When the caller already renders a page header for this grid (the /destinations
+  // Marketplace surface masthead), suppress the internal "Trending Cities" header so
+  // the two don't stack as a duplicate header.
+  hideHeader?: boolean;
 }
 
 const vibeTagColors: Record<string, string> = {
@@ -327,7 +331,7 @@ function CityGridSkeleton() {
   );
 }
 
-export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
+export function CityGrid({ onCitySelect, selectedCityName, hideHeader = false }: CityGridProps) {
   const [, navigate] = useLocation();
 
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
@@ -367,6 +371,7 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
 
   return (
     <div className="space-y-6" data-testid="city-grid">
+      {!hideHeader && (
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -382,6 +387,7 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
           Daily Updates
         </Badge>
       </div>
+      )}
 
       {cities.length === 0 ? (
         <Card className="p-8 text-center">
