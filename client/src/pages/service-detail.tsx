@@ -3,20 +3,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { ServiceLocationMap, parseLatLng } from "@/components/service-location-map";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import {
   ArrowLeft,
   MapPin,
@@ -757,399 +747,351 @@ export default function ServiceDetailPage() {
 
   return (
     <Layout>
-      <div className="container py-8 max-w-6xl mx-auto">
-        {/* Breadcrumb into the provider storefront (mockup: Home > /s/:handle > service name).
-            The handle link only renders when the owner has actually claimed one (migration 136) —
-            no fake/guessed storefront link is shown for an unclaimed handle. */}
-        <Breadcrumb className="mb-4">
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/discover" data-testid="breadcrumb-home">Home</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
+      <div className="min-h-screen bg-[#f8faf9] pb-16" style={{ fontFamily: '"DM Sans", "Inter", sans-serif' }}>
+        <div className="max-w-[1180px] mx-auto px-6 py-2">
+          {/* Breadcrumb — continuity mock's crumb row. Two distinct elements carry the two
+              pre-existing testids: an icon "back" affordance (button-back) and the text "Home"
+              crumb (breadcrumb-home) — both still land on /discover, as before. */}
+          <nav
+            className="flex items-center flex-wrap gap-[7px] pt-5 pb-5 text-[#738091] text-[12px]"
+            aria-label="Breadcrumb"
+          >
+            <Link
+              href="/discover"
+              aria-label="Back to services"
+              data-testid="button-back"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-[8px] border border-[#dfe7e4] bg-white text-[#738091] hover:text-[#f34d6e] hover:border-[#f5a8b9] transition-colors mr-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+            </Link>
+            <Link href="/discover" className="hover:text-[#f34d6e] transition-colors" data-testid="breadcrumb-home">
+              Home
+            </Link>
             {providerVerification?.handle && (
               <>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <Link href={`/s/${providerVerification.handle}`} data-testid="breadcrumb-storefront">
-                      @{providerVerification.handle}
-                    </Link>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
+                <span aria-hidden="true">/</span>
+                <Link
+                  href={`/s/${providerVerification.handle}`}
+                  className="hover:text-[#f34d6e] transition-colors"
+                  data-testid="breadcrumb-storefront"
+                >
+                  @{providerVerification.handle}
+                </Link>
               </>
             )}
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage data-testid="breadcrumb-service-name">{service.serviceName}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+            <span aria-hidden="true">/</span>
+            <strong className="text-[#193752] font-semibold" data-testid="breadcrumb-service-name">
+              {service.serviceName}
+            </strong>
+          </nav>
 
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="outline" size="icon" asChild data-testid="button-back">
-            <Link href="/discover">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-          </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold" data-testid="text-service-name">
+          {/* Hero — two-panel: real cover image, or an honest abstract placeholder when none
+              exists (§13 — never a stock/fabricated photo), beside the title/kicker/badges/meta
+              note. Mirrors the ratified continuity mock's hero anatomy. */}
+          <section
+            className="grid lg:grid-cols-[minmax(0,1.32fr)_minmax(275px,0.68fr)] min-h-[220px] lg:min-h-[292px] border border-[#dfe7e4] rounded-2xl overflow-hidden bg-[#e6f1ef] shadow-[0_10px_28px_rgba(25,55,82,0.05)]"
+            aria-label="Service overview"
+          >
+            {service.serviceImage ? (
+              <div className="relative bg-[#e6f1ef]" data-testid="img-hero">
+                <img
+                  src={service.serviceImage}
+                  alt={service.serviceName}
+                  className="w-full h-full min-h-[220px] max-h-[420px] object-cover"
+                />
+              </div>
+            ) : (
+              <div
+                className="relative overflow-hidden min-h-[220px]"
+                style={{ background: "linear-gradient(135deg, #daeae7 0%, #f8ddcf 52%, #f7c6c4 100%)" }}
+                aria-hidden="true"
+              />
+            )}
+            <div className="flex flex-col justify-center px-6 py-7 lg:px-8 bg-[#fffaf5] border-t lg:border-t-0 lg:border-l border-black/[0.08]">
+              {(service.deliveryMethod || displayLocation) && (
+                <span className="text-[#f34d6e] text-[10px] font-bold tracking-[0.1em] uppercase mb-2.5">
+                  {[service.deliveryMethod?.replace(/_/g, " "), displayLocation].filter(Boolean).join(" · ")}
+                </span>
+              )}
+              <h1
+                className="text-[#193752] font-semibold text-[26px] lg:text-[38px] leading-[1.06] tracking-[-0.04em]"
+                style={{ fontFamily: "Fraunces, serif" }}
+                data-testid="text-service-name"
+              >
                 {service.serviceName}
               </h1>
-              {providerVerification?.identityVerified && (
-                <Badge className="bg-blue-600 text-white text-xs" title="Provider identity verified" data-testid="badge-identity-verified">
-                  <ShieldCheck className="w-3 h-3 mr-1" />
-                  ID Verified
+              {service.translation?.status === "fallback" && (
+                <Badge
+                  variant="outline"
+                  className="mt-2 text-xs font-normal w-fit"
+                  title={t(
+                    (service.translation.sourceLocale ?? "en") === "ja"
+                      ? "contentTranslation.shownInJapaneseHint"
+                      : "contentTranslation.shownInEnglishHint",
+                  )}
+                  data-testid="badge-shown-in-english"
+                >
+                  <Languages className="w-3 h-3 mr-1" />
+                  {t(
+                    (service.translation.sourceLocale ?? "en") === "ja"
+                      ? "contentTranslation.shownInJapanese"
+                      : "contentTranslation.shownInEnglish",
+                  )}
                 </Badge>
               )}
-              {providerVerification?.businessVerified && (
-                <Badge className="bg-purple-600 text-white text-xs" title="Provider business verified" data-testid="badge-business-verified">
-                  <Building2 className="w-3 h-3 mr-1" />
-                  Business Verified
-                </Badge>
+              {service.shortDescription && (
+                <p className="mt-3.5 text-[#738091] text-[13px] leading-[1.5]">{service.shortDescription}</p>
               )}
-            </div>
-            {/* Ruling 60 Phase B (§13 applied to language): when the active locale has no
-                approved translation, the original content is shown with an HONEST label keyed to
-                the listing's actual source language (ruling 115) — never silently, never
-                machine-translated at read time. The label text itself is chrome (Phase A t()),
-                the only place B touches A. */}
-            {service.translation?.status === "fallback" && (
-              <Badge
-                variant="outline"
-                className="mt-2 text-xs font-normal"
-                title={t(
-                  (service.translation.sourceLocale ?? "en") === "ja"
-                    ? "contentTranslation.shownInJapaneseHint"
-                    : "contentTranslation.shownInEnglishHint",
-                )}
-                data-testid="badge-shown-in-english"
-              >
-                <Languages className="w-3 h-3 mr-1" />
-                {t(
-                  (service.translation.sourceLocale ?? "en") === "ja"
-                    ? "contentTranslation.shownInJapanese"
-                    : "contentTranslation.shownInEnglish",
-                )}
-              </Badge>
-            )}
-            <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
-              {/* ── FP-1 / B3 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P2) ─────────────────────
-                  `provider_services.location` DEFAULTs to the literal string 'Unknown', and the
-                  console only collects it for the delivery methods that render a "Service area"
-                  input — so five of one real provider's listings showed travelers a map-pin chip
-                  reading “Unknown”, asserting it as if it were a place. The chip now renders ONLY
-                  when there is a real location to state; nothing is shown otherwise (§13 — the
-                  same 'Unknown'-is-absence rule cart.tsx and routes.ts already apply). "Remote"
-                  is deliberately NOT substituted: we do not know that an unstated location means
-                  remote. */}
-              {displayLocation && (
-                <div className="flex items-center gap-1">
-                  <MapPin className="w-4 h-4" />
-                  <span data-testid="text-location">{displayLocation}</span>
+              {(providerVerification?.identityVerified || providerVerification?.businessVerified) && (
+                <div className="flex gap-[7px] flex-wrap items-center mt-4">
+                  {providerVerification?.identityVerified && (
+                    <span
+                      className="inline-flex items-center gap-[5px] rounded-full border border-[#b9ded8] bg-[#eaf7f5] text-[#247d78] text-[10px] font-bold px-2 py-[5px]"
+                      title="Provider identity verified"
+                      data-testid="badge-identity-verified"
+                    >
+                      <ShieldCheck className="w-[13px] h-[13px]" /> ID Verified
+                    </span>
+                  )}
+                  {providerVerification?.businessVerified && (
+                    <span
+                      className="inline-flex items-center gap-[5px] rounded-full border border-[#b9ded8] bg-[#eaf7f5] text-[#247d78] text-[10px] font-bold px-2 py-[5px]"
+                      title="Provider business verified"
+                      data-testid="badge-business-verified"
+                    >
+                      <Building2 className="w-[13px] h-[13px]" /> Business Verified
+                    </span>
+                  )}
                 </div>
               )}
-              <div className="flex items-center gap-1">
-                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                {service.reviewCount > 0 ? (
-                  <span data-testid="text-rating">{rating.toFixed(1)} ({service.reviewCount} reviews)</span>
-                ) : (
-                  <span data-testid="text-rating">New</span>
+              <div className="flex items-center gap-[13px] flex-wrap mt-3.5 text-[#738091] text-[12px]">
+                {displayLocation && (
+                  <span className="inline-flex items-center gap-[5px]" data-testid="text-location">
+                    <MapPin className="w-3.5 h-3.5" /> {displayLocation}
+                  </span>
                 )}
+                <span className="inline-flex items-center gap-[5px] text-[#a67015] font-bold" data-testid="text-rating">
+                  <Star className="w-3.5 h-3.5" fill="currentColor" />
+                  {service.reviewCount > 0 ? `${rating.toFixed(1)} (${service.reviewCount} reviews)` : "New"}
+                </span>
               </div>
+              {service.away && (
+                <span
+                  className="inline-flex items-center gap-1.5 mt-3 w-fit rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-amber-800 text-[11px] font-medium"
+                  data-testid="badge-service-away"
+                >
+                  Away — back {format(new Date(service.away.until), "MMM d")}
+                </span>
+              )}
+              {isRoom && service.property && (
+                <Link
+                  href={`/services/${service.property.id}`}
+                  className="inline-flex items-center gap-1 text-[12px] text-[#247d78] hover:underline mt-3 w-fit font-medium"
+                  data-testid="link-room-property"
+                >
+                  <BedDouble className="w-3.5 h-3.5" />
+                  Part of {service.property.serviceName}
+                </Link>
+              )}
             </div>
-            {/* Vacation mode (mockup §08/§06b): honest away state — the listing stays visible,
-                only booking is disabled below. Real return date only; no fabricated message
-                when the owner left none. */}
-            {service.away && (
-              <Badge
-                variant="outline"
-                className="mt-2 border-amber-300 bg-amber-50 text-amber-800"
-                data-testid="badge-service-away"
-              >
-                Away — back {format(new Date(service.away.until), "MMM d")}
-              </Badge>
-            )}
-            {/* §17 Product Builder — PROPERTY rung: a room links back to its property, only
-                when the property is still approved+active (F2-gated server-side). */}
-            {isRoom && service.property && (
-              <Link
-                href={`/services/${service.property.id}`}
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
-                data-testid="link-room-property"
-              >
-                <BedDouble className="w-3.5 h-3.5" />
-                Part of {service.property.serviceName}
-              </Link>
-            )}
-          </div>
-        </div>
+          </section>
 
-        {/* Hero image — only rendered when the listing has a real cover image (serviceImage);
-            no stock/placeholder image is substituted when it's absent (§13). */}
-        {service.serviceImage && (
-          <div className="mb-6 rounded-lg overflow-hidden border" data-testid="img-hero">
-            <img
-              src={service.serviceImage}
-              alt={service.serviceName}
-              className="w-full max-h-[420px] object-cover"
-            />
-          </div>
-        )}
+          {/* Gallery — every collected photo beyond the cover, distinct from the hero above.
+              No lightbox/carousel — a plain thumbnail strip (unchanged scope from before). */}
+          {Array.isArray(service.galleryImages) && service.galleryImages.length > 0 && (
+            <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="section-gallery">
+              {service.galleryImages.map((url, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-[10px] overflow-hidden border border-[#dfe7e4] aspect-square"
+                  data-testid={`img-gallery-${idx}`}
+                >
+                  <img src={url} alt={`${service.serviceName} photo ${idx + 1}`} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* T-REP (G5 #13): the gallery has been collectible (galleryImages) since the wizard's
-            Media step, and the column already rode the wire (`SELECT *`) — only the render was
-            missing. Only the cover (serviceImage) showed above; every other photo went nowhere.
-            A simple thumbnail strip, distinct from the hero, no lightbox/carousel added — that's
-            a bigger UI investment than this lane's honest-rendering mandate calls for. */}
-        {Array.isArray(service.galleryImages) && service.galleryImages.length > 0 && (
-          <div className="mb-6 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="section-gallery">
-            {service.galleryImages.map((url, idx) => (
-              <div key={idx} className="rounded-md overflow-hidden border aspect-square" data-testid={`img-gallery-${idx}`}>
-                <img src={url} alt={`${service.serviceName} photo ${idx + 1}`} className="w-full h-full object-cover" />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Link-landing polish (mockup §08): on mobile the booking panel (price/rating/CTA)
-            renders BEFORE the long-form content below via `order` — a texted link must put
-            photo + price + CTA above the fold without a redesign of either column's content.
-            Desktop keeps the original visual (content, then sidebar) via the lg: overrides. */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="order-2 lg:order-1 lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>About this service</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground" data-testid="text-description">
+          {/* Two-column continuity layout: flexible content column + a fixed-width sticky
+              booking sidebar — the continuity design's booking hierarchy. Link-landing polish
+              (mockup §08) keeps the booking panel first on narrow/mobile viewports via `order`. */}
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_355px] gap-6 mt-6 items-start">
+            <div className="order-2 lg:order-1 grid gap-4">
+              <DetailCard>
+                <SectionHeading>About this service</SectionHeading>
+                <p className="text-[#344454] text-[13px] leading-[1.65] max-w-[680px]" data-testid="text-description">
                   {service.description || service.shortDescription || "No description available"}
                 </p>
-
-                {service.deliveryTimeframe && (
-                  <div className="flex items-center gap-2 mt-4 text-sm">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span>Delivery: {service.deliveryTimeframe}</span>
+                {(service.deliveryTimeframe ||
+                  service.deliveryMethod ||
+                  (Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0)) && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-[10px] mt-5">
+                    {service.deliveryTimeframe && <Fact label="duration" value={service.deliveryTimeframe} />}
+                    {service.deliveryMethod && (
+                      <Fact label="delivery" value={service.deliveryMethod.replace(/_/g, " ")} />
+                    )}
+                    {Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0 && (
+                      <Fact
+                        label="languages"
+                        value={service.deliveryLanguages.join(", ")}
+                        testId="text-delivery-languages"
+                      />
+                    )}
                   </div>
                 )}
+              </DetailCard>
 
-                {service.deliveryMethod && (
-                  <div className="flex items-center gap-2 mt-2 text-sm">
-                    <Badge variant="outline">{service.deliveryMethod.replace(/_/g, " ")}</Badge>
-                  </div>
-                )}
-
-                {/* SS-6 (ruling 69 disposition 9): delivery language, plainly, WHEN PRESENT.
-                    In the launch market this is a purchasable attribute — a shared session in
-                    Japanese and a private one in English are commonly different products — and
-                    providers previously could not state it at all. §13: an absent value renders
-                    NOTHING. There is deliberately no "English" fallback and no "language not
-                    specified" line: silence is the honest answer to a question nobody answered. */}
-                {Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0 && (
-                  <div className="flex items-center gap-2 mt-2 text-sm" data-testid="text-delivery-languages">
-                    <Languages className="w-4 h-4 text-muted-foreground" />
-                    <span>Delivered in: {service.deliveryLanguages.join(", ")}</span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* T-REP (G5 #13): "Good to know" — logistics the provider authored in ServiceForm
-                that had no home on this page. Every line is gated on a real field; an absent
-                value omits the row rather than guessing (§13). The three eligibility lines
-                (party size / start window / lead time) mirror the SAME constraints
-                booking-eligibility.service.ts already enforces server-side at checkout — stating
-                them here means a traveler finds out before trying to book, not after a silent
-                refusal. */}
-            {hasGoodToKnow && (
-              <Card data-testid="card-good-to-know">
-                <CardHeader>
-                  <CardTitle>Good to know</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2.5 text-sm">
+              {/* T-REP (G5 #13): "Good to know" — every logistics line is gated on a real field;
+                  an absent value omits the row rather than guessing (§13). */}
+              {hasGoodToKnow && (
+                <DetailCard data-testid="card-good-to-know">
+                  <SectionHeading>Good to know</SectionHeading>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-[14px] list-none p-0 m-0">
                     {partySizeText && (
-                      <li className="flex items-start gap-2" data-testid="text-party-size">
-                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Party size: {partySizeText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Users} testId="text-party-size">
+                        Party size: {partySizeText}
+                      </GoodToKnowRow>
                     )}
                     {seatingText && (
-                      <li className="flex items-start gap-2" data-testid="text-seating">
-                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Seating: {seatingText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Users} testId="text-seating">
+                        Seating: {seatingText}
+                      </GoodToKnowRow>
                     )}
                     {weeklyPatternText && (
-                      <li className="flex items-start gap-2" data-testid="text-weekly-pattern">
-                        <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Runs {weeklyPatternText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Calendar} testId="text-weekly-pattern">
+                        Runs {weeklyPatternText}
+                      </GoodToKnowRow>
                     )}
                     {startWindowText && (
-                      <li className="flex items-start gap-2" data-testid="text-start-window">
-                        <Calendar className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{startWindowText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Calendar} testId="text-start-window">
+                        {startWindowText}
+                      </GoodToKnowRow>
                     )}
                     {hasLeadTime && (
-                      <li className="flex items-start gap-2" data-testid="text-lead-time">
-                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Book at least {formatHours(service.leadTimeHours!)} ahead</span>
-                      </li>
+                      <GoodToKnowRow icon={Clock} testId="text-lead-time">
+                        Book at least {formatHours(service.leadTimeHours!)} ahead
+                      </GoodToKnowRow>
                     )}
                     {hasChangeCutoff && (
-                      <li className="flex items-start gap-2" data-testid="text-change-cutoff">
-                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Changes accepted up to {formatHours(service.changeCutoffHours!)} before the start</span>
-                      </li>
+                      <GoodToKnowRow icon={Clock} testId="text-change-cutoff">
+                        Changes accepted up to {formatHours(service.changeCutoffHours!)} before the start
+                      </GoodToKnowRow>
                     )}
                     {hasDurationMinutes && (
-                      <li className="flex items-start gap-2" data-testid="text-duration-minutes">
-                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Duration: {formatMinutes(service.durationMinutes!)}</span>
-                      </li>
+                      <GoodToKnowRow icon={Clock} testId="text-duration-minutes">
+                        Duration: {formatMinutes(service.durationMinutes!)}
+                      </GoodToKnowRow>
                     )}
                     {hasBuffer && (
-                      <li className="flex items-start gap-2" data-testid="text-buffer-minutes">
-                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{formatMinutes(service.bufferMinutes!)} kept free around each booking</span>
-                      </li>
+                      <GoodToKnowRow icon={Clock} testId="text-buffer-minutes">
+                        {formatMinutes(service.bufferMinutes!)} kept free around each booking
+                      </GoodToKnowRow>
                     )}
                     {whatToBringText && (
-                      <li className="flex items-start gap-2" data-testid="text-what-to-bring">
-                        <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Bring: {whatToBringText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Users} testId="text-what-to-bring">
+                        Bring: {whatToBringText}
+                      </GoodToKnowRow>
                     )}
                     {accessNotesText && (
-                      <li className="flex items-start gap-2" data-testid="text-access-notes">
-                        <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>
-                          Access: {accessNotesText}
-                          <span className="block text-xs text-muted-foreground mt-0.5">
-                            Shown in the host&apos;s own words. No accessibility standard is claimed
-                            on their behalf.
-                          </span>
+                      <GoodToKnowRow icon={Info} testId="text-access-notes">
+                        Access: {accessNotesText}
+                        <span className="block text-[11px] text-[#738091] mt-0.5">
+                          Shown in the host&apos;s own words. No accessibility standard is claimed on their behalf.
                         </span>
-                      </li>
+                      </GoodToKnowRow>
                     )}
                     {transportProvisionText && (
-                      <li className="flex items-start gap-2" data-testid="text-transport-provision">
-                        <Car className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{transportProvisionText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Car} testId="text-transport-provision">
+                        {transportProvisionText}
+                      </GoodToKnowRow>
                     )}
                     {hasNeighborhoods && (
-                      <li className="flex items-start gap-2" data-testid="text-neighborhoods">
-                        <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>Serves: {service.neighborhoods!.map((n) => n.name).join(", ")}</span>
-                      </li>
+                      <GoodToKnowRow icon={MapPin} testId="text-neighborhoods">
+                        Serves: {service.neighborhoods!.map((n) => n.name).join(", ")}
+                      </GoodToKnowRow>
                     )}
                     {hasDeposit && (
-                      <li className="flex items-start gap-2" data-testid="text-deposit-terms">
-                        <DollarSign className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{depositPreview ?? "Deposit required — details at checkout"}</span>
-                      </li>
+                      <GoodToKnowRow icon={DollarSign} testId="text-deposit-terms">
+                        {depositPreview ?? "Deposit required — details at checkout"}
+                      </GoodToKnowRow>
                     )}
                     {checkInOutText && (
-                      <li className="flex items-start gap-2" data-testid="text-check-in-out">
-                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{checkInOutText}</span>
-                      </li>
+                      <GoodToKnowRow icon={Clock} testId="text-check-in-out">
+                        {checkInOutText}
+                      </GoodToKnowRow>
                     )}
-                    {/* Ruling 112 Q6 (migration 214): a declared minimum stay is public
-                        pre-purchase info; absent ⇒ omitted, never a guessed 1 night (§13). */}
                     {typeof service.minStayNights === "number" && service.minStayNights >= 1 && (
-                      <li className="flex items-start gap-2" data-testid="text-min-stay">
-                        <Clock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>
-                          Minimum stay: {service.minStayNights} night{service.minStayNights === 1 ? "" : "s"}
-                        </span>
-                      </li>
+                      <GoodToKnowRow icon={Clock} testId="text-min-stay">
+                        Minimum stay: {service.minStayNights} night{service.minStayNights === 1 ? "" : "s"}
+                      </GoodToKnowRow>
                     )}
-                    {/* S9 (docs/DECISIONS.md ledger row 102): async delivery's promised response
-                        time + scope statement — public pre-purchase info, gated on the real
-                        field (§13). joinLink never appears here — see the comment on
-                        responseWindowText above. */}
                     {responseWindowText && (
-                      <li className="flex items-start gap-2" data-testid="text-response-window">
-                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{responseWindowText}</span>
-                      </li>
+                      <GoodToKnowRow icon={MessageSquare} testId="text-response-window">
+                        {responseWindowText}
+                      </GoodToKnowRow>
                     )}
                     {scopeStatementText && (
-                      <li className="flex items-start gap-2" data-testid="text-scope-statement">
-                        <MessageSquare className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                        <span>{scopeStatementText}</span>
-                      </li>
+                      <GoodToKnowRow icon={MessageSquare} testId="text-scope-statement">
+                        {scopeStatementText}
+                      </GoodToKnowRow>
                     )}
                   </ul>
                   {hasHouseRules && (
-                    <div className="mt-4 pt-4 border-t" data-testid="text-house-rules">
-                      <p className="text-sm font-medium mb-1">House rules</p>
-                      <p className="text-sm text-muted-foreground whitespace-pre-line">{service.houseRules}</p>
+                    <div className="mt-4 pt-4 border-t border-[#dfe7e4]" data-testid="text-house-rules">
+                      <p className="text-[12.5px] font-semibold text-[#193752] mb-1">House rules</p>
+                      <p className="text-[12.5px] text-[#738091] whitespace-pre-line leading-[1.5]">{service.houseRules}</p>
                     </div>
                   )}
                   {showAmenities && (
-                    <div className="mt-4 pt-4 border-t" data-testid="list-amenities">
-                      <p className="text-sm font-medium mb-2">Amenities</p>
+                    <div className="mt-4 pt-4 border-t border-[#dfe7e4]" data-testid="list-amenities">
+                      <p className="text-[12.5px] font-semibold text-[#193752] mb-2">Amenities</p>
                       <div className="flex flex-wrap gap-1.5">
                         {service.amenities!.map((a) => (
-                          <Badge key={a} variant="secondary" className="text-xs" data-testid={`badge-amenity-${a}`}>
+                          <span
+                            key={a}
+                            className="inline-flex items-center rounded-full bg-[#eaf7f5] text-[#247d78] text-[11px] font-medium px-2.5 py-1"
+                            data-testid={`badge-amenity-${a}`}
+                          >
                             {a}
-                          </Badge>
+                          </span>
                         ))}
                       </div>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            )}
+                </DetailCard>
+              )}
 
-            {/* Ruling 22(c): Location & route — renders ONLY when the service has real
-                location facts (confirmed pin and/or route stops). Map draws located stops
-                only; unlocated stops stay listed with an honest "not on map" flag. The
-                connector is stop order, not travel routing — the map component says so. */}
-            {(() => {
-              const servicePin = parseLatLng(service.latitude, service.longitude);
-              // D7 amendment (ruling 62): the traveler sees ONLY the coverage mode the owner
-              // chose. The other store still holds its rows — it is hidden here, never deleted
-              // (§13); the owner's wizard says so explicitly. A NULL mode (every pre-195
-              // listing) shows both, exactly as ruling 22 shipped it.
-              const coverageMode = service.pickupCoverageMode ?? null;
-              const routeStops = coverageMode === "radius" ? [] : (service.routePoints ?? []);
-              const rawRadiusKm = Number(service.serviceRadius);
-              const radiusKm = coverageMode === "route" ? NaN : rawRadiusKm;
-              if (!servicePin && routeStops.length === 0) return null;
-              const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
-              // S8/G2 privacy circle: the server sends `locationApproximate: true` ONLY when this
-              // pin is the ~500m-jittered stand-in for a property/room's real confirmed pin
-              // (never for any other product shape). Label it honestly rather than let a
-              // traveler mistake the circle for the exact address (§13).
-              const isApproximate = service.locationApproximate === true;
-              return (
-                <Card data-testid="card-location-route">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      Location & route
+              {/* Ruling 22(c): Location & route — renders ONLY when the service has real
+                  location facts. Map draws located stops only; the connector is stop order, not
+                  travel routing — the map component itself says so. */}
+              {(() => {
+                const servicePin = parseLatLng(service.latitude, service.longitude);
+                const coverageMode = service.pickupCoverageMode ?? null;
+                const routeStops = coverageMode === "radius" ? [] : (service.routePoints ?? []);
+                const rawRadiusKm = Number(service.serviceRadius);
+                const radiusKm = coverageMode === "route" ? NaN : rawRadiusKm;
+                if (!servicePin && routeStops.length === 0) return null;
+                const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
+                const isApproximate = service.locationApproximate === true;
+                return (
+                  <DetailCard data-testid="card-location-route">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <SectionHeading>Location &amp; route</SectionHeading>
                       {isApproximate && (
-                        <Badge variant="outline" className="text-[10px] font-normal" data-testid="badge-approximate-location">
+                        <span
+                          className="text-[10px] font-normal border border-[#dfe7e4] rounded-full px-2 py-0.5 text-[#738091] -mt-3"
+                          data-testid="badge-approximate-location"
+                        >
                           Approximate area
-                        </Badge>
+                        </span>
                       )}
-                    </CardTitle>
+                    </div>
                     {isApproximate && (
-                      <p className="text-xs text-muted-foreground" data-testid="text-approximate-location-note">
+                      <p className="text-[11px] text-[#738091] mb-3" data-testid="text-approximate-location-note">
                         The exact address is shared after booking. This circle shows the general neighborhood only.
                       </p>
                     )}
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="rounded-lg overflow-hidden border">
+                    <div className="rounded-[10px] overflow-hidden border border-[#dfe7e4]">
                       <ServiceLocationMap
                         pin={servicePin}
                         pinLabel={isApproximate ? "Approximate area" : (service.meetingPoint || service.serviceName)}
@@ -1158,27 +1100,33 @@ export default function ServiceDetailPage() {
                           const p = parseLatLng(s.latitude, s.longitude);
                           return { id: s.id, position: s.position, name: s.name, lat: p?.lat ?? null, lng: p?.lng ?? null };
                         })}
-                        height={300}
+                        height={280}
                         testIdPrefix="service-detail-map"
                       />
                     </div>
                     {routeStops.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium mb-2" data-testid="text-route-summary">
+                      <div className="mt-4">
+                        <p className="text-[12.5px] font-semibold text-[#193752] mb-2" data-testid="text-route-summary">
                           Route — {locatedStops.length} of {routeStops.length} stops located
                         </p>
-                        <ol className="space-y-1.5">
+                        <ol className="space-y-[7px]">
                           {routeStops
                             .slice()
                             .sort((a, b) => a.position - b.position)
                             .map((s) => (
-                              <li key={s.id} className="flex items-center gap-2 text-sm" data-testid={`route-stop-${s.position}`}>
-                                <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center shrink-0">
+                              <li
+                                key={s.id}
+                                className="flex items-center gap-2 text-[12.5px]"
+                                data-testid={`route-stop-${s.position}`}
+                              >
+                                <span className="w-5 h-5 rounded-full bg-[#f34d6e] text-white text-[11px] font-bold flex items-center justify-center shrink-0">
                                   {s.position}
                                 </span>
-                                <span className="text-muted-foreground">{s.name}</span>
+                                <span className="text-[#738091]">{s.name}</span>
                                 {parseLatLng(s.latitude, s.longitude) === null && (
-                                  <Badge variant="outline" className="text-[10px]">not on map</Badge>
+                                  <span className="text-[10px] border border-[#dfe7e4] rounded-full px-1.5 py-0.5 text-[#738091]">
+                                    not on map
+                                  </span>
                                 )}
                               </li>
                             ))}
@@ -1186,100 +1134,93 @@ export default function ServiceDetailPage() {
                       </div>
                     )}
                     {(service.meetingPoint || service.pickupAddress || service.dropOffPoint) && (
-                      <div className="space-y-1 text-sm text-muted-foreground">
+                      <div className="mt-4 space-y-1 text-[12px] text-[#738091]">
                         {service.meetingPoint && (
-                          <p data-testid="text-map-meeting-point"><span className="font-medium text-foreground">Meet:</span> {service.meetingPoint}</p>
+                          <p data-testid="text-map-meeting-point">
+                            <span className="font-semibold text-[#193752]">Meet:</span> {service.meetingPoint}
+                          </p>
                         )}
                         {service.pickupAddress && (
-                          <p data-testid="text-map-pickup"><span className="font-medium text-foreground">Pickup:</span> {service.pickupAddress}</p>
+                          <p data-testid="text-map-pickup">
+                            <span className="font-semibold text-[#193752]">Pickup:</span> {service.pickupAddress}
+                          </p>
                         )}
                         {service.dropOffPoint && (
-                          <p data-testid="text-map-dropoff"><span className="font-medium text-foreground">Drop-off:</span> {service.dropOffPoint}</p>
+                          <p data-testid="text-map-dropoff">
+                            <span className="font-semibold text-[#193752]">Drop-off:</span> {service.dropOffPoint}
+                          </p>
                         )}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              );
-            })()}
+                  </DetailCard>
+                );
+              })()}
 
-            {hasTiers && (
-              <Card data-testid="card-pricing-tiers">
-                <CardHeader>
-                  <CardTitle>Pricing Tiers</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="divide-y">
+              {hasTiers && (
+                <DetailCard data-testid="card-pricing-tiers">
+                  <SectionHeading>Pricing Tiers</SectionHeading>
+                  <div className="divide-y divide-[#dfe7e4]">
                     {service.pricingTiers!.map((tier, idx) => (
-                      <div key={idx} className="py-3 flex items-start justify-between gap-4" data-testid={`pricing-tier-${idx}`}>
+                      <div
+                        key={idx}
+                        className="py-3 flex items-start justify-between gap-4"
+                        data-testid={`pricing-tier-${idx}`}
+                      >
                         <div className="flex-1">
-                          <p className="font-medium">{tier.label}</p>
-                          {tier.description && (
-                            <p className="text-sm text-muted-foreground mt-0.5">{tier.description}</p>
-                          )}
+                          <p className="font-medium text-[#193752] text-[13px]">{tier.label}</p>
+                          {tier.description && <p className="text-[12px] text-[#738091] mt-0.5">{tier.description}</p>}
                         </div>
-                        <p className="font-semibold text-lg shrink-0">{fmtPrice(Number(tier.price))}</p>
+                        <p className="font-semibold text-[16px] text-[#193752] shrink-0">
+                          {fmtPrice(Number(tier.price))}
+                        </p>
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                </DetailCard>
+              )}
 
-            {((service.whatIncluded && service.whatIncluded.length > 0) || hasRevisions || service.includesExpertNotes) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>What's Included</CardTitle>
-                </CardHeader>
-                <CardContent>
+              {((service.whatIncluded && service.whatIncluded.length > 0) || hasRevisions || service.includesExpertNotes) && (
+                <DetailCard>
+                  <SectionHeading>What&apos;s Included</SectionHeading>
                   <ul className="space-y-2">
                     {service.whatIncluded?.map((item, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                        <span className="text-muted-foreground">{item}</span>
+                      <li key={index} className="flex items-start gap-2 text-[12.5px] text-[#344454]">
+                        <CheckCircle className="w-4 h-4 text-[#f34d6e] mt-0.5 shrink-0" />
+                        <span>{item}</span>
                       </li>
                     ))}
-                    {/* T-REP (G5 #13): revisionsIncluded/includesExpertNotes were authored on
-                        every consulting-style listing and rendered nowhere. */}
                     {hasRevisions && (
-                      <li className="flex items-start gap-2" data-testid="text-revisions-included">
-                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                        <span className="text-muted-foreground">
+                      <li className="flex items-start gap-2 text-[12.5px] text-[#344454]" data-testid="text-revisions-included">
+                        <CheckCircle className="w-4 h-4 text-[#f34d6e] mt-0.5 shrink-0" />
+                        <span>
                           {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"} included
                         </span>
                       </li>
                     )}
                     {service.includesExpertNotes && (
-                      <li className="flex items-start gap-2" data-testid="text-includes-expert-notes">
-                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                        <span className="text-muted-foreground">Includes personalized expert notes</span>
+                      <li
+                        className="flex items-start gap-2 text-[12.5px] text-[#344454]"
+                        data-testid="text-includes-expert-notes"
+                      >
+                        <CheckCircle className="w-4 h-4 text-[#f34d6e] mt-0.5 shrink-0" />
+                        <span>Includes personalized expert notes</span>
                       </li>
                     )}
                   </ul>
-                </CardContent>
-              </Card>
-            )}
+                </DetailCard>
+              )}
 
-            {/* S10 (Gate G4): components of this bundle. The server (content.routes.ts) sends
-                EVERY component slot, not just the visible ones — an available:false row is
-                unapproved/paused/missing and renders name-only with no link (§13: never a broken
-                link, never invented detail). No section at all for a non-bundle service. */}
-            {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
-              <Card data-testid="card-bundle-components">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-primary" /> What's inside this bundle
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* Same honest posture the Workstation bundle builder states to the provider
-                      ("component prices below are shown for reference only, nothing is
-                      auto-summed") — the traveler-facing equivalent: this is one bundle price,
-                      not a sum of what the components would cost booked separately. */}
-                  <p className="text-xs text-muted-foreground mb-3">
-                    This is one bundle price — it's not a sum of these components' individual prices.
+              {/* S10 (Gate G4): components of this bundle. */}
+              {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
+                <DetailCard data-testid="card-bundle-components">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-[#247d78]" />
+                    <SectionHeading>What&apos;s inside this bundle</SectionHeading>
+                  </div>
+                  <p className="text-[11px] text-[#738091] mb-3">
+                    This is one bundle price — it&apos;s not a sum of these components&apos; individual prices.
                   </p>
-                  <div className="divide-y">
+                  <div className="divide-y divide-[#dfe7e4]">
                     {service.bundleComponents.map((component, index) => {
                       const href = bundleComponentHref(component);
                       const methodLabel = bundleComponentMethodLabel(component);
@@ -1290,23 +1231,27 @@ export default function ServiceDetailPage() {
                             <img
                               src={component.serviceImage}
                               alt=""
-                              className="w-14 h-14 rounded-md object-cover shrink-0"
+                              className="w-14 h-14 rounded-[8px] object-cover shrink-0"
                             />
                           )}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className={`font-medium ${component.available ? "" : "text-muted-foreground"}`}>
+                              <p
+                                className={`font-medium text-[13px] ${component.available ? "text-[#193752]" : "text-[#738091]"}`}
+                              >
                                 {component.serviceName}
                               </p>
                               {methodLabel && (
-                                <Badge variant="outline" className="capitalize">{methodLabel}</Badge>
+                                <span className="text-[10px] border border-[#dfe7e4] rounded-full px-2 py-0.5 text-[#738091] capitalize">
+                                  {methodLabel}
+                                </span>
                               )}
                             </div>
                             {component.available && component.shortDescription && (
-                              <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
+                              <p className="text-[12px] text-[#738091] mt-0.5">{component.shortDescription}</p>
                             )}
                             {!component.available && (
-                              <p className="text-sm text-muted-foreground mt-0.5">Currently unavailable</p>
+                              <p className="text-[12px] text-[#738091] mt-0.5">Currently unavailable</p>
                             )}
                           </div>
                         </div>
@@ -1316,170 +1261,151 @@ export default function ServiceDetailPage() {
                           key={key}
                           href={href}
                           data-testid={`bundle-component-${component.available ? component.id : index}`}
-                          className="block hover-elevate rounded-md px-2 -mx-2"
+                          className="block hover:bg-[#f8faf9] rounded-md px-2 -mx-2 transition-colors"
                         >
                           {body}
                         </Link>
                       ) : (
-                        <div
-                          key={key}
-                          data-testid={`bundle-component-unavailable-${index}`}
-                          className="px-2 -mx-2"
-                        >
+                        <div key={key} data-testid={`bundle-component-unavailable-${index}`} className="px-2 -mx-2">
                           {body}
                         </div>
                       );
                     })}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                </DetailCard>
+              )}
 
-            {/* §17 Product Builder — PROPERTY rung: this property's room types, server-gated
-                to only still-approved+active rooms (same F2 posture as bundle components). */}
-            {service.productShape === "property" && Array.isArray(service.rooms) && service.rooms.length > 0 && (
-              <Card data-testid="card-property-rooms">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BedDouble className="w-5 h-5 text-primary" /> Rooms
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="divide-y">
+              {/* §17 Product Builder — PROPERTY rung: this property's room types. */}
+              {service.productShape === "property" && Array.isArray(service.rooms) && service.rooms.length > 0 && (
+                <DetailCard data-testid="card-property-rooms">
+                  <div className="flex items-center gap-2">
+                    <BedDouble className="w-5 h-5 text-[#247d78]" />
+                    <SectionHeading>Rooms</SectionHeading>
+                  </div>
+                  <div className="divide-y divide-[#dfe7e4]">
                     {service.rooms.map((room) => (
                       <Link
                         key={room.id}
                         href={`/services/${room.id}`}
                         data-testid={`property-room-${room.id}`}
-                        className="flex items-center justify-between gap-3 py-3 hover-elevate rounded-md px-2 -mx-2"
+                        className="flex items-center justify-between gap-3 py-3 hover:bg-[#f8faf9] rounded-md px-2 -mx-2 transition-colors"
                       >
                         <div className="min-w-0">
-                          <p className="font-medium truncate">{room.serviceName}</p>
+                          <p className="font-medium text-[13px] text-[#193752] truncate">{room.serviceName}</p>
                           {room.shortDescription && (
-                            <p className="text-sm text-muted-foreground mt-0.5 truncate">{room.shortDescription}</p>
+                            <p className="text-[12px] text-[#738091] mt-0.5 truncate">{room.shortDescription}</p>
                           )}
                         </div>
-                        <p className="font-semibold shrink-0 whitespace-nowrap">
-                          From {fmtPrice(Number(room.price))} <span className="font-normal text-muted-foreground text-sm">/ night</span>
+                        <p className="font-semibold shrink-0 whitespace-nowrap text-[13px] text-[#193752]">
+                          From {fmtPrice(Number(room.price))}{" "}
+                          <span className="font-normal text-[#738091] text-[11px]">/ night</span>
                         </p>
                       </Link>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                </DetailCard>
+              )}
 
-            {/* Same-owner cross-sell — packages by this expert (Phase B4) */}
-            {ownerPackages.length > 0 && (
-              <Card data-testid="card-owner-packages">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-primary" /> Ready made trips by this expert
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {ownerPackages.slice(0, 3).map((pkg: any) => (
-                    <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
-                      <div
-                        className="flex items-center justify-between gap-3 p-3 rounded-lg border hover-elevate cursor-pointer"
-                        data-testid={`owner-package-${pkg.id}`}
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{pkg.title}</p>
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                            <span className="flex items-center gap-1">
-                              <MapPin className="w-3 h-3" /> {pkg.destination}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" /> {pkg.duration} days
-                            </span>
+              {/* Same-owner cross-sell — packages by this expert (Phase B4) */}
+              {ownerPackages.length > 0 && (
+                <DetailCard data-testid="card-owner-packages">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BookOpen className="w-5 h-5 text-[#247d78]" />
+                    <SectionHeading>Ready made trips by this expert</SectionHeading>
+                  </div>
+                  <div className="grid gap-3">
+                    {ownerPackages.slice(0, 3).map((pkg: any) => (
+                      <Link key={pkg.id} href={`/expert-templates/${pkg.id}`}>
+                        <div
+                          className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-[#dfe7e4] hover:border-[#f5a8b9] cursor-pointer transition-colors"
+                          data-testid={`owner-package-${pkg.id}`}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-[13px] text-[#193752] truncate">{pkg.title}</p>
+                            <div className="flex items-center gap-3 text-[11px] text-[#738091] mt-1">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" /> {pkg.destination}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" /> {pkg.duration} days
+                              </span>
+                            </div>
                           </div>
+                          <p className="font-bold text-[#f34d6e] whitespace-nowrap text-[13px]">${pkg.price}</p>
                         </div>
-                        <p className="font-bold text-primary whitespace-nowrap">${pkg.price}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+                      </Link>
+                    ))}
+                  </div>
+                </DetailCard>
+              )}
 
-            {/* MP-2 return path — "show me everything this seller offers".
-                The breadcrumb above links the same place, but it is a small crumb at the
-                top of the page; this is the affordance at the point where a traveler has
-                actually decided they like the listing. Renders nothing without a claimed
-                handle. Deliberately NOT role-labelled "provider": provider_services is
-                role-agnostic, so this owner may well be an expert. */}
-            <StorefrontLink
-              handle={providerVerification?.handle}
-              sellerNoun="seller"
-              data-testid="link-service-storefront"
-            />
+              {/* MP-2 return path — "show me everything this seller offers". */}
+              <StorefrontLink
+                handle={providerVerification?.handle}
+                sellerNoun="seller"
+                data-testid="link-service-storefront"
+              />
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                  <span>Reviews</span>
+              <DetailCard>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <SectionHeading>Reviews</SectionHeading>
                   {service.reviewCount > 0 && (
-                    <div className="flex items-center gap-1 text-sm font-normal">
-                      <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                    <div className="flex items-center gap-1 text-[13px] font-normal text-[#a67015] -mt-3">
+                      <Star className="w-4 h-4" fill="currentColor" />
                       <span>{rating.toFixed(1)}</span>
-                      <span className="text-muted-foreground">({service.reviewCount})</span>
+                      <span className="text-[#738091]">({service.reviewCount})</span>
                     </div>
                   )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                </div>
                 {reviewsLoading ? (
                   <div className="space-y-4">
                     <Skeleton className="h-20 w-full" />
                     <Skeleton className="h-20 w-full" />
                   </div>
                 ) : !reviews || reviews.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
+                  <p className="text-[#738091] text-[13px] text-center py-8">
                     No reviews yet. Be the first to review this service!
                   </p>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="grid gap-4">
                     {reviews.map((review) => (
                       <ReviewCard key={review.id} review={review} serviceId={id!} />
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
+              </DetailCard>
+            </div>
 
-          {/* Book Now panel (mockup sidebar): price, Direct-Booking trust panel, the
-              availability/slot picker, cancellation policy, and the existing add-to-cart CTA —
-              all in one sticky column, mirroring the mockup's consolidated booking widget.
-              `order-1` (see the wrapping grid's comment) puts this panel first on mobile. */}
-          <div className="order-1 lg:order-2 lg:col-span-1">
-            <Card className="lg:sticky lg:top-4">
-              <CardContent className="p-6">
-                <div className="text-center mb-4">
-                  <p className="text-3xl font-bold" data-testid="text-price">
+            {/* Book Now panel — the continuity design's booking hierarchy: price, CTAs, the
+                Direct-Booking trust panel, the availability/slot picker, cancellation policy,
+                and the fee disclosure — all in one sticky sidebar column. */}
+            <div className="order-1 lg:order-2">
+              <DetailCard className="lg:sticky lg:top-4">
+                <div className="flex items-baseline gap-[7px] flex-wrap border-b border-[#dfe7e4] pb-[17px]">
+                  <strong
+                    className="text-[#193752] text-[30px] leading-none"
+                    style={{ fontFamily: "Fraunces, serif" }}
+                    data-testid="text-price"
+                  >
                     {priceLabel}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {priceSubLabel}
-                  </p>
+                  </strong>
+                  <span className="text-[#738091] text-[11px]">{priceSubLabel}</span>
                   {(service.bookingsCount ?? 0) > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1" data-testid="text-bookings-count">
+                    <span
+                      className="w-full text-[#738091] text-[10px] flex items-center gap-1"
+                      data-testid="text-bookings-count"
+                    >
                       <Users className="w-3 h-3" />
                       {service.bookingsCount} booking{service.bookingsCount !== 1 ? "s" : ""}
-                    </p>
+                    </span>
                   )}
                 </div>
 
-                {/* Link-landing polish (mockup §08): the CTA row moved up to sit directly under
-                    the price — on a texted-link mobile viewport this is what keeps "book" inside
-                    the fold instead of after the trust panel + full availability calendar below.
-                    Same buttons/handlers, no new behavior. */}
-                <div className="space-y-3 mb-4">
+                <div className="grid gap-2 py-[17px]">
                   {isRoom ? (
                     <>
                       <Button
-                        className="w-full"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1506,7 +1432,7 @@ export default function ServiceDetailPage() {
 
                       <Button
                         variant="outline"
-                        className="w-full"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[#193752] hover:bg-[#193752]/90 border border-[#193752] text-white font-bold text-[12px]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1525,7 +1451,7 @@ export default function ServiceDetailPage() {
                   ) : (
                     <>
                       <Button
-                        className="w-full"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1552,7 +1478,7 @@ export default function ServiceDetailPage() {
 
                       <Button
                         variant="outline"
-                        className="w-full"
+                        className="w-full min-h-[42px] rounded-[8px] bg-[#193752] hover:bg-[#193752]/90 border border-[#193752] text-white font-bold text-[12px]"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1570,14 +1496,9 @@ export default function ServiceDetailPage() {
                     </>
                   )}
 
-                  {/* Ledger 90 (FP-5, I3): the working rail, with the listing name carried as the
-                      subject so the provider's Inbox thread arrives with context. The provider's
-                      display name comes from the public-verification read this page already makes;
-                      until it resolves the button is disabled rather than repeating the old
-                      dead-end (a CTA that cannot open a thread must not look like it can). */}
                   <Button
                     variant="ghost"
-                    className="w-full"
+                    className="w-full min-h-[42px] rounded-[8px] border border-[#dfe7e4] bg-white hover:bg-[#f8faf9] text-[#193752] font-bold text-[12px]"
                     disabled={!providerVerification?.displayName}
                     onClick={() =>
                       askExpert({
@@ -1594,46 +1515,47 @@ export default function ServiceDetailPage() {
                   </Button>
                 </div>
 
-                {/* Direct-Booking trust panel. The base statement is true of every listing on
-                    the platform (payment always rides the audited Traveloure checkout rail);
-                    each line below it is gated on a real field and omitted when absent (§13). */}
-                <div className="mb-4 p-3 rounded-md border bg-muted/40 text-left" data-testid="section-direct-booking">
-                  <div className="flex items-center gap-2 text-sm font-semibold mb-1">
-                    <Handshake className="w-4 h-4 text-primary" />
+                {/* Direct-Booking trust panel. */}
+                <div className="p-[14px] rounded-[10px] bg-[#f5f8f7] text-left" data-testid="section-direct-booking">
+                  <div className="flex items-center gap-[7px] text-[13px] font-semibold text-[#193752]">
+                    <Handshake className="w-4 h-4 text-[#247d78]" />
                     Direct Booking
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    You're booking directly with the provider. Payment is processed securely through Traveloure.
+                  <p className="text-[11px] text-[#738091] leading-[1.45] mt-2 mb-[11px]">
+                    You&apos;re booking directly with the provider. Payment is processed securely through Traveloure.
                   </p>
                   {hasAnyTrustLine && (
-                    <ul className="mt-2 space-y-1.5">
+                    <ul className="grid gap-2">
                       {providerVerification?.identityVerified && (
-                        <li className="flex items-center gap-1.5 text-xs" data-testid="trust-line-identity">
-                          <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <li className="flex items-center gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-identity">
+                          <ShieldCheck className="w-[13px] h-[13px] text-[#247d78] shrink-0" />
                           Identity verified
                         </li>
                       )}
                       {providerVerification?.businessVerified && (
-                        <li className="flex items-center gap-1.5 text-xs" data-testid="trust-line-business">
-                          <Building2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        <li className="flex items-center gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-business">
+                          <Building2 className="w-[13px] h-[13px] text-[#247d78] shrink-0" />
                           Business verified
                         </li>
                       )}
                       {hasMeetingPoint && (
-                        <li className="flex items-start gap-1.5 text-xs" data-testid="trust-line-meeting-point">
-                          <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                        <li
+                          className="flex items-start gap-[7px] text-[10px] text-[#344454]"
+                          data-testid="trust-line-meeting-point"
+                        >
+                          <MapPin className="w-[13px] h-[13px] text-[#247d78] shrink-0 mt-0.5" />
                           <span>Meets at: {service.meetingPoint}</span>
                         </li>
                       )}
                       {hasPickupAddress && (
-                        <li className="flex items-start gap-1.5 text-xs" data-testid="trust-line-pickup">
-                          <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                        <li className="flex items-start gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-pickup">
+                          <MapPin className="w-[13px] h-[13px] text-[#247d78] shrink-0 mt-0.5" />
                           <span>Pickup: {service.pickupAddress}</span>
                         </li>
                       )}
                       {hasTransportSignal && (
-                        <li className="flex items-center gap-1.5 text-xs" data-testid="trust-line-transport">
-                          <Car className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <li className="flex items-center gap-[7px] text-[10px] text-[#344454]" data-testid="trust-line-transport">
+                          <Car className="w-[13px] h-[13px] text-[#247d78] shrink-0" />
                           {service.transportProvided === "yes"
                             ? "Transport provided by the host"
                             : "Transport not provided — arrange your own"}
@@ -1643,21 +1565,18 @@ export default function ServiceDetailPage() {
                   )}
                 </div>
 
-                <Separator className="my-4" />
+                <Separator className="my-4 bg-[#dfe7e4]" />
 
                 {isRoom ? (
-                  /* §17 Product Builder — PROPERTY rung: a room books a NIGHT RANGE, not a
-                     single slot. The pre-check below reads the room's real published night
-                     slots (same C2 endpoint the single-day calendar uses) — it's informational;
-                     checkout's atomic all-or-nothing claim (§15) is the real authority. */
-                  <div className="mb-4" data-testid="card-room-stay">
-                    <div className="flex items-center gap-2 text-sm font-semibold mb-2">
-                      <BedDouble className="w-4 h-4 text-primary" />
+                  /* §17 Product Builder — PROPERTY rung: a room books a NIGHT RANGE. */
+                  <div className="mb-1" data-testid="card-room-stay">
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-[#193752] mb-2">
+                      <BedDouble className="w-4 h-4 text-[#247d78]" />
                       Pick your dates
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-xs text-muted-foreground" id="label-room-checkin">
+                        <label className="text-[11px] text-[#738091]" id="label-room-checkin">
                           Check-in
                         </label>
                         <Popover open={roomCheckInOpen} onOpenChange={setRoomCheckInOpen}>
@@ -1666,13 +1585,11 @@ export default function ServiceDetailPage() {
                               type="button"
                               variant="outline"
                               aria-labelledby="label-room-checkin"
-                              className="w-full justify-start font-normal text-sm h-10"
+                              className="w-full justify-start font-normal text-[12.5px] h-10 border-[#dfe7e4] rounded-[7px]"
                               data-testid="button-room-checkin"
                             >
-                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                              {roomCheckIn
-                                ? format(new Date(`${roomCheckIn}T00:00:00`), "MMM d, yyyy")
-                                : "Select date"}
+                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#738091]" />
+                              {roomCheckIn ? format(new Date(`${roomCheckIn}T00:00:00`), "MMM d, yyyy") : "Select date"}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -1691,14 +1608,14 @@ export default function ServiceDetailPage() {
                               disabled={isRoomCheckInDisabled}
                               data-testid="calendar-room-checkin"
                             />
-                            <p className="px-3 pb-3 text-[11px] text-muted-foreground border-t pt-2">
+                            <p className="px-3 pb-3 text-[11px] text-[#738091] border-t border-[#dfe7e4] pt-2">
                               Grayed-out nights are already booked or not yet published.
                             </p>
                           </PopoverContent>
                         </Popover>
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground" id="label-room-checkout">
+                        <label className="text-[11px] text-[#738091]" id="label-room-checkout">
                           Check-out
                         </label>
                         <Popover open={roomCheckOutOpen} onOpenChange={setRoomCheckOutOpen}>
@@ -1708,13 +1625,11 @@ export default function ServiceDetailPage() {
                               variant="outline"
                               aria-labelledby="label-room-checkout"
                               disabled={!roomCheckIn}
-                              className="w-full justify-start font-normal text-sm h-10 disabled:opacity-50"
+                              className="w-full justify-start font-normal text-[12.5px] h-10 border-[#dfe7e4] rounded-[7px] disabled:opacity-50"
                               data-testid="button-room-checkout"
                             >
-                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                              {roomCheckOut
-                                ? format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")
-                                : "Select date"}
+                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#738091]" />
+                              {roomCheckOut ? format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy") : "Select date"}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -1731,35 +1646,31 @@ export default function ServiceDetailPage() {
                               disabled={isRoomCheckOutDisabled}
                               data-testid="calendar-room-checkout"
                             />
-                            <p className="px-3 pb-3 text-[11px] text-muted-foreground border-t pt-2">
-                              Grayed-out dates would include a night that's already booked.
+                            <p className="px-3 pb-3 text-[11px] text-[#738091] border-t border-[#dfe7e4] pt-2">
+                              Grayed-out dates would include a night that&apos;s already booked.
                             </p>
                           </PopoverContent>
                         </Popover>
                       </div>
                     </div>
                     {roomCalendarLoading && (
-                      <p className="text-[11px] text-muted-foreground mb-1">Loading real availability…</p>
+                      <p className="text-[11px] text-[#738091] mb-1">Loading real availability…</p>
                     )}
                     {roomNights > 0 && (
-                      <p className="text-sm" data-testid="text-room-nights">
+                      <p className="text-[13px] text-[#344454]" data-testid="text-room-nights">
                         {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(roomEstimatedTotal)}{" "}
                         {stayRatesLoading ? "(estimating…)" : "estimated total"}
-                        {roomHasMixedRates && (
-                          <span className="text-muted-foreground"> (rates vary by night)</span>
-                        )}
+                        {roomHasMixedRates && <span className="text-[#738091]"> (rates vary by night)</span>}
                       </p>
                     )}
                     {roomNights > 30 && (
-                      <p className="text-xs text-destructive mt-1" data-testid="text-room-too-long">
-                        Stays longer than 30 nights aren't supported yet.
+                      <p className="text-[11px] text-red-600 mt-1" data-testid="text-room-too-long">
+                        Stays longer than 30 nights aren&apos;t supported yet.
                       </p>
                     )}
-                    {roomStayReady && roomAvailabilityLoading && (
-                      <Skeleton className="h-4 w-40 mt-1" />
-                    )}
+                    {roomStayReady && roomAvailabilityLoading && <Skeleton className="h-4 w-40 mt-1" />}
                     {roomStayReady && !roomAvailabilityLoading && roomUnavailableDates.length > 0 && (
-                      <p className="text-xs text-destructive mt-1" data-testid="text-room-unavailable">
+                      <p className="text-[11px] text-red-600 mt-1" data-testid="text-room-unavailable">
                         Not available for {roomUnavailableDates.length} of your selected night
                         {roomUnavailableDates.length === 1 ? "" : "s"}. Try different dates.
                       </p>
@@ -1770,15 +1681,15 @@ export default function ServiceDetailPage() {
                     {/* C2/C3: read-only availability calendar with slot selection. */}
                     <div className="mb-4" data-testid="card-availability">
                       <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                        <div className="flex items-center gap-2 text-sm font-semibold">
-                          <CalendarCheck className="w-4 h-4 text-primary" />
+                        <div className="flex items-center gap-2 text-[13px] font-semibold text-[#193752]">
+                          <CalendarCheck className="w-4 h-4 text-[#247d78]" />
                           Availability
                         </div>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6"
+                            className="h-6 w-6 border border-[#dfe7e4] rounded-[6px] text-[#738091] hover:text-[#f34d6e]"
                             onClick={() =>
                               setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
                             }
@@ -1787,13 +1698,16 @@ export default function ServiceDetailPage() {
                           >
                             <ChevronLeft className="w-3.5 h-3.5" />
                           </Button>
-                          <span className="text-xs font-medium w-24 text-center" data-testid="text-availability-month">
+                          <span
+                            className="text-[11px] font-bold text-[#193752] w-24 text-center"
+                            data-testid="text-availability-month"
+                          >
                             {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
                           </span>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6"
+                            className="h-6 w-6 border border-[#dfe7e4] rounded-[6px] text-[#738091] hover:text-[#f34d6e]"
                             onClick={() =>
                               setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
                             }
@@ -1808,7 +1722,7 @@ export default function ServiceDetailPage() {
                       {availabilityLoading ? (
                         <Skeleton className="h-16 w-full" />
                       ) : upcomingAvailability.length > 0 ? (
-                        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                        <div className="grid gap-[7px] max-h-56 overflow-y-auto">
                           {upcomingAvailability.map((day) => {
                             const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
                             const isSelected = selectedSlot?.id === day.id;
@@ -1816,58 +1730,66 @@ export default function ServiceDetailPage() {
                               <button
                                 type="button"
                                 key={`${day.date}-${day.startTime}`}
-                                // C3: an open slot is selectable — the pick rides add-to-cart as slotId
-                                // and checkout claims it atomically ("this slot just booked" on a race).
                                 disabled={fullyBooked}
                                 onClick={() => setSelectedSlot(isSelected ? null : day)}
-                                className={`flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs text-left transition-colors ${
+                                className={`flex w-full items-center justify-between gap-2 rounded-[8px] border px-[10px] py-[10px] text-[11px] text-left transition-colors ${
                                   fullyBooked
-                                    ? "opacity-60 cursor-not-allowed"
+                                    ? "opacity-60 cursor-not-allowed border-[#dfe7e4] bg-[#f7f8f8]"
                                     : isSelected
-                                      ? "border-primary bg-primary/5"
-                                      : "hover:bg-muted/50"
+                                      ? "border-[#f34d6e] bg-[#fff0f3]"
+                                      : "border-[#dfe7e4] hover:border-[#f5a8b9]"
                                 }`}
                                 data-testid={`availability-day-${day.date}`}
                               >
-                                <span className="font-medium">
+                                <span className="font-semibold text-[#193752]">
                                   {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
                                   {day.startTime && (
-                                    <span className="text-muted-foreground font-normal ml-1.5">
+                                    <span className="text-[#738091] font-normal ml-1.5">
                                       {day.startTime}
                                       {day.endTime ? `–${day.endTime}` : ""}
                                     </span>
                                   )}
                                 </span>
                                 <span className="flex items-center gap-1.5">
-                                  {isSelected && <Badge className="text-[10px] px-1.5 py-0" data-testid={`badge-slot-selected-${day.date}`}>Selected</Badge>}
-                                  <Badge variant={fullyBooked ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
+                                  {isSelected && (
+                                    <span
+                                      className="text-[9px] px-1.5 py-0 rounded-full bg-[#f34d6e] text-white font-bold"
+                                      data-testid={`badge-slot-selected-${day.date}`}
+                                    >
+                                      Selected
+                                    </span>
+                                  )}
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0 rounded-full font-bold ${
+                                      fullyBooked ? "border border-[#dfe7e4] text-[#738091]" : "bg-[#eaf7f5] text-[#247d78]"
+                                    }`}
+                                  >
                                     {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
-                                  </Badge>
+                                  </span>
                                 </span>
                               </button>
                             );
                           })}
                         </div>
                       ) : (
-                        <p className="text-muted-foreground text-xs" data-testid="text-no-availability">
+                        <p className="text-[#738091] text-[11px]" data-testid="text-no-availability">
                           No availability published yet for this month. Contact the provider to check dates.
                         </p>
                       )}
                     </div>
 
-                    {/* Preferred date/time — optional fallback for services without a published
-                        slot the traveler wants. Carried into the cart + booking. */}
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                        <Calendar className="w-3.5 h-3.5" />
-                        Or request a date & time <span className="font-normal">(optional)</span>
+                    {/* Preferred date/time — optional fallback. */}
+                    <div className="grid grid-cols-2 gap-2 mb-1">
+                      <div className="col-span-2 flex items-center gap-[6px] text-[11px] font-bold text-[#193752]">
+                        <Calendar className="w-3.5 h-3.5 text-[#247d78]" />
+                        Or request a date &amp; time <span className="font-normal text-[#738091]">(optional)</span>
                       </div>
                       <input
                         type="date"
                         min={todayStr}
                         value={bookingDate}
                         onChange={(e) => setBookingDate(e.target.value)}
-                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        className="rounded-[7px] border border-[#dfe7e4] bg-white px-[8px] py-[8px] text-[10px] text-[#193752]"
                         data-testid="input-booking-date"
                         aria-label="Preferred date"
                       />
@@ -1876,7 +1798,7 @@ export default function ServiceDetailPage() {
                         value={bookingTime}
                         onChange={(e) => setBookingTime(e.target.value)}
                         disabled={!bookingDate}
-                        className="rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
+                        className="rounded-[7px] border border-[#dfe7e4] bg-white px-[8px] py-[8px] text-[10px] text-[#193752] disabled:bg-[#f1f3f2] disabled:cursor-not-allowed"
                         data-testid="input-booking-time"
                         aria-label="Preferred time"
                       />
@@ -1884,44 +1806,36 @@ export default function ServiceDetailPage() {
                   </>
                 )}
 
-                {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy.
-                    Shows the owner's declared policy when present; otherwise an honest
-                    "contact provider" fallback — never a fabricated "free cancellation"
-                    claim (the old expert-detail.tsx trio removed by #200). */}
-                <div className="mt-4 pt-4 border-t space-y-1.5" data-testid="section-cancellation-policy">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy. */}
+                <div className="mt-4 pt-4 border-t border-[#dfe7e4] space-y-1.5" data-testid="section-cancellation-policy">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-[#193752]">
+                    <ShieldCheck className="w-4 h-4 text-[#247d78]" />
                     Cancellation policy
                   </div>
                   {service.cancellationPolicyType ? (
-                    <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-type">
+                    <p className="text-[11px] text-[#738091]" data-testid="text-cancellation-policy-type">
                       {CANCELLATION_POLICY_TYPE_LABELS[service.cancellationPolicyType] ?? service.cancellationPolicyType}
                     </p>
                   ) : (
-                    <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-unset">
+                    <p className="text-[11px] text-[#738091]" data-testid="text-cancellation-policy-unset">
                       Contact the provider about cancellations before booking.
                     </p>
                   )}
                   {service.cancellationPolicy && (
-                    <p className="text-xs text-muted-foreground" data-testid="text-cancellation-policy-detail">
+                    <p className="text-[10px] text-[#738091]" data-testid="text-cancellation-policy-detail">
                       {service.cancellationPolicy}
                     </p>
                   )}
                 </div>
 
-                {/* Provider commission transparency. §8: no hardcoded rate literal —
-                    the real split is config-resolved server-side (fee_bands /
-                    resolveCommissionRates), so the old "90% / 10%" numbers were both a
-                    fee-literal violation and potentially wrong. State the model without
-                    a fabricated number. */}
-                <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                  <p className="text-xs text-muted-foreground text-center">
-                    A platform service fee is deducted from each booking; the provider
-                    receives the remainder.
+                {/* Provider commission transparency (§8: no hardcoded rate literal). */}
+                <div className="mt-4 p-3 rounded-[10px] bg-[#f5f8f7]">
+                  <p className="text-[11px] text-[#738091] text-center">
+                    A platform service fee is deducted from each booking; the provider receives the remainder.
                   </p>
                 </div>
-              </CardContent>
-            </Card>
+              </DetailCard>
+            </div>
           </div>
         </div>
       </div>
@@ -1948,7 +1862,10 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
 
   if (review.status === "removed") {
     return (
-      <div className="border-b last:border-0 pb-4 last:pb-0 text-sm text-muted-foreground italic" data-testid={`card-review-${review.id}`}>
+      <div
+        className="border-b border-[#dfe7e4] last:border-0 pb-4 last:pb-0 text-[12.5px] text-[#738091] italic"
+        data-testid={`card-review-${review.id}`}
+      >
         This review has been removed by a moderator.
       </div>
     );
@@ -1956,50 +1873,42 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
 
   return (
     <>
-      <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
+      <div className="border-b border-[#dfe7e4] last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
         <div className="flex items-start gap-3">
-          <Avatar className="w-10 h-10">
-            <AvatarFallback>
-              <User className="w-5 h-5" />
-            </AvatarFallback>
-          </Avatar>
+          <div className="flex items-center justify-center w-[34px] h-[34px] rounded-full bg-[#e6f1ef] text-[#247d78] shrink-0">
+            <User className="w-4 h-4" />
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 text-[#a67015]">
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    className={`w-4 h-4 ${star <= review.rating ? "text-amber-500 fill-amber-500" : "text-muted-foreground"}`}
-                  />
+                  <Star key={star} className="w-3.5 h-3.5" fill={star <= review.rating ? "currentColor" : "none"} stroke="currentColor" />
                 ))}
               </div>
               {review.isVerified && (
-                <Badge variant="secondary" className="text-xs">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  Verified
-                </Badge>
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf7f5] text-[#247d78] text-[10px] font-semibold px-2 py-0.5">
+                  <CheckCircle className="w-3 h-3" /> Verified
+                </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground mb-1">
-              {format(new Date(review.createdAt), "MMM d, yyyy")}
-            </p>
+            <p className="text-[11px] text-[#738091] mb-1">{format(new Date(review.createdAt), "MMM d, yyyy")}</p>
             {review.reviewText && (
-              <p className="text-sm" data-testid={`text-review-${review.id}`}>
+              <p className="text-[12.5px] text-[#344454] leading-[1.5]" data-testid={`text-review-${review.id}`}>
                 {review.reviewText}
               </p>
             )}
             {review.responseText && (
-              <div className="mt-3 pl-4 border-l-2 border-primary/20">
-                <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
-                <p className="text-sm" data-testid={`text-response-${review.id}`}>
+              <div className="mt-3 pl-4 border-l-2 border-[#247d78]/20">
+                <p className="text-[11px] text-[#738091] mb-1">Provider Response:</p>
+                <p className="text-[12.5px] text-[#344454]" data-testid={`text-response-${review.id}`}>
                   {review.responseText}
                 </p>
               </div>
             )}
             {review.providerReply && (
-              <div className="mt-3 rounded-md border bg-muted/40 px-3 py-2" data-testid={`block-provider-reply-${review.id}`}>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Response from the provider</p>
-                <p className="text-sm" data-testid={`text-provider-reply-${review.id}`}>
+              <div className="mt-3 rounded-[8px] bg-[#f6f8f7] px-3 py-2" data-testid={`block-provider-reply-${review.id}`}>
+                <p className="text-[10px] font-semibold text-[#193752] mb-1">Response from the provider</p>
+                <p className="text-[12px] text-[#738091] leading-[1.45]" data-testid={`text-provider-reply-${review.id}`}>
                   {review.providerReply}
                 </p>
               </div>
@@ -2008,7 +1917,7 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
           {user && review.travelerId !== user.id && (
             <button
               onClick={() => setFlagOpen(true)}
-              className="text-muted-foreground hover:text-red-600 transition-colors p-1 rounded"
+              className="text-[#738091] hover:text-red-600 transition-colors p-1 rounded"
               title="Report this review"
               data-testid={`button-flag-review-${review.id}`}
             >
@@ -2046,5 +1955,68 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ── Page-local presentation helpers (continuity design, docs/design/service-detail-continuity/) ──
+// Transcribed from artifacts/mockup-sandbox/.../ServiceDetailContinuity.tsx's own token
+// vocabulary (navy #193752 / coral #f34d6e / teal #247d78 / gold #a67015 on a #f8faf9 ground,
+// Fraunces headings + DM Sans body) as page-scoped Tailwind arbitrary values — same pattern as
+// the Catalog/Workstation rebuilds (docs/DECISIONS.md rows 110–111). Not extracted to a shared
+// file: this lane is pure-client and page-scoped while sibling lanes rebuild storefront.tsx and
+// experts.tsx concurrently.
+function DetailCard({
+  children,
+  className = "",
+  "data-testid": dataTestId,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  return (
+    <section
+      className={`border border-[#dfe7e4] rounded-[13px] bg-white p-[22px] shadow-[0_4px_18px_rgba(25,55,82,0.025)] ${className}`}
+      data-testid={dataTestId}
+    >
+      {children}
+    </section>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2
+      className="text-[20px] leading-[1.15] font-semibold text-[#193752] tracking-[-0.03em] mb-[13px]"
+      style={{ fontFamily: "Fraunces, serif" }}
+    >
+      {children}
+    </h2>
+  );
+}
+
+function GoodToKnowRow({
+  icon: Icon,
+  children,
+  testId,
+}: {
+  icon: typeof Users;
+  children: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <li className="flex items-start gap-[9px] text-[#344454] text-[12.5px] leading-[1.4]" data-testid={testId}>
+      <Icon className="w-4 h-4 text-[#247d78] shrink-0 mt-0.5" aria-hidden="true" />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+function Fact({ label, value, testId }: { label: string; value: string; testId?: string }) {
+  return (
+    <div className="border-t border-[#dfe7e4] pt-[9px]" data-testid={testId}>
+      <strong className="block mb-[3px] text-[#193752] text-[13px] font-semibold capitalize">{value}</strong>
+      <span className="text-[#738091] text-[11px]">{label}</span>
+    </div>
   );
 }

@@ -200,6 +200,11 @@ describe("CANCELLATION_POLICY_TYPE_OPTIONS — the sole copy now lives here", ()
 
 const serviceFormSrc = readFileSync(resolve(__dirname, "../../components/ServiceForm.tsx"), "utf-8");
 const drawerSrc = readFileSync(resolve(__dirname, "../../components/provider/pricing-fees-drawer.tsx"), "utf-8");
+// The mock's ⑨ "one map-authoring component" moved the radius CONTROL out of the wizard's
+// Getting-there card and onto the map canvas (pin + radius + stops + zones in one place).
+// The invariant this file guards is unchanged: radius is MAP GEOMETRY and must never live
+// in the pricing drawer — its home is now the authoring map, not a bare wizard field.
+const mapAuthoringSrc = readFileSync(resolve(__dirname, "../../components/provider/service-map-authoring.tsx"), "utf-8");
 
 describe("moved fields are absent from the wizard (ServiceForm.tsx)", () => {
   const movedControlTestids = [
@@ -230,8 +235,11 @@ describe("moved fields are absent from the wizard (ServiceForm.tsx)", () => {
     assert.match(serviceFormSrc, /data-testid="input-lead-time"/);
   });
 
-  it("the wizard's Getting there card still keeps Service Radius (map geometry, not a surcharge amount)", () => {
-    assert.match(serviceFormSrc, /id="serviceRadius"/);
+  it("Service Radius stays map geometry — on the authoring map, never in the pricing drawer", () => {
+    // Moved from the wizard's Getting-there card to the one-canvas map authoring component
+    // (mock callout ⑨) — same invariant, new home.
+    assert.match(mapAuthoringSrc, /serviceRadius|radiusKm/);
+    assert.doesNotMatch(drawerSrc, /serviceRadius/);
   });
 
   it("the wizard points to the drawer where the fields went, rather than silently dropping them", () => {

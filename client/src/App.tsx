@@ -147,6 +147,7 @@ const AdminAuditLog = lazy(() => import("@/pages/admin/audit-log"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
+const ProvidersDirectoryPage = lazy(() => import("@/pages/providers-directory"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
@@ -413,6 +414,11 @@ function Router() {
       </Route>
       <Route path="/p/:handle">
         {() => <StorefrontPage />}
+      </Route>
+      {/* Public directory of provider BUSINESSES — links into each business's own
+          storefront above (/p/:handle). Separate from /services (individual listings). */}
+      <Route path="/providers">
+        <Layout><ProvidersDirectoryPage /></Layout>
       </Route>
       <Route path="/local-experts">
         <Layout><ExpertsPage /></Layout>
