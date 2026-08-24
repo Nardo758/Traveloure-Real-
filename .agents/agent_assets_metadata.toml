@@ -75,3 +75,10 @@ uri = "file://exports/traveloure-marketplace-detail-mockups.html"
 type = "text"
 title = "Traveloure Marketplace Detail Mockups"
 description = "Self-contained HTML export of the six selected marketplace detail mockups, arranged as a continuity-versus-baseline comparison sheet."
+
+[[outputs]]
+id = "0629Mu1YTCtROYtFtvVPt"
+uri = "file://reports/rohit-daily-report-2026-08-23.md"
+type = "text"
+title = "Rohit Daily Work Report — August 23, 2026"
+description = "Repository-based report covering work completed, defects fixed, and tests or verification recorded for yesterday."
