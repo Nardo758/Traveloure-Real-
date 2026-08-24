@@ -8,6 +8,15 @@
 --   intentionally first so a retry after a partial apply can finish cleanly.
 --   Test: INSERT INTO trend_signals (source, raw_ref, ...) VALUES ('x_api', '{}', ...)
 --         must fail with "new row for relation ... violates check constraint".
+--
+--   DELIBERATELY NOT DECLARED IN shared/schema.ts (audit ledger row 113): this CHECK
+--   lives ONLY in the migration. Declaring it in schema.ts would arm the Replit
+--   deploy-push CHECK trap — the push enforces schema.ts CHECKs BEFORE runMigrations()
+--   runs this remap, so a publish onto a prod whose x_api rows still hold non-null
+--   raw_ref would fail destructively. Do NOT add it to schema.ts without first running
+--   `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` and confirming
+--   zero violating rows. The code-level enforcement (adapter writes raw_ref=NULL) is the
+--   primary guard; this DB CHECK is defense-in-depth.
 UPDATE trend_signals
 SET raw_ref = NULL
 WHERE source = 'x_api'
