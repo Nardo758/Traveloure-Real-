@@ -766,7 +766,7 @@ export default function ServiceDetailPage() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link href="/discover" data-testid="breadcrumb-home" className="service-detail-crumb-back">
+                <Link href="/services" data-testid="breadcrumb-home" className="service-detail-crumb-back">
                   <ArrowLeft className="w-3.5 h-3.5" />
                   Back to services
                 </Link>
