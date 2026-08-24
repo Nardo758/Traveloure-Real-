@@ -309,7 +309,7 @@ interface ProviderVerification {
   identityVerified: boolean;
   businessVerified: boolean;
   // A6: storefront handle (migration 136, users.handle) — null when the owner hasn't
-  // claimed one yet. Backs the breadcrumb's "/p/:handle" link only when non-null.
+  // claimed one yet. Backs the breadcrumb's "/s/:handle" link only when non-null.
   handle: string | null;
   // Ledger 90 (FP-5, I3): the owner's public display name, needed by "Contact Provider" to open
   // a real chat thread (chat.tsx's `?name=` fallback — `/api/experts/:id` is expert-family only).
@@ -758,7 +758,7 @@ export default function ServiceDetailPage() {
   return (
     <Layout>
       <div className="container py-8 max-w-6xl mx-auto">
-        {/* Breadcrumb into the provider storefront (mockup: Home > /p/:handle > service name).
+        {/* Breadcrumb into the provider storefront (mockup: Home > /s/:handle > service name).
             The handle link only renders when the owner has actually claimed one (migration 136) —
             no fake/guessed storefront link is shown for an unclaimed handle. */}
         <Breadcrumb className="mb-4">
@@ -773,7 +773,7 @@ export default function ServiceDetailPage() {
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link href={`/p/${providerVerification.handle}`} data-testid="breadcrumb-storefront">
+                    <Link href={`/s/${providerVerification.handle}`} data-testid="breadcrumb-storefront">
                       @{providerVerification.handle}
                     </Link>
                   </BreadcrumbLink>

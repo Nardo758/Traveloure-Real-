@@ -250,7 +250,7 @@ export function ProviderStorefrontHeader() {
   ).length;
 
   const isLive = !!handle && countsLoaded && approvedCount > 0;
-  const publicPath = handle ? `/p/${handle}` : null;
+  const publicPath = handle ? `/s/${handle}` : null;
   const publicUrl = publicPath ? `${window.location.origin}${publicPath}` : null;
 
   // D-2 (mock conformance, Aug 15): the card leads with WHO the storefront belongs to — avatar +

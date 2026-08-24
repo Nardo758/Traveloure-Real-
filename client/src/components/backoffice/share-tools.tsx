@@ -707,7 +707,7 @@ export function StorefrontShareTools({ handle }: { handle: string }) {
       <ShareActions
         caption={storefrontCaption}
         idPrefix="storefront"
-        onGetLink={() => ensureShortLink({ targetType: "storefront" }, `/p/${handle}`)}
+        onGetLink={() => ensureShortLink({ targetType: "storefront" }, `/s/${handle}`)}
       />
     </div>
   );

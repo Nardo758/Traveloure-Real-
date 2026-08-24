@@ -70,11 +70,11 @@ function buildMenuGroups(expertType?: string | null, handle?: string | null) {
         // Catalog (Backoffice B3): "what I sell" front door — absorbs My Offerings + Store
         // Listings management.
         { title: "Catalog", href: "/expert/catalog", icon: LayoutGrid },
-        // Storefront reachability round 2 (Aug 22, 2026): the public /p/:handle page had no
+        // Storefront reachability round 2 (Aug 22, 2026): the public /s/:handle page had no
         // persistent nav route — only the Catalog header's Preview button. With a handle this
         // goes straight to the live page; without one it lands on Catalog, whose storefront
-        // header carries the claim link — never a dead /p/ link (StorefrontLink rule 1).
-        { title: "My Storefront", href: handle ? `/p/${handle}` : "/expert/catalog", icon: Store },
+        // header carries the claim link — never a dead /s/ link (StorefrontLink rule 1).
+        { title: "My Storefront", href: handle ? `/s/${handle}` : "/expert/catalog", icon: Store },
         // Console IA C1: "Store Listings" entry RETIRED — /expert/ready-made now redirects to
         // /expert/catalog (list + approval status live in the MyOfferingsTable ready_made lane;
         // editing lives on the build in the Workstation Distribute panel; creation is

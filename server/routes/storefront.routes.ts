@@ -1,12 +1,13 @@
 /**
  * storefront.routes.ts — public earner storefront (backoffice Phase 1a/1b).
  *
- * The mockup's "/p/{handle}" identity layer (docs/backoffice/mockups/mockup-offering-page.html,
+ * The mockup's "/s/{handle}" identity layer (docs/backoffice/mockups/mockup-offering-page.html,
  * mockup-backoffice-dashboard.html). Three surfaces:
  *   PATCH /api/me/handle          — claim/change the caller's handle (§14: user from session only)
  *   GET   /api/storefront/:handle — public JSON: earner profile + APPROVED offerings across the
  *                                   three lanes (provider_services / expert_templates / ready_made_trips)
- *   GET   /p/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
+ *   GET   /s/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
+ *   GET   /p/:handle              — legacy-compatible public route
  *                                   /itinerary-view/:token route-interception pattern), then the SPA
  *                                   takes over client-side.
  *   GET   /services/:id           — same OG injection for the shareable offering page.
@@ -47,7 +48,7 @@ const isAuthenticated = (req: any, res: any, next: any) => {
 // no canonical write path produces it, but a grandfathered row shouldn't lose its handle).
 const EARNER_ROLES = new Set<string>([...CANONICAL_EARNER_ROLES, "provider"]);
 
-// Reserved first segments: platform vocabulary + abuse-prone names. A handle lives under /p/ so
+// Reserved first segments: platform vocabulary + abuse-prone names. A handle lives under /s/ so
 // route collisions are impossible; this list protects brand/impersonation surface.
 const RESERVED_HANDLES = new Set([
   "admin", "administrator", "api", "traveloure", "official", "support", "help",
@@ -536,7 +537,7 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
         availability: { applicable: availabilityApplicable, done: availabilityCount > 0, count: availabilityCount },
         verification: { done: identityVerified, requiredForStorefront: verificationRequired },
       },
-      storefrontPath: me.handle ? `/p/${me.handle}` : null,
+      storefrontPath: me.handle ? `/s/${me.handle}` : null,
     });
   } catch (error: any) {
     console.error("[business-setup] aggregate failed:", error);
@@ -794,9 +795,9 @@ router.get("/api/storefront/:handle", async (req, res) => {
   }
 });
 
-// Server-side OG injection for /p/:handle — crawlers (WhatsApp/FB/X) never run the SPA's JS, so
-// the share preview must be in the initial HTML. Same handler shape as /itinerary-view/:token.
-router.get("/p/:handle", async (req, res, next) => {
+// Server-side OG injection for canonical /s/:handle and legacy /p/:handle. Crawlers (WhatsApp/FB/X)
+// never run the SPA's JS, so the share preview must be in the initial HTML.
+router.get(["/s/:handle", "/p/:handle"], async (req, res, next) => {
   try {
     const data = await loadStorefront(req.params.handle);
     if (!data) return next(); // SPA renders its own not-found
@@ -806,7 +807,7 @@ router.get("/p/:handle", async (req, res, next) => {
     const description =
       data.earner.bio ??
       `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
-    const shareUrl = `https://traveloure.com/p/${data.earner.handle}`;
+    const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
       data.readyMade[0]?.heroImageUrl ??
@@ -862,7 +863,7 @@ router.get("/p/:handle", async (req, res, next) => {
   }
 });
 
-// Server-side OG injection for /services/:id — same pattern as /p/:handle.
+// Server-side OG injection for /services/:id — same pattern as /s/:handle.
 router.get("/services/:id", async (req, res, next) => {
   try {
     const [service] = await db

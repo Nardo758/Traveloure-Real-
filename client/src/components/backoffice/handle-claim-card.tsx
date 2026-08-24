@@ -34,14 +34,14 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
       return body as { handle: string };
     },
     onSuccess: (data) => {
-      toast({ title: "Handle saved", description: `Your storefront: /p/${data.handle}` });
+      toast({ title: "Handle saved", description: `Your storefront: /s/${data.handle}` });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
     onError: (e: Error) => toast({ title: "Could not save handle", description: e.message, variant: "destructive" }),
   });
 
   const saved = claimMutation.data?.handle ?? existing;
-  const url = saved ? `${window.location.origin}/p/${saved}` : null;
+  const url = saved ? `${window.location.origin}/s/${saved}` : null;
 
   // Storefront cover image — earner-chosen, optional (users.preferences.storefront.coverImageUrl,
   // no migration). Gradient fallback renders on the storefront when unset.
@@ -102,7 +102,7 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
       <CardContent className="space-y-3">
         <div className="flex gap-2">
           <div className="flex items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">
-            /p/
+            /s/
           </div>
           <Input
             value={handle}
@@ -141,7 +141,7 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
                   const data = await res.json() as { url: string };
                   navigator.clipboard.writeText(`${window.location.origin}${data.url}`);
                 } catch {
-                  // Graceful fallback to the existing /p/ URL on any error.
+                  // Graceful fallback to the canonical /s/ URL on any error.
                   navigator.clipboard.writeText(url);
                 }
                 toast({ title: "Link copied" });

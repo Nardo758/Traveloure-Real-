@@ -105,7 +105,7 @@ const menuGroups = [
       // Providers Store front"): the public /p/:handle page was reachable only via the Catalog
       // header's Preview button and Distribute's copy/share tools — no persistent nav route.
       // This entry goes straight to the owner's live page when a handle exists; with NO handle
-      // it routes to Distribute (where the claim editor lives) — never a dead /p/ link
+      // it routes to Distribute (where the claim editor lives) — never a dead /s/ link
       // (StorefrontLink rule 1). The href is resolved at render time below.
       { title: "My Storefront", i18nKey: "nav.myStorefront", href: "/provider/distribute", icon: Store },
       // C9: "Share & Promote" entry RETIRED — its unique functions now live on Distribute (S6:
@@ -176,7 +176,7 @@ export function ProviderSidebar() {
   // "My Storefront" resolves to the real public page only when a handle exists —
   // otherwise it lands on Distribute, whose storefront card carries the claim editor.
   const handle = (user as any)?.handle as string | null | undefined;
-  const storefrontHref = handle ? `/p/${handle}` : "/provider/distribute";
+  const storefrontHref = handle ? `/s/${handle}` : "/provider/distribute";
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>

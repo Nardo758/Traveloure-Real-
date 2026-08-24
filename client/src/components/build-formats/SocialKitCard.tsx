@@ -242,7 +242,7 @@ export function SocialKitCard({ tripTitle, destination, experienceType, days, li
   // CTA link (§13 — only a REAL link, never a placeholder URL): the storefront handle first
   // (the durable public page), else the Direct channel's trackable short-link when the author
   // already created one this session; neither → the honest claim-your-handle state.
-  const ctaUrl = handle ? `${window.location.origin}/p/${handle}` : directLink;
+  const ctaUrl = handle ? `${window.location.origin}/s/${handle}` : directLink;
   const ctaDisplay = ctaUrl ? ctaUrl.replace(/^https?:\/\//, "") : null;
 
   const totalFrames = highlights.length + 3; // hero + route + highlights + CTA
