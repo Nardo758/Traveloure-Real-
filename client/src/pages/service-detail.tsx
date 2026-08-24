@@ -84,6 +84,7 @@ import {
 // about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
 // and it works; the CTA was simply speaking a language the destination doesn't parse.
 import { useAskExpert } from "@/lib/use-ask-expert";
+import "./service-detail.css";
 // S10 (Gate G4): the shared bundle-component summary shape + pure link/label helpers, so the
 // available/unavailable rendering decision lives in exactly one place (unit-tested separately).
 import {
@@ -757,11 +758,11 @@ export default function ServiceDetailPage() {
 
   return (
     <Layout>
-      <div className="container py-8 max-w-6xl mx-auto">
+      <div className="service-detail-page container max-w-6xl mx-auto">
         {/* Breadcrumb into the provider storefront (mockup: Home > /p/:handle > service name).
             The handle link only renders when the owner has actually claimed one (migration 136) —
             no fake/guessed storefront link is shown for an unclaimed handle. */}
-        <Breadcrumb className="mb-4">
+        <Breadcrumb className="service-detail-breadcrumb">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
@@ -787,15 +788,24 @@ export default function ServiceDetailPage() {
           </BreadcrumbList>
         </Breadcrumb>
 
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="outline" size="icon" asChild data-testid="button-back">
+        <section
+          className={`service-detail-hero ${service.serviceImage ? "" : "service-detail-hero--text-only"}`}
+          aria-label="Service overview"
+        >
+          <div className="service-detail-hero-note">
+          <Button variant="ghost" size="sm" asChild data-testid="button-back" className="service-detail-back">
             <Link href="/discover">
               <ArrowLeft className="w-4 h-4" />
+              Back to services
             </Link>
           </Button>
-          <div className="flex-1">
+          <div>
+            <span className="service-detail-kicker">
+              {service.deliveryMethod ? service.deliveryMethod.replace(/_/g, " ") : "Traveloure service"}
+              {displayLocation ? ` · ${displayLocation}` : ""}
+            </span>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold" data-testid="text-service-name">
+              <h1 data-testid="text-service-name">
                 {service.serviceName}
               </h1>
               {providerVerification?.identityVerified && (
@@ -835,7 +845,10 @@ export default function ServiceDetailPage() {
                 )}
               </Badge>
             )}
-            <div className="flex items-center gap-4 mt-1 text-muted-foreground flex-wrap">
+            {(service.shortDescription || service.description) && (
+              <p className="service-detail-hero-copy">{service.shortDescription || service.description}</p>
+            )}
+            <div className="service-detail-meta">
               {/* ── FP-1 / B3 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P2) ─────────────────────
                   `provider_services.location` DEFAULTs to the literal string 'Unknown', and the
                   console only collects it for the delivery methods that render a "Service area"
@@ -885,19 +898,19 @@ export default function ServiceDetailPage() {
               </Link>
             )}
           </div>
-        </div>
+          </div>
 
         {/* Hero image — only rendered when the listing has a real cover image (serviceImage);
             no stock/placeholder image is substituted when it's absent (§13). */}
         {service.serviceImage && (
-          <div className="mb-6 rounded-lg overflow-hidden border" data-testid="img-hero">
+          <div className="service-detail-hero-art" data-testid="img-hero">
             <img
               src={service.serviceImage}
               alt={service.serviceName}
-              className="w-full max-h-[420px] object-cover"
             />
           </div>
         )}
+        </section>
 
         {/* T-REP (G5 #13): the gallery has been collectible (galleryImages) since the wizard's
             Media step, and the column already rode the wire (`SELECT *`) — only the render was
@@ -905,7 +918,7 @@ export default function ServiceDetailPage() {
             A simple thumbnail strip, distinct from the hero, no lightbox/carousel added — that's
             a bigger UI investment than this lane's honest-rendering mandate calls for. */}
         {Array.isArray(service.galleryImages) && service.galleryImages.length > 0 && (
-          <div className="mb-6 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="section-gallery">
+          <div className="service-detail-gallery grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2" data-testid="section-gallery">
             {service.galleryImages.map((url, idx) => (
               <div key={idx} className="rounded-md overflow-hidden border aspect-square" data-testid={`img-gallery-${idx}`}>
                 <img src={url} alt={`${service.serviceName} photo ${idx + 1}`} className="w-full h-full object-cover" />
@@ -918,9 +931,9 @@ export default function ServiceDetailPage() {
             renders BEFORE the long-form content below via `order` — a texted link must put
             photo + price + CTA above the fold without a redesign of either column's content.
             Desktop keeps the original visual (content, then sidebar) via the lg: overrides. */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="order-2 lg:order-1 lg:col-span-2 space-y-6">
-            <Card>
+        <div className="service-detail-layout grid lg:grid-cols-3">
+          <div className="service-detail-content order-2 lg:order-1 lg:col-span-2">
+            <Card className="service-detail-section service-detail-about">
               <CardHeader>
                 <CardTitle>About this service</CardTitle>
               </CardHeader>
@@ -929,18 +942,20 @@ export default function ServiceDetailPage() {
                   {service.description || service.shortDescription || "No description available"}
                 </p>
 
-                {service.deliveryTimeframe && (
-                  <div className="flex items-center gap-2 mt-4 text-sm">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span>Delivery: {service.deliveryTimeframe}</span>
-                  </div>
-                )}
+                <div className="service-detail-facts">
+                  {service.deliveryTimeframe && (
+                    <div className="service-detail-fact">
+                      <Clock className="w-4 h-4" />
+                      <span><strong>{service.deliveryTimeframe}</strong>Delivery</span>
+                    </div>
+                  )}
 
-                {service.deliveryMethod && (
-                  <div className="flex items-center gap-2 mt-2 text-sm">
-                    <Badge variant="outline">{service.deliveryMethod.replace(/_/g, " ")}</Badge>
-                  </div>
-                )}
+                  {service.deliveryMethod && (
+                    <div className="service-detail-fact">
+                      <Handshake className="w-4 h-4" />
+                      <span><strong>{service.deliveryMethod.replace(/_/g, " ")}</strong>Format</span>
+                    </div>
+                  )}
 
                 {/* SS-6 (ruling 69 disposition 9): delivery language, plainly, WHEN PRESENT.
                     In the launch market this is a purchasable attribute — a shared session in
@@ -948,12 +963,13 @@ export default function ServiceDetailPage() {
                     providers previously could not state it at all. §13: an absent value renders
                     NOTHING. There is deliberately no "English" fallback and no "language not
                     specified" line: silence is the honest answer to a question nobody answered. */}
-                {Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0 && (
-                  <div className="flex items-center gap-2 mt-2 text-sm" data-testid="text-delivery-languages">
-                    <Languages className="w-4 h-4 text-muted-foreground" />
-                    <span>Delivered in: {service.deliveryLanguages.join(", ")}</span>
-                  </div>
-                )}
+                  {Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0 && (
+                    <div className="service-detail-fact" data-testid="text-delivery-languages">
+                      <Languages className="w-4 h-4" />
+                      <span><strong>{service.deliveryLanguages.join(", ")}</strong>Languages</span>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -965,12 +981,12 @@ export default function ServiceDetailPage() {
                 them here means a traveler finds out before trying to book, not after a silent
                 refusal. */}
             {hasGoodToKnow && (
-              <Card data-testid="card-good-to-know">
+              <Card className="service-detail-section service-detail-good-to-know" data-testid="card-good-to-know">
                 <CardHeader>
                   <CardTitle>Good to know</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ul className="space-y-2.5 text-sm">
+                  <ul className="service-detail-fact-list">
                     {partySizeText && (
                       <li className="flex items-start gap-2" data-testid="text-party-size">
                         <Users className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -1132,7 +1148,7 @@ export default function ServiceDetailPage() {
               // traveler mistake the circle for the exact address (§13).
               const isApproximate = service.locationApproximate === true;
               return (
-                <Card data-testid="card-location-route">
+                <Card className="service-detail-section" data-testid="card-location-route">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       Location & route
@@ -1454,9 +1470,9 @@ export default function ServiceDetailPage() {
               all in one sticky column, mirroring the mockup's consolidated booking widget.
               `order-1` (see the wrapping grid's comment) puts this panel first on mobile. */}
           <div className="order-1 lg:order-2 lg:col-span-1">
-            <Card className="lg:sticky lg:top-4">
+            <Card className="service-detail-booking-card lg:sticky">
               <CardContent className="p-6">
-                <div className="text-center mb-4">
+                <div className="service-detail-price">
                   <p className="text-3xl font-bold" data-testid="text-price">
                     {priceLabel}
                   </p>
@@ -1475,11 +1491,11 @@ export default function ServiceDetailPage() {
                     the price — on a texted-link mobile viewport this is what keeps "book" inside
                     the fold instead of after the trust panel + full availability calendar below.
                     Same buttons/handlers, no new behavior. */}
-                <div className="space-y-3 mb-4">
+                <div className="service-detail-actions">
                   {isRoom ? (
                     <>
                       <Button
-                        className="w-full"
+                        className="w-full service-detail-primary"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1506,7 +1522,7 @@ export default function ServiceDetailPage() {
 
                       <Button
                         variant="outline"
-                        className="w-full"
+                        className="w-full service-detail-secondary"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1525,7 +1541,7 @@ export default function ServiceDetailPage() {
                   ) : (
                     <>
                       <Button
-                        className="w-full"
+                        className="w-full service-detail-primary"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1552,7 +1568,7 @@ export default function ServiceDetailPage() {
 
                       <Button
                         variant="outline"
-                        className="w-full"
+                        className="w-full service-detail-secondary"
                         onClick={() => {
                           if (!user) {
                             openSignInModal();
@@ -1577,7 +1593,7 @@ export default function ServiceDetailPage() {
                       dead-end (a CTA that cannot open a thread must not look like it can). */}
                   <Button
                     variant="ghost"
-                    className="w-full"
+                    className="w-full service-detail-contact"
                     disabled={!providerVerification?.displayName}
                     onClick={() =>
                       askExpert({
@@ -1597,7 +1613,7 @@ export default function ServiceDetailPage() {
                 {/* Direct-Booking trust panel. The base statement is true of every listing on
                     the platform (payment always rides the audited Traveloure checkout rail);
                     each line below it is gated on a real field and omitted when absent (§13). */}
-                <div className="mb-4 p-3 rounded-md border bg-muted/40 text-left" data-testid="section-direct-booking">
+                <div className="service-detail-trust" data-testid="section-direct-booking">
                   <div className="flex items-center gap-2 text-sm font-semibold mb-1">
                     <Handshake className="w-4 h-4 text-primary" />
                     Direct Booking
