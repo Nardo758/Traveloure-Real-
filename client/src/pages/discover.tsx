@@ -744,12 +744,21 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
   const urlCity = urlParams.get("city") || "";
   // A surface page is PINNED — ?tab= never overrides it (the /discover redirect
   // is what maps old ?tab= links onto the right surface route).
-  const [activeTab, setActiveTab] = useState(surface ?? urlTab);
+  //
+  // `activeTab` is DERIVED from `surface`, not just seeded from it: navigating
+  // between surface routes (/services → /destinations) reuses this same
+  // DiscoverPage instance (both routes render Layout > DiscoverPage), so the
+  // useState initializer does NOT re-run and the effect below (gated on
+  // `!surface`) does NOT fire. If the tab lived only in state it would go stale —
+  // the masthead (which reads `surface`) would update while the body (which reads
+  // the tab) would not. Deriving keeps the two in lockstep with no render flash.
+  const [selectedTab, setSelectedTab] = useState(urlTab);
+  const activeTab = surface ?? selectedTab;
 
-  // Sync active tab whenever the URL ?tab= param changes (e.g. nav link clicks).
-  // Surface pages skip this — their surface is fixed by the route.
+  // Sync the selected tab whenever the URL ?tab= param changes (legacy tabbed
+  // shell only — surface pages are fixed by their route and ignore ?tab=).
   useEffect(() => {
-    if (!surface) setActiveTab(urlTab);
+    if (!surface) setSelectedTab(urlTab);
   }, [urlTab, surface]);
 
   // Debounce search query
@@ -1133,7 +1142,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
             AI-Suggestions button, Plan-Experience button, and the standalone banner
             are all removed — each duplicated another entry (funnel audit, Jul 17).
             The AI sell lives in the cart's paid-optimization step instead. */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={setSelectedTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
             {/* Surface masthead = the ratified Ready-Made-by-Theme band (artifact
@@ -1194,7 +1203,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
               {!surface && (
               <button
                 type="button"
-                onClick={() => setActiveTab("services")}
+                onClick={() => setSelectedTab("services")}
                 className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 data-testid="cta-how-it-works"
               >
@@ -1733,6 +1742,11 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                     "Itinerary Templates", the storefront vocabulary). */}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
+                    {/* On the /ready-made SURFACE the masthead already reads
+                        "🏅 Ready-Made Trips" with this exact sub — so this section
+                        header would be a literal duplicate. Show it only in the
+                        legacy tabbed shell, where the masthead is generic. */}
+                    {!surface && (
                     <div className="mb-4">
                       <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Award className="w-5 h-5 text-primary" />
@@ -1742,6 +1756,7 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                         Buy a complete trip built around an experience — it becomes your own editable plan
                       </p>
                     </div>
+                    )}
 
                     {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
                         live stock render, with real counts — never the full 20-key vocabulary
@@ -2176,7 +2191,9 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
 
               {/* TravelPulse Tab */}
               <TabsContent value="travelpulse">
-                <CityGrid selectedCityName={urlCity} />
+                {/* On the /destinations SURFACE the masthead is the page header, so
+                    suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
+                <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />
               </TabsContent>
           </div>
         </section>
