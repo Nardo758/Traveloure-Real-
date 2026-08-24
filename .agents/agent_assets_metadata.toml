@@ -68,3 +68,10 @@ uri = "file://screenshots/dispatch-services.jpg"
 type = "image"
 title = "Marketplace — Services"
 description = "Verified /services masthead, search field, filters, and service cards."
+
+[[outputs]]
+id = "U_S-qCL_AbMvBw4uK7xzR"
+uri = "file://artifacts/mockup-sandbox/marketplace-audit.md"
+type = "text"
+title = "Traveloure Marketplace UI Audit"
+description = "Cross-surface audit of header aesthetics, duplicated filters and toggles, page hierarchy, and a recommended unifying direction for Destinations, Ready-Made Trips, Events, and Services."
