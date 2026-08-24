@@ -14,7 +14,7 @@ export function ContinuityShell({ active, children }: ContinuityShellProps) {
     <div className="tc-page">
       <header className="tc-topbar">
         <div className="tc-shell tc-nav">
-          <div className="tc-wordmark"><span className="tc-mark">◉</span>TRAVELOURE</div>
+          <div className="tc-wordmark"><img src="/__mockup/images/traveloure-logo.png" alt="Traveloure" /></div>
           <nav className="tc-main-nav" aria-label="Primary navigation">
             {navItems.map((item) => <button type="button" className={item === active ? "active" : ""} key={item}>{item}{item !== "Planning tools" && <ChevronDown size={13} />}</button>)}
           </nav>
