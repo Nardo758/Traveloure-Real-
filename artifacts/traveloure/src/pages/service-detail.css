@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap");
+
 .service-detail-page {
   --sd-ink: #193752;
   --sd-body: #344454;
@@ -12,6 +14,7 @@
   position: relative;
   color: var(--sd-body);
   background: var(--sd-paper);
+  font-family: "DM Sans", Arial, sans-serif;
   box-shadow: 0 0 0 100vmax var(--sd-paper);
   clip-path: inset(0 -100vmax);
   padding-top: 0;
@@ -22,6 +25,12 @@
   padding: 1.35rem 0 1rem;
   font-size: .75rem;
   color: var(--sd-muted);
+}
+
+.service-detail-crumb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
 }
 
 .service-detail-hero {
@@ -70,15 +79,6 @@
     var(--sd-card);
 }
 
-.service-detail-back {
-  align-self: flex-start;
-  height: auto;
-  margin: 0 0 1rem -.6rem;
-  padding: .25rem .55rem;
-  color: var(--sd-muted);
-  font-size: .72rem;
-}
-
 .service-detail-kicker {
   margin-bottom: .65rem;
   color: var(--sd-pink);
@@ -91,7 +91,7 @@
 .service-detail-hero h1 {
   margin: 0;
   color: var(--sd-ink);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Fraunces", Georgia, serif;
   font-size: clamp(1.75rem, 3vw, 2.5rem);
   font-weight: 600;
   line-height: 1.06;
@@ -122,6 +122,15 @@
   border-radius: 999px;
   background: var(--sd-teal-wash);
   color: var(--sd-teal);
+  font-size: .65rem;
+  font-weight: 700;
+}
+
+.service-detail-hero-note .service-detail-language-badge {
+  border-color: var(--sd-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--sd-muted);
   font-size: .65rem;
 }
 
@@ -176,8 +185,10 @@
 }
 
 .service-detail-section h3 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Fraunces", Georgia, serif;
   font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.15;
   letter-spacing: -.025em;
 }
 
@@ -302,6 +313,40 @@
 .service-detail-booking-card [data-testid="card-availability"] button[aria-pressed],
 .service-detail-booking-card [data-testid^="availability-day-"] {
   border-radius: .5rem;
+}
+
+.service-detail-booking-card [data-testid="card-availability"] > div:first-child > div:last-child button {
+  border: 1px solid var(--sd-line);
+  border-radius: .4rem;
+  background: #fff;
+  color: var(--sd-muted);
+}
+
+.service-detail-booking-card [data-testid="card-availability"] > div:first-child > div:last-child button:hover {
+  border-color: #f5a8b9;
+  color: var(--sd-pink);
+}
+
+.service-detail-booking-card [data-testid^="availability-day-"] {
+  min-height: 3.4rem;
+  border-color: var(--sd-line);
+  background: #fff;
+  color: var(--sd-body);
+}
+
+.service-detail-booking-card [data-testid^="availability-day-"]:not(:disabled):hover {
+  border-color: #efa1b2;
+  background: var(--sd-pink-wash);
+}
+
+.service-detail-booking-card [data-testid^="availability-day-"]:disabled {
+  background: #f7f8f8;
+}
+
+.service-detail-booking-card [data-testid^="availability-day-"] [class*="bg-primary"] {
+  border-color: var(--sd-pink);
+  background: var(--sd-pink);
+  color: #fff;
 }
 
 .service-detail-page :is(button, a, input, textarea):focus-visible {
