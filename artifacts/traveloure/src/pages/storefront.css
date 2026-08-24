@@ -21,8 +21,20 @@
   outline-offset: 3px;
 }
 
+.sf-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 10px;
+  color: var(--sf-muted);
+  font-size: 12px;
+}
+.sf-breadcrumb a { color: inherit; text-decoration: none; }
+.sf-breadcrumb a:hover { color: var(--sf-ink); text-decoration: underline; }
+.sf-breadcrumb svg { width: 14px; height: 14px; color: #98a2b3; }
+.sf-breadcrumb span { color: var(--sf-ink); font-weight: 700; }
+
 .sf-hero {
-  margin-top: 24px;
   overflow: hidden;
   border: 1px solid var(--sf-line);
   border-radius: 14px;
@@ -88,6 +100,7 @@
 .sf-verified svg, .sf-meta svg { width: 13px; height: 13px; }
 .sf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 16px; color: var(--sf-muted); font-size: 12px; }
 .sf-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.sf-meta > span > svg { width: 13px; height: 13px; color: var(--sf-teal); }
 .sf-rating { display: inline-flex; align-items: center; gap: 4px; color: #b54708; font-size: 11px; font-weight: 800; }
 .sf-rating svg { width: 13px; height: 13px; fill: currentColor; }
 .sf-rating span { color: var(--sf-muted); font-weight: 500; }
@@ -247,7 +260,8 @@
 
 @media (max-width: 600px) {
   .sf-shell { width: min(100% - 28px, 1180px); }
-  .sf-hero { margin-top: 14px; }
+  .sf-breadcrumb { margin: 14px 0 8px; gap: 6px; overflow: hidden; white-space: nowrap; }
+  .sf-breadcrumb span { overflow: hidden; text-overflow: ellipsis; }
   .sf-cover { height: 135px; }
   .sf-profile { display: block; padding: 0 17px 19px; }
   .sf-avatar { width: 72px; height: 72px; margin-top: -31px; }
