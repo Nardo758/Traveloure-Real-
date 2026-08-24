@@ -58,7 +58,7 @@ const corsAllowedOrigins = new Set(
 );
 app.use("/api", (req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
-  if (origin && (corsAllowedOrigins.has(origin) || corsAllowedOrigins.size === 0)) {
+  if (origin && corsAllowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   }
