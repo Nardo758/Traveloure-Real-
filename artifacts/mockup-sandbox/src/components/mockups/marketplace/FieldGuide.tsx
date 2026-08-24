@@ -62,9 +62,9 @@ function Destinations() {
 function ReadyMade() {
   const [edition, setEdition] = useState("All editions");
   const trips = [
-    { city: "Kyoto", title: "Unhurried Kyoto", details: "3 days · Temples, tea & quiet corners", creator: "Alex Tanaka", price: "$1,450", image: cityPhotos.kyoto, themes: ["Food & culture", "Slow journeys"] },
-    { city: "Bali", title: "A softer side of Bali", details: "5 days · Ritual, coast & craft", creator: "Maya Putri", price: "$2,180", image: cityPhotos.bali, themes: ["Slow journeys"] },
-    { city: "Jaipur", title: "The Jaipur notebook", details: "4 days · Courtyards, textiles & food", creator: "Arjun Mehta", price: "$1,760", image: cityPhotos.jaipur, themes: ["Food & culture"] },
+    { city: "Kyoto", title: "Unhurried Kyoto", details: "3 days · Temples, tea & quiet corners", creator: "Alex Tanaka", price: "$1,450", image: cityPhotos.kyoto, themes: ["Food & culture", "Slow journeys"], status: "Editable after purchase", stops: "8 planned stops" },
+    { city: "Bali", title: "A softer side of Bali", details: "5 days · Ritual, coast & craft", creator: "Maya Putri", price: "$2,180", image: cityPhotos.bali, themes: ["Slow journeys"], status: "Editable after purchase", stops: "12 planned stops" },
+    { city: "Jaipur", title: "The Jaipur notebook", details: "4 days · Courtyards, textiles & food", creator: "Arjun Mehta", price: "$1,760", image: cityPhotos.jaipur, themes: ["Food & culture"], status: "Editable after purchase", stops: "10 planned stops" },
   ];
   const visibleTrips = edition === "All editions" || edition === "More themes" ? trips : trips.filter((trip) => trip.themes.includes(edition));
   return <>
@@ -80,8 +80,10 @@ function ReadyMade() {
         <article className="fg-card" key={trip.title}>
           <div className="fg-trip-image" style={{ backgroundImage: `url(${trip.image})` }}><span className="fg-trip-destination">{trip.city}</span></div>
           <div className="fg-trip-body">
-            <p className="fg-kicker">Trip edition</p><p className="fg-trip-title">{trip.title}</p><p className="fg-trip-details">{trip.details}</p>
-            <div className="fg-trip-footer"><span>By {trip.creator} · Local editor</span><strong>{trip.price}</strong></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><p className="fg-kicker">Trip edition</p><span className="fg-status gold">{trip.status}</span></div>
+            <p className="fg-trip-title">{trip.title}</p><p className="fg-trip-details">{trip.details}</p>
+            <div className="fg-facts"><div className="fg-fact"><strong>{trip.price}</strong>complete trip</div><div className="fg-fact"><strong>{trip.stops}</strong>included</div><div className="fg-fact"><strong>By {trip.creator.split(" ")[0]}</strong>local editor</div></div>
+            <div className="fg-trip-actions"><span className="fg-meta" style={{ margin: 0 }}>Editable plan · yours after checkout</span><button className="fg-card-cta">View trip <ArrowUpRight size={13} /></button></div>
           </div>
         </article>
       ))}
@@ -111,7 +113,7 @@ function Events() {
         {visibleEvents.map((event) => <div className="fg-event-line" key={event.name}>
           <div className="fg-datebox">{event.month}<strong>{event.day}</strong></div>
           <div><div className="fg-event-name">{event.name}</div><div className="fg-event-meta">{event.place}</div><div className="fg-event-proof"><span>{event.note}</span><span>·</span><span>{event.proof}</span></div></div>
-          <button className="fg-link">Details</button>
+          <button className="fg-card-cta secondary">Details <ArrowUpRight size={13} /></button>
         </div>)}
       </div>
     </div>
