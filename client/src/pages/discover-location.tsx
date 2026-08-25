@@ -1,8 +1,8 @@
 import { useRef, useEffect, useState } from "react";
-import { useParams, useSearch, useLocation } from "wouter";
+import { useParams, useSearch, useLocation, Link } from "wouter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
-import { Layout } from "@/components/layout";
+import { Layout, NAV_LEAF_ICONS } from "@/components/layout";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info, Globe } from "lucide-react";
+import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useTripContext } from "@/lib/trip-context";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
@@ -67,6 +70,34 @@ interface CityMediaResponse {
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+// ─── Earn-grammar header tokens (per-page pattern) ─────────────────────────────
+const FRAUNCES = "'Fraunces', Georgia, serif";
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+// Marketplace rail — Destinations (travelpulse) is the current surface here.
+const MARKETPLACE_RAIL: { key: string; label: string; url: string }[] = [
+  { key: "travelpulse", label: "Destinations", url: "/destinations" },
+  { key: "packages", label: "Ready-Made", url: "/ready-made" },
+  { key: "events", label: "Events", url: "/events" },
+  { key: "services", label: "Services", url: "/services" },
+];
+
+/** Compact trip-date range for the read-only "where" field, e.g. "May 3–7". */
+function formatTripDates(start?: string, end?: string): string | null {
+  if (!start) return null;
+  const s = new Date(start + "T12:00:00");
+  if (isNaN(s.getTime())) return null;
+  const sMonth = MONTH_NAMES[s.getMonth()].slice(0, 3);
+  const sDay = s.getDate();
+  if (!end) return `${sMonth} ${sDay}`;
+  const e = new Date(end + "T12:00:00");
+  if (isNaN(e.getTime())) return `${sMonth} ${sDay}`;
+  const eMonth = MONTH_NAMES[e.getMonth()].slice(0, 3);
+  const eDay = e.getDate();
+  if (s.getMonth() === e.getMonth()) return `${sMonth} ${sDay}–${eDay}`;
+  return `${sMonth} ${sDay} – ${eMonth} ${eDay}`;
+}
+
 /**
  * Curated hero images for popular cities — used when no gem photo is available.
  * Keys are lowercase city names.
@@ -111,28 +142,26 @@ function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
   );
 }
 
-function HeroSection({
+function HeroBand({
   city,
   heroData,
+  country,
   scheduledDate,
   onDismissDate,
-  coverPhotoUrl,
-  coverPhotoCredit,
 }: {
   city: string;
   heroData: any;
+  country: string | null;
   scheduledDate: string | null;
   onDismissDate: () => void;
-  coverPhotoUrl?: string | null;
-  coverPhotoCredit?: CoverPhotoCredit;
 }) {
   const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
   const pulse = cityIntel?.pulseScore;
+  const crowdLevel = cityIntel?.crowdLevel;
   const highlight = cityIntel?.currentHighlight;
   const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
 
-  const dateMode = !!scheduledDate;
   const parsedDate = scheduledDate ? new Date(scheduledDate + "T12:00:00") : null;
   const monthIndex = parsedDate ? parsedDate.getMonth() : null;
   const monthName = monthIndex !== null ? MONTH_NAMES[monthIndex] : null;
@@ -144,220 +173,169 @@ function HeroSection({
     : null;
 
   const seasonLine = seasonalEntry
-    ? `${seasonalEntry.rating}/10 in ${monthName} · ${seasonalEntry.highlight}${cityIntel?.crowdLevel ? ` · ${cityIntel.crowdLevel}` : ""}`
+    ? `${seasonalEntry.rating}/10 in ${monthName} · ${seasonalEntry.highlight}${crowdLevel ? ` · ${crowdLevel}` : ""}`
     : highlight
     ? `${highlightEmoji} ${highlight}`
     : null;
 
-  const datePillLabel = parsedDate
-    ? `Planning ${monthName} ${dayOfMonth}`
-    : null;
+  const datePillLabel = parsedDate ? `Planning ${monthName} ${dayOfMonth}` : null;
 
+  // Coral mono eyebrow: DESTINATION · {COUNTRY} · TREND {n} · CROWD {level} —
+  // each fragment omitted when its source is null (§13). The TREND fragment
+  // carries the preserved pulse-badge testid.
+  const eyebrowFragments: (string | JSX.Element)[] = ["DESTINATION"];
+  if (country) eyebrowFragments.push(country.toUpperCase());
+  if (pulse !== undefined && pulse !== null)
+    eyebrowFragments.push(<span data-testid="pulse-badge">TREND {pulse}</span>);
+  if (crowdLevel) eyebrowFragments.push(`CROWD ${String(crowdLevel).toUpperCase()}`);
 
-  if (dateMode) {
-    if (coverPhotoUrl) {
-      return (
-        <div
-          className="relative rounded-xl overflow-hidden px-5 py-4 flex justify-between items-start gap-3 min-h-[96px]"
-          style={{
-            backgroundImage: `url(${coverPhotoUrl})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-          data-testid="section-hero"
-        >
-          {/* Dark overlay */}
-          <div className="absolute inset-0 rounded-xl" style={{ background: "linear-gradient(135deg, rgba(4,52,44,0.82) 0%, rgba(4,52,44,0.55) 100%)" }} />
-          <div className="relative z-10">
-            <h1
-              className="text-[22px] font-medium leading-tight text-white"
-              data-testid="text-city-name"
-            >
-              {displayCity}
-            </h1>
-            {seasonLine && (
-              <div className="text-[13px] mt-1 text-green-200">
-                🌸 {seasonLine}
-              </div>
-            )}
-            {datePillLabel && (
-              <div
-                className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
-                style={{ background: "rgba(255,255,255,0.2)", color: "#A7F3D0" }}
-              >
-                📅 {datePillLabel}
-                {/* D7 date-continuity: back to the By-Date calendar
-                    (/events) to pick a different date. Additive —
-                    the ✕ dismiss below is untouched. */}
-                <a
-                  href="/events"
-                  className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
-                  data-testid="link-change-date"
-                >
-                  Change date
-                </a>
-                <button
-                  onClick={onDismissDate}
-                  className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
-                  data-testid="button-dismiss-date"
-                  aria-label="Clear date"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-          </div>
-          {pulse !== undefined && (
-            <div className="relative z-10 text-center flex-shrink-0" data-testid="pulse-badge">
-              <b className="block text-[20px] font-medium leading-tight text-green-300">{pulse}</b>
-              <span className="text-[11px] text-green-400">pulse</span>
-            </div>
-          )}
-          <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="relative rounded-xl px-5 py-4 flex justify-between items-start gap-3"
-        style={{ background: "#E1F5EE" }}
-        data-testid="section-hero"
-      >
-        <div>
-          <h1
-            className="text-[22px] font-medium leading-tight"
-            style={{ color: "#04342C" }}
-            data-testid="text-city-name"
-          >
-            {displayCity}
-          </h1>
-          {seasonLine && (
-            <div className="text-[13px] mt-1" style={{ color: "#0F6E56" }}>
-              🌸 {seasonLine}
-            </div>
-          )}
-          {datePillLabel && (
-            <div
-              className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px]"
-              style={{ background: "rgba(255,255,255,0.55)", color: "#0F6E56" }}
-            >
-              📅 {datePillLabel}
-              {/* D7 date-continuity: back to the By-Date calendar
-                  (/events) to pick a different date. Additive —
-                  the ✕ dismiss below is untouched. */}
-              <a
-                href="/events"
-                className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
-                data-testid="link-change-date"
-              >
-                Change date
-              </a>
-              <button
-                onClick={onDismissDate}
-                className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
-                data-testid="button-dismiss-date"
-                aria-label="Clear date"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-        </div>
-        {pulse !== undefined && (
-          <div className="text-center flex-shrink-0" data-testid="pulse-badge">
-            <b className="block text-[20px] font-medium leading-tight" style={{ color: "#0F6E56" }}>{pulse}</b>
-            <span className="text-[11px]" style={{ color: "#0F6E56" }}>pulse</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (coverPhotoUrl) {
-    return (
-      <div
-        className="relative rounded-xl overflow-hidden px-6 py-8 min-h-[160px] flex flex-col justify-end"
-        style={{
-          backgroundImage: `url(${coverPhotoUrl})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-        data-testid="section-hero"
-      >
-        {/* Dark gradient overlay — bottom-heavy so text is legible */}
-        <div
-          className="absolute inset-0 rounded-xl"
-          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.10) 100%)" }}
-        />
-        <div className="relative z-10">
-          <h1
-            className="text-[34px] font-bold tracking-tight text-white leading-tight drop-shadow"
-            data-testid="text-city-name"
-          >
-            {displayCity}
-          </h1>
-          {highlight ? (
-            <div className="text-sm mt-1 text-white/80">
-              {highlightEmoji} {highlight}
-            </div>
-          ) : null}
-        </div>
-        {pulse !== undefined && (
-          <div
-            className="absolute top-5 right-5 z-10 rounded-xl px-3.5 py-2 text-center"
-            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}
-          >
-            <b className="block text-lg font-bold leading-tight text-green-300">
-              {pulse}
-            </b>
-            <span className="text-[10px] uppercase tracking-widest text-green-400">
-              pulse
-            </span>
-          </div>
-        )}
-        <PhotoCreditBadge credit={coverPhotoCredit ?? null} />
-      </div>
-    );
-  }
+  const Tile = NAV_LEAF_ICONS["Destinations"] ?? Palmtree;
 
   return (
-    <div
-      className="relative rounded-xl overflow-hidden px-6 py-6"
-      style={{ background: "linear-gradient(135deg, #0F6E56 0%, #0c5a47 100%)" }}
+    <section
+      className="border-b border-[color:var(--earn-border)] bg-[var(--earn-card)] py-[26px]"
       data-testid="section-hero"
     >
-      <h1
-        className="text-[30px] font-bold tracking-tight text-white leading-tight"
-        data-testid="text-city-name"
-      >
-        {displayCity}
-      </h1>
-      {highlight ? (
-        <div className="text-sm mt-1" style={{ color: "#5DCAA5" }}>
-          {highlightEmoji} {highlight}
+      <div className="container mx-auto max-w-6xl px-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="flex items-start gap-3 text-left">
+            <span className="w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] grid place-items-center shrink-0">
+              <Tile className="w-[22px] h-[22px]" />
+            </span>
+            <div>
+              <div
+                className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)] mb-1"
+                style={{ fontFamily: EARN_MONO }}
+              >
+                {eyebrowFragments.map((frag, i) => (
+                  <span key={i}>
+                    {i > 0 && " · "}
+                    {frag}
+                  </span>
+                ))}
+              </div>
+              <h1
+                style={{ fontFamily: FRAUNCES }}
+                className="text-[30px] font-semibold text-[color:var(--earn-navy)] leading-tight"
+              >
+                <span data-testid="text-city-name">{displayCity}</span>
+              </h1>
+              <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
+                {seasonLine ??
+                  `Plan your trip to ${displayCity} — browse local experts, bookable services, and what's on.`}
+              </p>
+              {datePillLabel && (
+                <div className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
+                  📅 {datePillLabel}
+                  <a
+                    href="/events"
+                    className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+                    data-testid="link-change-date"
+                  >
+                    Change date
+                  </a>
+                  <button
+                    onClick={onDismissDate}
+                    className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
+                    data-testid="button-dismiss-date"
+                    aria-label="Clear date"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <nav className="md:text-right" aria-label="Marketplace surfaces">
+            <p
+              className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)] mb-2"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              Marketplace
+            </p>
+            <div className="flex flex-wrap md:justify-end gap-1.5" style={{ fontFamily: EARN_MONO }}>
+              {MARKETPLACE_RAIL.map(({ key, label, url }) => {
+                const active = key === "travelpulse";
+                return (
+                  <Link
+                    key={key}
+                    href={url}
+                    className={cn(
+                      "text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors",
+                      active
+                        ? "bg-[var(--earn-navy)] text-white font-semibold"
+                        : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]",
+                    )}
+                    aria-current={active ? "page" : undefined}
+                    data-testid={`marketplace-route-${key}`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
         </div>
-      ) : null}
-      {pulse !== undefined && (
-        <div
-          className="absolute top-5 right-5 rounded-xl px-3.5 py-2 text-center"
-          style={{ background: "#04342C" }}
+      </div>
+    </section>
+  );
+}
+
+// ─── Filters popover (holds the spine gem-type chips) ─────────────────────────
+
+/**
+ * The gem-type filter chips (formerly the sticky `spine-filter-bar`) now live
+ * inside the Filters popover — behaviour is unchanged (each chip drives
+ * `activeFilter` exactly as before). The `spine-filter-bar` testid is preserved
+ * on the popover content wrapper.
+ */
+function FiltersPopover({
+  active,
+  onSelect,
+}: {
+  active: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 whitespace-nowrap"
+          data-testid="button-filters"
         >
-          <b
-            className="block text-lg font-bold leading-tight"
-            style={{ color: "#5DCAA5" }}
-          >
-            {pulse}
-          </b>
-          <span
-            className="text-[10px] uppercase tracking-widest"
-            style={{ color: "#5DCAA5" }}
-          >
-            pulse
-          </span>
+          <SlidersHorizontal className="w-4 h-4 mr-1.5" />
+          Filters +
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(20rem,calc(100vw-2rem))] space-y-3"
+        data-testid="popover-filters"
+      >
+        <div data-testid="spine-filter-bar">
+          <p className="font-medium text-sm mb-2">Filter the feed</p>
+          <div className="flex flex-wrap gap-2">
+            {SPINE_CHIPS.map((chip) => (
+              <button
+                key={chip.id}
+                onClick={() => onSelect(chip.id)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap border",
+                  active === chip.id
+                    ? "border-transparent font-semibold bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                    : "bg-[var(--earn-card)] border-[color:var(--earn-border)] text-[color:var(--earn-muted)] hover:bg-[var(--earn-chip)]",
+                )}
+                data-testid={`spine-chip-${chip.id}`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -407,7 +385,7 @@ function StatsRow({
   );
 }
 
-// ─── Spine filter bar ─────────────────────────────────────────────────────────
+// ─── Spine filter chips (rendered inside FiltersPopover above) ────────────────
 
 const SPINE_CHIPS = [
   { id: "all", label: "All gems" },
@@ -420,44 +398,6 @@ const SPINE_CHIPS = [
   { id: "photo_spots", label: "Photo spots" },
   { id: "vibe", label: "Vibe" },
 ];
-
-function SpineFilterBar({
-  active,
-  onSelect,
-}: {
-  active: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div
-      className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b py-2"
-      data-testid="spine-filter-bar"
-    >
-      <div className="flex gap-2 overflow-x-auto pb-0.5 px-0.5 scrollbar-none">
-        {SPINE_CHIPS.map((chip) => (
-          <button
-            key={chip.id}
-            onClick={() => onSelect(chip.id)}
-            className={cn(
-              "flex-shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap border",
-              active === chip.id
-                ? "border-transparent font-semibold"
-                : "bg-card border-border text-muted-foreground hover:bg-muted",
-            )}
-            style={
-              active === chip.id
-                ? { background: "#E1F5EE", color: "#0F6E56" }
-                : undefined
-            }
-            data-testid={`spine-chip-${chip.id}`}
-          >
-            {chip.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ─── Injected cards (feed-composition layer) ─────────────────────────────────
 
@@ -1662,6 +1602,11 @@ export default function DiscoverLocationPage() {
   const scheduledDate = searchParams.get("date");
   const cityRaw = params?.city ?? "";
   const city = decodeURIComponent(cityRaw);
+  const displayCity = toTitleCase(city);
+
+  // Trip context feeds the read-only "where" field (city + trip dates); the
+  // "where" field never WRITES the trip — browse is fixed to the route's city.
+  const [tripCtx] = useTripContext();
 
   useEffect(() => {
     if (city) trackCityView(city, toTitleCase(city));
@@ -1675,6 +1620,9 @@ export default function DiscoverLocationPage() {
   };
 
   const [activeFilter, setActiveFilter] = useState("all");
+  // Free-text "what" search — a light, client-side narrow of the page (never a
+  // trip write, never a new query param). Empty query = byte-identical to before.
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
@@ -1992,6 +1940,50 @@ export default function DiscoverLocationPage() {
     return out;
   })();
 
+  // ── Header: read-only "where" value (city + trip dates) ─────────────────
+  const whereValue = (() => {
+    const range = formatTripDates(tripCtx.startDate, tripCtx.endDate);
+    return range ? `${displayCity} · ${range}` : displayCity;
+  })();
+
+  // ── Header: neighbourhood chips (LIVE STOCK ONLY, §13) ──────────────────
+  // Derived from the already-composed neighbourhood grouping — one chip per
+  // neighbourhood that actually holds ≥1 gem in the loaded feed. Clicking a
+  // chip scrolls to that neighbourhood section; it never reorders or mutates.
+  const neighbourhoodChips = feedItems
+    .filter((it) => it.kind === "neighborhood")
+    .map((it) => {
+      const n = it.data as any;
+      const count = Math.max(n.gemCount ?? 0, n.gems?.length ?? 0);
+      return {
+        id: String(n.id ?? n.slug ?? n.name ?? ""),
+        slug: String(n.slug ?? n.id ?? ""),
+        name: (n.name ?? n.neighborhood_name ?? n.neighborhoodName ?? "") as string,
+        count,
+      };
+    })
+    .filter((c) => c.count > 0 && c.name);
+
+  // ── Header: light client-side narrow from the "what" search ─────────────
+  // Empty query is a pure passthrough (behaviour unchanged). A non-empty query
+  // keeps structural items (neighbourhood sections + separators) and narrows the
+  // free-standing content cards by visible text. Never reorders, never mutates.
+  const searchNeedle = searchQuery.trim().toLowerCase();
+  const visibleItems: FeedItem[] = searchNeedle
+    ? filteredItems.filter((it) => {
+        if (it.kind === "neighborhood" || it.kind === "city-separator") return true;
+        const d: any = it.data ?? {};
+        const hay = [
+          d.title, d.name, d.displayName, d.tagline, d.headline, d.category, d.categoryKey,
+          d.candidate?.displayName, d.candidate?.tagline, d.offeringLabel, d.neighborhoodName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(searchNeedle);
+      })
+    : filteredItems;
+
   // Two soonest future-dated city events — the neighborhood header mini-list (F8).
   const upcomingEvents: Array<{ date: string; title: string }> = (() => {
     const now = new Date();
@@ -2094,14 +2086,13 @@ export default function DiscoverLocationPage() {
 
         {data && (
           <div className="space-y-5">
-            {/* ── Hero (cover photo or teal gradient fallback) ────────── */}
-            <HeroSection
+            {/* ── Band (earn-grammar header + Marketplace rail) ───────── */}
+            <HeroBand
               city={city}
               heroData={data.hero?.data}
+              country={heroCountry}
               scheduledDate={scheduledDate}
               onDismissDate={handleDismissDate}
-              coverPhotoUrl={coverPhotoUrl}
-              coverPhotoCredit={coverPhotoCredit}
             />
 
             {/* ── Stats row ─────────────────────────────────────────── */}
@@ -2120,8 +2111,55 @@ export default function DiscoverLocationPage() {
               />
             )}
 
-            {/* ── Spine filter bar (sticky) ─────────────────────────── */}
-            <SpineFilterBar active={activeFilter} onSelect={setActiveFilter} />
+            {/* ── Two-field search + Filters popover ────────────────── */}
+            <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr_auto] gap-2 max-w-4xl">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[color:var(--earn-muted)]" />
+                <Input
+                  placeholder={`What do you need help with in ${displayCity}?`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10"
+                  data-testid="input-search"
+                />
+              </div>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[color:var(--earn-muted)]" />
+                <Input
+                  readOnly
+                  value={whereValue}
+                  aria-label="Where you are browsing"
+                  className="pl-9 h-10"
+                  data-testid="input-location"
+                />
+              </div>
+              <FiltersPopover active={activeFilter} onSelect={setActiveFilter} />
+            </div>
+
+            {/* ── Neighbourhood chips (live stock only) ─────────────── */}
+            {neighbourhoodChips.length > 0 && (
+              <div className="flex flex-wrap gap-2" data-testid="neighbourhood-chips">
+                {neighbourhoodChips.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      try {
+                        document
+                          .querySelector(`[data-testid="neighborhood-container-${c.slug}"]`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      } catch {
+                        /* best-effort scroll — never mutates the feed */
+                      }
+                    }}
+                    className="px-3 py-1 rounded-full text-[12px] font-medium border border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-muted)] hover:bg-[var(--earn-chip)] transition-colors"
+                    data-testid={`neighbourhood-chip-${c.id}`}
+                  >
+                    {c.name} · {c.count}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Lead expert, wanted slots, and engine recommendations are no
                 longer stacked blocks here — the feed-composition layer
@@ -2166,7 +2204,7 @@ export default function DiscoverLocationPage() {
             {activeFilter === "all" ? (
               <>
                 <FeedRenderer
-                  items={filteredItems}
+                  items={visibleItems}
                   city={city}
                   scheduledDate={scheduledDate}
                   onAdd={handleAdd}
@@ -2181,7 +2219,7 @@ export default function DiscoverLocationPage() {
               </>
             ) : (
               <FlatFilteredFeed
-                items={filteredItems}
+                items={visibleItems}
                 city={city}
                 scheduledDate={scheduledDate}
                 onAdd={handleAdd}
