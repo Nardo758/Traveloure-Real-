@@ -1006,6 +1006,7 @@ router.get("/api/ready-made", async (req, res) => {
         badge: readyMadeTrips.badge,
         insideCounts: readyMadeTrips.insideCounts,
         reviewedAt: readyMadeTrips.reviewedAt,
+        authorId: readyMadeTrips.authorId,
         authorFirstName: users.firstName,
         authorRole: users.role,
         // MP-2: the storefront return path. Nullable (migration 136) — an author who
@@ -1058,6 +1059,9 @@ router.get("/api/ready-made", async (req, res) => {
         badge: r.badge,
         insideCounts: r.insideCounts,
         authorName: r.authorFirstName ?? "Expert",
+        // authorId: source-link fallback (2026-08-25-card-source-link) — a handle-less
+        // author (no /s/ page) links to their expert profile /experts/:id; never plain text.
+        authorId: r.authorId,
         authorHandle: r.authorHandle ?? null,
         // The consumer shelf section (ratified store model): by author TYPE.
         section: r.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
