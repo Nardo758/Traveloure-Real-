@@ -1712,6 +1712,20 @@ export default function DiscoverLocationPage() {
 
   return (
     <Layout>
+      {/* ── Band (earn-grammar header + Marketplace rail) — FULL-BLEED ─────
+          The band section carries its own inner `container max-w-6xl`, so it
+          lives OUTSIDE the narrower body wrapper below and spans the viewport
+          edge-to-edge, matching /destinations (ruling #3, 2026-08-26). */}
+      {data && (
+        <HeroBand
+          city={city}
+          heroData={data.hero?.data}
+          country={heroCountry}
+          scheduledDate={scheduledDate}
+          onDismissDate={handleDismissDate}
+        />
+      )}
+
       <div className="container mx-auto px-4 py-6 max-w-5xl">
         {/* Back navigation */}
         <button
@@ -1757,15 +1771,6 @@ export default function DiscoverLocationPage() {
 
         {data && (
           <div className="space-y-5">
-            {/* ── Band (earn-grammar header + Marketplace rail) ───────── */}
-            <HeroBand
-              city={city}
-              heroData={data.hero?.data}
-              country={heroCountry}
-              scheduledDate={scheduledDate}
-              onDismissDate={handleDismissDate}
-            />
-
             {/* ── Stats row ─────────────────────────────────────────── */}
             <StatsRow
               heroData={data.hero?.data}
