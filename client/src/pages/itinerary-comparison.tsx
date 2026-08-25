@@ -903,7 +903,13 @@ export default function ItineraryComparisonPage() {
     });
   };
 
-  const { data, isLoading, refetch } = useQuery<ComparisonData>({
+  const {
+    data,
+    isLoading,
+    isError: isComparisonReadError,
+    error: comparisonReadError,
+    refetch,
+  } = useQuery<ComparisonData>({
     queryKey: ["/api/itinerary-comparisons", id],
     enabled: !!id && !!user,
     refetchInterval: (query) => {
@@ -1222,6 +1228,38 @@ export default function ItineraryComparisonPage() {
   if (!user) {
     setLocation("/api/login");
     return null;
+  }
+
+  const comparisonReadForbidden =
+    isComparisonReadError &&
+    comparisonReadError instanceof Error &&
+    /^403:/.test(comparisonReadError.message);
+
+  if (comparisonReadForbidden) {
+    return (
+      <div
+        className="itinerary-comparison-page mx-auto flex min-h-[50vh] max-w-2xl items-center justify-center p-6"
+        data-testid="comparison-access-denied"
+      >
+        <Card className="w-full border-destructive/50 bg-destructive/5">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="mx-auto mb-4 h-12 w-12 text-destructive" />
+            <h1 className="mb-2 text-xl font-semibold">You don&apos;t have access to this optimization review</h1>
+            <p className="mb-6 text-muted-foreground">
+              This review may belong to another account, or you may no longer have permission to view it.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/my-trips")}
+              data-testid="button-back-to-my-plans"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to My plans
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const isGenerating = data?.comparison?.status === "generating";
