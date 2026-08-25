@@ -50,3 +50,4 @@
 - [Provider storefront URL contract](provider-storefront-url-contract.md) — Public storefronts use `/s/:handle`; retain `/p/:handle` for legacy shared links.
 - [Field Guide recovery](field-guide-recovery.md) — a workspace reset can drop the multi-artifact preview while its complete source remains recoverable in Git history.
 - [Local Playwright Chromium runtime](playwright-chromium-nix-runtime.md) — CLI Chromium cannot launch without libglib; use the managed browser verifier unless Nix dependencies change.
+- [Server Vitest under client-root Vite](server-vitest-client-root.md) — server Vitest suites need an explicit repo-root config with aliases; fail on zero tests.
