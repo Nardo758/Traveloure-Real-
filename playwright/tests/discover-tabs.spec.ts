@@ -423,21 +423,6 @@ async function bentoTiles(page: import('@playwright/test').Page, slug: string) {
   return tiles;
 }
 
-/** True when a column-span sequence packs into complete width-4 rows (no orphan, no straddle). */
-function rowsAreComplete(colSpans: number[]): boolean {
-  let used = 0;
-  for (const raw of colSpans) {
-    const s = Math.min(raw, 4);
-    if (used + s > 4) {
-      if (used !== 0) return false; // a col-span straddled a row boundary → hole
-    }
-    used += s;
-    if (used > 4) return false;
-    if (used === 4) used = 0;
-  }
-  return used === 0;
-}
-
 test.describe('city-feed bento — /discover/location', () => {
   test.beforeEach(async ({ page }) => {
     await mockBentoEndpoints(page);
@@ -498,26 +483,49 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(partner).toContainText('From the web');
   });
 
-  test('5. no orphan tile — every bento row fills to a complete width of 4', async ({ page }) => {
+  test('5. span rules — no tile stretches past col-span-2; only the expert anchor is row-span-2', async ({ page }) => {
+    // Phase 2d: a short last row is honest; what is FORBIDDEN is a stretched
+    // tile (any col-span > 2) and a tall anchor that is not the lead expert.
     for (const slug of ['gion', 'arashiyama']) {
-      const tiles = await bentoTiles(page, slug);
-      const colSpans = tiles.map((t) => t.colSpan);
-      // Structural: total area is a multiple of 4 AND the greedy pack leaves no gap.
-      const total = colSpans.reduce((a, b) => a + b, 0);
-      expect(total % 4).toBe(0);
-      expect(rowsAreComplete(colSpans)).toBe(true);
+      const loc = page.locator(`[data-testid="bento-section-${slug}"] [data-testid^="bento-tile-"]`);
+      const n = await loc.count();
+      expect(n).toBeGreaterThan(0);
+      for (let i = 0; i < n; i++) {
+        const el = loc.nth(i);
+        const colSpan = Number(await el.getAttribute('data-col-span'));
+        const rowSpan = Number(await el.getAttribute('data-row-span'));
+        const role = await el.getAttribute('data-bento-role');
+        expect(colSpan).toBeLessThanOrEqual(2);
+        if (role === 'anchor') expect(colSpan).toBe(2);
+        if (rowSpan === 2) expect(role).toBe('anchor');
+      }
     }
+    // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead);
+    // Arashiyama's fallback ready-made anchor stays 2×1.
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-row-span', '2');
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-row-span', '1');
   });
 
-  test('6. preserved testids + Phase 2c surface — single rendering, chip rail, jump list', async ({ page }) => {
+  test('6. preserved testids + Phase 2c/2d surface — single rendering, chip rail, jump list', async ({ page }) => {
     await expect(page.getByTestId('section-hero')).toBeVisible();
-    await expect(page.getByTestId('stats-row')).toBeVisible();
+    // Phase 2d: no ← Back and no stats row — the rail/browser cover back, and
+    // crowd level + counts live in the band eyebrow and the chips.
+    await expect(page.getByTestId('btn-back')).not.toBeAttached();
+    await expect(page.getByTestId('stats-row')).not.toBeAttached();
     await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('input-location')).toBeVisible();
     await expect(page.getByTestId('city-feed')).toBeVisible();
     // Converged / extracted panels keep their testids.
     await expect(page.getByTestId('feed-card-earn')).toBeVisible();
     await expect(page.getByTestId('section-recruitment-gion')).toBeVisible();
+    // Phase 2d: a wanted slot renders inside the neighbourhood it NAMES.
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="section-recruitment-gion"]'),
+    ).toHaveCount(1);
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
     await expect(page.getByTestId('feed-card-package-tmpl-1')).toBeVisible();
     // Phase 2c: ONE rendering per neighbourhood — the legacy container and its

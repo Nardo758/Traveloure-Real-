@@ -64,7 +64,8 @@ export function FeedReadyMadeCard({
     >
       {/* Photo-left band — ~40% width; gradient + tag fallback, no grey box. */}
       <div className="relative overflow-hidden flex-shrink-0 flex items-center justify-center w-[40%] min-w-[120px] self-stretch bg-gradient-to-br from-teal-50 via-emerald-100 to-teal-200/70 text-teal-700">
-        {template.coverImage ? (
+        {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
+        {template.coverImage && (
           <img
             src={template.coverImage}
             alt={template.title}
@@ -75,8 +76,6 @@ export function FeedReadyMadeCard({
               imgLoaded ? "opacity-100" : "opacity-0",
             )}
           />
-        ) : (
-          <span className="text-2xl">📔</span>
         )}
       </div>
 

@@ -123,6 +123,13 @@ function SourceRow({
   );
 }
 
+/** A gem's area DISPLAY name — a real display field only (§13): `gem.neighborhood`
+ *  is the slug and is never rendered; no display name ⇒ the area is omitted. */
+function gemAreaName(gem: any): string | null {
+  const v = gem?.neighborhoodName ?? gem?.neighborhood_name ?? gem?.areaName ?? null;
+  return typeof v === "string" && v.trim().length > 0 ? v : null;
+}
+
 /** Make a whole card the link (family grammar): Enter/Space activate too. */
 function cardLinkProps(onActivate: () => void) {
   return {
@@ -746,7 +753,7 @@ export function CityFeedCardGem({
           )}
         />
       )}
-      {!loading && !photoUrl && <span className="text-2xl">{typeMeta.emoji}</span>}
+      {/* No-photo fallback is the kind gradient ALONE — no emoji glyph (Phase 2d). */}
       {/* Every gems[]-sourced tile carries the Hidden gem tag — green wash, mono. */}
       <span
         className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
@@ -814,11 +821,11 @@ export function CityFeedCardGem({
         </div>
       )}
 
-      {/* Neighborhood tag */}
-      {gem.neighborhood && !isRow && (
+      {/* Neighborhood tag — display name only, never the slug (§13 / Phase 2d) */}
+      {gemAreaName(gem) && !isRow && (
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <MapPin className="w-3 h-3" />
-          <span>{gem.neighborhood}</span>
+          <span>{gemAreaName(gem)}</span>
         </div>
       )}
 
@@ -830,7 +837,7 @@ export function CityFeedCardGem({
         <FactsRow
           facts={[
             { value: gem.gemScore !== undefined && gem.gemScore !== null ? Number(gem.gemScore).toFixed(1) : "", label: "gem score" },
-            { value: gem.neighborhood ? String(gem.neighborhood) : "", label: "area" },
+            { value: gemAreaName(gem) ?? "", label: "area" },
             { value: bestForFace[0] ?? "", label: "best for" },
           ]}
           testid={`gem-facts-${gem.id}`}
@@ -1000,7 +1007,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
-          {!loading && !photoUrl && <span className="text-2xl">🏮</span>}
+          {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
         </div>
 
         <div className="p-3 flex flex-col gap-1.5 flex-1">
@@ -1196,7 +1203,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
-          {!photoUrl && !loading && <Tag className="w-7 h-7 text-teal-500/70" />}
+          {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
           {service.isFeatured && (
             <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
               Featured
@@ -1418,7 +1425,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
               className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
             />
           )}
-          {!loading && !photoUrl && <span>{isHotel ? "🏨" : "🎯"}</span>}
+          {/* No-photo fallback is the gradient alone — no glyph (Phase 2d). */}
         </div>
 
         <div className="p-3 flex flex-col gap-1.5 flex-1">

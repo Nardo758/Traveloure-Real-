@@ -171,7 +171,10 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
           loading="lazy"
         />
       )}
-      <div className="relative z-10 flex flex-1 flex-col">
+      {/* Bottom-aligned content block (Phase 2d): the article is justify-end and
+          this block takes no flex-1, so badge → name → lede → CTAs hug the card
+          bottom and the name can never hit the top edge. */}
+      <div className="relative z-10 flex flex-col">
         <span
           className="mb-2 inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]"
           style={{ background: "rgba(255,255,255,.14)", color: "rgba(255,255,255,.78)" }}
@@ -180,7 +183,7 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
           {roleBadge ? roleBadge.label : "Local Expert"}
         </span>
         <h3
-          className="text-[28px] font-semibold leading-[1.05]"
+          className="text-[28px] font-semibold leading-[1.05] text-white"
           style={{ fontFamily: FRAUNCES }}
           data-testid="text-expert-name"
         >
@@ -189,7 +192,7 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
         <p className="mt-2 max-w-[42ch] text-[13px] leading-snug text-white/80 line-clamp-3">
           {lede}
         </p>
-        <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+        <div className="flex flex-wrap items-center gap-2 pt-4">
           <Link href={`/experts/${expert.id}${detailQuery ?? ""}`}>
             <button
               className="inline-flex h-9 items-center rounded-md px-3.5 text-[12px] font-bold text-white"

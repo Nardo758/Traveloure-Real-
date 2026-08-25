@@ -2,8 +2,8 @@
  * Feed panel — Ways-to-Earn concierge card (extracted from discover-location.tsx
  * inline `EarnCard` for the city-feed bento, Phase 2).
  *
- * `--earn-ground` background. Phase 2c: coral is reserved for the lead-expert
- * anchor CTA alone, so the eyebrow is muted mono and the primary CTA is
+ * `--earn-ground` background. Phase 2d: the coral-only rule governs BUTTONS —
+ * the TEXT eyebrow is coral-ink as the mock draws it; the primary CTA is
  * navy-filled. Behaviour and testids preserved verbatim:
  *   - wrapper testid `feed-card-earn`
  *   - `btn-earn-expert` (Become an expert → /earn)
@@ -31,7 +31,7 @@ export function FeedEarnCard({ city }: { city: string }) {
     >
       <span
         className="text-[10px] font-semibold uppercase tracking-[0.12em]"
-        style={{ color: "var(--earn-muted)", fontFamily: EARN_MONO }}
+        style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
       >
         Earn on Traveloure
       </span>
