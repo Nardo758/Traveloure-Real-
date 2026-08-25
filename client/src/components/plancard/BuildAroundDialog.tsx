@@ -365,7 +365,7 @@ export function BuildAroundDialog({
               onClick={confirm}
               disabled={!canConfirm}
               className="bg-[var(--earn-coral-ink)] text-white hover:bg-[var(--earn-coral-ink)] hover:brightness-95"
-              data-testid="button-generate"
+              data-testid="build-around-confirm"
             >
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {selectedName

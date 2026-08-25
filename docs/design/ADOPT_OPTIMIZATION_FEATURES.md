@@ -1,7 +1,7 @@
 > **Reading rules (binding).** This file is the feature inventory of the mock. It is not a styling authority. Where it conflicts with `ADOPT_OPTIMIZATION_SPEC.md` or a ledger ruling, the spec/ruling wins:
 >
 > - §2 Design system → superseded by `2026-08-25-marketplace-earn-grammar`. Fonts: Fraunces / Inter / Geist Mono. Tokens: `--earn-*`. Semantic mapping keeps its meaning with earn colours: save/positive → `--earn-green-ink` + wash; caution/costs-more → `--earn-gold-ink` + wash; recommended/brand → `--earn-teal-ink` + wash. No purple, no `--accent-*`.
-> - §3.9 adopt tray + + ticks, §3.10 "saved as its own trip", §4.2 Finalize modal, §3.12 "keep-original + saved-as-new" → out of scope pending rulings R-A / R-B / R-C (SPEC §4). Do not build; do not render the copy.
+> - §3.9 adopt tray + per-stop `+` ticks → **PLANNED, not built** (R-A `2026-08-26-per-stop-adopt-deferred`; [DM] decision owed). §3.10 "saved as its own trip" → **superseded**: versions are proposals, not trips (R-B `2026-08-26-variants-are-proposals`). Adopt **applies in place and "gives access"** (R-C `2026-08-26-adopt-applies-in-place`); §4.2 Finalize note reworded. §3.12 "saved-as-new" → superseded by R-B. Whole-plan Apply is the shipped path; do not build the per-stop tick.
 > - §4.1 custom location "geocoded … used as you type" → client never geocodes; submits `{type, name}`; server resolves or omits (SPEC §2.3.5).
 > - §5 "Candidate data is illustrative" → candidates come only from `GET /api/trips/:id/anchor-candidates` (pre-comparison) or `GET /api/itinerary-comparisons/:id/anchor-candidates` (rerun).
 > - §8 testids are targets for new elements; existing production testids are never renamed.
@@ -147,10 +147,10 @@ Sub‑grid: icon + `.ak` (mono uppercase kind) / `.an` (bold name) / `.bm` (mono
 - Proposal: **`.btn.adopt`** — "Select this plan" (green save styling; recommended card gets a resting shadow).
 - Baseline: **`.btn.ghost`** — "Keep this plan."
 - **Adopt tray** (`.tray`, baseline only, `data-testid="adopt-tray"`): dashed green box — *"Your plan is the landing spot. Stops you pick with **+** land here for one confirm."* + desktop hint *"you can also drag a stop onto this card."*
-- **`.adopt-tick`** (`+`): 18px round green pill on newly‑introduced stops — "Pull just this stop into your plan."
+- **`.adopt-tick`** (`+`) — **PLANNED, not built** (R-A `2026-08-26-per-stop-adopt-deferred`): an 18px round green pill on newly-introduced stops labelled "Pull just this stop into your plan." The shipped review UI is whole-plan Apply only.
 
 ### 3.10 Footnote (`.foot-note`, `data-testid="compare-footer"`)
-Reiterates: each version works best taken **whole**; use `+` ticks to pull pieces; **original preserved**, every version **saved as its own trip**, **nothing purchased by applying**.
+Reiterates: each version works best taken **whole**; **selecting a version applies it in place and gives you access** to it (R-C); versions are **proposals, not separate trips** (R-B — supersedes "saved as its own trip"); **nothing purchased by applying**. Per-stop `+` ticks are **planned** (R-A).
 
 ### 3.11 Honesty legend (`.legend`) — §13 in the UI
 Heading *"How the preview stays honest"* + a 6‑cell grid, each with a colored `.dot` (save/caution/accent/omit) and a short rule:
@@ -179,7 +179,7 @@ Contents:
 - **`.as-label-inline`** + `.as-list.scrollable` (`data-testid="anchor-list"`, max‑height 216px) of `.as-opt` candidates. Each candidate: `.as-radio`, `.as-main` (`b` name + `em` "4.7★ · Shimogyo"), `.fit` median (`.fit.good` green; `.rec` "best fit" pill), and an `.as-tick` check shown when selected.
 - **Custom location** (`.as-custom`, `data-testid="anchor-custom"`): pin SVG + free‑text field accepting *"an address, place name, or 35.0036, 135.7752 — used as you type."*
 - **`.as-hint`**: *"'Fit' = median walk from that base to your stops, scored live (§14). A custom location is geocoded and scored the same way — if we can't place it, we say so rather than guess (§13)."*
-- Footer: **Cancel** (`.btn.ghost`) + **Generate 3 versions around <anchor>** (`.btn.primary`, `data-testid="button-generate"` — its label updates with the chosen anchor).
+- Footer: **Cancel** (`.btn.ghost`) + **Generate 3 versions around <anchor>** (`.btn.primary`, `data-testid="build-around-confirm"` — its label updates with the chosen anchor).
 - `.modal-note`: *"Optimization is a paid step — you confirm here before anything runs or is charged."*
 
 ### 4.2 Finalize — "You're set — how do you want to book it?" (`data-testid="finalize-modal"`)
@@ -233,7 +233,7 @@ Two IIFEs power the live popup:
 
 ## 8. Key `data-testid` hooks (for build parity / e2e)
 
-`slip-optimize-preview-context`, `preview-trending-now`, `preview-seasonal`, `proposal-column-baseline`, `proposal-column-v1..v3`, `proposal-preview-money`, `proposal-preview-drivetime`, `adopt-tray`, `compare-footer`, `optimize-scrim`, `optimize-modal`, `opt-auto`, `opt-hotel`, `opt-neighborhood`, `opt-activity`, `anchor-list`, `as-candidate-1..6`, `anchor-custom`, `button-generate`, `finalize-modal`, `finalize-self`, `finalize-booking-agent`, `finalize-expert`, `finalize-concierge`, `button-finalize-confirm`.
+`slip-optimize-preview-context`, `preview-trending-now`, `preview-seasonal`, `proposal-column-baseline`, `proposal-column-v1..v3`, `proposal-preview-money`, `proposal-preview-drivetime`, `adopt-tray`, `compare-footer`, `optimize-scrim`, `optimize-modal`, `opt-auto`, `opt-hotel`, `opt-neighborhood`, `opt-activity`, `anchor-list`, `as-candidate-1..6`, `anchor-custom`, `build-around-confirm`, `finalize-modal`, `finalize-self`, `finalize-booking-agent`, `finalize-expert`, `finalize-concierge`, `button-finalize-confirm`.
 
 ---
 
