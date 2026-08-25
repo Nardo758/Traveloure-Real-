@@ -100,7 +100,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant,
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 // Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
-import { resolvePinnedAnchor, parsePinnedAnchorInput } from "./services/anchor-candidates";
+import { resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -8482,7 +8482,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId, pinnedAnchor: rawPinnedAnchor } = req.body;
 
       // SECURITY: `tripId` is caller-supplied and is persisted onto the comparison row, which
       // downstream handlers (notably POST /api/itinerary-comparisons/:id/apply-to-trip, which
@@ -8645,6 +8645,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           }
         }
 
+        const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
+          rawPinnedAnchor,
+          baselineItems,
+        );
+
         generateOptimizedItineraries(
           comparison.id,
           userId,
@@ -8665,7 +8670,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           undefined,
           undefined,
           tripPreferencesForCreate,
-          fixedCommitments
+          fixedCommitments,
+          resolvedPinnedAnchor,
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
@@ -8983,26 +8989,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       // 1c: resolve the traveler's "build around THIS" pin (if any) against the SAME baseline the
-      // optimizer will use — `baselineItems` already carries real coordinates on the trip path
-      // (loadTripOptimizerInputs). Unresolvable ⇒ undefined ⇒ the optimizer auto-picks anchors (§13,
-      // never fabricated). Runs after the pay gate; the response was already sent.
-      const pinnedAnchorInput = parsePinnedAnchorInput(rawPinnedAnchor);
-      let resolvedPinnedAnchor:
-        | NonNullable<Awaited<ReturnType<typeof resolvePinnedAnchor>>>
-        | undefined;
-      if (pinnedAnchorInput) {
-        const anchorStops = baselineItems.map((b: any) => {
-          const lat = b.latitude != null ? parseFloat(String(b.latitude)) : NaN;
-          const lng = b.longitude != null ? parseFloat(String(b.longitude)) : NaN;
-          return {
-            id: String(b.id),
-            name: b.name ?? b.title ?? "Stop",
-            lat: Number.isFinite(lat) ? lat : null,
-            lng: Number.isFinite(lng) ? lng : null,
-          };
-        });
-        resolvedPinnedAnchor = (await resolvePinnedAnchor(pinnedAnchorInput, anchorStops)) ?? undefined;
-      }
+      // optimizer will use. Unresolvable ⇒ undefined ⇒ auto anchors (§13, never fabricated).
+      // Runs after the pay gate; the response was already sent.
+      const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
+        rawPinnedAnchor,
+        baselineItems,
+      );
 
       generateOptimizedItineraries(
         comparisonId,

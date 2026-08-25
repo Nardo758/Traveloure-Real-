@@ -14,6 +14,7 @@ import {
   neighborhoodRowsToCandidates,
   rankActivityAnchors,
   buildPinnedCandidateFromCoords,
+  parsePinnedAnchorInput,
   type NamedStop,
   type PinnedAnchorInput,
 } from "./anchor-candidates-map";
@@ -94,4 +95,47 @@ export async function resolvePinnedAnchor(
 
   if (!candidate) return null; // §13 — unresolvable pin ⇒ no anchor, never fabricated
   return scoreAnchor(candidate, stops);
+}
+
+type ResolvePinnedAnchor = (
+  input: PinnedAnchorInput,
+  stops: NamedStop[],
+) => Promise<AnchorScore | null>;
+
+/**
+ * Shared request-to-optimizer pin rail for both comparison creation and regeneration.
+ * Missing or malformed input deliberately returns undefined so the optimizer keeps its
+ * existing auto-anchor behavior.
+ */
+export async function resolveOptimizerPinnedAnchor(
+  rawPinnedAnchor: unknown,
+  baselineItems: Array<{
+    id?: unknown;
+    name?: unknown;
+    title?: unknown;
+    latitude?: unknown;
+    longitude?: unknown;
+  }>,
+  resolver: ResolvePinnedAnchor = resolvePinnedAnchor,
+): Promise<AnchorScore | undefined> {
+  const pinnedAnchorInput = parsePinnedAnchorInput(rawPinnedAnchor);
+  if (!pinnedAnchorInput) return undefined;
+
+  const anchorStops: NamedStop[] = baselineItems.map((item) => {
+    const latitude = item.latitude != null ? Number(item.latitude) : NaN;
+    const longitude = item.longitude != null ? Number(item.longitude) : NaN;
+    return {
+      id: String(item.id),
+      name:
+        typeof item.name === "string"
+          ? item.name
+          : typeof item.title === "string"
+            ? item.title
+            : "Stop",
+      lat: Number.isFinite(latitude) ? latitude : null,
+      lng: Number.isFinite(longitude) ? longitude : null,
+    };
+  });
+
+  return (await resolver(pinnedAnchorInput, anchorStops)) ?? undefined;
 }
