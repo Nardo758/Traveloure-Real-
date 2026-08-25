@@ -7,7 +7,7 @@
  *   GET   /api/storefront/:handle — public JSON: earner profile + APPROVED offerings across the
  *                                   three lanes (provider_services / expert_templates / ready_made_trips)
  *   GET   /s/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
- *   GET   /p/:handle              — legacy alias redirecting to the role-specific canonical route
+ *   GET   /p/:handle              — legacy alias redirecting to the canonical /s/:handle route
  *                                   /itinerary-view/:token route-interception pattern), then the SPA
  *                                   takes over client-side.
  *   GET   /services/:id           — same OG injection for the shareable offering page.
@@ -573,10 +573,10 @@ async function loadStorefront(handle: string, activeLocale?: string) {
     .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
     .limit(1);
   if (!owner) return null;
-  // Expert/local-expert is the only family served by the canonical /s storefront.
-  // Providers have their own /providers surface below; never let their handle expose
-  // a mixed-inventory expert storefront.
-  if (!isExpertRole(owner.role)) return null;
+  // The canonical storefront serves every public earner family. Inventory remains governed by
+  // the existing approved/active predicates below, so role unification never widens what is
+  // publishable; it only gives providers and experts one stable public URL.
+  if (!isExpertRole(owner.role) && !isProviderRole(owner.role)) return null;
 
   // V.1 — enabled by admin flipping platform_settings.storefront_require_verified to "true" once
   // V.2/V.3 verification-flow sequencing lands; build-while-pending preserved (handle claim + the
@@ -787,139 +787,16 @@ async function loadStorefront(handle: string, activeLocale?: string) {
   };
 }
 
-// Provider storefronts intentionally have a narrower inventory contract than expert storefronts:
-// only approved, active provider_services belong here. Templates and Ready Made trips must never
-// leak across the role-specific public surfaces.
+// Deprecated compatibility loader for callers of /api/provider-storefront/:handle. The canonical
+// loader is role-agnostic; this wrapper keeps the old API's narrow { earner, services, away }
+// response shape without maintaining a second, drift-prone implementation.
 async function loadProviderStorefront(handle: string, activeLocale?: string) {
-  const normalized = handle.trim().toLowerCase();
-  if (!HANDLE_RE.test(normalized)) return null;
-
-  const [owner] = await db
-    .select({
-      id: users.id,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      bio: users.bio,
-      profileImageUrl: users.profileImageUrl,
-      role: users.role,
-      handle: users.handle,
-      createdAt: users.createdAt,
-      preferences: users.preferences,
-      vacationUntil: users.vacationUntil,
-      vacationMessage: users.vacationMessage,
-    })
-    .from(users)
-    .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
-    .limit(1);
-  if (!owner || !isProviderRole(owner.role)) return null;
-
-  if (await isStorefrontVerificationRequired()) {
-    const verified = await isOwnerIdentityVerified(owner.id);
-    if (!verified) return null;
-  }
-
-  const services = await db
-    .select({
-      id: providerServices.id,
-      serviceName: providerServices.serviceName,
-      price: providerServices.price,
-      priceType: providerServices.priceType,
-      pricingUnit: providerServices.pricingUnit,
-      deliveryMethod: providerServices.deliveryMethod,
-      serviceImage: providerServices.serviceImage,
-      averageRating: providerServices.averageRating,
-      reviewCount: providerServices.reviewCount,
-      city: providerServices.city,
-      productShape: providerServices.productShape,
-      showPrice: providerServices.showPrice,
-      bookingMode: providerServices.bookingMode,
-      sourceLocale: providerServices.sourceLocale,
-    })
-    .from(providerServices)
-    .where(and(
-      eq(providerServices.userId, owner.id),
-      eq(providerServices.approvalStatus, "approved"),
-      eq(providerServices.status, "active"),
-    ));
-  if (services.length === 0) return null;
-
-  const [ownerForm] = await db
-    .select({ instantBooking: serviceProviderForms.instantBooking })
-    .from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, owner.id))
-    .limit(1);
-  let resolvedServices = services.map((service) => ({
-    ...service,
-    showPrice: service.showPrice ?? true,
-    bookingMode: resolveBookingMode(service.bookingMode, ownerForm?.instantBooking ?? false),
-    shownInOriginal: false,
-  }));
-  // Keep provider service cards subject to the same approved-translation-only overlay as
-  // the established storefront API; this does not broaden the provider inventory contract.
-  if (isContentLocale(activeLocale)) {
-    const needing = resolvedServices.filter(
-      (service) => effectiveSourceLocale(service.sourceLocale) !== activeLocale,
-    );
-    if (needing.length > 0) {
-      const translations = await db
-        .select({
-          serviceId: serviceTranslations.serviceId,
-          serviceName: serviceTranslations.serviceName,
-        })
-        .from(serviceTranslations)
-        .where(and(
-          inArray(serviceTranslations.serviceId, needing.map((service) => service.id)),
-          eq(serviceTranslations.locale, activeLocale),
-          eq(serviceTranslations.status, "approved"),
-        ));
-      const byServiceId = new Map(translations.map((translation) => [translation.serviceId, translation]));
-      resolvedServices = resolvedServices.map((service) => {
-        if (effectiveSourceLocale(service.sourceLocale) === activeLocale) return service;
-        const translation = byServiceId.get(service.id);
-        return translation?.serviceName
-          ? { ...service, serviceName: translation.serviceName }
-          : { ...service, shownInOriginal: true };
-      });
-    }
-  }
-
-  let weightedSum = 0;
-  let totalReviews = 0;
-  for (const service of services) {
-    const reviews = Number(service.reviewCount ?? 0);
-    const rating = service.averageRating != null ? Number(service.averageRating) : null;
-    if (reviews > 0 && rating != null && !Number.isNaN(rating)) {
-      weightedSum += rating * reviews;
-      totalReviews += reviews;
-    }
-  }
-  const [verified, location] = await Promise.all([
-    isOwnerIdentityVerified(owner.id),
-    resolveEarnerLocation(owner.id),
-  ]);
-  const away =
-    owner.vacationUntil && owner.vacationUntil.getTime() > Date.now()
-      ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
-      : null;
-
+  const data = await loadStorefront(handle, activeLocale);
+  if (!data || !isProviderRole(data.earner.role)) return null;
   return {
-    earner: {
-      id: owner.id,
-      name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure provider",
-      bio: owner.bio ?? null,
-      profileImageUrl: owner.profileImageUrl ?? null,
-      role: owner.role,
-      handle: owner.handle,
-      averageRating: totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null,
-      reviewCount: totalReviews,
-      verified,
-      location,
-      memberSince: owner.createdAt ? owner.createdAt.toISOString() : null,
-      coverImageUrl: ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null,
-      offeringsCount: services.length,
-    },
-    services: resolvedServices,
-    away,
+    earner: data.earner,
+    services: data.services,
+    away: data.away,
   };
 }
 
@@ -1032,6 +909,8 @@ router.get("/api/provider-storefront/:handle", async (req, res) => {
     const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
     const data = await loadProviderStorefront(req.params.handle, rawLocale);
     if (!data) return res.status(404).json({ message: "Provider storefront not found" });
+    // Deprecated compatibility response. New consumers must use /api/storefront/:handle,
+    // which returns all public inventory lanes for either earner role.
     return res.json(data);
   } catch (error: any) {
     console.error("[provider-storefront] load failed:", error);
@@ -1050,7 +929,7 @@ router.get("/api/provider-storefronts", async (_req, res) => {
   }
 });
 
-// Server-side OG injection for canonical expert/local-expert /s/:handle. Crawlers (WhatsApp/FB/X)
+// Server-side OG injection for canonical role-agnostic /s/:handle. Crawlers (WhatsApp/FB/X)
 // never run the SPA's JS, so the share preview must be in the initial HTML.
 router.get("/s/:handle", async (req, res, next) => {
   try {
@@ -1058,10 +937,15 @@ router.get("/s/:handle", async (req, res, next) => {
     if (!data) return next(); // SPA renders its own not-found
 
     const count = data.services.length + data.templates.length + data.readyMade.length;
-    const title = `${data.earner.name} — Book local experiences | Traveloure`;
-    const description =
-      data.earner.bio ??
-      `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
+    const isProvider = isProviderRole(data.earner.role);
+    const providerServiceCount = data.services.length;
+    const title = isProvider
+      ? `${data.earner.name} — Book local services | Traveloure`
+      : `${data.earner.name} — Book local experiences | Traveloure`;
+    const description = isProvider
+      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`
+      : data.earner.bio ??
+        `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
     const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
@@ -1118,71 +1002,25 @@ router.get("/s/:handle", async (req, res, next) => {
   }
 });
 
-// Canonical provider equivalent of the expert storefront OG shell above. This route reads the
-// provider-only loader, so an expert handle cannot receive provider metadata (or vice versa).
+// Legacy provider URL. Keep the handler so old links resolve, but all public storefronts now have
+// one canonical path and one role-aware OG shell at /s/:handle.
 router.get("/providers/:handle", async (req, res, next) => {
   try {
-    const data = await loadProviderStorefront(req.params.handle);
+    const data = await loadStorefront(req.params.handle);
     if (!data) return next();
-
-    const count = data.services.length;
-    const title = `${data.earner.name} — Book local services | Traveloure`;
-    const description =
-      data.earner.bio ??
-      `${count} bookable service${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
-    const shareUrl = `https://traveloure.com/providers/${data.earner.handle}`;
-    const ogImage =
-      data.earner.coverImageUrl ??
-      data.services[0]?.serviceImage ??
-      data.earner.profileImageUrl ??
-      "https://traveloure.com/og-cover.png";
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-    const ogTags = [
-      `<title>${esc(title)}</title>`,
-      `<meta name="description" content="${esc(description)}" />`,
-      `<meta property="og:type" content="profile" />`,
-      `<link rel="canonical" href="${esc(shareUrl)}" />`,
-      `<meta property="og:url" content="${esc(shareUrl)}" />`,
-      `<meta property="og:title" content="${esc(title)}" />`,
-      `<meta property="og:description" content="${esc(description)}" />`,
-      `<meta property="og:image" content="${esc(ogImage)}" />`,
-      `<meta property="og:site_name" content="Traveloure" />`,
-      `<meta name="twitter:card" content="summary_large_image" />`,
-      `<meta name="twitter:title" content="${esc(title)}" />`,
-      `<meta name="twitter:description" content="${esc(description)}" />`,
-    ].join("\n    ");
-    const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
-    const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
-    const templatePath =
-      process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
-        ? clientTemplateProd
-        : clientTemplateDev;
-    if (!fs.existsSync(templatePath)) return next();
-
-    let template = fs.readFileSync(templatePath, "utf-8");
-    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
-    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
-    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
-    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
-    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
-    template = template.replace("<head>", `<head>\n    ${ogTags}`);
-    template = await transformDevHtml(req.originalUrl, template);
-    return res.status(200).set({ "Content-Type": "text/html" }).end(template);
+    return res.redirect(301, `/s/${data.earner.handle}`);
   } catch (err) {
-    console.error("[provider-storefront] OG injection error:", err);
+    console.error("[provider-storefront] legacy redirect resolution failed:", err);
     return next();
   }
 });
 
-// /p/:handle is retained only as a role-aware legacy redirect. Resolve via the same public
-// loaders as the canonical routes, which prevents a missing, suspended, invalid, or unpublished
-// handle from being turned into a fabricated canonical URL.
+// /p/:handle is retained only as a legacy redirect. Resolve via the canonical public loader so a
+// missing, suspended, invalid, or unpublished handle is never turned into a fabricated URL.
 router.get("/p/:handle", async (req, res, next) => {
   try {
-    const provider = await loadProviderStorefront(req.params.handle);
-    if (provider) return res.redirect(302, `/providers/${provider.earner.handle}`);
-    const expert = await loadStorefront(req.params.handle);
-    if (expert) return res.redirect(302, `/s/${expert.earner.handle}`);
+    const data = await loadStorefront(req.params.handle);
+    if (data) return res.redirect(301, `/s/${data.earner.handle}`);
     return next();
   } catch (err) {
     console.error("[storefront] legacy alias resolution failed:", err);

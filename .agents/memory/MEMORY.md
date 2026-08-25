@@ -49,3 +49,4 @@
 - [Playwright WebKit on Nix](webkit-playwright-nix-runtime.md) — bundled WPE can launch yet hang on EGL; use GTK under Xvfb and preserve the external library path.
 - [Provider storefront URL contract](provider-storefront-url-contract.md) — Public storefronts use `/s/:handle`; retain `/p/:handle` for legacy shared links.
 - [Field Guide recovery](field-guide-recovery.md) — a workspace reset can drop the multi-artifact preview while its complete source remains recoverable in Git history.
+- [Local Playwright Chromium runtime](playwright-chromium-nix-runtime.md) — CLI Chromium cannot launch without libglib; use the managed browser verifier unless Nix dependencies change.
