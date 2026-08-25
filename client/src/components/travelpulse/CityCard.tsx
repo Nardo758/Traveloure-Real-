@@ -1,4 +1,4 @@
-import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, Plane, MessageCircle, Info, Calendar } from "lucide-react";
+import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
 import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 
@@ -64,6 +64,7 @@ export interface CityCardProps {
   onAsk?: () => void;
   experiences?: CityCardExperience[];
   onCardClick?: () => void;
+  primaryTestId?: string;
   testId?: string;
 }
 
@@ -80,7 +81,7 @@ export function CityCard(props: CityCardProps) {
     alertCount, inTrip, highlight, bestTime, temp, vibeTags = [], avgPrice, priceChangePct,
     crowdLevel, dealAlert, trendingSpots, hiddenGems, eventsCount = 0, packagesCount = 0,
     expertsCount = 0, primaryLabel, onPrimary, secondaryLabel, onSecondary, onAsk,
-    experiences = [], onCardClick, testId,
+    experiences = [], onCardClick, primaryTestId, testId,
   } = props;
 
   const priceDown = typeof priceChangePct === "number" && priceChangePct < 0;
@@ -89,6 +90,9 @@ export function CityCard(props: CityCardProps) {
     packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "trip" : "trips"}` : null,
     expertsCount > 0 ? `🧭 ${expertsCount} ${expertsCount === 1 ? "expert" : "experts"}` : null,
   ].filter(Boolean) as string[];
+  const expertHref = expertsCount > 0
+    ? `/experts?role=local_expert&destination=${encodeURIComponent(cityName)}`
+    : "/experts?role=travel_expert";
 
   return (
     <div
@@ -211,12 +215,24 @@ export function CityCard(props: CityCardProps) {
         )}
 
         {/* experience quick-links (§12 revenue entry) */}
+        <div className="mt-2.5 border-t border-[color:var(--earn-border)] pt-2.5">
+          <Link
+            href={expertHref}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] font-semibold text-[var(--earn-teal-ink)] hover:underline"
+            data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
+          >
+            {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+            {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
+          </Link>
+        </div>
+
         {experiences.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
             {experiences.slice(0, 3).map((ex) => (
               <Link key={ex.href} href={ex.href} onClick={(e) => e.stopPropagation()}>
                 <span className="text-[11px] font-semibold text-[var(--earn-teal-ink)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 rounded-full inline-flex items-center gap-1 cursor-pointer hover:brightness-95">
-                  <Plane className="w-3 h-3" />{ex.label}
+                  <Sparkles className="w-3 h-3" />{ex.label}
                 </span>
               </Link>
             ))}
@@ -230,9 +246,9 @@ export function CityCard(props: CityCardProps) {
             type="button"
             onClick={(e) => { e.stopPropagation(); onPrimary?.(); }}
             className="flex-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold text-primary bg-primary/15 hover:bg-primary/25 rounded-lg px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
-            data-testid={testId ? `${testId}-primary` : undefined}
+            data-testid={primaryTestId || (testId ? `${testId}-primary` : undefined)}
           >
-            {variant === "pulse" ? <Plane className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+            <MapPin className="w-4 h-4" />
             {primaryLabel}
           </button>
           {secondaryLabel && onSecondary && (

@@ -72,6 +72,9 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('input-location')).toBeVisible();
     await expect(page.getByTestId('cta-how-it-works')).not.toBeAttached();
+    const planNowButtons = page.locator('[data-testid^="button-plan-now-"]');
+    await expect(planNowButtons.first()).toBeVisible();
+    await expect(page.getByTestId('city-grid').locator('svg.lucide-plane')).toHaveCount(0);
   });
 
   test('/events: masthead "Events", GlobalCalendar visible, no tab bar', async ({ page }) => {
@@ -84,6 +87,7 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await expect(page.getByTestId('input-search')).not.toBeAttached();
     await expect(page.getByTestId('input-location')).not.toBeAttached();
     await expect(page.getByText('Best TimeBest Time to Visit', { exact: true })).not.toBeAttached();
+    await expect(page.locator('[data-testid^="button-plan-now-"]')).toHaveCount(0);
   });
 
   test('/ready-made: masthead "Ready-Made Trips", shelf content visible, no tab bar', async ({ page }) => {
