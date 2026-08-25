@@ -1211,9 +1211,11 @@ function CitySection({
     <div>
       <div className="mb-3">
         <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Badge className={`${getRatingColor(rating)} border`}>
-            {getRatingLabel(rating)}
-          </Badge>
+          {rating !== "best" && (
+            <Badge className={`${getRatingColor(rating)} border`}>
+              {getRatingLabel(rating)}
+            </Badge>
+          )}
           {title}
         </h3>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
