@@ -1,0 +1,40 @@
+DISPATCH — Adopt the Optimization, client completion (items 1–3)
+
+audited@9d3f8ab · lane: adopt-optimization-client · agent: Replit · branch: work on main checkout, commit only on "commit"
+
+Locked
+Visual of record: docs/design/adopt-optimization-mock.html. Rulings: 2026-08-22-slip-optimize-review-first, 2026-08-23-optimizer-three-variants (THREE variants), 2026-08-23-optimizer-anchors, -pinned-anchor, -pin-liveroute.
+No edits under server/. Read rails: GET /api/itinerary-comparisons/:id/anchor-candidates. Write rail: POST /api/itinerary-comparisons/:id/generate with pinnedAnchor — payload shape as the live monolith handler in server/routes.ts accepts it (Phase 0 quotes it).
+§13 honesty: every delta/score omitted when its baseline is absent; anchor line omitted when anchor_type is null; never a fabricated candidate.
+Optimization is a paid step: the popup's confirm is the only thing that triggers /generate. No auto-run.
+Earn grammar applies (2026-08-25-marketplace-earn-grammar): --earn-*, Fraunces headings, Geist Mono for numbers/labels, coral for the single primary CTA.
+Hard stop = no commit. Reset to origin/main at Phase 0.
+Phase 0 (read-only)
+itinerary-comparison.tsx: how V1/V2 columns render; where a V3 column slots; where deltas compute (slip-proposal-preview.ts).
+Quote the live /generate handler's pinnedAnchor schema from server/routes.ts (file:line), and the anchor-candidates response shape.
+SlipView.tsx: the current "Optimize this plan" handler and its disabled-reason pattern.
+Confirm itinerary_variants DTO exposes anchorType/anchorName/anchorMedianMeters to the client (file:line); if not, stop — that's a server line for Claude Code.
+Testid inventory for both files.
+HARD STOP.
+Phase 1 (on "go") — V3 column
+
+Render the third AI variant when present; fewer than three renders fewer columns with no placeholder (server may return <3). Same delta chips, same Select this plan. Proof: a generated comparison with three variants shows four columns (baseline + 3); one with two shows three.
+
+Phase 2 — anchor line on each version card
+
+{Hotel|Neighborhood|Activity} · {name} · {n} min median · {k}/{N} stops ≤ 15 min from the variant's anchor fields; omit the whole line when anchorType is null; omit the k/N fragment when located-stop counts are absent. Mono. Proof: variants with and without anchors.
+
+Phase 3 — "Build around a location" popup
+
+Opens from "Optimize this plan" (replaces the direct navigate). Auto (default, recommended) · or pin: Hotel / Neighborhood / Activity → candidate list from anchor-candidates (name, rating if present, area, median mono, "best fit" on rank 1) · "Not listed? Build around a custom location" (free text) · footer "Optimization is a paid step — you confirm here before anything runs or is charged" · Cancel / Generate 3 versions around {X} coral. On confirm: existing generate flow with pinnedAnchor populated (or absent for Auto), then navigate to review as today. Empty candidate list for a type → honest "No {type}s scored near your stops yet" and Auto still available. Proof: pin a hotel, generate, review shows all three anchors = that hotel; Auto shows three kinds.
+
+HARD STOP after each phase; captures to /tmp/adopt/; tsc 0 new; testid count reported.
+
+What Not To Do
+No server/ edits. No new endpoints. No per-stop pull, no drag, no "save as own trip", no Finalize popup — those are items 4–6, separate lane after ruling.
+No change to apply-to-trip / apply-to-cart paths or the "Nothing is purchased by applying" footer.
+Do not call /generate from any test — it charges.
+Open decisions for Leon (items 4–6, before the Claude Code lane)
+Per-stop pull semantics: pull writes into the baseline trip directly (one confirm) — ruling needed since it's a partial apply.
+"Every version saved as its own trip": conflicts with the stationary-slip model unless variants are explicitly the permitted ephemeral copies promoted on adopt. Ruling needed.
+Finalize handoff: "hands them a copy" — same conflict; the existing concierge rail grants access to the trip, it doesn't copy. Ruling needed on wording and mechanism.
