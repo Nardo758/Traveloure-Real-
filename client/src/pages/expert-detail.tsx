@@ -30,6 +30,7 @@ import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
+import { formatExpertResponseTime } from "@/lib/expert-response-time";
 
 // Continuity design tokens — the same values as artifacts/mockup-sandbox's
 // _shared/continuity.css :root, applied directly (that file is a design
@@ -363,7 +364,7 @@ export default function ExpertDetailPage() {
   const totalReviews = expert.expertReviewCount ?? expert.reviewCount ?? reviews.length ?? 0;
   // §13 (decision-maker, Phase 0): NO hardcoded "< 24 hours" — the responds fact is
   // shown only when the expert actually stated a response time; null ⇒ omitted.
-  const responseTime: string | null = expert.expertForm?.responseTime || null;
+  const responseTime = formatExpertResponseTime(expert.expertForm?.responseTime);
   const languages = expert.expertForm?.languages || ["English"];
   const specializations = expert.expertForm?.specializations || [];
   const destinations = expert.expertForm?.destinations || [];
