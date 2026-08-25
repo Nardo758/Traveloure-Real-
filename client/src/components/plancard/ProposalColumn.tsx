@@ -87,6 +87,15 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
         )}
         <p className="font-semibold text-base">{proposal.displayName ?? proposal.name}</p>
         {proposal.tagline && <p className="text-xs text-muted-foreground">{proposal.tagline}</p>}
+        {proposal.anchorLine && (
+          <div
+            className="mt-3 flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50/60 px-2.5 py-2 font-mono text-[11px] leading-4 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200"
+            data-testid={`proposal-anchor-${proposal.testId ?? proposal.variantId}`}
+          >
+            <Anchor className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{proposal.anchorLine}</span>
+          </div>
+        )}
       </CardHeader>
       {proposal.totalCostUsd != null && (
         <div className="px-4 pb-2 flex items-baseline gap-2">

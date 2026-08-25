@@ -82,6 +82,7 @@ import {
   computeProposalPreview,
   hasHeadlineClaim,
   formatMinutes,
+  formatAnchorLine,
   type ProposalPreview,
 } from "@/lib/slip-proposal-preview";
 
@@ -165,6 +166,9 @@ interface Variant {
   items: VariantItem[];
   metrics: VariantMetric[];
   days?: VariantDay[];
+  anchorType?: string | null;
+  anchorName?: string | null;
+  anchorMedianMeters?: string | number | null;
 }
 
 // Mirrors server/services/trip-segmentation.service.ts's SegmentationProposal DTO — display-only
@@ -598,6 +602,11 @@ function ProposalColumnContainer({
          eyebrow: isBaselineColumn ? "Your current plan" : undefined,
          displayName: isBaselineColumn ? "As you built it" : undefined,
          tagline: isBaselineColumn ? "The order you planned, unchanged." : (variant.description || null),
+          anchorLine: formatAnchorLine({
+            anchorType: variant.anchorType,
+            anchorName: variant.anchorName,
+            anchorMedianMeters: variant.anchorMedianMeters,
+          }),
          isBaseline: isBaselineColumn,
         recommended,
          totalCostUsd: parseTotal(variant.totalCost),
