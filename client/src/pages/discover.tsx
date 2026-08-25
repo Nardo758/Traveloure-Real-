@@ -104,7 +104,12 @@ type ReadyMadeShelfListing = {
   priceCents: number | null;
   heroImageUrl: string | null;
   authorName: string;
+  /** source-link fallback (2026-08-25-card-source-link): a handle-less author (no /s/ page)
+   *  links to their expert profile /experts/:id — never plain text. */
+  authorId: string;
   authorHandle: string | null;
+  /** Approval-time snapshot counts (jsonb); teaser display only, may be null (§13). */
+  insideCounts: { days?: number; items?: number; byType?: Record<string, number> } | null;
   section: "trips_by_locals" | "advisor";
 };
 
@@ -148,52 +153,99 @@ function readyMadeThemeHeading(key: string): string {
  * constraint solved by structure. No handle → plain text, never a dead /s/ link (rule 1).
  */
 function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) {
+  const [, navigateTo] = useLocation();
+  const price = l.priceCents === null ? null : l.priceCents / 100;
+  const itemCount = l.insideCounts?.items ?? null;
+  const roleLabel = l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner";
+  // Card-source-link (2026-08-25-card-source-link): the author ALWAYS links to its source —
+  // claimed handle → /s/:handle, else the author's expert profile. Never plain text.
+  const sourceHref = l.authorHandle ? `/s/${l.authorHandle}` : `/experts/${l.authorId}`;
+  const sourceLabel = l.authorHandle ? `@${l.authorHandle}` : l.authorName;
+
   return (
-    <Card
-      className="overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col"
+    <div
+      className="h-full flex flex-col bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-shadow"
       data-testid={`rm-shelf-card-${l.id}`}
     >
-      <Link href={`/ready-made/${l.id}`} className="block flex-1 cursor-pointer">
-        {/* D3: h-40 aligns the card image height with the Itinerary Templates grid below. */}
-        {l.heroImageUrl && (
-          <img src={l.heroImageUrl} alt={l.title} className="w-full h-40 object-cover" />
-        )}
-        <CardContent className="p-4 pb-2">
-          <div className="text-[11px] uppercase tracking-wide text-primary font-semibold">
-            {planTypeDisplay(l.planType, l.planTypeCustom)}
-          </div>
-          <div className="font-semibold truncate">{l.title}</div>
-          <div className="text-sm text-muted-foreground">
-            {l.market} · {l.durationDays} days
-          </div>
-          <div className="mt-2 font-bold">
-            {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
-            {l.pricingMode === "per_traveler" && (
-              <span className="text-xs font-normal text-muted-foreground"> /traveler</span>
-            )}
-          </div>
-        </CardContent>
-      </Link>
-      <div className="px-4 pb-3 pt-1 flex items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span className="truncate">
-          by{" "}
-          {l.authorHandle ? (
-            <Link
-            href={`/s/${l.authorHandle}`}
-              className="font-medium text-primary hover:underline"
-              data-testid={`link-rm-author-${l.id}`}
-            >
-              {l.authorName}
-            </Link>
-          ) : (
-            l.authorName
+      {/* Photo — real cover or honest gradient placeholder (§13); opens the detail page. */}
+      <Link href={`/ready-made/${l.id}`} className="block cursor-pointer">
+        <div className="relative h-[140px] bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
+          {l.heroImageUrl && (
+            <img src={l.heroImageUrl} alt={l.title} className="w-full h-full object-cover" />
           )}
+          <span
+            className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[var(--earn-ink)]/70 text-white"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {l.market}
+          </span>
+          <span
+            className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[12px] font-semibold bg-[var(--earn-card)] text-[color:var(--earn-ink)] border border-[color:var(--earn-border)]"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {price === null ? "—" : `$${price.toFixed(0)}`}
+            {price !== null && l.pricingMode === "per_traveler" ? "/traveler" : ""}
+          </span>
+        </div>
+      </Link>
+
+      {/* Body */}
+      <div className="p-3.5 flex-1 flex flex-col">
+        <span
+          className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]"
+          style={{ fontFamily: EARN_MONO }}
+        >
+          {planTypeDisplay(l.planType, l.planTypeCustom)}
         </span>
-        <Badge variant="secondary" className="shrink-0 text-[10px] uppercase tracking-wide">
-          {l.section === "trips_by_locals" ? "Local Expert" : "Trip Planner"}
-        </Badge>
+        <Link
+          href={`/ready-made/${l.id}`}
+          className="text-[15px] font-semibold text-[color:var(--earn-ink)] leading-snug line-clamp-1 mt-0.5 hover:underline"
+        >
+          {l.title}
+        </Link>
+        <div className="text-[12px] text-[color:var(--earn-muted)] mt-1 truncate">
+          {l.market} · {l.durationDays} days · by{" "}
+          <Link
+            href={sourceHref}
+            className="text-[color:var(--earn-teal-ink)] hover:underline"
+            data-testid={`link-rm-author-${l.id}`}
+          >
+            {sourceLabel}
+          </Link>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
+          <span
+            className="px-2 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wide bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+            style={{ fontFamily: EARN_MONO }}
+          >
+            {roleLabel}
+          </span>
+          {itemCount != null && (
+            <span
+              className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[var(--earn-chip)] text-[color:var(--earn-muted)]"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {itemCount} items
+            </span>
+          )}
+        </div>
+
+        {/* Get this trip — teal full-width. Disabled with a reason ONLY when price is null
+            (2026-08-25 submit/approve gate now prevents priceless new listings). */}
+        <div className="mt-auto pt-3">
+          <Button
+            size="sm"
+            disabled={price === null}
+            title={price === null ? "Pricing is finalized at approval" : undefined}
+            className="w-full bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)] disabled:opacity-60"
+            onClick={() => navigateTo(`/ready-made/${l.id}`)}
+          >
+            {price === null ? "Pricing pending" : "Get this trip"}
+          </Button>
+        </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -1613,43 +1665,53 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                     {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
                         live stock render, with real counts — never the full 20-key vocabulary
                         as empty aisles (§13). Order follows the feed (badge-first, recency). */}
-                    <div className="flex flex-wrap gap-2 mb-6" data-testid="rail-ready-made-themes">
-                      <Button
-                        variant={selectedTheme === "all" ? "default" : "outline"}
-                        size="sm"
+                    <div className="flex flex-wrap gap-2 mb-2" data-testid="rail-ready-made-themes">
+                      <button
+                        type="button"
                         onClick={() => setSelectedTheme("all")}
                         data-testid="button-theme-chip-all"
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
+                          selectedTheme === "all"
+                            ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                            : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                        )}
                       >
                         All experiences
-                      </Button>
+                      </button>
                       {readyMadeThemes.order
                         .filter((key) => key !== "__untyped__")
                         .map((key) => {
-                          // Expert-minted groups ("custom:<label>") wear the Sparkles mark;
-                          // their testid is slugified since author labels aren't DOM-safe.
+                          // Expert-minted groups ("custom:<label>") slugify their testid since
+                          // author labels aren't DOM-safe.
                           const isMinted = key.startsWith("custom:");
-                          const Icon = isMinted
-                            ? Sparkles
-                            : READY_MADE_THEME_ICONS[key] ?? Award;
                           const testKey = isMinted
                             ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
                             : key;
                           const count = readyMadeThemes.byTheme.get(key)?.length ?? 0;
+                          const active = selectedTheme === key;
                           return (
-                            <Button
+                            <button
                               key={key}
-                              variant={selectedTheme === key ? "default" : "outline"}
-                              size="sm"
+                              type="button"
                               onClick={() => setSelectedTheme(key)}
                               data-testid={`button-theme-chip-${testKey}`}
+                              className={cn(
+                                "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors inline-flex items-center gap-1.5",
+                                active
+                                  ? "bg-[var(--earn-teal)] text-white border-[var(--earn-teal)]"
+                                  : "bg-[var(--earn-chip)] text-[color:var(--earn-ink)] border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]",
+                              )}
                             >
-                              <Icon className="w-3.5 h-3.5 mr-1.5" />
                               {themeHeadingFor(key)}
-                              <span className="ml-1.5 text-xs opacity-70">{count}</span>
-                            </Button>
+                              <span className="text-[11px] font-semibold" style={{ fontFamily: EARN_MONO }}>{count}</span>
+                            </button>
                           );
                         })}
                     </div>
+                    <p className="text-[11.5px] text-[color:var(--earn-muted)] mb-6" style={{ fontFamily: EARN_MONO }}>
+                      Chips render only for themes with at least one live listing. Counts are real, never the full taxonomy.
+                    </p>
 
                     {selectedTheme === "all" ? (
                       // Theme shelves — the experience is the organizing idea; author type is a

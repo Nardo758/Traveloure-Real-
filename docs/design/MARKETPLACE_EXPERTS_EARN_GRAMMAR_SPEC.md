@@ -88,7 +88,7 @@ Band (ConciergeBell) · rail · two-field search · category chips · sections p
 
 ### 3.2 `/ready-made` — `surface="packages"` (lane 1)
 Band (Gem) · rail · theme chips (live stock only) · theme shelves (ratified `ready-made-by-theme`) · card: photo + market tag + price, coral mono theme eyebrow, title, `Kyoto · 7 days · by @handle` (always linked), role pill + `N stays · M items`, `Get this trip` teal full-width.
-**Preserve:** `/api/ready-made` + `planType` filter, `/api/expert-templates`, `insideCounts` display, disabled-with-reason when `price_cents` null.
+**Preserve:** `/api/ready-made` + `planType` filter, `/api/expert-templates`, `insideCounts` display, disabled-with-reason when `price_cents` null. **Server (added 2026-08-25, packages commit):** the `/api/ready-made` feed row now carries `authorId` (already-joined `readyMadeTrips.authorId`) so the card source-link resolves a handle-less author to their `/experts/:id` profile — never plain text (`card-source-link`). `insideCounts` (already returned) now surfaces on the shelf card as `N items`; there is no `stays` field, so the mock's "N stays" is not rendered (§13). **Testid contract unchanged** — the card keeps `rm-shelf-card-*` + `link-rm-author-*`; no id added or dropped this surface.
 
 ### 3.3 `/destinations` — `surface="travelpulse"` (lane 1 band; lane 3 cards)
 Band (Palmtree) · rail · section "Cities with momentum this month" · `CityGrid` unchanged, `CityCard pulse` rebuilt (lane 3).
