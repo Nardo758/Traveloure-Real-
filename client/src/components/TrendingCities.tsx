@@ -27,8 +27,8 @@ interface TravelPulseCity {
 function CityCardSkeleton() {
   return (
     <div className="bg-card rounded-2xl overflow-hidden border border-border">
-      <Skeleton className="h-48 w-full" />
-      <div className="p-4 space-y-3">
+      <Skeleton className="h-40 w-full" />
+      <div className="p-3.5 space-y-2.5">
         <Skeleton className="h-4 w-3/4" />
         <div className="flex gap-1.5">
           <Skeleton className="h-6 w-16 rounded-full" />
@@ -52,13 +52,13 @@ export function TrendingCities() {
   const cities = (data?.cities || []).slice(0, 8);
 
   return (
-    <section className="py-16 lg:py-20 bg-muted dark:bg-background">
+    <section className="py-12 lg:py-16 bg-muted dark:bg-background">
       <div className="container mx-auto px-4 max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mb-10"
+          className="mb-8"
         >
           <div className="flex items-center gap-2 mb-2">
             <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
@@ -74,7 +74,7 @@ export function TrendingCities() {
           {/* "updated daily" pattern — no "real-time" language (#1496 copy audit) */}
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {isLoading
             ? Array.from({ length: 8 }).map((_, i) => <CityCardSkeleton key={i} />)
             : cities.map((city, index) => {
@@ -112,6 +112,7 @@ export function TrendingCities() {
                       primaryLabel="Take me Here"
                       onPrimary={() => navigate(`/discover/location/${encodeURIComponent(city.cityName)}?country=${encodeURIComponent(city.country || "")}`)}
                       onCardClick={() => navigate(`/discover/location/${encodeURIComponent(city.cityName)}?country=${encodeURIComponent(city.country || "")}`)}
+                      primaryTestId={`button-plan-now-${city.id}`}
                       testId={`card-city-${city.id}`}
                     />
                   </motion.div>
