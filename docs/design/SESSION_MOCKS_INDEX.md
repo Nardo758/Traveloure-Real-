@@ -32,3 +32,18 @@ grep -q "Book via your Traveloure agent" client/src/components/plancard/Affiliat
 ```
 
 See the session hand-off message / PR description for the full per-mock verification dispatch.
+
+---
+
+## Earn grammar — Marketplace + Experts & Services (2026-08-25 session)
+
+Ratified 2026-08-25 (`audited@f06356f7`). The transcription lanes 1–5 build against this mock; it is
+**not yet reflected in merged code** at index time (unlike the Aug 22–23 table above, which is merged).
+
+| Mock | Feature / ledger | Target code (built by lanes 1–5) |
+|------|------------------|----------------------------------|
+| `marketplace-experts-earn-grammar-mock.html` | Earn-grammar transcription (`2026-08-25-marketplace-earn-grammar` + 14 sibling rulings, SPEC §0) | `client/src/pages/discover.tsx`, `service-detail.tsx`, `experts.tsx`, `expert-detail.tsx`, `storefront.tsx`, `providers-directory.tsx`, `discover-location.tsx`; `components/travelpulse/CityCard.tsx`; `components/layout.tsx` (`NAV_LEAF_ICONS`) |
+
+- **Spec of record:** `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` — the transcription contract (what a lane may and may not change).
+- **Visual of record:** `docs/design/marketplace-experts-earn-grammar-mock.html` — what the result must look like.
+- Both are read-only through the lanes.
