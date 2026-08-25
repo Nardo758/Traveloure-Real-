@@ -140,6 +140,14 @@ is pinned to push only to that name, superseding the dispatch's `lane/discover-p
 the lane by that name at merge time (`git fetch origin claude/new-session-i39ogn`). Recorded here per
 the decision-maker's Phase 0 instruction.
 
+### FU — service-detail.tsx Geist-Mono label pass (SPEC §1 type rule, pixel-guided)
+Lane 1 Phase 3 re-tokened `client/src/pages/service-detail.tsx` to the `--earn-*` palette + Inter
+body (Fraunces headings already present). SPEC §1 also wants **Geist Mono for labels & numbers**
+(eyebrows, facts, prices, crumbs, verified pills, fee lines). That pass was **deferred by the
+decision-maker** to a focused follow-up guided by the `/services/:id` ROOTPREVIEW — mono-izing the
+exact label spans (and *not* body text) on a 2022-line money page benefits from seeing the render.
+No testid/structure/handler change; palette + Fraunces + Inter landed and gate-green first.
+
 ### FU — ja nav translations need a native-speaker check (author-derived, not final copy)
 The i18n-key-parity gate was red on the base (`f06356f`): `en/nav.json` carried `links.serviceProviders`
 and `links.eventPlanners` (Aug-24 nav ratification, `2026-08-24-provider-directory`) with no
