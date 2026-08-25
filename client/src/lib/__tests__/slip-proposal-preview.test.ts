@@ -23,6 +23,7 @@ import {
   computeProposalPreview,
   hasHeadlineClaim,
   formatMinutes,
+  formatAnchorLine,
 } from "../slip-proposal-preview.ts";
 
 describe("sumLegMinutes — located-leg transit minutes, §13 omission", () => {
@@ -175,5 +176,57 @@ describe("formatMinutes", () => {
   });
   it("renders hours + minutes", () => {
     assert.strictEqual(formatMinutes(80), "1 hr 20 min");
+  });
+});
+
+describe("formatAnchorLine — honest anchor metadata", () => {
+  it("formats the type, name, walking estimate, and persisted stop counts", () => {
+    assert.strictEqual(
+      formatAnchorLine({
+        anchorType: "hotel",
+        anchorName: "Hotel Kanra Kyoto",
+        anchorMedianMeters: 2240,
+        within15MinCount: 3,
+        locatedStops: 5,
+      }),
+      "Hotel · Hotel Kanra Kyoto · 28 min median · 3/5 stops ≤ 15 min",
+    );
+  });
+
+  it("uses the human label for neighborhood and activity anchors", () => {
+    assert.strictEqual(
+      formatAnchorLine({ anchorType: "neighborhood", anchorName: "Gion", anchorMedianMeters: "720" }),
+      "Neighborhood · Gion · 9 min median",
+    );
+    assert.strictEqual(
+      formatAnchorLine({ anchorType: "activity", anchorName: "Tea ceremony", anchorMedianMeters: 0 }),
+      "Activity · Tea ceremony · 0 min median",
+    );
+  });
+
+  it("omits the count fragment when located-stop counts are unavailable", () => {
+    assert.strictEqual(
+      formatAnchorLine({
+        anchorType: "hotel",
+        anchorName: "A real hotel",
+        anchorMedianMeters: 800,
+        within15MinCount: null,
+        locatedStops: null,
+      }),
+      "Hotel · A real hotel · 10 min median",
+    );
+  });
+
+  it("omits the whole line when the type or name is absent, and never fabricates a median", () => {
+    assert.strictEqual(formatAnchorLine({ anchorType: null, anchorName: "Hotel" }), null);
+    assert.strictEqual(formatAnchorLine({ anchorType: "hotel", anchorName: " " }), null);
+    assert.strictEqual(
+      formatAnchorLine({ anchorType: "hotel", anchorName: "Unscored hotel", anchorMedianMeters: null }),
+      "Hotel · Unscored hotel",
+    );
+    assert.strictEqual(
+      formatAnchorLine({ anchorType: "hotel", anchorName: "Bad data", anchorMedianMeters: "not-a-number" }),
+      "Hotel · Bad data",
+    );
   });
 });
