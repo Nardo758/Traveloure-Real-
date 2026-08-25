@@ -1,0 +1,60 @@
+import fs from "node:fs";
+import { expect, test } from "@playwright/test";
+import {
+  installSlipParityFixture,
+  SLIP_PARITY_COMPARISON_ID,
+} from "../fixtures/slip-parity";
+
+const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
+const CAPTURE_DIR = "/tmp/slip-fix";
+
+test.describe("authenticated Slip review parity fixture", () => {
+  test.beforeAll(() => {
+    fs.mkdirSync(CAPTURE_DIR, { recursive: true });
+  });
+
+  for (const scenario of ["three", "two", "zero"] as const) {
+    test(`renders the ${scenario}-proposal review state without mutations`, async ({ page }) => {
+      await installSlipParityFixture(page, scenario);
+      await page.goto(
+        `${BASE_URL}/itinerary-comparison/${SLIP_PARITY_COMPARISON_ID}`,
+        { waitUntil: "domcontentloaded" },
+      );
+
+      await expect(page.getByTestId("review-title")).toContainText("Kyoto");
+      await expect(page.getByTestId("review-intro")).toContainText("Nothing changes until you apply one");
+      await expect(page.getByTestId("compare-footer")).toBeVisible();
+
+      if (scenario === "zero") {
+        await expect(page.getByTestId("banner-no-proposals-review")).toBeVisible();
+        await expect(page.locator('[data-testid^="proposal-column-"]')).toHaveCount(1);
+        await expect(page.getByTestId("proposal-column-baseline")).toBeVisible();
+        await expect(page.getByTestId("proposal-preview-money")).toHaveCount(0);
+      } else {
+        await expect(page.locator('[data-testid^="proposal-column-"]')).toHaveCount(
+          scenario === "three" ? 4 : 3,
+        );
+        await expect(page.getByTestId("proposal-column-baseline")).toBeVisible();
+        await expect(page.getByTestId("proposal-preview-money")).toHaveCount(
+          scenario === "three" ? 3 : 2,
+        );
+      }
+
+      const requests = await page.evaluate(() => {
+        const recorded = (window as Window & {
+          __slipParityRequests?: Array<{ method: string; path: string }>;
+        }).__slipParityRequests;
+        return recorded ?? [];
+      });
+      expect(
+        requests.filter((request) => request.method !== "GET"),
+        "the fixture must prevent all mutations",
+      ).toEqual([]);
+
+      await page.screenshot({
+        path: `${CAPTURE_DIR}/gap-1-${scenario}.png`,
+        fullPage: true,
+      });
+    });
+  }
+});
