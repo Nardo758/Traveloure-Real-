@@ -163,9 +163,11 @@ jobs:
       # ── Lane 2 (Experts & Services earn grammar) visual captures ──
       # Evidence, NOT a gate: drives the public Experts & Services surfaces at 1280px
       # (375px for mobile nav) and writes full-page PNGs to playwright/earn-captures/.
-      # continue-on-error so a screenshot hiccup never reds the behavioral gate above;
-      # the artifact is the ROOTPREVIEW the lane reviews each phase.
+      # `if: !cancelled()` so the captures still run when the behavioral suite above
+      # fails (they cover DIFFERENT surfaces — /experts, /s, /providers — and are the
+      # phase's ROOTPREVIEW); continue-on-error so a screenshot hiccup never reds the gate.
       - name: Earn-grammar captures (Lane 2)
+        if: ${{ !cancelled() }}
         continue-on-error: true
         run: npx playwright test earn-captures --project=chromium
         env:
