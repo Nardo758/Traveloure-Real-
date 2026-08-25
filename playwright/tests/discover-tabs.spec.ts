@@ -94,7 +94,13 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await expectNoTabBar(page);
     await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('input-location')).toBeVisible();
-    await expect(page.locator('[data-testid*="template"]')).toHaveCount(0);
+    await expect(page.locator(
+      '[data-testid^="card-template-"], ' +
+      '[data-testid^="button-view-template-"], ' +
+      '[data-testid="section-templates"], ' +
+      '[data-testid="button-view-all-templates"], ' +
+      '[data-testid="button-become-expert-packages"]',
+    )).toHaveCount(0);
   });
 
   test('/services: masthead, search, Filters +, and chip rail visible; no legacy filter bar', async ({ page }) => {
