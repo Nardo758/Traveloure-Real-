@@ -543,12 +543,17 @@ const FILLER_KINDS = new Set<FeedItem["kind"]>([
 
 // ─── Bento span algorithm ─────────────────────────────────────────────────────
 
-/** Which desktop col-span class a tile carries (min-[900px] = the 4-col bento). */
+// Desktop bento breakpoint, as a Tailwind arbitrary variant. The pixel value is a CSS
+// breakpoint, not a fee; it lives in this ONE place and every bento class is built from
+// it, so the phase2-fee-gate has a single adjudicated site rather than one per class.
+const DESKTOP_BP = "min-[900px]"; // fee-literal-ok: Tailwind responsive breakpoint, not a fee
+
+/** Which desktop col-span class a tile carries (DESKTOP_BP = the 4-col bento). */
 const COL_SPAN_CLASS: Record<number, string> = {
   1: "",
-  2: "min-[900px]:col-span-2",
-  3: "min-[900px]:col-span-3",
-  4: "min-[900px]:col-span-4",
+  2: `${DESKTOP_BP}:col-span-2`,
+  3: `${DESKTOP_BP}:col-span-3`,
+  4: `${DESKTOP_BP}:col-span-4`,
 };
 
 /** A tile placed in the bento, carrying its resolved desktop column span. */
@@ -635,9 +640,9 @@ function buildBentoTiles(run: FeedItem[]): PlacedTile[] {
 
 /**
  * One bento group: the coral eyebrow / editorial Fraunces heading / "See all"
- * link (when the group belongs to a neighbourhood), then the 4-col bento grid
- * (grid-cols-4 auto-rows-[172px] gap-[14px] on desktop; 2-col ≤900px, 1-col
- * ≤560px). Membership and order come straight from the composed stream — the
+ * link (when the group belongs to a neighbourhood), then the bento grid
+ * (four columns on desktop at DESKTOP_BP, two on tablet, one on mobile).
+ * Membership and order come straight from the composed stream — the
  * grid only assigns spans and floats the anchor.
  */
 function BentoGroup({
@@ -717,7 +722,7 @@ function BentoGroup({
           <div
             key={tile.item.id}
             className={cn(
-              "h-full min-w-0 overflow-hidden min-[900px]:row-span-2",
+              `h-full min-w-0 overflow-hidden ${DESKTOP_BP}:row-span-2`,
               COL_SPAN_CLASS[tile.colSpan] ?? "",
             )}
             data-testid={`bento-tile-${tile.item.id}`}
