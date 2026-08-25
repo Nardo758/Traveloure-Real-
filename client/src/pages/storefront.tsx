@@ -11,7 +11,7 @@
  * (rating/price header row, "Secure checkout" footer badge), the "not sure what you're looking
  * for?" message band and the trust strip. PURE CLIENT DIFF — page-local only (no shared-component
  * extraction; two sibling lanes are rebuilding service-detail.tsx/experts.tsx concurrently),
- * built with existing Tailwind theme tokens (bg-card/border/text-primary/etc.) rather than the
+ * built with existing Tailwind theme tokens (bg-[var(--earn-card)]/border/text-primary/etc.) rather than the
  * mock's own hardcoded palette, so dark mode — already supported here — keeps working.
  *
  * Every number/badge still maps to a real field returned by GET /api/storefront/:handle —
@@ -52,6 +52,10 @@ import {
   Check,
   X,
 } from "lucide-react";
+
+// SPEC §1 type: Fraunces for editorial headings, Geist Mono for eyebrows/facts/labels.
+const FRAUNCES = "'Fraunces', Georgia, serif";
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 interface StorefrontEarner {
   // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
@@ -152,7 +156,7 @@ function RatingLine({ rating, count }: { rating: string | number | null; count: 
     <span className="flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-500">
       <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
       {Number(rating).toFixed(1)}
-      <span className="font-normal text-muted-foreground">· {count} review{count === 1 ? "" : "s"}</span>
+      <span className="font-normal text-[color:var(--earn-muted)]">· {count} review{count === 1 ? "" : "s"}</span>
     </span>
   );
 }
@@ -161,10 +165,10 @@ function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string;
   return (
     <div className="mb-4 flex items-baseline justify-between gap-2">
       <div>
-        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{eyebrow}</div>
-        <h2 className="mt-0.5 text-xl font-bold">{title}</h2>
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>{eyebrow}</div>
+        <h2 className="mt-0.5 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{title}</h2>
       </div>
-      <div className="text-sm tabular-nums text-muted-foreground">
+      <div className="text-sm tabular-nums text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
         {count} available
       </div>
     </div>
@@ -216,24 +220,24 @@ function StorefrontOfferingCard({
     <Link
       href={href}
       data-testid={testId}
-      className="group flex h-full flex-col overflow-hidden rounded-xl border bg-card no-underline text-inherit transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg hover:border-primary/40"
+      className="group flex h-full flex-col overflow-hidden rounded-xl border bg-[var(--earn-card)] no-underline text-inherit transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg hover:border-primary/40"
     >
       <div
         className={`relative h-36 w-full shrink-0 ${image ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/60 to-primary"}`}
         style={image ? { backgroundImage: `url(${image})` } : undefined}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
-        <span className="absolute left-2.5 bottom-2.5 rounded-md bg-white/92 px-2 py-1 text-[10px] font-bold text-foreground dark:bg-black/70 dark:text-white">
+        <span className="absolute left-2.5 bottom-2.5 rounded-md bg-white/92 px-2 py-1 text-[10px] font-bold text-[color:var(--earn-ink)] dark:bg-black/70 dark:text-white">
           {categoryLabel}
         </span>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-4">
         <div className="flex items-center justify-between gap-2">
           {ratingSlot}
-          <span className="whitespace-nowrap text-[11px] text-muted-foreground">
+          <span className="whitespace-nowrap text-[11px] text-[color:var(--earn-muted)]">
             {priceHidden ? null : (
               <>
-                <span className="text-base font-bold text-foreground">{price}</span>
+                <span className="text-base font-bold text-[color:var(--earn-ink)]">{price}</span>
                 {unit && <span className="ml-1">{unit}</span>}
               </>
             )}
@@ -245,7 +249,7 @@ function StorefrontOfferingCard({
             {chips.map((c) => (
               <span
                 key={c}
-                className="rounded-full border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                className="rounded-full border bg-[var(--earn-chip)]/60 px-2 py-0.5 text-[11px] font-medium text-[color:var(--earn-muted)]"
               >
                 {c}
               </span>
@@ -254,7 +258,7 @@ function StorefrontOfferingCard({
         )}
         <div className="mt-auto flex items-center justify-between gap-2 border-t pt-2.5">
           {priceHidden ? (
-            <span className="text-sm font-medium text-muted-foreground" data-testid={`${testId}-enquire-price`}>
+            <span className="text-sm font-medium text-[color:var(--earn-muted)]" data-testid={`${testId}-enquire-price`}>
               Enquire for pricing
             </span>
           ) : (
@@ -329,7 +333,7 @@ export default function StorefrontPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-[var(--earn-ground)]">
         <Skeleton className="h-14 w-full rounded-none" />
         <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
           <Skeleton className="h-64 w-full rounded-2xl" />
@@ -346,10 +350,10 @@ export default function StorefrontPage() {
 
   if (isError || !data) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--earn-ground)] flex items-center justify-center">
         <div className="max-w-md mx-auto px-4 py-20 text-center" data-testid="storefront-not-found">
           <h1 className="text-2xl font-bold mb-2">Storefront not found</h1>
-          <p className="text-muted-foreground mb-6">
+          <p className="text-[color:var(--earn-muted)] mb-6">
             This link may be incorrect, or the owner has no bookable offerings yet.
           </p>
           <Link href="/discover">
@@ -372,7 +376,9 @@ export default function StorefrontPage() {
   const memberSinceYear = earner.memberSince ? new Date(earner.memberSince).getFullYear() : null;
   const initial = earner.name.charAt(0).toUpperCase() || "T";
   const firstName = earner.name.split(" ")[0];
-  const eyebrowLabel = isProviderRole(earner.role) ? "Local provider storefront" : "Local expert storefront";
+  // §3.10 eyebrow: SERVICE PROVIDER STOREFRONT / LOCAL EXPERT STOREFRONT (uppercased in CSS).
+  const eyebrowLabel = isProviderRole(earner.role) ? "Service provider storefront" : "Local expert storefront";
+  const verifiedLabel = isProviderRole(earner.role) ? "Verified business" : "Identity verified";
 
   // Honest "N ways to plan" note (continuity mock's summary callout): only rendered when the
   // earner genuinely sells across more than one lane — never implies three when there's one.
@@ -403,7 +409,7 @@ export default function StorefrontPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background" data-testid="storefront-page">
+    <div className="min-h-screen bg-[var(--earn-ground)]" data-testid="storefront-page">
       <SEOHead
         title={`${earner.name} — Book local experiences | Traveloure`}
         description={earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`}
@@ -413,7 +419,7 @@ export default function StorefrontPage() {
           ready-made-detail.tsx share/OG page frame. Ruling 116: the 🌐 selector rides here so a
           link/QR recipient (guest included) can switch language — same one-selector rule as the
           Layout header (ruling 60 entry point (b)). */}
-      <div className="border-b bg-card">
+      <div className="border-b bg-[var(--earn-card)]">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center" data-testid="link-storefront-logo">
             <TraveloureLogo />
@@ -425,7 +431,7 @@ export default function StorefrontPage() {
       <div className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
         {/* Identity hero card — cover + overlapping avatar + name/handle/verified/bio/proof line,
             consolidated into one bordered card (continuity mock's `.psc-hero`). */}
-        <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-2xl border bg-[var(--earn-card)] shadow-sm">
           {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient
               fallback. Link-landing polish (mockup §08): shorter on mobile so a texted storefront
               link gets its first bookable card above the fold on a 375px viewport. */}
@@ -440,10 +446,10 @@ export default function StorefrontPage() {
               <img
                 src={earner.profileImageUrl}
                 alt={earner.name}
-                className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full object-cover border-4 border-card shadow-md shrink-0"
+                className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full object-cover border-4 border-[color:var(--earn-card)] shadow-md shrink-0"
               />
             ) : (
-              <div className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full border-4 border-card shadow-md shrink-0 flex items-center justify-center text-2xl sm:text-3xl font-bold text-white bg-gradient-to-br from-primary/60 to-primary">
+              <div className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full border-4 border-[color:var(--earn-card)] shadow-md shrink-0 flex items-center justify-center text-2xl sm:text-3xl font-bold text-white bg-gradient-to-br from-primary/60 to-primary">
                 {initial}
               </div>
             )}
@@ -451,26 +457,27 @@ export default function StorefrontPage() {
             <div className="pt-3 sm:pt-4 min-w-0">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{eyebrowLabel}</div>
-                  <h1 className="mt-0.5 text-2xl sm:text-3xl font-bold" data-testid="storefront-name">{earner.name}</h1>
+                  <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>{eyebrowLabel}</div>
+                  <h1 className="mt-0.5 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{earner.name}</h1>
                 </div>
                 {earner.verified && (
                   <span
-                    className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary shrink-0"
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0"
+                    style={{ borderWidth: 1, borderStyle: "solid", borderColor: "var(--earn-green-ink)", background: "var(--earn-teal-wash)", color: "var(--earn-green-ink)" }}
                     data-testid="badge-storefront-verified"
                     title="This earner's identity has been verified"
                   >
                     <ShieldCheck className="w-3 h-3" />
-                    Identity verified
+                    {verifiedLabel}
                   </span>
                 )}
               </div>
 
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[color:var(--earn-muted)]">
                 <span>@{earner.handle}</span>
                 {earner.location && (
                   <>
-                    <span className="text-muted-foreground/50">·</span>
+                    <span className="text-[color:var(--earn-muted)]/50">·</span>
                     <span className="inline-flex items-center gap-1" data-testid="storefront-location">
                       <MapPin className="w-3.5 h-3.5" />
                       {earner.location}
@@ -495,11 +502,11 @@ export default function StorefrontPage() {
               )}
 
               {earner.bio && (
-                <p className="mt-2.5 text-sm text-foreground max-w-2xl">{earner.bio}</p>
+                <p className="mt-2.5 text-sm text-[color:var(--earn-ink)] max-w-2xl">{earner.bio}</p>
               )}
 
               {/* Proof line — rating + member-since, both real fields (§13: no fabricated stats). */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-semibold text-muted-foreground">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-semibold text-[color:var(--earn-muted)]">
                 <span data-testid="storefront-earner-rating">
                   <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
                 </span>
@@ -531,31 +538,32 @@ export default function StorefrontPage() {
             year, real area of expertise (the earner's own location), and an honest multi-lane
             note (rendered only when there genuinely is more than one lane). */}
         <div
-          className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 rounded-xl border bg-card px-6 py-4"
+          className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 rounded-xl border bg-[var(--earn-card)] px-6 py-4"
+          style={{ fontFamily: EARN_MONO }}
           data-testid="storefront-facts"
         >
           <div>
             <div className="text-xl font-bold tabular-nums" data-testid="fact-offerings">{earner.offeringsCount}</div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">Offerings</div>
+            <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Offerings</div>
           </div>
           <div className="border-l pl-8">
             <div className="text-xl font-bold tabular-nums" data-testid="fact-reviews">{earner.reviewCount}</div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">Reviews</div>
+            <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Reviews</div>
           </div>
           {memberSinceYear && (
             <div className="border-l pl-8">
               <div className="text-xl font-bold tabular-nums" data-testid="fact-member-since">{memberSinceYear}</div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">On Traveloure since</div>
+              <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">On Traveloure since</div>
             </div>
           )}
           {earner.location && (
             <div className="border-l pl-8">
               <div className="text-xl font-bold" data-testid="fact-location">{earner.location}</div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">Area of expertise</div>
+              <div className="text-xs uppercase tracking-wide text-[color:var(--earn-muted)] mt-0.5">Area of expertise</div>
             </div>
           )}
           {planWaysNote && (
-            <div className="flex items-start gap-2 text-xs text-muted-foreground sm:ml-auto max-w-sm" data-testid="storefront-plan-ways-note">
+            <div className="flex items-start gap-2 text-xs text-[color:var(--earn-muted)] sm:ml-auto max-w-sm" data-testid="storefront-plan-ways-note">
               <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
               <span>{planWaysNote}</span>
             </div>
@@ -568,17 +576,17 @@ export default function StorefrontPage() {
         <section className="mt-10 sm:mt-14">
           <div className="mb-4 flex items-end justify-between gap-3">
             <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Choose your starting point</div>
-              <h2 className="mt-0.5 text-xl font-bold">{offeringsHeading}</h2>
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>Choose your starting point</div>
+              <h2 className="mt-0.5 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{offeringsHeading}</h2>
             </div>
-            <p className="text-sm text-muted-foreground" data-testid="storefront-offering-count">
+            <p className="text-sm text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }} data-testid="storefront-offering-count">
               {visibleTotal} offering{visibleTotal === 1 ? "" : "s"}
             </p>
           </div>
 
           {availableCategories.length > 1 && (
             <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1" role="tablist" aria-label="Offering categories">
+              <div className="flex gap-1 overflow-x-auto rounded-lg bg-[var(--earn-chip)] p-1" role="tablist" aria-label="Offering categories">
                 {availableCategories.map((c) => (
                   <button
                     key={c}
@@ -588,14 +596,14 @@ export default function StorefrontPage() {
                     onClick={() => setCategory(c)}
                     data-testid={`tab-storefront-category-${c.toLowerCase()}`}
                     className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
-                      category === c ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                      category === c ? "bg-[var(--earn-card)] text-[color:var(--earn-ink)] shadow-sm" : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)]"
                     }`}
                   >
                     {c}
                   </button>
                 ))}
               </div>
-              <label className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm text-muted-foreground min-w-[200px]">
+              <label className="flex items-center gap-2 rounded-lg border bg-[var(--earn-card)] px-3 py-1.5 text-sm text-[color:var(--earn-muted)] min-w-[200px]">
                 <Search className="w-4 h-4 shrink-0" />
                 <input
                   value={query}
@@ -603,7 +611,7 @@ export default function StorefrontPage() {
                   placeholder="Search this storefront"
                   aria-label="Search this storefront"
                   data-testid="input-storefront-search"
-                  className="w-full min-w-0 border-0 bg-transparent p-0 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  className="w-full min-w-0 border-0 bg-transparent p-0 text-sm text-[color:var(--earn-ink)] outline-none placeholder:text-[color:var(--earn-muted)]"
                 />
                 {query && (
                   <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
@@ -615,7 +623,7 @@ export default function StorefrontPage() {
           )}
 
           {visibleTotal === 0 && (
-            <div className="flex min-h-[130px] flex-wrap items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground" data-testid="storefront-empty-filter">
+            <div className="flex min-h-[130px] flex-wrap items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center text-sm text-[color:var(--earn-muted)]" data-testid="storefront-empty-filter">
               <Search className="w-5 h-5" />
               <span>No offerings match your filter.</span>
               <button type="button" onClick={clearFilters} className="font-semibold text-primary">
@@ -631,7 +639,7 @@ export default function StorefrontPage() {
               {/* Ruling 116 (§13): when any card falls back to its original language under the
                   viewer's locale, say so once — never a silent mix. */}
               {visibleServices.some((s) => s.shownInOriginal) && (
-                <p className="mb-3 -mt-2 text-xs text-muted-foreground" data-testid="text-storefront-original-language-note">
+                <p className="mb-3 -mt-2 text-xs text-[color:var(--earn-muted)]" data-testid="text-storefront-original-language-note">
                   {t("contentTranslation.someInOriginal")}
                 </p>
               )}
@@ -723,7 +731,7 @@ export default function StorefrontPage() {
                       chips={chips}
                       // Ready Made Trips have no review mechanism yet (§13) — no rating line,
                       // never a perpetual fake "New" badge for a lane that can't earn reviews.
-                      ratingSlot={<span className="text-[11px] font-medium text-muted-foreground">Complete trip</span>}
+                      ratingSlot={<span className="text-[11px] font-medium text-[color:var(--earn-muted)]">Complete trip</span>}
                       price={typeof r.priceCents === "number" ? `$${(r.priceCents / 100).toFixed(0)}` : "Contact for price"}
                       cta="Preview trip →"
                     />
@@ -745,9 +753,9 @@ export default function StorefrontPage() {
               </div>
             )}
             <div className="flex-1 min-w-[240px]">
-              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">A good place to begin</div>
+              <div className="text-xs font-bold uppercase tracking-wider text-[color:var(--earn-muted)]">A good place to begin</div>
               <h3 className="mt-0.5 font-bold">Not sure what you're looking for?</h3>
-              <p className="mt-1 text-sm text-muted-foreground max-w-xl">
+              <p className="mt-1 text-sm text-[color:var(--earn-muted)] max-w-xl">
                 Tell {firstName} what you're planning — a private tour, a special
                 occasion, something seasonal — and get pointed to the right offering, or something custom.
               </p>
@@ -768,7 +776,7 @@ export default function StorefrontPage() {
             <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
             <div>
               <strong className="block text-xs font-semibold mb-0.5">Payment held until your booking completes</strong>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-[color:var(--earn-muted)]">
                 Funds are secured through Traveloure and release to {firstName} only after your experience.
               </span>
             </div>
@@ -777,7 +785,7 @@ export default function StorefrontPage() {
             <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
             <div>
               <strong className="block text-xs font-semibold mb-0.5">Every listing is admin-reviewed</strong>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-[color:var(--earn-muted)]">
                 Offerings appear here only after Traveloure approves them.
               </span>
             </div>
@@ -786,7 +794,7 @@ export default function StorefrontPage() {
             <Handshake className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
             <div>
               <strong className="block text-xs font-semibold mb-0.5">Book and message in one place</strong>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-[color:var(--earn-muted)]">
                 Your conversation, booking, and receipts stay on Traveloure.
               </span>
             </div>
