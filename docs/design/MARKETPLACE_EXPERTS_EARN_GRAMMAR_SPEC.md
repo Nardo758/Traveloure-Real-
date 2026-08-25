@@ -99,6 +99,7 @@ Band (Ticket) · rail. **Nothing else changes.** Empty state must render per §2
 ### 3.5 `/services/:id` — `service-detail.tsx` (lane 1)
 Open-card skeleton. Split hero: photo left with service-type tag; title panel right with coral eyebrow `PRIVATE EXPERIENCE · KYOTO`, Fraunces title, lede, verified pills, location + rating (mono). Panels: About (with 3-col facts), Good to know (2-col icon list), `More from @handle` (3 mini cards + `Open storefront`). Buy panel: price mono 30 · `per experience` · sub line · `Book on Traveloure` coral · `Add to cart` navy · `Contact provider` outline · Direct-booking box (green checks).
 **Preserve:** booking handler, cart mutation (label chain Add → Added), contact navigation, storefront link, fee lines from resolver.
+**Status (2026-08-25, lane 1 Phase 3):** the Aug-24 continuity skeleton (`2026-08-24-service-detail-continuity`) already matches the open-card skeleton, so Phase 3 is a **re-tokening**: continuity hex → `--earn-*` palette (196 arbitrary-value swaps), Fraunces headings (already present) + **Inter** body — LANDED. Testid contract **unchanged** (89 raw / 81 unique; re-tokening touches no testid, structure or handler). **DEFERRED (decision-maker, pixel-guided):** the Geist-Mono label/number pass (eyebrows, facts, prices, crumbs, pills, fee lines) is a focused follow-up after the `/services/:id` ROOTPREVIEW — filed in `FOLLOWUPS.md`.
 
 ### 3.6 `/ready-made/:id` — shipped 2026-08-24 (reference; no lane)
 Reference skeleton. Only change: byline `Built by {name} →` becomes a link per `card-source-link`.
