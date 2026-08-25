@@ -206,3 +206,34 @@ and the "since" and consultation-kv facts are omitted until a real field exists 
 Deferred per decision-maker (Phase 0). **FOLLOWUP:** add `responseTimeMinutes`, `memberSince`, and
 consultation fields to the expert DTO — all three exist as data somewhere (message timestamps,
 `users.created_at`, consultation scheduling), so this is wiring, not new tracking.
+
+### FU — Lane 4 city-feed bento (draft PR `city-feed-bento`)
+Phase 2 landed the bento + family-card convergence; these are deferred, non-blocking:
+- **CityFeedCard\* family-grammar polish.** The three existing family cards
+  (`city-feed-card.tsx` gem/vendor-service, `city-feed-card-expert.tsx`,
+  `city-feed-card-external-stub.tsx`) were reused as-is, not brought fully to the
+  `2026-08-25-card-family` grammar (3-col mono facts row · source row · 3-state action
+  row). Visible symptom: a service tile can show a "Not bookable" badge beside a "Book"
+  button because the 3-state action logic isn't wired to the bookable flag. Additive
+  upgrade — no testid/behaviour change.
+- **Tile height vs literal 1×1.** The dispatch spec is `auto-rows-[172px]` with non-anchor
+  tiles at 1×1; a converged family card (photo + facts + source + action) does not fit 172px,
+  so content tiles occupy 2 row-tracks (they'd clip otherwise). Revisit the row metric or add
+  a compact card variant so the grid is denser.
+- **Full-bleed band.** The Phase-1 band renders as a card inside the page's `max-w-5xl`
+  container rather than edge-to-edge like `/destinations` (single-file scope — the page's outer
+  container is out of the lane's write targets). Align to full-bleed when the container is touched.
+- **Source-link `/s/:handle` on feed tiles.** Tiles use the ruled id-based fallbacks
+  (`/experts/:id`, `/services/:id`) because the `handle` field is not on the
+  `/api/discover/location/:city` payload. Server DTO followup: surface `handle`; tiles switch
+  to `/s/:handle` with no structural change (`2026-08-25-card-source-link`).
+- **Editorial neighbourhood headings.** The bento heading reads
+  `neighbourhood.editorialTitle ?? headline ?? tagline`, falling back to the plain name when the
+  payload populates none. Author per-neighbourhood copy (or a dedicated copy field) so headings
+  aren't the bare name.
+- **Lead-expert on the city row (Lane 3).** If Lane 3 surfaces a lead-local-expert per
+  neighbourhood on the row, wire it into the anchor selection to improve the anchor beyond
+  "first expert in the run".
+- **Inline-card props with no family-card home.** None found blocking during convergence; if one
+  surfaces (e.g. an engine-only field on the recommendation candidate), add it additively rather
+  than dropping it.
