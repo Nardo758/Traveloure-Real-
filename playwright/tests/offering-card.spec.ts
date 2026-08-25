@@ -5,10 +5,9 @@
  * card was extracted from a local, un-exported component in
  * client/src/pages/storefront.tsx into the shared, exported
  * client/src/components/OfferingCard.tsx (so C2's Catalog Preview can render the
- * exact same card). This spec proves the seeded storefront `/p/kyoto-interpreter`
- * still renders its offering cards THROUGH the extracted component with no
- * regression: the same `data-testid`s are present, and each card shows its
- * title, price, and book affordance.
+ * exact same card). This spec proves the legacy `/p/kyoto-interpreter` link
+ * permanently redirects to the canonical provider storefront while its offering
+ * cards still render THROUGH the extracted component with no regression.
  *
  * No auth required — the storefront is a public page. Selectors are the real
  * `storefront-service-<id>` testids the extracted OfferingCard emits, resolved
@@ -33,12 +32,20 @@ const EXPECTED_SERVICES = [
   'Conference & Event Interpretation',
 ];
 
-test.describe('/p/:handle — extracted OfferingCard (lane C1)', () => {
+test.describe('/p/:handle — legacy redirect + extracted OfferingCard (lane C1)', () => {
   test('seeded storefront renders offering cards through the shared component', async ({ page }) => {
+    const redirect = await page.request.get(`${BASE_URL}/p/${HANDLE}`, {
+      maxRedirects: 0,
+    });
+    expect(redirect.status()).toBe(301);
+    expect(redirect.headers().location).toBe(`/s/${HANDLE}`);
+
     await page.goto(`${BASE_URL}/p/${HANDLE}`, {
       waitUntil: 'domcontentloaded',
       timeout: 30_000,
     });
+
+    await expect(page).toHaveURL(new RegExp(`/s/${HANDLE}$`));
 
     // The storefront page shell renders (not the not-found state).
     await expect(page.getByTestId('storefront-page')).toBeVisible({ timeout: 15_000 });

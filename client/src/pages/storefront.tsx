@@ -379,6 +379,12 @@ export default function StorefrontPage() {
   // §3.10 eyebrow: SERVICE PROVIDER STOREFRONT / LOCAL EXPERT STOREFRONT (uppercased in CSS).
   const eyebrowLabel = isProviderRole(earner.role) ? "Service provider storefront" : "Local expert storefront";
   const verifiedLabel = isProviderRole(earner.role) ? "Verified business" : "Identity verified";
+  const storefrontTitle = isProviderRole(earner.role)
+    ? `${earner.name} — Book local services | Traveloure`
+    : `${earner.name} — Book local experiences | Traveloure`;
+  const storefrontDescription = isProviderRole(earner.role)
+    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${earner.name} on Traveloure. Secure checkout, verified reviews.`
+    : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
 
   // Honest "N ways to plan" note (continuity mock's summary callout): only rendered when the
   // earner genuinely sells across more than one lane — never implies three when there's one.
@@ -411,8 +417,8 @@ export default function StorefrontPage() {
   return (
     <div className="min-h-screen bg-[var(--earn-ground)]" data-testid="storefront-page">
       <SEOHead
-        title={`${earner.name} — Book local experiences | Traveloure`}
-        description={earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`}
+        title={storefrontTitle}
+        description={storefrontDescription}
       />
 
       {/* Minimal branded header (standalone page, no site chrome) — same idiom as the
