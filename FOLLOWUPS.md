@@ -139,3 +139,17 @@ no product effect (the landed content is identical to a Replit-run Lane 0).
 is pinned to push only to that name, superseding the dispatch's `lane/discover-polish`. Replit fetches
 the lane by that name at merge time (`git fetch origin claude/new-session-i39ogn`). Recorded here per
 the decision-maker's Phase 0 instruction.
+
+### FU — ja nav translations need a native-speaker check (author-derived, not final copy)
+The i18n-key-parity gate was red on the base (`f06356f`): `en/nav.json` carried `links.serviceProviders`
+and `links.eventPlanners` (Aug-24 nav ratification, `2026-08-24-provider-directory`) with no
+`ja/nav.json` counterpart — Japanese users saw those two nav items in English. Fixed in commit
+`fix(i18n): ja nav keys for Service Providers / Event Planners` by adding:
+- `links.serviceProviders` → **サービス事業者**
+- `links.eventPlanners` → **イベントプランナー**
+
+These were **authored/selected by Claude**, not supplied by a translator — chosen to reuse this file's
+own already-shipped role strings (`partner.serviceProvider` = サービス事業者, `partner.eventPlanner` =
+イベントプランナー; the file already reuses `partner.*` strings for `links.localExperts`/`links.tripPlanners`).
+Lower risk because they mirror reviewed in-file copy, but **not confirmed by a native speaker** — flag for
+a native check before treating as final. Gate now at full parity (289/289).
