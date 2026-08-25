@@ -62,17 +62,15 @@ async function expectNoTabBar(page: import('@playwright/test').Page) {
 // ── 1. Surface pages — own masthead, own content, NO tab bar ─────────────────
 
 test.describe('Marketplace surfaces — each page renders alone, no grouped header', () => {
-  test('/destinations: masthead "Destinations", CityGrid visible, no tab bar, no search/ad', async ({ page }) => {
+  test('/destinations: masthead, CityGrid, and two-field search visible; no tab bar/ad', async ({ page }) => {
     await gotoPath(page, '/destinations');
 
     await expect(page.getByTestId('text-page-title')).toHaveText('Destinations');
     await expect(page.getByTestId('city-grid')).toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
     await expectNoTabBar(page);
-    // Simplified masthead (decision-maker Aug 23, Ready-Made-by-Theme band): the
-    // search bar lives ONLY on /services (the surface its query feeds) and the
-    // instructional-ad banner is gone from every surface page.
-    await expect(page.getByTestId('input-search')).not.toBeAttached();
+    await expect(page.getByTestId('input-search')).toBeVisible();
+    await expect(page.getByTestId('input-location')).toBeVisible();
     await expect(page.getByTestId('cta-how-it-works')).not.toBeAttached();
   });
 
@@ -83,6 +81,8 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await expect(page.getByTestId('global-calendar')).toBeVisible();
     await expect(page.getByTestId('city-grid')).not.toBeVisible();
     await expectNoTabBar(page);
+    await expect(page.getByTestId('input-search')).not.toBeAttached();
+    await expect(page.getByTestId('input-location')).not.toBeAttached();
   });
 
   test('/ready-made: masthead "Ready-Made Trips", shelf content visible, no tab bar', async ({ page }) => {
@@ -91,6 +91,8 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await expect(page.getByTestId('text-page-title')).toHaveText('Ready-Made Trips');
     await expect(page.getByTestId('city-grid')).not.toBeVisible();
     await expectNoTabBar(page);
+    await expect(page.getByTestId('input-search')).toBeVisible();
+    await expect(page.getByTestId('input-location')).toBeVisible();
 
     // Shelf content: template cards if seeded, otherwise the empty state.
     const templateCards = page.locator('[data-testid^="card-template-"]');
@@ -105,13 +107,30 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await gotoPath(page, '/services');
 
     await expect(page.getByTestId('text-page-title')).toHaveText('Services');
-    // Services KEEPS the search bar — it is the surface whose query it feeds.
     await expect(page.getByTestId('input-search')).toBeVisible();
+    await expect(page.getByTestId('input-location')).toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
     await expect(page.getByTestId('city-grid')).not.toBeVisible();
     await expectNoTabBar(page);
     await expect(page.getByTestId('cta-how-it-works')).not.toBeAttached();
   });
+});
+
+test.describe('Marketplace two-field search — TripStrip destination prefill', () => {
+  const SEARCH_SURFACES = ['/destinations', '/ready-made', '/services'] as const;
+
+  for (const path of SEARCH_SURFACES) {
+    test(`${path}: where reads its initial value from trip context`, async ({ page }) => {
+      await page.addInitScript(() => {
+        sessionStorage.setItem('experienceContext', JSON.stringify({ destination: 'Kyoto' }));
+      });
+      await gotoPath(page, path);
+
+      await expect(page.getByTestId('input-location')).toHaveValue('Kyoto');
+      expect(await page.evaluate(() => sessionStorage.getItem('experienceContext')))
+        .toBe(JSON.stringify({ destination: 'Kyoto' }));
+    });
+  }
 });
 
 // ── 2. /discover — smart redirect (the old ?tab= URL contract keeps meaning) ─
