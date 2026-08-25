@@ -21,8 +21,11 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
-export function FeedEarnCard({ city }: { city: string }) {
+// Phase 2e Part A (2026-08-26-bento-compact-density): "compact" clamps the blurb to
+// two lines to fit the ~200px bento panel; both CTAs and testids are unchanged.
+export function FeedEarnCard({ city, density = "full" }: { city: string; density?: "full" | "compact" }) {
   const displayCity = toTitleCase(city);
+  const isCompact = density === "compact";
   return (
     <div
       className="flex h-full flex-col gap-1.5 rounded-xl border p-3.5"
@@ -41,7 +44,7 @@ export function FeedEarnCard({ city }: { city: string }) {
       >
         Know {displayCity} like a local? Offer a service here?
       </h3>
-      <p className="text-[12px]" style={{ color: "var(--earn-muted)" }}>
+      <p className={isCompact ? "text-[12px] line-clamp-2" : "text-[12px]"} style={{ color: "var(--earn-muted)" }}>
         Local experts share their knowledge; providers list bookable services — both earn on Traveloure.
       </p>
       <div className="mt-auto flex flex-wrap gap-1.5 pt-1">

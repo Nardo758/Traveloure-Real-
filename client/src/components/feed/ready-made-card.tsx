@@ -23,10 +23,14 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 export function FeedReadyMadeCard({
   template,
   layout: _layout = "column",
+  density = "full",
 }: {
   template: any;
   /** Accepted for API compatibility; the ready-made tile is ALWAYS photo-left (2×1). */
   layout?: "column" | "row";
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" trims to two
+   *  mono lines; "full" (default) keeps today's facts grid + source row. */
+  density?: "full" | "compact";
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
 
@@ -45,7 +49,84 @@ export function FeedReadyMadeCard({
     .join(" · ");
   const byline = expertName ? `by ${expertName}` : destDuration;
 
-  const detailHref = `/expert-templates/${template.id}`;
+  // Traveler-facing Ready-Made card → the buyer detail page (2026-08-26-bento-
+  // compact-density). The whole card is ONE destination: body click, source row
+  // and the `Get this trip` CTA all land on /ready-made/:id (never split between
+  // the buyer page and the expert-template view). id-resolution there is a
+  // real-data matrix row.
+  const detailHref = `/ready-made/${template.id}`;
+  const ctaHref = detailHref;
+
+  // ─── Compact density ────────────────────────────────────────────────────────
+  // Two mono lines: destination · duration, then price · rating(count) · sold
+  // (§13 — each fragment omitted when absent). No New pill, no facts grid.
+  if (density === "compact") {
+    const factLine = [
+      priceDisplay,
+      rating !== null ? `★ ${rating.toFixed(1)} (${reviewCount})` : null,
+      salesCount > 0 ? `${salesCount} sold` : null,
+    ]
+      .filter((p) => p && String(p).trim().length > 0)
+      .join(" · ");
+    return (
+      <div
+        className="rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer"
+        data-testid={`feed-card-package-${template.id}`}
+        role="link"
+        tabIndex={0}
+        aria-label={`${template.title} itinerary`}
+        onClick={() => (window.location.href = detailHref)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            window.location.href = detailHref;
+          }
+        }}
+      >
+        <div className="relative overflow-hidden flex-shrink-0 flex items-center justify-center w-[40%] min-w-[120px] self-stretch bg-gradient-to-br from-teal-50 via-emerald-100 to-teal-200/70 text-teal-700">
+          {template.coverImage && (
+            <img
+              src={template.coverImage}
+              alt={template.title}
+              loading="lazy"
+              onLoad={() => setImgLoaded(true)}
+              className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+            />
+          )}
+        </div>
+        <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 self-start">
+            Ready-made
+          </span>
+          <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
+            {template.title}
+          </h3>
+          {destDuration && (
+            <div className="text-[11px] text-muted-foreground truncate" style={{ fontFamily: EARN_MONO }}>
+              {destDuration}
+            </div>
+          )}
+          {factLine && (
+            <div className="text-[11px] text-muted-foreground truncate" style={{ fontFamily: EARN_MONO }}>
+              {factLine}
+            </div>
+          )}
+          <div className="flex gap-1.5 pt-0.5 mt-auto">
+            <Button
+              size="sm"
+              className="h-7 text-xs px-3"
+              style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+              asChild
+              data-testid={`btn-view-package-${template.id}`}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            >
+              <a href={ctaHref}>Get this trip</a>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -165,7 +246,7 @@ export function FeedReadyMadeCard({
             data-testid={`btn-view-package-${template.id}`}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
-            <a href={detailHref}>View itinerary</a>
+            <a href={ctaHref}>Get this trip</a>
           </Button>
         </div>
       </div>

@@ -13,6 +13,9 @@ interface CityFeedCardExpertProps {
   city: string;
   className?: string;
   cardPosition?: number;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
 /**
@@ -22,7 +25,7 @@ interface CityFeedCardExpertProps {
  * Ask an expert outline). The CARD is the link (the expert's profile) — no
  * "More info" text link or modal.
  */
-export function CityFeedCardExpert({ expert, city, className, cardPosition }: CityFeedCardExpertProps) {
+export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full" }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
@@ -56,6 +59,98 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition }: Ci
   // Source-link ruling (2026-08-25-card-source-link): /s/:handle when a claimed
   // handle exists on the payload, else the id-based /experts/:id fallback.
   const profileHref = expert.handle ? `/s/${expert.handle}` : `/experts/${expert.id}`;
+
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // One mono meta line: from-price / ★rating(count), each omitted when absent
+  // (§13); the whole line is omitted when neither is real. Keeps View profile /
+  // Ask, the Expert corner tag, and the card-as-link navigation.
+  if (density === "compact") {
+    const metaText = [
+      fromPrice !== null ? `from $${fromPrice}` : null,
+      rating !== null ? `★ ${rating.toFixed(1)} (${reviewCount})` : null,
+    ]
+      .filter((p) => p && String(p).trim().length > 0)
+      .join(" · ");
+    return (
+      <div
+        className={cn(
+          "group rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+          className,
+        )}
+        data-testid={`feed-card-expert-${expert.id}`}
+        role="link"
+        tabIndex={0}
+        aria-label={`${name} profile`}
+        onClick={() => (window.location.href = profileHref)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            window.location.href = profileHref;
+          }
+        }}
+      >
+        {/* Compact photo band — 84px; gradient + initials fallback, Expert tag. */}
+        <div className="relative h-[84px] overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-100 to-teal-200/70 flex items-center justify-center flex-shrink-0">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={name}
+              loading="lazy"
+              onLoad={() => setImgLoaded(true)}
+              className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+            />
+          ) : (
+            <div
+              className="w-12 h-12 rounded-full bg-white/70 flex items-center justify-center text-base font-semibold text-teal-700"
+              data-testid={`expert-initials-${expert.id}`}
+            >
+              {initials}
+            </div>
+          )}
+          <span
+            className="absolute top-2 left-2 text-white text-[10px] font-medium rounded-full px-2 py-0.5"
+            style={{ background: "var(--earn-navy)" }}
+          >
+            Expert
+          </span>
+        </div>
+        <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+          <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{name}</h3>
+          {metaText && (
+            <div className="text-[11px] text-muted-foreground truncate" style={{ fontFamily: EARN_MONO }} data-testid={`expert-facts-${expert.id}`}>
+              {metaText}
+            </div>
+          )}
+          <div className="flex gap-1.5 mt-auto pt-0.5">
+            <Button
+              size="sm"
+              className="flex-1 h-7 text-xs"
+              style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.location.href = profileHref;
+              }}
+              data-testid={`btn-contact-expert-${expert.id}`}
+            >
+              View {expert.firstName || "Expert"}'s profile
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({ expertId: expert.id, city, subject: expertCity || city });
+              }}
+              data-testid={`btn-ask-expert-${expert.id}`}
+            >
+              Ask an expert
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

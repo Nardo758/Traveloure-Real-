@@ -559,8 +559,9 @@ function BentoTile({
   recLabels?: RecLabels;
 }) {
   // Anchor expert → the dark-gradient ExpertCard anchor treatment (col-span-2
-  // row-span-2 lead of the neighbourhood bento). Otherwise experts keep their
-  // compact feed card.
+  // row-span-2 lead of the neighbourhood bento) — unchanged geometry, full
+  // density. Every OTHER bento tile renders its family card at compact density
+  // (2026-08-26-bento-compact-density).
   if (isAnchor && (item.kind === "lead-expert" || item.kind === "expert")) {
     return <ExpertCard expert={item.data} variant="anchor" />;
   }
@@ -575,11 +576,12 @@ function BentoTile({
           onAdd={onAdd}
           layout={isMarquee ? "row" : "column"}
           cardPosition={cardPosition}
+          density="compact"
         />
       );
     case "expert":
     case "lead-expert":
-      return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} />;
+      return <CityFeedCardExpert expert={item.data} city={city} cardPosition={cardPosition} density="compact" />;
     case "event":
       return (
         <CityFeedCardEvent
@@ -588,6 +590,7 @@ function BentoTile({
           scheduledDate={scheduledDate}
           onAdd={onAdd}
           cardPosition={cardPosition}
+          density="compact"
         />
       );
     case "supply-hotel":
@@ -600,6 +603,7 @@ function BentoTile({
           scheduledDate={scheduledDate}
           onAdd={onAdd}
           cardPosition={cardPosition}
+          density="compact"
         />
       );
     case "vendor-service":
@@ -610,6 +614,7 @@ function BentoTile({
           cardPosition={cardPosition}
           scheduledDate={scheduledDate}
           onAdd={onAdd}
+          density="compact"
         />
       );
     case "recommendation":
@@ -625,16 +630,17 @@ function BentoTile({
           affiliateLabel={recLabels?.affiliateLabel}
           layout={isMarquee ? "row" : "column"}
           cardPosition={cardPosition}
+          density="compact"
         />
       );
     case "wanted-slot":
-      return <FeedWantedSlotCard item={item} />;
+      return <FeedWantedSlotCard item={item} density="compact" />;
     case "earn-card":
-      return <FeedEarnCard city={city} />;
+      return <FeedEarnCard city={city} density="compact" />;
     case "package":
-      return <FeedReadyMadeCard template={item.data} layout={isMarquee ? "row" : "column"} />;
+      return <FeedReadyMadeCard template={item.data} layout={isMarquee ? "row" : "column"} density="compact" />;
     case "external-stub":
-      return <CityFeedCardExternalStub stub={item.data} city={city} />;
+      return <CityFeedCardExternalStub stub={item.data} city={city} density="compact" />;
     default:
       return null;
   }
@@ -794,6 +800,8 @@ function BentoGroup({
   city,
   scheduledDate,
   floatAnchor = true,
+  seeAllHref,
+  onSeeAll,
   onAdd,
   onBookRec,
   recLabels,
@@ -803,6 +811,9 @@ function BentoGroup({
   city: string;
   scheduledDate: string | null;
   floatAnchor?: boolean;
+  /** Real URL for the See-all link (middle-click / gate-friendly); onSeeAll does the SPA nav. */
+  seeAllHref?: (slug: string) => string;
+  onSeeAll?: (slug: string) => void;
   onAdd: (item: any) => void;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
@@ -845,17 +856,26 @@ function BentoGroup({
               {heading}
             </h3>
           </div>
-          {/* The legacy "Explore {nb}" CTA folded into this link. Only
-              /discover/location/:city is registered — a neighbourhood-focused
-              view is filed; until it exists this lands on the city page. */}
-          <a
-            href={`/discover/location/${encodeURIComponent(city)}`}
-            className="shrink-0 whitespace-nowrap text-[12px] font-semibold hover:underline"
-            style={{ color: "var(--earn-navy)" }}
-            data-testid={`bento-see-all-${nbSlug}`}
-          >
-            See all in {nbName} →
-          </a>
+          {/* See-all FILTERS the feed to this section (2026-08-26-see-all-is-filter):
+              it sets ?neighborhood=<slug> on the SAME route (no new route/query key).
+              A real href backs middle-click + the hardcoded-links gate; onClick does
+              the SPA nav so browser-back clears the filter. */}
+          {nbSlug && (
+            <a
+              href={seeAllHref ? seeAllHref(nbSlug) : `/discover/location/${encodeURIComponent(city)}`}
+              onClick={(e) => {
+                if (onSeeAll) {
+                  e.preventDefault();
+                  onSeeAll(nbSlug);
+                }
+              }}
+              className="shrink-0 whitespace-nowrap text-[12px] font-semibold hover:underline"
+              style={{ color: "var(--earn-navy)" }}
+              data-testid={`bento-see-all-${nbSlug}`}
+            >
+              See all in {nbName} →
+            </a>
+          )}
         </div>
       )}
 
@@ -932,6 +952,9 @@ function FeedRenderer({
   activeFilter = "all",
   priceFilter = "any",
   sortMode = "recommended",
+  neighbourhoodFilter = null,
+  onNeighbourhoodFilter,
+  neighbourhoodHref,
   onAdd,
   onBookRec,
   recLabels,
@@ -942,6 +965,10 @@ function FeedRenderer({
   activeFilter?: string;
   priceFilter?: string;
   sortMode?: string;
+  /** Active `?neighborhood=<slug>` filter (2026-08-26-see-all-is-filter), or null. */
+  neighbourhoodFilter?: string | null;
+  onNeighbourhoodFilter?: (slug: string | null) => void;
+  neighbourhoodHref?: (slug: string | null) => string;
   onAdd: (item: any) => void;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
@@ -1037,16 +1064,9 @@ function FeedRenderer({
     })
     .filter((s) => s.type !== "group" || (s as any).taggedRun.length > 0);
 
-  const anyGroupRendered = renderedSections.some((s) => s.type === "group");
-  if (!anyGroupRendered) {
-    return (
-      <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
-        No {activeFilter.replace("_", " ")} found in {toTitleCase(city)}.
-      </p>
-    );
-  }
-
-  // Mono jump list — the neighbourhoods that actually render (drop-out aware).
+  // Mono jump list — the neighbourhoods that render under the gem/price filters
+  // (drop-out aware), computed BEFORE the neighbourhood-only narrowing so a
+  // filtered view can still list — and switch between — every neighbourhood.
   const jumpTargets = renderedSections
     .filter((s): s is GroupSection & { taggedRun: any[] } => s.type === "group" && !!s.neighbourhood)
     .map((s) => ({
@@ -1055,34 +1075,107 @@ function FeedRenderer({
     }))
     .filter((t) => t.slug && t.name);
 
+  // See-all-as-filter: when ?neighborhood=<slug> is set, render ONLY that
+  // section (and no separators). Gem/price filters still apply within it; the
+  // jump list stays visible so `All neighbourhoods` restores.
+  const nbFilterActive = !!neighbourhoodFilter && jumpTargets.some((t) => t.slug === neighbourhoodFilter);
+  const displaySections = nbFilterActive
+    ? renderedSections.filter(
+        (s) => s.type === "group" && sectionKey(s.neighbourhood) === neighbourhoodFilter,
+      )
+    : renderedSections;
+
+  const anyGroupRendered = displaySections.some((s) => s.type === "group");
+
+  const jumpNav = jumpTargets.length > 0 && (
+    <nav
+      className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]"
+      style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
+      aria-label="Jump to neighbourhood"
+      data-testid="neighbourhood-jump-list"
+      data-nb-filter={neighbourhoodFilter ?? ""}
+    >
+      {nbFilterActive && (
+        <span className="inline-flex items-center gap-1.5">
+          <a
+            href={neighbourhoodHref ? neighbourhoodHref(null) : `/discover/location/${encodeURIComponent(city)}`}
+            onClick={(e) => {
+              if (onNeighbourhoodFilter) {
+                e.preventDefault();
+                onNeighbourhoodFilter(null);
+              }
+            }}
+            className="font-semibold hover:underline hover:text-[color:var(--earn-ink)]"
+            data-testid="jump-all-neighbourhoods"
+          >
+            All neighbourhoods
+          </a>
+          <span aria-hidden>·</span>
+        </span>
+      )}
+      {jumpTargets.map((t, i) => {
+        const isActive = neighbourhoodFilter === t.slug;
+        // Under a filter each item is itself a filter link (switch sections);
+        // with no filter it is an in-page anchor scroll (Phase 2d behaviour).
+        return (
+          <span key={t.slug} className="inline-flex items-center gap-1.5">
+            {i > 0 && <span aria-hidden>·</span>}
+            {nbFilterActive ? (
+              <a
+                href={neighbourhoodHref ? neighbourhoodHref(t.slug) : `#bento-nb-${t.slug}`}
+                onClick={(e) => {
+                  if (onNeighbourhoodFilter) {
+                    e.preventDefault();
+                    onNeighbourhoodFilter(t.slug);
+                  }
+                }}
+                aria-current={isActive ? "true" : undefined}
+                className={cn(
+                  "hover:underline hover:text-[color:var(--earn-ink)]",
+                  isActive && "font-semibold text-[color:var(--earn-teal-ink)]",
+                )}
+                data-testid={`jump-${t.slug}`}
+                data-active={isActive ? "true" : "false"}
+              >
+                {t.name}
+              </a>
+            ) : (
+              <a
+                href={`#bento-nb-${t.slug}`}
+                className="hover:underline hover:text-[color:var(--earn-ink)]"
+                data-testid={`jump-${t.slug}`}
+                data-active="false"
+              >
+                {t.name}
+              </a>
+            )}
+          </span>
+        );
+      })}
+    </nav>
+  );
+
+  if (!anyGroupRendered) {
+    return (
+      <div data-testid="city-feed">
+        {jumpNav}
+        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
+          {nbFilterActive
+            ? `No ${activeFilter === "all" ? "" : activeFilter.replace("_", " ") + " "}matches in this neighbourhood.`
+            : `No ${activeFilter.replace("_", " ")} found in ${toTitleCase(city)}.`}
+        </p>
+      </div>
+    );
+  }
+
   return (
     // The jump list sits tight above the first section (the first eyebrow lands
     // within ~one search-row height of the chip rail — Phase 2d); sections keep
     // their own rhythm in the inner wrapper.
     <div data-testid="city-feed">
-      {jumpTargets.length > 0 && (
-        <nav
-          className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]"
-          style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
-          aria-label="Jump to neighbourhood"
-          data-testid="neighbourhood-jump-list"
-        >
-          {jumpTargets.map((t, i) => (
-            <span key={t.slug} className="inline-flex items-center gap-1.5">
-              {i > 0 && <span aria-hidden>·</span>}
-              <a
-                href={`#bento-nb-${t.slug}`}
-                className="hover:underline hover:text-[color:var(--earn-ink)]"
-                data-testid={`jump-${t.slug}`}
-              >
-                {t.name}
-              </a>
-            </span>
-          ))}
-        </nav>
-      )}
+      {jumpNav}
       <div className="space-y-6">
-      {renderedSections.map((section, si) => {
+      {displaySections.map((section, si) => {
         if (section.type === "city-separator") {
           return (
             <div
@@ -1107,6 +1200,8 @@ function FeedRenderer({
             city={city}
             scheduledDate={scheduledDate}
             floatAnchor={sortMode === "recommended"}
+            seeAllHref={neighbourhoodHref ? (slug) => neighbourhoodHref(slug) : undefined}
+            onSeeAll={onNeighbourhoodFilter ? (slug) => onNeighbourhoodFilter(slug) : undefined}
             onAdd={onAdd}
             onBookRec={onBookRec}
             recLabels={recLabels}
@@ -1493,6 +1588,22 @@ export default function DiscoverLocationPage() {
     next.delete("date");
     const qs = next.toString();
     navigate(`/discover/location/${cityRaw}${qs ? `?${qs}` : ""}`);
+  };
+
+  // See-all-as-filter (2026-08-26-see-all-is-filter): the active neighbourhood
+  // lives in the URL (?neighborhood=<slug>), NOT a new route — so it survives a
+  // reload and browser-back clears it. `buildNeighbourhoodHref` preserves every
+  // other param (date/country); `setNeighbourhoodFilter` navigates to it.
+  const neighbourhoodFilter = searchParams.get("neighborhood");
+  const buildNeighbourhoodHref = (slug: string | null): string => {
+    const next = new URLSearchParams(searchString);
+    if (slug) next.set("neighborhood", slug);
+    else next.delete("neighborhood");
+    const qs = next.toString();
+    return `/discover/location/${cityRaw}${qs ? `?${qs}` : ""}`;
+  };
+  const setNeighbourhoodFilter = (slug: string | null) => {
+    navigate(buildNeighbourhoodHref(slug));
   };
 
   const [activeFilter, setActiveFilter] = useState("all");
@@ -2061,6 +2172,9 @@ export default function DiscoverLocationPage() {
               activeFilter={activeFilter}
               priceFilter={priceFilter}
               sortMode={sortMode}
+              neighbourhoodFilter={neighbourhoodFilter}
+              onNeighbourhoodFilter={setNeighbourhoodFilter}
+              neighbourhoodHref={buildNeighbourhoodHref}
               onAdd={handleAdd}
               onBookRec={handleBookRecommendation}
               recLabels={{
@@ -2068,7 +2182,7 @@ export default function DiscoverLocationPage() {
                 affiliateLabel: feedConfig.affiliateLabel,
               }}
             />
-            {activeFilter === "all" && (
+            {activeFilter === "all" && !neighbourhoodFilter && (
               <TripComplementsStrip city={city} highlight={currentHighlight} />
             )}
 

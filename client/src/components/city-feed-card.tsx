@@ -123,6 +123,32 @@ function SourceRow({
   );
 }
 
+// ─── Compact-density helpers (2026-08-26-bento-compact-density) ────────────────
+// Phase 2e Part A: the "compact" bento layout replaces the 3-column FactsRow with
+// ONE mono meta line, truncates the title to a single line, and drops the photo
+// band to 84px. §13 is unchanged — every meta fragment is omitted when its field
+// is absent (joinMeta drops empty/whitespace parts), never placeholdered.
+function joinMeta(...parts: Array<string | null | undefined>): string {
+  return parts
+    .filter((p) => p && String(p).trim().length > 0)
+    .map((p) => String(p))
+    .join(" · ");
+}
+
+/** Single mono meta line for compact cards. Renders nothing when empty (§13). */
+function CompactMetaLine({ text, testid }: { text: string; testid?: string }) {
+  if (!text) return null;
+  return (
+    <div
+      className="text-[11px] text-muted-foreground truncate"
+      style={{ fontFamily: EARN_MONO }}
+      data-testid={testid}
+    >
+      {text}
+    </div>
+  );
+}
+
 /** A gem's area DISPLAY name — a real display field only (§13): `gem.neighborhood`
  *  is the slug and is never rendered; no display name ⇒ the area is omitted. */
 function gemAreaName(gem: any): string | null {
@@ -660,6 +686,9 @@ interface CityFeedCardGemProps {
   cardPosition?: number;
   /** Marquee gem inside a neighborhood container — renders a "Top pick" chip on the image. */
   topPick?: boolean;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" renders the
+   *  tighter ~200px bento tile; "full" (default) is byte-identical to today. */
+  density?: "full" | "compact";
 }
 
 export function CityFeedCardGem({
@@ -673,6 +702,7 @@ export function CityFeedCardGem({
   className,
   cardPosition,
   topPick = false,
+  density = "full",
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -911,6 +941,138 @@ export function CityFeedCardGem({
     </div>
   );
 
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // One mono meta line stands in for the facts row / body / chips; the card stays
+  // the link (opens the same details sheet). §13: score/best-for/area each omitted
+  // when absent.
+  if (density === "compact") {
+    const gemScoreStr =
+      gem.gemScore !== undefined && gem.gemScore !== null ? Number(gem.gemScore).toFixed(1) : null;
+    const metaText = joinMeta(
+      gemScoreStr,
+      bestForFace[0] ? `best for ${bestForFace[0]}` : null,
+      gemAreaName(gem),
+    );
+    return (
+      <>
+        <div
+          ref={impressionRef}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full cursor-pointer flex flex-col",
+            className,
+          )}
+          data-testid={`feed-card-gem-${gem.id}`}
+          aria-label={`${gem.placeName} details`}
+          {...cardLinkProps(() => setSheetOpen(true))}
+        >
+          {/* Compact photo band — 84px; kind gradient + Hidden gem corner tag only. */}
+          <div
+            className={cn(
+              "relative overflow-hidden flex-shrink-0 flex items-center justify-center h-[84px] w-full",
+              typeMeta.phGrad,
+              typeMeta.phText,
+            )}
+          >
+            {!loading && photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={gem.placeName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn(
+                  "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+                  imgLoaded ? "opacity-100" : "opacity-0",
+                )}
+              />
+            )}
+            <span
+              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+              style={{ fontFamily: EARN_MONO }}
+              data-testid={`gem-hidden-tag-${gem.id}`}
+            >
+              Hidden gem
+            </span>
+            {topPick && (
+              <span
+                className="absolute top-2 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
+                data-testid={`gem-top-pick-${gem.id}`}
+              >
+                Top pick
+              </span>
+            )}
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
+              {gem.placeName}
+            </h3>
+            <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              {resolvedBookability !== "info_only" && bookHref && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={BOOK_BTN_STYLE}
+                  asChild
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const impId = getImpressionId();
+                    fetch("/api/affiliates/track", {
+                      method: "POST",
+                      keepalive: true,
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
+                    }).catch(() => {});
+                  }}
+                >
+                  <a href={bookHref}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd?.({
+                    title: gem.placeName,
+                    description: gem.description,
+                    city,
+                    type: "gem",
+                    scheduledDate,
+                    sourceImpressionId: getImpressionId(),
+                    sourceContentId: gem.id,
+                  });
+                }}
+                data-testid={`btn-add-gem-${gem.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
+              </Button>
+              {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
+              {!(resolvedBookability !== "info_only" && bookHref) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    askExpert({ city, subject: gem.placeName });
+                  }}
+                  data-testid={`btn-ask-gem-${gem.id}`}
+                >
+                  Ask an expert
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} />
+      </>
+    );
+  }
+
   return (
     <>
       <div
@@ -941,9 +1103,12 @@ interface CityFeedCardEventProps {
   onAdd?: (item: any) => void;
   className?: string;
   cardPosition?: number;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
-export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardEventProps) {
+export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardEventProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -981,6 +1146,120 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     : (event.priceRange || event.minPrice)
       ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-gray-100 text-gray-600" data-testid={`event-price-${event.id}`}>{event.priceRange ?? `From $${event.minPrice}`}</span>
       : null;
+
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // §13: date short (e.g. "Mar 12"); second fragment is venue when present, else
+  // price; each omitted when absent. Keeps the Tickets/Add/Ask action row.
+  if (density === "compact") {
+    const dateStr = event.date
+      ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : null;
+    const venueStr = event.venueName ? String(event.venueName) : null;
+    const priceStr = event.isFree
+      ? "Free"
+      : event.priceRange ?? (event.minPrice ? `From $${event.minPrice}` : null);
+    const metaText = joinMeta(dateStr, venueStr ?? priceStr);
+    return (
+      <>
+        <div
+          ref={impressionRefEvt}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+            className,
+          )}
+          data-testid={`feed-card-event-${event.id ?? event.eventId}`}
+          aria-label={`${eventName} details`}
+          {...cardLinkProps(() => setSheetOpen(true))}
+        >
+          <div className="h-[84px] relative overflow-hidden bg-gradient-to-br from-pink-50 via-pink-100 to-pink-200/70 flex items-center justify-center text-pink-600 flex-shrink-0">
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={eventName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+              />
+            )}
+            <span
+              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-pink-50 text-pink-700"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              Event
+            </span>
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{eventName}</h3>
+            <CompactMetaLine text={metaText} testid={`event-facts-${event.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              {event.url && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={{ background: "var(--earn-gold-ink)", color: "#fff", border: "none" }}
+                  asChild
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const impId = getImpIdEvt();
+                    fetch("/api/affiliates/track", {
+                      method: "POST",
+                      keepalive: true,
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ partner: "discover-event", destination: city, contentType: "event", contentId: String(event.id), impressionId: impId }),
+                    }).catch(() => {});
+                  }}
+                >
+                  <a href={event.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Tickets
+                  </a>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd?.({
+                    title: eventName,
+                    city,
+                    type: "event",
+                    scheduledDate,
+                    sourceImpressionId: getImpIdEvt(),
+                    sourceContentId: String(event.id ?? event.eventId ?? ""),
+                  });
+                }}
+                data-testid={`btn-add-event-${event.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
+              </Button>
+              {/* Compact = exactly two buttons: Tickets IS the book action, so Ask
+                  shows ONLY when there is no ticket url. */}
+              {!event.url && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    askExpert({ city, subject: eventName });
+                  }}
+                  data-testid={`btn-ask-event-${event.id}`}
+                >
+                  Ask an expert
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -1126,9 +1405,12 @@ interface CityFeedCardVendorServiceProps {
   cardPosition?: number;
   scheduledDate?: string | null;
   onAdd?: (item: any) => void;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
-export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd }: CityFeedCardVendorServiceProps) {
+export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full" }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
@@ -1177,6 +1459,97 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
   const includedFace: string[] = Array.isArray(service.whatIncluded)
     ? (service.whatIncluded as string[]).slice(0, 2)
     : [];
+
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // §13: price / ★rating each omitted when absent. Keeps Book/Add/Globe/Ask.
+  if (density === "compact") {
+    const ratingStr = service.averageRating ? `★ ${Number(service.averageRating).toFixed(1)}` : null;
+    const metaText = joinMeta(priceDisplay, ratingStr);
+    return (
+      <>
+        <div
+          ref={impressionRefVendor}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+            className,
+          )}
+          data-testid={`feed-card-vendor-svc-${service.id}`}
+          aria-label={`${service.serviceName} listing`}
+          {...cardLinkProps(() => (window.location.href = `/services/${service.id}`))}
+        >
+          <div className="h-[84px] relative overflow-hidden bg-gradient-to-br from-teal-50 via-teal-100 to-teal-200/70 flex items-center justify-center text-teal-600 flex-shrink-0">
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={service.serviceName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+              />
+            )}
+            <span
+              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-teal-50 text-teal-700 capitalize"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {tag}
+            </span>
+            {service.isFeatured && (
+              <span className="absolute top-2 right-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
+                Featured
+              </span>
+            )}
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
+            <CompactMetaLine text={metaText} testid={`svc-facts-${service.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              {resolvedBookability !== "info_only" && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={BOOK_BTN_STYLE}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.location.href = `/services/${service.id}`;
+                  }}
+                  data-testid={`btn-book-svc-${service.id}`}
+                >
+                  {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
+                </Button>
+              )}
+              {onAdd && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs px-3"
+                  style={ADD_BTN_STYLE}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAdd({
+                      title: service.serviceName,
+                      description: service.shortDescription,
+                      city,
+                      type: "service",
+                      scheduledDate,
+                      sourceImpressionId: getImpIdVendor(),
+                      sourceContentId: String(service.id),
+                    });
+                  }}
+                  data-testid={`btn-add-svc-${service.id}`}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add to trip
+                </Button>
+              )}
+              {/* Compact = exactly two buttons (Book + Add): the Globe/website and
+                  Ask buttons are dropped here; their full-density counterparts stay. */}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -1347,9 +1720,12 @@ interface CityFeedCardSupplyProps {
   onAdd?: (item: any) => void;
   className?: string;
   cardPosition?: number;
+  /** Phase 2e Part A (2026-08-26-bento-compact-density): "compact" bento tile;
+   *  "full" (default) renders byte-identical to today. */
+  density?: "full" | "compact";
 }
 
-export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition }: CityFeedCardSupplyProps) {
+export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full" }: CityFeedCardSupplyProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -1392,6 +1768,102 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
   const reviewCountLabel = item.reviewCount
     ? ` · ${Number(item.reviewCount).toLocaleString()} reviews`
     : "";
+
+  // ─── Compact density (2026-08-26-bento-compact-density) ─────────────────────
+  // §13: price / ★rating each omitted when absent. Card opens the details sheet
+  // (where the tracked partner outbound lives — F6/§16). Add + Ask action row.
+  if (density === "compact") {
+    const ratingStr = item.rating ? `★ ${item.rating}` : null;
+    const metaText = joinMeta(priceText, ratingStr);
+    return (
+      <>
+        <div
+          ref={impressionRefSupply}
+          className={cn(
+            "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow flex flex-col h-full cursor-pointer",
+            className,
+          )}
+          data-testid={`feed-card-${kind}-${item.id}`}
+          aria-label={`${itemName} details`}
+          {...cardLinkProps(() => setSheetOpen(true))}
+        >
+          <div
+            className={cn(
+              "h-[84px] relative overflow-hidden flex items-center justify-center flex-shrink-0",
+              isHotel
+                ? "bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200/70 text-blue-600"
+                : "bg-gradient-to-br from-amber-50 via-amber-100 to-amber-200/70 text-amber-700",
+            )}
+          >
+            {photoUrl && (
+              <img
+                src={photoUrl}
+                srcSet={srcSet}
+                sizes={sizes}
+                alt={itemName}
+                loading="lazy"
+                onLoad={() => setImgLoaded(true)}
+                className={cn("absolute inset-0 w-full h-full object-cover transition-opacity duration-300", imgLoaded ? "opacity-100" : "opacity-0")}
+              />
+            )}
+            <span
+              className={cn(
+                "absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                isHotel ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-800",
+              )}
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {isHotel ? "Hotel" : "Activity"}
+            </span>
+          </div>
+          <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{itemName}</h3>
+            <CompactMetaLine text={metaText} testid={`supply-facts-${item.id}`} />
+            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                style={ADD_BTN_STYLE}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd?.({
+                    title: itemName,
+                    city,
+                    type: isHotel ? "hotel" : "activity",
+                    scheduledDate,
+                    sourceImpressionId: getImpIdSupply(),
+                    sourceContentId: String(item.id ?? ""),
+                  });
+                }}
+                data-testid={`btn-add-supply-${item.id}`}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askExpert({ city, subject: itemName });
+                }}
+                data-testid={`btn-ask-supply-${item.id}`}
+              >
+                Ask an expert
+              </Button>
+            </div>
+          </div>
+        </div>
+        <MoreInfoSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          cardType="supply"
+          data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
+        />
+      </>
+    );
+  }
 
   return (
     <>

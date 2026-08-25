@@ -18,7 +18,10 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
-export function FeedWantedSlotCard({ item }: { item: FeedItem }) {
+// Phase 2e Part A (2026-08-26-bento-compact-density): `density` is accepted so the
+// bento call site can pass it uniformly. This panel already meets the compact spec
+// (~200px, descriptive copy at line-clamp-2), so full and compact render the same.
+export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" | "compact" }) {
   const askExpert = useAskExpert();
   const {
     offeringLabel,
