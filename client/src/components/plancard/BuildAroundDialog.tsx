@@ -228,8 +228,8 @@ export function BuildAroundDialog({
                     aria-pressed={selected}
                     className={`flex min-h-16 items-center gap-2.5 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)] focus-visible:ring-offset-2 min-[430px]:flex-col min-[430px]:items-start ${
                       selected
-                        ? "border-[color:var(--earn-coral-border)] bg-[var(--earn-coral-bg)] text-[color:var(--earn-coral-ink)]"
-                        : "border-[color:var(--earn-border)] text-[color:var(--earn-ink)] hover:border-[color:var(--earn-coral-border)]"
+                        ? "border-[color:var(--earn-teal)] bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                        : "border-[color:var(--earn-border)] text-[color:var(--earn-ink)] hover:border-[color:var(--earn-teal)]"
                     }`}
                     data-testid={`build-around-type-${type}`}
                   >

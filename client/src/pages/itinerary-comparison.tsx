@@ -903,7 +903,13 @@ export default function ItineraryComparisonPage() {
     });
   };
 
-  const { data, isLoading, refetch } = useQuery<ComparisonData>({
+  const {
+    data,
+    isLoading,
+    isError: isComparisonReadError,
+    error: comparisonReadError,
+    refetch,
+  } = useQuery<ComparisonData>({
     queryKey: ["/api/itinerary-comparisons", id],
     enabled: !!id && !!user,
     refetchInterval: (query) => {
@@ -1222,6 +1228,38 @@ export default function ItineraryComparisonPage() {
   if (!user) {
     setLocation("/api/login");
     return null;
+  }
+
+  const comparisonReadForbidden =
+    isComparisonReadError &&
+    comparisonReadError instanceof Error &&
+    /^403:/.test(comparisonReadError.message);
+
+  if (comparisonReadForbidden) {
+    return (
+      <div
+        className="itinerary-comparison-page mx-auto flex min-h-[50vh] max-w-2xl items-center justify-center p-6"
+        data-testid="comparison-access-denied"
+      >
+        <Card className="w-full border-destructive/50 bg-destructive/5">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="mx-auto mb-4 h-12 w-12 text-destructive" />
+            <h1 className="mb-2 text-xl font-semibold">You don&apos;t have access to this optimization review</h1>
+            <p className="mb-6 text-muted-foreground">
+              This review may belong to another account, or you may no longer have permission to view it.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/my-trips")}
+              data-testid="button-back-to-my-plans"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to My plans
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const isGenerating = data?.comparison?.status === "generating";
@@ -1747,7 +1785,10 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div
+                  className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-4 mb-4"
+                  data-testid="review-proposal-grid"
+                >
                   {specColumns.slice(0, 4).map((variant, index) => (
                     <ProposalColumnContainer
                       key={variant.id}
@@ -1863,7 +1904,7 @@ export default function ItineraryComparisonPage() {
             {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
                 slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
             {!slipTripId && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-6 mb-6">
               {/* Skeleton for user variant if still loading */}
               {isGenerating && !userVariant && (
                 <Card className="border-dashed opacity-80">
