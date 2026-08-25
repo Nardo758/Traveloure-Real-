@@ -380,8 +380,8 @@ export default function StorefrontPage() {
   const eyebrowLabel = isProviderRole(earner.role) ? "Service provider storefront" : "Local expert storefront";
   const verifiedLabel = isProviderRole(earner.role) ? "Verified business" : "Identity verified";
   const storefrontTitle = isProviderRole(earner.role)
-    ? `${earner.name} — Book local services | Traveloure`
-    : `${earner.name} — Book local experiences | Traveloure`;
+    ? `${earner.name} — Book local services`
+    : `${earner.name} — Book local experiences`;
   const storefrontDescription = isProviderRole(earner.role)
     ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${earner.name} on Traveloure. Secure checkout, verified reviews.`
     : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
@@ -419,6 +419,8 @@ export default function StorefrontPage() {
       <SEOHead
         title={storefrontTitle}
         description={storefrontDescription}
+        url={`/s/${earner.handle}`}
+        type="profile"
       />
 
       {/* Minimal branded header (standalone page, no site chrome) — same idiom as the
