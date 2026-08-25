@@ -14,7 +14,7 @@
  *   3. /experts?role=event_planner           (Wine masthead — seeds have 0, so this
  *                                              captures the empty state, a real proof)
  *   4. first /experts/:id                    (open-card profile)
- *   5. /s/kansai-bizlang                      (storefront money page)
+ *   5. /s/test-provider-qa                    (storefront money page)
  *   6. /providers                             (Service Providers directory)
  *   7. desktop nav, FIND HELP dropdown open  (leaf icons from NAV_LEAF_ICONS)
  *   8. mobile nav (375px), menu open          (same icon source, mobile sheet)
@@ -75,9 +75,9 @@ test.describe("earn-grammar captures", () => {
     await shot(page, "expert-detail");
   });
 
-  test("storefront — kansai-bizlang", async ({ page }) => {
-    await settle(page, "/s/kansai-bizlang");
-    await shot(page, "storefront-kansai-bizlang");
+  test("storefront — test-provider-qa", async ({ page }) => {
+    await settle(page, "/s/test-provider-qa");
+    await shot(page, "storefront-test-provider-qa");
   });
 
   test("providers directory", async ({ page }) => {

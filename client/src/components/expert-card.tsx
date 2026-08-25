@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
+import { formatExpertResponseTime } from "@/lib/expert-response-time";
 
 // Continuity tokens — the same values as artifacts/mockup-sandbox's
 // _shared/continuity.css :root and the action-grammar mock's own badge tints
@@ -131,7 +132,9 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery }: Expert
     : expert.expertForm?.destinations?.[0] || null;
 
   const languages = expert.expertForm?.languages || [];
-  const responseTime = expert.responseTime || expert.expertForm?.responseTime || null;
+  const responseTime = formatExpertResponseTime(
+    expert.responseTime || expert.expertForm?.responseTime,
+  );
   const expertRating: number | null =
     typeof expert.expertRating === "number" ? expert.expertRating : null;
   const reviewsCount = (expert.expertReviewCount ?? expert.reviewsCount) || null;
