@@ -996,6 +996,20 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
 
   const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
 
+  // A vendor-service is a real provider_services row: it books in-app on
+  // /services/:id through the audited /api/checkout rail, so its native booking
+  // signal is its own id. resolveBookability (@shared/bookability) is the single
+  // source of truth — native for a platform service, deeplink only when it is
+  // affiliate-sourced supply carrying an off-site link. This ONE value drives the
+  // badge AND the action row, so a "Not bookable" badge can never sit beside a live
+  // "Book" button (§13). The earlier `resolveBookability({ externalUrl })` badge
+  // ignored the native id and mislabelled every link-less platform service.
+  const resolvedBookability: Bookability = resolveBookability({
+    ...service,
+    providerServiceId: service.id,
+    externalUrl,
+  });
+
   const tag: string = (() => {
     const tags: string[] = service.contentAffinityTags ?? [];
     if (tags.length > 0) return tags[0];
@@ -1047,9 +1061,6 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               <Tag className="w-8 h-8 text-primary/40" />
             </div>
           )}
-          <span className="absolute top-2 right-2 bg-black/60 rounded-full px-2 py-0.5 flex items-center gap-1">
-            <BookingBadge level={resolveBookability({ externalUrl })} />
-          </span>
           {service.isFeatured && (
             <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5">
               Featured
@@ -1067,7 +1078,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700 capitalize">
               {tag}
             </span>
-            <BookingBadge level="native" />
+            <BookingBadge level={resolvedBookability} />
           </div>
 
           <div className="flex items-start justify-between gap-2">
@@ -1109,17 +1120,22 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
           )}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-            {/* Native on-site booking: the card is badged "Book on Traveloure", so the
-                primary CTA is a real Book that lands on the service detail page (date/time
-                picker → cart → the audited /api/checkout rail), not an "Inquire". */}
-            <Button
-              size="sm"
-              className="h-7 text-xs px-3"
-              onClick={() => (window.location.href = `/services/${service.id}`)}
-              data-testid={`btn-book-svc-${service.id}`}
-            >
-              Book
-            </Button>
+            {/* Three-state action row (§13, card-family grammar): the Book CTA is shown
+                only when the resolved bookability is bookable, and its label follows the
+                state — native → "Book", deeplink → "Reserve". The CTA always lands on the
+                in-app service detail page (date/time picker → cart → the audited
+                /api/checkout rail); it never hops off-site (§16). An info_only service
+                shows no Book button — only Ask / More info remain, matching the gem card. */}
+            {resolvedBookability !== "info_only" && (
+              <Button
+                size="sm"
+                className="h-7 text-xs px-3"
+                onClick={() => (window.location.href = `/services/${service.id}`)}
+                data-testid={`btn-book-svc-${service.id}`}
+              >
+                {resolvedBookability === "deeplink" ? "Reserve" : "Book"}
+              </Button>
+            )}
             {externalUrl && (
               <Button
                 size="sm"
