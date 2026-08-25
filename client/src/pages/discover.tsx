@@ -1828,7 +1828,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         </section>
 
         {/* Earn on Traveloure — the Apply-to-Earn funnel, always rendered below the
-            surface content. Role-gated: experts see "create a template", everyone
+            surface content. Role-gated: experts see "build a store trip", everyone
             else sees "become an expert". */}
         <section className="py-16 border-t">
           <div className="container mx-auto px-4 max-w-4xl text-center">
@@ -1842,7 +1842,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
             <div className="flex flex-wrap justify-center gap-4">
               {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
                 <Link href="/expert/workspace">
-                  <Button size="lg" className="px-8" data-testid="button-create-first-template">
+                  <Button size="lg" className="px-8" data-testid="button-build-store-trip">
                     Build a store trip in the Workstation
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
