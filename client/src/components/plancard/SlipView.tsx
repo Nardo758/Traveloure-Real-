@@ -38,7 +38,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-import { createComparison } from "@/lib/create-comparison";
+import {
+  createComparison,
+  type ComparisonPinnedAnchor,
+} from "@/lib/create-comparison";
 import {
   confirmOptimizationPayment,
   requestOptimizationGate,
@@ -64,6 +67,7 @@ import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { MapControlCenter } from "./MapControlCenter";
+import { BuildAroundDialog } from "./BuildAroundDialog";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -573,6 +577,8 @@ function SlipActions({
   const [optimizing, setOptimizing] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
+  const [buildAroundOpen, setBuildAroundOpen] = useState(false);
+  const confirmedPinnedAnchorRef = useRef<ComparisonPinnedAnchor | undefined>(undefined);
 
   const optimizableCount = countOptimizableItems(activities);
   const optimizeDisabledReason = slipOptimizeDisabledReason({
@@ -584,7 +590,10 @@ function SlipActions({
 
   // Guarded by optimizeDisabledReason: destination/dates are real trip fields here, never
   // invented (§13) — the action is disabled until they exist.
-  async function runComparison(optimizationPaymentId?: string) {
+  async function runComparison(
+    optimizationPaymentId?: string,
+    pinnedAnchor?: ComparisonPinnedAnchor,
+  ) {
     setCreatingComparison(true);
     try {
       const comparison = await createComparison({
@@ -595,6 +604,7 @@ function SlipActions({
         ...(trip.travelers ? { travelers: trip.travelers } : {}),
         tripId: trip.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
+        ...(pinnedAnchor ? { pinnedAnchor } : {}),
       });
       // REVIEW-FIRST (ledger 2026-08-22-slip-optimize-review-first, decision-maker ratified):
       // a slip-originated optimization lands as a PROPOSAL the traveler reviews — money saved,
@@ -610,6 +620,11 @@ function SlipActions({
 
   async function handleOptimize() {
     if (optimizing || creatingComparison || optimizeDisabledReason) return;
+    setBuildAroundOpen(true);
+  }
+
+  async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
+    if (optimizing || creatingComparison || optimizeDisabledReason) return;
     setOptimizing(true);
     try {
       const outcome = await requestOptimizationGate({
@@ -617,6 +632,7 @@ function SlipActions({
         destination: trip.destination || undefined,
       });
       if (outcome.kind === "refused") {
+        confirmedPinnedAnchorRef.current = undefined;
         // Fix #971's pre-flight — surface the server's own reason, never swallowed.
         toast({
           title: "Nothing to optimize yet",
@@ -628,7 +644,8 @@ function SlipActions({
       }
       if (outcome.kind === "free_rerun") {
         // 24h free re-run (server-side canRunOptimizer) — nothing to charge.
-        await runComparison();
+        await runComparison(undefined, pinnedAnchor);
+        confirmedPinnedAnchorRef.current = undefined;
         return;
       }
       if (outcome.kind === "payment_sheet") {
@@ -640,16 +657,18 @@ function SlipActions({
         title: "Couldn't start optimization",
         description: err?.message || "Please try again",
       });
+      confirmedPinnedAnchorRef.current = undefined;
     } finally {
       setOptimizing(false);
     }
   }
 
   async function handleSheetSuccess(paymentIntentId: string) {
+    const pinnedAnchor = confirmedPinnedAnchorRef.current;
     setPaySheet(null);
     try {
       await confirmOptimizationPayment(paymentIntentId);
-      await runComparison(paymentIntentId);
+      await runComparison(paymentIntentId, pinnedAnchor);
     } catch (err: any) {
       // Payment went through but the comparison didn't build — the server's 24h free
       // re-run window covers the retry, so say so honestly instead of a dead generic.
@@ -658,6 +677,8 @@ function SlipActions({
         title: "Failed to generate itinerary",
         description: err?.message || "Your payment is recorded — try Optimize again (free re-run).",
       });
+    } finally {
+      confirmedPinnedAnchorRef.current = undefined;
     }
   }
 
@@ -748,9 +769,28 @@ function SlipActions({
           </Button>
         </span>
       )}
+      <BuildAroundDialog
+        open={buildAroundOpen}
+        tripId={trip.id}
+        busy={optimizing || creatingComparison}
+        onOpenChange={setBuildAroundOpen}
+        onConfirm={(pinnedAnchor) => {
+          confirmedPinnedAnchorRef.current = pinnedAnchor;
+          setBuildAroundOpen(false);
+          void startOptimization(pinnedAnchor);
+        }}
+      />
       {/* A1 payment sheet — the same StripeCheckout surface cart.tsx mounts for this fee,
           in a dialog. The fee amount shown comes from the server-created PaymentIntent. */}
-      <Dialog open={!!paySheet} onOpenChange={(open) => { if (!open) setPaySheet(null); }}>
+      <Dialog
+        open={!!paySheet}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPaySheet(null);
+            confirmedPinnedAnchorRef.current = undefined;
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Pay optimization fee</DialogTitle>
@@ -765,7 +805,10 @@ function SlipActions({
               bookingIds={[]}
               onSuccess={handleSheetSuccess}
               onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
-              onCancel={() => setPaySheet(null)}
+              onCancel={() => {
+                setPaySheet(null);
+                confirmedPinnedAnchorRef.current = undefined;
+              }}
             />
           )}
         </DialogContent>

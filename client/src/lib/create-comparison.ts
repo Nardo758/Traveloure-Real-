@@ -16,6 +16,14 @@ export interface ComparisonBaselineItem {
   description?: string;
 }
 
+export type ComparisonPinnedAnchorType = "hotel" | "neighborhood" | "activity";
+
+export interface ComparisonPinnedAnchor {
+  type: ComparisonPinnedAnchorType;
+  id?: string;
+  name?: string;
+}
+
 export interface CreateComparisonOptions {
   /** Falls back server-side to "My Itinerary Comparison" when omitted. */
   title?: string;
@@ -32,6 +40,8 @@ export interface CreateComparisonOptions {
   budget?: string;
   /** Proof that a paid (or free-re-run-eligible) optimization run authorizes the AI call. */
   optimizationPaymentId?: string;
+  /** Confirmed "build around this location" choice. Omitted means optimizer auto-anchor mode. */
+  pinnedAnchor?: ComparisonPinnedAnchor;
 }
 
 export interface CreateComparisonResult {
@@ -46,9 +56,7 @@ export interface CreateComparisonResult {
  * (sessionStorage baseline seeding, navigation, ?autoApply query param, etc.) — this helper
  * only centralizes the request itself.
  */
-export async function createComparison(
-  options: CreateComparisonOptions,
-): Promise<CreateComparisonResult> {
+export function buildCreateComparisonPayload(options: CreateComparisonOptions) {
   const {
     title,
     tripId,
@@ -61,9 +69,10 @@ export async function createComparison(
     travelers,
     budget,
     optimizationPaymentId,
+    pinnedAnchor,
   } = options;
 
-  const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+  return {
     title,
     destination,
     startDate,
@@ -75,7 +84,18 @@ export async function createComparison(
     ...(userExperienceId ? { userExperienceId } : {}),
     ...(experienceTypeSlug ? { experienceTypeSlug } : {}),
     ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
-  });
+    ...(pinnedAnchor ? { pinnedAnchor } : {}),
+  };
+}
+
+export async function createComparison(
+  options: CreateComparisonOptions,
+): Promise<CreateComparisonResult> {
+  const response = await apiRequest(
+    "POST",
+    "/api/itinerary-comparisons",
+    buildCreateComparisonPayload(options),
+  );
 
   return response.json();
 }
