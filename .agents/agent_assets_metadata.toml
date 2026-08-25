@@ -82,10 +82,3 @@ uri = "file://reports/rohit-daily-report-2026-08-23.md"
 type = "text"
 title = "Rohit Daily Work Report — August 23, 2026"
 description = "Repository-based report covering work completed, defects fixed, and tests or verification recorded for yesterday."
-
-[[outputs]]
-id = "_l5pP5mbycsronO11FYHc"
-uri = "file://reports/rohit-daily-report-2026-08-24.md"
-type = "text"
-title = "Rohit Daily Testing and Fix Report — August 24, 2026"
-description = "Detailed evidence-based report of what was tested, what was found, what was fixed, verification results, and remaining decisions."

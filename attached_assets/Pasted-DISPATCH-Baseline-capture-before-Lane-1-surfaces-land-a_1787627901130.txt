@@ -1,0 +1,53 @@
+DISPATCH — Baseline capture before Lane 1 surfaces land
+
+audited@c635e3d · lane: baseline-capture · agent: Replit · read-only, no writes, no commits, no branch switching
+
+Locked
+2026-08-24-client-tree-canonical; artifacts read-only.
+Hard stop = no git commit. Auto-commits are reset at Phase 0.
+Replit checkout stays on main. Lane 1 lives on claude/new-session-i39ogn and is not checked out here until told.
+Attachments and screenshots are not committed. Captures go to /tmp/baseline/ only.
+Purpose
+
+Record the "before" state of the four Marketplace surfaces and the service detail page on main, so Lane 1's per-surface proofs have something to be compared against. This is observation, not testing.
+
+Phase 0
+git fetch origin
+git status -sb
+git reset --hard origin/main      # only if [ahead N] or dirty
+git rev-parse HEAD                # expect c635e3d
+
+Confirm docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md and the mock exist at HEAD (ls docs/design | grep -i earn). Restart the root Start application workflow. Report.
+
+Phase 1 — captures (root preview, port 5000)
+
+Full-page, 1280 wide, saved to /tmp/baseline/<name>.png. Report each file's dimensions, nothing else.
+
+Capture	URL	Also record
+nav-desktop	/ with Experts & Services open	four labels in DOM order
+nav-mobile	/ at 390 wide, menu open	icons per FIND HELP item (name the lucide glyph if inspectable)
+services	/services?location=Kyoto	result count text; first three card titles
+ready-made	/ready-made	chip labels + counts; first shelf heading
+events	/events	whether empty state or list
+destinations	/destinations	first four city names; primary button label on the first card
+service-detail	first /services/:id from the services list	price shown; buy-panel button labels top to bottom
+ready-made-detail	/ready-made/osaka-rmt-test-00000000000001	title, price (reference — already rebuilt)
+
+Plus three API reads (report raw first 200 chars):
+
+/api/health
+/api/discover?location=Kyoto — does any row carry providerRole? (expect no — Lane 1 adds it)
+/api/experts/counts
+Phase 2 — report
+
+One table: capture name, dimensions, the "also record" fields. Then git status -sb proving nothing changed. HARD STOP. No further action.
+
+What Not To Do
+Do not check out or fetch the lane branch into the working tree.
+Do not edit any file, including replit.md.
+Do not run npm run build, migrations, or seeds.
+Do not compare against the mock or offer opinions on the pages — Lane 1 owns that.
+Do not save captures anywhere under the repo.
+After this
+
+When Lane 1 Phase 2 commits its services surface, a two-line follow-up dispatch will have this checkout fetch claude/new-session-i39ogn into a separate worktree, run the same capture for /services, and report the diff. Not before.
