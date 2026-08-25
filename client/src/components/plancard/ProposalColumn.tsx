@@ -93,7 +93,15 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
             data-testid={`proposal-anchor-${proposal.testId ?? proposal.variantId}`}
           >
             <Anchor className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{proposal.anchorLine}</span>
+            <span
+              title={
+                proposal.anchorLine.includes(" min median")
+                  ? "Estimated walking time from straight-line distance at 80 m/min"
+                  : undefined
+              }
+            >
+              {proposal.anchorLine}
+            </span>
           </div>
         )}
       </CardHeader>
