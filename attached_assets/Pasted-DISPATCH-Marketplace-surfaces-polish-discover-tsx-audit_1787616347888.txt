@@ -1,0 +1,57 @@
+DISPATCH — Marketplace surfaces polish (discover.tsx)
+
+audited@f06356f7 · lane: discover-polish · branch lane/discover-polish from origin/main · one agent, one lane
+
+Locked rulings (do not relitigate)
+2026-08-24-client-tree-canonical: write target is client/src/pages/discover.tsx only. artifacts/traveloure/src/pages/discover.tsx and marketplace-field-guide.css are read-only transcription references.
+2026-08-23-marketplace-ungroup: four pinned surfaces (travelpulse/packages/events/services), no tab bar, ?tab= ignored.
+2026-08-25-discover-shell-removed: legacy !surface mode, ?tab= handling, and articles tab are deleted. /discover stays redirect-only.
+2026-08-25-discover-transcribe-in-place: no file split. ServiceCard and ReadyMadeThemeCard stay in the file.
+Styling grammar is Tailwind + Shadcn + existing CSS variables. No .css file is created or imported. Artifacts' .marketplace-field-guide, --full, --delicate rules are re-expressed as utility classes or, if reused across surfaces, as cn() class constants at the top of the file.
+Every query, mutation, useAuth branch, expert-handoff param, cart action, comparison action, and all 66 data-testid values in the production file are preserved verbatim. Money handlers untouched.
+Display order ≠ recommendation quality: no reordering of results for monetization.
+Behavioral proof in the root preview (port 5000) on real dev data, per surface. "Renders" is not a pass.
+Phase 0 — read-only
+git status -sb clean at f06356f7; branch created from origin/main.
+Diff the two discover.tsx files; categorize every hunk as: structure/copy (transcribe), styling (re-express in Tailwind), behavior (do not transcribe — flag), legacy shell (delete). Report counts per category and list every behavior hunk with line refs.
+List the 66 prod testids. List any testid present in artifacts but not prod — report, do not add.
+Read marketplace-field-guide.css (236 lines); produce the Tailwind mapping table: each artifacts class → utility string or class constant. Flag anything that needs a new CSS variable (should be none — brand tokens already exist).
+Confirm SURFACE_META shape difference: artifacts uses icon (lucide), prod uses emoji. Report which the ratified masthead band (artifact 5c827895, cited in prod comment) specifies.
+
+HARD STOP. Report. Open decision for Leon: emoji vs lucide icon in the masthead.
+
+Phase 1 — delete legacy shell (on "go")
+
+Remove every !surface branch, selectedTab state, urlTab effect, TabsList/TabsTrigger, the articles TabsContent, and now-unused imports. surface becomes required in the component signature. /discover route unchanged.
+
+Gates: tsc new-error count 0 against baseline; all four surface routes render in root preview; all 66 testids still present (grep -c per id). Report diff stat.
+
+HARD STOP.
+
+Phase 2 — transcribe, one surface per commit (on "go")
+
+Order: services → packages → travelpulse → events. For each:
+
+Apply structure/copy hunks from Phase 0.2.
+Apply styling per the Phase 0.4 mapping.
+Per-surface proof in root preview, captured to docs/design/discover-polish/<surface>-ROOTPREVIEW.png (one file each, nothing else committed under docs/design/):
+services: search narrows results; category filter narrows; add-to-cart on a real service updates /api/cart; compare action creates a comparison; card click lands on /services/:id.
+packages: theme shelves render from /api/ready-made with real titles and prices (no placeholders — gate landed at e225038e); expert templates shelf renders; card click → /ready-made/:id.
+travelpulse: CityGrid renders; city click → /discover/location/:city; ?showExperts=true&destination=… handoff still surfaces matched experts.
+events: events list renders; empty state renders correctly if dev DB has none (report which).
+After each surface: tsc 0 new; testid count 66; commit feat(discover): <surface> surface to continuity design.
+
+HARD STOP after each surface. Leon reviews the capture before "go" on the next.
+
+Phase 3 — close
+
+Ledger the two rulings above with [advisory]. FOLLOWUPS.md: split discover.tsx per surface; any behavior hunks from Phase 0.2 that were flagged; any artifacts-only testids.
+
+What Not To Do
+No edits outside client/src/pages/discover.tsx except: removing dead imports there, and docs/. If a change seems to need App.tsx, CityGrid, or any shared component — stop and report.
+No .css imports. No @import. No style= blocks copied from artifacts.
+No new API calls, no changed query keys, no changed mutation payloads.
+No "while I'm here" fixes to ServiceCard behavior, cart logic, or the expert handoff.
+Do not touch artifacts/.
+Do not commit screenshots outside the four named captures.
+Do not push without "commit". If the platform auto-commits, amend the message before the first push.
