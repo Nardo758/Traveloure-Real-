@@ -23,6 +23,8 @@
  * where it's allowed (map annotation / day-km legend) and is deliberately not modelled here.
  */
 
+import { estWalkMinutes } from "@shared/geo";
+
 /** The one leg field these helpers read (kept import-free so the tests need no page types). */
 export interface PreviewLegLike {
   estimatedDurationMinutes?: number | null;
@@ -47,6 +49,62 @@ export function parseTotal(value: string | number | null | undefined): number | 
   if (value == null) return null;
   const n = typeof value === "number" ? value : parseFloat(value);
   return Number.isFinite(n) ? n : null;
+}
+
+export interface AnchorLineInputs {
+  anchorType?: string | null;
+  anchorName?: string | null;
+  anchorMedianMeters?: string | number | null;
+  /** Optional persisted scoring counts. Omit the fragment when these are unavailable. */
+  within15MinCount?: number | null;
+  locatedStops?: number | null;
+}
+
+const ANCHOR_TYPE_LABELS: Record<string, string> = {
+  hotel: "Hotel",
+  neighborhood: "Neighborhood",
+  activity: "Activity",
+};
+
+/**
+ * Format the compact anchor readout shown on a proposal card.
+ *
+ * `anchorMedianMeters` is a straight-line median from the server's scoring rail, so the displayed
+ * minutes are derived from the shared 80 m/min walking estimate. Missing or malformed fields are
+ * omitted rather than replaced with a guessed value. Older variant rows do not persist the
+ * located-stop counts, so that fragment is optional.
+ */
+export function formatAnchorLine(input: AnchorLineInputs): string | null {
+  const type = typeof input.anchorType === "string"
+    ? ANCHOR_TYPE_LABELS[input.anchorType.trim().toLowerCase()]
+    : undefined;
+  const name = typeof input.anchorName === "string" ? input.anchorName.trim() : "";
+  if (!type || !name) return null;
+
+  const parts = [type, name];
+  const medianMeters =
+    typeof input.anchorMedianMeters === "number"
+      ? input.anchorMedianMeters
+      : typeof input.anchorMedianMeters === "string" && input.anchorMedianMeters.trim() !== ""
+        ? parseFloat(input.anchorMedianMeters)
+        : null;
+  if (medianMeters != null && Number.isFinite(medianMeters) && medianMeters >= 0) {
+    parts.push(`${Math.max(0, Math.round(estWalkMinutes(medianMeters)))} min median`);
+  }
+
+  const within15MinCount = input.within15MinCount;
+  const locatedStops = input.locatedStops;
+  if (
+    Number.isInteger(within15MinCount) &&
+    Number.isInteger(locatedStops) &&
+    (within15MinCount as number) >= 0 &&
+    (locatedStops as number) > 0 &&
+    (within15MinCount as number) <= (locatedStops as number)
+  ) {
+    parts.push(`${within15MinCount}/${locatedStops} stops ≤ 15 min`);
+  }
+
+  return parts.join(" · ");
 }
 
 export type DeltaDirection = "saves" | "worse" | "same";
