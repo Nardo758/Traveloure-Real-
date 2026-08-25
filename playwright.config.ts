@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Replit provides a Nix-linked Chromium binary whose native dependencies match
+// the workspace. Prefer it when available; local and CI runners continue to use
+// Playwright's bundled browser unchanged.
+const replitChromiumExecutable = process.env.REPLIT_PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -48,7 +53,12 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(replitChromiumExecutable
+          ? { launchOptions: { executablePath: replitChromiumExecutable } }
+          : {}),
+      },
     },
 
     // Firefox and webkit disabled due to network restrictions in test environment
