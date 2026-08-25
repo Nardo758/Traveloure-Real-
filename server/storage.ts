@@ -3419,14 +3419,16 @@ export class DatabaseStorage implements IStorage {
     // Enrich page results with real provider name, profile image, portfolio-wide avg rating,
     // and businessName from service_provider_forms as a secondary name fallback when the
     // users row has no firstName/lastName set.
-    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null })[] = pageServices;
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null; providerRole?: string | null })[] = pageServices;
     if (pageServices.length > 0) {
       const userIds = [...new Set(pageServices.map(s => s.userId))];
       const [userRows, ratingRows, formRows] = await Promise.all([
         db
           // handle: MP-2 storefront return path — nullable (migration 136); the client
           // renders no link when null (StorefrontLink rule 1: no dead /p/ links).
-          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, handle: users.handle })
+          // role: lets the client resolve a handle-less source link (2026-08-25-card-source-link)
+          // — expert-family → /experts/:id, service_provider → their /providers card.
+          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, handle: users.handle, role: users.role })
           .from(users)
           .where(inArray(users.id, userIds)),
         db
@@ -3472,6 +3474,9 @@ export class DatabaseStorage implements IStorage {
           providerRating: avgRating != null ? String(avgRating) : null,
           providerBusinessName,
           providerHandle: u?.handle ?? null,
+          // Seller role for source-link resolution (2026-08-25-card-source-link);
+          // classified client-side via @shared/roles isExpertRole/isProviderRole.
+          providerRole: u?.role ?? null,
         };
       });
     }
