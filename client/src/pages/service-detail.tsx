@@ -47,7 +47,6 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { format, addMonths, subMonths, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
@@ -1339,12 +1338,33 @@ export default function ServiceDetailPage() {
                 </DetailCard>
               )}
 
-              {/* MP-2 return path — "show me everything this seller offers". */}
-              <StorefrontLink
-                handle={providerVerification?.handle}
-                sellerNoun="seller"
-                data-testid="link-service-storefront"
-              />
+              {/* MP-2 return path — "show me everything this seller offers".
+                  The handle comes only from public verification; an unclaimed seller
+                  gets no dead or guessed storefront link. */}
+              {providerVerification?.handle && (
+                <DetailCard data-testid="link-service-storefront-card" className="py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-coral-ink)]"
+                        style={{ fontFamily: "Geist Mono, ui-monospace, monospace" }}
+                      >
+                        More from this seller
+                      </p>
+                      <p className="mt-1 text-[13px] leading-snug text-[color:var(--earn-muted)]">
+                        See the other services and trip plans from @{providerVerification.handle}.
+                      </p>
+                    </div>
+                    <Link
+                      href={`/s/${providerVerification.handle}`}
+                      className="inline-flex min-h-[42px] shrink-0 items-center justify-center rounded-[8px] bg-[var(--earn-navy)] px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-[var(--earn-teal-ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal-ink)] focus-visible:ring-offset-2"
+                      data-testid="link-service-storefront"
+                    >
+                      Open storefront
+                    </Link>
+                  </div>
+                </DetailCard>
+              )}
 
               <DetailCard>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
