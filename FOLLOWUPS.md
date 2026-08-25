@@ -185,6 +185,20 @@ filter or per-market count**, because `/api/provider-storefronts` carries no mar
 decision-maker (Phase 0). **FOLLOWUP:** a market facet on `/api/provider-storefronts` — `location` is
 already on the row, so a server-side `?market=` is likely one `WHERE`.
 
+### FU — discover-tabs `/ready-made` flake LEFT FOR BASE (decision-maker, Lane 2 session)
+The `discover-tabs-smoke` gate (`discover-tabs.spec.ts:103`) is red on Lane 2's PR: on
+`/ready-made`, when the CI seed produces no `expert_templates` and `/api/expert-templates`
+hasn't settled within the 5s window, neither the `card-template-*` cards nor the empty-state
+CTA `button-become-expert-packages` are in the DOM → timeout. It is a **seed/timing flake in
+Lane 1 code** (`discover.tsx` / `discover-tabs.spec.ts`), byte-identical on base `b28be54`,
+reproducing across every Lane 2 commit; Lane 2's diff (experts/expert-detail/storefront/
+providers/nav) never touches the Marketplace surfaces the spec tests. Decision-maker ruled
+**leave it for base** — Lane 2 does not touch `discover-tabs.spec.ts` or `discover.tsx` (both
+outside Lane 2 write targets), and the PR simply is not all-green on that one gate. **Fix when
+taken up on main:** wait for the `/ready-made` templates query to settle before the branch, and
+accept the Lane-1 `rm-shelf-card-*` cards as populated evidence (not only legacy
+`card-template-*`).
+
 ### FU — §3.9 expert-detail DTO fields (responds / since / consultation)
 Phase 3 applies §13 omit-on-absent: the hardcoded `responseTime || "< 24 hours"` fallback is removed,
 and the "since" and consultation-kv facts are omitted until a real field exists (no fabrication).
