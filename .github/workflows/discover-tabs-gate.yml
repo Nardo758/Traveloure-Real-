@@ -160,6 +160,29 @@ jobs:
           BASE_URL: http://localhost:5000
           CI: 'true'
 
+      # ── Lane 2 (Experts & Services earn grammar) visual captures ──
+      # Evidence, NOT a gate: drives the public Experts & Services surfaces at 1280px
+      # (375px for mobile nav) and writes full-page PNGs to playwright/earn-captures/.
+      # `if: !cancelled()` so the captures still run when the behavioral suite above
+      # fails (they cover DIFFERENT surfaces — /experts, /s, /providers — and are the
+      # phase's ROOTPREVIEW); continue-on-error so a screenshot hiccup never reds the gate.
+      - name: Earn-grammar captures (Lane 2)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: npx playwright test earn-captures --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload earn-grammar captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: earn-captures-${{ github.sha }}
+          path: playwright/earn-captures/
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
