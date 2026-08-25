@@ -42,7 +42,7 @@ Ratified 2026-08-25 (`audited@f06356f7`). The transcription lanes 1–5 build ag
 
 | Mock | Feature / ledger | Target code (built by lanes 1–5) |
 |------|------------------|----------------------------------|
-| `marketplace-experts-earn-grammar-mock.html` | Earn-grammar transcription (`2026-08-25-marketplace-earn-grammar` + 14 sibling rulings, SPEC §0) | `client/src/pages/discover.tsx`, `service-detail.tsx`, `experts.tsx`, `expert-detail.tsx`, `storefront.tsx`, `providers-directory.tsx`, `discover-location.tsx`; `components/travelpulse/CityCard.tsx`; `components/layout.tsx` (`NAV_LEAF_ICONS`) |
+| `marketplace-experts-earn-grammar-mock.html` | Earn-grammar transcription (`2026-08-25-marketplace-earn-grammar` + 14 sibling rulings, SPEC §0); Ready-Made frame: expert-templates shelf superseded 2026-08-26. | `client/src/pages/discover.tsx`, `service-detail.tsx`, `experts.tsx`, `expert-detail.tsx`, `storefront.tsx`, `providers-directory.tsx`, `discover-location.tsx`; `components/travelpulse/CityCard.tsx`; `components/layout.tsx` (`NAV_LEAF_ICONS`) |
 
 - **Spec of record:** `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` — the transcription contract (what a lane may and may not change).
 - **Visual of record:** `docs/design/marketplace-experts-earn-grammar-mock.html` — what the result must look like.
