@@ -654,11 +654,22 @@ export default function ExpertsPage() {
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
               </div>
               <h3 className="text-lg font-semibold" style={{ color: "#111827" }}>
-                No experts found
+                {selectedRole === "event_planner" ? "No event planners found" : "No experts found"}
               </h3>
               <p className="text-muted-foreground">
-                Try adjusting your filters or search terms
+                {selectedRole === "event_planner"
+                  ? "Try a trip planner instead, or adjust your filters."
+                  : "Try adjusting your filters or search terms"}
               </p>
+              {selectedRole === "event_planner" && (
+                <Link
+                  href={buildRoleHref("travel_expert")}
+                  className="rounded-md px-4 py-2 text-sm font-bold text-[color:var(--earn-coral-ink)] hover:underline"
+                  data-testid="link-trip-planners-fallback"
+                >
+                  Browse trip planners
+                </Link>
+              )}
               <button
                 className="mt-1 rounded-md px-4 py-2 text-sm font-bold"
                 style={{ color: "#d92d55" }}
