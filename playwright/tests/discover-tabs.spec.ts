@@ -579,4 +579,74 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
+
+  test('8. See-all is a filter — one section, jump-list state, gem chip composes, back restores (2026-08-26-see-all-is-filter)', async ({ page }) => {
+    // Click "See all in Gion →": the URL gains ?neighborhood=gion, the feed
+    // renders ONLY Gion, and the jump list flips to filter mode.
+    await page.getByTestId('bento-see-all-gion').click();
+    await expect(page).toHaveURL(/[?&]neighborhood=gion(&|$)/);
+    await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
+    // Jump-list state: gion active, an "All neighbourhoods" restore link present.
+    await expect(page.getByTestId('jump-all-neighbourhoods')).toBeVisible();
+    await expect(page.getByTestId('jump-gion')).toHaveAttribute('data-active', 'true');
+    // Gem chip STILL composes within the filtered section: Eat → the one eat gem.
+    await page.getByTestId('spine-chip-eat').click();
+    await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
+    ).toHaveCount(1);
+    await page.getByTestId('spine-chip-all').click();
+    // Browser back clears the neighbourhood filter → both sections return. The
+    // gem-chip clicks are LOCAL state (no history entry), so the ONE See-all
+    // navigation is the only history step to unwind.
+    await page.goBack();
+    await expect(page).not.toHaveURL(/neighborhood=/);
+    await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
+    await expect(page.getByTestId('jump-all-neighbourhoods')).not.toBeAttached();
+  });
+
+  test('9. behavior matrix — the fixture-provable rows (Phase 2e Part C)', async ({ page }) => {
+    // Jump list item scrolls to the section anchor (href = the section id).
+    await expect(page.getByTestId('jump-gion')).toHaveAttribute('href', '#bento-nb-gion');
+    // View profile → /experts/:id (the anchor lead expert; button wrapped in a Link).
+    await expect(
+      page.locator('[data-bento-role="anchor"] a[href="/experts/exp-gion-1"]'),
+    ).not.toHaveCount(0);
+    // Get this trip → /ready-made/:id (href SHAPE; id-resolution is a real-data row).
+    await expect(page.getByTestId('btn-view-package-tmpl-1')).toHaveAttribute('href', '/ready-made/tmpl-1');
+    // Offer this → recruitment deep-link carrying city + neighbourhood + offering.
+    const offerHref = await page.getByTestId('link-wanted-apply').first().getAttribute('href');
+    expect(offerHref).toContain('/become-expert');
+    expect(offerHref).toContain('city=');
+    expect(offerHref).toContain('neighborhood=');
+    // Earn routes → /earn.
+    await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
+    await expect(page.getByTestId('btn-earn-provider')).toHaveAttribute('href', '/earn');
+    // View source → NO storefront/profile link on a partner tile; the source control
+    // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
+    const stub = page.getByTestId('external-stub-stub-1');
+    await expect(stub.locator('a[href^="/s/"]')).toHaveCount(0);
+    await expect(stub.locator('a[href^="/experts/"]')).toHaveCount(0);
+    await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
+    // Two-field search NEVER writes trip context: the where field is read-only.
+    await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
+    // The one rendered rec tile — the impression POST path is exercised on mount
+    // (fires-once is asserted by the real-data row).
+    await expect(page.getByTestId('feed-card-rec-0')).toBeVisible();
+
+    // Card-is-link vs button propagation: clicking the card BODY opens the gem's
+    // details sheet; clicking a button STOPS propagation, so only that button's
+    // own dialog opens — never also the sheet (dialog count stays 1).
+    const gem = page.getByTestId('feed-card-gem-g-gion-1');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await gem.locator('h3').click();                 // body → the details sheet
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await gem.getByTestId('btn-add-gem-g-gion-1').click(); // button → ONE dialog only
+    await expect(page.getByTestId('dialog-add-to-experience')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+  });
 });
