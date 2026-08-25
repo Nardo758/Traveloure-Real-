@@ -610,6 +610,48 @@ const MARKETPLACE_RAIL: { key: MarketplaceSurface; label: string }[] = [
   { key: "services", label: "Services" },
 ];
 
+function TwoFieldSearch({
+  query,
+  onQueryChange,
+  location,
+  onLocationChange,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  location: string;
+  onLocationChange: (value: string) => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 }}
+      className="mt-4 grid grid-cols-1 sm:grid-cols-[1.4fr_1fr] gap-2 max-w-3xl"
+    >
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="What do you need help with?"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          className="pl-9 h-10 text-foreground"
+          data-testid="input-search"
+        />
+      </div>
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Where are you going?"
+          value={location}
+          onChange={(e) => onLocationChange(e.target.value)}
+          className="pl-9 h-10 text-foreground"
+          data-testid="input-location"
+        />
+      </div>
+    </motion.div>
+  );
+}
+
 export default function DiscoverPage({ surface }: { surface: MarketplaceSurface }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -625,12 +667,15 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const expertHandoffStartDate = urlParams.get("startDate") || "";
   const expertHandoffEndDate = urlParams.get("endDate") || "";
   const isFromQuickStart = urlParams.get("source") === "quick-start";
+  const [tripCtx] = useTripContext();
+  const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
   
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
   const initialQuery = urlParams.get("q") || "";
+  const initialLocation = urlParams.get("location") || expertHandoffDestination || tripDestination;
   const readNumberParam = (name: string) => {
     const value = Number(urlParams.get(name));
     return Number.isFinite(value) && value > 0 ? value : 0;
@@ -638,7 +683,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const initialPage = Math.max(0, (Number.parseInt(urlParams.get("page") || "1", 10) || 1) - 1);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
-  const [locationFilter, setLocationFilter] = useState(urlParams.get("location") || expertHandoffDestination);
+  const [locationFilter, setLocationFilter] = useState(initialLocation);
   const [selectedCategory, setSelectedCategory] = useState(urlParams.get("categoryId") || "all");
   const [sortBy, setSortBy] = useState(urlParams.get("sortBy") || "rating");
   const [minPrice, setMinPrice] = useState(readNumberParam("minPrice"));
@@ -666,21 +711,6 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // surface IS `surface`. urlCity still seeds CityGrid on /destinations.
   const urlCity = urlParams.get("city") || "";
   const activeTab = surface;
-
-  // Two-field search: the "where" field pre-fills from the in-progress trip's destination
-  // (2026-08-25-two-field-search). Browse NEVER writes to the trip — this seeds only the local
-  // browse filter (once, when the user hasn't already set a location), never EditTripPanel.
-  const [tripCtx] = useTripContext();
-  const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
-  const didSeedWhere = useRef(false);
-  useEffect(() => {
-    if (didSeedWhere.current) return;
-    if (surface === "services" && !locationFilter && !urlParams.get("location") && tripDestination) {
-      didSeedWhere.current = true;
-      setLocationFilter(tripDestination);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surface, tripDestination]);
 
   // Debounce search query
   useEffect(() => {
@@ -1123,39 +1153,17 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                 </div>
               </nav>
             </motion.div>
-            {/* Two-field search (2026-08-25-two-field-search): "what" filters the results, "where"
-                is the location filter (pre-filled from the trip's destination above). The rest of
-                the filters stay in the visible filter bar below. Services only — the surface whose
-                query these feed. */}
-            {surface === "services" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="mt-4 grid grid-cols-1 sm:grid-cols-[1.4fr_1fr] gap-2 max-w-3xl"
-            >
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="What do you need help with?"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10 text-foreground"
-                  data-testid="input-search"
-                />
-              </div>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Where are you going?"
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  className="pl-9 h-10 text-foreground"
-                  data-testid="input-location"
-                />
-              </div>
-            </motion.div>
-            )}
+             {/* Two-field search (2026-08-25-two-field-search): "what" filters the results, "where"
+                 is the location filter (pre-filled from the trip's destination above). The rest of
+                 the filters stay in the visible filter bar below. Events intentionally has no search. */}
+             {surface !== "events" && (
+               <TwoFieldSearch
+                 query={searchQuery}
+                 onQueryChange={setSearchQuery}
+                 location={locationFilter}
+                 onLocationChange={setLocationFilter}
+               />
+             )}
           </div>
         </section>
 
