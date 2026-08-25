@@ -120,3 +120,22 @@ applied at six write points; `pricing.service.ts:23`'s deposit `0.25`; `commissi
 
 **Blocked on:** Leon picks the approach before agent implements.  
 **Agent action:** None until Leon decides. Then create a new adapter or extend `nager-date.adapter.ts`.
+
+---
+
+## From the earn-grammar lanes (2026-08-25)
+
+### FU — Lane 0 executed from Claude Code, not Replit (dispatch-record correction)
+The earn-grammar dispatch (`DISPATCHES_earn_grammar_lanes.md`) scopes **Lane 0 — "Land the spec"** to
+Replit on a single `main` checkout. It was instead executed **from Claude Code** on branch
+`claude/new-session-i39ogn`, at the decision-maker's explicit direction (session 2026-08-25). One
+commit landed the four canonical Lane 0 files — mock + spec copied into `docs/design/`, the 15 SPEC §0
+rulings appended to `docs/DECISIONS.md` as `[advisory]` date-slug rows, the mock added to
+`SESSION_MOCKS_INDEX.md` — plus this record. Recorded so the dispatch record matches what happened;
+no product effect (the landed content is identical to a Replit-run Lane 0).
+
+### FU — Lane branch alias for `discover-polish`
+`claude/new-session-i39ogn` **is** the Lane 1 (`discover-polish`) branch for this session — the session
+is pinned to push only to that name, superseding the dispatch's `lane/discover-polish`. Replit fetches
+the lane by that name at merge time (`git fetch origin claude/new-session-i39ogn`). Recorded here per
+the decision-maker's Phase 0 instruction.

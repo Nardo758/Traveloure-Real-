@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marketplace + Experts & Services — earn grammar</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap">
+<style>
+  /* ── Tokens: verbatim from client/src/index.css --earn-* (Ways-to-Earn palette) ── */
+  :root{
+    --earn-ground:#FAFAF8; --earn-card:#FFFFFF; --earn-border:#E7E4DD; --earn-border-dash:#D5D0C8;
+    --earn-teal:#2E8B8B; --earn-teal-ink:#226B6B; --earn-teal-wash:rgba(46,139,139,.10);
+    --earn-gold:#E8B339; --earn-gold-ink:#8A6414; --earn-gold-wash:rgba(232,179,57,.15);
+    --earn-green:#5DCAA5; --earn-green-ink:#2F7D63;
+    --earn-coral-bg:#FFF4F4; --earn-coral-border:#FCCACA; --earn-coral-ink:#E85D55;
+    --earn-navy:#1E3A5F; --earn-ink:#1F2733; --earn-muted:#6A7480; --earn-faint:#B0AAA0; --earn-chip:#F6F5F1;
+    --brand-coral:#F58480;
+    --shadow:0 1px 2px rgba(31,39,51,.06),0 6px 20px rgba(31,39,51,.05);
+    --display:'Fraunces',Georgia,serif; --body:'Inter',system-ui,sans-serif; --mono:'Geist Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#EFEDE8;color:var(--earn-ink);font:15px/1.5 var(--body)}
+  a{color:inherit;text-decoration:none}
+
+  /* ── Doc chrome (the sign-off wrapper, not the product) ── */
+  .doc{max-width:1180px;margin:0 auto;padding:48px 24px 96px}
+  .doc-eyebrow{font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--earn-coral-ink)}
+  .doc h1{font:600 40px/1.1 var(--display);color:var(--earn-navy);margin:8px 0 14px;letter-spacing:-.01em}
+  .doc-lede{max-width:720px;color:var(--earn-muted);font-size:16px}
+  .frame{margin-top:56px}
+  .frame-h{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .frame-h b{font:600 22px var(--display);color:var(--earn-ink)}
+  .frame-h span{color:var(--earn-muted);font-size:13px}
+  .frame-sub{color:var(--earn-muted);font-size:14px;margin:0 0 14px}
+  .browser{background:var(--earn-ground);border:1px solid var(--earn-border);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .urlbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--earn-border)}
+  .urlbar i{width:10px;height:10px;border-radius:50%;background:var(--earn-border-dash);display:inline-block}
+  .urlbar code{flex:1;margin-left:8px;font:12px ui-monospace,monospace;color:var(--earn-muted);background:var(--earn-chip);border:1px solid var(--earn-border);border-radius:6px;padding:5px 10px}
+  .note{background:#FFF9EE;border:1px solid #EAD9B0;color:#6B5620;border-radius:10px;padding:12px 14px;font-size:13px;margin:14px 0 0}
+  .note b{color:#4E3E12}
+  .note.rule{background:var(--earn-teal-wash);border-color:#BFDCDC;color:var(--earn-teal-ink)}
+  .note.rule b{color:var(--earn-teal-ink)}
+  .note.stop{background:var(--earn-coral-bg);border-color:var(--earn-coral-border);color:#9B2F29}
+  .legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
+  .sw{background:#fff;border:1px solid var(--earn-border);border-radius:10px;padding:10px;font-size:12px}
+  .sw i{display:block;height:34px;border-radius:7px;margin-bottom:8px;border:1px solid rgba(0,0,0,.05)}
+  .sw code{font-size:11px;color:var(--earn-muted)}
+
+  /* ── Product: global chrome ── */
+  .nav{display:flex;align-items:center;gap:20px;padding:14px 20px;background:#fff;border-bottom:1px solid var(--earn-border)}
+  .logo{display:flex;align-items:center;gap:8px;font:700 13px var(--body);letter-spacing:.06em;color:#485960}
+  .logo .plane{width:22px;height:22px;color:var(--brand-coral)}
+  .beta{font-size:10px;font-weight:700;color:var(--earn-coral-ink);background:var(--earn-coral-bg);border:1px solid var(--earn-coral-border);border-radius:999px;padding:2px 8px}
+  .nav .links{display:flex;gap:22px;font-size:14px;color:#3C4652;flex:1}
+  .nav .links span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+  .nav .links .on{color:var(--earn-navy);font-weight:600}
+  .btn{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;border:1px solid var(--earn-border);background:#fff;color:var(--earn-ink);cursor:pointer;line-height:1}
+  .btn.primary{background:var(--earn-coral-ink);border-color:var(--earn-coral-ink);color:#fff}
+  .btn.teal{background:var(--earn-teal);border-color:var(--earn-teal);color:#fff}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:6px 10px;font-size:12px}
+  .btn.full{width:100%;justify-content:center}
+  .ic{width:16px;height:16px;flex:none}
+  .page{padding:0 28px 40px}
+  .wrap{max-width:1120px;margin:0 auto}
+
+  /* Dropdown */
+  .dd{position:relative;display:inline-block}
+  .menu{position:absolute;top:26px;left:-14px;background:#fff;border:1px solid var(--earn-border);border-radius:12px;box-shadow:var(--shadow);padding:12px 8px;width:400px;z-index:5}
+  .menu .grp{font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-muted);padding:4px 10px 6px}
+  .menu a{display:flex;gap:12px;padding:9px 10px;border-radius:8px;align-items:flex-start}
+  .menu a:hover{background:var(--earn-chip)} .menu a>span:last-child{display:flex;flex-direction:column}
+  .tile{width:36px;height:36px;border-radius:10px;background:var(--earn-teal-wash);color:var(--earn-teal-ink);display:grid;place-items:center;flex:none}
+  .tile .ic{width:18px;height:18px}
+  .menu a b{display:block;font-size:14px;color:var(--earn-ink);font-weight:600;white-space:nowrap}
+  .menu a small{display:block;font-size:12px;color:var(--earn-muted)}
+  /* Mobile sheet */
+  .mobile{width:360px;background:#fff;border:1px solid var(--earn-border);border-radius:18px;box-shadow:var(--shadow);padding:18px 16px}
+  .mobile .grp{font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-ink);margin:6px 0}
+  .mobile .sub{font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-muted);margin:10px 0 4px 10px}
+  .mobile a{display:flex;align-items:center;gap:12px;padding:8px 10px;font-size:15px;color:#3C4652}
+
+  /* Masthead band (ratified 5c827895 structure; icon tile replaces emoji per 2026-08-25 ruling) */
+  .band{padding:26px 0 22px;border-bottom:1px solid var(--earn-border);background:#fff;margin:0 -28px;padding-left:28px;padding-right:28px}
+  .band .row{display:flex;align-items:center;gap:14px}
+  .band .tile{width:42px;height:42px;border-radius:12px}
+  .band .tile .ic{width:22px;height:22px}
+  .band h2{font:600 30px/1.1 var(--display);color:var(--earn-navy);margin:0}
+  .band p{margin:6px 0 0 56px;color:var(--earn-muted);font-size:14px}
+  /* Control row */
+  .ctl{display:flex;gap:10px;margin:18px 0 6px;align-items:center;flex-wrap:wrap}
+  .field{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--earn-border);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--earn-muted);min-width:150px}
+  .field.grow{flex:1;min-width:260px}
+  .field .ic{color:var(--earn-faint)}
+  .found{margin-left:auto;font:400 12px var(--mono);color:var(--earn-muted)}
+  /* Chips */
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--earn-border);background:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:500}
+  .chip.on{background:var(--earn-teal);border-color:var(--earn-teal);color:#fff}
+  .chip .n{font:500 10.5px var(--mono);color:var(--earn-teal-ink);background:var(--earn-teal-wash);border-radius:999px;padding:1px 7px}
+  .chip.on .n{background:rgba(255,255,255,.25);color:#fff}
+  .chip .ic{width:14px;height:14px}
+  .count-line{font:400 11px var(--mono);color:var(--earn-faint);margin:2px 0 0}
+  /* Sections */
+  .sec{display:flex;align-items:baseline;justify-content:space-between;margin:22px 0 10px}
+  .sec h3{font:600 20px var(--display);margin:0;color:var(--earn-ink)}
+  .sec p{margin:2px 0 0;font-size:13px;color:var(--earn-muted)}
+  .sec a{font-size:13px;font-weight:600;color:var(--earn-coral-ink)}
+  .eyebrow{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--earn-muted)}
+  /* Card grid + card */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .grid.four{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--earn-card);border:1px solid var(--earn-border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .photo{height:140px;background:linear-gradient(135deg,#B9C8D8,#7C97B4);position:relative}
+  .photo.warm{background:linear-gradient(135deg,#E5C6B6,#B97C7C)}
+  .photo.green{background:linear-gradient(135deg,#CFE3D3,#6FA383)}
+  .photo.gold{background:linear-gradient(135deg,#F3E2B8,#D2A24C)}
+  .photo .tag{position:absolute;top:10px;left:10px;font:500 9.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:#fff;color:var(--earn-ink);border-radius:6px;padding:4px 8px}
+  .photo .price{position:absolute;bottom:10px;right:10px;background:#fff;border-radius:8px;padding:5px 9px;font:600 13px var(--mono)}
+  .photo .price small{font-weight:500;color:var(--earn-muted);font-size:11px}
+  .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+  .body h4{margin:0;font-size:15px;font-weight:600;line-height:1.3}
+  .meta{font-size:12px;color:var(--earn-muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .meta .ic{width:13px;height:13px}
+  .seller{display:flex;align-items:center;gap:8px;font-size:12px;margin-top:2px}
+  .seller .av{width:22px;height:22px;border-radius:50%;background:var(--earn-teal);color:#fff;display:grid;place-items:center;font-size:9px;font-weight:700}
+  .seller a{color:var(--earn-teal-ink);font-weight:600;text-decoration:underline;text-decoration-color:transparent}
+  .seller a:hover{text-decoration-color:currentColor}
+  .seller .plain{color:var(--earn-muted)}
+  .pills{display:flex;gap:5px;flex-wrap:wrap}
+  .pill{font-size:11px;background:var(--earn-chip);border:1px solid var(--earn-border);border-radius:999px;padding:2px 8px;color:#3C4652}
+  .pill.nb{background:var(--earn-teal-wash);border-color:#BFDCDC;color:var(--earn-teal-ink);font-weight:600}
+  .pill.role{background:var(--earn-teal-wash);border-color:#BFDCDC;color:var(--earn-teal-ink);font:500 9.5px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+  .pill.gold{background:var(--earn-gold-wash);border-color:#F0DCA6;color:var(--earn-gold-ink);font-weight:600}
+  /* Action grammar row */
+  .act{margin-top:auto;padding-top:10px;border-top:1px dashed var(--earn-border-dash);display:flex;flex-direction:column;gap:6px}
+  .act .state{font:500 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+  .state.plat{color:var(--earn-teal-ink)}
+  .state.aff{color:var(--earn-gold-ink)}
+  .state.nb{color:var(--earn-muted)}
+  .act .row{display:flex;gap:6px}
+  .act .row .btn{flex:1;justify-content:center}
+  .link{font-size:12px;color:var(--earn-teal-ink);font-weight:600}
+  /* Expert card (shipped grammar, for reference) */
+  .xcard{padding:14px}
+  .xhead{display:flex;gap:10px;align-items:flex-start}
+  .xhead .av{width:42px;height:42px;border-radius:50%;background:var(--earn-teal);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px}
+  .xhead b{display:block;font-size:15px}
+  .xhead small{color:var(--earn-muted);font-size:12px;display:flex;align-items:center;gap:4px}
+  .xhead .heart{margin-left:auto;color:var(--earn-faint)}
+  .rating{font-size:12px;color:var(--earn-muted);display:flex;align-items:center;gap:6px;margin:10px 0 6px}
+  .rating .ic{width:13px;height:13px;color:var(--earn-gold)}
+  /* Hero (storefront / expert detail) */
+  .cover{height:150px;background:linear-gradient(120deg,#8C6E5A,#3C5A73);border-radius:14px 14px 0 0}
+  .hero{background:#fff;border:1px solid var(--earn-border);border-radius:14px;padding:0 0 18px;margin-top:16px}
+  .hero .in{padding:0 22px;position:relative}
+  .hero .av{width:72px;height:72px;border-radius:50%;background:var(--earn-navy);color:#fff;display:grid;place-items:center;font:600 22px var(--display);border:4px solid #fff;margin-top:-36px}
+  .hero h2{font:600 30px/1.1 var(--display);margin:8px 0 2px;color:var(--earn-navy)}
+  .hero .handle{font:400 12px var(--mono);color:var(--earn-muted)}
+  .hero .bio{max-width:620px;margin:12px 0;font-size:14px;color:#3C4652}
+  .hero .actions{position:absolute;right:22px;top:14px;display:flex;gap:8px}
+  .verified{display:inline-flex;align-items:center;gap:5px;font:500 10px var(--mono);color:var(--earn-green-ink);background:rgba(93,202,165,.14);border:1px solid #BFE6D7;border-radius:999px;padding:3px 9px}
+  .facts{display:flex;gap:0;margin-top:14px}
+  .facts div{padding:8px 22px 8px 0;margin-right:22px;border-right:1px solid var(--earn-border)}
+  .facts div:last-child{border:0}
+  .facts b{display:block;font:600 22px var(--mono);color:var(--earn-ink);letter-spacing:-.02em}
+  .facts span{font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--earn-muted)}
+  .tabs{display:inline-flex;background:var(--earn-chip);border:1px solid var(--earn-border);border-radius:10px;padding:3px;gap:2px}
+  .tabs span{padding:6px 12px;border-radius:7px;font-size:13px;font-weight:500;color:var(--earn-muted)}
+  .tabs .on{background:#fff;color:var(--earn-ink);box-shadow:0 1px 2px rgba(0,0,0,.06);font-weight:600}
+  .roles{display:inline-flex;background:var(--earn-chip);border:1px solid var(--earn-border);border-radius:999px;padding:4px;gap:2px}
+  .roles span{padding:8px 18px;border-radius:999px;font-size:14px;font-weight:500;color:var(--earn-muted);display:inline-flex;gap:6px;align-items:center}
+  .roles .on{background:var(--earn-teal);color:#fff;font-weight:600}
+  .roles .n{font:500 10.5px var(--mono);background:var(--earn-teal-wash);color:var(--earn-teal-ink);border-radius:999px;padding:1px 7px}
+  .roles .on .n{background:rgba(255,255,255,.25);color:#fff}
+  /* Two-col detail */
+  .two{display:grid;grid-template-columns:1fr 340px;gap:22px;margin-top:18px}
+  .panel{background:#fff;border:1px solid var(--earn-border);border-radius:14px;padding:18px}
+  .panel h3{font:600 18px var(--display);margin:0 0 8px}
+  .panel p{font-size:14px;color:#3C4652;margin:0 0 8px}
+  .buy{position:sticky;top:12px}
+  .buy .p{font:600 30px var(--mono);letter-spacing:-.03em;color:var(--earn-ink)}
+  .buy .p small{font:500 13px var(--body);color:var(--earn-muted)}
+  .buy .fee{font:400 11px var(--mono);color:var(--earn-muted);margin:4px 0 12px}
+  .buy .stack{display:flex;flex-direction:column;gap:8px}
+  .kv{display:flex;justify-content:space-between;font:400 12px var(--mono);padding:8px 0;border-top:1px solid var(--earn-border)}
+  .kv span:last-child{font-weight:600}
+  .empty{border:1px dashed var(--earn-border-dash);border-radius:14px;padding:34px;text-align:center;background:#fff}
+  .empty .tile{margin:0 auto 10px;width:48px;height:48px;border-radius:50%}
+  .empty b{font:600 18px var(--display);display:block}
+  .empty p{color:var(--earn-muted);font-size:14px;margin:4px 0 14px}
+  .stack-sm{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .rail{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .rail .eyebrow{font-size:10px}
+  .rail .links{display:inline-flex;background:var(--earn-chip);border:1px solid var(--earn-border);border-radius:10px;padding:4px;gap:2px}
+  .rail .links a{padding:7px 12px;border-radius:7px;font:500 12px var(--mono);letter-spacing:.01em;color:var(--earn-muted)}
+  .rail .links a.on{background:var(--earn-navy);color:#fff}
+  .band .row{align-items:flex-start}
+  .band .lead{flex:1}
+  .search2{display:grid;grid-template-columns:1.4fr 1fr auto;gap:10px;margin:18px 0 10px}
+  .cfacts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border-top:1px solid var(--earn-border);padding-top:8px;margin-top:4px}
+  .cfacts b{display:block;font:600 13px var(--mono);letter-spacing:-.01em}
+  .cfacts span{font:400 10px var(--mono);color:var(--earn-muted);letter-spacing:.02em}
+  .avail{font:500 10px var(--mono);color:var(--earn-teal-ink);background:var(--earn-teal-wash);border:1px solid #BFDCDC;border-radius:6px;padding:3px 8px;position:absolute;top:10px;right:10px}
+  /* Destination card + bento feed */
+  .dcard .photo{height:130px}
+  .dcard .photo .score{position:absolute;bottom:10px;left:10px;background:#fff;border-radius:8px;padding:4px 8px;font:600 11px var(--mono);color:var(--earn-teal-ink)}
+  .bento{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:172px;gap:14px;margin-top:12px}
+  .b{border:1px solid var(--earn-border);border-radius:14px;background:#fff;overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .b .ph{flex:1;background:linear-gradient(135deg,#B9C8D8,#7C97B4);position:relative;min-height:0}
+  .b .ph.warm{background:linear-gradient(135deg,#E5C6B6,#B97C7C)} .b .ph.green{background:linear-gradient(135deg,#CFE3D3,#6FA383)} .b .ph.gold{background:linear-gradient(135deg,#F3E2B8,#D2A24C)} .b .ph.dusk{background:linear-gradient(160deg,#3C5A73,#1E3A5F)}
+  .b .tag{position:absolute;top:10px;left:10px;font:500 9.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:#fff;border-radius:6px;padding:4px 8px}
+  .b .price{position:absolute;bottom:10px;right:10px;background:#fff;border-radius:8px;padding:4px 8px;font:600 12px var(--mono)}
+  .b .bd{padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+  .b h4{margin:0;font-size:14px;font-weight:600;line-height:1.25}
+  .b .meta{font-size:11px}
+  .b .row{display:flex;gap:6px;margin-top:4px}
+  .b .row .btn{flex:1;justify-content:center;padding:6px 8px;font-size:11px}
+  .s2x2{grid-column:span 2;grid-row:span 2} .s2x1{grid-column:span 2} .s1x2{grid-row:span 2}
+  .b.hero{color:#fff;justify-content:flex-end;padding:18px}
+  .b.hero .eyebrow{color:rgba(255,255,255,.75)}
+  .b.hero h3{font:600 28px/1.1 var(--display);margin:6px 0 4px}
+  .b.hero p{margin:0;font-size:13px;color:rgba(255,255,255,.85);max-width:420px}
+  .b.hero .row{margin-top:12px}
+  .b.hero .row .btn{flex:0 0 auto}
+  .b.expert{padding:14px;justify-content:flex-start}
+  .b.expert .av{width:48px;height:48px;border-radius:50%;background:var(--earn-teal);color:#fff;display:grid;place-items:center;font-weight:700}
+  .b.panel2{padding:14px;background:var(--earn-ground);justify-content:space-between}
+  .b.panel2 h4{font:600 16px var(--display)}
+  .b.panel2 p{font-size:12px;color:var(--earn-muted);margin:4px 0 0}
+  .b.wanted{border-style:dashed;border-color:var(--earn-border-dash);background:var(--earn-ground);padding:14px;justify-content:space-between}
+  .b.wanted .eyebrow{color:var(--earn-gold-ink)}
+  @media(max-width:900px){.bento{grid-template-columns:1fr 1fr;grid-auto-rows:auto}.s2x2,.s2x1{grid-column:span 2}.s1x2{grid-row:auto}}
+  .crumb{font:400 11.5px var(--mono);color:var(--earn-muted);margin:16px 0 12px;display:flex;gap:8px;align-items:center}
+  .crumb b{color:var(--earn-ink);font-weight:600}
+  .dhead{display:grid;grid-template-columns:1fr 260px;gap:20px;align-items:start;margin-bottom:16px}
+  .dhead h2{font:600 40px/1.05 var(--display);color:var(--earn-navy);margin:6px 0 8px;letter-spacing:-.01em}
+  .dhead .lede{font-size:15px;color:#3C4652;max-width:560px;margin:0}
+  .byline{display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-size:12px;color:var(--earn-muted)}
+  .byline .who{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--earn-teal-ink);font-size:13px}
+  .byline .av{width:26px;height:26px;border-radius:50%;background:var(--earn-teal-wash);color:var(--earn-teal-ink);display:grid;place-items:center;font-size:11px;font-weight:700}
+  .dhero{display:grid;grid-template-columns:1fr 300px;border-radius:14px;overflow:hidden;border:1px solid var(--earn-border);min-height:220px}
+  .dhero .img{background:linear-gradient(120deg,#5A7B7A,#28444B);position:relative;padding:18px;display:flex;align-items:flex-end;color:#fff}
+  .dhero .img .eyebrow{color:rgba(255,255,255,.75)}
+  .dhero .img h3{font:600 26px/1.15 var(--display);margin:4px 0 0;max-width:360px}
+  .dhero .side{background:#0F2A2E;color:#fff;padding:16px}
+  .dhero .side .eyebrow{color:rgba(255,255,255,.6)}
+  .dhero .map{margin-top:10px;height:150px;border:1px solid rgba(255,255,255,.15);border-radius:8px;background:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0 8px,transparent 8px 22px),#123338;position:relative}
+  .dhero .map i{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--brand-coral);border:2px solid #fff}
+  .dhero .lock{font-size:11px;color:rgba(255,255,255,.7);margin-top:8px;display:flex;gap:6px;align-items:center}
+  .dhero.svc .img{background:linear-gradient(120deg,#D8E6E0,#F6E4E1);color:var(--earn-ink);align-items:flex-start}
+  .dhero.svc .side{background:#FFFAF3;color:var(--earn-ink);padding:22px}
+  .dhero.svc .side h2{font:600 30px/1.1 var(--display);color:var(--earn-navy);margin:6px 0 8px}
+  .dhero.svc .side p{font-size:14px;color:#3C4652;margin:0 0 10px}
+  .facts2{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:12px}
+  .facts2 div{border-top:1px solid var(--earn-border);padding-top:8px}
+  .facts2 b{display:block;font:600 14px var(--mono)}
+  .facts2 span{font:400 11px var(--mono);color:var(--earn-muted)}
+  .lockrow{display:flex;justify-content:space-between;align-items:center;border:1px dashed var(--earn-border-dash);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--earn-muted);margin-top:14px;background:var(--earn-ground)}
+  .lockrow a{color:var(--earn-coral-ink);font-weight:600}
+  .gtk{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:13px;color:#3C4652}
+  .gtk div{display:flex;gap:8px;align-items:center}
+  .gtk .ic{color:var(--earn-teal-ink);width:15px;height:15px}
+  .direct{background:var(--earn-ground);border:1px solid var(--earn-border);border-radius:10px;padding:12px;margin-top:12px;font-size:12px;color:var(--earn-muted)}
+  .direct b{display:flex;align-items:center;gap:6px;color:var(--earn-ink);font-size:13px;margin-bottom:4px}
+  .direct ul{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+  .direct li{display:flex;gap:6px;align-items:center}
+  .direct li .ic{width:12px;height:12px;color:var(--earn-green-ink)}
+  @media(max-width:900px){.dhead,.dhero,.facts2,.gtk{grid-template-columns:1fr}}
+  @media(max-width:900px){.grid,.grid.four,.two,.stack-sm{grid-template-columns:1fr}.band p{margin-left:0}.hero .actions{position:static;margin-top:10px}}
+</style>
+</head>
+<body>
+
+<!-- Inline lucide-style glyphs -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-plane" viewBox="0 0 24 24"><path fill="currentColor" d="M2.5 10.8 21 3l-7.8 18.5-2.6-7.7-8.1-3z"/></symbol>
+  <symbol id="i-palm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9c-1 4-1.5 8-1.5 13"/><path d="M12 9C9 6 5.5 5.5 3 7c2 .5 4 1.5 6 3"/><path d="M12 9c3-3 6.5-3.5 9-2-2 .5-4 1.5-6 3"/><path d="M12 9c-.5-3.5 1-6 3.5-7-1 1.5-1.5 3.5-1.5 5.5"/><path d="M12 9c.5-3.5-1-6-3.5-7 1 1.5 1.5 3.5 1.5 5.5"/><path d="M3 22h18"/></symbol>
+  <symbol id="i-gem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 1 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2M13 17v2M13 11v2"/></symbol>
+  <symbol id="i-lantern" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2M9 4h6"/><path d="M7 7h10l1 9a6 6 0 0 1-12 0z"/><path d="M12 7v13M9 20h6M12 20v2"/></symbol>
+  <symbol id="i-waypoints" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M10.8 6.7 6.5 16.5M13.2 6.7l4.3 9.8M7.5 19h9"/></symbol>
+  <symbol id="i-wine" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22h8M12 15v7M7 3h10l-1 6a4 4 0 0 1-8 0z"/><path d="M6.5 6.5h11"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.6L19.5 10.5 13.9 12.4 12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/><path d="M5 3v4M3 5h4M19 17v4M17 19h4"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M4 16h16a8 8 0 0 0-16 0zM12 8V6M10 4h4"/></symbol>
+  <symbol id="i-store" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1-5h16l1 5M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M5 12v9h14v-9M9 21v-6h6v6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h7.5a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7H15"/></symbol>
+  <symbol id="i-party" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.8 11.3 2 22l10.7-3.8M4 3h.01M22 8h.01M15 2h.01M22 20h.01M22 2l-2.2.7a3 3 0 0 0-2 2.7v.2a2 2 0 0 1-1 1.8l-.4.2M11 13a9 9 0 0 1 4.6-1.6M9 10a8 8 0 0 0-1.4 5"/><path d="m4.6 10.8 8.6 8.6 3.3-6.6a1 1 0 0 0-.9-1.4l-1.4-.2a2 2 0 0 1-1.7-1.7L12.3 8a1 1 0 0 0-1.4-.9z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-13.3 7.9L3 21l1.1-4.7A9 9 0 1 1 21 12z"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5a5.5 5.5 0 0 0-10 3.5c0 2.3 1.5 4 3 5.5l7 7z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+</svg>
+
+<div class="doc">
+  <div class="doc-eyebrow">Ratified 2026-08-25 · Marketplace + Experts &amp; Services · earn grammar</div>
+  <h1>One grammar for every public surface</h1>
+  <p class="doc-lede">The Ways-to-Earn / experts look (<code>--earn-*</code> tokens, Fraunces headings, a lucide glyph in a teal-wash tile, one card family with a three-state action row) applied to the four Marketplace surfaces and the four FIND HELP destinations. Behavior annotations are carried from the ratified Aug 23 mocks; nothing here invents data the API doesn't already return.</p>
+
+  <div class="legend">
+    <div class="sw"><i style="background:var(--earn-ground)"></i>ground <code>#FAFAF8</code></div>
+    <div class="sw"><i style="background:var(--earn-border)"></i>border <code>#E7E4DD</code></div>
+    <div class="sw"><i style="background:var(--earn-teal)"></i>teal <code>#2E8B8B</code></div>
+    <div class="sw"><i style="background:var(--earn-teal-wash)"></i>teal wash <code>tiles · active</code></div>
+    <div class="sw"><i style="background:var(--earn-gold)"></i>gold <code>affiliate · badges</code></div>
+    <div class="sw"><i style="background:var(--earn-coral-ink)"></i>coral <code>primary CTA only</code></div>
+    <div class="sw"><i style="background:var(--earn-navy)"></i>navy <code>headings</code></div>
+    <div class="sw"><i style="background:var(--earn-chip)"></i>chip <code>#F6F5F1</code></div>
+  </div>
+  <div class="note rule"><b>Type rule (tech ↔ Palm Beach).</b> Three faces, three jobs: <b>Fraunces</b> for editorial headings only (band titles, section headings, detail titles, prices in the buy panel excepted); <b>Geist Mono</b> for everything that is a label or a number — eyebrows, tags, facts rows, prices, counts, the rail, crumbs, handles, fee lines; <b>Inter</b> for body and buttons. The serif carries the beach, the mono carries the tech, and they never do the same job. All three are already loaded in <code>client/index.html</code>.</div>
+  <div class="note rule"><b>Chrome stays.</b> The global header (nav dropdowns) and <code>TripStrip</code> (the ratified P3 trip bar, mounted once in <code>Layout</code>, shown only while a trip is in progress) are unchanged on every page in this mock. The surface rail is a second row inside the page band, below the header. "Add to trip" writes through the existing cart mutation; the strip's cart chip updates as today. The two-field search pre-fills "where" from the strip's destination when a trip is in progress, but <b>browse never writes</b>: typing another city filters the page and does not change the trip — that stays in <code>EditTripPanel</code>.</div>
+  <div class="note rule"><b>Icon rule.</b> Every masthead and nav glyph is lucide, inside a 10–12px-radius <code>--earn-teal-wash</code> tile with a <code>--earn-teal-ink</code> stroke. Nothing plane-, arrow-, or send-shaped (no <code>Send</code>, <code>Plane</code>, <code>Navigation</code>) — the wordmark's coral plane is the only plane on the page.</div>
+
+  <!-- ═══════════════ FRAME 1: NAV ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Navigation</b><span>desktop dropdown · mobile sheet</span></div>
+    <p class="frame-sub">Labels and hrefs are the ratified nav (unchanged). What changes: each item gets its own glyph, and the Marketplace group gains a tile per surface.</p>
+    <div class="browser">
+      <div class="nav">
+        <div class="logo"><svg class="plane"><use href="#i-plane"/></svg>TRAVELOURE <span class="beta">BETA</span></div>
+        <div class="links">
+          <span class="dd on">Experts &amp; Services <svg class="ic"><use href="#i-chev"/></svg>
+            <div class="menu">
+              <div class="grp">Find help</div>
+              <a href="#"><span class="tile"><svg class="ic"><use href="#i-bag"/></svg></span><span><b>Service Providers</b><small>Browse local businesses &amp; book direct</small></span></a>
+              <a href="#"><span class="tile"><svg class="ic"><use href="#i-lantern"/></svg></span><span><b>Local Experts</b><small>City guides &amp; neighbourhood specialists</small></span></a>
+              <a href="#"><span class="tile"><svg class="ic"><use href="#i-waypoints"/></svg></span><span><b>Trip Planners</b><small>Trip planners who handle every detail</small></span></a>
+              <a href="#"><span class="tile"><svg class="ic"><use href="#i-wine"/></svg></span><span><b>Event Planners</b><small>Weddings, corporate events &amp; celebrations</small></span></a>
+            </div>
+          </span>
+          <span>Marketplace <svg class="ic"><use href="#i-chev"/></svg></span>
+          <span>Experiences <svg class="ic"><use href="#i-chev"/></svg></span>
+          <span>Planning Tools <svg class="ic"><use href="#i-chev"/></svg></span>
+          <span>Ways to Earn</span>
+        </div>
+        <button class="btn">Join as Partner <svg class="ic"><use href="#i-chev"/></svg></button>
+        <button class="btn primary">Sign In</button>
+      </div>
+      <div class="page" style="padding-top:170px">
+        <div class="stack-sm" style="align-items:start">
+          <div class="mobile">
+            <div class="grp">Marketplace</div>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-palm"/></svg></span>Destinations</a>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-gem"/></svg></span>Ready-Made Trips</a>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-ticket"/></svg></span>Events</a>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-bell"/></svg></span>Services</a>
+            <div class="grp" style="margin-top:14px">Experts &amp; Services</div>
+            <div class="sub">Find help</div>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-bag"/></svg></span>Service Providers</a>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-lantern"/></svg></span>Local Experts</a>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-waypoints"/></svg></span>Trip Planners</a>
+            <a href="#"><span class="tile"><svg class="ic"><use href="#i-wine"/></svg></span>Event Planners</a>
+          </div>
+          <div>
+            <div class="note"><b>Icon map (locked).</b> Destinations <code>Palmtree</code> · Ready-Made <code>Gem</code> · Events <code>Ticket</code> · Services <code>ConciergeBell</code> · Service Providers <code>ShoppingBag</code> · Local Experts <code>Lamp</code> (lantern) · Trip Planners <code>Waypoints</code> · Event Planners <code>Wine</code>. Nothing generic-sidebar (no Compass/Store/MapPin/Calendar in a masthead); nothing plane-shaped. One mapping object (<code>NAV_LEAF_ICONS</code>) feeds desktop, mobile, and the masthead — never three lists.</div>
+            <div class="note"><b>Today.</b> Mobile falls back to <code>MapPin</code> for three of four FIND HELP items (<code>layout.tsx:124</code>). Desktop dropdown has no glyphs.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 2: SERVICES ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Marketplace → Services</b><span>/services · discover.tsx surface="services"</span></div>
+    <p class="frame-sub">The only surface with a search row. Cards are the one card family, with the three-state action row from the ratified action grammar.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/services?location=Kyoto</code></div>
+      <div class="page">
+        <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-bell"/></svg></span><div class="lead"><h2>Services</h2><p style="margin-left:0">Book local expertise for the part of your trip that deserves to feel effortless.</p></div>
+          <div class="rail"><span class="eyebrow">Marketplace</span><div class="links"><a href="#">Destinations</a><a href="#">Ready-Made</a><a href="#">Events</a><a href="#" class="on">Services</a></div></div></div></div>
+        <div class="wrap">
+          <div class="search2">
+            <div class="field"><svg class="ic"><use href="#i-search"/></svg>What do you need help with?</div>
+            <div class="field"><svg class="ic"><use href="#i-pin"/></svg>Where are you going? <span style="margin-left:auto;color:var(--earn-ink);font-weight:600">Kyoto</span></div>
+            <button class="btn">Filters +</button>
+          </div>
+          <div class="chips">
+            <span class="chip on">All</span><span class="chip">Food &amp; Culinary <span class="n">9</span></span><span class="chip">Photography <span class="n">6</span></span><span class="chip">Transport <span class="n">5</span></span><span class="chip">Guided walks <span class="n">7</span></span><span class="chip">Wellness <span class="n">4</span></span>
+          </div>
+          <p class="count-line">Chips render only for categories with live stock in this destination. Counts are real, never the full taxonomy.</p>
+
+          <div class="sec"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Food &amp; Culinary · 9</span><h3 style="font-size:24px">Eat and understand a place</h3></div><span style="font:400 11.5px var(--mono);color:var(--earn-muted)">31 matches · recommended &nbsp;·&nbsp; <a class="link" href="#">See all 9 →</a></span></div>
+          <div class="grid">
+            <div class="card"><div class="photo warm"><span class="tag">Food &amp; Culinary</span><span class="avail">Open today</span></div>
+              <div class="body"><div class="meta" style="color:var(--earn-green-ink);font-weight:600"><svg class="ic"><use href="#i-check"/></svg>Verified local</div><h4>Nishiki Market food walk</h4>
+                <div class="meta"><svg class="ic"><use href="#i-clock"/></svg>3 hrs · <svg class="ic"><use href="#i-pin"/></svg>Nakagyō · <svg class="ic" style="color:var(--earn-gold)"><use href="#i-star"/></svg>4.9 (128)</div>
+                <div class="cfacts"><div><b>$89</b><span>per person</span></div><div><b>4.9</b><span>guest rating</span></div><div><b>Tours</b><span>service type</span></div></div>
+                <div class="seller"><span class="av">KE</span><a href="#">More from @kyoto-eats</a></div>
+                <div class="act"><span class="state plat">Book on Traveloure</span><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip ↗</button></div><a class="link" href="#">Ask an expert</a></div>
+              </div></div>
+            <div class="card"><div class="photo gold"><span class="tag">Tickets</span><span class="avail" style="color:var(--earn-gold-ink);background:var(--earn-gold-wash);border-color:#F0DCA6">3 spots left</span></div>
+              <div class="body"><div class="meta" style="color:var(--earn-gold-ink);font-weight:600">Partner listing</div><h4>Fushimi Inari night entry</h4>
+                <div class="meta"><svg class="ic"><use href="#i-clock"/></svg>Flexible · <svg class="ic"><use href="#i-pin"/></svg>Fushimi</div>
+                <div class="cfacts"><div><b>$17</b><span>per ticket</span></div><div><b>—</b><span>no Traveloure rating</span></div><div><b>Tickets</b><span>via Tiqets</span></div></div>
+                <div class="act"><span class="state aff">Book on Tiqets</span><div class="row"><button class="btn sm" style="border-color:#F0DCA6;background:var(--earn-gold-wash);color:var(--earn-gold-ink)">Book on Tiqets</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip ↗</button></div><a class="link" href="#">Ask an expert</a></div>
+              </div></div>
+            <div class="card"><div class="photo green"><span class="tag">Photography</span><span class="avail">Open today</span></div>
+              <div class="body"><div class="meta" style="color:var(--earn-green-ink);font-weight:600"><svg class="ic"><use href="#i-check"/></svg>Verified local</div><h4>Golden-hour portrait session</h4>
+                <div class="meta"><svg class="ic"><use href="#i-clock"/></svg>90 min · <svg class="ic"><use href="#i-pin"/></svg>Arashiyama · <span style="color:var(--earn-green-ink);font-weight:600">New</span></div>
+                <div class="cfacts"><div><b>$150</b><span>per session</span></div><div><b>New</b><span>guest rating</span></div><div><b>Photography</b><span>service type</span></div></div>
+                <div class="seller"><span class="av">AS</span><a href="#">More from Aya S.</a><span class="plain" style="font-size:11px">· profile</span></div>
+                <div class="act"><span class="state plat">Book on Traveloure</span><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip ↗</button></div><a class="link" href="#">Ask an expert</a></div>
+              </div></div>
+          </div>
+          <div class="note"><b>Card behavior (ratified).</b> Image/title open <code>/services/:id</code>. <b>Every card points back to its source.</b> Seller row resolves in order: claimed handle → <code>/s/:handle</code> (@kyoto-eats); expert without handle → <code>/experts/:id</code> (Aya S.); provider without handle → their <code>/providers</code> card. Never plain text, never a dead link. Partner cards (Tiqets) <b>never</b> carry a seller row — there is no storefront behind them (§13). Three action states: platform-bookable · affiliate · not bookable (viewpoints: "Add to trip" + "Ask an expert" only). "Ask an expert" hands off with <code>?showExperts=true&amp;destination=…</code>.</div>
+          <div class="note rule"><b>Surface rail (adopted from Replit direction, Aug 25).</b> Four plain links to the four routes, current one filled navy, rendered on every Marketplace band. Not a tab with state — <code>2026-08-23-marketplace-ungroup</code> still holds. Two-field search ("what" + "where") replaces the single box. Section = coral eyebrow with count + editorial Fraunces heading; a Ready-Made shelf may sit under a Services section in the same grammar — that is the cross-sell.</div>
+          <div class="note"><b>Data.</b> <code>/api/discover</code>, <code>/api/service-categories</code>, <code>/api/catalog/activities-gyg</code>, <code>/api/cart</code> — unchanged. Prices resolve from <code>fee_bands</code>; no literal in the client.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 3: READY-MADE ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Marketplace → Ready-Made Trips</b><span>/ready-made · surface="packages"</span></div>
+    <p class="frame-sub">Ratified theme-shelf structure (Aug 23) unchanged; emoji band replaced by the Sparkles tile.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/ready-made?planType=food_culture_itinerary</code></div>
+      <div class="page">
+        <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-gem"/></svg></span><h2>Ready-Made Trips</h2></div><p>Buy a complete trip built around an experience — it becomes your own editable plan.</p></div>
+        <div class="wrap">
+          <div class="chips">
+            <span class="chip">All experiences</span><span class="chip">Hiking <span class="n">4</span></span><span class="chip">Romance &amp; Honeymoon <span class="n">3</span></span><span class="chip on">Food &amp; Culture <span class="n">5</span></span><span class="chip">Photography <span class="n">2</span></span><span class="chip">Family <span class="n">2</span></span>
+          </div>
+          <p class="count-line">Showing 5 Food &amp; Culture trips — every one declared by its builder at submit, not guessed from keywords. <a class="link" href="#">Show all experiences</a></p>
+          <div class="grid" style="margin-top:14px">
+            <div class="card"><div class="photo warm"><span class="tag">Kyoto</span><span class="price">$129</span></div>
+              <div class="body"><span class="eyebrow" style="color:var(--earn-coral-ink)">Food &amp; Culture</span><h4>7-Day Kyoto Food Pilgrimage</h4>
+                <div class="meta">Kyoto · 7 days · by <a class="link" href="#">@yuki</a></div>
+                <div class="pills"><span class="pill role">Local Expert</span><span class="pill">7 stays · 12 items</span></div>
+                <div class="act"><div class="row"><button class="btn teal sm full">Get this trip</button></div></div>
+              </div></div>
+            <div class="card"><div class="photo"><span class="tag">Kyoto</span><span class="price">$95</span></div>
+              <div class="body"><span class="eyebrow" style="color:var(--earn-coral-ink)">Food &amp; Culture</span><h4>Tea, Tofu &amp; Temple Kitchens</h4>
+                <div class="meta">Kyoto · 4 days · by <a class="link" href="#">@kaiseki-ken</a></div>
+                <div class="pills"><span class="pill role">Local Expert</span><span class="pill">4 stays · 9 items</span></div>
+                <div class="act"><div class="row"><button class="btn teal sm full">Get this trip</button></div></div>
+              </div></div>
+            <div class="card"><div class="photo gold"><span class="tag">Kyoto</span><span class="price">$45</span></div>
+              <div class="body"><span class="eyebrow" style="color:var(--earn-coral-ink)">Custom · Ramen Crawl</span><h4>The Late-Night Ramen Atlas</h4>
+                <div class="meta">Kyoto · 3 days · by <a class="link" href="#">midnight-eats</a></div>
+                <div class="pills"><span class="pill role">Local Expert</span><span class="pill">3 stays · 8 items</span></div>
+                <div class="act"><div class="row"><button class="btn teal sm full">Get this trip</button></div></div>
+              </div></div>
+          </div>
+          <div class="note"><b>Carried from the ratified mock.</b> Chips only for themes with ≥1 live listing; author is a badge on the card, not a section, and the author name always links to its source (storefront if claimed, expert profile otherwise); custom theme label renders as the eyebrow but files under its closed key; "Get this trip" is disabled with an explanation only when <code>price_cents</code> is null — which the Aug 25 submit/approve gate now prevents on new listings.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 4: DESTINATIONS + EVENTS ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Marketplace → Destinations &amp; Events</b><span>/destinations · /events</span></div>
+    <p class="frame-sub">Same band, lighter body: these two surfaces are browse-first (no search row), so the band and a card grid are the whole page.</p>
+    <div class="stack-sm">
+      <div class="browser">
+        <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/destinations</code></div>
+        <div class="page">
+          <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-palm"/></svg></span><h2>Destinations</h2></div><p>Explore destinations &amp; trending cities.</p></div>
+          <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:18px">
+            <div class="card"><div class="photo warm" style="height:110px"><span class="tag">Trending</span></div><div class="body"><h4>Kyoto</h4><div class="meta">Crowd index: <b style="color:var(--earn-gold-ink)">High</b> · 3 experts · 31 services</div></div></div>
+            <div class="card"><div class="photo green" style="height:110px"></div><div class="body"><h4>Porto</h4><div class="meta">Crowd index: <b style="color:var(--earn-green-ink)">Moderate</b> · 2 experts · 12 services</div></div></div>
+          </div>
+          <div class="note"><b>Behavior.</b> <code>CityGrid</code> unchanged; card → <code>/discover/location/:city</code>. Crowd index from <code>trend-score.service.ts</code>, deterministic, no LLM.</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/events</code></div>
+        <div class="page">
+          <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-ticket"/></svg></span><h2>Events</h2></div><p>Upcoming events &amp; activities around the world.</p></div>
+          <div class="empty" style="margin-top:18px">
+            <span class="tile"><svg class="ic"><use href="#i-ticket"/></svg></span>
+            <b>No events listed yet</b>
+            <p>Events appear here as experts and partners publish them. Try Destinations for what's trending now.</p>
+            <button class="btn">Browse destinations</button>
+          </div>
+          <div class="note rule"><b>Events stays as designed (ruled Aug 25).</b> Body, calendar, and event rows keep their current production layout. The only change is the header: the band adopts the shared masthead (tile + Fraunces title + one-line sub, same top/bottom padding and left edge as the other three surfaces) so the four Marketplace pages align when you switch between them. Empty state above is what the existing page should render when the market has no events.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 4b: READY-MADE DETAIL (the open card) ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Open card → Ready-Made trip</b><span>/ready-made/:id · ready-made-detail.tsx · shipped Aug 24, this is the reference</span></div>
+    <p class="frame-sub">This is the detail layout every other open card emulates: breadcrumb → eyebrow + Fraunces title + one-line lede, byline on the right → split hero → "know what you're buying" facts → sticky purchase panel. Nothing new here; drawn so the other detail pages can be checked against it.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/ready-made/kyoto-in-bloom</code></div>
+      <div class="page"><div class="wrap">
+        <div class="crumb">← Marketplace › Ready-Made Trips › <b>Kyoto in Bloom</b></div>
+        <div class="dhead">
+          <div><span class="eyebrow" style="color:var(--earn-coral-ink)">Trip by a local · City itinerary</span><h2>Kyoto in Bloom</h2><p class="lede">A thoughtful first pass through Kyoto, timed for blossom season and built around the places that reward a slower pace.</p></div>
+          <div class="byline"><a class="who" href="#"><span class="av">M</span>Built by Mika Tanaka →</a><span>Local perspective · fixed one-time price</span></div>
+        </div>
+        <div class="dhero">
+          <div class="img"><div><span class="eyebrow">Kyoto · Spring edition</span><h3>Four days with room to notice the details.</h3></div></div>
+          <div class="side"><span class="eyebrow">Route preview</span><div class="map"><i style="left:22%;top:50%"></i><i style="left:48%;top:40%"></i><i style="left:74%;top:66%"></i></div><div class="lock">🔒 Stops unlock with purchase</div></div>
+        </div>
+        <div class="two">
+          <div>
+            <div class="panel"><h3>Know what you're buying</h3><p>A complete starting plan that becomes yours after checkout. Preview the shape here; the day-by-day stops stay private until you own it.</p>
+              <div class="facts2"><div><b>Kyoto</b><span>Destination</span></div><div><b>4 days</b><span>Planned length</span></div><div><b>Flexible</b><span>Start date</span></div><div><b>Spring</b><span>Best late March – early April</span></div></div>
+              <div class="lockrow"><span>Full stop names and timing are private before purchase.</span><a href="#">Preview structure</a></div>
+            </div>
+            <div class="panel" style="margin-top:14px"><h3>What's included</h3><p>Every item can be edited, re-dated, or booked from your own trip after purchase.</p>
+              <div class="facts2"><div><b>4</b><span>planned days</span></div><div><b>18</b><span>itinerary items</span></div><div><b>9</b><span>activities</span></div><div><b>5</b><span>food &amp; dining</span></div></div>
+            </div>
+          </div>
+          <div class="panel buy"><span class="eyebrow">One-time purchase</span><h3 style="margin-top:4px">Start with Kyoto</h3><div class="p">$249.00</div><div class="fee">No recurring fee · local creator receives the listed price</div>
+            <div class="stack"><button class="btn primary full">Get this trip</button></div>
+            <div class="kv" style="margin-top:14px"><span>Edit every itinerary item</span><span>✓</span></div><div class="kv"><span>Keep it in your Trip Slip</span><span>✓</span></div><div class="kv"><span>Ask Mika for one revision</span><span>✓</span></div>
+            <button class="btn full" style="margin-top:12px">Copy trip link</button>
+          </div>
+        </div>
+        <div class="note"><b>Behavior (shipped).</b> Server-side preview redaction; <code>insideCounts</code> from the approval snapshot; idempotent clone-on-purchase into <code>ready_made_purchases</code>; "Get this trip" disabled with reason only when price is null. <b>Source link:</b> the byline and the crumb's author segment both resolve to the builder's storefront or profile — the buyer can always see who else built what.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 4c: SERVICE DETAIL (the open card) ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Open card → Service</b><span>/services/:id · service-detail.tsx</span></div>
+    <p class="frame-sub">Replit's continuity layout, re-tokened. Same skeleton as the ready-made detail: breadcrumb, split hero (photo left, title panel right), two content panels, sticky booking panel with the three actions and the direct-booking terms.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/services/private-gion-after-hours-walk</code></div>
+      <div class="page"><div class="wrap">
+        <div class="crumb">← Back to services › <a class="link" href="#">@norisato</a> › <b>Private Gion after-hours walk</b></div>
+        <div class="dhero svc">
+          <div class="img"><span class="tag" style="position:static;display:inline-block;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:#fff;border-radius:6px;padding:4px 8px">Guided walk</span></div>
+          <div class="side"><span class="eyebrow" style="color:var(--earn-coral-ink)">Private experience · Kyoto</span><h2>Private Gion after-hours walk</h2><p>Quiet lanes, living traditions, and a local point of view after the daytime crowds have gone.</p>
+            <div class="pills"><span class="verified"><svg class="ic" style="width:12px;height:12px"><use href="#i-check"/></svg>ID verified</span><span class="verified"><svg class="ic" style="width:12px;height:12px"><use href="#i-check"/></svg>Business verified</span></div>
+            <div class="meta" style="margin-top:10px"><svg class="ic"><use href="#i-pin"/></svg>Gion, Kyoto, Japan · <svg class="ic" style="color:var(--earn-gold)"><use href="#i-star"/></svg><b style="color:var(--earn-gold-ink)">4.9 (61 reviews)</b></div>
+          </div>
+        </div>
+        <div class="two">
+          <div>
+            <div class="panel"><h3>About this service</h3><p>Step into the quieter side of Kyoto with a local guide who knows Gion after the daytime crowds have gone. We'll wander lantern-lit lanes, hear the stories behind the district's traditions, and pause at small places most visitors pass by.</p>
+              <div class="facts2" style="grid-template-columns:repeat(3,1fr)"><div><b>4 hours</b><span>duration</span></div><div><b>In person</b><span>delivery</span></div><div><b>English, Japanese</b><span>languages</span></div></div>
+            </div>
+            <div class="panel" style="margin-top:14px"><h3>Good to know</h3>
+              <div class="gtk">
+                <div><svg class="ic"><use href="#i-user"/></svg>Party size: 1–6 guests</div><div><svg class="ic"><use href="#i-user"/></svg>Private experience</div>
+                <div><svg class="ic"><use href="#i-cal"/></svg>Runs Thursday–Sunday</div><div><svg class="ic"><use href="#i-clock"/></svg>Starts 5:00–6:00 PM JST</div>
+                <div><svg class="ic"><use href="#i-clock"/></svg>Book at least 24 hours ahead</div><div><svg class="ic"><use href="#i-clock"/></svg>Duration: 4 hours</div>
+                <div><svg class="ic"><use href="#i-pin"/></svg>Meet at Gion Shijo Station, Exit 6</div><div><svg class="ic"><use href="#i-waypoints"/></svg>Serves Gion, Higashiyama, Pontocho</div>
+              </div>
+            </div>
+            <div class="panel" style="margin-top:14px"><div class="sec" style="margin:0 0 10px"><div><h3 style="margin:0">More from @norisato</h3><p>3 other services · <a class="link" href="#">Open storefront</a></p></div></div>
+              <div class="grid" style="grid-template-columns:1fr 1fr 1fr"><div class="card"><div class="photo warm" style="height:80px"><span class="price">$95</span></div><div class="body"><h4 style="font-size:13px">Morning tea-house walk</h4></div></div><div class="card"><div class="photo green" style="height:80px"><span class="price">$140</span></div><div class="body"><h4 style="font-size:13px">Kiyomizu at dawn</h4></div></div><div class="card"><div class="photo" style="height:80px"><span class="price">$60</span></div><div class="body"><h4 style="font-size:13px">Pontocho by lantern</h4></div></div></div>
+            </div>
+          </div>
+          <div class="panel buy"><div class="p">$180 <small>per experience</small></div><div class="fee">Private booking · 1–6 guests</div>
+            <div class="stack"><button class="btn primary full">Book on Traveloure</button><button class="btn full" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to cart</button><button class="btn full"><svg class="ic"><use href="#i-msg"/></svg>Contact provider</button></div>
+            <div class="direct"><b><svg class="ic"><use href="#i-bag"/></svg>Direct booking</b>You're booking directly with the provider. Payment is processed securely through Traveloure.
+              <ul><li><svg class="ic"><use href="#i-check"/></svg>Identity verified</li><li><svg class="ic"><use href="#i-check"/></svg>Business verified</li><li><svg class="ic"><use href="#i-check"/></svg>Meets at Gion Shijo Station exit</li><li><svg class="ic"><use href="#i-check"/></svg>Transport not provided — arrange your own</li></ul>
+            </div>
+          </div>
+        </div>
+        <div class="note"><b>Card → detail contract.</b> The card's <code>Book now</code> is this page's <code>Book on Traveloure</code>; <code>Add to trip</code> is <code>Add to cart</code> (same mutation, same label chain: Add → Added). Affiliate services open the partner, never this page. The "More from" row is handle-gated exactly as on the card. Price, fee lines, and the direct-booking terms read the resolver; the client holds no fee literal.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 4d: EXPERTS LIST in the shared pattern ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Experts &amp; Services → Local Experts</b><span>/experts?role=local_expert · experts.tsx</span></div>
+    <p class="frame-sub">The shipped card grammar, under the same band pattern as Marketplace: FIND HELP rail top-right replaces the role pills, two-field search, section eyebrow + editorial heading. Cross-sell works the same way — a Ready-Made shelf by these experts can sit under the expert grid.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/experts?role=local_expert&amp;destination=Kyoto</code></div>
+      <div class="page">
+        <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-lantern"/></svg></span><div class="lead"><h2>Local Experts</h2><p style="margin-left:0">People who know the city block by block — for the part of your trip that needs a local's judgement.</p></div>
+          <div class="rail"><span class="eyebrow">Find help</span><div class="links"><a href="#">Service Providers</a><a href="#" class="on">Local Experts <span class="n" style="font-size:10px;background:rgba(255,255,255,.25);color:#fff;border-radius:999px;padding:1px 6px;margin-left:4px">3</span></a><a href="#">Trip Planners <span style="font-size:10px;color:var(--earn-teal-ink);background:var(--earn-teal-wash);border-radius:999px;padding:1px 6px;margin-left:4px">15</span></a><a href="#">Event Planners</a></div></div></div></div>
+        <div class="wrap">
+          <div class="search2">
+            <div class="field"><svg class="ic"><use href="#i-search"/></svg>What do you need help with?</div>
+            <div class="field"><svg class="ic"><use href="#i-pin"/></svg>Where are you going? <span style="margin-left:auto;color:var(--earn-ink);font-weight:600">Kyoto</span></div>
+            <button class="btn">Filters +</button>
+          </div>
+          <div class="chips"><span class="chip on">All</span><span class="chip">Food &amp; Sake <span class="n">2</span></span><span class="chip">Temples &amp; Shrines <span class="n">2</span></span><span class="chip">Photography <span class="n">1</span></span><span class="chip">Gion <span class="n">2</span></span><span class="chip">Arashiyama <span class="n">1</span></span></div>
+          <div class="sec"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Local Experts · Kyoto · 3</span><h3 style="font-size:24px">Someone who already knows the way</h3></div><span style="font:400 11.5px var(--mono);color:var(--earn-muted)">3 matches · recommended</span></div>
+          <div class="grid">
+            <div class="card xcard"><div class="xhead"><span class="av">YF</span><div><b>Yuki Flowers</b><small><svg class="ic"><use href="#i-pin"/></svg>Kyoto, Japan</small></div><svg class="ic heart"><use href="#i-heart"/></svg></div>
+              <div class="meta" style="margin-top:8px;color:var(--earn-green-ink);font-weight:600"><svg class="ic"><use href="#i-check"/></svg>Verified local · responds &lt;2h</div>
+              <div class="pills" style="margin-top:6px"><span class="pill">Food &amp; Sake</span><span class="pill">Temples</span><span class="pill nb">Gion</span><span class="pill nb">Arashiyama</span></div>
+              <div class="cfacts" style="margin-top:10px"><div><b>from $249</b><span>plan it for me</span></div><div><b>4.9</b><span>46 reviews</span></div><div><b>5</b><span>offerings</span></div></div>
+              <div class="act" style="border:0;padding-top:10px"><div class="row"><button class="btn sm"><svg class="ic"><use href="#i-msg"/></svg>Message</button><button class="btn teal sm">View profile</button></div></div></div>
+            <div class="card xcard"><div class="xhead"><span class="av" style="background:var(--earn-navy)">KK</span><div><b>Kaiseki Ken</b><small><svg class="ic"><use href="#i-pin"/></svg>Kyoto, Japan</small></div><svg class="ic heart"><use href="#i-heart"/></svg></div>
+              <div class="meta" style="margin-top:8px;color:var(--earn-green-ink);font-weight:600"><svg class="ic"><use href="#i-check"/></svg>Verified local · responds &lt;1h</div>
+              <div class="pills" style="margin-top:6px"><span class="pill">Food &amp; Sake</span><span class="pill nb">Nishiki</span><span class="pill nb">Pontocho</span></div>
+              <div class="cfacts" style="margin-top:10px"><div><b>from $180</b><span>plan it for me</span></div><div><b>5.0</b><span>12 reviews</span></div><div><b>3</b><span>offerings</span></div></div>
+              <div class="act" style="border:0;padding-top:10px"><div class="row"><button class="btn sm"><svg class="ic"><use href="#i-msg"/></svg>Message</button><button class="btn teal sm">View profile</button></div></div></div>
+            <div class="card xcard"><div class="xhead"><span class="av" style="background:var(--earn-coral-ink)">TJ</span><div><b>Trailhead JP</b><small><svg class="ic"><use href="#i-pin"/></svg>Kyoto, Japan</small></div><svg class="ic heart"><use href="#i-heart"/></svg></div>
+              <div class="meta" style="margin-top:8px;color:var(--earn-green-ink);font-weight:600"><svg class="ic"><use href="#i-check"/></svg>Verified local · <span style="color:var(--earn-green-ink)">New</span></div>
+              <div class="pills" style="margin-top:6px"><span class="pill">Hiking</span><span class="pill nb">Kurama</span><span class="pill nb">Kibune</span></div>
+              <div class="cfacts" style="margin-top:10px"><div><b>from $95</b><span>plan it for me</span></div><div><b>New</b><span>no reviews yet</span></div><div><b>2</b><span>offerings</span></div></div>
+              <div class="act" style="border:0;padding-top:10px"><div class="row"><button class="btn sm"><svg class="ic"><use href="#i-msg"/></svg>Message</button><button class="btn teal sm">View profile</button></div></div></div>
+          </div>
+          <div class="sec" style="margin-top:26px"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Ready-Made · built by these experts · 4</span><h3 style="font-size:24px">Or start with a trip they already built</h3></div><a href="#">See all 4 →</a></div>
+          <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+            <div class="card"><div class="photo warm" style="height:90px"><span class="price">$149</span></div><div class="body"><h4 style="font-size:13px">Honeymoon in the Old Capital</h4><div class="meta">6 days · by <a class="link" href="#">@yuki-flowers</a></div></div></div>
+            <div class="card"><div class="photo gold" style="height:90px"><span class="price">$95</span></div><div class="body"><h4 style="font-size:13px">Tea, Tofu &amp; Temple Kitchens</h4><div class="meta">4 days · by <a class="link" href="#">@kaiseki-ken</a></div></div></div>
+            <div class="card"><div class="photo green" style="height:90px"><span class="price">$79</span></div><div class="body"><h4 style="font-size:13px">Kurama to Kibune</h4><div class="meta">5 days · by <a class="link" href="#">@trailhead-jp</a></div></div></div>
+            <div class="card"><div class="photo" style="height:90px"><span class="price">$129</span></div><div class="body"><h4 style="font-size:13px">7-Day Food Pilgrimage</h4><div class="meta">7 days · by <a class="link" href="#">@yuki-flowers</a></div></div></div>
+          </div>
+          <div class="note rule"><b>Pattern applied to the FIND HELP branch.</b> The rail replaces the role pills (same <code>?role=</code> routing, live counts from <code>/api/experts/counts</code> as small badges). Two-field search maps "what" → specialty/experience-type filter and "where" → destination. Cards keep the shipped grammar plus the three-column facts row. The cross-sell shelf under the grid is the Ready-Made query filtered to these authors — no new endpoint. Event Planners with 0 results renders the empty state with a "Find a trip planner instead" direction.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 4e: DESTINATION CARD + CITY FEED (bento) ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Marketplace → Destinations, and the open card → City feed</b><span>/destinations · CityCard.tsx  →  /discover/location/:city · discover-location.tsx</span></div>
+    <p class="frame-sub">The destination card joins the family (title in the body, one tag on the photo, facts row, source row, navy primary). Opening it lands on the city feed — a bento grid per neighbourhood so the mix of services, trips, experts, and demand slots reads as one composed page instead of a list.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/destinations</code></div>
+      <div class="page">
+        <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-palm"/></svg></span><div class="lead"><h2>Destinations</h2><p style="margin-left:0">Where it's worth going right now — and who can help you once you're there.</p></div>
+          <div class="rail"><span class="eyebrow">Marketplace</span><div class="links"><a href="#" class="on">Destinations</a><a href="#">Ready-Made</a><a href="#">Events</a><a href="#">Services</a></div></div></div></div>
+        <div class="wrap">
+          <div class="sec"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Trending · 8 launch markets</span><h3 style="font-size:24px">Cities with momentum this month</h3></div><span style="font:400 11.5px var(--mono);color:var(--earn-muted)">8 · by trend score</span></div>
+          <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+            <div class="card dcard"><div class="photo warm"><span class="tag">Peak season</span><span class="score">Trend 92</span></div>
+              <div class="body"><h4>Kyoto</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>Japan · lantern season until Nov 3</div>
+                <div class="cfacts"><div><b style="color:var(--earn-gold-ink)">High</b><span>crowd index</span></div><div><b>Oct–Nov</b><span>best time</span></div><div><b>3</b><span>local experts</span></div></div>
+                <div class="seller"><span class="av">YF</span><a href="#">Lead expert: Yuki Flowers</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+            <div class="card dcard"><div class="photo green"><span class="tag">Good month</span><span class="score">Trend 74</span></div>
+              <div class="body"><h4>Porto</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>Portugal · São João prep</div>
+                <div class="cfacts"><div><b style="color:var(--earn-green-ink)">Moderate</b><span>crowd index</span></div><div><b>May–Jun</b><span>best time</span></div><div><b>2</b><span>local experts</span></div></div>
+                <div class="seller"><span class="av" style="background:var(--earn-navy)">RM</span><a href="#">Lead expert: Rui M.</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+            <div class="card dcard"><div class="photo gold"><span class="tag">Shoulder</span><span class="score">Trend 61</span></div>
+              <div class="body"><h4>Jaipur</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>India · Diwali in 4 weeks</div>
+                <div class="cfacts"><div><b style="color:var(--earn-green-ink)">Low</b><span>crowd index</span></div><div><b>Oct–Mar</b><span>best time</span></div><div><b>0</b><span>local experts</span></div></div>
+                <div class="seller"><span class="plain" style="color:var(--earn-muted)">No local expert yet · </span><a href="#">Ask a trip planner</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+            <div class="card dcard"><div class="photo"><span class="tag">Trending</span><span class="score">Trend 58</span></div>
+              <div class="body"><h4>Edinburgh</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>Scotland · Fringe wrap-up</div>
+                <div class="cfacts"><div><b style="color:var(--earn-green-ink)">Moderate</b><span>crowd index</span></div><div><b>Jun–Aug</b><span>best time</span></div><div><b>1</b><span>local expert</span></div></div>
+                <div class="seller"><span class="av" style="background:var(--earn-coral-ink)">IM</span><a href="#">Lead expert: Iona M.</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+          </div>
+          <div class="note rule"><b>Ruling: converge, don't replace.</b> <code>CityCard</code> stays one component with two variants. The <code>pulse</code> variant is rebuilt on the family skeleton (drawn above and below); the <code>season</code> variant is untouched — it belongs to Events. Consumers <code>CityGrid</code>, <code>TrendingCities</code> (landing + dashboard) pick up the rebuild with no changes; <code>GlobalCalendar</code> keeps season. "Plan this destination" opens the existing trip-attach dialog (pick a trip / add to queue / sign-in prompt) — same handler, same testids.</div>
+          <div class="note"><b>Card audit → fix list.</b> Title moves from photo overlay into the body; one tag on the photo (season/trend) plus the trend score; Hot/alert/"In Trip" collapse into the tag or the facts row. "Take me Here" → "Plan this destination"; <code>Plane</code> icon (<code>CityCard.tsx:219, 235</code>) → <code>Compass</code>. Source row = lead local expert, or "Ask a trip planner" when the market has none — never empty. Facts: crowd index (from <code>trend-score.service.ts</code>), best time, expert count. Data: <code>/api/travelpulse/cities</code> unchanged; R3 still suppresses absolute traveler counts.</div>
+          <div class="sec" style="margin-top:26px"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">CityCard · pulse variant · states</span><h3 style="font-size:24px">Same card, every data case it has to carry</h3></div></div>
+          <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+            <div class="card dcard"><div class="photo warm"><span class="tag" style="background:var(--earn-coral-ink);color:#fff">Deal · flights −18%</span><span class="score">Trend 92</span><span class="avail" style="top:auto;bottom:10px;background:var(--earn-green);border-color:var(--earn-green);color:#14201b">✓ In your trip</span></div>
+              <div class="body"><h4>Kyoto</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>Japan · lantern season until Nov 3</div>
+                <div class="cfacts" style="grid-template-columns:repeat(4,1fr)"><div><b style="color:var(--earn-gold-ink)">High</b><span>crowd</span></div><div><b>Oct–Nov</b><span>best time</span></div><div><b>3</b><span>experts</span></div><div><b style="color:var(--earn-green-ink)">$1,240 ↓</b><span>avg trip</span></div></div>
+                <div class="seller"><span class="av">YF</span><a href="#">Lead expert: Yuki Flowers</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+            <div class="card dcard"><div class="photo green"><span class="tag">Good month</span><span class="score">Trend 74</span></div>
+              <div class="body"><h4>Porto</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>Portugal · São João prep</div>
+                <div class="cfacts"><div><b style="color:var(--earn-green-ink)">Moderate</b><span>crowd</span></div><div><b>May–Jun</b><span>best time</span></div><div><b>2</b><span>experts</span></div></div>
+                <div class="seller"><span class="av" style="background:var(--earn-navy)">RM</span><a href="#">Lead expert: Rui M.</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+            <div class="card dcard"><div class="photo gold"><span class="tag">Shoulder</span><span class="score">Trend 61</span></div>
+              <div class="body"><h4>Jaipur</h4><div class="meta"><svg class="ic"><use href="#i-pin"/></svg>India · Diwali in 4 weeks</div>
+                <div class="cfacts"><div><b style="color:var(--earn-green-ink)">Low</b><span>crowd</span></div><div><b>Oct–Mar</b><span>best time</span></div><div><b>0</b><span>experts</span></div></div>
+                <div class="seller"><span class="plain" style="color:var(--earn-muted)">No local expert yet · </span><a href="#">Ask a trip planner</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+            <div class="card dcard" style="border-color:var(--earn-coral-border)"><div class="photo" style="background:linear-gradient(135deg,#C9D3DC,#8A9AAA)"><span class="tag" style="background:var(--earn-coral-bg);color:var(--earn-coral-ink);border:1px solid var(--earn-coral-border)">2 alerts</span><span class="score">Trend 58</span></div>
+              <div class="body"><h4>Edinburgh</h4><div class="meta" style="color:var(--earn-coral-ink);font-weight:600">Rail strike Nov 4–5 · Fringe venues closing</div>
+                <div class="cfacts"><div><b style="color:var(--earn-green-ink)">Moderate</b><span>crowd</span></div><div><b>Jun–Aug</b><span>best time</span></div><div><b>1</b><span>expert</span></div></div>
+                <div class="seller"><span class="av" style="background:var(--earn-coral-ink)">IM</span><a href="#">Lead expert: Iona M.</a></div>
+                <div class="act"><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Plan this destination</button></div><a class="link" href="#">Ask an expert</a></div></div></div>
+          </div>
+          <div class="note"><b>Where each old field went.</b> <code>dealAlert</code> → photo tag, outranks the season tag (Kyoto). <code>inTrip</code> → green "In your trip" on the photo, bottom-right (Kyoto). <code>avgPrice</code> + <code>priceChangePct</code> → fourth fact, green with ↓ when cheaper; column collapses when absent (Porto). <code>alertCount</code> → coral photo tag; the highlight line turns coral and carries the alert text (Edinburgh). <code>isHot</code> → "Trend ≥ 85" is hot; no separate badge. <code>trendingSpots</code>, <code>hiddenGems</code>, <code>vibeTags</code>, <code>experiences[]</code> → off the card, into the city feed. <code>activeTravelers</code> → dropped (R3 already suppresses it).</div>
+
+          <div class="sec" style="margin-top:26px"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Same component, other consumers</span><h3 style="font-size:24px">Landing page and dashboard inherit it</h3></div></div>
+          <div class="stack-sm">
+            <div class="browser" style="box-shadow:none"><div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/ &nbsp;· TrendingCities</code></div>
+              <div class="page" style="padding:16px 18px">
+                <div class="sec" style="margin:0 0 10px"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Trending now</span><h3 style="font-size:20px">Where travelers are heading</h3></div><a href="#">All destinations →</a></div>
+                <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
+                  <div class="card dcard"><div class="photo warm" style="height:80px"><span class="tag">Deal</span><span class="score">92</span></div><div class="body" style="padding:8px 10px"><h4 style="font-size:13px">Kyoto</h4><div class="meta" style="font-size:10px">High crowd · 3 experts</div></div></div>
+                  <div class="card dcard"><div class="photo green" style="height:80px"><span class="score">74</span></div><div class="body" style="padding:8px 10px"><h4 style="font-size:13px">Porto</h4><div class="meta" style="font-size:10px">Moderate · 2 experts</div></div></div>
+                  <div class="card dcard"><div class="photo gold" style="height:80px"><span class="score">61</span></div><div class="body" style="padding:8px 10px"><h4 style="font-size:13px">Jaipur</h4><div class="meta" style="font-size:10px">Low crowd · ask a planner</div></div></div>
+                </div>
+                <div class="note" style="margin-top:10px;font-size:12px">Compact density prop, same component: photo + tag + score, title, one-line facts. No action row on the landing page — the card itself is the link.</div>
+              </div></div>
+            <div class="browser" style="box-shadow:none"><div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/events &nbsp;· GlobalCalendar · variant="season"</code></div>
+              <div class="page" style="padding:16px 18px">
+                <div class="card" style="max-width:300px"><div class="photo" style="height:100px;position:relative"><div style="position:absolute;inset:0;display:flex;align-items:flex-end;padding:10px;color:#fff"><b style="font-size:16px;text-shadow:0 1px 6px rgba(0,0,0,.4)">Porto</b></div><span class="tag" style="left:auto;right:10px;color:var(--earn-gold-ink)">☀️ Ideal month</span><span class="score" style="bottom:auto;top:10px">8.4<small style="font-size:9px;color:var(--earn-muted)">/10</small></span></div><div class="body"><div class="meta">22°C · São João · low crowd</div></div></div>
+                <div class="note" style="margin-top:10px;font-size:12px"><b>Untouched.</b> The season variant keeps its current layout (title on photo, /10 score, month label, temperature) because Events is ruled as-designed. Two variants, one file, one set of props.</div>
+              </div></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="browser" style="margin-top:18px">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/discover/location/kyoto</code></div>
+      <div class="page">
+        <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-palm"/></svg></span><div class="lead"><span class="eyebrow" style="color:var(--earn-coral-ink)">Destination · Japan · Trend 92 · Crowd high</span><h2>Kyoto</h2><p style="margin-left:0">Lantern season, quiet lanes after dark, and three locals who know which ones.</p></div>
+          <div class="rail"><span class="eyebrow">Marketplace</span><div class="links"><a href="#" class="on">Destinations</a><a href="#">Ready-Made</a><a href="#">Events</a><a href="#">Services</a></div></div></div></div>
+        <div class="wrap">
+          <div class="search2"><div class="field"><svg class="ic"><use href="#i-search"/></svg>What do you need help with in Kyoto?</div><div class="field"><svg class="ic"><use href="#i-pin"/></svg>Kyoto <span style="margin-left:auto;color:var(--earn-muted)">Nov 2 – Nov 6</span></div><button class="btn">Filters +</button></div>
+          <div class="chips"><span class="chip on">All Kyoto</span><span class="chip">Gion <span class="n">6</span></span><span class="chip">Arashiyama <span class="n">4</span></span><span class="chip">Nishiki <span class="n">5</span></span><span class="chip">Fushimi <span class="n">3</span></span><span class="chip">Higashiyama <span class="n">4</span></span></div>
+
+          <div class="sec"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Gion · 6</span><h3 style="font-size:24px">Lanterns after the crowds leave</h3></div><a href="#">See all in Gion →</a></div>
+          <div class="bento">
+            <div class="b hero s2x2" style="background:linear-gradient(160deg,#4A3B45,#1E3A5F)"><span class="eyebrow">Neighbourhood lead · local expert</span><h3>Gion, the way Yuki walks it</h3><p>Three quiet routes, one tea house that still takes walk-ins, and the lane everyone photographs at the wrong hour.</p><div class="row"><button class="btn primary sm">Plan with Yuki · from $249</button><button class="btn sm" style="background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#fff">View profile</button></div></div>
+            <div class="b"><div class="ph warm"><span class="tag">Guided walk</span><span class="price">$180</span></div><div class="bd"><h4>Private Gion after-hours walk</h4><div class="meta">4 hrs · <a class="link" href="#">@norisato</a></div><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip</button></div></div></div>
+            <div class="b"><div class="ph gold"><span class="tag">Tickets</span><span class="price">$17</span></div><div class="bd"><h4>Yasaka Shrine night lanterns</h4><div class="meta" style="color:var(--earn-gold-ink);font-weight:600">via Tiqets</div><div class="row"><button class="btn sm" style="border-color:#F0DCA6;background:var(--earn-gold-wash);color:var(--earn-gold-ink)">Book on Tiqets</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip</button></div></div></div>
+            <div class="b s2x1"><div style="display:flex;height:100%"><div class="ph" style="flex:0 0 40%"><span class="tag">Ready-made · 6 days</span><span class="price">$149</span></div><div class="bd" style="flex:1;justify-content:center"><span class="eyebrow" style="color:var(--earn-coral-ink)">Romance &amp; Honeymoon</span><h4 style="font-size:16px">Honeymoon in the Old Capital</h4><div class="meta">Built by <a class="link" href="#">@yuki-flowers</a> · 3 nights in Gion</div><div class="row" style="max-width:220px"><button class="btn teal sm">Get this trip</button></div></div></div></div>
+            <div class="b"><div class="ph green"><span class="tag">Photography</span><span class="price">$150</span></div><div class="bd"><h4>Golden-hour portraits, Gion lanes</h4><div class="meta">90 min · <a class="link" href="#">Aya S.</a></div><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip</button></div></div></div>
+            <div class="b wanted"><div><span class="eyebrow">Wanted in Gion</span><h4 style="margin-top:4px">Evening kaiseki host</h4><p style="font:400 11.5px var(--mono);color:var(--earn-muted);margin:4px 0 0">12 travelers asked this month. No provider yet.</p></div><div class="row"><button class="btn sm">Offer this</button><button class="btn sm ghost">Ask an expert</button></div></div>
+            <div class="b"><div class="ph dusk"><span class="tag" style="background:var(--earn-green);color:#14201b">Not bookable</span></div><div class="bd"><h4>Shirakawa canal at dusk</h4><div class="meta">Free viewpoint · best 5:15 pm</div><div class="row"><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip</button><button class="btn sm ghost">Ask an expert</button></div></div></div>
+            <div class="b panel2"><div><span class="eyebrow">Concierge</span><h4>Stitch Gion into your evening</h4><p>Walk → shrine → dinner, timed to the lanterns.</p></div><div class="row"><button class="btn primary sm">Optimize</button></div></div>
+          </div>
+          <div class="note rule"><b>Bento rules.</b> One 2×2 anchor per neighbourhood (the lead expert, or the top ready-made trip when the market has no expert); one 2×1 wide slot for a ready-made trip; the rest 1×1 (services, tickets, viewpoints, wanted slots, concierge/earn panels), filling complete rows — no orphan tiles. Order and membership come from <code>feed-composition-config</code> and the demand engine exactly as today — the bento only decides <em>shape</em>, never <em>which</em> items. Every tile is a family card (services, ready-made, expert) or a demand panel (wanted slot, earn, add-on agent); the seven inline card components in <code>discover-location.tsx</code> are replaced, not restyled. Floors, R16, and absolute-count suppression untouched. Partner tiles never link to a storefront; every seller tile links back to its source.</div>
+          <div class="note"><b>Why bento here and nowhere else.</b> The city feed is the one surface that mixes five item types in one scroll. Uniform grids make that read as noise; the anchor-plus-satellites shape makes each neighbourhood a composed unit and gives the lead expert the visual weight the "consultative intelligence" thesis needs. List surfaces stay uniform grids.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 5: EXPERT DETAIL ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Expert profile</b><span>/experts/:id · expert-detail.tsx</span></div>
+    <p class="frame-sub">Hero + facts + tabbed offerings — the same skeleton as the storefront, because a claimed-handle expert <em>is</em> a storefront. The list page (/experts) is already shipped in this grammar and is the reference for the card.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/experts/yuki-flowers</code></div>
+      <div class="page">
+        <div class="hero"><div class="cover"></div>
+          <div class="in">
+            <div class="actions"><button class="btn primary"><svg class="ic"><use href="#i-msg"/></svg>Message Yuki</button><button class="btn"><svg class="ic"><use href="#i-share"/></svg>Share</button></div>
+            <div class="av">YF</div>
+            <span class="eyebrow">Local expert · Kyoto</span>
+            <h2>Yuki Flowers</h2>
+            <div class="handle">@yuki-flowers · Kyoto, Japan · <span class="verified"><svg class="ic" style="width:12px;height:12px"><use href="#i-check"/></svg>Identity verified</span></div>
+            <p class="bio">Kyoto local and lifelong wanderer. I make gentle, seasonal plans for people who want to see the city beyond the guidebook.</p>
+            <div class="pills"><span class="pill nb">Gion</span><span class="pill nb">Higashiyama</span><span class="pill nb">Arashiyama</span><span class="pill">English</span><span class="pill">Japanese</span></div>
+            <div class="facts"><div><b>5</b><span>Offerings</span></div><div><b>4.9</b><span>46 reviews</span></div><div><b>&lt;2h</b><span>Responds</span></div><div><b>2022</b><span>On Traveloure</span></div></div>
+          </div>
+        </div>
+        <div class="two">
+          <div>
+            <div class="sec"><div><span class="eyebrow">Choose your starting point</span><h3>Plans shaped around Kyoto</h3></div><div class="tabs"><span class="on">All</span><span>Services</span><span>Templates</span><span>Ready-made</span></div></div>
+            <div class="grid" style="grid-template-columns:1fr 1fr">
+              <div class="card"><div class="photo warm" style="height:110px"><span class="tag">Service</span><span class="price">$125 <small>/person</small></span></div><div class="body"><h4>Kyoto food market &amp; home-style lunch</h4><div class="meta">In person · 4 hrs</div><div class="act"><span class="state plat">Book on Traveloure</span><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip ↗</button></div></div></div></div>
+              <div class="card"><div class="photo" style="height:110px"><span class="tag">Ready-made</span><span class="price">$149</span></div><div class="body"><h4>Honeymoon in the Old Capital</h4><div class="meta">6 days · Romance &amp; Honeymoon</div><div class="act"><div class="row"><button class="btn teal sm full">Get this trip</button></div></div></div></div>
+            </div>
+          </div>
+          <div class="panel buy">
+            <span class="eyebrow">Plan it for me</span>
+            <h3 style="margin-top:4px">Yuki turns your picks into a day-by-day plan</h3>
+            <p>Itinerary planning · from <b>$249</b></p>
+            <div class="stack"><button class="btn primary full">Plan with Yuki</button><button class="btn full">Ask a quick question</button></div>
+            <div class="kv" style="margin-top:14px"><span>Response time</span><span>Under 2 hours</span></div>
+            <div class="kv"><span>Consultation</span><span>Video · 45 min</span></div>
+          </div>
+        </div>
+        <div class="note"><b>Behavior preserved.</b> Expert + review queries; offering category switch; booking navigation; request-help-with-trip mutation; contact; consultation scheduling; claimed-storefront redirect. The "Plan it for me" panel is the ratified expert card marketed in the feed, promoted to the sidebar here.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 6: STOREFRONT ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Provider storefront</b><span>/s/:handle · storefront.tsx</span></div>
+    <p class="frame-sub">"Everything from this seller." Same hero skeleton as the expert profile; the sidebar is the seller's direct line, not a planning offer. Money page — every handler stays as-is.</p>
+    <div class="browser">
+      <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/s/kyoto-eats</code></div>
+      <div class="page">
+        <div class="hero"><div class="cover" style="background:linear-gradient(120deg,#9A6A4F,#4F3B32)"></div>
+          <div class="in">
+            <div class="actions"><button class="btn primary"><svg class="ic"><use href="#i-msg"/></svg>Message @kyoto-eats</button><button class="btn"><svg class="ic"><use href="#i-share"/></svg>Share</button></div>
+            <div class="av" style="background:var(--earn-teal)">K</div>
+            <span class="eyebrow">Service provider storefront</span>
+            <h2>Kyoto Eats Collective</h2>
+            <div class="handle">@kyoto-eats · Kyoto, Japan · <span class="verified"><svg class="ic" style="width:12px;height:12px"><use href="#i-check"/></svg>Verified business</span></div>
+            <p class="bio">Small-group food walks and brewery visits led by Nishiki market vendors. Book direct; the fee you see is the fee you pay.</p>
+            <div class="facts"><div><b>6</b><span>Offerings</span></div><div><b>4.9</b><span>128 reviews</span></div><div><b>Kyoto</b><span>Area</span></div><div><b>2024</b><span>On Traveloure</span></div></div>
+          </div>
+        </div>
+        <div class="two">
+          <div>
+            <div class="sec"><div><h3>Book directly</h3><p>Services · 4</p></div><div class="field" style="min-width:220px"><svg class="ic"><use href="#i-search"/></svg>Search this storefront</div></div>
+            <div class="grid" style="grid-template-columns:1fr 1fr">
+              <div class="card"><div class="photo warm" style="height:110px"><span class="price">$89 <small>/person</small></span></div><div class="body"><h4>Nishiki Market food walk</h4><div class="meta">In person · 3 hrs</div><div class="act"><span class="state plat">Book on Traveloure</span><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip ↗</button></div></div></div></div>
+              <div class="card"><div class="photo gold" style="height:110px"><span class="price">$65</span></div><div class="body"><h4>Sake brewery tasting</h4><div class="meta">In person · 2 hrs</div><div class="act"><span class="state plat">Book on Traveloure</span><div class="row"><button class="btn teal sm">Book now</button><button class="btn sm" style="background:var(--earn-navy);border-color:var(--earn-navy);color:#fff">Add to trip ↗</button></div></div></div></div>
+            </div>
+            <div class="sec"><div><h3>Buy the whole plan</h3><p>Ready-Made Trips · 1</p></div></div>
+            <div class="grid" style="grid-template-columns:1fr 1fr">
+              <div class="card"><div class="photo" style="height:110px"><span class="tag">Food &amp; Culture</span><span class="price">$129</span></div><div class="body"><h4>7-Day Kyoto Food Pilgrimage</h4><div class="meta">7 days</div><div class="act"><div class="row"><button class="btn teal sm full">Get this trip</button></div></div></div></div>
+            </div>
+          </div>
+          <div class="panel buy">
+            <span class="eyebrow">Came from a provider link?</span>
+            <h3 style="margin-top:4px">Direct booking, provider rate</h3>
+            <p>Bookings from this seller's own link carry the rails rate and no traveler service fee. Nothing to enter — the link remembers.</p>
+            <div class="kv" style="margin-top:8px"><span>Traveler service fee</span><span style="color:var(--earn-green-ink)">Waived</span></div>
+            <div class="kv"><span>Repeat with this seller</span><span>Rails rate</span></div>
+          </div>
+        </div>
+        <div class="note"><b>Money rules shown, not restated in code.</b> The sidebar reflects <code>acquired_via_provider_id</code> attribution and the fee-band resolver — it reads resolved values; it never computes them. Book CTA → existing checkout; stop at confirm in proof. OG injection on <code>/s/:handle</code> unchanged.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ FRAME 7: PROVIDERS DIRECTORY ═══════════════ -->
+  <div class="frame">
+    <div class="frame-h"><b>Service Providers directory</b><span>/providers · providers-directory.tsx</span></div>
+    <p class="frame-sub">Ruled Aug 25 (option 2): the directory is live, with an honest per-market count and an empty-market state. Supersedes the "parked until ≥10 storefronts" ruling in <code>storefront-discovery-mock</code>.</p>
+    <div class="stack-sm">
+      <div class="browser">
+        <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/providers?market=Kyoto</code></div>
+        <div class="page">
+          <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-bag"/></svg></span><div class="lead"><h2>Service Providers</h2><p style="margin-left:0">Local businesses you can book direct — food, transport, photography, and more.</p></div>
+            <div class="rail"><span class="eyebrow">Find help</span><div class="links"><a href="#" class="on">Providers</a><a href="#">Local Experts</a><a href="#">Trip Planners</a><a href="#">Event Planners</a></div></div></div></div>
+          <div class="search2"><div class="field"><svg class="ic"><use href="#i-search"/></svg>What do you need help with?</div><div class="field"><svg class="ic"><use href="#i-pin"/></svg>Where are you going? <span style="margin-left:auto;color:var(--earn-ink);font-weight:600">Kyoto</span></div><button class="btn">Filters +</button></div>
+          <div class="sec" style="margin-top:6px"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Providers · Kyoto · 2</span><h3 style="font-size:24px">Book the business directly</h3></div><span style="font:400 11.5px var(--mono);color:var(--earn-muted)">2 matches · recommended</span></div>
+          <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:10px">
+            <div class="card xcard"><div class="xhead"><span class="av">K</span><div><b>Kyoto Eats Collective</b><small><svg class="ic"><use href="#i-pin"/></svg>Kyoto, Japan</small></div></div><div class="rating"><svg class="ic"><use href="#i-star"/></svg>4.9 · 128 reviews · 6 offerings</div><div class="pills"><span class="pill">Food &amp; Culinary</span><span class="pill nb">Nishiki</span></div><div class="act" style="border:0;padding-top:10px"><div class="row"><button class="btn sm">Message</button><button class="btn teal sm">View storefront</button></div></div></div>
+            <div class="card xcard"><div class="xhead"><span class="av" style="background:var(--earn-navy)">MK</span><div><b>MK Kyoto Transfers</b><small><svg class="ic"><use href="#i-pin"/></svg>Kyoto, Japan</small></div></div><div class="rating"><span style="color:var(--earn-green-ink);font-weight:600">New</span> · 3 offerings</div><div class="pills"><span class="pill">Transport</span></div><div class="act" style="border:0;padding-top:10px"><div class="row"><button class="btn sm">Message</button><button class="btn teal sm">View storefront</button></div></div></div>
+          </div>
+          <div class="note"><b>Card = experts card grammar.</b> Avatar/initials, name, location, honest rating ("New" until reviews), category + neighbourhood pills, Message / View storefront. Fed by <code>/api/provider-storefronts</code> only — no invented filters beyond what the endpoint returns (name, handle, bio, image, serviceCount, averageRating, reviewCount, location).</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="urlbar"><i></i><i></i><i></i><code>traveloure.com/providers?market=Jaipur</code></div>
+        <div class="page">
+          <div class="band"><div class="row"><span class="tile"><svg class="ic"><use href="#i-bag"/></svg></span><div class="lead"><h2>Service Providers</h2><p style="margin-left:0">Local businesses you can book direct — food, transport, photography, and more.</p></div>
+            <div class="rail"><span class="eyebrow">Find help</span><div class="links"><a href="#" class="on">Providers</a><a href="#">Local Experts</a><a href="#">Trip Planners</a><a href="#">Event Planners</a></div></div></div></div>
+          <div class="empty" style="margin-top:18px">
+            <span class="tile"><svg class="ic"><use href="#i-bag"/></svg></span>
+            <b>No providers in Jaipur yet</b>
+            <p>Providers are joining market by market. Browse Services to book what's already live here, or ask a local expert.</p>
+            <div style="display:flex;gap:8px;justify-content:center"><button class="btn">Browse Kyoto providers</button><button class="btn teal">Find a local expert</button></div>
+          </div>
+          <div class="note stop"><b>Test data to build.</b> Populate ≥3 provider storefronts per launch market on dev via the <code>{market}-{specialty}@traveloure.test</code> pattern so the directory, storefront, and Services seller rows all have real rows to prove against.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame">
+    <div class="frame-h"><b>What this mock locks</b></div>
+    <div class="note rule">
+      <b>Rulings for the ledger.</b><br>
+      <code>2026-08-25-marketplace-earn-grammar</code> — all public Marketplace and Experts &amp; Services surfaces use <code>--earn-*</code>; Fraunces headings; lucide glyph in a teal-wash tile; emoji retired from mastheads.<br>
+      <code>2026-08-25-nav-icons</code> — Palmtree · Gem · Ticket · ConciergeBell · ShoppingBag · Lamp · Waypoints · Wine, one source object.<br>
+      <code>2026-08-25-card-family</code> — one card component family (photo/tag/price · title · meta · pills · seller row · action row) across Services, Ready-Made, storefront, and expert profile; three action states; seller row always resolves to a source (storefront → expert profile → provider card); partner cards never link to a storefront.<br>
+      <code>2026-08-25-card-source-link</code> — every Services and Ready-Made card, and its detail page, links back to the store or profile that sourced it; affiliate items link to the partner label only.<br>
+      <code>2026-08-25-surface-rail</code> — every Marketplace band carries the four-surface rail; every FIND HELP band carries the four-role rail (replacing the role pills). Two-field search and coral-eyebrow sections on both branches. Cross-sell shelves use existing queries filtered by author/seller.<br>
+      <code>2026-08-25-city-feed-bento</code> — the city feed renders each neighbourhood as a bento grid (one 2×2 anchor, one 2×1, rest 1×1); composition and demand math unchanged; inline feed cards replaced by the family cards. <code>CityCard</code> joins the family; <code>Plane</code> removed.<br>
+      <code>2026-08-25-providers-directory-live</code> — supersedes the parked ruling; honest count + empty-market state.
+    </div>
+    <div class="note"><b>Open-card rule.</b> Every card opens to a page built on the ready-made detail skeleton: crumb → title block with byline → split hero → content panels → sticky action panel. Services, ready-made, expert profile, and storefront all conform; the Events page body is exempt (ruled as-designed). Expert Console, Provider back-office, PlanCard: untouched.</div>
+  </div>
+</div>
+</body>
+</html>
