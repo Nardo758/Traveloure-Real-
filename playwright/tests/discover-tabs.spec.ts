@@ -83,6 +83,7 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     await expectNoTabBar(page);
     await expect(page.getByTestId('input-search')).not.toBeAttached();
     await expect(page.getByTestId('input-location')).not.toBeAttached();
+    await expect(page.getByText('Best TimeBest Time to Visit', { exact: true })).not.toBeAttached();
   });
 
   test('/ready-made: masthead "Ready-Made Trips", shelf content visible, no tab bar', async ({ page }) => {
