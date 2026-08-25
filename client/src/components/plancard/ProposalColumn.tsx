@@ -21,13 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { PlanCardProposalData } from "./plancard-types";
-import { ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
+import { ROUTING_TINTS } from "./slip-tokens";
 
 interface DayGroup {
   dayNum: number;
   rows: Array<
     | { kind: "anchor"; id: string; time: string; name: string }
-    | { kind: "variant"; id: string; time: string; name: string; price: string | null }
+    | { kind: "variant"; id: string; time: string; name: string; price: string | null; isNew: boolean }
   >;
 }
 
@@ -51,6 +51,7 @@ function groupRows(proposal: PlanCardProposalData): DayGroup[] {
       time: it.startTime || "",
       name: it.name,
       price: it.price ?? null,
+      isNew: !!it.isNew,
     });
   }
   const groups = Array.from(byDay.values()).sort((a, b) => a.dayNum - b.dayNum);
@@ -58,18 +59,23 @@ function groupRows(proposal: PlanCardProposalData): DayGroup[] {
   return groups;
 }
 
+function anchorTone(anchorLine: string | null | undefined): "hotel" | "neighborhood" | "activity" | null {
+  const kind = anchorLine?.split(" · ")[0]?.trim().toLowerCase();
+  return kind === "hotel" || kind === "neighborhood" || kind === "activity" ? kind : null;
+}
+
 export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData }) {
   const groups = groupRows(proposal);
   const purchasedTint = ROUTING_TINTS.purchased;
+  const tone = anchorTone(proposal.anchorLine);
 
   return (
     <Card
       className={cn(
-        "relative flex flex-col",
-        proposal.recommended && "border-2",
-        proposal.isBaseline && "border-dashed bg-muted/30",
+        "review-card relative flex flex-col",
+        proposal.recommended && "review-card--recommended border-2",
+        proposal.isBaseline && "review-card--baseline",
       )}
-      style={proposal.recommended ? { borderColor: purchasedTint.fg } : undefined}
       data-testid={`proposal-column-${proposal.testId ?? proposal.variantId}`}
     >
       <CardHeader className="pt-6 pb-3">
@@ -78,7 +84,7 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
             variant="outline"
             className={cn(
               "mb-1 w-fit text-[10px] uppercase tracking-wide",
-              proposal.recommended && "border-emerald-300 text-emerald-700 dark:text-emerald-300",
+              proposal.recommended && "review-recommended",
             )}
             data-testid={proposal.recommended ? `proposal-recommended-${proposal.testId ?? proposal.variantId}` : undefined}
           >
@@ -89,10 +95,14 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
         {proposal.tagline && <p className="text-xs text-muted-foreground">{proposal.tagline}</p>}
         {proposal.anchorLine && (
           <div
-            className="mt-3 flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50/60 px-2.5 py-2 font-mono text-[11px] leading-4 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200"
+            className={cn(
+              "mt-3 flex items-start gap-2 rounded-md border px-2.5 py-2 text-[11px] leading-4",
+              "review-mono",
+              tone && `review-anchor--${tone}`,
+            )}
             data-testid={`proposal-anchor-${proposal.testId ?? proposal.variantId}`}
           >
-            <Anchor className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <Anchor className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span
               title={
                 proposal.anchorLine.includes(" min median")
@@ -107,40 +117,48 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
       </CardHeader>
       {proposal.totalCostUsd != null && (
         <div className="px-4 pb-2 flex items-baseline gap-2">
-          <span className="font-mono font-semibold text-lg" data-testid={`proposal-total-${proposal.testId ?? proposal.variantId}`}>
+          <span className="review-mono font-semibold text-lg" data-testid={`proposal-total-${proposal.testId ?? proposal.variantId}`}>
             ${proposal.totalCostUsd.toLocaleString()}
           </span>
-          {proposal.perPersonTotal && <span className="text-xs text-muted-foreground">· {proposal.perPersonTotal}/person</span>}
+          {proposal.perPersonTotal && <span className="review-mono text-xs text-muted-foreground">· {proposal.perPersonTotal}/person</span>}
         </div>
       )}
       <CardContent className="flex-1 space-y-3">
         {groups.map((g) => (
           <div key={g.dayNum}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-              Day {g.dayNum}
+            <p className="review-mono mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Day {g.dayNum}{proposal.anchorLine ? " · from the base" : ""}
             </p>
             <div className="space-y-1">
               {g.rows.map((row) => (
-                <div key={`${row.kind}-${row.id}`} className="flex items-center justify-between gap-2 text-sm" data-testid={`proposal-row-${row.kind}-${row.id}`}>
-                  <span className="min-w-0 flex-1 truncate flex items-center gap-1.5">
+                <div
+                  key={`${row.kind}-${row.id}`}
+                  className="grid grid-cols-[46px_minmax(0,1fr)_auto] items-center gap-2 text-sm"
+                  data-testid={`proposal-row-${row.kind}-${row.id}`}
+                >
+                  <span className="review-mono flex items-center gap-1 text-xs text-muted-foreground">
                     {row.kind === "anchor" && (
-                      <Anchor className="w-3 h-3 flex-shrink-0" style={{ color: purchasedTint.fg }} />
+                      <Anchor className="h-3 w-3 shrink-0" style={{ color: purchasedTint.fg }} aria-hidden="true" />
                     )}
-                    {row.time && <span className="text-xs text-muted-foreground font-mono">{row.time}</span>}
-                    <span className="truncate">{row.name}</span>
+                    <span className="truncate">{row.time || "—"}</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate",
+                      row.kind === "anchor" && "font-medium",
+                      row.kind === "variant" && row.isNew && "font-medium text-[var(--earn-teal-ink)]",
+                    )}
+                  >
+                    {row.name}
                   </span>
                   {row.kind === "anchor" ? (
-                    // The SAME purchased pill every surface renders (ruling 8) — read-only.
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0"
-                      style={tintPillStyle(purchasedTint)}
-                    >
-                      {purchasedTint.label}
+                    <span className="review-mono shrink-0 text-xs text-muted-foreground" aria-label="Already purchased">
+                      —
                     </span>
                   ) : (
                     row.price != null &&
-                    parseFloat(row.price) > 0 && (
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                    Number.isFinite(parseFloat(row.price)) && (
+                      <span className="review-mono shrink-0 text-xs text-muted-foreground">
                         ${parseFloat(row.price).toLocaleString()}
                       </span>
                     )
@@ -153,18 +171,19 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
         {/* Muted transport summary — server-computed leg count + cost only. Nothing renders
             while unknown/absent (§13 — never a guessed figure). */}
         {proposal.legsSummary && proposal.legsSummary.count > 0 && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1 border-t border-border" data-testid={`proposal-legs-${proposal.variantId}`}>
+          <p className="flex items-center gap-1.5 border-t border-[var(--earn-border)] pt-1 text-xs text-muted-foreground" data-testid={`proposal-legs-${proposal.variantId}`}>
             <Car className="w-3.5 h-3.5" />
             {proposal.legsSummary.count} transport leg{proposal.legsSummary.count > 1 ? "s" : ""}
             {proposal.legsSummary.totalCostUsd != null
-              ? ` · ~$${Math.round(proposal.legsSummary.totalCostUsd).toLocaleString()} est.`
+              ? <> · <span className="review-mono">~${Math.round(proposal.legsSummary.totalCostUsd).toLocaleString()} est.</span></>
               : ""}
           </p>
         )}
       </CardContent>
       <CardFooter>
         <Button
-          className="w-full"
+          variant={proposal.isBaseline ? "outline" : "default"}
+          className={cn("w-full", !proposal.isBaseline && "review-apply")}
           onClick={proposal.onApply}
           disabled={!!proposal.applying}
           data-testid={`button-apply-variant-${proposal.testId ?? proposal.variantId}`}

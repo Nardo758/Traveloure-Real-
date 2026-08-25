@@ -429,6 +429,8 @@ export interface ProposalVariantItem {
   startTime?: string | null;
   name: string;
   price?: string | null;
+  /** Server-provided replacement marker; styled as new without adding an adopt action. */
+  isNew?: boolean;
 }
 
 /** Muted transport summary — count + cost from SERVER-computed leg values only. */
