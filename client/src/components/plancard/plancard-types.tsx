@@ -452,6 +452,8 @@ export interface PlanCardProposalData {
   /** Optional current-plan label/name overrides for review-first presentation. */
   eyebrow?: string;
   displayName?: string;
+  /** Honest server-derived anchor readout; null/undefined renders no anchor line. */
+  anchorLine?: string | null;
   perPersonTotal?: string | null;
   /** Server-derived total used by the review board; omitted when unavailable. */
   totalCostUsd?: number | null;
