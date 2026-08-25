@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
   Select,
   SelectContent,
@@ -68,6 +69,7 @@ import {
   Landmark,
   Umbrella,
   ShoppingBag,
+  SlidersHorizontal,
 } from "lucide-react";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { useTripContext } from "@/lib/trip-context";
@@ -76,6 +78,12 @@ import type { LucideIcon } from "lucide-react";
 // Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
 // Applied inline the same way Fraunces is (runtime theme fonts, loaded in index.html).
 const EARN_MONO = "'Geist Mono', ui-monospace, monospace";
+const SERVICE_SORT_OPTIONS = [
+  { value: "rating", label: "Top Rated" },
+  { value: "reviews", label: "Most Reviews" },
+  { value: "price_low", label: "Price: Low to High" },
+  { value: "price_high", label: "Price: High to Low" },
+] as const;
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
@@ -610,6 +618,157 @@ const MARKETPLACE_RAIL: { key: MarketplaceSurface; label: string }[] = [
   { key: "services", label: "Services" },
 ];
 
+function TwoFieldSearch({
+  query,
+  onQueryChange,
+  location,
+  onLocationChange,
+  trailing,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  location: string;
+  onLocationChange: (value: string) => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 }}
+      className={cn(
+        "mt-4 grid grid-cols-1 gap-2",
+        trailing ? "sm:grid-cols-[1.4fr_1fr_auto] max-w-4xl" : "sm:grid-cols-[1.4fr_1fr] max-w-3xl",
+      )}
+    >
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="What do you need help with?"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          className="pl-9 h-10 text-foreground"
+          data-testid="input-search"
+        />
+      </div>
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Where are you going?"
+          value={location}
+          onChange={(e) => onLocationChange(e.target.value)}
+          className="pl-9 h-10 text-foreground"
+          data-testid="input-location"
+        />
+      </div>
+      {trailing}
+    </motion.div>
+  );
+}
+
+function ServiceFiltersPopover({
+  minPrice,
+  onMinPriceChange,
+  maxPrice,
+  onMaxPriceChange,
+  minRating,
+  onMinRatingChange,
+  sortBy,
+  onSortByChange,
+  hasActiveFilters,
+  onClear,
+}: {
+  minPrice: number;
+  onMinPriceChange: (value: number) => void;
+  maxPrice: number;
+  onMaxPriceChange: (value: number) => void;
+  minRating: number;
+  onMinRatingChange: (value: number) => void;
+  sortBy: string;
+  onSortByChange: (value: string) => void;
+  hasActiveFilters: boolean;
+  onClear: () => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 whitespace-nowrap"
+          data-testid="button-filters"
+        >
+          <SlidersHorizontal className="w-4 h-4 mr-1.5" />
+          Filters +
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[min(20rem,calc(100vw-2rem))] space-y-4"
+        data-testid="popover-filters"
+      >
+        <div>
+          <p className="font-medium text-sm">Refine services</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Narrow the list without changing your search.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="number"
+            placeholder="Min $"
+            value={minPrice || ""}
+            onChange={(e) => onMinPriceChange(Number(e.target.value) || 0)}
+            data-testid="input-min-price"
+          />
+          <Input
+            type="number"
+            placeholder="Max $"
+            value={maxPrice || ""}
+            onChange={(e) => onMaxPriceChange(Number(e.target.value) || 0)}
+            data-testid="input-max-price"
+          />
+        </div>
+        <Select value={String(minRating)} onValueChange={(v) => onMinRatingChange(parseFloat(v))}>
+          <SelectTrigger data-testid="select-rating">
+            <SelectValue placeholder="Any rating" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">Any rating</SelectItem>
+            <SelectItem value="3">3.0+ ★</SelectItem>
+            <SelectItem value="4">4.0+ ★</SelectItem>
+            <SelectItem value="4.5">4.5+ ★</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={onSortByChange}>
+          <SelectTrigger data-testid="select-sort">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            {SERVICE_SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex justify-end border-t pt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClear}
+            disabled={!hasActiveFilters}
+            data-testid="button-clear-filters"
+          >
+            Clear
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function DiscoverPage({ surface }: { surface: MarketplaceSurface }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -625,12 +784,15 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const expertHandoffStartDate = urlParams.get("startDate") || "";
   const expertHandoffEndDate = urlParams.get("endDate") || "";
   const isFromQuickStart = urlParams.get("source") === "quick-start";
+  const [tripCtx] = useTripContext();
+  const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
   
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
   const initialQuery = urlParams.get("q") || "";
+  const initialLocation = urlParams.get("location") || expertHandoffDestination || tripDestination;
   const readNumberParam = (name: string) => {
     const value = Number(urlParams.get(name));
     return Number.isFinite(value) && value > 0 ? value : 0;
@@ -638,7 +800,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const initialPage = Math.max(0, (Number.parseInt(urlParams.get("page") || "1", 10) || 1) - 1);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
-  const [locationFilter, setLocationFilter] = useState(urlParams.get("location") || expertHandoffDestination);
+  const [locationFilter, setLocationFilter] = useState(initialLocation);
   const [selectedCategory, setSelectedCategory] = useState(urlParams.get("categoryId") || "all");
   const [sortBy, setSortBy] = useState(urlParams.get("sortBy") || "rating");
   const [minPrice, setMinPrice] = useState(readNumberParam("minPrice"));
@@ -666,21 +828,6 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // surface IS `surface`. urlCity still seeds CityGrid on /destinations.
   const urlCity = urlParams.get("city") || "";
   const activeTab = surface;
-
-  // Two-field search: the "where" field pre-fills from the in-progress trip's destination
-  // (2026-08-25-two-field-search). Browse NEVER writes to the trip — this seeds only the local
-  // browse filter (once, when the user hasn't already set a location), never EditTripPanel.
-  const [tripCtx] = useTripContext();
-  const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
-  const didSeedWhere = useRef(false);
-  useEffect(() => {
-    if (didSeedWhere.current) return;
-    if (surface === "services" && !locationFilter && !urlParams.get("location") && tripDestination) {
-      didSeedWhere.current = true;
-      setLocationFilter(tripDestination);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surface, tripDestination]);
 
   // Debounce search query
   useEffect(() => {
@@ -1029,6 +1176,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     maxPrice > 0 || 
     minRating > 0 ||
     locationFilter !== "";
+  const sortLabel = SERVICE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "Top Rated";
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
 
@@ -1123,39 +1271,33 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                 </div>
               </nav>
             </motion.div>
-            {/* Two-field search (2026-08-25-two-field-search): "what" filters the results, "where"
-                is the location filter (pre-filled from the trip's destination above). The rest of
-                the filters stay in the visible filter bar below. Services only — the surface whose
-                query these feed. */}
-            {surface === "services" && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="mt-4 grid grid-cols-1 sm:grid-cols-[1.4fr_1fr] gap-2 max-w-3xl"
-            >
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="What do you need help with?"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10 text-foreground"
-                  data-testid="input-search"
-                />
-              </div>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Where are you going?"
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  className="pl-9 h-10 text-foreground"
-                  data-testid="input-location"
-                />
-              </div>
-            </motion.div>
-            )}
+             {/* Two-field search (2026-08-25-two-field-search): "what" filters the results, "where"
+                 is the location filter (pre-filled from the trip's destination above). Services adds
+                 its legacy price/rating/sort controls through Filters +. Events has no search. */}
+             {surface !== "events" && (
+               <TwoFieldSearch
+                 query={searchQuery}
+                 onQueryChange={setSearchQuery}
+                 location={locationFilter}
+                 onLocationChange={setLocationFilter}
+                 trailing={
+                   surface === "services" ? (
+                     <ServiceFiltersPopover
+                       minPrice={minPrice}
+                       onMinPriceChange={setMinPrice}
+                       maxPrice={maxPrice}
+                       onMaxPriceChange={setMaxPrice}
+                       minRating={minRating}
+                       onMinRatingChange={setMinRating}
+                       sortBy={sortBy}
+                       onSortByChange={setSortBy}
+                       hasActiveFilters={hasActiveFilters}
+                       onClear={clearFilters}
+                     />
+                   ) : undefined
+                 }
+               />
+             )}
           </div>
         </section>
 
@@ -1405,127 +1547,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                 )}
 
 
-                {/* Unified Filter Bar — one earn-styled bar (mirrors the /experts filter
-                    bar) replacing the old desktop sidebar Card + scattered Location/Sort
-                    row + mobile filter Sheet. Every control inline; wraps on small screens. */}
-                {/* Refine bar — the detailed filters. "Where" lives in the two-field search band
-                    above (input-location moved there); this bar carries category, price, rating and
-                    sort. Kept visible (not collapsed behind "Filters +") — the marketplace-surfaces
-                    gate asserts it and input-location/select-category are on the page. */}
-                <div className="bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-xl p-3 mb-6 flex flex-wrap items-center gap-2" data-testid="services-filter-bar">
-                  <span className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)] mr-1" style={{ fontFamily: EARN_MONO }}>Filters</span>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-[170px]" data-testid="select-category">
-                      <SelectValue placeholder="All categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All categories</SelectItem>
-                      {(categories ?? []).map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number"
-                    placeholder="Min $"
-                    value={minPrice || ""}
-                    onChange={(e) => setMinPrice(Number(e.target.value) || 0)}
-                    className="w-24"
-                    data-testid="input-min-price"
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max $"
-                    value={maxPrice || ""}
-                    onChange={(e) => setMaxPrice(Number(e.target.value) || 0)}
-                    className="w-24"
-                    data-testid="input-max-price"
-                  />
-                  <Select value={String(minRating)} onValueChange={(v) => setMinRating(parseFloat(v))}>
-                    <SelectTrigger className="w-[130px]" data-testid="select-rating">
-                      <SelectValue placeholder="Any rating" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">Any rating</SelectItem>
-                      <SelectItem value="3">3.0+ ★</SelectItem>
-                      <SelectItem value="4">4.0+ ★</SelectItem>
-                      <SelectItem value="4.5">4.5+ ★</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger className="w-[170px]" data-testid="select-sort">
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="rating">Top Rated</SelectItem>
-                      <SelectItem value="reviews">Most Reviews</SelectItem>
-                      <SelectItem value="price_low">Price: Low to High</SelectItem>
-                      <SelectItem value="price_high">Price: High to Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {hasActiveFilters && (
-                    <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
-                      <X className="w-4 h-4 mr-1" />
-                      Clear
-                    </Button>
-                  )}
-                </div>
-
                 <div>
-                    {/* Active Filters */}
-                    {hasActiveFilters && (
-                      <div className="flex items-center gap-2 mb-4 flex-wrap">
-                        <span className="text-sm text-muted-foreground">Active filters:</span>
-                        {selectedCategory !== "all" && (
-                          <Badge variant="secondary" className="gap-1">
-                            {getCategoryById(selectedCategory)?.name}
-                            <button
-                              onClick={() => setSelectedCategory("all")}
-                              data-testid="button-remove-category-filter"
-                              className="ml-1"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {minPrice > 0 && (
-                          <Badge variant="secondary" className="gap-1">
-                            Min: ${minPrice}
-                            <button onClick={() => setMinPrice(0)} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {maxPrice > 0 && (
-                          <Badge variant="secondary" className="gap-1">
-                            Max: ${maxPrice}
-                            <button onClick={() => setMaxPrice(0)} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {minRating > 0 && (
-                          <Badge variant="secondary" className="gap-1">
-                            {minRating}+ stars
-                            <button onClick={() => setMinRating(0)} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {locationFilter && (
-                          <Badge variant="secondary" className="gap-1">
-                            {locationFilter}
-                            <button onClick={() => setLocationFilter("")} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={clearFilters}>
-                          Clear all
-                        </Button>
-                      </div>
-                    )}
-
                     {/* Services Grid */}
                     {servicesLoading ? (
                       <CardGridSkeleton count={8} />
@@ -1546,7 +1568,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             </h3>
                           </div>
                           <span className="text-[11.5px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
-                            {result?.total ?? 0} {(result?.total ?? 0) === 1 ? "match" : "matches"}
+                            {result?.total ?? 0} {(result?.total ?? 0) === 1 ? "match" : "matches"} · {sortLabel}
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1614,9 +1636,6 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             Try adjusting your search or filters
                           </p>
                         )}
-                        <Button variant="outline" onClick={clearFilters}>
-                          Clear Filters
-                        </Button>
                       </div>
                     )}
 
