@@ -116,9 +116,10 @@ interface ExpertCardProps {
   /**
    * Presentation variant. "default" (existing browse card) is unchanged.
    * "anchor" (city-feed bento, Phase 2) renders the dark-gradient lead-expert
-   * anchor treatment: coral eyebrow, Fraunces name, lede, a coral
-   * "Plan with {name} · from $N" primary (only when a real price exists, §13)
-   * and an outline "View profile". ADDITIVE — no default-path prop removed.
+   * anchor treatment: neutral role badge, Fraunces name, lede, the coral
+   * "Plan with {name} · from $N" primary (the ONE coral CTA on the surface —
+   * Phase 2c; renders the price only when a real one exists, §13) and an
+   * outline "View profile". ADDITIVE — no default-path prop removed.
    */
   variant?: "default" | "anchor";
 }
@@ -173,7 +174,7 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
       <div className="relative z-10 flex flex-1 flex-col">
         <span
           className="mb-2 inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]"
-          style={{ background: "rgba(232,93,85,.18)", color: "#FFB4AE" }}
+          style={{ background: "rgba(255,255,255,.14)", color: "rgba(255,255,255,.78)" }}
           data-testid="badge-expert-role"
         >
           {roleBadge ? roleBadge.label : "Local Expert"}

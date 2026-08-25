@@ -8,20 +8,12 @@ import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, ArrowLeft, ChevronRight, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTripContext } from "@/lib/trip-context";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
-import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-stub";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
@@ -30,7 +22,6 @@ import { ExpertCard } from "@/components/expert-card";
 import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
 import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
-import { NeighborhoodContainer } from "@/components/neighborhood-container";
 import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
@@ -185,7 +176,7 @@ function HeroBand({
 
   const datePillLabel = parsedDate ? `Planning ${monthName} ${dayOfMonth}` : null;
 
-  // Coral mono eyebrow: DESTINATION · {COUNTRY} · TREND {n} · CROWD {level} —
+  // Muted mono eyebrow: DESTINATION · {COUNTRY} · TREND {n} · CROWD {level} —
   // each fragment omitted when its source is null (§13). The TREND fragment
   // carries the preserved pulse-badge testid.
   const eyebrowFragments: (string | JSX.Element)[] = ["DESTINATION"];
@@ -208,8 +199,10 @@ function HeroBand({
               <Tile className="w-[22px] h-[22px]" />
             </span>
             <div>
+              {/* Phase 2c: coral is reserved for the lead-expert anchor CTA — the
+                  eyebrow is muted mono like the sibling surface bands. */}
               <div
-                className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)] mb-1"
+                className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)] mb-1"
                 style={{ fontFamily: EARN_MONO }}
               >
                 {eyebrowFragments.map((frag, i) => (
@@ -286,20 +279,38 @@ function HeroBand({
   );
 }
 
-// ─── Filters popover (holds the spine gem-type chips) ─────────────────────────
+// ─── Filters popover (price + sort ONLY — Phase 2c) ───────────────────────────
+
+/** Price bands the popover offers. A tile with NO price is outside the priced
+ *  domain and is never dropped by a price filter (§13 — a filter narrows the
+ *  priced inventory, it doesn't punish editorial tiles for having no price). */
+const PRICE_OPTIONS: { id: string; label: string; min: number; max: number }[] = [
+  { id: "any", label: "Any price", min: 0, max: Number.POSITIVE_INFINITY },
+  { id: "under50", label: "Under $50", min: 0, max: 50 },
+  { id: "50to150", label: "$50–150", min: 50, max: 150 },
+  { id: "over150", label: "$150+", min: 150, max: Number.POSITIVE_INFINITY },
+];
+
+const SORT_OPTIONS: { id: string; label: string }[] = [
+  { id: "recommended", label: "Recommended" },
+  { id: "price_asc", label: "Price: low to high" },
+  { id: "price_desc", label: "Price: high to low" },
+];
 
 /**
- * The gem-type filter chips (formerly the sticky `spine-filter-bar`) now live
- * inside the Filters popover — behaviour is unchanged (each chip drives
- * `activeFilter` exactly as before). The `spine-filter-bar` testid is preserved
- * on the popover content wrapper.
+ * The Filters popover now holds ONLY price and sort (Phase 2c) — the gem-type
+ * spine chips moved out to the always-visible `spine-filter-bar` rail.
  */
 function FiltersPopover({
-  active,
-  onSelect,
+  price,
+  onPrice,
+  sort,
+  onSort,
 }: {
-  active: string;
-  onSelect: (id: string) => void;
+  price: string;
+  onPrice: (id: string) => void;
+  sort: string;
+  onSort: (id: string) => void;
 }) {
   return (
     <Popover>
@@ -319,22 +330,42 @@ function FiltersPopover({
         className="w-[min(20rem,calc(100vw-2rem))] space-y-3"
         data-testid="popover-filters"
       >
-        <div data-testid="spine-filter-bar">
-          <p className="font-medium text-sm mb-2">Filter the feed</p>
+        <div>
+          <p className="font-medium text-sm mb-2">Price</p>
           <div className="flex flex-wrap gap-2">
-            {SPINE_CHIPS.map((chip) => (
+            {PRICE_OPTIONS.map((opt) => (
               <button
-                key={chip.id}
-                onClick={() => onSelect(chip.id)}
+                key={opt.id}
+                onClick={() => onPrice(opt.id)}
                 className={cn(
-                  "px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap border",
-                  active === chip.id
+                  "px-3 py-1 rounded-full text-[12px] font-medium transition-colors whitespace-nowrap border",
+                  price === opt.id
                     ? "border-transparent font-semibold bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
                     : "bg-[var(--earn-card)] border-[color:var(--earn-border)] text-[color:var(--earn-muted)] hover:bg-[var(--earn-chip)]",
                 )}
-                data-testid={`spine-chip-${chip.id}`}
+                data-testid={`price-option-${opt.id}`}
               >
-                {chip.label}
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="font-medium text-sm mb-2">Sort</p>
+          <div className="flex flex-col gap-1">
+            {SORT_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => onSort(opt.id)}
+                className={cn(
+                  "px-2.5 py-1.5 rounded-md text-[12.5px] text-left transition-colors",
+                  sort === opt.id
+                    ? "font-semibold bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                    : "text-[color:var(--earn-muted)] hover:bg-[var(--earn-chip)]",
+                )}
+                data-testid={`sort-option-${opt.id}`}
+              >
+                {opt.label}
               </button>
             ))}
           </div>
@@ -403,6 +434,124 @@ const SPINE_CHIPS = [
   { id: "photo_spots", label: "Photo spots" },
   { id: "vibe", label: "Vibe" },
 ];
+
+/**
+ * Does one tile match a spine chip? DELEGATES to the canonical
+ * `filterFeedStream` predicate (feed-stream.ts) on a single-item stream so the
+ * category mapping (incl. the FP-1/B4b accommodation-shape rule) is never
+ * re-implemented here — restating it would be §18-rule-1 derivation drift.
+ * `lead-expert` is the same person as an expert, so it tests as one.
+ */
+function chipMatches(item: FeedItem, chipId: string): boolean {
+  if (chipId === "all") return true;
+  const probe: FeedItem = item.kind === "lead-expert" ? { ...item, kind: "expert" } : item;
+  return filterFeedStream([probe], chipId).length > 0;
+}
+
+/**
+ * A tile's price when it carries a REAL one (§13 — never inferred): used by the
+ * popover's price filter and price sorts. Editorial tiles (gems, recs, panels)
+ * have no price and return null — the price filter leaves them alone and price
+ * sorts keep them after the priced tiles in stream order.
+ */
+function extractTilePrice(item: FeedItem): number | null {
+  const d: any = item.data ?? {};
+  const num = (v: unknown): number | null => {
+    const n = typeof v === "string" ? parseFloat(v) : Number(v);
+    return !isNaN(n) && n > 0 ? n : null;
+  };
+  switch (item.kind) {
+    case "vendor-service":
+      return num(d.price);
+    case "package":
+      return num(d.price);
+    case "event":
+      if (d.isFree) return 0;
+      return num(d.minPrice);
+    case "supply-hotel":
+    case "supply-activity":
+      return num(d.price) ?? num(d.pricePerNight) ?? num(d.priceFrom);
+    default:
+      return null;
+  }
+}
+
+function priceMatches(item: FeedItem, priceId: string): boolean {
+  if (priceId === "any") return true;
+  const band = PRICE_OPTIONS.find((o) => o.id === priceId);
+  if (!band) return true;
+  const p = extractTilePrice(item);
+  if (p === null) return true; // unpriced tiles are outside the priced domain
+  return p >= band.min && p < band.max;
+}
+
+/** Stable price sort over a tagged run — priced tiles ordered, unpriced keep stream order after them. */
+function sortTaggedRunByPrice<T extends { item: FeedItem }>(run: T[], dir: "asc" | "desc"): T[] {
+  return run
+    .map((entry, i) => ({ entry, i, p: extractTilePrice(entry.item) }))
+    .sort((a, b) => {
+      if (a.p === null && b.p === null) return a.i - b.i;
+      if (a.p === null) return 1;
+      if (b.p === null) return -1;
+      const d = dir === "asc" ? a.p - b.p : b.p - a.p;
+      return d !== 0 ? d : a.i - b.i;
+    })
+    .map((x) => x.entry);
+}
+
+/**
+ * The always-visible spine chip rail (Phase 2c — moved out of the Filters
+ * popover). Earn-tokened: teal fill on the active chip, a mono live-stock count
+ * badge per chip (§13: the badge renders only when the count is > 0 — an absent
+ * badge is honest zero, never a fabricated number). "All gems" is the default.
+ */
+function SpineChipRail({
+  active,
+  counts,
+  onSelect,
+}: {
+  active: string;
+  counts: Record<string, number>;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="spine-filter-bar">
+      {SPINE_CHIPS.map((chip) => {
+        const count = counts[chip.id] ?? 0;
+        const isActive = active === chip.id;
+        return (
+          <button
+            key={chip.id}
+            onClick={() => onSelect(chip.id)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap border",
+              isActive
+                ? "border-transparent font-semibold bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                : "bg-[var(--earn-card)] border-[color:var(--earn-border)] text-[color:var(--earn-muted)] hover:bg-[var(--earn-chip)]",
+            )}
+            data-testid={`spine-chip-${chip.id}`}
+          >
+            {chip.label}
+            {count > 0 && (
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full text-[10.5px] font-semibold leading-none",
+                  isActive
+                    ? "bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
+                    : "bg-[var(--earn-chip)] text-[color:var(--earn-muted)]",
+                )}
+                style={{ fontFamily: EARN_MONO }}
+                data-testid={`spine-chip-count-${chip.id}`}
+              >
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── Injected cards ─────────────────────────────────────────────────────────
 // The former inline LeadExpertCard / WantedSlotCard / EarnCard / PackageCard /
@@ -495,6 +644,8 @@ function BentoTile({
           service={item.data}
           city={city}
           cardPosition={cardPosition}
+          scheduledDate={scheduledDate}
+          onAdd={onAdd}
         />
       );
     case "recommendation":
@@ -543,17 +694,16 @@ const FILLER_KINDS = new Set<FeedItem["kind"]>([
 
 // ─── Bento span algorithm ─────────────────────────────────────────────────────
 
-// Desktop bento breakpoint, as a Tailwind arbitrary variant. The pixel value is a CSS
-// breakpoint, not a fee; it lives in this ONE place and every bento class is built from
-// it, so the phase2-fee-gate has a single adjudicated site rather than one per class.
-const DESKTOP_BP = "min-[900px]"; // fee-literal-ok: Tailwind responsive breakpoint, not a fee
-
-/** Which desktop col-span class a tile carries (DESKTOP_BP = the 4-col bento). */
+// Which desktop col-span class a tile carries (the desktop min-width variant = the
+// 4-col bento). These MUST be complete literal strings — Tailwind's JIT scans source text and
+// cannot see a class assembled from a template literal (a `${BP}:col-span-2`
+// build produced the right DOM attribute but NO generated CSS, collapsing the
+// anchor to one column). The pixel value is a CSS breakpoint, not a fee.
 const COL_SPAN_CLASS: Record<number, string> = {
   1: "",
-  2: `${DESKTOP_BP}:col-span-2`,
-  3: `${DESKTOP_BP}:col-span-3`,
-  4: `${DESKTOP_BP}:col-span-4`,
+  2: "min-[900px]:col-span-2", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
+  3: "min-[900px]:col-span-3", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
+  4: "min-[900px]:col-span-4", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
 };
 
 /** A tile placed in the bento, carrying its resolved desktop column span. */
@@ -576,14 +726,9 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
   const n = tiles.length;
   if (n === 0) return [];
 
-  const base = tiles.map((t) => {
-    let colSpan = 1;
-    if (t.isAnchor) colSpan = 2;
-    return colSpan;
-  });
-  // First non-anchor package becomes the one col-span-2 ready-made.
-  const wideIdx = tiles.findIndex((t, i) => !t.isAnchor && t.item.kind === "package");
-  if (wideIdx >= 0) base[wideIdx] = 2;
+  // Anchor is 2-wide; EVERY ready-made is 2-wide (Phase 2c: the ready-made tile
+  // is always the 2×1 photo-left treatment, including as the fallback anchor).
+  const base = tiles.map((t) => (t.isAnchor || t.item.kind === "package" ? 2 : 1));
 
   // Greedy width-4 packing into rows (a col-span-2 never straddles a boundary).
   const rows: number[][] = [];
@@ -616,23 +761,31 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
 }
 
 /**
- * Build the ordered tile list for a neighbourhood bento. ORDER IS PRESERVED:
- * tiles keep their stream order (each tagged with its original `order` index).
- * The ONLY exception is the anchor — the run's lead local expert if it has one,
- * else the top ready-made, else the first tile — which the bento floats to the
- * visual lead (col-span-2 row-span-2). Every other tile stays in stream order.
+ * Build the ordered tile list for a neighbourhood bento from an already-TAGGED
+ * run ({item, order} — order = the tile's position in the neighbourhood's
+ * merged stream run, assigned BEFORE any chip/price filtering so it stays the
+ * order-preservation proof). The ONLY reorder is the anchor — the run's lead
+ * local expert if it has one, else the top ready-made, else the first tile —
+ * floated to the visual lead. Under an explicit price sort the user's sort IS
+ * the order, so the float is disabled and the first tile anchors naturally.
  */
-function buildBentoTiles(run: FeedItem[]): PlacedTile[] {
-  const tagged = run.map((item, order) => ({ item, order, isAnchor: false }));
+function buildBentoTiles(
+  tagged: { item: FeedItem; order: number }[],
+  floatAnchor: boolean = true,
+): PlacedTile[] {
   if (tagged.length === 0) return [];
+  const withAnchor = tagged.map((t) => ({ ...t, isAnchor: false }));
 
-  let anchorIdx = tagged.findIndex((t) => t.item.kind === "lead-expert" || t.item.kind === "expert");
-  if (anchorIdx < 0) anchorIdx = tagged.findIndex((t) => t.item.kind === "package");
-  if (anchorIdx < 0) anchorIdx = 0;
+  let anchorIdx = 0;
+  if (floatAnchor) {
+    anchorIdx = withAnchor.findIndex((t) => t.item.kind === "lead-expert" || t.item.kind === "expert");
+    if (anchorIdx < 0) anchorIdx = withAnchor.findIndex((t) => t.item.kind === "package");
+    if (anchorIdx < 0) anchorIdx = 0;
+  }
 
-  tagged[anchorIdx].isAnchor = true;
-  const anchor = tagged[anchorIdx];
-  const rest = tagged.filter((_, i) => i !== anchorIdx);
+  withAnchor[anchorIdx].isAnchor = true;
+  const anchor = withAnchor[anchorIdx];
+  const rest = withAnchor.filter((_, i) => i !== anchorIdx);
   return assignBentoSpans([anchor, ...rest]);
 }
 
@@ -641,28 +794,30 @@ function buildBentoTiles(run: FeedItem[]): PlacedTile[] {
 /**
  * One bento group: the coral eyebrow / editorial Fraunces heading / "See all"
  * link (when the group belongs to a neighbourhood), then the bento grid
- * (four columns on desktop at DESKTOP_BP, two on tablet, one on mobile).
+ * (four columns on desktop, two on tablet, one on mobile).
  * Membership and order come straight from the composed stream — the
  * grid only assigns spans and floats the anchor.
  */
 function BentoGroup({
-  run,
+  taggedRun,
   neighbourhood,
   city,
   scheduledDate,
+  floatAnchor = true,
   onAdd,
   onBookRec,
   recLabels,
 }: {
-  run: FeedItem[];
+  taggedRun: { item: FeedItem; order: number }[];
   neighbourhood: any | null;
   city: string;
   scheduledDate: string | null;
+  floatAnchor?: boolean;
   onAdd: (item: any) => void;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
-  const placed = buildBentoTiles(run);
+  const placed = buildBentoTiles(taggedRun, floatAnchor);
   if (placed.length === 0) return null;
 
   const nbName: string | null = neighbourhood
@@ -671,12 +826,15 @@ function BentoGroup({
   const nbSlug: string | null = neighbourhood
     ? String(neighbourhood.slug ?? neighbourhood.id ?? nbName ?? "")
     : null;
+  // Phase 2c: the bento section is the ONE rendering per neighbourhood, so the
+  // legacy header card's tagline (description) joins the heading fallback chain.
   const heading: string | null = neighbourhood
-    ? (neighbourhood.editorialTitle ?? neighbourhood.headline ?? neighbourhood.tagline ?? nbName ?? null)
+    ? (neighbourhood.editorialTitle ?? neighbourhood.headline ?? neighbourhood.tagline ?? neighbourhood.description ?? nbName ?? null)
     : null;
 
   return (
     <section
+      id={nbSlug ? `bento-nb-${nbSlug}` : undefined}
       data-testid={nbSlug ? `bento-section-${nbSlug}` : "bento-intro"}
       data-bento-neighbourhood={nbSlug ?? ""}
     >
@@ -685,7 +843,7 @@ function BentoGroup({
           <div className="min-w-0">
             <div
               className="text-[10.5px] font-semibold uppercase tracking-[0.12em]"
-              style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
+              style={{ color: "var(--earn-muted)", fontFamily: EARN_MONO }}
               data-testid={`bento-eyebrow-${nbSlug}`}
             >
               {nbName.toUpperCase()} · {placed.length}
@@ -697,32 +855,29 @@ function BentoGroup({
               {heading}
             </h3>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              try {
-                document
-                  .querySelector(`[data-testid="neighborhood-container-${nbSlug}"]`)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              } catch {
-                /* best-effort scroll */
-              }
-            }}
-            className="shrink-0 whitespace-nowrap text-[12px] font-semibold"
-            style={{ color: "var(--earn-coral-ink)" }}
+          {/* The legacy "Explore {nb}" CTA folded into this link. Only
+              /discover/location/:city is registered — a neighbourhood-focused
+              view is filed; until it exists this lands on the city page. */}
+          <a
+            href={`/discover/location/${encodeURIComponent(city)}`}
+            className="shrink-0 whitespace-nowrap text-[12px] font-semibold hover:underline"
+            style={{ color: "var(--earn-navy)" }}
             data-testid={`bento-see-all-${nbSlug}`}
           >
             See all in {nbName} →
-          </button>
+          </a>
         </div>
       )}
 
-      <div className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:auto-rows-[172px] gap-[14px]">
+      {/* Tracks are minmax(172px,auto): at least the ratified 172px, growing to fit
+          the converged family card (facts + source + action rows) — a tile must
+          never clip its card. Literal classes only (Tailwind JIT scans source). */}
+      <div className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:auto-rows-[minmax(172px,auto)] gap-[14px]">
         {placed.map((tile) => (
           <div
             key={tile.item.id}
             className={cn(
-              `h-full min-w-0 overflow-hidden ${DESKTOP_BP}:row-span-2`,
+              "h-full min-w-0 overflow-hidden min-[900px]:row-span-2", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
               COL_SPAN_CLASS[tile.colSpan] ?? "",
             )}
             data-testid={`bento-tile-${tile.item.id}`}
@@ -750,32 +905,53 @@ function BentoGroup({
 
 // ─── Bento feed renderer ──────────────────────────────────────────────────────
 
+/** A neighbourhood's nested gems as loose-gem tiles — the bento section is the
+ *  ONE rendering per neighbourhood (Phase 2c), so its child gems join the run.
+ *  Same top-4 exposure the legacy "IN {nb}" list had. */
+function nestedGemItems(neighbourhood: any): FeedItem[] {
+  return ((neighbourhood?.gems ?? []) as any[])
+    .slice(0, 4)
+    .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
+}
+
 /**
- * Blended-feed renderer (city-feed bento, Phase 2).
+ * Blended-feed renderer (city-feed bento, Phase 2; single-rendering + chip
+ * filtering in Phase 2c).
  *
- * Walks the ALREADY-COMPOSED stream in order — it NEVER re-orders or drops.
- * Neighbourhood markers render the existing NeighborhoodContainer (its gems,
- * local-expert row and events, testids intact); each maximal run of filler
- * that follows a neighbourhood renders as that neighbourhood's bento (headed by
- * the coral eyebrow / Fraunces heading / See-all). A run before the first
- * neighbourhood is the intro bento (no heading). city-separators are preserved.
+ * Walks the ALREADY-COMPOSED stream in order — it NEVER re-orders or drops on
+ * the default view. A neighbourhood marker OPENS its bento section: the
+ * neighbourhood's own nested gems become the run's leading tiles (the legacy
+ * NeighborhoodContainer + "IN {nb}" list are gone — the bento is the only
+ * rendering), followed by the marker's trailing filler run in stream order.
+ * A run before the first neighbourhood is the intro bento (no heading);
+ * city-separators are preserved.
+ *
+ * Chip / price filtering happens HERE, per section, AFTER order tagging: a
+ * spine chip filters every bento to that kind and a neighbourhood with no
+ * matches drops out entirely. An explicit price sort reorders tiles within
+ * each section (the one user-commanded reorder; the composed stream itself is
+ * never re-ranked).
  */
 function FeedRenderer({
   items,
   city,
   scheduledDate,
+  activeFilter = "all",
+  priceFilter = "any",
+  sortMode = "recommended",
   onAdd,
   onBookRec,
   recLabels,
-  upcomingEvents,
 }: {
   items: FeedItem[];
   city: string;
   scheduledDate: string | null;
+  activeFilter?: string;
+  priceFilter?: string;
+  sortMode?: string;
   onAdd: (item: any) => void;
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
-  upcomingEvents?: Array<{ date: string; title: string }>;
 }) {
   // F1: grid math must only see renderable items — an unrenderable kind would
   // occupy a bento cell and render as an empty hole. Neighborhoods and
@@ -795,55 +971,94 @@ function FeedRenderer({
     );
   }
 
-  type Section =
-    | { type: "neighborhood"; item: FeedItem }
-    | { type: "group"; items: FeedItem[]; neighbourhood: any | null }
-    | { type: "city-separator"; item: FeedItem };
+  type GroupSection = { type: "group"; items: FeedItem[]; neighbourhood: any | null };
+  type SepSection = { type: "city-separator"; item: FeedItem };
+  type Section = GroupSection | SepSection;
 
   const sections: Section[] = [];
   let currentGroup: FeedItem[] = [];
-  // The most recent neighbourhood — a trailing filler run belongs to it (its
-  // bento gets that neighbourhood's header). A run before the first is intro.
-  let lastNeighbourhood: any | null = null;
+  let currentNeighbourhood: any | null = null;
 
   const flushGroup = () => {
-    if (currentGroup.length > 0) {
-      sections.push({ type: "group", items: [...currentGroup], neighbourhood: lastNeighbourhood });
-      currentGroup = [];
+    if (currentGroup.length > 0 || currentNeighbourhood) {
+      sections.push({ type: "group", items: [...currentGroup], neighbourhood: currentNeighbourhood });
     }
+    currentGroup = [];
+    currentNeighbourhood = null;
   };
 
   for (const item of renderableItems) {
     if (item.kind === "neighborhood") {
       flushGroup();
-      sections.push({ type: "neighborhood", item });
-      lastNeighbourhood = item.data;
+      currentNeighbourhood = item.data;
+      // The neighbourhood's own gems lead its bento run (single rendering).
+      currentGroup.push(...nestedGemItems(item.data));
     } else if (item.kind === "city-separator") {
       flushGroup();
       sections.push({ type: "city-separator", item });
-      lastNeighbourhood = null;
     } else {
       currentGroup.push(item);
     }
   }
   flushGroup();
 
+  // Tag stream orders FIRST (the order-preservation proof), then filter per
+  // section — a filtered-out tile leaves a gap in the order sequence, never a
+  // reorder. Empty sections drop out (the chip's drop-out rule).
+  const renderedSections = sections
+    .map((section) => {
+      if (section.type !== "group") return section;
+      let tagged = section.items.map((item, order) => ({ item, order }));
+      if (activeFilter !== "all") tagged = tagged.filter((t) => chipMatches(t.item, activeFilter));
+      if (priceFilter !== "any") tagged = tagged.filter((t) => priceMatches(t.item, priceFilter));
+      if (sortMode === "price_asc") tagged = sortTaggedRunByPrice(tagged, "asc");
+      if (sortMode === "price_desc") tagged = sortTaggedRunByPrice(tagged, "desc");
+      return { ...section, taggedRun: tagged } as GroupSection & { taggedRun: { item: FeedItem; order: number }[] };
+    })
+    .filter((s) => s.type !== "group" || (s as any).taggedRun.length > 0);
+
+  const anyGroupRendered = renderedSections.some((s) => s.type === "group");
+  if (!anyGroupRendered) {
+    return (
+      <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
+        No {activeFilter.replace("_", " ")} found in {toTitleCase(city)}.
+      </p>
+    );
+  }
+
+  // Mono jump list — the neighbourhoods that actually render (drop-out aware).
+  const jumpTargets = renderedSections
+    .filter((s): s is GroupSection & { taggedRun: any[] } => s.type === "group" && !!s.neighbourhood)
+    .map((s) => ({
+      slug: String(s.neighbourhood.slug ?? s.neighbourhood.id ?? ""),
+      name: (s.neighbourhood.name ?? s.neighbourhood.neighborhood_name ?? s.neighbourhood.neighborhoodName ?? "") as string,
+    }))
+    .filter((t) => t.slug && t.name);
+
   return (
     <div className="space-y-6" data-testid="city-feed">
-      {sections.map((section, si) => {
-        if (section.type === "neighborhood") {
-          return (
-            <NeighborhoodContainer
-              key={section.item.id}
-              neighborhood={section.item.data}
-              city={city}
-              scheduledDate={scheduledDate}
-              onAdd={onAdd}
-              upcomingEvents={upcomingEvents}
-            />
-          );
-        }
-
+      {jumpTargets.length > 0 && (
+        <nav
+          className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]"
+          style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
+          aria-label="Jump to neighbourhood"
+          data-testid="neighbourhood-jump-list"
+        >
+          {jumpTargets.map((t, i) => (
+            <span key={t.slug} className="inline-flex items-center gap-1.5">
+              {i > 0 && <span aria-hidden>·</span>}
+              <a
+                href={`#bento-nb-${t.slug}`}
+                className="hover:underline hover:text-[color:var(--earn-ink)]"
+                data-testid={`jump-${t.slug}`}
+              >
+                {t.name}
+              </a>
+            </span>
+          ))}
+        </nav>
+      )}
+      {renderedSections.map((section, si) => {
         if (section.type === "city-separator") {
           return (
             <div
@@ -863,57 +1078,17 @@ function FeedRenderer({
         return (
           <BentoGroup
             key={`group-${si}`}
-            run={section.items}
+            taggedRun={(section as any).taggedRun}
             neighbourhood={section.neighbourhood}
             city={city}
             scheduledDate={scheduledDate}
+            floatAnchor={sortMode === "recommended"}
             onAdd={onAdd}
             onBookRec={onBookRec}
             recLabels={recLabels}
           />
         );
       })}
-    </div>
-  );
-}
-
-
-// ─── Flat filtered feed ───────────────────────────────────────────────────────
-
-function FlatFilteredFeed({
-  items,
-  city,
-  scheduledDate,
-  onAdd,
-  activeFilter,
-}: {
-  items: FeedItem[];
-  city: string;
-  scheduledDate: string | null;
-  onAdd: (item: any) => void;
-  activeFilter: string;
-}) {
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
-        No {activeFilter.replace("_", " ")} found in {toTitleCase(city)}.
-      </p>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-3" data-testid="city-feed-flat">
-      {items.map((item, idx) => (
-        <div key={item.id} className={idx === 0 ? "col-span-2" : ""}>
-          <BentoTile
-            item={item}
-            city={city}
-            scheduledDate={scheduledDate}
-            onAdd={onAdd}
-            isMarquee={idx === 0}
-          />
-        </div>
-      ))}
     </div>
   );
 }
@@ -1296,6 +1471,9 @@ export default function DiscoverLocationPage() {
   };
 
   const [activeFilter, setActiveFilter] = useState("all");
+  // Popover filters (Phase 2c): price band + sort. Defaults are pass-throughs.
+  const [priceFilter, setPriceFilter] = useState("any");
+  const [sortMode, setSortMode] = useState("recommended");
   // Free-text "what" search — a light, client-side narrow of the page (never a
   // trip write, never a new query param). Empty query = byte-identical to before.
   const [searchQuery, setSearchQuery] = useState("");
@@ -1492,10 +1670,14 @@ export default function DiscoverLocationPage() {
   // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): the mixed "all" feed keeps its
   // 4-service balance cap; a spine chip is a deliberate search and must show EVERY matching
   // approved listing, not a sample of four (that cap is why a whole approved Kyoto catalog was
-  // invisible on Kyoto's own page even once it reached the payload).
+  // invisible on Kyoto's own page even once it reached the payload). The same deliberate-search
+  // posture applies to experts under the Experts chip: the full list, not the lead-excluded
+  // filler slice (there is no separate lead-expert injection to dedupe against off "all").
   const feedItems: FeedItem[] = data
     ? buildFeedStream(
-        neighborhoods, allGems, feedExperts, events, supplyHotels, supplyActivities, platformServices,
+        neighborhoods, allGems,
+        activeFilter === "all" ? feedExperts : experts,
+        events, supplyHotels, supplyActivities, platformServices,
         undefined,
         activeFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
       )
@@ -1565,7 +1747,10 @@ export default function DiscoverLocationPage() {
   // The composition layer PLACES the injected elements into the organic
   // stream (admin-configured cadence/cap/spacing); it consumes the engine's
   // ranked order as-is and never re-ranks. Filtered views are deliberate
-  // searches — they show organic results only.
+  // searches — they show organic results only, but keep the neighbourhood
+  // STRUCTURE: the stream passes through untouched and the bento renderer
+  // filters each section per-tile (chipMatches), dropping neighbourhoods with
+  // no matches (Phase 2c — no more dissolved flat grid).
   const composedItems =
     activeFilter === "all"
       ? composeDiscoverFeed(
@@ -1576,7 +1761,7 @@ export default function DiscoverLocationPage() {
           feedConfig,
           defaultIsRelated,
         )
-      : filterFeedStream(feedItems, activeFilter);
+      : feedItems;
 
   // Shape A: expert packages are now first-class engine candidates, ranked in the SAME
   // slate as offering recommendations (server: gatherOfferingCandidates includePackages,
@@ -1622,23 +1807,33 @@ export default function DiscoverLocationPage() {
     return range ? `${displayCity} · ${range}` : displayCity;
   })();
 
-  // ── Header: neighbourhood chips (LIVE STOCK ONLY, §13) ──────────────────
-  // Derived from the already-composed neighbourhood grouping — one chip per
-  // neighbourhood that actually holds ≥1 gem in the loaded feed. Clicking a
-  // chip scrolls to that neighbourhood section; it never reorders or mutates.
-  const neighbourhoodChips = feedItems
-    .filter((it) => it.kind === "neighborhood")
-    .map((it) => {
-      const n = it.data as any;
-      const count = Math.max(n.gemCount ?? 0, n.gems?.length ?? 0);
-      return {
-        id: String(n.id ?? n.slug ?? n.name ?? ""),
-        slug: String(n.slug ?? n.id ?? ""),
-        name: (n.name ?? n.neighborhood_name ?? n.neighborhoodName ?? "") as string,
-        count,
-      };
-    })
-    .filter((c) => c.count > 0 && c.name);
+  // ── Spine chip live-stock counts (§13: real counts from the loaded data) ──
+  // Counted over the DELIBERATE-SEARCH stream (full experts, uncapped services —
+  // exactly what selecting the chip shows) with each neighbourhood's nested gems
+  // expanded to their bento exposure. Zero renders NO badge, never a fabricated
+  // number.
+  const chipCounts: Record<string, number> = (() => {
+    if (!data) return {};
+    const searchStream = buildFeedStream(
+      neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices,
+      undefined,
+      Number.POSITIVE_INFINITY,
+    );
+    const countable: FeedItem[] = searchStream.flatMap((it) => {
+      if (it.kind === "neighborhood")
+        return ((it.data?.gems ?? []) as any[])
+          .slice(0, 4)
+          .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
+      if (it.kind === "city-separator") return [];
+      return [it];
+    });
+    return Object.fromEntries(
+      SPINE_CHIPS.map((c) => [
+        c.id,
+        c.id === "all" ? countable.length : countable.filter((it) => chipMatches(it, c.id)).length,
+      ]),
+    );
+  })();
 
   // ── Header: light client-side narrow from the "what" search ─────────────
   // Empty query is a pure passthrough (behaviour unchanged). A non-empty query
@@ -1659,20 +1854,6 @@ export default function DiscoverLocationPage() {
         return hay.includes(searchNeedle);
       })
     : filteredItems;
-
-  // Two soonest future-dated city events — the neighborhood header mini-list (F8).
-  const upcomingEvents: Array<{ date: string; title: string }> = (() => {
-    const now = new Date();
-    return (events as any[])
-      .filter((e) => {
-        if (!e?.date) return false;
-        const d = new Date(e.date);
-        return !isNaN(d.getTime()) && d >= now;
-      })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(0, 2)
-      .map((e) => ({ date: e.date as string, title: (e.title || e.name || "") as string }));
-  })();
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
@@ -1814,33 +1995,16 @@ export default function DiscoverLocationPage() {
                   data-testid="input-location"
                 />
               </div>
-              <FiltersPopover active={activeFilter} onSelect={setActiveFilter} />
+              <FiltersPopover
+                price={priceFilter}
+                onPrice={setPriceFilter}
+                sort={sortMode}
+                onSort={setSortMode}
+              />
             </div>
 
-            {/* ── Neighbourhood chips (live stock only) ─────────────── */}
-            {neighbourhoodChips.length > 0 && (
-              <div className="flex flex-wrap gap-2" data-testid="neighbourhood-chips">
-                {neighbourhoodChips.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => {
-                      try {
-                        document
-                          .querySelector(`[data-testid="neighborhood-container-${c.slug}"]`)
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      } catch {
-                        /* best-effort scroll — never mutates the feed */
-                      }
-                    }}
-                    className="px-3 py-1 rounded-full text-[12px] font-medium border border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-muted)] hover:bg-[var(--earn-chip)] transition-colors"
-                    data-testid={`neighbourhood-chip-${c.id}`}
-                  >
-                    {c.name} · {c.count}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* ── Spine chip rail (Phase 2c — the visible gem-type filter) ── */}
+            <SpineChipRail active={activeFilter} counts={chipCounts} onSelect={setActiveFilter} />
 
             {/* Lead expert, wanted slots, and engine recommendations are no
                 longer stacked blocks here — the feed-composition layer
@@ -1881,31 +2045,26 @@ export default function DiscoverLocationPage() {
               </div>
             )}
 
-            {/* ── Blended bento feed (one interleaved stream) ───────── */}
-            {activeFilter === "all" ? (
-              <>
-                <FeedRenderer
-                  items={visibleItems}
-                  city={city}
-                  scheduledDate={scheduledDate}
-                  onAdd={handleAdd}
-                  onBookRec={handleBookRecommendation}
-                  recLabels={{
-                    recommendedLabel: feedConfig.recommendedLabel,
-                    affiliateLabel: feedConfig.affiliateLabel,
-                  }}
-                  upcomingEvents={upcomingEvents}
-                />
-                <TripComplementsStrip city={city} highlight={currentHighlight} />
-              </>
-            ) : (
-              <FlatFilteredFeed
-                items={visibleItems}
-                city={city}
-                scheduledDate={scheduledDate}
-                onAdd={handleAdd}
-                activeFilter={activeFilter}
-              />
+            {/* ── Blended bento feed (one interleaved stream) ─────────
+                The bento is the ONLY rendering under every chip (Phase 2c):
+                a chip filters each neighbourhood's bento to that kind and
+                empty neighbourhoods drop out — no dissolved flat grid. */}
+            <FeedRenderer
+              items={visibleItems}
+              city={city}
+              scheduledDate={scheduledDate}
+              activeFilter={activeFilter}
+              priceFilter={priceFilter}
+              sortMode={sortMode}
+              onAdd={handleAdd}
+              onBookRec={handleBookRecommendation}
+              recLabels={{
+                recommendedLabel: feedConfig.recommendedLabel,
+                affiliateLabel: feedConfig.affiliateLabel,
+              }}
+            />
+            {activeFilter === "all" && (
+              <TripComplementsStrip city={city} highlight={currentHighlight} />
             )}
 
             {/* Request-a-service footer — a "nothing here matches" moment gets a

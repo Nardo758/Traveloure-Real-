@@ -509,7 +509,7 @@ test.describe('city-feed bento — /discover/location', () => {
     }
   });
 
-  test('6. Phase-1 preserved testids still present under the fixture', async ({ page }) => {
+  test('6. preserved testids + Phase 2c surface — single rendering, chip rail, jump list', async ({ page }) => {
     await expect(page.getByTestId('section-hero')).toBeVisible();
     await expect(page.getByTestId('stats-row')).toBeVisible();
     await expect(page.getByTestId('input-search')).toBeVisible();
@@ -520,10 +520,55 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('section-recruitment-gion')).toBeVisible();
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
     await expect(page.getByTestId('feed-card-package-tmpl-1')).toBeVisible();
-    // Neighbourhood container (gems + scroll target) is untouched.
-    await expect(page.getByTestId('neighborhood-container-gion')).toBeAttached();
+    // Phase 2c: ONE rendering per neighbourhood — the legacy container and its
+    // "IN {nb}" list are gone; the neighbourhood's gems are bento tiles now,
+    // each carrying the Hidden gem tag.
+    await expect(page.getByTestId('neighborhood-container-gion')).not.toBeAttached();
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-1"]'),
+    ).toHaveCount(1);
+    await expect(page.getByTestId('gem-hidden-tag-g-gion-1')).toBeVisible();
+    // Phase 2c: the spine chips are the VISIBLE rail (out of the popover), with
+    // "All gems" active by default; the neighbourhood chips are gone and the
+    // mono jump list stands above the first section.
+    await expect(page.getByTestId('spine-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('spine-chip-all')).toBeVisible();
+    await expect(page.getByTestId('spine-chip-eat')).toBeVisible();
+    await expect(page.getByTestId('neighbourhood-chips')).not.toBeAttached();
+    await expect(page.getByTestId('neighbourhood-jump-list')).toBeVisible();
+    await expect(page.getByTestId('jump-gion')).toBeVisible();
+    await expect(page.getByTestId('jump-arashiyama')).toBeVisible();
+    // Popover holds only price and sort now.
+    await page.getByTestId('button-filters').click();
+    await expect(page.getByTestId('popover-filters')).toBeVisible();
+    await expect(page.getByTestId('price-option-any')).toBeVisible();
+    await expect(page.getByTestId('sort-option-recommended')).toBeVisible();
+    await expect(page.getByTestId('popover-filters').locator('[data-testid^="spine-chip-"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
     // Trip complements + request footer still render.
     await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
     await expect(page.getByTestId('section-service-request')).toBeVisible();
+  });
+
+  test('7. chip filter — every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
+    // Fixture differential: gion has exactly ONE eat gem (g-gion-3, restaurant);
+    // arashiyama has none. The Eat chip must keep gion (filtered to that one
+    // tile) and drop arashiyama entirely.
+    await page.getByTestId('spine-chip-eat').click();
+    await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
+    const gionTiles = page.locator('[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]');
+    await expect(gionTiles).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
+    ).toHaveCount(1);
+    // Non-matching kinds are filtered OUT of the surviving bento.
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid^="feed-card-vendor-svc-"]'),
+    ).toHaveCount(0);
+    // Back to All gems: both sections return.
+    await page.getByTestId('spine-chip-all').click();
+    await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
 });

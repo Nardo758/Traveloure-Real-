@@ -17,14 +17,13 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Info, Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
@@ -116,6 +115,9 @@ export function CityFeedCardRecommendation({
   cardPosition,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  // Why-recommended disclosure modal — opened by the CARD itself (family
+  // grammar: the card is the link; no "More info" text link).
+  const [infoOpen, setInfoOpen] = useState(false);
   const askExpert = useAskExpert();
   const name = resolveRecommendationName(candidate);
   const meta = recVisualMeta(candidate);
@@ -147,7 +149,7 @@ export function CityFeedCardRecommendation({
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Add";
+    : "Add to trip";
 
   const photoArea = (
     <div
@@ -207,25 +209,30 @@ export function CityFeedCardRecommendation({
           <Button
             size="sm"
             className="h-7 text-xs px-3"
-            onClick={() => onBook(candidate)}
+            style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onBook(candidate);
+            }}
             data-testid={`btn-book-rec-${position}`}
           >
-            Book
+            Book now
           </Button>
         )}
         <Button
           size="sm"
-          variant="outline"
           className="h-7 text-xs px-3"
-          onClick={() =>
+          style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
+          onClick={(e) => {
+            e.stopPropagation();
             onAdd?.({
               title: name,
               description: candidate.tagline,
               city,
               type: "recommendation",
               scheduledDate,
-            })
-          }
+            });
+          }}
           data-testid={`btn-add-rec-${position}`}
         >
           <Plus className="w-3 h-3 mr-1" />
@@ -235,27 +242,20 @@ export function CityFeedCardRecommendation({
           size="sm"
           variant="outline"
           className="h-7 text-xs px-2.5"
-          onClick={() => askExpert({ city, subject: name })}
+          onClick={(e) => {
+            e.stopPropagation();
+            askExpert({ city, subject: name });
+          }}
           data-testid={`btn-ask-rec-${position}`}
         >
-          💬 Ask
+          Ask an expert
         </Button>
 
-        {/* "More info" / "Why recommended" modal — converged from the inline
-            RecommendationCard. Built ONLY from wire fields (reason + expertEndorsed);
+        {/* "Why recommended" disclosure modal — opened by clicking the card
+            (family grammar: the card is the link; the "More info" text link is
+            gone). Built ONLY from wire fields (reason + expertEndorsed);
             templateStrength/matchType/price never reach the client (§13). */}
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              data-testid={`button-more-info-rec-${position}`}
-            >
-              <Info className="w-3 h-3 mr-1" />
-              More info
-            </Button>
-          </DialogTrigger>
+        <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{name}</DialogTitle>
@@ -291,10 +291,11 @@ export function CityFeedCardRecommendation({
                 {onBook && (
                   <Button
                     size="sm"
+                    style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
                     onClick={() => onBook(candidate)}
                     data-testid={`modal-book-rec-${position}`}
                   >
-                    Book
+                    Book now
                   </Button>
                 )}
                 <Button
@@ -325,11 +326,21 @@ export function CityFeedCardRecommendation({
   return (
     <div
       className={cn(
-        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow",
+        "rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer",
         isRow ? "flex flex-row" : "flex flex-col",
         className,
       )}
       data-testid={`feed-card-rec-${position}`}
+      role="link"
+      tabIndex={0}
+      aria-label={`Why ${name} is recommended`}
+      onClick={() => setInfoOpen(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setInfoOpen(true);
+        }
+      }}
     >
       {photoArea}
       {cardBody}

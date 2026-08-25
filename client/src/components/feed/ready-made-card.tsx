@@ -1,41 +1,34 @@
 /**
  * Feed panel — Ready-Made (expert itinerary template) tile for the city-feed
- * bento, Phase 2. Converges the inline `PackageCard` formerly defined in
- * discover-location.tsx onto a shared `feed/*` panel.
+ * bento. Phase 2c: ALWAYS the 2×1 photo-left treatment (including as the
+ * fallback anchor — the grid gives every ready-made col-span-2), on the family
+ * grammar: photo band (gradient + tag fallback, no grey box) · title · meta ·
+ * three-column mono facts row · source row · action row (View itinerary, teal).
+ * The CARD is the link (/expert-templates/:id) — the teaser "More info" modal
+ * is gone; the detail page carries the teaser.
  *
- * ADDITIVE / behaviour-preserving — every testid and data path the inline card
- * carried is kept verbatim:
- *   - wrapper `feed-card-package-${id}`
- *   - `package-rating-${id}`, `package-sold-${id}`
- *   - `btn-view-package-${id}` (View itinerary → /expert-templates/:id)
- *   - `button-more-info-package-${id}` (the teaser "More info" modal)
- *   - `modal-package-rating-${id}`, `modal-view-itinerary-${id}`
+ * Kept testids: wrapper `feed-card-package-${id}`, `package-rating-${id}`,
+ * `package-sold-${id}`, `btn-view-package-${id}`.
  *
  * Data comes from the already-gated public GET /api/expert-templates
  * (approved+published, teaser-redacted); no full content is read here.
  * §13: a real rating renders only when reviewCount > 0, otherwise an honest "New".
  */
-import { useState } from "react";
-import { Info } from "lucide-react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function FeedReadyMadeCard({
   template,
-  layout = "column",
+  layout: _layout = "column",
 }: {
   template: any;
+  /** Accepted for API compatibility; the ready-made tile is ALWAYS photo-left (2×1). */
   layout?: "column" | "row";
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
-  const isRow = layout === "row";
 
   const priceNum = Number(template.price);
   const priceDisplay = !isNaN(priceNum)
@@ -52,141 +45,131 @@ export function FeedReadyMadeCard({
     .join(" · ");
   const byline = expertName ? `by ${expertName}` : destDuration;
 
-  const photoArea = (
-    <div
-      className={cn(
-        "relative overflow-hidden flex-shrink-0 flex items-center justify-center bg-muted text-muted-foreground",
-        isRow ? "w-36 self-stretch" : "h-[104px] w-full",
-      )}
-    >
-      {template.coverImage ? (
-        <img
-          src={template.coverImage}
-          alt={template.title}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn(
-            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-            imgLoaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-      ) : (
-        <span className="text-2xl">📔</span>
-      )}
-    </div>
-  );
-
-  const cardBody = (
-    <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-primary/10 text-primary">
-          Ready-made
-        </span>
-        {rating === null && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-muted text-muted-foreground">
-            New
-          </span>
-        )}
-      </div>
-
-      <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
-        {template.title}
-      </h3>
-
-      {byline && <p className="text-[12px] text-muted-foreground line-clamp-1">{byline}</p>}
-
-      <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
-        {priceDisplay && <span className="text-sm font-bold text-foreground">{priceDisplay}</span>}
-        {rating !== null && (
-          <span data-testid={`package-rating-${template.id}`}>
-            ★ {rating.toFixed(1)} ({reviewCount})
-          </span>
-        )}
-        {salesCount > 0 && <span data-testid={`package-sold-${template.id}`}>{salesCount} sold</span>}
-      </div>
-
-      <div className="flex gap-1.5 pt-0.5 flex-wrap mt-auto">
-        <Button size="sm" className="h-7 text-xs px-3" asChild data-testid={`btn-view-package-${template.id}`}>
-          <a href={`/expert-templates/${template.id}`}>View itinerary</a>
-        </Button>
-
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              data-testid={`button-more-info-package-${template.id}`}
-            >
-              <Info className="w-3 h-3 mr-1" />
-              More info
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{template.title}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {destDuration && <p className="text-sm text-muted-foreground">{destDuration}</p>}
-              {expertName && <p className="text-xs text-muted-foreground">by {expertName}</p>}
-
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {priceDisplay && (
-                  <span className="text-base font-bold text-foreground">{priceDisplay}</span>
-                )}
-                {rating !== null ? (
-                  <span data-testid={`modal-package-rating-${template.id}`}>
-                    ★ {rating.toFixed(1)} ({reviewCount})
-                  </span>
-                ) : (
-                  <span className="font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                    New
-                  </span>
-                )}
-                {salesCount > 0 && <span>{salesCount} sold</span>}
-              </div>
-
-              {Array.isArray(template.itineraryPreview) && template.itineraryPreview.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium mb-1">What's inside (preview)</p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {template.itineraryPreview.map((d: any, i: number) => (
-                      <div key={i} className="flex items-baseline gap-2 text-xs">
-                        <span className="text-muted-foreground flex-shrink-0 font-medium">
-                          Day {d.day ?? i + 1}
-                        </span>
-                        <span className="truncate">{d.title ?? "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1.5">
-                    Full day-by-day details unlock after purchase.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button size="sm" asChild data-testid={`modal-view-itinerary-${template.id}`}>
-                  <a href={`/expert-templates/${template.id}`}>View itinerary</a>
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </div>
-  );
+  const detailHref = `/expert-templates/${template.id}`;
 
   return (
     <div
-      className={cn(
-        "rounded-xl overflow-hidden border border-primary/40 bg-card shadow-sm hover:shadow-md transition-shadow h-full",
-        isRow ? "flex flex-row" : "flex flex-col",
-      )}
+      className="rounded-xl overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow h-full flex flex-row cursor-pointer"
       data-testid={`feed-card-package-${template.id}`}
+      role="link"
+      tabIndex={0}
+      aria-label={`${template.title} itinerary`}
+      onClick={() => (window.location.href = detailHref)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          window.location.href = detailHref;
+        }
+      }}
     >
-      {photoArea}
-      {cardBody}
+      {/* Photo-left band — ~40% width; gradient + tag fallback, no grey box. */}
+      <div className="relative overflow-hidden flex-shrink-0 flex items-center justify-center w-[40%] min-w-[120px] self-stretch bg-gradient-to-br from-teal-50 via-emerald-100 to-teal-200/70 text-teal-700">
+        {template.coverImage ? (
+          <img
+            src={template.coverImage}
+            alt={template.title}
+            loading="lazy"
+            onLoad={() => setImgLoaded(true)}
+            className={cn(
+              "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
+              imgLoaded ? "opacity-100" : "opacity-0",
+            )}
+          />
+        ) : (
+          <span className="text-2xl">📔</span>
+        )}
+      </div>
+
+      <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-teal-50 text-teal-700">
+            Ready-made
+          </span>
+          {rating === null && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-muted text-muted-foreground">
+              New
+            </span>
+          )}
+        </div>
+
+        <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">
+          {template.title}
+        </h3>
+
+        {byline && <p className="text-[12px] text-muted-foreground line-clamp-1">{byline}</p>}
+
+        {/* Facts row (family grammar) — price / rating / sold, §13 real fields only */}
+        {(priceDisplay || rating !== null || salesCount > 0) && (
+          <div className="grid grid-cols-3 gap-2 border-t border-border pt-2">
+            {priceDisplay && (
+              <div className="min-w-0">
+                <div className="text-[12.5px] font-semibold leading-none truncate" style={{ fontFamily: EARN_MONO }}>
+                  {priceDisplay}
+                </div>
+                <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+                  price
+                </div>
+              </div>
+            )}
+            {rating !== null && (
+              <div className="min-w-0">
+                <div
+                  className="text-[12.5px] font-semibold leading-none truncate"
+                  style={{ fontFamily: EARN_MONO }}
+                  data-testid={`package-rating-${template.id}`}
+                >
+                  ★ {rating.toFixed(1)} ({reviewCount})
+                </div>
+                <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+                  rating
+                </div>
+              </div>
+            )}
+            {salesCount > 0 && (
+              <div className="min-w-0">
+                <div
+                  className="text-[12.5px] font-semibold leading-none truncate"
+                  style={{ fontFamily: EARN_MONO }}
+                  data-testid={`package-sold-${template.id}`}
+                >
+                  {salesCount}
+                </div>
+                <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+                  sold
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Source row — the template's own detail page (id-based in-platform link). */}
+        <div
+          className="flex items-center text-[11px] text-muted-foreground"
+          style={{ fontFamily: EARN_MONO }}
+          data-testid={`package-source-${template.id}`}
+        >
+          <a
+            href={detailHref}
+            className="hover:underline truncate"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Ready-made trip{destDuration ? ` · ${destDuration}` : ""}
+          </a>
+        </div>
+
+        <div className="flex gap-1.5 pt-0.5 flex-wrap mt-auto">
+          <Button
+            size="sm"
+            className="h-7 text-xs px-3"
+            style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
+            asChild
+            data-testid={`btn-view-package-${template.id}`}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          >
+            <a href={detailHref}>View itinerary</a>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
