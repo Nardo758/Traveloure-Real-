@@ -59,7 +59,6 @@ test.describe("authenticated Slip review parity fixture", () => {
       });
     });
   }
-
   test("uses the approved 4-2-1 proposal grid breakpoints", async ({ page }) => {
     await installSlipParityFixture(page, "three");
 
