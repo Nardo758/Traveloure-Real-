@@ -42,14 +42,16 @@ test.describe("authenticated Slip review parity fixture", () => {
 
       const requests = await page.evaluate(() => {
         const recorded = (window as Window & {
-          __slipParityRequests?: Array<{ method: string; path: string }>;
+          __slipParityRequests?: Array<{ method: string; path: string; fixtureBlocked?: true }>;
         }).__slipParityRequests;
         return recorded ?? [];
       });
       expect(
-        requests.filter((request) => request.method !== "GET"),
-        "the fixture must prevent all mutations",
-      ).toEqual([]);
+        requests
+          .filter((request) => request.method !== "GET")
+          .every((request) => request.fixtureBlocked),
+        "the fixture must block every mutation locally",
+      ).toBe(true);
 
       await page.screenshot({
         path: `${CAPTURE_DIR}/gap-1-${scenario}.png`,
@@ -82,5 +84,38 @@ test.describe("authenticated Slip review parity fixture", () => {
         )
         .toBe(expectedColumns);
     }
+  });
+
+  test("shows access denied for a forbidden comparison read", async ({ page }) => {
+    await installSlipParityFixture(page, "forbidden");
+    await page.goto(
+      `${BASE_URL}/itinerary-comparison/${SLIP_PARITY_COMPARISON_ID}`,
+      { waitUntil: "domcontentloaded" },
+    );
+
+    await expect(page.getByTestId("comparison-access-denied")).toBeVisible();
+    await expect(page.getByTestId("comparison-access-denied")).toContainText(
+      "You don't have access to this optimization review",
+    );
+    await expect(page.getByTestId("button-back-to-my-plans")).toContainText("Back to My plans");
+    await expect(page.getByText("No itinerary data found")).toHaveCount(0);
+
+    const requests = await page.evaluate(() => {
+      const recorded = (window as Window & {
+        __slipParityRequests?: Array<{ method: string; path: string; fixtureBlocked?: true }>;
+      }).__slipParityRequests;
+      return recorded ?? [];
+    });
+    expect(
+      requests
+        .filter((request) => request.method !== "GET")
+        .every((request) => request.fixtureBlocked),
+      "the fixture must block every mutation locally",
+    ).toBe(true);
+
+    await page.screenshot({
+      path: `${CAPTURE_DIR}/gap-5-forbidden.png`,
+      fullPage: true,
+    });
   });
 });

@@ -3,12 +3,13 @@ import type { Page } from "@playwright/test";
 export const SLIP_PARITY_TRIP_ID = "slip-parity-trip";
 export const SLIP_PARITY_COMPARISON_ID = "slip-parity-comparison";
 
-export type SlipParityScenario = "three" | "two" | "zero";
+export type SlipParityScenario = "three" | "two" | "zero" | "forbidden";
 
 type FixtureResponse = {
   method?: "GET";
   path: string;
   body: unknown;
+  status?: number;
 };
 
 const fixtureUser = {
@@ -144,6 +145,14 @@ function variant(
 }
 
 function responsesFor(scenario: SlipParityScenario): FixtureResponse[] {
+  if (scenario === "forbidden") {
+    return [{
+      path: `/api/itinerary-comparisons/${SLIP_PARITY_COMPARISON_ID}`,
+      status: 403,
+      body: { message: "You do not have access to this comparison." },
+    }];
+  }
+
   const allVariants = [
     variant("fixture-baseline", "Your plan", "user", "225.00", 0),
     variant("fixture-v1", "Calm mornings", "ai_optimized", "210.00", 92, "hotel"),
@@ -206,7 +215,7 @@ export async function installSlipParityFixture(
   await page.addInitScript(
     ({ user, responses: fixtureResponses }) => {
       const originalFetch = window.fetch.bind(window);
-      const requests: Array<{ method: string; path: string }> = [];
+      const requests: Array<{ method: string; path: string; fixtureBlocked?: true }> = [];
 
       Object.defineProperty(window, "__slipParityRequests", {
         configurable: true,
@@ -236,6 +245,7 @@ export async function installSlipParityFixture(
         }
 
         if (method !== "GET") {
+          requests[requests.length - 1].fixtureBlocked = true;
           return new Response(JSON.stringify({ error: "Mutation blocked by slip parity fixture" }), {
             status: 405,
             headers: { "Content-Type": "application/json" },
@@ -244,7 +254,7 @@ export async function installSlipParityFixture(
 
         const response = fixtureResponses.find((candidate) => candidate.path === parsed.pathname);
         return new Response(JSON.stringify(response?.body ?? {}), {
-          status: 200,
+          status: response?.status ?? 200,
           headers: { "Content-Type": "application/json" },
         });
       };
