@@ -113,9 +113,109 @@ interface ExpertCardProps {
   /** Query string (starting with "?") appended to the View Profile link —
    *  used to carry plan-handoff context (e.g. ?tripId=) into the detail page. */
   detailQuery?: string;
+  /**
+   * Presentation variant. "default" (existing browse card) is unchanged.
+   * "anchor" (city-feed bento, Phase 2) renders the dark-gradient lead-expert
+   * anchor treatment: coral eyebrow, Fraunces name, lede, a coral
+   * "Plan with {name} · from $N" primary (only when a real price exists, §13)
+   * and an outline "View profile". ADDITIVE — no default-path prop removed.
+   */
+  variant?: "default" | "anchor";
 }
 
-export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery }: ExpertCardProps) {
+const FRAUNCES = "'Fraunces', Georgia, serif";
+
+/** Lowest real starting price across an expert's offerings, or null (§13). */
+function expertLowestPrice(expert: ExpertCardProps["expert"]): number | null {
+  const fromServices = expert.selectedServices?.length
+    ? Math.min(...expert.selectedServices.map((s) => parseFloat(s.offering?.price || "0")))
+    : null;
+  const direct = [(expert as any).startingPrice, (expert as any).fromPrice, (expert as any).lowestPrice]
+    .map((v) => (v == null ? NaN : Number(v)))
+    .find((n) => !isNaN(n) && n > 0);
+  const candidates = [fromServices, direct].filter(
+    (n): n is number => typeof n === "number" && !isNaN(n) && n > 0,
+  );
+  return candidates.length > 0 ? Math.min(...candidates) : null;
+}
+
+/** Dark-gradient anchor treatment (city-feed bento lead expert). */
+function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["expert"]; detailQuery?: string }) {
+  const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Local Expert";
+  const firstName = expert.firstName || "your expert";
+  const lede =
+    (expert as any).headline ||
+    (expert.bio ? String(expert.bio).slice(0, 140) : null) ||
+    `Plan your trip with a local who knows the ground.`;
+  const price = expertLowestPrice(expert);
+  const roleBadge = expert.role ? ROLE_BADGE[expert.role] : null;
+
+  return (
+    <article
+      className="relative flex h-full flex-col justify-end overflow-hidden rounded-[16px] p-5 text-white"
+      style={{
+        background:
+          "linear-gradient(150deg, #1E3A5F 0%, #16293F 55%, #0F1E30 100%)",
+        boxShadow: "0 8px 28px rgba(15,30,48,.28)",
+      }}
+      data-testid={`card-expert-${expert.id}`}
+      data-expert-variant="anchor"
+    >
+      {expert.profileImageUrl && (
+        <img
+          src={expert.profileImageUrl}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-25"
+          loading="lazy"
+        />
+      )}
+      <div className="relative z-10 flex flex-1 flex-col">
+        <span
+          className="mb-2 inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]"
+          style={{ background: "rgba(232,93,85,.18)", color: "#FFB4AE" }}
+          data-testid="badge-expert-role"
+        >
+          {roleBadge ? roleBadge.label : "Local Expert"}
+        </span>
+        <h3
+          className="text-[28px] font-semibold leading-[1.05]"
+          style={{ fontFamily: FRAUNCES }}
+          data-testid="text-expert-name"
+        >
+          {fullName}
+        </h3>
+        <p className="mt-2 max-w-[42ch] text-[13px] leading-snug text-white/80 line-clamp-3">
+          {lede}
+        </p>
+        <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+          <Link href={`/experts/${expert.id}${detailQuery ?? ""}`}>
+            <button
+              className="inline-flex h-9 items-center rounded-md px-3.5 text-[12px] font-bold text-white"
+              style={{ background: "#E85D55", boxShadow: "0 4px 14px rgba(232,93,85,.35)" }}
+              data-testid="button-plan-with-expert"
+            >
+              {price !== null ? `Plan with ${firstName} · from $${price}` : `Plan with ${firstName}`}
+            </button>
+          </Link>
+          <Link href={`/experts/${expert.id}${detailQuery ?? ""}`}>
+            <button
+              className="inline-flex h-9 items-center rounded-md border border-white/40 px-3.5 text-[12px] font-semibold text-white/90 hover:bg-white/10"
+              data-testid="button-view-profile"
+            >
+              View profile
+            </button>
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant = "default" }: ExpertCardProps) {
+  if (variant === "anchor") {
+    return <ExpertAnchorCard expert={expert} detailQuery={detailQuery} />;
+  }
   const [isFavorite, setIsFavorite] = useState(false);
   const [, setLocation] = useLocation();
 

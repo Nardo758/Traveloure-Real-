@@ -16,9 +16,16 @@
  *    it is humanized before render and the key itself is still never emitted.
  */
 
-import React, { useState } from "react";
-import { Plus, Sparkles } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Info, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useAskExpert } from "@/lib/use-ask-expert";
@@ -30,6 +37,8 @@ export interface RecommendationCandidate {
   tagline: string | null;
   reason?: string;
   sourceType?: "platform_provider" | "affiliate";
+  /** Server-attached endorsement flag — surfaced in the "Why recommended" modal. */
+  expertEndorsed?: boolean;
 }
 
 /** "aff_guided_tour" → "Guided Tour". Last-resort guard; decorate() on the
@@ -112,6 +121,25 @@ export function CityFeedCardRecommendation({
   const meta = recVisualMeta(candidate);
   const isAffiliate = candidate.sourceType === "affiliate";
   const isRow = layout === "row";
+
+  // Impression ledger (converged from the inline RecommendationCard): the engine's
+  // own /api/upsell/impression endpoint, fired once per mount. /api/feed/impression
+  // never existed; this is the real ledger. Date mode uses the discover_date surface.
+  const impressionFiredRef = useRef(false);
+  useEffect(() => {
+    if (!impressionFiredRef.current) {
+      impressionFiredRef.current = true;
+      fetch("/api/upsell/impression", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          surface: scheduledDate ? "discover_date" : "discover_location",
+          offeringIds: [candidate.offeringId],
+        }),
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate.offeringId]);
 
   // Same photo pipeline as organic gem cards; offerings have no image column,
   // so look one up by display name + city, with the category emoji fallback.
@@ -212,6 +240,84 @@ export function CityFeedCardRecommendation({
         >
           💬 Ask
         </Button>
+
+        {/* "More info" / "Why recommended" modal — converged from the inline
+            RecommendationCard. Built ONLY from wire fields (reason + expertEndorsed);
+            templateStrength/matchType/price never reach the client (§13). */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              data-testid={`button-more-info-rec-${position}`}
+            >
+              <Info className="w-3 h-3 mr-1" />
+              More info
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
+                  isAffiliate ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700",
+                )}
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+                {isAffiliate ? affiliateLabel : recommendedLabel}
+              </span>
+
+              {candidate.tagline && (
+                <p className="text-sm text-muted-foreground">{candidate.tagline}</p>
+              )}
+
+              {(candidate.reason || candidate.expertEndorsed) && (
+                <div className="p-2 rounded-lg bg-muted/50 border border-muted">
+                  <p className="text-xs font-medium mb-1">Why you're seeing this</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {candidate.reason && <p data-testid={`modal-rec-reason-${position}`}>{candidate.reason}</p>}
+                    {candidate.expertEndorsed === true && (
+                      <p data-testid={`modal-rec-endorsed-${position}`}>✓ Endorsed by a local expert</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {onBook && (
+                  <Button
+                    size="sm"
+                    onClick={() => onBook(candidate)}
+                    data-testid={`modal-book-rec-${position}`}
+                  >
+                    Book
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    onAdd?.({
+                      title: name,
+                      description: candidate.tagline,
+                      city,
+                      type: "recommendation",
+                      scheduledDate,
+                    })
+                  }
+                  data-testid={`modal-add-rec-${position}`}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  {addLabel}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
