@@ -9,8 +9,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { 
-  Map, 
-  Award,
+  Map,
   Compass,
   MessageSquare, 
   LogOut, 
@@ -44,6 +43,11 @@ import {
   TreePine,
   Wine,
   Palmtree,
+  Ticket,
+  ConciergeBell,
+  ShoppingBag,
+  Lamp,
+  Waypoints,
   UsersRound,
   Crown,
   Flower2,
@@ -69,18 +73,25 @@ import { useTripContextSync } from "@/lib/trip-context";
 import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
-const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  "Destinations":      MapPin,
-  "Events":            Calendar,
-  "Local Experts":     MapPin,
-  "Trip Planners":     User,
-  // The four Marketplace tabs use the canonical NOUN vocabulary (ledger
-  // 2026-08-23-discover-vocabulary): Destinations · Ready-Made Trips · Events ·
-  // Services. These icon keys MUST track nav-config.ts's `name` values; the
-  // services tab is role-agnostic (experts sell there too), and Ready-Made Trips
-  // uses Award to match its tab trigger's icon in discover.tsx.
-  "Services":          Building2,
-  "Ready-Made Trips":  Award,
+// ONE source object for the earn-grammar nav leaves (ruling 2026-08-25-nav-icons):
+// it feeds the desktop dropdown, the mobile sheet, AND the Experts & Services page
+// mastheads (experts.tsx / providers-directory.tsx import it — never a restated copy).
+// Keys MUST track nav-config.ts's `name` values (the lookup is NAV_LEAF_ICONS[item.name]);
+// note the leaf is "Ready-Made Trips" (nav-config), which the ruling shorthands "Ready-Made".
+// The 8 earn leaves: Destinations Palmtree · Ready-Made Trips Gem · Events Ticket ·
+// Services ConciergeBell · Service Providers ShoppingBag · Local Experts Lamp ·
+// Trip Planners Waypoints · Event Planners Wine. No Send/Plane/Navigation/arrow glyph and
+// no Compass/Store/MapPin/Calendar reaches an earn masthead. Non-earn Experiences/Planning
+// leaves keep their themed icons below; anything unlisted falls back to MapPin.
+export const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Destinations":      Palmtree,
+  "Events":            Ticket,
+  "Local Experts":     Lamp,
+  "Trip Planners":     Waypoints,
+  "Service Providers": ShoppingBag,
+  "Event Planners":    Wine,
+  "Services":          ConciergeBell,
+  "Ready-Made Trips":  Gem,
   "Travel Planning":   Plane,
   "Romantic Getaways": Sparkles,
   "Date Night":        Wine,

@@ -37,6 +37,33 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { ExpertCard } from "@/components/expert-card";
 import { SEOHead } from "@/components/seo-head";
+// One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile reads it
+// rather than restating the role→glyph mapping; keyed by the nav leaf `name`.
+import { NAV_LEAF_ICONS } from "@/components/layout";
+
+const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+// Role → the nav leaf name whose earn glyph the masthead tile shows
+// (Local Experts→Lamp · Trip Planners→Waypoints · Event Planners→Wine).
+const ROLE_NAV_NAME: Record<string, string> = {
+  local_expert: "Local Experts",
+  travel_expert: "Trip Planners",
+  event_planner: "Event Planners",
+};
+
+// FIND HELP rail (ruling 2026-08-25-surface-rail) — plain links, current one filled
+// navy, replacing the role-pill switcher. The three role links carry live counts and
+// the re-homed `tab-role-*` ids (§3.8); Providers is a plain route with no count
+// (/api/experts/counts covers the three expert roles only — §13, no invented number).
+const FIND_HELP_RAIL: Array<
+  | { kind: "route"; label: string; href: string }
+  | { kind: "role"; role: string; label: string }
+> = [
+  { kind: "route", label: "Providers", href: "/providers" },
+  { kind: "role", role: "local_expert", label: "Local Experts" },
+  { kind: "role", role: "travel_expert", label: "Trip Planners" },
+  { kind: "role", role: "event_planner", label: "Event Planners" },
+];
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -122,17 +149,14 @@ export default function ExpertsPage() {
     }, 50);
   }, []);
 
-  const handleRoleChange = useCallback((role: string) => {
-    if (!(role in roleLabels)) return;
-    setSelectedRole(role);
-    if (role !== "local_expert") {
-      setNeighbourhoodQuery("");
-    }
+  // Rail role links are plain links to /experts?role=X (ruling 2026-08-25-surface-rail),
+  // but preserve the page's other query params (destination, tripId handoff) so switching
+  // role never silently drops filter state (§3.8 preserve).
+  const buildRoleHref = useCallback((role: string) => {
     const params = new URLSearchParams(searchString);
-    if (params.get("role") === role) return;
     params.set("role", role);
-    navigate(`${location}?${params.toString()}`);
-  }, [searchString, location, navigate]);
+    return `/experts?${params.toString()}`;
+  }, [searchString]);
 
   const [favorites, setFavorites] = useState<string[]>([]);
 
@@ -226,6 +250,14 @@ export default function ExpertsPage() {
     },
   });
 
+  // Cross-sell shelf (§3.8 "Or start with a trip they already built"): the public
+  // Ready-Made feed row carries authorId (§3.2), so filter it client-side to the
+  // experts shown on this page — no new endpoint, and §13-hidden when there are none.
+  // The feed responds { listings: [...] } (not a bare array).
+  const { data: readyMadeFeed } = useQuery<{ listings: any[] }>({
+    queryKey: ["/api/ready-made"],
+  });
+
   const toggleFavorite = (id: string) => {
     setFavorites((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
@@ -264,6 +296,13 @@ export default function ExpertsPage() {
     }
   });
 
+  // Ready-Made trips authored by the experts currently on the page (up to 4), for the
+  // cross-sell shelf. Filter by authorId ∈ page experts; hidden entirely when empty (§13).
+  const pageAuthorIds = new Set(sortedExperts.map((e: any) => String(e.id)));
+  const crossSellTrips = (Array.isArray(readyMadeFeed?.listings) ? readyMadeFeed!.listings : [])
+    .filter((t: any) => t?.authorId && pageAuthorIds.has(String(t.authorId)))
+    .slice(0, 4);
+
   const seo =
     selectedRole === "travel_expert"
       ? {
@@ -294,95 +333,113 @@ export default function ExpertsPage() {
         keywords={seo.keywords}
         url={selectedRole ? `/experts?role=${selectedRole}` : "/experts"}
       />
-      {/* Hero — UNIFIED header band, shared pattern with /discover: centered navy
-          title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
-          row beneath (here: the role switcher). py-5 = compacted (decision-maker
-          Aug 23: the taller masthead pushed page content too far down).
-          Change the pattern in BOTH places or not at all — /discover matches. */}
-      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
+      {/* Band + FIND HELP rail (SPEC §2/§3.8; rulings 2026-08-25-nav-icons + -surface-rail):
+          left = role-glyph tile (from the one NAV_LEAF_ICONS source) + Fraunces title +
+          one-line sub; right = FIND HELP eyebrow + four-link rail (Providers · Local
+          Experts · Trip Planners · Event Planners), current one filled navy, REPLACING the
+          role-pill switcher. The three role links keep the re-homed tab-role-* ids and their
+          live count badges; they preserve query params via buildRoleHref. Same band idiom as
+          /discover's Marketplace band (discover.tsx). */}
+      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-[26px]">
         <div className="container mx-auto px-4 max-w-6xl">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-4"
+            className="flex flex-col md:flex-row md:items-start md:justify-between gap-4"
           >
-            <h1 className="text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)] mb-1.5">
-              {selectedRole === "travel_expert"
-                ? "Work with a Trip Planner"
-                : selectedRole === "event_planner"
-                ? "Plan Your Event"
-                : "Find Your Perfect Local Expert"}
-            </h1>
-            <p className="text-[15px] text-[color:var(--earn-muted)] max-w-2xl mx-auto">
-              {selectedRole === "travel_expert"
-                ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
-                : selectedRole === "event_planner"
-                ? "Specialist event planners for weddings, proposals, and group celebrations. Let an expert make it unforgettable."
-                : "Connect with verified local experts who know their destinations inside out. Get personalized recommendations and insider access."}
-            </p>
-          </motion.div>
-
-          {/* Role Switcher */}
-          <motion.div
-            initial={{ opacity: 1, y: 0 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="flex justify-center"
-          >
-            <div
-              className="inline-flex bg-[var(--earn-chip)] rounded-full p-1 gap-1"
-              role="tablist"
-              aria-label="Expert type"
-              data-testid="role-switcher"
-            >
-              {[
-                { role: "local_expert", label: "Local Experts" },
-                { role: "travel_expert", label: "Trip Planners" },
-                { role: "event_planner", label: "Event Planners" },
-              ].map(({ role, label }) => {
-                const count = roleCounts?.[role];
-                return (
-                  <button
-                    key={role}
-                    role="tab"
-                    aria-selected={selectedRole === role}
-                    onClick={() => handleRoleChange(role)}
-                    className={cn(
-                      "px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap flex items-center gap-1.5",
-                      selectedRole === role
-                        ? "bg-[var(--earn-teal)] text-white shadow-sm"
-                        : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)]"
-                    )}
-                    data-testid={`tab-role-${role}`}
-                  >
-                    {label}
-                    {isLoadingCounts ? (
-                      <span
-                        className={cn(
-                          "inline-block w-5 h-4 rounded-full animate-pulse",
-                          selectedRole === role ? "bg-white/30" : "bg-black/10"
-                        )}
-                        data-testid={`skeleton-count-${role}`}
-                      />
-                    ) : count !== undefined ? (
-                      <span
-                        className={cn(
-                          "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold leading-none",
-                          selectedRole === role
-                            ? "bg-white/25 text-white"
-                            : "bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
-                        )}
-                        data-testid={`count-${role}`}
-                      >
-                        {count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+            <div className="flex items-start gap-3 text-left">
+              <span className="w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] grid place-items-center shrink-0">
+                {(() => {
+                  const TileIcon = NAV_LEAF_ICONS[ROLE_NAV_NAME[selectedRole]] ?? NAV_LEAF_ICONS["Local Experts"];
+                  return <TileIcon className="w-[22px] h-[22px]" />;
+                })()}
+              </span>
+              <div>
+                <h1
+                  className="text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)] leading-tight"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  {selectedRole === "travel_expert"
+                    ? "Work with a Trip Planner"
+                    : selectedRole === "event_planner"
+                    ? "Plan Your Event"
+                    : "Find Your Perfect Local Expert"}
+                </h1>
+                <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
+                  {selectedRole === "travel_expert"
+                    ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
+                    : selectedRole === "event_planner"
+                    ? "Specialist event planners for weddings, proposals, and group celebrations. Let an expert make it unforgettable."
+                    : "Connect with verified local experts who know their destinations inside out. Get personalized recommendations and insider access."}
+                </p>
+              </div>
             </div>
-          </motion.div>
 
+            <nav className="md:text-right" aria-label="Find help" role="tablist">
+              <p
+                className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)] mb-2"
+                style={{ fontFamily: EARN_MONO }}
+              >
+                Find help
+              </p>
+              <div className="flex flex-wrap md:justify-end gap-1.5" style={{ fontFamily: EARN_MONO }}>
+                {FIND_HELP_RAIL.map((item) => {
+                  if (item.kind === "route") {
+                    return (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        className="text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  }
+                  const active = selectedRole === item.role;
+                  const count = roleCounts?.[item.role];
+                  return (
+                    <Link
+                      key={item.role}
+                      href={buildRoleHref(item.role)}
+                      role="tab"
+                      aria-selected={active}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors",
+                        active
+                          ? "bg-[var(--earn-navy)] text-white font-semibold"
+                          : "text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]",
+                      )}
+                      data-testid={`tab-role-${item.role}`}
+                    >
+                      {item.label}
+                      {isLoadingCounts ? (
+                        <span
+                          className={cn(
+                            "inline-block w-4 h-3.5 rounded-full animate-pulse",
+                            active ? "bg-white/30" : "bg-black/10",
+                          )}
+                          data-testid={`skeleton-count-${item.role}`}
+                        />
+                      ) : count !== undefined ? (
+                        <span
+                          className={cn(
+                            "inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full text-[11px] font-semibold leading-none",
+                            active
+                              ? "bg-white/25 text-white"
+                              : "bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]",
+                          )}
+                          data-testid={`count-${item.role}`}
+                        >
+                          {count}
+                        </span>
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </div>
+            </nav>
+          </motion.div>
         </div>
       </section>
 
@@ -397,7 +454,7 @@ export default function ExpertsPage() {
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  placeholder="Search by name, destination, or specialty..."
+                  placeholder="What do you need help with?"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 h-10 border-border text-foreground text-sm"
@@ -534,13 +591,29 @@ export default function ExpertsPage() {
           {!isLoadingExperts && sortedExperts.length > 0 && (
             <div className="flex items-end justify-between gap-4 mb-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "#667085" }}>
-                  {roleLabels[selectedRole] ?? "Experts"}
+                <p
+                  className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]"
+                  style={{ fontFamily: EARN_MONO }}
+                >
+                  {roleLabels[selectedRole] ?? "Experts"} · {sortedExperts.length}
                 </p>
-                <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: "#111827" }}>
-                  {sortedExperts.length} {sortedExperts.length === 1 ? "expert" : "experts"} to choose from
+                <h2
+                  className="text-[22px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  {selectedRole === "travel_expert"
+                    ? "Hand the logistics to a planner"
+                    : selectedRole === "event_planner"
+                    ? "Make the occasion unforgettable"
+                    : "Someone who already knows the way"}
                 </h2>
               </div>
+              <p
+                className="hidden sm:block text-[12px] text-[color:var(--earn-muted)] whitespace-nowrap"
+                style={{ fontFamily: EARN_MONO }}
+              >
+                {sortedExperts.length} {sortedExperts.length === 1 ? "match" : "matches"} · recommended
+              </p>
             </div>
           )}
 
@@ -615,6 +688,67 @@ export default function ExpertsPage() {
                 Load more experts
                 <ChevronDown className="w-4 h-4" />
               </button>
+            </div>
+          )}
+
+          {/* Cross-sell shelf (§3.8): Ready-Made trips these very experts have already
+              built — a second way in beside hiring them. Family cards linking to the
+              ready-made detail; hidden entirely when none of the page's experts have a
+              published trip (§13, no empty shelf). */}
+          {crossSellTrips.length > 0 && (
+            <div className="mt-12 border-t pt-8" style={{ borderColor: "var(--earn-border)" }}>
+              <div className="mb-4">
+                <p
+                  className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]"
+                  style={{ fontFamily: EARN_MONO }}
+                >
+                  Ready-Made · {crossSellTrips.length}
+                </p>
+                <h2
+                  className="text-[22px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
+                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                >
+                  Or start with a trip they already built
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="experts-cross-sell">
+                {crossSellTrips.map((trip: any) => (
+                  <Link
+                    key={trip.id}
+                    href={`/ready-made/${trip.id}`}
+                    data-testid={`cross-sell-trip-${trip.id}`}
+                    className="group flex flex-col overflow-hidden rounded-[14px] border bg-white transition-all hover:-translate-y-0.5"
+                    style={{ borderColor: "var(--earn-border)", boxShadow: "0 1px 3px rgba(17,24,39,.04)" }}
+                  >
+                    <div className="relative h-32 bg-[var(--earn-chip)]">
+                      {trip.heroImageUrl && (
+                        <img src={trip.heroImageUrl} alt={trip.title} className="h-full w-full object-cover" />
+                      )}
+                      {trip.market && (
+                        <span
+                          className="absolute left-2 top-2 rounded-md bg-white/90 px-1.5 py-0.5 text-[9.5px] font-semibold text-[color:var(--earn-ink)]"
+                          style={{ fontFamily: EARN_MONO }}
+                        >
+                          {trip.market}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-1 flex-col p-3">
+                      <h3 className="line-clamp-2 text-[14px] font-semibold leading-snug text-[color:var(--earn-ink)]">
+                        {trip.title}
+                      </h3>
+                      <p
+                        className="mt-1 text-[11.5px] text-[color:var(--earn-muted)]"
+                        style={{ fontFamily: EARN_MONO }}
+                      >
+                        {[trip.durationDays ? `${trip.durationDays} days` : null, `by ${trip.authorName}`]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
         </div>
