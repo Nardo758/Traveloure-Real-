@@ -67,7 +67,7 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
 
     await expect(page.getByTestId('text-page-title')).toHaveText('Destinations');
     await expect(page.getByTestId('city-grid')).toBeVisible();
-    await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
+    await expect(page.getByTestId('button-filters')).not.toBeAttached();
     await expectNoTabBar(page);
     await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('input-location')).toBeVisible();
@@ -104,13 +104,17 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
     }
   });
 
-  test('/services: masthead "Services", search + filter bar visible, no tab bar, no ad', async ({ page }) => {
+  test('/services: masthead, search, Filters +, and chip rail visible; no legacy filter bar', async ({ page }) => {
     await gotoPath(page, '/services');
 
     await expect(page.getByTestId('text-page-title')).toHaveText('Services');
     await expect(page.getByTestId('input-search')).toBeVisible();
     await expect(page.getByTestId('input-location')).toBeVisible();
-    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('button-filters')).toBeVisible();
+    await expect(page.getByTestId('button-quick-cat-all')).toBeVisible();
+    await expect(page.getByTestId('services-filter-bar')).not.toBeAttached();
+    await expect(page.getByTestId('select-category')).not.toBeAttached();
+    await expect(page.getByText('Active filters:', { exact: true })).not.toBeAttached();
     await expect(page.getByTestId('city-grid')).not.toBeVisible();
     await expectNoTabBar(page);
     await expect(page.getByTestId('cta-how-it-works')).not.toBeAttached();
@@ -158,7 +162,7 @@ test.describe('/discover — redirects onto the surface routes', () => {
   test('?tab=services + extra params lands on /services with params forwarded', async ({ page }) => {
     await page.goto(`${BASE_URL}/discover?tab=services&q=tea`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForURL(`${BASE_URL}/services?q=tea`, { timeout: 15_000 });
-    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('button-filters')).toBeVisible();
   });
 
   test('?tab=invalidvalue falls back to /destinations', async ({ page }) => {
@@ -168,23 +172,26 @@ test.describe('/discover — redirects onto the surface routes', () => {
   });
 });
 
-// ── 3. Services page — filter bar and quick-cat chips ────────────────────────
+// ── 3. Services page — Filters + popover and category chip rail ─────────────
 
 test.describe('/services — filters', () => {
   test.beforeEach(async ({ page }) => {
     await gotoPath(page, '/services');
-    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('button-filters')).toBeVisible();
     // Wait for service data to settle before filter interactions.
     await page.waitForTimeout(1_500);
   });
 
-  test('filter bar inputs are all present', async ({ page }) => {
+  test('Filters + contains price, rating, sort, and Clear but no category select', async ({ page }) => {
     await expect(page.getByTestId('input-location')).toBeVisible();
-    await expect(page.getByTestId('select-category')).toBeVisible();
+    await expect(page.getByTestId('select-category')).not.toBeAttached();
+    await page.getByTestId('button-filters').click();
+    await expect(page.getByTestId('popover-filters')).toBeVisible();
     await expect(page.getByTestId('input-min-price')).toBeVisible();
     await expect(page.getByTestId('input-max-price')).toBeVisible();
     await expect(page.getByTestId('select-rating')).toBeVisible();
     await expect(page.getByTestId('select-sort')).toBeVisible();
+    await expect(page.getByTestId('button-clear-filters')).toBeVisible();
   });
 
   test('button-quick-cat-all chip is always present', async ({ page }) => {
@@ -206,8 +213,8 @@ test.describe('/services — filters', () => {
     await catChips.first().click();
     await page.waitForTimeout(1_000);
 
-    // Filter bar stays visible — still the services surface, no navigation.
-    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    // Filters + stays visible — still the services surface, no navigation.
+    await expect(page.getByTestId('button-filters')).toBeVisible();
 
     // After category filter: either matching service cards appear OR empty state renders.
     const serviceCards = page.locator('[data-testid^="card-service-"]');
@@ -249,8 +256,29 @@ test.describe('/services — filters', () => {
       }
     }
 
-    // Invariant: filter bar remains after reset.
-    await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    // Invariant: Filters + remains after reset.
+    await expect(page.getByTestId('button-filters')).toBeVisible();
+  });
+
+  test('Clear stays inside the popover and preserves the existing URL reset contract', async ({ page }) => {
+    await gotoPath(page, '/services?location=Kyoto&minPrice=100&maxPrice=400&minRating=4&sortBy=price_low');
+    await page.getByTestId('button-filters').click();
+
+    await expect(page.getByTestId('input-min-price')).toHaveValue('100');
+    await expect(page.getByTestId('input-max-price')).toHaveValue('400');
+    await expect(page.getByTestId('select-rating')).toContainText('4.0+');
+    await expect(page.getByTestId('select-sort')).toContainText('Price: Low to High');
+
+    await page.getByTestId('button-clear-filters').click();
+    await expect(page.getByTestId('input-location')).toHaveValue('');
+    await expect(page.getByTestId('input-min-price')).toHaveValue('');
+    await expect(page.getByTestId('input-max-price')).toHaveValue('');
+    await expect(page.getByTestId('select-rating')).toContainText('Any rating');
+    await expect(page.getByTestId('select-sort')).toContainText('Price: Low to High');
+
+    await expect.poll(async () => {
+      return page.evaluate(() => Object.fromEntries(new URLSearchParams(window.location.search)));
+    }).toEqual({ sortBy: 'price_low' });
   });
 });
 
@@ -314,7 +342,7 @@ test.describe('Marketplace surfaces — mobile viewport (375 px)', () => {
   const SURFACES = [
     { path: '/destinations', title: 'Destinations', contentTestId: 'city-grid' },
     { path: '/events',       title: 'Events',       contentTestId: 'global-calendar' },
-    { path: '/services',     title: 'Services',     contentTestId: 'services-filter-bar' },
+    { path: '/services',     title: 'Services',     contentTestId: 'button-filters' },
   ] as const;
 
   for (const surface of SURFACES) {
