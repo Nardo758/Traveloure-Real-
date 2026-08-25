@@ -8,7 +8,7 @@ import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, ArrowLeft, ChevronRight, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, ChevronRight, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTripContext } from "@/lib/trip-context";
@@ -174,6 +174,17 @@ function HeroBand({
     ? `${highlightEmoji} ${highlight}`
     : null;
 
+  // Band sub (Phase 2d): the AUTHORED destination line when one exists — the
+  // same copy field chain the section headings read — else the seasonal line,
+  // else the fixed marketplace line. Never the generic "Plan your trip to…".
+  const authoredLine: string | null =
+    cityIntel?.editorialTitle ?? cityIntel?.headline ?? cityIntel?.tagline ??
+    heroData?.editorialTitle ?? heroData?.headline ?? heroData?.tagline ?? null;
+  const subLine: string =
+    authoredLine ??
+    seasonLine ??
+    `Local experts, bookable services, and what's on in ${displayCity}.`;
+
   const datePillLabel = parsedDate ? `Planning ${monthName} ${dayOfMonth}` : null;
 
   // Muted mono eyebrow: DESTINATION · {COUNTRY} · TREND {n} · CROWD {level} —
@@ -199,10 +210,10 @@ function HeroBand({
               <Tile className="w-[22px] h-[22px]" />
             </span>
             <div>
-              {/* Phase 2c: coral is reserved for the lead-expert anchor CTA — the
-                  eyebrow is muted mono like the sibling surface bands. */}
+              {/* Coral-ink TEXT eyebrow — the mock's treatment (Phase 2d reversal:
+                  the coral-only rule governs BUTTONS; text eyebrows stay coral). */}
               <div
-                className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-muted)] mb-1"
+                className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)] mb-1"
                 style={{ fontFamily: EARN_MONO }}
               >
                 {eyebrowFragments.map((frag, i) => (
@@ -219,8 +230,7 @@ function HeroBand({
                 <span data-testid="text-city-name">{displayCity}</span>
               </h1>
               <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
-                {seasonLine ??
-                  `Plan your trip to ${displayCity} — browse local experts, bookable services, and what's on.`}
+                {subLine}
               </p>
               {datePillLabel && (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
@@ -372,52 +382,6 @@ function FiltersPopover({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-// ─── Stats row ────────────────────────────────────────────────────────────────
-
-function StatsRow({
-  heroData,
-  neighborhoodCount,
-  serviceCount,
-}: {
-  heroData: any;
-  neighborhoodCount: number;
-  serviceCount: number;
-}) {
-  const cityIntel = heroData?.city;
-  if (!cityIntel) return null;
-
-  const crowdEmoji = (level: string | undefined): string => {
-    if (!level) return "🟢";
-    const l = level.toLowerCase();
-    if (l.includes("very busy") || l.includes("packed")) return "🔴";
-    if (l.includes("busy") || l.includes("high")) return "🟡";
-    return "🟢";
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2.5" data-testid="stats-row">
-      {/* activeTravelers absolute count suppressed per R3 — no absolute visitor count on traveler surfaces */}
-      {cityIntel.crowdLevel && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
-          {crowdEmoji(cityIntel.crowdLevel)}{" "}
-          <b className="text-foreground font-semibold capitalize">{cityIntel.crowdLevel}</b>{" "}
-          crowds
-        </div>
-      )}
-      {serviceCount > 0 && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
-          <b className="text-foreground font-semibold">{serviceCount}</b> services
-        </div>
-      )}
-      {neighborhoodCount > 0 && (
-        <div className="bg-card border border-border rounded-xl px-3.5 py-2 text-xs text-muted-foreground">
-          <b className="text-foreground font-semibold">{neighborhoodCount}</b> neighborhoods
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -706,58 +670,84 @@ const COL_SPAN_CLASS: Record<number, string> = {
   4: "min-[900px]:col-span-4", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
 };
 
-/** A tile placed in the bento, carrying its resolved desktop column span. */
+/** A tile placed in the bento, carrying its resolved desktop spans. */
 interface PlacedTile {
   item: FeedItem;
   /** Original position in the neighbourhood's stream run (order-preservation proof). */
   order: number;
   colSpan: number;
+  /** 2 only for the tall lead-expert anchor (the mock's full-section-height lead). */
+  rowSpan: number;
   isAnchor: boolean;
 }
 
 /**
- * Assign column spans over a 4-wide grid so that every visual row sums to
- * EXACTLY 4 — no orphan cell, no straddle hole. The anchor is col-span-2; a
- * designated wide ready-made (the first non-anchor package) is col-span-2; all
- * others start at 1. A greedy width-4 packer then widens the last tile of any
- * short row to fill it. Computed purely from the tile sequence (never re-ranked).
+ * Assign spans over the 4-wide grid (Phase 2d rules):
+ *  - the anchor is col-span-2; a lead-EXPERT anchor is additionally row-span-2
+ *    (the mock's full-section-height lead) — a ready-made or gem fallback
+ *    anchor stays 2×1;
+ *  - every ready-made is col-span-2 (photo-left 2×1); everything else starts 1;
+ *  - NO tile is ever stretched past col-span-2. A mid-grid hole is avoided by
+ *    widening a 1-wide tile in the closing row by one column (never past 2);
+ *    the LAST row is allowed to run short — an honest short row beats a
+ *    stretched lone tile.
+ * Row capacities account for the tall anchor: while it spans rows 1–2, those
+ * rows have 2 free columns beside it. Computed purely from the tile sequence
+ * (never re-ranked).
  */
 function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: boolean }[]): PlacedTile[] {
   const n = tiles.length;
   if (n === 0) return [];
 
-  // Anchor is 2-wide; EVERY ready-made is 2-wide (Phase 2c: the ready-made tile
-  // is always the 2×1 photo-left treatment, including as the fallback anchor).
+  const isExpertAnchor = (t: { item: FeedItem; isAnchor: boolean }) =>
+    t.isAnchor && (t.item.kind === "lead-expert" || t.item.kind === "expert");
+
   const base = tiles.map((t) => (t.isAnchor || t.item.kind === "package" ? 2 : 1));
+  const rowSpans = tiles.map((t) => (isExpertAnchor(t) ? 2 : 1));
 
-  // Greedy width-4 packing into rows (a col-span-2 never straddles a boundary).
-  const rows: number[][] = [];
-  let row: number[] = [];
+  // Pack the NON-anchor tiles (the anchor is placed first by the grid) through
+  // a row-capacity sequence: a tall anchor leaves capacity 2 in its two rows; a
+  // 2×1 anchor leaves capacity 2 in its single row; rows after that are full 4s.
+  const startIdx = tiles[0]?.isAnchor ? 1 : 0;
+  const besideAnchorRows = startIdx === 1 ? (rowSpans[0] === 2 ? 2 : 1) : 0;
+  let rowNumber = 0; // 0-based row counter for capacity lookup
+  const capacityOf = (r: number) => (r < besideAnchorRows ? 2 : 4);
+
+  let rowTiles: number[] = []; // indices (into tiles) of the current row
   let used = 0;
-  for (let i = 0; i < n; i++) {
-    const s = Math.min(base[i], 4);
-    if (used + s > 4) {
-      rows.push(row);
-      row = [];
-      used = 0;
+  const closeRow = (deficit: number) => {
+    // Fill a mid-grid short row by widening ONE 1-wide tile per missing column
+    // (cap col-span-2). With tile widths ∈ {1,2} the deficit is always coverable.
+    let need = deficit;
+    for (let k = rowTiles.length - 1; k >= 0 && need > 0; k--) {
+      const idx = rowTiles[k];
+      if (base[idx] === 1) {
+        base[idx] = 2;
+        need -= 1;
+      }
     }
-    row.push(i);
+    rowTiles = [];
+    used = 0;
+    rowNumber += 1;
+  };
+
+  for (let i = startIdx; i < n; i++) {
+    const cap = capacityOf(rowNumber);
+    const s = Math.min(base[i], 2);
+    if (used + s > cap) closeRow(cap - used);
+    rowTiles.push(i);
     used += s;
-    if (used === 4) {
-      rows.push(row);
-      row = [];
-      used = 0;
-    }
+    if (used === capacityOf(rowNumber)) closeRow(0);
   }
-  if (row.length) rows.push(row);
+  // The FINAL row stays as-is — a short last row is fine (Phase 2d).
 
-  // Widen the last tile of any row that is short, so every row sums to 4 (F1/F3).
-  for (const r of rows) {
-    const sum = r.reduce((a, i) => a + Math.min(base[i], 4), 0);
-    if (sum < 4) base[r[r.length - 1]] += 4 - sum;
-  }
-
-  return tiles.map((t, i) => ({ item: t.item, order: t.order, colSpan: base[i], isAnchor: t.isAnchor }));
+  return tiles.map((t, i) => ({
+    item: t.item,
+    order: t.order,
+    colSpan: Math.min(base[i], 2),
+    rowSpan: rowSpans[i],
+    isAnchor: t.isAnchor,
+  }));
 }
 
 /**
@@ -843,7 +833,7 @@ function BentoGroup({
           <div className="min-w-0">
             <div
               className="text-[10.5px] font-semibold uppercase tracking-[0.12em]"
-              style={{ color: "var(--earn-muted)", fontFamily: EARN_MONO }}
+              style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
               data-testid={`bento-eyebrow-${nbSlug}`}
             >
               {nbName.toUpperCase()} · {placed.length}
@@ -869,21 +859,24 @@ function BentoGroup({
         </div>
       )}
 
-      {/* Tracks are minmax(172px,auto): at least the ratified 172px, growing to fit
-          the converged family card (facts + source + action rows) — a tile must
-          never clip its card. Literal classes only (Tailwind JIT scans source). */}
+      {/* Rows are minmax(172px,auto): at least the ratified 172px, growing to fit
+          the converged family card — a tile never clips its card. A tile is ONE
+          row; only the tall lead-expert anchor spans two (rowSpan 2). Literal
+          classes only (Tailwind JIT scans source). */}
       <div className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 min-[900px]:auto-rows-[minmax(172px,auto)] gap-[14px]">
         {placed.map((tile) => (
           <div
             key={tile.item.id}
             className={cn(
-              "h-full min-w-0 overflow-hidden min-[900px]:row-span-2", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
+              "h-full min-w-0 overflow-hidden",
+              tile.rowSpan === 2 && "min-[900px]:row-span-2", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
               COL_SPAN_CLASS[tile.colSpan] ?? "",
             )}
             data-testid={`bento-tile-${tile.item.id}`}
             data-bento-role={tile.isAnchor ? "anchor" : "tile"}
             data-order={tile.order}
             data-col-span={tile.colSpan}
+            data-row-span={tile.rowSpan}
           >
             <BentoTile
               item={tile.item}
@@ -1002,6 +995,33 @@ function FeedRenderer({
   }
   flushGroup();
 
+  // Phase 2d: a wanted slot NAMES a specific neighbourhood — re-home it to that
+  // neighbourhood's own section. Composition places injected panels by cadence,
+  // blind to sections, which is how "Local guide wanted in Gion" landed inside
+  // Arashiyama's bento. A recruitment panel is not organic ranking, so moving
+  // it to the section it names is a correctness fix, not a re-rank; a slot
+  // naming no rendered section stays where it fell.
+  const sectionKey = (nb: any): string | null =>
+    nb ? String(nb.slug ?? nb.id ?? nb.name ?? "") || null : null;
+  const groupByKey = new Map<string, GroupSection>();
+  for (const s of sections) {
+    if (s.type === "group" && s.neighbourhood) {
+      const k = sectionKey(s.neighbourhood);
+      if (k && !groupByKey.has(k)) groupByKey.set(k, s);
+    }
+  }
+  for (const s of sections) {
+    if (s.type !== "group") continue;
+    const keep: FeedItem[] = [];
+    for (const it of s.items) {
+      const slotNb = it.kind === "wanted-slot" ? String((it.data as any)?.neighborhoodId ?? "") : "";
+      const home = slotNb ? groupByKey.get(slotNb) : undefined;
+      if (home && home !== s) home.items.push(it);
+      else keep.push(it);
+    }
+    s.items = keep;
+  }
+
   // Tag stream orders FIRST (the order-preservation proof), then filter per
   // section — a filtered-out tile leaves a gap in the order sequence, never a
   // reorder. Empty sections drop out (the chip's drop-out rule).
@@ -1036,10 +1056,13 @@ function FeedRenderer({
     .filter((t) => t.slug && t.name);
 
   return (
-    <div className="space-y-6" data-testid="city-feed">
+    // The jump list sits tight above the first section (the first eyebrow lands
+    // within ~one search-row height of the chip rail — Phase 2d); sections keep
+    // their own rhythm in the inner wrapper.
+    <div data-testid="city-feed">
       {jumpTargets.length > 0 && (
         <nav
-          className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]"
+          className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]"
           style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
           aria-label="Jump to neighbourhood"
           data-testid="neighbourhood-jump-list"
@@ -1058,6 +1081,7 @@ function FeedRenderer({
           ))}
         </nav>
       )}
+      <div className="space-y-6">
       {renderedSections.map((section, si) => {
         if (section.type === "city-separator") {
           return (
@@ -1089,6 +1113,7 @@ function FeedRenderer({
           />
         );
       })}
+      </div>
     </div>
   );
 }
@@ -1912,23 +1937,10 @@ export default function DiscoverLocationPage() {
         />
       )}
 
+      {/* Phase 2d: no ← Back — the Marketplace rail and browser back cover it;
+          no stats row — crowd level lives in the band eyebrow and the counts on
+          the chips. The feed starts right under the search row + chip rail. */}
       <div className="container mx-auto px-4 py-6 max-w-5xl">
-        {/* Back navigation */}
-        <button
-          onClick={() => {
-            if (window.history.length > 1) {
-              window.history.back();
-            } else {
-              navigate("/events");
-            }
-          }}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-          data-testid="btn-back"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-4">
@@ -1956,14 +1968,7 @@ export default function DiscoverLocationPage() {
         )}
 
         {data && (
-          <div className="space-y-5">
-            {/* ── Stats row ─────────────────────────────────────────── */}
-            <StatsRow
-              heroData={data.hero?.data}
-              neighborhoodCount={neighborhoods.length}
-              serviceCount={platformServices.length}
-            />
-
+          <div className="space-y-4">
             {/* ── "Pulled to top" date section (date mode only) ─────── */}
             {scheduledDate && (
               <DateHighlightStrip

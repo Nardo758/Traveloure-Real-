@@ -173,7 +173,7 @@ export function CityFeedCardRecommendation({
           )}
         />
       )}
-      {!loading && !photoUrl && <span className="text-2xl">{meta.emoji}</span>}
+      {/* No-photo fallback is the tinted band alone — no emoji glyph (Phase 2d). */}
     </div>
   );
 
