@@ -2,13 +2,12 @@
  * Feed panel — Ways-to-Earn concierge card (extracted from discover-location.tsx
  * inline `EarnCard` for the city-feed bento, Phase 2).
  *
- * Restyled per the bento dispatch: `--earn-ground` background, coral primary
- * CTA. ADDITIVE — behaviour and testids preserved verbatim:
+ * `--earn-ground` background. Phase 2c: coral is reserved for the lead-expert
+ * anchor CTA alone, so the eyebrow is muted mono and the primary CTA is
+ * navy-filled. Behaviour and testids preserved verbatim:
  *   - wrapper testid `feed-card-earn`
  *   - `btn-earn-expert` (Become an expert → /earn)
  *   - `btn-earn-provider` (List a service → /earn)
- * The primary CTA is coral-filled (the "single coral CTA" of the spec); the
- * secondary keeps its outline treatment so no existing testid is lost.
  */
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +31,7 @@ export function FeedEarnCard({ city }: { city: string }) {
     >
       <span
         className="text-[10px] font-semibold uppercase tracking-[0.12em]"
-        style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
+        style={{ color: "var(--earn-muted)", fontFamily: EARN_MONO }}
       >
         Earn on Traveloure
       </span>
@@ -49,7 +48,7 @@ export function FeedEarnCard({ city }: { city: string }) {
         <Button
           size="sm"
           className="h-7 border-none px-3 text-xs text-white"
-          style={{ background: "var(--earn-coral-ink)" }}
+          style={{ background: "var(--earn-navy)" }}
           asChild
           data-testid="btn-earn-expert"
         >

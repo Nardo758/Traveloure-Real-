@@ -1,5 +1,5 @@
 {
-  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. Two neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert), 'arashiyama' WITHOUT (its anchor is the top ready-made). Includes a partner/affiliate external stub, a wanted slot (via offering-types + composition config), gems and services so spans exercise. Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1).",
+  "_doc": "Fixture for the city-feed bento spec (discover-tabs.spec.ts › 'city-feed bento — /discover/location'). A LocationViewPayload plus the sibling endpoint payloads the discover-location page composes. Two neighbourhoods: 'gion' WITH a lead local expert (its bento anchor is the expert), 'arashiyama' WITHOUT (its anchor is the top ready-made). Includes a partner/affiliate external stub, a wanted slot (via offering-types + composition config), gems and services so spans exercise. Composition is deterministic under the mocked config (recCadence 2, wantedSlotSpacing 2, wantedSlotMax 1). CHIP-FILTER DIFFERENTIAL (Phase 2c): gion carries exactly ONE 'eat' gem (g-gion-3, placeType restaurant) and arashiyama carries NONE, so the Eat spine chip proves both halves of the rule — every bento filters to the chip's kind, and a neighbourhood with no matches drops out entirely.",
 
   "locationView": {
     "city": "Kyoto",
@@ -16,12 +16,13 @@
           "name": "Gion",
           "editorialTitle": "Lantern-lit lanes after dark",
           "description": "Geisha districts, teahouses and stone-paved alleys.",
-          "gemCount": 2,
+          "gemCount": 3,
           "serviceCount": 0,
           "localExpert": null,
           "gems": [
             { "id": "g-gion-1", "placeName": "Hanamikoji Street", "placeType": "viewpoint", "neighborhood": "gion", "gemScore": 8.7, "imageUrl": null, "whyLocalsLoveIt": "Golden-hour lanterns before the crowds arrive.", "bestFor": ["photography", "evening walk"] },
-            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 8.1, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." }
+            { "id": "g-gion-2", "placeName": "Tatsumi Bridge", "placeType": "photo_spot", "neighborhood": "gion", "gemScore": 8.1, "imageUrl": null, "whyLocalsLoveIt": "A quiet canal-side frame locals adore." },
+            { "id": "g-gion-3", "placeName": "Izuju Sushi Counter", "placeType": "restaurant", "neighborhood": "gion", "gemScore": 8.4, "imageUrl": null, "whyLocalsLoveIt": "Kyoto-style pressed sushi beside the shrine gates.", "bestFor": ["lunch"] }
           ]
         },
         {

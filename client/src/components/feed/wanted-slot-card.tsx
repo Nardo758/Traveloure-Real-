@@ -64,7 +64,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem }) {
         <a
           href={`/become-expert?city=${encodeURIComponent(slotCity)}&neighborhood=${encodeURIComponent(neighborhoodName)}&offering=${encodeURIComponent(offeringLabel)}`}
           className="inline-flex items-center gap-0.5 rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
-          style={{ background: "var(--earn-coral-ink)" }}
+          style={{ background: "var(--earn-gold-ink)" }}
           data-testid="link-wanted-apply"
         >
           Offer this <ChevronRight className="h-3 w-3" />
