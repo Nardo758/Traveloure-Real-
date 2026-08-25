@@ -1,0 +1,53 @@
+DISPATCH — Experts & Services family polish
+
+audited@f06356f7 · lane: experts-services-polish · branch lane/experts-services-polish from origin/main · one agent, one lane, one page per phase
+
+Locked rulings
+2026-08-24-client-tree-canonical: write targets are client/src/lib/nav-config.ts, client/src/pages/experts.tsx, expert-detail.tsx, storefront.tsx, providers-directory.tsx, and the mobile nav component that renders icons. artifacts/ is read-only reference.
+Ratified nav (docs/design/nav-experts-services/*-LIVE.png @ e1905398): FIND HELP = Service Providers → /providers, Local Experts, Trip Planners, Event Planners → /experts?role=…. Labels and hrefs do not change.
+Service Providers is a nav item, not an experts tab. The artifacts 4th tab in experts.tsx:381 is not transcribed. experts.tsx stays three roles.
+Storefront canonical route is /s/:handle; /p/ legacy. Storefront money handlers (book, pay, Stripe Connect handoff) are untouched — this is the "one link that books and pays" page.
+Styling: Tailwind + Shadcn + existing tokens. No .css created or imported; storefront.css is re-expressed.
+All testids preserved verbatim (20 / 15 / 31 / 12). All queries, mutations, role filters, ?role= handling, /api/experts/counts preserved.
+Behavioral proof in root preview on real dev data (dev DB has 3 local experts, 15 trip planners, 0 event planners as of today).
+Phase 0 — read-only
+git status -sb clean at f06356f7; branch from origin/main.
+Nav icons: find where the mobile FIND HELP list assigns MapPin vs User. Report file:line and the current rule. Propose one distinct lucide icon per item (e.g. Store / MapPin / Route / PartyPopper — agent proposes, Leon rules).
+For each of experts.tsx, expert-detail.tsx, storefront.tsx: diff against artifacts; categorize hunks structure/copy · styling · behavior · excluded (the 4th tab). Report counts; list every behavior hunk with lines.
+storefront.css → Tailwind mapping table.
+providers-directory.tsx: describe what it renders today and what /api/provider-storefronts returns (field list). No design exists; report so Leon can decide.
+Dev DB: count of provider storefronts, and whether any expert has a populated storefront at /s/:handle, for proof data. Report handles (not PII).
+
+HARD STOP. Open decisions for Leon: nav icon set; /providers disposition (design it in this lane using the experts.tsx card grammar / leave as-is / fold into /services).
+
+Phase 1 — nav (on "go")
+
+Icon assignment per Leon's ruling. Proof: mobile and desktop dropdown captures, four distinct icons, labels and hrefs unchanged (grep the four hrefs). Commit feat(nav): role-distinct icons for FIND HELP. HARD STOP.
+
+Phase 2 — experts.tsx (on "go")
+
+Transcribe structure/copy + styling; exclude the 4th tab. Proof: three tabs with live counts (3/15/0); role switch changes results and URL; destination/experience/neighbourhood filters narrow; empty state on Event Planners renders correctly; card → /experts/:id. Capture docs/design/experts-services-polish/experts-ROOTPREVIEW.png. tsc 0 new; testids 20. Commit. HARD STOP.
+
+Phase 3 — expert-detail.tsx (on "go")
+
+Proof on a real local expert: offerings render with prices from fee_bands resolution (no literals); neighborhoods; booking/contact CTA fires the existing handler; storefront link → /s/:handle. Capture. tsc 0 new; testids 15. Commit. HARD STOP.
+
+Phase 4 — storefront.tsx (on "go")
+
+Highest care — money page. Proof on a real populated storefront: services/templates/ready-made sections render; book CTA reaches checkout (stop at confirm — do not complete a purchase); share tools render; OG route /s/:handle server injection unchanged (curl the head). Capture. tsc 0 new; testids 31. Commit. HARD STOP.
+
+Phase 5 — providers-directory.tsx (only if Leon ruled "design it")
+
+Card grammar borrowed from experts.tsx post-Phase-2. Proof: cards from /api/provider-storefronts; card → /s/:handle; empty state. Testids 12. Commit. HARD STOP.
+
+Phase 6 — close
+
+Ledger: 2026-08-25-experts-tabs-three-roles (Service Providers is nav-only, never an experts tab) [advisory]; nav icon ruling; /providers disposition. FOLLOWUPS: behavior hunks flagged; service-detail.tsx stays with Marketplace lane.
+
+What Not To Do
+No edits to service-detail.tsx, discover.tsx, App.tsx, server/.
+No changes to /api/experts filtering or the legacy expert→travel_expert role mapping in server/storage.ts.
+No completing a checkout or Stripe action during proof.
+No .css imports. No copying artifacts' 4th tab, service_provider role, or providerStorefronts query into experts.tsx.
+No "while I'm here" on the expert workspace, console, or Publish/Promote panel — those are different surfaces.
+No push without "commit". Amend platform auto-commit messages before first push.
