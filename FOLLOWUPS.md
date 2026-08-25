@@ -171,12 +171,13 @@ above; Replit fetches by that name). Executed from Claude Code in **unattended m
 consecutively behind the draft PR's CI, HALT on the dispatch triggers, never merge/mark-ready/push-main.
 
 ### FU — §3.10 storefront attribution sidebar deferred (needs a server field)
-Phase 4 re-tokens the storefront hero + three lanes + search but **defers the "Came from a provider
-link?" attribution sidebar**: `/api/storefront/:handle` returns no attribution/fee fields and §3.10
-forbids computing them client-side (§13/§14). Deferred per decision-maker (Phase 0). **FOLLOWUP:**
-`storefront.routes.ts` to return resolved attribution strings (`travelerFeeStatus`, `repeatRate`) from
-the fee resolver (`rails-attribution.service.ts` / `fee-resolution.service.ts` already exist); the
-sidebar renders only when both exist.
+The role-agnostic storefront deliberately still omits the "Came from a provider link?" sidebar:
+`/api/storefront/:handle` returns no attribution/fee fields and §3.10 forbids computing them client-side
+(§13/§14). **FOLLOWUP:** add a read-only `resolveStorefrontAttribution(viewerId, ownerId)` that returns
+`{ travelerFeeStatus, repeatRate }` from the session acquisition reference and the repeat-pair check,
+without returning amounts. `acquired_via_provider_id` does not exist; current attribution is the
+acquisition reference plus `rails-attribution.service.ts`. The sidebar may render only when both strings
+exist. This is a new read model, not a change to fee math or checkout resolution.
 
 ### FU — §3.11 /providers market facet
 Phase 5 renders the honest total ("Providers · N") with name/handle search only — **no `?market=`
