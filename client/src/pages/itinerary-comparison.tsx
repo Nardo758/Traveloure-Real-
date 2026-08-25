@@ -1190,7 +1190,7 @@ export default function ItineraryComparisonPage() {
   const generationProducedNoProposals =
     !autoApply &&
     data?.comparison?.status === "generated" &&
-    hasVariants &&
+    data?.variants != null &&
     aiVariants.length === 0;
 
   // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
@@ -1474,7 +1474,7 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
-        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && (
+        {!hasVariants && !isGenerating && !hasFailed && !autoApplyError && !generationProducedNoProposals && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />

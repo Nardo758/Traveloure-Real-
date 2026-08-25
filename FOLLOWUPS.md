@@ -153,3 +153,5 @@ own already-shipped role strings (`partner.serviceProvider` = サービス事業
 イベントプランナー; the file already reuses `partner.*` strings for `links.localExperts`/`links.tripPlanners`).
 Lower risk because they mirror reviewed in-file copy, but **not confirmed by a native speaker** — flag for
 a native check before treating as final. Gate now at full parity (289/289).
+
+2026-08-23-optimizer-three-variants flag 'PR #563 built V1+V2 only' is stale — the grid renders up to 3 as of 9d3f8ab; ledger note to close it.
