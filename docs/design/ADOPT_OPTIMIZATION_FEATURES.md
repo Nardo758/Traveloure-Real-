@@ -179,7 +179,7 @@ Contents:
 - **`.as-label-inline`** + `.as-list.scrollable` (`data-testid="anchor-list"`, max‑height 216px) of `.as-opt` candidates. Each candidate: `.as-radio`, `.as-main` (`b` name + `em` "4.7★ · Shimogyo"), `.fit` median (`.fit.good` green; `.rec` "best fit" pill), and an `.as-tick` check shown when selected.
 - **Custom location** (`.as-custom`, `data-testid="anchor-custom"`): pin SVG + free‑text field accepting *"an address, place name, or 35.0036, 135.7752 — used as you type."*
 - **`.as-hint`**: *"'Fit' = median walk from that base to your stops, scored live (§14). A custom location is geocoded and scored the same way — if we can't place it, we say so rather than guess (§13)."*
-- Footer: **Cancel** (`.btn.ghost`) + **Generate 3 versions around <anchor>** (`.btn.primary`, `data-testid="button-generate"` — its label updates with the chosen anchor).
+- Footer: **Cancel** (`.btn.ghost`) + **Generate 3 versions around <anchor>** (`.btn.primary`, `data-testid="build-around-confirm"` — its label updates with the chosen anchor).
 - `.modal-note`: *"Optimization is a paid step — you confirm here before anything runs or is charged."*
 
 ### 4.2 Finalize — "You're set — how do you want to book it?" (`data-testid="finalize-modal"`)
@@ -233,7 +233,7 @@ Two IIFEs power the live popup:
 
 ## 8. Key `data-testid` hooks (for build parity / e2e)
 
-`slip-optimize-preview-context`, `preview-trending-now`, `preview-seasonal`, `proposal-column-baseline`, `proposal-column-v1..v3`, `proposal-preview-money`, `proposal-preview-drivetime`, `adopt-tray`, `compare-footer`, `optimize-scrim`, `optimize-modal`, `opt-auto`, `opt-hotel`, `opt-neighborhood`, `opt-activity`, `anchor-list`, `as-candidate-1..6`, `anchor-custom`, `button-generate`, `finalize-modal`, `finalize-self`, `finalize-booking-agent`, `finalize-expert`, `finalize-concierge`, `button-finalize-confirm`.
+`slip-optimize-preview-context`, `preview-trending-now`, `preview-seasonal`, `proposal-column-baseline`, `proposal-column-v1..v3`, `proposal-preview-money`, `proposal-preview-drivetime`, `adopt-tray`, `compare-footer`, `optimize-scrim`, `optimize-modal`, `opt-auto`, `opt-hotel`, `opt-neighborhood`, `opt-activity`, `anchor-list`, `as-candidate-1..6`, `anchor-custom`, `build-around-confirm`, `finalize-modal`, `finalize-self`, `finalize-booking-agent`, `finalize-expert`, `finalize-concierge`, `button-finalize-confirm`.
 
 ---
 
