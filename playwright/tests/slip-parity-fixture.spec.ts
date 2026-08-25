@@ -57,4 +57,30 @@ test.describe("authenticated Slip review parity fixture", () => {
       });
     });
   }
+
+  test("uses the approved 4-2-1 proposal grid breakpoints", async ({ page }) => {
+    await installSlipParityFixture(page, "three");
+
+    for (const { width, expectedColumns } of [
+      { width: 1280, expectedColumns: 4 },
+      { width: 1000, expectedColumns: 2 },
+      { width: 560, expectedColumns: 1 },
+      { width: 390, expectedColumns: 1 },
+    ]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(
+        `${BASE_URL}/itinerary-comparison/${SLIP_PARITY_COMPARISON_ID}`,
+        { waitUntil: "domcontentloaded" },
+      );
+
+      await expect(page.getByTestId("review-proposal-grid")).toBeVisible();
+      await expect
+        .poll(() =>
+          page.getByTestId("review-proposal-grid").evaluate((element) =>
+            getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length,
+          ),
+        )
+        .toBe(expectedColumns);
+    }
+  });
 });

@@ -1747,7 +1747,10 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div
+                  className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-4 mb-4"
+                  data-testid="review-proposal-grid"
+                >
                   {specColumns.slice(0, 4).map((variant, index) => (
                     <ProposalColumnContainer
                       key={variant.id}
@@ -1863,7 +1866,7 @@ export default function ItineraryComparisonPage() {
             {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
                 slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
             {!slipTripId && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+            <div className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-6 mb-6">
               {/* Skeleton for user variant if still loading */}
               {isGenerating && !userVariant && (
                 <Card className="border-dashed opacity-80">
