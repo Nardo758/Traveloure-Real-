@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Select,
@@ -642,10 +642,11 @@ function ServiceCard({
  * Marketplace un-group (decision-maker ratified Aug 23, ledger
  * 2026-08-23-marketplace-ungroup): each Marketplace surface is its OWN page —
  * /destinations, /ready-made, /events, /services — reached straight from the nav
- * dropdown, with NO tab bar (the grouped header is gone). `surface` pins this
- * component to one surface: the tab bar is not rendered, the masthead titles
- * itself for that surface, and ?tab= is ignored. Without `surface` the legacy
- * tabbed shell still works (only the /discover redirect uses that path now).
+ * dropdown, with NO tab bar (the grouped header is gone). `surface` is REQUIRED
+ * and pins this component to one surface: the masthead titles itself for that
+ * surface and only the matching TabsContent renders. The legacy tabbed shell and
+ * ?tab= switching were removed (2026-08-25-discover-shell-removed); /discover is a
+ * redirect-only route that maps old ?tab= links onto the surface routes.
  */
 export type MarketplaceSurface = "travelpulse" | "packages" | "events" | "services";
 
@@ -683,7 +684,7 @@ const SURFACE_META: Record<MarketplaceSurface, { emoji: string; title: string; s
   },
 };
 
-export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface } = {}) {
+export default function DiscoverPage({ surface }: { surface: MarketplaceSurface }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
@@ -733,33 +734,12 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
-  // Tab navigation state (read from URL).
-  // articles tab hidden in Phase 1a — fall back to travelpulse.
-  // "packages" added to the URL-addressable set alongside the B4 un-hide of its
-  // TabsTrigger (the trigger + TabsContent already render; this only lets
-  // ?tab=packages deep-link to it, e.g. from the calendar "More info" modal).
-  const VISIBLE_TABS = new Set(["travelpulse", "packages", "events", "services"]);
-  const rawUrlTab = urlParams.get("tab") || "travelpulse";
-  const urlTab = VISIBLE_TABS.has(rawUrlTab) ? rawUrlTab : "travelpulse";
+  // Surface pages are PINNED by their route. The legacy tabbed Discover shell —
+  // ?tab= switching, the TabsList, and the `articles` tab — was removed
+  // (2026-08-25-discover-shell-removed). `surface` is required, so the active
+  // surface IS `surface`. urlCity still seeds CityGrid on /destinations.
   const urlCity = urlParams.get("city") || "";
-  // A surface page is PINNED — ?tab= never overrides it (the /discover redirect
-  // is what maps old ?tab= links onto the right surface route).
-  //
-  // `activeTab` is DERIVED from `surface`, not just seeded from it: navigating
-  // between surface routes (/services → /destinations) reuses this same
-  // DiscoverPage instance (both routes render Layout > DiscoverPage), so the
-  // useState initializer does NOT re-run and the effect below (gated on
-  // `!surface`) does NOT fire. If the tab lived only in state it would go stale —
-  // the masthead (which reads `surface`) would update while the body (which reads
-  // the tab) would not. Deriving keeps the two in lockstep with no render flash.
-  const [selectedTab, setSelectedTab] = useState(urlTab);
-  const activeTab = surface ?? selectedTab;
-
-  // Sync the selected tab whenever the URL ?tab= param changes (legacy tabbed
-  // shell only — surface pages are fixed by their route and ignore ?tab=).
-  useEffect(() => {
-    if (!surface) setSelectedTab(urlTab);
-  }, [urlTab, surface]);
+  const activeTab = surface;
 
   // Debounce search query
   useEffect(() => {
@@ -1117,79 +1097,60 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
     );
   };
 
-  const influencerContent: any[] = [];
-
   return (
     <>
       <SEOHead
-        title={surface ? SURFACE_META[surface].seoTitle : "Discover Services & Experiences"}
+        title={SURFACE_META[surface].seoTitle}
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
-        url={surface ? SURFACE_META[surface].url : "/discover"}
+        url={SURFACE_META[surface].url}
       />
       <div className="min-h-screen bg-background">
 
-        {/* Hero — UNIFIED header band, shared pattern with /experts: centered navy
-            title (text-[28px]/3xl) + one-line muted subtitle, then the page's control
-            row beneath. py-5 = compacted (decision-maker Aug 23: the py-9 masthead
-            pushed page content too far down). Change the pattern in BOTH places or not
-            at all — /experts carries the identical band. */}
-        {/* Funnel PR1: the whole header region (hero + tab bar) lives inside ONE Tabs
-            root so the tab bar renders INSIDE the hero band (Radix TabsList needs the
-            Tabs context). The sections between the hero and the TabsContents are
-            unaffected — Tabs is context, not layout. The hero carries the ONE
-            instructional ad (browse → add to cart → we assemble & optimize); the old
-            AI-Suggestions button, Plan-Experience button, and the standalone banner
-            are all removed — each duplicated another entry (funnel audit, Jul 17).
-            The AI sell lives in the cart's paid-optimization step instead. */}
-        <Tabs value={activeTab} onValueChange={setSelectedTab} className="w-full">
+        {/* Hero — UNIFIED header band, shared pattern with /experts: navy title +
+            one-line muted subtitle, then the page's control row beneath. py-5 =
+            compacted. Change the pattern in BOTH places or not at all — /experts
+            carries the identical band. */}
+        {/* The legacy tabbed Discover shell was removed (2026-08-25-discover-shell-removed):
+            no TabsList, no tab triggers, no ?tab= switching. `surface` is required and
+            pins the page to one surface; the Tabs root remains only so Radix mounts the
+            matching TabsContent (context, not layout). */}
+        <Tabs value={activeTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
           <div className="container mx-auto px-4 max-w-6xl">
-            {/* Surface masthead = the ratified Ready-Made-by-Theme band (artifact
-                5c827895, decision-maker Aug 23): a Fraunces serif title with a leading
-                emoji + a muted one-line sub, left-aligned, content immediately below. NO
-                search bar except on Services (the only surface whose query it actually
-                feeds) and NO instructional-ad banner (removed per the same ruling — the
-                pitch was funnel copy, not surface content). Fraunces is applied inline
-                (loaded in index.html) because --font-serif is a runtime theme token, not a
-                static one. The legacy tabbed shell keeps its old centered sans masthead +
-                search + ad; it is reachable only through the /discover redirect. */}
+            {/* Surface masthead = the ratified Ready-Made-by-Theme band: a Fraunces
+                serif title with a leading emoji + a muted one-line sub, left-aligned,
+                content immediately below. The search bar renders ONLY on Services (the
+                surface whose query it feeds). Fraunces is applied inline (loaded in
+                index.html) because --font-serif is a runtime theme token, not a static
+                one. Phase 2 replaces the emoji + this band with the earn-grammar
+                masthead tile + four-link rail. */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={surface ? "text-left" : "text-center mb-4"}
+              className="text-left"
             >
               <h1
-                className={surface
-                  ? "flex items-center gap-2.5 flex-wrap text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)]"
-                  : "text-[28px] md:text-3xl font-semibold tracking-tight text-[color:var(--earn-navy)]"}
-                style={surface ? { fontFamily: "'Fraunces', Georgia, serif" } : undefined}
+                className="flex items-center gap-2.5 flex-wrap text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)]"
+                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
               >
-                {surface ? (
-                  <>
-                    <span aria-hidden="true">{SURFACE_META[surface].emoji}</span>
-                    {/* testid lives on the text span (not the h1) so masthead
-                        assertions stay an exact match — the emoji is decorative. */}
-                    <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
-                  </>
-                ) : (
-                  <span data-testid="text-page-title">Explore Services &amp; Ready-Made Trips</span>
-                )}
+                <span aria-hidden="true">{SURFACE_META[surface].emoji}</span>
+                {/* testid lives on the text span (not the h1) so masthead
+                    assertions stay an exact match — the emoji is decorative. */}
+                <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
               </h1>
-              <p className={surface
-                ? "text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]"
-                : "text-[15px] text-[color:var(--earn-muted)] mt-1"}>
-                {surface ? SURFACE_META[surface].subtitle : "Expert services, ready-made trips, and AI-powered recommendations."}
+              <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
+                {SURFACE_META[surface].subtitle}
               </p>
             </motion.div>
-            {(!surface || surface === "services") && (
+            {surface === "services" && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
-              className={surface ? "mt-3" : "max-w-3xl mx-auto"}
+              className="mt-3"
             >
-              <div className={surface ? "relative max-w-xl" : "relative"}>
+              <div className="relative max-w-xl">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search services, destinations..."
@@ -1199,68 +1160,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                   data-testid="input-search"
                 />
               </div>
-              {/* The instructional ad — legacy tabbed shell only (funnel's one pitch). */}
-              {!surface && (
-              <button
-                type="button"
-                onClick={() => setSelectedTab("services")}
-                className="w-full mt-3 flex items-center gap-2.5 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-4 py-2 text-left hover-elevate active-elevate-2 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                data-testid="cta-how-it-works"
-              >
-                <Globe className="w-4 h-4 text-[color:var(--earn-teal-ink)] flex-shrink-0" />
-                <p className="text-sm truncate min-w-0">
-                  <span className="font-medium">Planning a wedding, proposal, or getaway?</span>{" "}
-                  <span className="text-muted-foreground hidden sm:inline">
-                    Browse services and add them to your cart — we assemble &amp; optimize your trip.
-                  </span>
-                </p>
-                <span className="ml-auto flex items-center gap-1 text-sm font-semibold text-[color:var(--earn-teal-ink)] whitespace-nowrap">
-                  Browse services <ArrowRight className="w-4 h-4" />
-                </span>
-              </button>
-              )}
-              {/* Tab bar — legacy tabbed shell ONLY. A surface page renders NO tab bar
-                  (the grouped header is the thing the un-group removes); navigation
-                  between surfaces is the nav dropdown. */}
-              {!surface && (
-              <div className="relative mt-3">
-                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                  <TabsTrigger
-                    value="travelpulse"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
-                    data-testid="tab-travelpulse"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Destinations
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
-                    data-testid="tab-packages"
-                  >
-                    <Award className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Ready-Made&nbsp;</span>Trips
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="events"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
-                    data-testid="tab-events"
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Events
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="services"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
-                    data-testid="tab-services"
-                  >
-                    <Building2 className="w-4 h-4 mr-2" />
-                    Services
-                  </TabsTrigger>
-                </TabsList>
-                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
-              </div>
-              )}
             </motion.div>
             )}
           </div>
@@ -1742,22 +1641,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
                     "Itinerary Templates", the storefront vocabulary). */}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
-                    {/* On the /ready-made SURFACE the masthead already reads
-                        "🏅 Ready-Made Trips" with this exact sub — so this section
-                        header would be a literal duplicate. Show it only in the
-                        legacy tabbed shell, where the masthead is generic. */}
-                    {!surface && (
-                    <div className="mb-4">
-                      <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <Award className="w-5 h-5 text-primary" />
-                        Ready-Made Trips
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Buy a complete trip built around an experience — it becomes your own editable plan
-                      </p>
-                    </div>
-                    )}
-
                     {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with
                         live stock render, with real counts — never the full 20-key vocabulary
                         as empty aisles (§13). Order follows the feed (badge-first, recency). */}
@@ -2066,123 +1949,6 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
 
               </TabsContent>
 
-              {/* Influencer Curated Content Tab */}
-              <TabsContent value="articles">
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
-                      <Sparkles className="w-3 h-3 mr-1" />
-                      Creator Spotlight
-                    </Badge>
-                  </div>
-                  <h2 className="text-2xl font-bold mb-2">Curated by Travel Creators</h2>
-                  <p className="text-muted-foreground">Discover authentic recommendations from verified travel influencers and local experts.</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {influencerContent.map((content, idx) => (
-                    <motion.div
-                      key={content.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      whileHover={{ y: -4 }}
-                      transition={{ duration: 0.2, delay: idx * 0.05 }}
-                    >
-                      <Card
-                        className="hover-elevate overflow-hidden cursor-pointer group h-full"
-                        data-testid={`card-influencer-${content.id}`}
-                      >
-                        <CardContent className="p-0 flex flex-col h-full">
-                          <div className="relative h-44 overflow-hidden">
-                            {content.imageUrl ? (
-                              <img
-                                src={content.imageUrl}
-                                alt={content.title}
-                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-pink-500/10 flex items-center justify-center">
-                                <Camera className="h-12 w-12 text-purple-500/30" />
-                              </div>
-                            )}
-                            
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                            
-                            <div className="absolute top-3 right-3">
-                              <Badge 
-                                className={cn(
-                                  "text-xs border-0 font-medium",
-                                  content.platform === "instagram" && "bg-gradient-to-r from-purple-500 to-pink-500 text-white",
-                                  content.platform === "youtube" && "bg-red-500 text-white",
-                                  content.platform === "tiktok" && "bg-black text-white",
-                                  content.platform === "linkedin" && "bg-blue-600 text-white"
-                                )}
-                              >
-                                {content.platform === "instagram" && "Instagram"}
-                                {content.platform === "youtube" && "YouTube"}
-                                {content.platform === "tiktok" && "TikTok"}
-                                {content.platform === "linkedin" && "LinkedIn"}
-                              </Badge>
-                            </div>
-
-                            <div className="absolute bottom-3 left-3 right-3">
-                              <div className="flex items-center gap-3">
-                                <img
-                                  src={content.avatarUrl}
-                                  alt={content.creatorName}
-                                  className="w-10 h-10 rounded-full border-2 border-white object-cover"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-white font-semibold text-sm truncate">{content.creatorName}</p>
-                                  <p className="text-white/70 text-xs">{content.creator}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="p-4 flex-1 flex flex-col">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="outline" className="text-xs">
-                                {content.category}
-                              </Badge>
-                              <Badge className="text-xs bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                Verified
-                              </Badge>
-                            </div>
-                            
-                            <h3 className="font-semibold text-base mb-2 group-hover:text-primary transition-colors line-clamp-2 flex-1">
-                              {content.title}
-                            </h3>
-                            
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-                              <MapPin className="w-4 h-4 text-primary" />
-                              <span>{content.destination}</span>
-                            </div>
-                            
-                            <div className="flex items-center justify-between text-sm pt-3 border-t">
-                              <span className="flex items-center gap-1 text-muted-foreground">
-                                <Users className="w-4 h-4" />
-                                {content.followers}
-                              </span>
-                              <span className="flex items-center gap-1 text-emerald-600 font-medium">
-                                <TrendingUp className="w-4 h-4" />
-                                {content.engagementRate}
-                              </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-
-                <div className="text-center mt-8">
-                  <Button variant="outline" className="px-8" data-testid="button-view-all-creators">
-                    View All Creators
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              </TabsContent>
 
               {/* Events Tab - Global Calendar */}
               <TabsContent value="events">
@@ -2224,10 +1990,9 @@ export default function DiscoverPage({ surface }: { surface?: MarketplaceSurface
           </div>
         </section>
 
-        {/* Earn on Traveloure — relocated from the hidden `packages` tab so the
-            Apply-to-Earn funnel is reachable on a visible surface (the packages
-            tab is not in VISIBLE_TABS). Role-gated: experts see "create a
-            template", everyone else sees "become an expert". */}
+        {/* Earn on Traveloure — the Apply-to-Earn funnel, always rendered below the
+            surface content. Role-gated: experts see "create a template", everyone
+            else sees "become an expert". */}
         <section className="py-16 border-t">
           <div className="container mx-auto px-4 max-w-4xl text-center">
             <h2 className="text-3xl font-bold mb-4">
